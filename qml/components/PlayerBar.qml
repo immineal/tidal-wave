@@ -15,6 +15,22 @@ Rectangle {
 
     property var track: player.currentTrack  // QVariantMap
     property bool hasTrack: track && track.id > 0
+    property bool isLiked: false
+
+    Connections {
+        target: bridge
+        function onFavoriteTracksChanged() { root.updateLikedState() }
+    }
+    Connections {
+        target: player
+        function onCurrentTrackChanged() { root.updateLikedState() }
+    }
+    function updateLikedState() {
+        isLiked = (hasTrack && track.id > 0)
+            ? bridge.isTrackFavorite(track.id)
+            : false
+    }
+    Component.onCompleted: updateLikedState()
 
     RowLayout {
         anchors.fill: parent
@@ -34,7 +50,7 @@ Rectangle {
                 Image {
                     anchors.fill: parent
                     source: hasTrack ? "image://tidal/" + track.coverUrl : ""
-                    fillMode: Image.PreserveAspectCrop; smooth: true
+                    fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
                 }
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -77,6 +93,22 @@ Rectangle {
                     }
                 }
             }
+
+            IconButton {
+                id: likeBtn
+                visible: root.hasTrack
+                icon: root.isLiked ? "heart-filled" : "heart"
+                size: 16
+                iconColor: root.isLiked ? Theme.accent : Theme.textSec
+                onClicked: {
+                    var trackId = root.track.id
+                    if (root.isLiked) {
+                        bridge.removeTrackFavorite(trackId, function(success) {})
+                    } else {
+                        bridge.addTrackFavorite(trackId, function(success) {})
+                    }
+                }
+            }
         }
 
         // ── Central controls ───────────────────────────
@@ -86,23 +118,40 @@ Rectangle {
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter; spacing: 8
 
-                IconButton { icon: "⇌"; size: 18; iconColor: player.shuffle ? Theme.accent : Theme.textSec; onClicked: player.setShuffle(!player.shuffle) }
-                IconButton { icon: "⏮"; size: 22; iconColor: Theme.textPrimary; onClicked: player.previous() }
+                IconButton { icon: "shuffle"; size: 18; iconColor: player.shuffle ? Theme.accent : Theme.textSec; onClicked: player.setShuffle(!player.shuffle) }
+                IconButton { icon: "previous"; size: 22; iconColor: Theme.textPrimary; onClicked: player.previous() }
 
                 Rectangle {
+                    id: playPauseBtn
                     width: 40; height: 40; radius: 20; color: Theme.textPrimary
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: player.playPause()
+                    Keys.onSpacePressed:  player.playPause()
+                    VectorIcon {
+                        anchors.centerIn: parent
+                        name: player.playing ? "pause" : "play"
+                        color: Theme.bg
+                        width: 14
+                        height: 14
+                        strokeWidth: 1.5
+                        visible: !player.loading
+                    }
                     Text {
                         anchors.centerIn: parent
-                        text: player.loading ? "…" : (player.playing ? "⏸" : "▶")
-                        color: Theme.bg; font.pixelSize: player.playing ? 16 : 14; leftPadding: player.playing ? 0 : 2
+                        text: "…"
+                        color: Theme.bg; font.pixelSize: 14
+                        visible: player.loading
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: player.playPause() }
                 }
 
-                IconButton { icon: "⏭"; size: 22; iconColor: Theme.textPrimary; onClicked: player.next() }
+                IconButton { icon: "next"; size: 22; iconColor: Theme.textPrimary; onClicked: player.next() }
                 IconButton {
-                    icon: player.repeatMode === 2 ? "↺₁" : "↺"; size: 18
+                    icon: player.repeatMode === 2 ? "repeat-one" : "repeat"
+                    size: 18
                     iconColor: player.repeatMode > 0 ? Theme.accent : Theme.textSec
                     onClicked: player.setRepeatMode((player.repeatMode + 1) % 3)
                 }
@@ -135,7 +184,7 @@ Rectangle {
             }
 
             IconButton {
-                icon: "≡"; size: 20
+                icon: "queue"; size: 20
                 iconColor: Theme.textSec
                 onClicked: root.showQueue()
             }
@@ -143,6 +192,7 @@ Rectangle {
     }
 
     component IconButton : Item {
+        id: iconBtn
         property string icon
         property color  iconColor: Theme.textSec
         property int    size: 18
@@ -150,36 +200,31 @@ Rectangle {
         width: Math.max(size + 12, 32)
         height: Math.max(size + 12, 32)
 
-        Loader {
+        activeFocusOnTab: true
+        Keys.onReturnPressed: clicked()
+        Keys.onSpacePressed:  clicked()
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: "transparent"
+            border.width: iconBtn.activeFocus ? 2 : 0
+            border.color: Theme.accent
+        }
+
+        VectorIcon {
             anchors.centerIn: parent
-            sourceComponent: (icon.startsWith("vol-") || icon === "music" || icon === "artist") ? vectorComp : textComp
-        }
-
-        Component {
-            id: textComp
-            Text {
-                text: icon
-                color: hov.hovered ? Theme.textPrimary : iconColor
-                font.pixelSize: size
-                Behavior on color { ColorAnimation { duration: 100 } }
+            name: {
+                if (icon === "vol-mute") return "volume-mute"
+                if (icon === "vol-low") return "volume-low"
+                if (icon === "vol-mid") return "volume-mid"
+                if (icon === "vol-high") return "volume-high"
+                return icon
             }
-        }
-
-        Component {
-            id: vectorComp
-            VectorIcon {
-                name: {
-                    if (icon === "vol-mute") return "volume-mute"
-                    if (icon === "vol-low") return "volume-low"
-                    if (icon === "vol-mid") return "volume-mid"
-                    if (icon === "vol-high") return "volume-high"
-                    return icon
-                }
-                color: hov.hovered ? Theme.textPrimary : iconColor
-                width: size
-                height: size
-                strokeWidth: 1.5
-            }
+            color: hov.hovered ? Theme.textPrimary : iconColor
+            width: size
+            height: size
+            strokeWidth: 1.5
         }
 
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }

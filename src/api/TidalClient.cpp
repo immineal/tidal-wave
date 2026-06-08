@@ -145,25 +145,45 @@ void TidalClient::fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset
 // ─── Content ───────────────────────────────────────
 
 void TidalClient::fetchAlbumTracks(qint64 albumId, TracksCallback cb) {
-    QUrlQuery q;
-    q.addQueryItem("limit", "100");
-    m_api->get(QStringLiteral("albums/%1/tracks").arg(albumId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
+    fetchAllTracks(QStringLiteral("albums/%1/tracks").arg(albumId), cb);
 }
 
 void TidalClient::fetchPlaylistTracks(const QString &uuid, TracksCallback cb) {
+    fetchAllTracks(QStringLiteral("playlists/%1/tracks").arg(uuid), cb);
+}
+
+void TidalClient::fetchAllTracks(const QString &endpoint, TracksCallback cb,
+                                 int offset, QList<Track> acc)
+{
     QUrlQuery q;
     q.addQueryItem("limit", "100");
-    m_api->get(QStringLiteral("playlists/%1/tracks").arg(uuid), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
+    q.addQueryItem("offset", QString::number(offset));
+    m_api->get(endpoint, q,
+        [this, endpoint, cb, offset, acc](QJsonObject root, QString err) mutable {
+            if (!err.isEmpty()) {
+                cb(acc, acc.isEmpty() ? err : QString());
+                return;
+            }
+            QList<Track> page = parseTracks(root);
+            acc.append(page);
+            int total = root["totalNumberOfItems"].toInt(acc.size());
+            if (page.isEmpty() || acc.size() >= total)
+                cb(acc, {});
+            else
+                fetchAllTracks(endpoint, cb, offset + page.size(), acc);
+        });
 }
 
 void TidalClient::fetchAlbum(qint64 albumId, std::function<void(Album,QString)> cb) {
     m_api->get(QStringLiteral("albums/%1").arg(albumId), {},
         [cb](QJsonObject root, QString err) {
             cb(err.isEmpty() ? Album::fromJson(root) : Album{}, err); });
+}
+
+void TidalClient::fetchTrack(qint64 trackId, std::function<void(Track,QString)> cb) {
+    m_api->get(QStringLiteral("tracks/%1").arg(trackId), {},
+        [cb](QJsonObject root, QString err) {
+            cb(err.isEmpty() ? Track::fromJson(root) : Track{}, err); });
 }
 
 void TidalClient::fetchArtistDetail(qint64 artistId,
@@ -236,13 +256,16 @@ void TidalClient::search(const QString &query, SearchCb cb, int limit) {
 void TidalClient::addTrackFavorite(qint64 trackId, std::function<void(bool)> cb) {
     QUrlQuery form;
     form.addQueryItem("trackIds", QString::number(trackId));
+    form.addQueryItem("countryCode", m_api->countryCode());
     m_api->postApiForm(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), form,
         [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
 }
 
 void TidalClient::removeTrackFavorite(qint64 trackId, std::function<void(bool)> cb) {
-    // This needs a DELETE request - we'll handle via a special approach
-    Q_UNUSED(trackId); Q_UNUSED(cb);
+    QUrlQuery params;
+    params.addQueryItem("countryCode", m_api->countryCode());
+    m_api->deleteApi(QStringLiteral("users/%1/favorites/tracks/%2").arg(m_userId).arg(trackId), params,
+        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
 }
 
 void TidalClient::addAlbumFavorite(qint64 albumId, std::function<void(bool)> cb) {
@@ -294,6 +317,10 @@ void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
             }
             cb(m, {});
         });
+}
+
+QNetworkReply* TidalClient::fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb) {
+    return m_api->getRaw(url, cb);
 }
 
 // ─── Playlist management ───────────────────────────

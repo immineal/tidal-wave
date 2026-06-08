@@ -31,10 +31,10 @@ Item {
     MouseArea {
         anchors.fill: parent
         preventStealing: true
-        onPressed: (mouse) => moved(Math.max(0, Math.min(1, mouseX / width)))
+        onPressed: (mouse) => moved(Math.max(0, Math.min(1, mouse.x / width)))
         onPositionChanged: (mouse) => {
             if (pressed) {
-                moved(Math.max(0, Math.min(1, mouseX / width)))
+                moved(Math.max(0, Math.min(1, mouse.x / width)))
             }
         }
         cursorShape: Qt.PointingHandCursor

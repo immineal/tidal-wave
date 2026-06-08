@@ -16,10 +16,16 @@ Rectangle {
         spacing: 12
 
         Rectangle {
+            id: backBtn
             visible: showBack
             width: 32; height: 32; radius: 16
             color: backHov.hovered ? Theme.surfaceHov : "transparent"
+            border.width: activeFocus ? 2 : 0
+            border.color: Theme.accent
             Behavior on color { ColorAnimation { duration: 100 } }
+            activeFocusOnTab: true
+            Keys.onReturnPressed: root.backClicked()
+            Keys.onSpacePressed:  root.backClicked()
             Text {
                 anchors.centerIn: parent
                 text: "←"

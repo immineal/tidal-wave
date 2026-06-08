@@ -29,18 +29,19 @@ Rectangle {
         })
     }
 
-    ScrollView {
+    ListView {
+        id: tracksList
         anchors.fill: parent
-        rightPadding: 14
-        contentWidth: availableWidth
+        clip: true
+        model: root.tracks
+        boundsBehavior: Flickable.StopAtBounds
 
-        ColumnLayout {
-            width: parent.width
-            spacing: 0
+        header: Column {
+            width: tracksList.width
 
             // Hero header
             Rectangle {
-                Layout.fillWidth: true
+                width: parent.width
                 height: 280
                 color: "transparent"
                 clip: true
@@ -51,6 +52,7 @@ Rectangle {
                     fillMode: Image.PreserveAspectCrop
                     opacity: 0.18
                     smooth: true
+                    mipmap: true
                 }
 
                 Rectangle {
@@ -78,6 +80,7 @@ Rectangle {
                             source: albumData.coverUrl ? "image://tidal/" + albumData.coverUrl : ""
                             fillMode: Image.PreserveAspectCrop
                             smooth: true
+                            mipmap: true
                         }
                     }
 
@@ -108,6 +111,14 @@ Rectangle {
                             text: albumData.artists || ""
                             color: root.effectiveArtistId > 0 ? Theme.accent : Theme.textSec
                             font.pixelSize: 14
+                            activeFocusOnTab: root.effectiveArtistId > 0
+                            Keys.onReturnPressed: if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
+                            Keys.onSpacePressed:  if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
+                            Rectangle {
+                                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                                border.width: artistNameText.activeFocus ? 2 : 0
+                                border.color: Theme.accent
+                            }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: root.effectiveArtistId > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -126,40 +137,21 @@ Rectangle {
                         Row {
                             spacing: 12
 
-                            Rectangle {
-                                width: 120
-                                height: 40
-                                radius: 20
-                                color: Theme.accent
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 8
-                                    Text { text: "▶"; color: "white"; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: "Play"; color: "white"; font.pixelSize: 14; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                                HoverHandler { cursorShape: Qt.PointingHandCursor }
-                                TapHandler { onTapped: if (tracks.length > 0) player.playTracks(tracks, 0) }
+                            PillButton {
+                                text: "Play"
+                                glyph: "▶"
+                                accent: true
+                                onClicked: if (root.tracks.length > 0) player.playTracks(root.tracks, 0)
                             }
 
-                            Rectangle {
-                                width: 120
-                                height: 40
-                                radius: 20
-                                color: Theme.surfaceHigh
-                                border.color: Theme.border
-                                Row {
-                                    anchors.centerIn: parent
-                                    spacing: 8
-                                    Text { text: "⇌"; color: Theme.textPrimary; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: "Shuffle"; color: Theme.textPrimary; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
-                                }
-                                HoverHandler { cursorShape: Qt.PointingHandCursor }
-                                TapHandler {
-                                    onTapped: {
-                                        if (tracks.length > 0) {
-                                            player.setShuffle(true)
-                                            player.playTracks(tracks, 0)
-                                        }
+                            PillButton {
+                                text: "Shuffle"
+                                glyph: "⇌"
+                                accent: false
+                                onClicked: {
+                                    if (root.tracks.length > 0) {
+                                        player.setShuffle(true)
+                                        player.playTracks(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                     }
                                 }
                             }
@@ -168,11 +160,11 @@ Rectangle {
                 }
             }
 
-            Item { height: 8 }
+            Item { height: 8; width: parent.width }
 
             // Column header
             Rectangle {
-                Layout.fillWidth: true
+                width: parent.width
                 height: 32
                 color: "transparent"
                 RowLayout {
@@ -187,33 +179,37 @@ Rectangle {
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
             }
 
-            Repeater {
-                model: root.tracks.length
-                TrackRow {
-                    required property int index
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
-                    trackNum:    index + 1
-                    title:       root.tracks[index].title
-                    artists:     root.tracks[index].artists
-                    albumTitle:  root.albumData.title || ""
-                    durationStr: root.tracks[index].durationStr
-                    showAlbum:   false
-                    showCover:   false
-                    isPlaying:   player.currentTrack.id === root.tracks[index].id && player.playing
-                    trackData:   root.tracks[index]
-                    onPlayRequested: player.playTracks(root.tracks, index)
-                }
-            }
+            Item { height: 8; width: parent.width }
+        }
 
-            Item { height: 32 }
+        delegate: TrackRow {
+            width: tracksList.width - 32
+            x: 16
+            trackNum:    index + 1
+            title:       modelData.title
+            artists:     modelData.artists
+            albumTitle:  root.albumData.title || ""
+            durationStr: modelData.durationStr
+            showAlbum:   false
+            showCover:   false
+            isPlaying:   player.currentTrack.id === modelData.id && player.playing
+            trackData:   modelData
+            onPlayRequested: player.playTracks(root.tracks, index)
+        }
+
+        footer: Item { height: 32; width: tracksList.width }
+
+        ScrollBar.vertical: ScrollBar {
+            active: true
+            policy: ScrollBar.AsNeeded
         }
     }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params || {})
     }
+
+    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
 
     LoadingOverlay { loading: root.loading }
 }

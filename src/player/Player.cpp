@@ -2,6 +2,7 @@
 #include <QDebug>
 #include <QUrl>
 #include <QTimer>
+#include <QNetworkReply>
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
@@ -197,6 +198,14 @@ void Player::loadAndPlay(int index) {
 
     setLoading(true);
     m_player->stop();
+    m_player->setSource(QUrl());
+
+    if (m_activeDownload) {
+        auto *dl = m_activeDownload;
+        m_activeDownload = nullptr;
+        dl->abort();
+        dl->deleteLater();
+    }
 
     if (m_mpdTempFile) {
         m_mpdTempFile->remove();
@@ -207,8 +216,12 @@ void Player::loadAndPlay(int index) {
     m_currentTrack = trackFromMap(m_queue[index]);
     emit currentTrackChanged();
 
-    m_client->fetchStreamManifest(m_currentTrack.id,
-        [this](StreamManifest manifest, QString err) {
+    qlonglong loadingTrackId = m_currentTrack.id;
+    m_client->fetchStreamManifest(loadingTrackId,
+        [this, loadingTrackId](StreamManifest manifest, QString err) {
+            if (m_currentTrack.id != loadingTrackId) {
+                return;
+            }
             if (!err.isEmpty()) {
                 setLoading(false);
                 emit error("Stream error: " + err);
@@ -217,7 +230,30 @@ void Player::loadAndPlay(int index) {
             m_streamedQuality = manifest.codec;
 
             if (manifest.type == StreamManifest::BTS) {
-                m_player->setSource(QUrl(manifest.url));
+                m_activeDownload = m_client->fetchRaw(QUrl(manifest.url), [this, loadingTrackId](QByteArray data, QString err) {
+                    m_activeDownload = nullptr;
+                    if (m_currentTrack.id != loadingTrackId) {
+                        return;
+                    }
+                    if (!err.isEmpty() || data.isEmpty()) {
+                        setLoading(false);
+                        emit error("Failed to download audio stream: " + err);
+                        return;
+                    }
+                    m_mpdTempFile = new QTemporaryFile(
+                        QStringLiteral("/tmp/tidal-wave-XXXXXX.mp4"));
+                    m_mpdTempFile->setAutoRemove(false);
+                    if (m_mpdTempFile->open()) {
+                        m_mpdTempFile->write(data);
+                        m_mpdTempFile->flush();
+                        m_mpdTempFile->close();
+                        m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+                        m_player->play();
+                    } else {
+                        setLoading(false);
+                        emit error("Failed to write temporary audio file");
+                    }
+                });
             } else {
                 m_mpdTempFile = new QTemporaryFile(
                     QStringLiteral("/tmp/tidal-wave-XXXXXX.mpd"));
@@ -227,13 +263,13 @@ void Player::loadAndPlay(int index) {
                     m_mpdTempFile->flush();
                     m_mpdTempFile->close();
                     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+                    m_player->play();
                 } else {
                     setLoading(false);
                     emit error("Failed to write MPD temp file");
                     return;
                 }
             }
-            m_player->play();
         });
 }
 

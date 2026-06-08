@@ -52,6 +52,7 @@ Rectangle {
                     fillMode: Image.PreserveAspectCrop
                     opacity: 0.4
                     smooth: true
+                    mipmap: true
                 }
 
                 Rectangle {
@@ -78,21 +79,11 @@ Rectangle {
                         styleColor: Qt.rgba(0, 0, 0, 0.5)
                     }
 
-                    Rectangle {
-                        width: 120
-                        height: 40
-                        radius: 20
-                        color: Theme.accent
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 8
-                            Text { text: "▶"; color: "white"; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
-                            Text { text: "Play"; color: "white"; font.pixelSize: 14; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
-                        }
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
-                        TapHandler {
-                            onTapped: if (topTracks.length > 0) player.playTracks(topTracks, 0)
-                        }
+                    PillButton {
+                        text: "Play"
+                        glyph: "▶"
+                        accent: true
+                        onClicked: if (topTracks.length > 0) player.playTracks(topTracks, 0)
                     }
                 }
             }
@@ -111,20 +102,19 @@ Rectangle {
             Item { height: 8; visible: root.topTracks.length > 0 }
 
             Repeater {
-                model: Math.min(root.topTracks.length, 5)
+                model: root.topTracks.slice(0, 5)
                 TrackRow {
-                    required property int index
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16
                     trackNum:    index + 1
-                    title:       root.topTracks[index].title
-                    artists:     root.topTracks[index].artists
-                    albumTitle:  root.topTracks[index].albumTitle
-                    durationStr: root.topTracks[index].durationStr
-                    coverUrl:    root.topTracks[index].coverUrl80
-                    isPlaying:   player.currentTrack.id === root.topTracks[index].id && player.playing
-                    trackData:   root.topTracks[index]
+                    title:       modelData.title
+                    artists:     modelData.artists
+                    albumTitle:  modelData.albumTitle
+                    durationStr: modelData.durationStr
+                    coverUrl:    modelData.coverUrl80
+                    isPlaying:   player.currentTrack.id === modelData.id && player.playing
+                    trackData:   modelData
                     onPlayRequested: player.playTracks(root.topTracks, index)
                 }
             }
@@ -163,11 +153,24 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: artistData.bio || ""
+                    text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
                     lineHeight: 1.5
+                    textFormat: Text.RichText
+                    onLinkActivated: (link) => {
+                        var parts = link.split(":")
+                        if (parts.length === 2) {
+                            var type = parts[0]
+                            var id = Number(parts[1])
+                            if (type === "artist") {
+                                navigateTo("artist", { artistId: id })
+                            } else if (type === "album") {
+                                navigateTo("album", { albumId: id })
+                            }
+                        }
+                    }
                 }
             }
 
@@ -175,9 +178,24 @@ Rectangle {
         }
     }
 
+    function formatBio(bio) {
+        if (!bio) return ""
+        var html = bio
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+        html = html.replace(/\[wimpLink\s+(artistId|albumId|playlistId|trackId)="([^"]+)"\](.*?)\[\/wimpLink\]/g, function(match, typeAttr, id, text) {
+            var type = typeAttr.replace("Id", "")
+            return "<a href='" + type + ":" + id + "' style='color: " + Theme.accent + "; text-decoration: none; font-weight: bold;'>" + text + "</a>"
+        })
+        return html.replace(/\n/g, "<br/>")
+    }
+
     function navigateTo(page, params) {
         Window.window.navigate(page, params)
     }
+
+    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
 
     LoadingOverlay { loading: root.loading }
 }

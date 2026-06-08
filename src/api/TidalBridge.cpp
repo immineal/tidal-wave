@@ -1,8 +1,59 @@
 #include "TidalBridge.h"
 #include <QJSEngine>
+#include <QSettings>
 
 TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
-    : QObject(parent), m_client(client) {}
+    : QObject(parent), m_client(client)
+{
+    QSettings settings;
+    QString saved = settings.value(QStringLiteral("audio/preferredQuality"), QStringLiteral("LOSSLESS")).toString();
+    setPreferredQuality(saved);
+
+    connect(m_client, &TidalClient::userIdChanged, this, [this](qint64 uid) {
+        if (uid > 0) {
+            loadFavoriteTrackIds();
+        } else {
+            m_favoriteTrackIds.clear();
+            m_favoriteTracks.clear();
+            m_favoriteAlbums.clear();
+            m_favoriteArtists.clear();
+            m_favoritePlaylists.clear();
+            emit favoriteTracksChanged();
+            emit favoriteAlbumsChanged();
+            emit favoriteArtistsChanged();
+            emit favoritePlaylistsChanged();
+        }
+    });
+
+    if (m_client->userId() > 0) {
+        loadFavoriteTrackIds();
+    }
+}
+
+QString TidalBridge::preferredQuality() const {
+    switch (m_client->audioQuality()) {
+        case AudioQuality::Low96k:        return QStringLiteral("LOW");
+        case AudioQuality::Low320k:       return QStringLiteral("HIGH");
+        case AudioQuality::Lossless:      return QStringLiteral("LOSSLESS");
+        case AudioQuality::HiResLossless: return QStringLiteral("HI_RES_LOSSLESS");
+    }
+    return QStringLiteral("LOSSLESS");
+}
+
+void TidalBridge::setPreferredQuality(const QString &q) {
+    AudioQuality quality;
+    if      (q == QStringLiteral("LOW"))             quality = AudioQuality::Low96k;
+    else if (q == QStringLiteral("HIGH"))            quality = AudioQuality::Low320k;
+    else if (q == QStringLiteral("HI_RES_LOSSLESS")) quality = AudioQuality::HiResLossless;
+    else                                             quality = AudioQuality::Lossless;
+
+    if (quality == m_client->audioQuality()) return;
+
+    m_client->setAudioQuality(quality);
+    QSettings settings;
+    settings.setValue(QStringLiteral("audio/preferredQuality"), preferredQuality());
+    emit preferredQualityChanged();
+}
 
 void TidalBridge::call(QJSValue &cb, const QJSValueList &args) {
     if (cb.isCallable()) cb.call(args);
@@ -196,3 +247,169 @@ void TidalBridge::search(const QString &q, QJSValue cb, int limit) {
         call(cb, { qjsEngine(this)->toScriptValue(res), qjsEngine(this)->toScriptValue(err) });
     }, limit);
 }
+
+bool TidalBridge::isTrackFavorite(qlonglong trackId) const {
+    return m_favoriteTrackIds.contains(trackId);
+}
+
+void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
+    m_client->addTrackFavorite(trackId, [this, trackId, cb](bool success) mutable {
+        if (success) {
+            m_favoriteTrackIds.insert(trackId);
+            emit favoriteTracksChanged();
+            m_client->fetchTrack(trackId, [this](Track t, QString err) {
+                if (err.isEmpty() && t.id > 0) {
+                    m_favoriteTracks.append(t);
+                    emit favoriteTracksChanged();
+                }
+            });
+        }
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::removeTrackFavorite(qlonglong trackId, QJSValue cb) {
+    m_client->removeTrackFavorite(trackId, [this, trackId, cb](bool success) mutable {
+        if (success) {
+            m_favoriteTrackIds.remove(trackId);
+            for (int i = 0; i < m_favoriteTracks.size(); ++i) {
+                if (m_favoriteTracks[i].id == trackId) {
+                    m_favoriteTracks.removeAt(i);
+                    break;
+                }
+            }
+            emit favoriteTracksChanged();
+        }
+        call(cb, { success });
+    });
+}
+
+QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
+    QVariantList list;
+    QString lowered = query.toLower();
+    for (const auto &t : m_favoriteTracks) {
+        if (lowered.isEmpty() ||
+            t.title.toLower().contains(lowered) ||
+            t.artistNames().toLower().contains(lowered) ||
+            t.album.title.toLower().contains(lowered)) {
+            list.append(trackToMap(t));
+        }
+    }
+    return list;
+}
+
+QVariantList TidalBridge::searchFavoriteAlbums(const QString &query) const {
+    QVariantList list;
+    QString lowered = query.toLower();
+    for (const auto &a : m_favoriteAlbums) {
+        if (lowered.isEmpty() ||
+            a.title.toLower().contains(lowered) ||
+            a.artistNames().toLower().contains(lowered)) {
+            list.append(albumToMap(a));
+        }
+    }
+    return list;
+}
+
+QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
+    QVariantList list;
+    QString lowered = query.toLower();
+    for (const auto &a : m_favoriteArtists) {
+        if (lowered.isEmpty() ||
+            a.name.toLower().contains(lowered)) {
+            list.append(artistToMap(a));
+        }
+    }
+    return list;
+}
+
+QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
+    QVariantList list;
+    QString lowered = query.toLower();
+    for (const auto &p : m_favoritePlaylists) {
+        if (lowered.isEmpty() ||
+            p.title.toLower().contains(lowered)) {
+            list.append(playlistToMap(p));
+        }
+    }
+    return list;
+}
+
+void TidalBridge::loadFavoriteTrackIds() {
+    m_favoriteTrackIds.clear();
+    m_favoriteTracks.clear();
+    m_favoriteAlbums.clear();
+    m_favoriteArtists.clear();
+    m_favoritePlaylists.clear();
+
+    loadNextFavoriteTracksPage(0);
+    loadNextFavoriteAlbumsPage(0);
+    loadNextFavoriteArtistsPage(0);
+    loadNextUserPlaylistsPage(0);
+}
+
+void TidalBridge::loadNextFavoriteTracksPage(int offset) {
+    if (m_client->userId() == 0) return;
+    m_client->fetchFavoriteTracks([this, offset](QList<Track> tracks, QString err) {
+        if (!err.isEmpty() || tracks.isEmpty()) {
+            std::reverse(m_favoriteTracks.begin(), m_favoriteTracks.end());
+            emit favoriteTracksChanged();
+            return;
+        }
+        for (const auto &t : tracks) {
+            m_favoriteTrackIds.insert(t.id);
+            m_favoriteTracks.append(t);
+        }
+        if (offset == 0) {
+            emit favoriteTracksChanged();
+        }
+        loadNextFavoriteTracksPage(offset + tracks.size());
+    }, 100, offset);
+}
+
+void TidalBridge::loadNextFavoriteAlbumsPage(int offset) {
+    if (m_client->userId() == 0) return;
+    m_client->fetchFavoriteAlbums([this, offset](QList<Album> albums, QString err) {
+        if (!err.isEmpty() || albums.isEmpty()) {
+            emit favoriteAlbumsChanged();
+            return;
+        }
+        m_favoriteAlbums.append(albums);
+        if (offset == 0) {
+            emit favoriteAlbumsChanged();
+        }
+        loadNextFavoriteAlbumsPage(offset + albums.size());
+    }, 100, offset);
+}
+
+void TidalBridge::loadNextFavoriteArtistsPage(int offset) {
+    if (m_client->userId() == 0) return;
+    m_client->fetchFavoriteArtists([this, offset](QList<Artist> artists, QString err) {
+        if (!err.isEmpty() || artists.isEmpty()) {
+            emit favoriteArtistsChanged();
+            return;
+        }
+        m_favoriteArtists.append(artists);
+        if (offset == 0) {
+            emit favoriteArtistsChanged();
+        }
+        loadNextFavoriteArtistsPage(offset + artists.size());
+    }, 100, offset);
+}
+
+void TidalBridge::loadNextUserPlaylistsPage(int offset) {
+    if (m_client->userId() == 0) return;
+    m_client->fetchUserPlaylists([this, offset](QList<Playlist> playlists, QString err) {
+        if (!err.isEmpty() || playlists.isEmpty()) {
+            emit favoritePlaylistsChanged();
+            return;
+        }
+        m_favoritePlaylists.append(playlists);
+        if (offset == 0) {
+            emit favoritePlaylistsChanged();
+        }
+        loadNextUserPlaylistsPage(offset + playlists.size());
+    }, 50, offset);
+}
+
+

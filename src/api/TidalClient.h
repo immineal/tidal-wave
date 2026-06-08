@@ -69,7 +69,8 @@ public:
 
     explicit TidalClient(TidalApi *api, QObject *parent = nullptr);
 
-    void setUserId(qint64 uid)        { m_userId = uid; }
+    void setUserId(qint64 uid)        { if (m_userId != uid) { m_userId = uid; emit userIdChanged(uid); } }
+    qint64 userId() const             { return m_userId; }
     void setAudioQuality(AudioQuality q) { m_quality = q; }
     AudioQuality audioQuality() const { return m_quality; }
 
@@ -90,6 +91,7 @@ public:
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
     void fetchAlbum        (qint64 albumId,        std::function<void(Album,QString)>  cb);
+    void fetchTrack        (qint64 trackId,        std::function<void(Track,QString)>  cb);
 
     // Search
     void search(const QString &query, SearchCb cb, int limit = 20);
@@ -102,6 +104,7 @@ public:
 
     // Streaming
     void fetchStreamManifest(qint64 trackId, StreamCb cb);
+    QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
 
     // Playlist management
     void createPlaylist    (const QString &title, std::function<void(Playlist,QString)> cb);
@@ -109,8 +112,15 @@ public:
 
 signals:
     void error(const QString &msg);
+    void userIdChanged(qint64 uid);
 
 private:
+    // Pages through `endpoint` 100 items at a time until totalNumberOfItems
+    // is reached, then delivers the full accumulated list in one callback —
+    // the Tidal API caps each response at 100 items regardless of `limit`.
+    void fetchAllTracks(const QString &endpoint, TracksCallback cb,
+                        int offset = 0, QList<Track> acc = {});
+
     QList<Track>    parseTracks   (const QJsonObject &root);
     QList<Album>    parseAlbums   (const QJsonObject &root);
     QList<Artist>   parseArtists  (const QJsonObject &root);

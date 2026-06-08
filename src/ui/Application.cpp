@@ -4,18 +4,76 @@
 #include <QQmlContext>
 #include <QDateTime>
 #include <QFont>
+#include <QIcon>
+#include <QSurfaceFormat>
+#include <QLoggingCategory>
+#include <QLibrary>
 // #include <QQuickStyle>
+
+typedef int (*snd_lib_error_handler_t)(const char *file, int line, const char *function, int err, const char *fmt, ...);
+typedef int (*snd_lib_error_set_handler_t)(snd_lib_error_handler_t handler);
+
+static int dummyAlsaErrorHandler(const char *, int, const char *, int, const char *, ...) {
+    return 0;
+}
+
+static void silenceAlsa() {
+    QLibrary alsaLib(QStringLiteral("asound"));
+    if (!alsaLib.load()) {
+        alsaLib.setFileName(QStringLiteral("asound.so.2"));
+        alsaLib.load();
+    }
+    if (alsaLib.isLoaded()) {
+        auto set_handler = reinterpret_cast<snd_lib_error_set_handler_t>(alsaLib.resolve("snd_lib_error_set_handler"));
+        if (set_handler) {
+            set_handler(dummyAlsaErrorHandler);
+        }
+    }
+}
+
+static QtMessageHandler originalMessageHandler = nullptr;
+
+static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
+    if (msg.contains(QStringLiteral("spaVisitChoice"))) {
+        return; // Ignore and silence this log message completely
+    }
+    if (originalMessageHandler) {
+        originalMessageHandler(type, context, msg);
+    } else {
+        QByteArray localMsg = msg.toLocal8Bit();
+        fprintf(stderr, "%s\n", localMsg.constData());
+    }
+}
+
+static void silenceLogsAndAlsa() {
+    // Silence Qt Multimedia / FFmpeg logs
+    QLoggingCategory::setFilterRules(QStringLiteral("qt.multimedia*=false"));
+
+    // Intercept and filter out "spaVisitChoice" log messages
+    originalMessageHandler = qInstallMessageHandler(myMessageHandler);
+
+    // Silence ALSA stderr warnings/errors (e.g. spaVisitChoice: parse error)
+    silenceAlsa();
+}
 
 Application::Application(QObject *parent) : QObject(parent) {
 }
 
 int Application::run(int argc, char **argv) {
+    silenceLogsAndAlsa();
+
     QApplication::setApplicationName("Tidal Wave");
     QApplication::setApplicationVersion("0.1.0");
     QApplication::setOrganizationName("TidalWave");
+    QApplication::setDesktopFileName("tidal-wave");
+
+    QSurfaceFormat format;
+    format.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(format);
 
     QApplication app(argc, argv);
-    
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/TidalWave/assets/icon.png")));
+
     QFont defaultFont("Inter");
     defaultFont.setFamilies({"Inter", "DejaVu Sans", "sans-serif"});
     QApplication::setFont(defaultFont);
@@ -38,6 +96,12 @@ int Application::run(int argc, char **argv) {
     connect(m_player, &Player::positionChanged, this, &Application::onPlayerPositionChanged);
 
     m_auth->loadCredentials();
+
+    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        m_trayIcon = new QSystemTrayIcon(QIcon(QStringLiteral(":/TidalWave/assets/icon.png")), this);
+        m_trayIcon->setToolTip("Tidal Wave");
+        m_trayIcon->show();
+    }
 
     QQmlApplicationEngine engine;
     engine.addImageProvider("tidal", new TidalImageProvider());
