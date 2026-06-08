@@ -1,0 +1,68 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            asset_name: tidal-wave-linux-x86_64.tar.gz
+          - os: windows-latest
+            asset_name: tidal-wave-windows-x64.zip
+          - os: macos-latest
+            asset_name: tidal-wave-macos-x64.tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          modules: 'qtmultimedia qtsvg'
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libasound2-dev
+
+      - name: Configure and build
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel 4
+
+      - name: Package binary (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          tar -czf ${{ matrix.asset_name }} -C build tidal-wave
+
+      - name: Package binary (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          tar -czf ${{ matrix.asset_name }} -C build tidal-wave
+
+      - name: Package binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\Release\tidal-wave.exe -DestinationPath ${{ matrix.asset_name }}
+
+      - name: Upload binaries to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.asset_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
