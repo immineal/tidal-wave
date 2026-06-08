@@ -12,7 +12,7 @@
 
 Here is a preview of the Tidal Wave desktop interface:
 
-![Tidal Wave UI Preview](assets/tidal_wave_ui_mockup.png)
+![Tidal Wave UI Preview](assets/screenshot.png)
 
 ---
 
