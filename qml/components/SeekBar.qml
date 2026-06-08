@@ -68,9 +68,9 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 preventStealing: true
-                onPressed: (mouse) => { _dragging = true; _dragValue = posFromX(mouseX) }
+                onPressed: (mouse) => { _dragging = true; _dragValue = posFromX(mouse.x) }
                 onReleased: (mouse) => { _dragging = false; seeked(_dragValue) }
-                onPositionChanged: (mouse) => { if (_dragging) _dragValue = posFromX(mouseX) }
+                onPositionChanged: (mouse) => { if (_dragging) _dragValue = posFromX(mouse.x) }
 
                 function posFromX(x) {
                     var r = (x - 8) / (width - 16)

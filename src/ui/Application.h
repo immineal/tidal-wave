@@ -8,6 +8,7 @@
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include "ui/discordrpc.h"
+#include <QSystemTrayIcon>
 
 class Application : public QObject {
     Q_OBJECT
@@ -27,6 +28,7 @@ private:
     Player      *m_player = nullptr;
     MprisManager*m_mpris  = nullptr;
     DiscordRPC  *m_discord = nullptr;
+    QSystemTrayIcon *m_trayIcon = nullptr;
 
     qint64       m_lastDiscordUpdatePos = 0;
     qint64       m_lastDiscordUpdateTime = 0;

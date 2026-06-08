@@ -10,6 +10,8 @@ Rectangle {
 
     property var mixes: []
     property var recentAlbums: []
+    property var playlists: []
+    property var artists: []
     property bool loading: false
 
     // Access the window root for navigation
@@ -40,6 +42,28 @@ Rectangle {
                              coverUrl: a.coverUrl, type: "album" })
             }
             recentAlbums = items
+        }, 12, 0)
+
+        bridge.fetchUserPlaylists(function(lists, err) {
+            if (err.length > 0) return
+            var items = []
+            for (var i = 0; i < Math.min(lists.length, 12); i++) {
+                var p = lists[i]
+                items.push({ id: p.uuid, title: p.title, subtitle: p.numTracks + " tracks",
+                             coverUrl: p.coverUrl, type: "playlist" })
+            }
+            playlists = items
+        }, 12, 0)
+
+        bridge.fetchFavoriteArtists(function(artistList, err) {
+            if (err.length > 0) return
+            var items = []
+            for (var i = 0; i < Math.min(artistList.length, 12); i++) {
+                var a = artistList[i]
+                items.push({ id: a.id, title: a.name, subtitle: "Artist",
+                             coverUrl: a.coverUrl || "", type: "artist" })
+            }
+            artists = items
         }, 12, 0)
     }
 
@@ -101,6 +125,35 @@ Rectangle {
                     })
                 }
                 onViewAllClicked: navigateTo("collection", { activeTab: 1 })
+            }
+
+            Item { height: 32 }
+
+            HorizontalSection {
+                Layout.fillWidth: true
+                visible: playlists.length > 0
+                title: "Your Playlists"
+                items: root.playlists
+                mediaType: "playlist"
+                onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl })
+                onItemPlayClicked: (idx, item) => {
+                    bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
+                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                    })
+                }
+                onViewAllClicked: navigateTo("collection", { activeTab: 3 })
+            }
+
+            Item { height: 32 }
+
+            HorizontalSection {
+                Layout.fillWidth: true
+                visible: artists.length > 0
+                title: "Favorite Artists"
+                items: root.artists
+                mediaType: "artist"
+                onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })
+                onViewAllClicked: navigateTo("collection", { activeTab: 2 })
             }
 
             Item { height: 32 }

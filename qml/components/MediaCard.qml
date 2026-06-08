@@ -17,6 +17,10 @@ Item {
     signal clicked()
     signal playClicked()
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: root.clicked()
+    Keys.onSpacePressed:  root.clicked()
+
     ColumnLayout {
         id: col
         width: parent.width
@@ -29,6 +33,8 @@ Item {
             radius: mediaType === "artist" ? cardSize/2 : Theme.radiusLg
             color: Theme.surfaceHigh
             clip: true
+            border.width: root.activeFocus ? 4 : 0
+            border.color: Theme.accent
 
             Image {
                 id: img
@@ -36,12 +42,13 @@ Item {
                 source: coverUrl.length > 0 ? "image://tidal/" + coverUrl : ""
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
+                mipmap: true
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
             }
 
             VectorIcon {
-                visible: img.status !== Image.Ready
+                visible: root.coverUrl.length === 0 || img.status === Image.Error
                 anchors.centerIn: parent
                 name: mediaType === "artist" ? "artist" : "music"
                 color: Theme.textDim

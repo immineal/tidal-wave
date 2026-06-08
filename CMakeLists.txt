@@ -66,6 +66,8 @@ qt_add_qml_module(tidal-wave
         qml/components/SideBar.qml
         qml/components/TrackRow.qml
         qml/components/MediaCard.qml
+        qml/components/BackButton.qml
+        qml/components/PillButton.qml
         qml/components/NavIcon.qml
         qml/components/HorizontalSection.qml
         qml/components/PageHeader.qml
@@ -86,7 +88,7 @@ qt_add_qml_module(tidal-wave
         qml/pages/MixPage.qml
         qml/pages/NowPlayingPage.qml
     RESOURCES
-        assets/icon.svg
+        assets/icon.png
 )
 
 target_include_directories(tidal-wave PRIVATE src src/api src/player src/mpris src/ui)

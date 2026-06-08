@@ -9,32 +9,29 @@ Rectangle {
     color: Theme.bg
 
     property int activeTab: 0
-    property var tracks:    []
-    property var albums:    []
-    property var artists:   []
-    property var playlists: []
+    property string searchPattern: ""
+    property var filteredTracks:    []
+    property var filteredAlbums:    []
+    property var filteredArtists:   []
+    property var filteredPlaylists: []
     property bool loading:  false
 
-    onActiveTabChanged: loadTab(activeTab)
-    Component.onCompleted: loadTab(activeTab)
+    onActiveTabChanged: updateFilteredContent()
+    Component.onCompleted: updateFilteredContent()
 
-    function loadTab(tab) {
-        loading = true
-        switch (tab) {
-        case 0:
-            bridge.fetchFavoriteTracks(function(t, err) {
-                loading = false; if (!err) tracks = t }, 100, 0); break
-        case 1:
-            bridge.fetchFavoriteAlbums(function(a, err) {
-                loading = false; if (!err) albums = a }, 100, 0); break
-        case 2:
-            bridge.fetchFavoriteArtists(function(a, err) {
-                loading = false; if (!err) artists = a }, 100, 0); break
-        case 3:
-            // playlistsAndFavoritePlaylists rejects limit > 50 with HTTP 400
-            bridge.fetchUserPlaylists(function(p, err) {
-                loading = false; if (!err) playlists = p }, 50, 0); break
-        }
+    Connections {
+        target: bridge
+        function onFavoriteTracksChanged() { root.updateFilteredContent() }
+        function onFavoriteAlbumsChanged() { root.updateFilteredContent() }
+        function onFavoriteArtistsChanged() { root.updateFilteredContent() }
+        function onFavoritePlaylistsChanged() { root.updateFilteredContent() }
+    }
+
+    function updateFilteredContent() {
+        filteredTracks    = bridge.searchFavoriteTracks(searchPattern)
+        filteredAlbums    = bridge.searchFavoriteAlbums(searchPattern)
+        filteredArtists   = bridge.searchFavoriteArtists(searchPattern)
+        filteredPlaylists = bridge.searchFavoritePlaylists(searchPattern)
     }
 
     ColumnLayout {
@@ -50,137 +47,208 @@ Rectangle {
         }
         Item { height: 16 }
 
-        Row {
+        RowLayout {
+            Layout.fillWidth: true
             Layout.leftMargin: 24
-            spacing: 4
-            Repeater {
-                model: ["Tracks", "Albums", "Artists", "Playlists"]
-                Rectangle {
-                    required property string modelData
-                    required property int    index
-                    height: 34; width: tl.implicitWidth + 24; radius: 17
-                    color: root.activeTab === index ? Theme.accent : Theme.surfaceHigh
-                    Text {
-                        id: tl; anchors.centerIn: parent; text: modelData
-                        color: root.activeTab === index ? "white" : Theme.textSec
-                        font.pixelSize: 14; font.bold: root.activeTab === index
+            Layout.rightMargin: 24
+            spacing: 16
+
+            Row {
+                spacing: 4
+                Repeater {
+                    model: ["Tracks", "Albums", "Artists", "Playlists"]
+                    Rectangle {
+                        id: collectionTab
+                        required property string modelData
+                        required property int    index
+                        height: 34; width: tl.implicitWidth + 24; radius: 17
+                        color: root.activeTab === index ? Theme.accent : Theme.surfaceHigh
+                        border.width: collectionTab.activeFocus ? 2 : 0
+                        border.color: Theme.accent
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: { root.activeTab = index }
+                        Keys.onSpacePressed:  { root.activeTab = index }
+                        Text {
+                            id: tl; anchors.centerIn: parent; text: modelData
+                            color: root.activeTab === index ? "white" : Theme.textSec
+                            font.pixelSize: 14; font.bold: root.activeTab === index
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { root.activeTab = index }
+                        }
                     }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.activeTab = index; loadTab(index) }
-                    }
+                }
+            }
+
+            Item { Layout.fillWidth: true }
+
+            SearchBar {
+                id: collectionSearch
+                placeholder: "Search saved " + ["tracks", "albums", "artists", "playlists"][root.activeTab] + "…"
+                Layout.preferredWidth: 220
+                Layout.preferredHeight: 36
+                onTextEdited: (txt) => {
+                    root.searchPattern = txt
+                    root.updateFilteredContent()
                 }
             }
         }
         Item { height: 16 }
 
-        ScrollView {
+        // Tracks Tab: virtualized ListView
+        ListView {
+            id: tracksList
             Layout.fillWidth: true
             Layout.fillHeight: true
-            rightPadding: 14
-            contentWidth: availableWidth
+            visible: root.activeTab === 0
+            clip: true
+            model: root.activeTab === 0 ? root.filteredTracks : []
+            boundsBehavior: Flickable.StopAtBounds
 
+            delegate: TrackRow {
+                width: tracksList.width - 32
+                x: 16
+                trackNum:    index + 1
+                title:       modelData.title
+                artists:     modelData.artists
+                albumTitle:  modelData.albumTitle
+                durationStr: modelData.durationStr
+                coverUrl:    modelData.coverUrl80
+                isPlaying:   player.currentTrack.id === modelData.id && player.playing
+                trackData:   modelData
+                onPlayRequested: player.playTracks(root.filteredTracks, index)
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                active: true
+                policy: ScrollBar.AsNeeded
+            }
+        }
+
+        // Tab 1: Albums Tab (virtualized GridView)
+        GridView {
+            id: albumsGrid
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.activeTab === 1
+            clip: true
+            model: root.activeTab === 1 ? root.filteredAlbums : []
+            cellWidth: 184
+            cellHeight: 232
+            leftMargin: 24
+            rightMargin: 24
+            topMargin: 16
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Item {
+                width: 184
+                height: 232
+                MediaCard {
+                    anchors.centerIn: parent
+                    title: modelData.title
+                    subtitle: modelData.artists
+                    coverUrl: modelData.coverUrl
+                    mediaType: "album"
+                    onClicked: navigateTo("album", { albumId: modelData.id })
+                    onPlayClicked: {
+                        bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
+                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        })
+                    }
+                }
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                active: true
+                policy: ScrollBar.AsNeeded
+            }
+        }
+
+        // Tab 2: Artists Tab (virtualized GridView)
+        GridView {
+            id: artistsGrid
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.activeTab === 2
+            clip: true
+            model: root.activeTab === 2 ? root.filteredArtists : []
+            cellWidth: 184
+            cellHeight: 232
+            leftMargin: 24
+            rightMargin: 24
+            topMargin: 16
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Item {
+                width: 184
+                height: 232
+                MediaCard {
+                    anchors.centerIn: parent
+                    title: modelData.name
+                    subtitle: "Artist"
+                    coverUrl: modelData.coverUrl || ""
+                    mediaType: "artist"
+                    onClicked: navigateTo("artist", { artistId: modelData.id })
+                }
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                active: true
+                policy: ScrollBar.AsNeeded
+            }
+        }
+
+        // Tab 3: Playlists Tab (virtualized GridView)
+        GridView {
+            id: playlistsGrid
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
+            clip: true
+            model: root.activeTab === 3 ? root.filteredPlaylists : []
+            cellWidth: 184
+            cellHeight: 232
+            leftMargin: 24
+            rightMargin: 24
+            topMargin: 16
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Item {
+                width: 184
+                height: 232
+                MediaCard {
+                    anchors.centerIn: parent
+                    title: modelData.title
+                    subtitle: modelData.numTracks === 1 ? "1 track" : modelData.numTracks + " tracks"
+                    coverUrl: modelData.coverUrl || ""
+                    mediaType: "playlist"
+                    onClicked: navigateTo("playlist", {
+                        playlistUuid: modelData.uuid,
+                        playlistTitle: modelData.title,
+                        coverUrl: modelData.coverUrl || ""
+                    })
+                }
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                active: true
+                policy: ScrollBar.AsNeeded
+            }
+        }
+
+        // Empty state for playlists
+        Item {
+            visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
+            Layout.fillWidth: true
+            Layout.fillHeight: true
             ColumnLayout {
-                width: parent.width
-                spacing: 0
-
-                // Tracks
-                Repeater {
-                    model: root.activeTab === 0 ? root.tracks.length : 0
-                    TrackRow {
-                        required property int index
-                        Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
-                        trackNum:    index + 1
-                        title:       root.tracks[index].title
-                        artists:     root.tracks[index].artists
-                        albumTitle:  root.tracks[index].albumTitle
-                        durationStr: root.tracks[index].durationStr
-                        coverUrl:    root.tracks[index].coverUrl80
-                        isPlaying:   player.currentTrack.id === root.tracks[index].id && player.playing
-                        trackData:   root.tracks[index]
-                        onPlayRequested: player.playTracks(root.tracks, index)
-                    }
-                }
-
-                // Albums grid
-                Flow {
-                    Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                    visible: root.activeTab === 1
-                    spacing: 16
-                    Repeater {
-                        model: root.activeTab === 1 ? root.albums.length : 0
-                        MediaCard {
-                            required property int index
-                            title: root.albums[index].title
-                            subtitle: root.albums[index].artists
-                            coverUrl: root.albums[index].coverUrl
-                            mediaType: "album"
-                            onClicked: navigateTo("album", { albumId: root.albums[index].id })
-                            onPlayClicked: {
-                                bridge.fetchAlbumTracks(root.albums[index].id, function(tracks, err) {
-                                    if (!err && tracks.length > 0) player.playTracks(tracks, 0)
-                                })
-                            }
-                        }
-                    }
-                }
-
-                // Artists grid
-                Flow {
-                    Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                    visible: root.activeTab === 2
-                    spacing: 16
-                    Repeater {
-                        model: root.activeTab === 2 ? root.artists.length : 0
-                        MediaCard {
-                            required property int index
-                            title: root.artists[index].name
-                            subtitle: "Artist"
-                            coverUrl: root.artists[index].coverUrl || ""
-                            mediaType: "artist"
-                            onClicked: navigateTo("artist", { artistId: root.artists[index].id })
-                        }
-                    }
-                }
-
-                // Playlists grid
-                Flow {
-                    Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                    visible: root.activeTab === 3 && root.playlists.length > 0
-                    spacing: 16
-                    Repeater {
-                        model: root.activeTab === 3 ? root.playlists.length : 0
-                        MediaCard {
-                            required property int index
-                            title: root.playlists[index].title
-                            subtitle: root.playlists[index].numTracks === 1 ? "1 track" : root.playlists[index].numTracks + " tracks"
-                            coverUrl: root.playlists[index].coverUrl || ""
-                            mediaType: "playlist"
-                            onClicked: navigateTo("playlist", {
-                                playlistUuid: root.playlists[index].uuid,
-                                playlistTitle: root.playlists[index].title,
-                                coverUrl: root.playlists[index].coverUrl || ""
-                            })
-                        }
-                    }
-                }
-
-                // Empty state for playlists
-                Item {
-                    visible: root.activeTab === 3 && root.playlists.length === 0 && !root.loading
-                    Layout.fillWidth: true
-                    height: 200
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        spacing: 12
-                        VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                        Text { Layout.alignment: Qt.AlignHCenter; text: "No playlists yet"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                        Text { Layout.alignment: Qt.AlignHCenter; text: "Your saved playlists will appear here"; color: Theme.textSec; font.pixelSize: 13 }
-                    }
-                }
-
-                Item { height: 32 }
+                anchors.centerIn: parent
+                spacing: 12
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: "No playlists yet"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: "Your saved playlists will appear here"; color: Theme.textSec; font.pixelSize: 13 }
             }
         }
     }

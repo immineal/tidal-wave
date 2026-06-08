@@ -48,11 +48,17 @@ Item {
             Item { Layout.fillWidth: true }
 
             Text {
+                id: viewAllText
                 text: "View all →"
-                color: Theme.textSec
+                color: viewAllText.activeFocus ? Theme.accent : Theme.textSec
                 font.pixelSize: 12
+                font.underline: viewAllText.activeFocus
+                activeFocusOnTab: true
+                Keys.onReturnPressed: root.viewAllClicked()
+                Keys.onSpacePressed:  root.viewAllClicked()
                 MouseArea {
                     anchors.fill: parent
+                    anchors.margins: -4
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.viewAllClicked()
                 }
@@ -78,8 +84,7 @@ Item {
 
                 ScrollBar.horizontal: ScrollBar {
                     id: hbar
-                    policy: (hlist.contentWidth > hlist.width && sectionHover.containsMouse)
-                            ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                    policy: ScrollBar.AlwaysOff
                     minimumSize: 0.05
                 }
 

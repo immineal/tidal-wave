@@ -16,6 +16,10 @@ Rectangle {
     signal submitted(string text)
     signal textEdited(string text)
 
+    function releaseFocus() {
+        input.focus = false
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 12
@@ -49,11 +53,26 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
             }
         }
-        Text {
+        Item {
+            id: clearBtn
             visible: input.text.length > 0
-            text: "✕"
-            color: Theme.textDim
-            font.pixelSize: 13
+            width: 14
+            height: 14
+            Layout.alignment: Qt.AlignVCenter
+            activeFocusOnTab: true
+            Keys.onReturnPressed: input.text = ""
+            Keys.onSpacePressed:  input.text = ""
+            Rectangle {
+                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                border.width: clearBtn.activeFocus ? 2 : 0
+                border.color: Theme.accent
+            }
+            VectorIcon {
+                anchors.fill: parent
+                name: "x"
+                color: clearBtn.activeFocus ? Theme.accent : Theme.textDim
+                strokeWidth: 1.8
+            }
             MouseArea {
                 anchors.fill: parent
                 onClicked: input.text = ""

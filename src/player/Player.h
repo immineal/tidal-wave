@@ -8,6 +8,8 @@
 #include "api/TidalClient.h"
 #include "api/Models.h"
 
+class QNetworkReply;
+
 class Player : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool       playing      READ playing      NOTIFY playingChanged)
@@ -101,4 +103,5 @@ private:
     int                  m_repeatMode    = 0;  // 0=no 1=all 2=one
     QString              m_streamedQuality;
     QTemporaryFile      *m_mpdTempFile   = nullptr;
+    QNetworkReply       *m_activeDownload = nullptr;
 };

@@ -28,7 +28,8 @@ public:
     // POST against the authenticated API host (api.tidal.com), unlike post()/postForm()
     // which target the OAuth host (auth.tidal.com) and deliberately omit auth headers.
     void postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
-    void getRaw(const QUrl &url, RawCallback cb);
+    void deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
     static constexpr auto kApiBase  = "https://api.tidal.com/v1/";
     static constexpr auto kAuthBase = "https://auth.tidal.com/v1/";

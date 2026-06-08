@@ -14,6 +14,11 @@ Rectangle {
     property var    artists:   []
     property bool   loading:   false
     property int    activeTab: 0
+    property int    _searchGen: 0
+
+    function releaseFocus() {
+        searchBar.releaseFocus()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -22,6 +27,7 @@ Rectangle {
         Item { height: 16 }
 
         SearchBar {
+            id: searchBar
             Layout.fillWidth: true
             Layout.leftMargin: 24
             Layout.rightMargin: 24
@@ -44,11 +50,17 @@ Rectangle {
             Repeater {
                 model: ["All", "Tracks", "Albums", "Artists"]
                 Rectangle {
+                    id: searchTab
                     required property string modelData
                     required property int    index
                     height: 30; width: tabLabel.implicitWidth + 24; radius: 15
                     color: root.activeTab === index ? Theme.accent
                            : tabMA.containsMouse ? Theme.surfaceHov : "transparent"
+                    border.width: searchTab.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: root.activeTab = index
+                    Keys.onSpacePressed:  root.activeTab = index
                     Text {
                         id: tabLabel; anchors.centerIn: parent
                         text: modelData
@@ -189,7 +201,14 @@ Rectangle {
 
     function doSearch(q) {
         loading = true
+        var gen = ++root._searchGen
         bridge.search(q, function(results, err) {
+            // Network replies can arrive out of order — a slow response for
+            // an earlier keystroke could otherwise overwrite the results of
+            // a more recent search (often with an empty result set, making
+            // it look like "search finds nothing"). Only the most recently
+            // dispatched request may update the UI.
+            if (gen !== root._searchGen) return
             loading = false
             if (err.length > 0) return
             root.tracks  = results.tracks  || []
@@ -198,7 +217,7 @@ Rectangle {
         }, 20)
     }
 
-    function clearResults() { tracks = []; albums = []; artists = [] }
+    function clearResults() { tracks = []; albums = []; artists = []; _searchGen++; loading = false }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params)

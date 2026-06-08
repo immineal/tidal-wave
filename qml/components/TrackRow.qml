@@ -7,7 +7,7 @@ import TidalWave
 Item {
     id: root
     height: 52
-    width: parent ? parent.width : 0
+    implicitWidth: 100
 
     property int    trackNum: 1
     property string title: ""
@@ -23,12 +23,42 @@ Item {
     signal playRequested()
     signal menuRequested(real x, real y)
 
+    activeFocusOnTab: true
+    Keys.onReturnPressed: root.playRequested()
+    Keys.onSpacePressed:  root.playRequested()
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            root.menuRequested(width / 2, height / 2)
+            contextMenu.popup()
+            event.accepted = true
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: 2
         radius: 6
         color: isPlaying ? Qt.rgba(0, 0.698, 0.973, 0.08)
                : hov.hovered ? Theme.surfaceHov : "transparent"
+        border.width: root.activeFocus ? 2 : 0
+        border.color: Theme.accent
+
+        MouseArea {
+            id: hov
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.PointingHandCursor
+            readonly property bool hovered: containsMouse
+
+            onClicked: (mouse) => {
+                if (mouse.button === Qt.RightButton) {
+                    contextMenu.popup()
+                } else {
+                    root.playRequested()
+                }
+            }
+        }
 
         RowLayout {
             anchors { fill: parent; leftMargin: 12; rightMargin: 28 }
@@ -74,6 +104,7 @@ Item {
                     source: coverUrl.length > 0 ? "image://tidal/" + coverUrl : ""
                     fillMode: Image.PreserveAspectCrop
                     smooth: true
+                    mipmap: true
                 }
             }
 
@@ -112,7 +143,7 @@ Item {
                 text: root.durationStr
                 color: Theme.textDim
                 font.pixelSize: 13
-                width: 40
+                Layout.preferredWidth: 40
                 horizontalAlignment: Text.AlignRight
             }
 
@@ -122,8 +153,11 @@ Item {
                 text: "⋯"
                 color: Theme.textSec
                 font.pixelSize: 18
-                width: 24
+                Layout.preferredWidth: 24
                 horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                Layout.fillHeight: true
+                Layout.alignment: Qt.AlignVCenter
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -131,23 +165,6 @@ Item {
                         root.menuRequested(m.x, m.y)
                         contextMenu.popup()
                     }
-                }
-            }
-        }
-
-        MouseArea {
-            id: hov
-            anchors.fill: parent
-            hoverEnabled: true
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            cursorShape: Qt.PointingHandCursor
-            readonly property bool hovered: containsMouse
-
-            onClicked: (mouse) => {
-                if (mouse.button === Qt.RightButton) {
-                    contextMenu.popup()
-                } else {
-                    root.playRequested()
                 }
             }
         }
@@ -178,6 +195,16 @@ Item {
             onTriggered: {
                 if (root.trackData && root.trackData.albumId > 0)
                     Window.window.navigate("album", { albumId: root.trackData.albumId })
+            }
+        }
+        MenuItem {
+            text: "🎤  Go to artist"
+            enabled: root.trackData && root.trackData.artistId > 0
+            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+            onTriggered: {
+                if (root.trackData && root.trackData.artistId > 0)
+                    Window.window.navigate("artist", { artistId: root.trackData.artistId })
             }
         }
     }

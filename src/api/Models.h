@@ -135,7 +135,10 @@ struct Playlist {
         p.description = j["description"].toString();
         p.numTracks   = j["numberOfTracks"].toInt();
         p.duration    = j["duration"].toInt();
-        p.image       = j["image"].toString(j["squareImage"].toString());
+        // squareImage is the 1:1 art tidal serves at WxW sizes (what coverUrl
+        // requests below); the plain "image" field is a 3:2 widescreen crop
+        // that 403s at square dimensions, so prefer squareImage.
+        p.image       = j["squareImage"].toString(j["image"].toString());
         p.type        = j["type"].toString();
         return p;
     }

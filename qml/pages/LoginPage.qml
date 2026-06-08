@@ -86,12 +86,19 @@ Rectangle {
                     }
 
                     Rectangle {
+                        id: loginBtn
                         Layout.fillWidth: true
                         height: 48
                         radius: Theme.radius
                         color: Theme.accent
+                        border.width: activeFocus ? 2 : 0
+                        border.color: Theme.textPrimary
                         scale: loginHov.hovered ? 0.98 : 1
                         Behavior on scale { NumberAnimation { duration: 100 } }
+
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: auth.startDeviceFlow()
+                        Keys.onSpacePressed:  auth.startDeviceFlow()
 
                         Text {
                             anchors.centerIn: parent
@@ -136,10 +143,16 @@ Rectangle {
                     }
 
                     Rectangle {
+                        id: verificationLink
                         Layout.fillWidth: true
                         height: 44
                         radius: Theme.radius
                         color: Theme.surfaceHigh
+                        border.width: activeFocus ? 2 : 0
+                        border.color: Theme.accent
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: Qt.openUrlExternally(auth.verificationUrl)
+                        Keys.onSpacePressed:  Qt.openUrlExternally(auth.verificationUrl)
                         Text {
                             anchors.centerIn: parent
                             text: auth.verificationUrl || "tidal.com/link"
@@ -210,12 +223,18 @@ Rectangle {
                     }
 
                     Text {
+                        id: cancelText
                         Layout.alignment: Qt.AlignHCenter
                         text: "Cancel"
-                        color: Theme.textSec
+                        color: cancelText.activeFocus ? Theme.accent : Theme.textSec
                         font.pixelSize: 13
+                        font.underline: cancelText.activeFocus
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: auth.cancelDeviceFlow()
+                        Keys.onSpacePressed:  auth.cancelDeviceFlow()
                         MouseArea {
                             anchors.fill: parent
+                            anchors.margins: -6
                             cursorShape: Qt.PointingHandCursor
                             onClicked: auth.cancelDeviceFlow()
                         }

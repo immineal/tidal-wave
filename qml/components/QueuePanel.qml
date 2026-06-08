@@ -44,12 +44,17 @@ Rectangle {
     }
 
     component QueueDelegate : Item {
+        id: queueItem
         property int trackIndex: 0
 
         height: 52
 
         property bool isCurrent: player.queueIndex === trackIndex
         property var  track:     player.queueTrackAt(trackIndex)
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: player.jumpToQueue(trackIndex)
+        Keys.onSpacePressed:  player.jumpToQueue(trackIndex)
 
         Rectangle {
             anchors.fill: parent
@@ -59,6 +64,8 @@ Rectangle {
             anchors.bottomMargin: 2
             radius: 6
             color: isCurrent ? Qt.rgba(0, 0.698, 0.973, 0.08) : qHov.hovered ? Theme.surfaceHov : "transparent"
+            border.width: queueItem.activeFocus ? 2 : 0
+            border.color: Theme.accent
 
             RowLayout {
                 anchors.fill: parent
@@ -77,6 +84,7 @@ Rectangle {
                         source: track && track.coverUrl80 ? "image://tidal/" + track.coverUrl80 : ""
                         fillMode: Image.PreserveAspectCrop
                         smooth: true
+                        mipmap: true
                     }
                 }
 
