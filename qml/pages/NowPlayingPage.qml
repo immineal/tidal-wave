@@ -36,6 +36,15 @@ Rectangle {
     property bool   lyricsIsTimed: false
     property int    currentLyricLine: -1
     property bool   userScrolled: false
+    property bool   ignoreLyricsSync: false
+
+    Timer {
+        id: ignoreSyncTimer
+        interval: 1000
+        running: false
+        repeat: false
+        onTriggered: root.ignoreLyricsSync = false
+    }
 
     function parseLrc(text) {
         var lines = []
@@ -87,6 +96,7 @@ Rectangle {
         running: root.showLyrics && root.lyricsIsTimed && root.lyricsData.length > 0
         repeat: true
         onTriggered: {
+            if (root.ignoreLyricsSync) return
             var pos = player.position
             var found = 0
             for (var i = 0; i < root.lyricsData.length; i++) {
@@ -108,6 +118,8 @@ Rectangle {
             root.lyricsState  = "none"
             root.currentLyricLine = -1
             root.userScrolled = false
+            root.ignoreLyricsSync = false
+            ignoreSyncTimer.stop()
             root.updateLikedState()
             root.loadLyrics()
         }
@@ -200,19 +212,39 @@ Rectangle {
                         onMovingChanged: if (moving) root.userScrolled = true
 
                         delegate: Text {
+                            id: lyricText
                             required property var  modelData
                             required property int  index
                             readonly property bool active: root.lyricsIsTimed && index === root.currentLyricLine
+                            readonly property bool hovered: root.lyricsIsTimed && hoverHandler.hovered
                             width: lyricsView.width
                             text: modelData.text
-                            color: active ? Theme.accent : Theme.textSec
+                            color: active ? Theme.accent : (hovered ? Theme.textPrimary : Theme.textSec)
                             font.pixelSize: 14
                             font.bold: active
-                            opacity: active ? 1.0 : 0.55
+                            opacity: active ? 1.0 : (hovered ? 0.85 : 0.55)
                             lineHeight: 1.6
                             wrapMode: Text.WordWrap
                             Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                             Behavior on color   { ColorAnimation  { duration: 180 } }
+
+                            HoverHandler {
+                                id: hoverHandler
+                                enabled: root.lyricsIsTimed
+                                cursorShape: root.lyricsIsTimed ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            }
+
+                            TapHandler {
+                                enabled: root.lyricsIsTimed
+                                onTapped: {
+                                    root.ignoreLyricsSync = true
+                                    ignoreSyncTimer.restart()
+                                    player.seek(modelData.ms)
+                                    root.userScrolled = false
+                                    root.currentLyricLine = index
+                                    lyricsView.positionViewAtIndex(index, ListView.Center)
+                                }
+                            }
                         }
 
                         // Loading / empty states
