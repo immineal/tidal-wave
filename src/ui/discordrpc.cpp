@@ -4,7 +4,9 @@
 #include <QDateTime>
 #include <QtEndian>
 #include <QDebug>
+#ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
 
 DiscordRPC::DiscordRPC(QObject *parent)
     : QObject(parent)
@@ -35,6 +37,9 @@ DiscordRPC::~DiscordRPC()
 
 QString DiscordRPC::getSocketPath()
 {
+#ifdef Q_OS_WIN
+    return QStringLiteral("discord-ipc-0");
+#else
     QString path = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR"));
     if (path.isEmpty()) {
         path = QString("/run/user/%1").arg(getuid());
@@ -57,6 +62,7 @@ QString DiscordRPC::getSocketPath()
     }
 
     return QString();
+#endif
 }
 
 void DiscordRPC::tryConnect()
@@ -150,7 +156,7 @@ void DiscordRPC::updateActivity(const QString &title, const QString &artist, con
     }
 
     QJsonObject args;
-    args["pid"] = static_cast<int>(getpid());
+    args["pid"] = static_cast<int>(QCoreApplication::applicationPid());
     args["activity"] = activity;
 
     QJsonObject payload;
@@ -166,7 +172,7 @@ void DiscordRPC::clearActivity()
     if (!m_connected) return;
 
     QJsonObject args;
-    args["pid"] = static_cast<int>(getpid());
+    args["pid"] = static_cast<int>(QCoreApplication::applicationPid());
     args["activity"] = QJsonValue::Null;
 
     QJsonObject payload;
