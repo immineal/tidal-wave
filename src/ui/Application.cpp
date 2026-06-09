@@ -116,15 +116,10 @@ int Application::run(int argc, char **argv) {
     m_bridge = new TidalBridge(m_client, this);
     m_player = new Player(m_client, this);
     m_mpris  = new MprisManager(m_player, this);
-    m_discord = new DiscordRPC(this);
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
     });
-
-    connect(m_player, &Player::currentTrackChanged, this, &Application::updateDiscordRPC);
-    connect(m_player, &Player::playingChanged, this, &Application::updateDiscordRPC);
-    connect(m_player, &Player::positionChanged, this, &Application::onPlayerPositionChanged);
 
     m_auth->loadCredentials();
 
@@ -170,42 +165,7 @@ int Application::run(int argc, char **argv) {
     return app.exec();
 }
 
-void Application::updateDiscordRPC() {
-    Track track = m_player->currentTrack();
-    if (track.id > 0) {
-        bool playing = m_player->playing();
-        double pos = m_player->position() / 1000.0;
-        double dur = m_player->duration() / 1000.0;
 
-        m_discord->updateActivity(
-            track.title,
-            track.artistNames(),
-            track.album.title,
-            track.album.coverUrl(),
-            pos,
-            dur,
-            playing
-        );
-
-        m_lastDiscordUpdatePos = m_player->position();
-        m_lastDiscordUpdateTime = QDateTime::currentMSecsSinceEpoch();
-    } else {
-        m_discord->clearActivity();
-    }
-}
-
-void Application::onPlayerPositionChanged(qint64 ms) {
-    if (!m_player->playing()) {
-        return;
-    }
-    qint64 current_time = QDateTime::currentMSecsSinceEpoch();
-    qint64 elapsed = current_time - m_lastDiscordUpdateTime;
-    qint64 expected_pos = m_lastDiscordUpdatePos + elapsed;
-
-    if (qAbs(ms - expected_pos) > 2000) {
-        updateDiscordRPC();
-    }
-}
 
 void Application::quit() {
     m_reallyQuit = true;

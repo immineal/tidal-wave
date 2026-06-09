@@ -11,7 +11,6 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 *   **Native Performance**: Built with C++20 and Qt 6, bypassing heavy web wrappers for a minimal CPU and memory footprint.
 *   **Media Keys and MPRIS2**: Full Linux media player integration via D-Bus MPRIS2, supporting lockscreen controls, system volume widgets, and media keys.
 *   **Secure Authentication**: Implements Tidal OAuth device login flow with secure local session caching using SQLite.
-*   **Discord Integration**: Automatic Discord Rich Presence updates showing the currently playing track, cover art, and real-time playback progress.
 *   **Custom Audio Player**: Native streaming audio engine utilizing QMediaPlayer and QAudioOutput with selectable stream qualities.
 *   **Persistent Navigation State**: Separate loaders retain individual page states when jumping between Home, Search, and My Collection views.
 *   **Queue Panel**: Full queue management including track ordering, shuffle, and cycle repeat modes.
