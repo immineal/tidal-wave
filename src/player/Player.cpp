@@ -28,13 +28,20 @@ void Player::initAudio() {
             this, &Player::onPlaybackStateChanged);
     connect(m_player, &QMediaPlayer::errorOccurred,
             this, &Player::onErrorOccurred);
-    connect(m_player, &QMediaPlayer::positionChanged,
-            this, &Player::positionChanged);
+    connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
+        qint64 dur = m_player->duration();
+        if (dur > 10000 && pos > 0 && (dur - pos) <= 10000)
+            preloadNext();
+        emit positionChanged(pos);
+    });
     connect(m_player, &QMediaPlayer::durationChanged,
             this, &Player::durationChanged);
 }
 
-Player::~Player() { delete m_mpdTempFile; }
+Player::~Player() {
+    cancelPreload();
+    delete m_mpdTempFile;
+}
 
 bool   Player::playing()  const { return m_player  && m_player->playbackState() == QMediaPlayer::PlayingState; }
 qint64 Player::position() const { return m_player  ? m_player->position() : 0; }
@@ -57,6 +64,7 @@ void Player::setLoading(bool l) {
 
 void Player::playTracks(const QVariantList &tracks, int startIndex) {
     if (tracks.isEmpty()) return;
+    cancelPreload();
     m_queue.clear();
     for (const auto &v : tracks)
         m_queue.append(v.toMap());
@@ -67,21 +75,85 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
 }
 
 void Player::appendQueue(const QVariantList &tracks) {
-    for (const auto &v : tracks) m_queue.append(v.toMap());
+    int insertAt = (m_index >= 0) ? m_index + 1 : m_queue.count();
+    for (int i = 0; i < tracks.count(); i++) {
+        QVariantMap t = tracks[i].toMap();
+        t["_userQueued"] = true;
+        m_queue.insert(insertAt + i, t);
+    }
     if (m_shuffle) buildShuffleOrder();
     emit queueChanged();
 }
 
 void Player::jumpToQueue(int index) {
     if (index < 0 || index >= m_queue.count()) return;
+    cancelPreload();
     m_index = index;
     emit queueChanged();
     loadAndPlay(m_index);
 }
 
+void Player::clearQueue() {
+    cancelPreload();
+    if (m_player) m_player->stop();
+    m_queue.clear();
+    m_shuffleOrder.clear();
+    m_index = -1;
+    m_currentTrack = Track{};
+    setLoading(false);
+    emit currentTrackChanged();
+    emit queueChanged();
+}
+
+void Player::removeFromQueue(int index) {
+    if (index < 0 || index >= m_queue.count()) return;
+    m_queue.removeAt(index);
+    if (index < m_index) {
+        m_index--;
+    } else if (index == m_index) {
+        if (m_queue.isEmpty()) {
+            if (m_player) m_player->stop();
+            m_index = -1;
+            m_currentTrack = Track{};
+            setLoading(false);
+            emit currentTrackChanged();
+        } else {
+            m_index = qMin(m_index, m_queue.count() - 1);
+            loadAndPlay(m_index);
+        }
+    }
+    if (m_shuffle) buildShuffleOrder();
+    emit queueChanged();
+}
+
+void Player::moveQueueItem(int from, int to) {
+    if (from < 0 || from >= m_queue.count() ||
+        to   < 0 || to   >= m_queue.count() || from == to) return;
+    m_queue.move(from, to);
+    if      (m_index == from)                          m_index = to;
+    else if (from < m_index && to >= m_index)          m_index--;
+    else if (from > m_index && to <= m_index)          m_index++;
+    if (m_shuffle) buildShuffleOrder();
+    emit queueChanged();
+}
+
 QVariantMap Player::queueTrackAt(int index) const {
     if (index < 0 || index >= m_queue.count()) return {};
     return m_queue[index];
+}
+
+QVariantList Player::queueTracks() const {
+    QVariantList out;
+    for (const auto &m : m_queue)
+        out.append(m);
+    return out;
+}
+
+QVariantList Player::recentlyPlayed() const {
+    QVariantList out;
+    for (const auto &m : m_recentlyPlayed)
+        out.append(m);
+    return out;
 }
 
 void Player::playPause() {
@@ -213,8 +285,39 @@ void Player::loadAndPlay(int index) {
         m_mpdTempFile = nullptr;
     }
 
+    m_streamedQuality.clear();
     m_currentTrack = trackFromMap(m_queue[index]);
     emit currentTrackChanged();
+
+    // Track recently played (max 20 unique entries)
+    QVariantMap trackMap = m_queue[index];
+    qlonglong trackId = trackMap.value("id").toLongLong();
+    for (int i = m_recentlyPlayed.count() - 1; i >= 0; --i) {
+        if (m_recentlyPlayed.at(i).value("id").toLongLong() == trackId)
+            m_recentlyPlayed.removeAt(i);
+    }
+    m_recentlyPlayed.prepend(trackMap);
+    if (m_recentlyPlayed.count() > 20)
+        m_recentlyPlayed = m_recentlyPlayed.mid(0, 20);
+    emit recentlyPlayedChanged();
+
+    // Use preloaded file if it's ready for this exact index
+    if (m_preloadIndex == index && m_preloadReady && m_preloadTempFile) {
+        m_mpdTempFile     = m_preloadTempFile;
+        m_preloadTempFile = nullptr;
+        m_streamedQuality = m_preloadQuality;
+        m_preloadIndex    = -1;
+        m_preloadReady    = false;
+        m_preloadQuality  = {};
+        emit currentTrackChanged();
+        setLoading(false);
+        m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+        m_player->play();
+        return;
+    }
+
+    // Preload is for a different track or still in progress — discard it
+    cancelPreload();
 
     qlonglong loadingTrackId = m_currentTrack.id;
     m_client->fetchStreamManifest(loadingTrackId,
@@ -228,6 +331,7 @@ void Player::loadAndPlay(int index) {
                 return;
             }
             m_streamedQuality = manifest.codec;
+            emit currentTrackChanged();
 
             if (manifest.type == StreamManifest::BTS) {
                 m_activeDownload = m_client->fetchRaw(QUrl(manifest.url), [this, loadingTrackId](QByteArray data, QString err) {
@@ -302,3 +406,91 @@ void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
     qWarning() << "Player error:" << msg;
     emit error(msg);
 }
+
+void Player::cancelPreload() {
+    if (m_preloadDownload) {
+        auto *dl = m_preloadDownload;
+        m_preloadDownload = nullptr;
+        dl->abort();
+        dl->deleteLater();
+    }
+    if (m_preloadTempFile) {
+        m_preloadTempFile->remove();
+        delete m_preloadTempFile;
+        m_preloadTempFile = nullptr;
+    }
+    m_preloadIndex   = -1;
+    m_preloadReady   = false;
+    m_preloadQuality = {};
+}
+
+void Player::preloadNext() {
+    int next = nextIndex();
+    if (next < 0 || next == m_preloadIndex) return;
+
+    cancelPreload();
+    m_preloadIndex = next;
+
+    qlonglong trackId = m_queue[next].value("id").toLongLong();
+
+    m_client->fetchStreamManifest(trackId, [this, next](StreamManifest manifest, QString err) {
+        if (m_preloadIndex != next || !err.isEmpty()) return;
+
+        m_preloadQuality = manifest.codec;
+
+        if (manifest.type == StreamManifest::BTS) {
+            m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, next](QByteArray data, QString dlErr) {
+                m_preloadDownload = nullptr;
+                if (m_preloadIndex != next || !dlErr.isEmpty() || data.isEmpty()) return;
+                auto *f = new QTemporaryFile(QStringLiteral("/tmp/tidal-wave-XXXXXX.mp4"));
+                f->setAutoRemove(false);
+                if (f->open()) {
+                    f->write(data); f->flush(); f->close();
+                    m_preloadTempFile = f;
+                    m_preloadReady    = true;
+                } else {
+                    delete f;
+                }
+            });
+        } else {
+            auto *f = new QTemporaryFile(QStringLiteral("/tmp/tidal-wave-XXXXXX.mpd"));
+            f->setAutoRemove(false);
+            if (f->open()) {
+                f->write(manifest.url.toUtf8()); f->flush(); f->close();
+                m_preloadTempFile = f;
+                m_preloadReady    = true;
+            } else {
+                delete f;
+                m_preloadIndex = -1;
+            }
+        }
+    });
+}
+
+QString Player::audioQuality() const {
+    if (m_streamedQuality.isEmpty()) {
+        return QString();
+    }
+
+    AudioQuality pref = m_client->audioQuality();
+
+    AudioQuality maxQuality = AudioQuality::Lossless;
+    if (m_streamedQuality == QStringLiteral("LOW")) maxQuality = AudioQuality::Low96k;
+    else if (m_streamedQuality == QStringLiteral("HIGH")) maxQuality = AudioQuality::Low320k;
+    else if (m_streamedQuality == QStringLiteral("LOSSLESS")) maxQuality = AudioQuality::Lossless;
+    else if (m_streamedQuality == QStringLiteral("HI_RES_LOSSLESS")) maxQuality = AudioQuality::HiResLossless;
+
+    AudioQuality actual = pref;
+    if (static_cast<int>(maxQuality) < static_cast<int>(pref)) {
+        actual = maxQuality;
+    }
+
+    switch (actual) {
+        case AudioQuality::Low96k:        return QStringLiteral("LOW");
+        case AudioQuality::Low320k:       return QStringLiteral("HIGH");
+        case AudioQuality::Lossless:      return QStringLiteral("LOSSLESS");
+        case AudioQuality::HiResLossless: return QStringLiteral("HI_RES_LOSSLESS");
+    }
+    return QStringLiteral("LOSSLESS");
+}
+

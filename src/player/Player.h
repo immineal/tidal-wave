@@ -22,8 +22,10 @@ class Player : public QObject {
     Q_PROPERTY(bool       shuffle      READ shuffle WRITE setShuffle  NOTIFY shuffleChanged)
     Q_PROPERTY(int        repeatMode   READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString    audioQuality READ audioQuality NOTIFY currentTrackChanged)
-    Q_PROPERTY(int        queueCount   READ queueCount  NOTIFY queueChanged)
-    Q_PROPERTY(int        queueIndex   READ queueIndex  NOTIFY queueChanged)
+    Q_PROPERTY(int        queueCount      READ queueCount      NOTIFY queueChanged)
+    Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY queueChanged)
+    Q_PROPERTY(QVariantList queueTracks   READ queueTracks     NOTIFY queueChanged)
+    Q_PROPERTY(QVariantList recentlyPlayed READ recentlyPlayed NOTIFY recentlyPlayedChanged)
 
 public:
     explicit Player(TidalClient *client, QObject *parent = nullptr);
@@ -38,17 +40,22 @@ public:
     QVariantMap currentTrackMap() const;
     bool        shuffle()     const { return m_shuffle; }
     int         repeatMode()  const { return m_repeatMode; }
-    QString     audioQuality()const { return m_streamedQuality; }
-    int         queueCount()  const { return m_queue.count(); }
-    int         queueIndex()  const { return m_index; }
+    QString     audioQuality()const;
+    int          queueCount()    const { return m_queue.count(); }
+    int          queueIndex()    const { return m_index; }
+    QVariantList queueTracks()   const;
+    QVariantList recentlyPlayed() const;
 
     // For MPRIS (internal use)
     Track currentTrack() const { return m_currentTrack; }
 
     // QML-callable play methods — tracks are QVariantMaps from TidalBridge
-    Q_INVOKABLE void playTracks (const QVariantList &tracks, int startIndex = 0);
-    Q_INVOKABLE void appendQueue(const QVariantList &tracks);
-    Q_INVOKABLE void jumpToQueue(int index);
+    Q_INVOKABLE void playTracks      (const QVariantList &tracks, int startIndex = 0);
+    Q_INVOKABLE void appendQueue     (const QVariantList &tracks);
+    Q_INVOKABLE void jumpToQueue     (int index);
+    Q_INVOKABLE void clearQueue      ();
+    Q_INVOKABLE void removeFromQueue (int index);
+    Q_INVOKABLE void moveQueueItem   (int from, int to);
 
     Q_INVOKABLE void playPause ();
     Q_INVOKABLE void next      ();
@@ -69,10 +76,11 @@ signals:
     void volumeChanged      (double v);
     void mutedChanged       (bool m);
     void currentTrackChanged();
-    void shuffleChanged     (bool s);
-    void repeatModeChanged  (int  m);
-    void queueChanged       ();
-    void error              (const QString &msg);
+    void shuffleChanged      (bool s);
+    void repeatModeChanged   (int  m);
+    void queueChanged        ();
+    void recentlyPlayedChanged();
+    void error               (const QString &msg);
 
 private slots:
     void initAudio();
@@ -87,6 +95,8 @@ private:
     void buildShuffleOrder();
     int  nextIndex() const;
     int  previousIndex() const;
+    void preloadNext();
+    void cancelPreload();
 
     TidalClient         *m_client;
     QMediaPlayer        *m_player    = nullptr;
@@ -95,6 +105,7 @@ private:
     bool                 m_pendingMuted  = false;
 
     QList<QVariantMap>   m_queue;
+    QList<QVariantMap>   m_recentlyPlayed;
     QList<int>           m_shuffleOrder;
     int                  m_index         = -1;
     Track                m_currentTrack;
@@ -102,6 +113,13 @@ private:
     bool                 m_shuffle       = false;
     int                  m_repeatMode    = 0;  // 0=no 1=all 2=one
     QString              m_streamedQuality;
-    QTemporaryFile      *m_mpdTempFile   = nullptr;
+    QTemporaryFile      *m_mpdTempFile    = nullptr;
     QNetworkReply       *m_activeDownload = nullptr;
+
+    // Preload state for the next queued track
+    int                  m_preloadIndex    = -1;
+    bool                 m_preloadReady    = false;
+    QString              m_preloadQuality;
+    QTemporaryFile      *m_preloadTempFile = nullptr;
+    QNetworkReply       *m_preloadDownload = nullptr;
 };

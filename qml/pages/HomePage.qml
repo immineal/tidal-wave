@@ -12,10 +12,40 @@ Rectangle {
     property var recentAlbums: []
     property var playlists: []
     property var artists: []
+    property var recentlyPlayed: []
     property bool loading: false
+    property string greeting: greetingFor(new Date().getHours())
+
+    function greetingFor(h) {
+        if (h < 12) return "Good morning"
+        if (h < 18) return "Good afternoon"
+        return "Good evening"
+    }
+
+    Timer {
+        interval: 60000; running: true; repeat: true
+        onTriggered: root.greeting = root.greetingFor(new Date().getHours())
+    }
 
     // Access the window root for navigation
     function appWindow() { return Window.window }
+
+    Connections {
+        target: player
+        function onRecentlyPlayedChanged() { root.updateRecentlyPlayed() }
+    }
+
+    function updateRecentlyPlayed() {
+        var trackList = player.recentlyPlayed
+        var items = []
+        for (var i = 0; i < Math.min(trackList.length, 12); i++) {
+            var t = trackList[i]
+            items.push({ id: t.id, title: t.title, subtitle: t.artists,
+                         coverUrl: t.coverUrl || "",
+                         albumId: t.albumId || 0, type: "track" })
+        }
+        recentlyPlayed = items
+    }
 
     Component.onCompleted: loadContent()
 
@@ -50,7 +80,7 @@ Rectangle {
             for (var i = 0; i < Math.min(lists.length, 12); i++) {
                 var p = lists[i]
                 items.push({ id: p.uuid, title: p.title, subtitle: p.numTracks + " tracks",
-                             coverUrl: p.coverUrl, type: "playlist" })
+                             coverUrl: p.coverUrl, type: "playlist", playlistType: p.type || "" })
             }
             playlists = items
         }, 12, 0)
@@ -65,6 +95,8 @@ Rectangle {
             }
             artists = items
         }, 12, 0)
+
+        updateRecentlyPlayed()
     }
 
     ScrollView {
@@ -80,12 +112,7 @@ Rectangle {
 
             Text {
                 Layout.leftMargin: 24
-                text: {
-                    var h = (new Date()).getHours()
-                    if (h < 12) return "Good morning"
-                    if (h < 18) return "Good afternoon"
-                    return "Good evening"
-                }
+                text: root.greeting
                 color: Theme.textPrimary
                 font.pixelSize: 28
                 font.bold: true
@@ -107,7 +134,29 @@ Rectangle {
                         if (!err && tracks.length > 0) player.playTracks(tracks, 0)
                     })
                 }
-                onViewAllClicked: navigateTo("collection", { activeTab: 3 })
+                onViewAllClicked: navigateTo("collection", { activeTab: 4 })
+            }
+
+            Item { height: 32 }
+
+            HorizontalSection {
+                Layout.fillWidth: true
+                visible: recentlyPlayed.length > 0
+                title: "Recently Played"
+                items: root.recentlyPlayed
+                mediaType: "track"
+                showViewAll: false
+                onItemClicked: (idx, item) => {
+                    if (item.albumId > 0)
+                        navigateTo("album", { albumId: item.albumId })
+                }
+                onItemPlayClicked: (idx, item) => {
+                    if (item.albumId > 0) {
+                        bridge.fetchAlbumTracks(item.albumId, function(tracks, err) {
+                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        })
+                    }
+                }
             }
 
             Item { height: 32 }
@@ -135,7 +184,7 @@ Rectangle {
                 title: "Your Playlists"
                 items: root.playlists
                 mediaType: "playlist"
-                onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl })
+                onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
                 onItemPlayClicked: (idx, item) => {
                     bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
                         if (!err && tracks.length > 0) player.playTracks(tracks, 0)

@@ -28,10 +28,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.5.3'
-          modules: 'qtmultimedia qtsvg'
+          modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -42,7 +42,7 @@ jobs:
       - name: Configure and build
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --parallel 4
+          cmake --build build --config Release --parallel 4
 
       - name: Package binary (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -52,13 +52,15 @@ jobs:
       - name: Package binary (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          tar -czf ${{ matrix.asset_name }} -C build tidal-wave
+          macdeployqt build/tidal-wave.app -qmldir=qml
+          tar -czf ${{ matrix.asset_name }} -C build tidal-wave.app
 
       - name: Package binary (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path build\Release\tidal-wave.exe -DestinationPath ${{ matrix.asset_name }}
+          windeployqt --qmldir qml build\Release\tidal-wave.exe
+          Compress-Archive -Path build\Release\* -DestinationPath ${{ matrix.asset_name }}
 
       - name: Upload binaries to Release
         uses: softprops/action-gh-release@v1

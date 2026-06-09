@@ -47,6 +47,7 @@ Rectangle {
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 24
+                anchors.leftMargin: 64
                 spacing: 24
 
                 Rectangle {

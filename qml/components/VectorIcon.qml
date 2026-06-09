@@ -30,8 +30,8 @@ Item {
             // Filled glyphs render as solid shapes; an extra stroke at small
             // sizes just bridges adjacent bars/edges into an unrecognizable
             // blob (e.g. the pause bars merging into a single square).
-            strokeWidth: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "heart-filled") ? 0 : root.strokeWidth
-            fillColor: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "heart-filled") ? root.color : "transparent"
+            strokeWidth: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "more" || root.name === "heart-filled") ? 0 : root.strokeWidth
+            fillColor: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "more" || root.name === "heart-filled") ? root.color : "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
             PathSvg { path: root._pathFor(root.name) }
@@ -83,6 +83,10 @@ Item {
             return "M 12 14 A 2 2 0 1 1 12 10 A 2 2 0 0 1 12 14 Z M 12 7 A 2 2 0 1 1 12 3 A 2 2 0 0 1 12 7 Z M 12 21 A 2 2 0 1 1 12 17 A 2 2 0 0 1 12 21 Z"
         case "x":
             return "M 18 6 L 6 18 M 6 6 L 18 18"
+        case "more":
+            return "M 3.5 12 A 1.5 1.5 0 1 0 6.5 12 A 1.5 1.5 0 1 0 3.5 12 Z M 10.5 12 A 1.5 1.5 0 1 0 13.5 12 A 1.5 1.5 0 1 0 10.5 12 Z M 17.5 12 A 1.5 1.5 0 1 0 20.5 12 A 1.5 1.5 0 1 0 17.5 12 Z"
+        case "edit":
+            return "M 11 4 H 4 A 2 2 0 0 0 2 6 V 20 A 2 2 0 0 0 4 22 H 18 A 2 2 0 0 0 20 20 V 13 M 18.5 2.5 A 2.121 2.121 0 1 1 21.5 5.5 L 12 15 L 8 16 L 9 12 L 18.5 2.5 Z"
         }
         return ""
     }

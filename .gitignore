@@ -65,3 +65,14 @@ Thumbs.db
 
 # Project-specific / Anthropic / Claude temp files
 .claude/
+
+# Temporary / testing files and outputs
+/build_test/
+/CMakeLists_icon.txt
+/CMakeLists_test.txt
+/generate_icon.cpp
+/test_icon.cpp
+/icon_gen/
+/*.tar.gz
+/*.zip
+/aqtinstall.log

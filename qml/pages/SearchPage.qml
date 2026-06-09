@@ -7,11 +7,13 @@ import TidalWave
 Rectangle {
     id: root
     color: Theme.bg
+    focus: true
 
     property string query: ""
     property var    tracks:    []
     property var    albums:    []
     property var    artists:   []
+    property var    playlists: []
     property bool   loading:   false
     property int    activeTab: 0
     property int    _searchGen: 0
@@ -28,6 +30,7 @@ Rectangle {
 
         SearchBar {
             id: searchBar
+            focus: true
             Layout.fillWidth: true
             Layout.leftMargin: 24
             Layout.rightMargin: 24
@@ -48,7 +51,7 @@ Rectangle {
             Layout.leftMargin: 24
             spacing: 4
             Repeater {
-                model: ["All", "Tracks", "Albums", "Artists"]
+                model: ["All", "Tracks", "Albums", "Artists", "Playlists"]
                 Rectangle {
                     id: searchTab
                     required property string modelData
@@ -115,7 +118,7 @@ Rectangle {
 
                 // Tracks
                 ColumnLayout {
-                    visible: (root.activeTab === 0 || root.activeTab === 1) && root.tracks.length > 0
+                    visible: (root.activeTab === 0 || root.activeTab === 1) && root.tracks.length > 0 && root.activeTab !== 4
                     Layout.fillWidth: true
                     spacing: 0
 
@@ -130,14 +133,15 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.leftMargin: 16
                             Layout.rightMargin: 16
-                            trackNum:    index + 1
-                            title:       root.tracks[index].title
-                            artists:     root.tracks[index].artists
-                            albumTitle:  root.tracks[index].albumTitle
-                            durationStr: root.tracks[index].durationStr
-                            coverUrl:    root.tracks[index].coverUrl80
-                            isPlaying:   player.currentTrack.id === root.tracks[index].id && player.playing
-                            trackData:   root.tracks[index]
+                            trackNum:       index + 1
+                            title:          root.tracks[index].title
+                            artists:        root.tracks[index].artists
+                            albumTitle:     root.tracks[index].albumTitle
+                            durationStr:    root.tracks[index].durationStr
+                            coverUrl:       root.tracks[index].coverUrl80
+                            isPlaying:      player.currentTrack.id === root.tracks[index].id && player.playing
+                            trackData:      root.tracks[index]
+                            showPopularity: true
                             onPlayRequested: player.playTracks(root.tracks, index)
                         }
                     }
@@ -148,7 +152,7 @@ Rectangle {
                 Item {
                     Layout.fillWidth: true
                     height: 80
-                    visible: root.tracks.length === 0 && root.albums.length === 0 && root.artists.length === 0 && !root.loading
+                    visible: root.tracks.length === 0 && root.albums.length === 0 && root.artists.length === 0 && root.playlists.length === 0 && !root.loading
                     Text {
                         anchors.centerIn: parent
                         text: "No results for \"" + root.query + "\""
@@ -160,8 +164,9 @@ Rectangle {
                 // Albums
                 HorizontalSection {
                     Layout.fillWidth: true
-                    visible: (root.activeTab === 0 || root.activeTab === 2) && root.albums.length > 0
+                    visible: (root.activeTab === 0 || root.activeTab === 2) && root.albums.length > 0 && root.activeTab !== 4
                     title: "Albums"
+                    showViewAll: false
                     items: root.albums.map(function(a) {
                         return { id: a.id, title: a.title, subtitle: a.artists, coverUrl: a.coverUrl }
                     })
@@ -177,13 +182,27 @@ Rectangle {
                 // Artists
                 HorizontalSection {
                     Layout.fillWidth: true
-                    visible: (root.activeTab === 0 || root.activeTab === 3) && root.artists.length > 0
+                    visible: (root.activeTab === 0 || root.activeTab === 3) && root.artists.length > 0 && root.activeTab !== 4
                     title: "Artists"
+                    showViewAll: false
                     items: root.artists.map(function(a) {
                         return { id: a.id, title: a.name, subtitle: "Artist", coverUrl: a.coverUrl || "" }
                     })
                     mediaType: "artist"
                     onItemClicked: (i, item) => navigateTo("artist", { artistId: item.id })
+                }
+
+                // Playlists
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    visible: (root.activeTab === 0 || root.activeTab === 4) && root.playlists.length > 0
+                    title: "Playlists"
+                    showViewAll: false
+                    items: root.playlists.map(function(p) {
+                        return { id: p.uuid, title: p.title, subtitle: p.numTracks + " tracks", coverUrl: p.coverUrl || "", playlistType: p.type || "" }
+                    })
+                    mediaType: "playlist"
+                    onItemClicked: (i, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
                 }
 
                 Item { height: 32 }
@@ -211,13 +230,14 @@ Rectangle {
             if (gen !== root._searchGen) return
             loading = false
             if (err.length > 0) return
-            root.tracks  = results.tracks  || []
-            root.albums  = results.albums  || []
-            root.artists = results.artists || []
+            root.tracks    = results.tracks    || []
+            root.albums    = results.albums    || []
+            root.artists   = results.artists   || []
+            root.playlists = results.playlists || []
         }, 20)
     }
 
-    function clearResults() { tracks = []; albums = []; artists = []; _searchGen++; loading = false }
+    function clearResults() { tracks = []; albums = []; artists = []; playlists = []; _searchGen++; loading = false }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params)

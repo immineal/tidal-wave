@@ -13,6 +13,7 @@ Item {
     property var     items: []         // [{coverUrl, title, subtitle, id, type}]
     property int     cardSize: 160
     property string  mediaType: "album"
+    property bool    showViewAll: true
 
     signal itemClicked(int index, var item)
     signal itemPlayClicked(int index, var item)
@@ -49,11 +50,12 @@ Item {
 
             Text {
                 id: viewAllText
+                visible: root.showViewAll
                 text: "View all →"
                 color: viewAllText.activeFocus ? Theme.accent : Theme.textSec
                 font.pixelSize: 12
                 font.underline: viewAllText.activeFocus
-                activeFocusOnTab: true
+                activeFocusOnTab: root.showViewAll
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
                 MouseArea {

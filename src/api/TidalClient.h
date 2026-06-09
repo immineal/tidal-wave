@@ -99,16 +99,26 @@ public:
     // Favorites management
     void addTrackFavorite   (qint64 trackId,    std::function<void(bool)> cb);
     void removeTrackFavorite(qint64 trackId,    std::function<void(bool)> cb);
-    void addAlbumFavorite   (qint64 albumId,    std::function<void(bool)> cb);
-    void addArtistFavorite  (qint64 artistId,   std::function<void(bool)> cb);
+    void addAlbumFavorite    (qint64 albumId,    std::function<void(bool)> cb);
+    void removeAlbumFavorite (qint64 albumId,    std::function<void(bool)> cb);
+    void addArtistFavorite   (qint64 artistId,   std::function<void(bool)> cb);
+    void removeArtistFavorite(qint64 artistId,   std::function<void(bool)> cb);
 
     // Streaming
     void fetchStreamManifest(qint64 trackId, StreamCb cb);
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
 
     // Playlist management
-    void createPlaylist    (const QString &title, std::function<void(Playlist,QString)> cb);
-    void addTrackToPlaylist(const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    void createPlaylist          (const QString &title, std::function<void(Playlist,QString)> cb);
+    void addTrackToPlaylist      (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
+
+    // Track features
+    void fetchTrackRadio(qint64 trackId, TracksCallback cb);
+    void fetchLyrics    (qint64 trackId, std::function<void(QString, bool, QString)> cb);
+
+    // Recently played
+    void fetchRecentlyPlayed(TracksCallback cb);
 
 signals:
     void error(const QString &msg);

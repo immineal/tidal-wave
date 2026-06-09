@@ -33,6 +33,7 @@ struct Album {
     int     duration  = 0;
     QString releaseDate;
     QString audioQuality;
+    QString type;       // ALBUM / SINGLE / EP / COMPILATION
     QList<Artist> artists;
 
     QString coverUrl(int size = 320) const {
@@ -51,6 +52,7 @@ struct Album {
         a.duration     = j["duration"].toInt();
         a.releaseDate  = j["releaseDate"].toString();
         a.audioQuality = j["audioQuality"].toString();
+        a.type         = j["type"].toString();
         for (const auto &v : j["artists"].toArray())
             a.artists.append(Artist::fromJson(v.toObject()));
         return a;
@@ -70,6 +72,7 @@ struct Track {
     int     trackNumber = 0;
     int     discNumber  = 1;
     bool    explicit_  = false;
+    int     popularity  = 0;
     QString audioQuality;
     Album   album;
     QList<Artist> artists;
@@ -82,6 +85,7 @@ struct Track {
         t.trackNumber  = j["trackNumber"].toInt();
         t.discNumber   = j["volumeNumber"].toInt(1);
         t.explicit_    = j["explicit"].toBool();
+        t.popularity   = j["popularity"].toInt();
         t.audioQuality = j["audioQuality"].toString();
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());

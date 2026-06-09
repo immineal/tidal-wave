@@ -94,7 +94,7 @@ Rectangle {
                 height: 36
 
                 function activate() {
-                    root.navigate("playlist", { playlistUuid: model.uuid, playlistTitle: model.title, coverUrl: model.coverUrl || "" })
+                    root.navigate("playlist", { playlistUuid: model.uuid, playlistTitle: model.title, coverUrl: model.coverUrl || "", playlistType: model.type || "" })
                 }
 
                 activeFocusOnTab: true
@@ -153,8 +153,12 @@ Rectangle {
         anchors.right: parent.right
         height: 56
         color: Theme.surfaceHigh
+
         RowLayout {
-            anchors.fill: parent
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 56
             anchors.leftMargin: 16
             anchors.rightMargin: 16
             spacing: 10
@@ -172,7 +176,18 @@ Rectangle {
                     strokeWidth: 1.8
                 }
             }
-            Text { Layout.fillWidth: true; text: "My Account"; color: Theme.textPrimary; font.pixelSize: 13; elide: Text.ElideRight }
+            Text {
+                id: acctNameText
+                Layout.fillWidth: true
+                text: auth.username.length > 0 ? auth.username : "My Account"
+                color: Theme.textPrimary
+                font.pixelSize: 13
+                elide: Text.ElideRight
+                ToolTip.visible: acctNameHov.hovered && acctNameText.truncated
+                ToolTip.text: acctNameText.text
+                ToolTip.delay: 600
+                HoverHandler { id: acctNameHov }
+            }
             Item {
                 width: 28; height: 28
                 activeFocusOnTab: true
@@ -204,34 +219,6 @@ Rectangle {
                     onTapped: root.openSettings()
                 }
             }
-            Item {
-                id: acctMenuButton
-                width: 28; height: 28
-                activeFocusOnTab: true
-                Keys.onReturnPressed: accountMenu.popup(acctMenuButton, -130, -90)
-                Keys.onSpacePressed:  accountMenu.popup(acctMenuButton, -130, -90)
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -2
-                    radius: 6
-                    color: "transparent"
-                    border.width: parent.activeFocus ? 2 : 0
-                    border.color: Theme.accent
-                }
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "more-vertical"
-                    color: Theme.textSec
-                    width: 16
-                    height: 16
-                    strokeWidth: 1.8
-                }
-                TapHandler {
-                    cursorShape: Qt.PointingHandCursor
-                    onTapped: accountMenu.popup(acctMenuButton, -130, -90)
-                }
-            }
         }
     }
 
@@ -239,7 +226,12 @@ Rectangle {
         bridge.fetchUserPlaylists(function(playlists, err) {
             playlistModel.clear()
             for (var i = 0; i < playlists.length; i++) {
-                playlistModel.append({ title: playlists[i].title, uuid: playlists[i].uuid, coverUrl: playlists[i].coverUrl || "" })
+                playlistModel.append({
+                    title:   playlists[i].title,
+                    uuid:    playlists[i].uuid,
+                    coverUrl: playlists[i].coverUrl || "",
+                    type:    playlists[i].type || ""
+                })
             }
         }, 30, 0)
     }
@@ -253,150 +245,269 @@ Rectangle {
         }
     }
 
-    Menu {
-        id: accountMenu
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 8; implicitWidth: 150 }
-        MenuItem {
-            text: "Settings"
-            contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: settingsPopup.open()
-        }
-        MenuItem {
-            text: "Log out"
-            contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: auth.logout()
-        }
-    }
-
     Popup {
         id: settingsPopup
         anchors.centerIn: Overlay.overlay
-        width: 460
-        height: 560
+        width: 480
+        height: 640
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 0
         background: Rectangle {
             color: Theme.surfaceHigh
             border.color: Theme.border
             radius: 12
         }
-        ColumnLayout {
+
+        ScrollView {
             anchors.fill: parent
-            anchors.margins: 20
-            spacing: 14
-
-            RowLayout {
-                Layout.fillWidth: true
-                Text {
-                    text: "Settings"
-                    color: Theme.textPrimary
-                    font.pixelSize: 18
-                    font.bold: true
-                    Layout.fillWidth: true
-                }
-                VectorIcon {
-                    name: "x"
-                    color: Theme.textSec
-                    width: 14
-                    height: 14
-                    strokeWidth: 1.8
-                    MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: settingsPopup.close() }
-                }
-            }
-
-            Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
-
-            Text {
-                text: "PLAYBACK"
-                color: Theme.textDim
-                font.pixelSize: 11
-                font.bold: true
-                font.letterSpacing: 1
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
-                Text {
-                    text: "Streaming Quality"
-                    color: Theme.textPrimary
-                    font.pixelSize: 14
-                    Layout.fillWidth: true
-                }
-                ComboBox {
-                    id: qualityCombo
-                    model: ["Normal", "High", "Lossless", "Hi-Res"]
-                    currentIndex: {
-                        switch (bridge.preferredQuality) {
-                            case "LOW":             return 0
-                            case "HIGH":            return 1
-                            case "HI_RES_LOSSLESS": return 3
-                            default:                return 2
-                        }
-                    }
-                    Layout.preferredWidth: 130
-                    onActivated: function(index) {
-                        var codes = ["LOW", "HIGH", "LOSSLESS", "HI_RES_LOSSLESS"]
-                        bridge.preferredQuality = codes[index]
-                    }
-                }
-            }
-
-            Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
-
-            Text {
-                text: "KEYBOARD SHORTCUTS"
-                color: Theme.textDim
-                font.pixelSize: 11
-                font.bold: true
-                font.letterSpacing: 1
-            }
+            contentWidth: availableWidth
+            clip: true
 
             ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 6
+                width: parent.width
+                spacing: 0
 
-                Repeater {
-                    model: [
-                        { k: "Space",         d: "Play / Pause" },
-                        { k: "Ctrl+→ / Ctrl+←", d: "Next / Previous track" },
-                        { k: "→ / ←",         d: "Seek forward / back 10s" },
-                        { k: "↑ / ↓",         d: "Volume up / down" },
-                        { k: "Ctrl+M",        d: "Mute" },
-                        { k: "Ctrl+S",        d: "Toggle shuffle" },
-                        { k: "Ctrl+R",        d: "Cycle repeat mode" },
-                        { k: "Ctrl+1 / 2 / 3", d: "Home / Search / Collection" },
-                        { k: "Ctrl+N",        d: "Now Playing" },
-                        { k: "Ctrl+Q",        d: "Toggle queue" },
-                        { k: "Alt+← / Esc",   d: "Go back" },
-                        { k: "Ctrl+,",        d: "Settings" }
-                    ]
-                    delegate: RowLayout {
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 16
+                    Layout.topMargin: 20
+                    Layout.bottomMargin: 12
+
+                    Text {
+                        text: "Settings"
+                        color: Theme.textPrimary
+                        font.pixelSize: 18
+                        font.bold: true
+                        Layout.fillWidth: true
+                    }
+                    VectorIcon {
+                        name: "x"
+                        color: Theme.textSec
+                        width: 14; height: 14
+                        strokeWidth: 1.8
+                        MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: settingsPopup.close() }
+                    }
+                }
+
+                Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
+
+                // ── ACCOUNT ──────────────────────────────
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    Layout.topMargin: 14
+                    Layout.bottomMargin: 4
+                    spacing: 10
+
+                    Text {
+                        text: "ACCOUNT"
+                        color: Theme.textDim
+                        font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Rectangle {
+                            width: 36; height: 36; radius: 18; color: Theme.accent
+                            Text { anchors.centerIn: parent; text: "♪"; color: "white"; font.pixelSize: 16 }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text { text: "Tidal Wave"; color: Theme.textPrimary; font.pixelSize: 14; font.bold: true }
+                            Text { text: "v0.1-alpha"; color: Theme.textDim; font.pixelSize: 12 }
+                        }
+                        Rectangle {
+                            height: 30; width: logoutLabel.implicitWidth + 20; radius: 6
+                            color: logoutHov.hovered ? Theme.red : Theme.surface
+                            border.color: logoutHov.hovered ? Theme.red : Theme.border
+                            Text {
+                                id: logoutLabel; anchors.centerIn: parent
+                                text: "Log out"; color: logoutHov.hovered ? "white" : Theme.red
+                                font.pixelSize: 12
+                            }
+                            HoverHandler { id: logoutHov }
+                            TapHandler { onTapped: { settingsPopup.close(); auth.logout() } }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                        }
+                    }
+                }
+
+                Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20 }
+
+                // ── PLAYBACK ─────────────────────────────
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    Layout.topMargin: 14
+                    Layout.bottomMargin: 4
+                    spacing: 10
+
+                    Text {
+                        text: "PLAYBACK"
+                        color: Theme.textDim
+                        font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                    }
+
+                    RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
-                        Rectangle {
-                            color: Theme.surface
-                            radius: 4
-                            border.color: Theme.border
-                            implicitWidth: shortcutLabel.implicitWidth + 14
-                            implicitHeight: 22
-                            Text {
-                                id: shortcutLabel
-                                anchors.centerIn: parent
-                                text: modelData.k
+                        Text { text: "Streaming Quality"; color: Theme.textPrimary; font.pixelSize: 14; Layout.fillWidth: true }
+                        ComboBox {
+                            id: qualityCombo
+                            model: ["Normal (96 kbps)", "High (320 kbps)", "Lossless (FLAC)", "Hi-Res (24-bit)"]
+                            currentIndex: {
+                                switch (bridge.preferredQuality) {
+                                    case "LOW":             return 0
+                                    case "HIGH":            return 1
+                                    case "HI_RES_LOSSLESS": return 3
+                                    default:                return 2
+                                }
+                            }
+                            Layout.preferredWidth: 160
+                            onActivated: function(idx) {
+                                var codes = ["LOW", "HIGH", "LOSSLESS", "HI_RES_LOSSLESS"]
+                                bridge.preferredQuality = codes[idx]
+                            }
+
+                            // Custom ComboBox styling to match dark theme
+                            delegate: ItemDelegate {
+                                width: qualityCombo.width
+                                contentItem: Text {
+                                    text: modelData
+                                    color: highlighted ? Theme.textPrimary : Theme.textSec
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: highlighted ? Theme.surfaceHov : Theme.surfaceHigh
+                                }
+                                highlighted: qualityCombo.highlightedIndex === index
+                            }
+
+                            indicator: Canvas {
+                                id: canvas
+                                x: qualityCombo.width - width - 10
+                                y: qualityCombo.topPadding + (qualityCombo.availableHeight - height) / 2
+                                width: 12
+                                height: 8
+                                contextType: "2d"
+
+                                Connections {
+                                    target: qualityCombo.popup
+                                    function onVisibleChanged() { canvas.requestPaint() }
+                                }
+
+                                onPaint: {
+                                    var context = getContext("2d");
+                                    context.reset();
+                                    context.moveTo(0, 0);
+                                    context.lineTo(width, 0);
+                                    context.lineTo(width / 2, height);
+                                    context.closePath();
+                                    context.fillStyle = Theme.textSec;
+                                    context.fill();
+                                }
+                            }
+
+                            contentItem: Text {
+                                leftPadding: 10
+                                rightPadding: qualityCombo.indicator.width + 15
+                                text: qualityCombo.displayText
                                 color: Theme.textPrimary
-                                font.pixelSize: 11
-                                font.family: "monospace"
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            background: Rectangle {
+                                implicitWidth: 160
+                                implicitHeight: 32
+                                border.color: qualityCombo.pressed ? Theme.accent : Theme.border
+                                border.width: 1
+                                color: Theme.surfaceHigh
+                                radius: Theme.radius
+                            }
+
+                            popup: Popup {
+                                y: qualityCombo.height + 2
+                                width: qualityCombo.width
+                                implicitHeight: contentItem.implicitHeight
+                                padding: 1
+                                background: Rectangle {
+                                    border.color: Theme.border
+                                    border.width: 1
+                                    color: Theme.surfaceHigh
+                                    radius: Theme.radius
+                                }
+                                contentItem: ListView {
+                                    clip: true
+                                    implicitHeight: contentHeight
+                                    model: qualityCombo.popup.visible ? qualityCombo.delegateModel : null
+                                    currentIndex: qualityCombo.highlightedIndex
+                                    ScrollIndicator.vertical: ScrollIndicator { }
+                                }
                             }
                         }
-                        Text {
-                            text: modelData.d
-                            color: Theme.textSec
-                            font.pixelSize: 12
+                    }
+
+                }
+
+                Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20 }
+
+                // ── KEYBOARD SHORTCUTS ───────────────────
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    Layout.topMargin: 14
+                    Layout.bottomMargin: 20
+                    spacing: 6
+
+                    Text {
+                        text: "KEYBOARD SHORTCUTS"
+                        color: Theme.textDim
+                        font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                    }
+
+                    Repeater {
+                        model: [
+                            { k: "Space",              d: "Play / Pause" },
+                            { k: "Ctrl+Right / Left",  d: "Next / Previous track" },
+                            { k: "Right / Left",        d: "Seek forward / back 10s" },
+                            { k: "Up / Down",           d: "Volume up / down" },
+                            { k: "Ctrl+M",             d: "Mute" },
+                            { k: "Ctrl+S",             d: "Toggle shuffle" },
+                            { k: "Ctrl+R",             d: "Cycle repeat mode" },
+                            { k: "Ctrl+1 / 2 / 3",    d: "Home / Search / Collection" },
+                            { k: "Ctrl+N",             d: "Now Playing" },
+                            { k: "Ctrl+Q",             d: "Toggle queue" },
+                            { k: "Alt+Left / Esc",     d: "Go back" },
+                            { k: "Ctrl+,",             d: "Settings" }
+                        ]
+                        delegate: RowLayout {
                             Layout.fillWidth: true
+                            spacing: 12
+                            Rectangle {
+                                color: Theme.surface; radius: 4; border.color: Theme.border
+                                implicitWidth: shortcutLabel.implicitWidth + 14; implicitHeight: 22
+                                Text {
+                                    id: shortcutLabel; anchors.centerIn: parent
+                                    text: modelData.k; color: Theme.textPrimary
+                                    font.pixelSize: 11; font.family: "monospace"
+                                }
+                            }
+                            Text {
+                                text: modelData.d; color: Theme.textSec
+                                font.pixelSize: 12; Layout.fillWidth: true
+                            }
                         }
                     }
                 }
