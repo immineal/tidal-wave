@@ -245,6 +245,13 @@ Rectangle {
         }
     }
 
+    Connections {
+        target: bridge
+        function onFavoritePlaylistsChanged() {
+            loadPlaylists()
+        }
+    }
+
     Popup {
         id: settingsPopup
         anchors.centerIn: Overlay.overlay

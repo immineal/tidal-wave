@@ -3,6 +3,7 @@
 #include <QUrl>
 #include <QTimer>
 #include <QNetworkReply>
+#include <QSettings>
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
@@ -10,6 +11,11 @@
 Player::Player(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
 {
+    connect(m_client, &TidalClient::userIdChanged, this, &Player::handleUserIdChanged);
+    if (m_client->userId() > 0) {
+        handleUserIdChanged(m_client->userId());
+    }
+
     // Defer audio device init until after the event loop starts to avoid
     // a PipeWire pw_thread_loop_lock deadlock under -O3 optimisation.
     QTimer::singleShot(0, this, &Player::initAudio);
@@ -301,6 +307,17 @@ void Player::loadAndPlay(int index) {
         m_recentlyPlayed = m_recentlyPlayed.mid(0, 20);
     emit recentlyPlayedChanged();
 
+    // Save recently played to settings
+    qint64 uid = m_client->userId();
+    if (uid > 0) {
+        QVariantList saveList;
+        for (const auto &m : m_recentlyPlayed) {
+            saveList.append(m);
+        }
+        QSettings settings;
+        settings.setValue(QStringLiteral("user_%1/playback/recentlyPlayed").arg(uid), saveList);
+    }
+
     // Use preloaded file if it's ready for this exact index
     if (m_preloadIndex == index && m_preloadReady && m_preloadTempFile) {
         m_mpdTempFile     = m_preloadTempFile;
@@ -492,5 +509,17 @@ QString Player::audioQuality() const {
         case AudioQuality::HiResLossless: return QStringLiteral("HI_RES_LOSSLESS");
     }
     return QStringLiteral("LOSSLESS");
+}
+
+void Player::handleUserIdChanged(qint64 uid) {
+    m_recentlyPlayed.clear();
+    if (uid > 0) {
+        QSettings settings;
+        QVariantList list = settings.value(QStringLiteral("user_%1/playback/recentlyPlayed").arg(uid)).toList();
+        for (const auto &v : list) {
+            m_recentlyPlayed.append(v.toMap());
+        }
+    }
+    emit recentlyPlayedChanged();
 }
 

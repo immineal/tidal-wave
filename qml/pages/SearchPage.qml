@@ -203,6 +203,12 @@ Rectangle {
                     })
                     mediaType: "playlist"
                     onItemClicked: (i, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
+                    onItemPlayClicked: (i, item) => {
+                        bridge.markPlaylistPlayed(item.id)
+                        bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
+                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        })
+                    }
                 }
 
                 Item { height: 32 }
