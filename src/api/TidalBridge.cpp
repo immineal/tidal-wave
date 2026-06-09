@@ -190,6 +190,7 @@ void TidalBridge::fetchFavoriteArtists(QJSValue cb, int limit, int offset) {
 
 void TidalBridge::fetchUserPlaylists(QJSValue cb, int limit, int offset) {
     m_client->fetchUserPlaylists([this, cb](QList<Playlist> playlists, QString err) mutable {
+        sortPlaylists(playlists);
         call(cb, { qjsEngine(this)->toScriptValue(playlistsList(playlists)),
                    qjsEngine(this)->toScriptValue(err) });
     }, limit, offset);
@@ -366,7 +367,9 @@ void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJ
 }
 
 QVariantList TidalBridge::getUserPlaylists() const {
-    return playlistsList(m_favoritePlaylists);
+    QList<Playlist> playlists = m_favoritePlaylists;
+    sortPlaylists(playlists);
+    return playlistsList(playlists);
 }
 
 void TidalBridge::fetchTrackRadio(qlonglong trackId, QJSValue cb) {
@@ -432,15 +435,16 @@ QVariantList TidalBridge::searchFavoriteArtists(const QString &query) const {
 }
 
 QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
-    QVariantList list;
+    QList<Playlist> playlists;
     QString lowered = query.toLower();
     for (const auto &p : m_favoritePlaylists) {
         if (lowered.isEmpty() ||
             p.title.toLower().contains(lowered)) {
-            list.append(playlistToMap(p));
+            playlists.append(p);
         }
     }
-    return list;
+    sortPlaylists(playlists);
+    return playlistsList(playlists);
 }
 
 void TidalBridge::loadFavoriteTrackIds() {
@@ -518,6 +522,37 @@ void TidalBridge::loadNextUserPlaylistsPage(int offset) {
         }
         loadNextUserPlaylistsPage(offset + playlists.size());
     }, 50, offset);
+}
+
+void TidalBridge::markPlaylistPlayed(const QString &uuid) {
+    if (uuid.isEmpty()) return;
+    qint64 uid = m_client->userId();
+    if (uid <= 0) return;
+
+    QSettings settings;
+    QString key = QStringLiteral("user_%1/playlists/lastPlayed").arg(uid);
+    QVariantMap playtimes = settings.value(key).toMap();
+    playtimes[uuid] = QDateTime::currentMSecsSinceEpoch();
+    settings.setValue(key, playtimes);
+    emit favoritePlaylistsChanged();
+}
+
+void TidalBridge::sortPlaylists(QList<Playlist> &playlists) const {
+    qint64 uid = m_client->userId();
+    if (uid <= 0) return;
+
+    QSettings settings;
+    QString key = QStringLiteral("user_%1/playlists/lastPlayed").arg(uid);
+    QVariantMap playtimes = settings.value(key).toMap();
+
+    std::stable_sort(playlists.begin(), playlists.end(), [&playtimes](const Playlist &a, const Playlist &b) {
+        qint64 timeA = playtimes.value(a.uuid, 0LL).toLongLong();
+        qint64 timeB = playtimes.value(b.uuid, 0LL).toLongLong();
+        if (timeA != timeB) {
+            return timeA > timeB;
+        }
+        return false;
+    });
 }
 
 

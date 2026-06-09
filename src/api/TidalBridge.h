@@ -56,6 +56,7 @@ public:
     Q_INVOKABLE void addTracksToPlaylist    (const QString &uuid, qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
+    Q_INVOKABLE void markPlaylistPlayed     (const QString &uuid);
 
     // Track features
     Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb);
@@ -78,6 +79,7 @@ signals:
 
 private:
     void call(QJSValue &cb, const QJSValueList &args);
+    void sortPlaylists(QList<Playlist> &playlists) const;
     void loadFavoriteTrackIds();
     void loadNextFavoriteTracksPage(int offset);
     void loadNextFavoriteAlbumsPage(int offset);

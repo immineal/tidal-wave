@@ -155,7 +155,12 @@ Rectangle {
                             text: "Play"
                             glyph: "▶"
                             accent: true
-                            onClicked: if (root.tracks.length > 0) player.playTracks(root.tracks, 0)
+                            onClicked: {
+                                if (root.tracks.length > 0) {
+                                    bridge.markPlaylistPlayed(root.playlistUuid)
+                                    player.playTracks(root.tracks, 0)
+                                }
+                            }
                         }
 
                         PillButton {
@@ -164,6 +169,7 @@ Rectangle {
                             accent: false
                             onClicked: {
                                 if (root.tracks.length > 0) {
+                                    bridge.markPlaylistPlayed(root.playlistUuid)
                                     player.setShuffle(true)
                                     player.playTracks(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                 }
@@ -199,7 +205,10 @@ Rectangle {
             trackData:      modelData
             playlistUuid:   root.isUserPlaylist ? root.playlistUuid : ""
             trackItemIndex: index
-            onPlayRequested: player.playTracks(root.tracks, index)
+            onPlayRequested: {
+                bridge.markPlaylistPlayed(root.playlistUuid)
+                player.playTracks(root.tracks, index)
+            }
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
                     if (ok) {

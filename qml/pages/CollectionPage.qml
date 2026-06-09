@@ -345,6 +345,12 @@ Rectangle {
                         playlistDuration: modelData.duration || 0,
                         playlistType: modelData.type || ""
                     })
+                    onPlayClicked: {
+                        bridge.markPlaylistPlayed(modelData.uuid)
+                        bridge.fetchPlaylistTracks(modelData.uuid, function(tracks, err) {
+                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        })
+                    }
                 }
             }
 

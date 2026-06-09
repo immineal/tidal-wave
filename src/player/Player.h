@@ -89,6 +89,7 @@ private slots:
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
 
 private:
+    void handleUserIdChanged(qint64 uid);
     void loadAndPlay(int index);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;
