@@ -16,6 +16,7 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 *   **Queue Panel**: Full queue management including track ordering, shuffle, and cycle repeat modes.
 *   **System Tray Integration**: Background playback support with system tray control options to show, hide, and quit the application.
 *   **Rich Detail Pages**: Dedicated views for albums, artists, playlists, and mixes. Biographies are parsed as rich text with clickable navigation links.
+*   **Robust Sleep Timer**: Persistent background sleep timer in the Now Playing page with presets, a custom slider, a toggleable fade-out fader (with pop-prevention delay), and an end-of-track stopping mode.
 
 ## Keyboard Shortcuts
 

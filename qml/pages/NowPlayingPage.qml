@@ -13,6 +13,23 @@ Rectangle {
     property bool isLiked: false
     property bool showLyrics: false
 
+    // Sleep Timer Delegation (mapping properties to Window.window to persist in background)
+    readonly property bool   sleepTimerActive:      Window.window ? Window.window.sleepTimerActive : false
+    readonly property bool   sleepStopAtEndOfTrack: Window.window ? Window.window.sleepStopAtEndOfTrack : false
+    readonly property int    sleepTimeLeft:         Window.window ? Window.window.sleepTimeLeft : 0
+    readonly property bool   sleepIsFading:         Window.window ? Window.window.sleepIsFading : false
+    property bool            sleepFadeOut:          Window.window ? Window.window.sleepFadeOut : true
+
+    function startSleepTimer(minutes, stopAtEnd) {
+        if (Window.window) Window.window.startSleepTimer(minutes, stopAtEnd)
+    }
+    function cancelSleepTimer() {
+        if (Window.window) Window.window.cancelSleepTimer()
+    }
+    function formatSleepTime(seconds) {
+        return Window.window ? Window.window.formatSleepTime(seconds) : ""
+    }
+
     // Lyrics state: "none", "loading", "ready", "unavailable"
     property string lyricsState: "none"
     property var    lyricsData:  []   // [{ms, text}] for timed; [{ms: 0, text}] for plain
@@ -334,19 +351,355 @@ Rectangle {
                     }
                 }
 
-                // Quality badge
-                Rectangle {
-                    visible: player.audioQuality.length > 0
-                    height: 24; width: qlbl.implicitWidth + 12; radius: 4
-                    color: player.audioQuality === "HI_RES_LOSSLESS" ? "#1a4a7a" :
-                           player.audioQuality === "LOSSLESS" ? "#1a4a3a" : Theme.surfaceHigh
-                    Text {
-                        id: qlbl; anchors.centerIn: parent
-                        text: player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ MASTER" :
-                              player.audioQuality === "LOSSLESS" ? "◆ LOSSLESS" :
-                              player.audioQuality === "HIGH" ? "HI-FI" :
-                              player.audioQuality
-                        color: Theme.accent; font.pixelSize: 11; font.bold: true
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    // Quality badge
+                    Rectangle {
+                        visible: player.audioQuality.length > 0
+                        height: 24; width: qlbl.implicitWidth + 12; radius: 4
+                        color: player.audioQuality === "HI_RES_LOSSLESS" ? "#1a4a7a" :
+                               player.audioQuality === "LOSSLESS" ? "#1a4a3a" : Theme.surfaceHigh
+                        Text {
+                            id: qlbl; anchors.centerIn: parent
+                            text: player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ MASTER" :
+                                  player.audioQuality === "LOSSLESS" ? "◆ LOSSLESS" :
+                                  player.audioQuality === "HIGH" ? "HI-FI" :
+                                  player.audioQuality
+                            color: Theme.accent; font.pixelSize: 11; font.bold: true
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true } // Pusher
+
+                    // Sleep Timer button
+                    Rectangle {
+                        id: sleepTimerBtn
+                        height: 24
+                        width: sleepTimerRow.implicitWidth + 16
+                        radius: 12
+                        color: root.sleepTimerActive ? Qt.rgba(0, 178, 248, 0.15) : Theme.surfaceHigh
+                        border.color: root.sleepTimerActive ? Theme.accent : Theme.border
+                        border.width: 1
+                        
+                        RowLayout {
+                            id: sleepTimerRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            
+                            VectorIcon {
+                                name: "clock"
+                                color: root.sleepTimerActive ? Theme.accent : Theme.textSec
+                                width: 12
+                                height: 12
+                            }
+                            
+                            Text {
+                                text: root.sleepTimerActive ? 
+                                      (root.sleepStopAtEndOfTrack ? "End of Track" : root.formatSleepTime(root.sleepTimeLeft)) : 
+                                      "Sleep Timer"
+                                color: root.sleepTimerActive ? Theme.accent : Theme.textSec
+                                font.pixelSize: 11
+                                font.bold: root.sleepTimerActive
+                            }
+                        }
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: sleepTimerPopup.open()
+                        }
+                    }
+                }
+
+                Popup {
+                    id: sleepTimerPopup
+                    parent: sleepTimerBtn
+                    x: sleepTimerBtn.width - width
+                    y: sleepTimerBtn.height + 6
+                    width: 260
+                    height: contentCol.implicitHeight + 24
+                    padding: 12
+                    modal: true
+                    focus: true
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                    
+                    background: Rectangle {
+                        color: Theme.surfaceHigh
+                        border.color: Theme.border
+                        border.width: 1
+                        radius: Theme.radiusLg
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            // Capture and accept all mouse events to prevent propagating to items below the popup
+                            onClicked: (mouse) => mouse.accepted = true
+                            onPressed: (mouse) => mouse.accepted = true
+                            onReleased: (mouse) => mouse.accepted = true
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: contentCol
+                        anchors.fill: parent
+                        spacing: 12
+
+                        Text {
+                            text: "Sleep Timer"
+                            color: Theme.textPrimary
+                            font.pixelSize: 14
+                            font.bold: true
+                            Layout.alignment: Qt.AlignLeft
+                        }
+
+                        // Options container when timer is INACTIVE
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            visible: !root.sleepTimerActive
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 3
+                                columnSpacing: 8
+                                rowSpacing: 8
+                                
+                                SleepOptionBtn { label: "5m"; minutes: 5 }
+                                SleepOptionBtn { label: "15m"; minutes: 15 }
+                                SleepOptionBtn { label: "30m"; minutes: 30 }
+                                SleepOptionBtn { label: "45m"; minutes: 45 }
+                                SleepOptionBtn { label: "60m"; minutes: 60 }
+                                SleepOptionBtn { label: "90m"; minutes: 90 }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: Theme.radius
+                                color: maEndOfTrack.containsMouse ? Theme.surfaceHov : Theme.surface
+                                border.color: Theme.border
+                                border.width: 1
+                                
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    VectorIcon {
+                                        name: "music"
+                                        color: Theme.accent
+                                        width: 12
+                                        height: 12
+                                    }
+                                    Text {
+                                        text: "Stop at End of Track"
+                                        color: Theme.textPrimary
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
+                                }
+                                
+                                MouseArea {
+                                    id: maEndOfTrack
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        root.startSleepTimer(0, true)
+                                        sleepTimerPopup.close()
+                                    }
+                                }
+                            }
+
+                            // Divider
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 1
+                                color: Theme.border
+                            }
+
+                            // Custom Slider (using the project's native slider styling)
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: "Custom: " + customSlider.value + " min"
+                                        color: Theme.textSec
+                                        font.pixelSize: 12
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: "Start"
+                                        color: Theme.accent
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                root.startSleepTimer(customSlider.value, false)
+                                                sleepTimerPopup.close()
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Item {
+                                    id: customSlider
+                                    property int value: 20
+                                    Layout.fillWidth: true
+                                    height: 20
+                                    
+                                    Rectangle {
+                                        id: customTrack
+                                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+                                        height: 3; radius: 2
+                                        color: Theme.border
+
+                                        Rectangle {
+                                            width: ((customSlider.value - 1) / 119.0) * customTrack.width
+                                            height: parent.height; radius: parent.radius
+                                            color: Theme.accent
+                                        }
+
+                                        Rectangle {
+                                            x: Math.max(0, Math.min(customTrack.width - width, ((customSlider.value - 1) / 119.0) * customTrack.width - width / 2))
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 10; height: 10; radius: 5
+                                            color: "white"
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        preventStealing: true
+                                        onPressed: (mouse) => {
+                                            var pct = Math.max(0, Math.min(1, mouse.x / width))
+                                            customSlider.value = Math.round(1 + pct * 119)
+                                        }
+                                        onPositionChanged: (mouse) => {
+                                            if (pressed) {
+                                                var pct = Math.max(0, Math.min(1, mouse.x / width))
+                                                customSlider.value = Math.round(1 + pct * 119)
+                                            }
+                                        }
+                                        cursorShape: Qt.PointingHandCursor
+                                    }
+                                }
+                            }
+                        }
+
+                        // Options container when timer is ACTIVE
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+                            visible: root.sleepTimerActive
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 50
+                                color: Qt.rgba(0, 178, 248, 0.08)
+                                border.color: Theme.accentDim
+                                border.width: 1
+                                radius: Theme.radius
+                                
+                                ColumnLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 2
+                                    Text {
+                                        text: root.sleepStopAtEndOfTrack ? "Stopping at end of track" : 
+                                              root.sleepIsFading ? "Fading out audio..." : 
+                                              "Remaining: " + root.formatSleepTime(root.sleepTimeLeft)
+                                        color: Theme.textPrimary
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                        Layout.alignment: Qt.AlignHCenter
+                                    }
+                                    Text {
+                                        text: root.sleepStopAtEndOfTrack ? "Fades out last 15s" : "Fades out last 30s"
+                                        color: Theme.textDim
+                                        font.pixelSize: 10
+                                        visible: root.sleepFadeOut
+                                        Layout.alignment: Qt.AlignHCenter
+                                    }
+                                }
+                            }
+                            
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: Theme.radius
+                                color: Qt.rgba(255, 77, 77, 0.1)
+                                border.color: Theme.red
+                                border.width: 1
+                                
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Cancel Sleep Timer"
+                                    color: Theme.red
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                }
+                                
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.cancelSleepTimer()
+                                        sleepTimerPopup.close()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Divider
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: Theme.border
+                        }
+
+                        // Robust Options Toggle (Custom Row Switch)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
+                            
+                            Text {
+                                text: "Fade out audio"
+                                color: Theme.textSec
+                                font.pixelSize: 12
+                                Layout.fillWidth: true
+                            }
+                            
+                            Rectangle {
+                                width: 34
+                                height: 18
+                                radius: 9
+                                color: root.sleepFadeOut ? Theme.accent : Theme.surface
+                                border.color: Theme.border
+                                border.width: 1
+                                
+                                Rectangle {
+                                    x: root.sleepFadeOut ? 17 : 1
+                                    y: 1
+                                    width: 16
+                                    height: 16
+                                    radius: 8
+                                    color: "white"
+                                    Behavior on x { NumberAnimation { duration: 150 } }
+                                }
+                            }
+                            
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -456,6 +809,36 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    component SleepOptionBtn : Rectangle {
+        id: optBtn
+        property string label
+        property int minutes
+        Layout.fillWidth: true
+        height: 28
+        radius: Theme.radius
+        color: ma.containsMouse ? Theme.surfaceHov : Theme.surface
+        border.color: Theme.border
+        border.width: 1
+        
+        Text {
+            anchors.centerIn: parent
+            text: optBtn.label
+            color: Theme.textPrimary
+            font.pixelSize: 12
+        }
+        
+        MouseArea {
+            id: ma
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: {
+                root.startSleepTimer(optBtn.minutes, false)
+                sleepTimerPopup.close()
             }
         }
     }
