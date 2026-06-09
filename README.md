@@ -1,3 +1,5 @@
+Tidal Wave is not affiliated with TIDAL Music AS.
+
 # Tidal Wave Desktop Client
 
 Tidal Wave is a native, lightweight desktop client for the Tidal music streaming service. It is built using C++20, CMake, and Qt 6/QML, delivering a fast, system-integrated music listening experience.
