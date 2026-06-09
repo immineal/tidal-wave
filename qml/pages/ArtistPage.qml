@@ -90,22 +90,25 @@ Rectangle {
                         styleColor: Qt.rgba(0, 0, 0, 0.5)
                     }
 
-                    PillButton {
-                        text: "Play"
-                        glyph: "▶"
-                        accent: true
-                        onClicked: if (topTracks.length > 0) player.playTracks(topTracks, 0)
-                    }
+                    Row {
+                        spacing: 12
+                        PillButton {
+                            text: "Play"
+                            glyph: "▶"
+                            accent: true
+                            onClicked: if (topTracks.length > 0) player.playTracks(topTracks, 0)
+                        }
 
-                    PillButton {
-                        text: root.isFollowing ? "Following" : "Follow"
-                        glyph: root.isFollowing ? "♥" : "♡"
-                        accent: root.isFollowing
-                        onClicked: {
-                            if (root.isFollowing) {
-                                bridge.removeArtistFavorite(root.artistId, function(success) {})
-                            } else {
-                                bridge.addArtistFavorite(root.artistId, function(success) {})
+                        PillButton {
+                            text: root.isFollowing ? "Following" : "Follow"
+                            glyph: root.isFollowing ? "♥" : "♡"
+                            accent: root.isFollowing
+                            onClicked: {
+                                if (root.isFollowing) {
+                                    bridge.removeArtistFavorite(root.artistId, function(success) {})
+                                } else {
+                                    bridge.addArtistFavorite(root.artistId, function(success) {})
+                                }
                             }
                         }
                     }
