@@ -33,7 +33,6 @@ set(SOURCES
     src/mpris/MprisPlayer.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
-    src/ui/discordrpc.cpp
 )
 
 set(HEADERS
@@ -46,7 +45,6 @@ set(HEADERS
     src/mpris/MprisPlayer.h
     src/ui/Application.h
     src/ui/ImageProvider.h
-    src/ui/discordrpc.h
 )
 
 qt_add_executable(tidal-wave
