@@ -10,8 +10,13 @@ Rectangle {
     property string playlistUuid: ""
     property string playlistTitle: ""
     property string coverUrl: ""
+    property string playlistDescription: ""
+    property int    playlistDuration: 0
+    property string playlistType: ""   // "USER" = editable, "" / "EDITORIAL" = read-only
     property var    tracks: []
     property bool   loading: false
+
+    readonly property bool isUserPlaylist: playlistType === "USER"
 
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
@@ -46,6 +51,7 @@ Rectangle {
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 24
+                anchors.leftMargin: 64
                 spacing: 24
 
                 Rectangle {
@@ -117,7 +123,27 @@ Rectangle {
                     }
 
                     Text {
-                        text: root.tracks.length === 1 ? "1 track" : root.tracks.length + " tracks"
+                        visible: root.playlistDescription.length > 0
+                        Layout.fillWidth: true
+                        text: root.playlistDescription
+                        color: Theme.textSec
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        text: {
+                            var parts = [root.tracks.length === 1 ? "1 track" : root.tracks.length + " tracks"]
+                            var d = root.playlistDuration
+                            if (d > 0) {
+                                var hrs = Math.floor(d / 3600)
+                                var mins = Math.floor((d % 3600) / 60)
+                                parts.push(hrs > 0 ? hrs + " hr " + mins + " min" : mins + " min")
+                            }
+                            return parts.join(" • ")
+                        }
                         color: Theme.textSec
                         font.pixelSize: 14
                     }
@@ -143,6 +169,18 @@ Rectangle {
                                 }
                             }
                         }
+
+                        PillButton {
+                            visible: root.isUserPlaylist
+                            text: "Edit"
+                            glyph: "✎"
+                            accent: false
+                            onClicked: {
+                                editTitleField.text   = root.playlistTitle
+                                editDescField.text    = root.playlistDescription
+                                editPlaylistPopup.open()
+                            }
+                        }
                     }
                 }
             }
@@ -151,15 +189,26 @@ Rectangle {
         delegate: TrackRow {
             width: tracksList.width - 32
             x: 16
-            trackNum:    index + 1
-            title:       modelData.title
-            artists:     modelData.artists
-            albumTitle:  modelData.albumTitle
-            durationStr: modelData.durationStr
-            coverUrl:    modelData.coverUrl80
-            isPlaying:   player.currentTrack.id === modelData.id && player.playing
-            trackData:   modelData
+            trackNum:       index + 1
+            title:          modelData.title
+            artists:        modelData.artists
+            albumTitle:     modelData.albumTitle
+            durationStr:    modelData.durationStr
+            coverUrl:       modelData.coverUrl80
+            isPlaying:      player.currentTrack.id === modelData.id && player.playing
+            trackData:      modelData
+            playlistUuid:   root.isUserPlaylist ? root.playlistUuid : ""
+            trackItemIndex: index
             onPlayRequested: player.playTracks(root.tracks, index)
+            onRemoveFromPlaylistRequested: function(itemIndex) {
+                bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
+                    if (ok) {
+                        var arr = root.tracks.slice()
+                        arr.splice(itemIndex, 1)
+                        root.tracks = arr
+                    }
+                })
+            }
         }
 
         footer: Item { height: 32; width: tracksList.width }
@@ -170,7 +219,77 @@ Rectangle {
         }
     }
 
-    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
+    // Back button sits in a fixed bar that doesn't overlap the track list
+    Rectangle {
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: 52; color: "transparent"
+        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    }
 
     LoadingOverlay { loading: root.loading }
+
+    // Edit playlist popup
+    Popup {
+        id: editPlaylistPopup
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: 20
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 12 }
+
+        Column {
+            width: parent.width
+            spacing: 14
+
+            Text { text: "Edit Playlist"; color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+
+            Rectangle { width: parent.width; height: 1; color: Theme.border }
+
+            Text { text: "Title"; color: Theme.textSec; font.pixelSize: 12 }
+            Rectangle {
+                width: parent.width; height: 36; radius: 6
+                color: Theme.surface; border.color: titleFocus.activeFocus ? Theme.accent : Theme.border
+                TextInput {
+                    id: editTitleField
+                    anchors.fill: parent; anchors.margins: 8
+                    color: Theme.textPrimary; font.pixelSize: 14
+                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    FocusScope { id: titleFocus; anchors.fill: parent }
+                }
+            }
+
+            Text { text: "Description"; color: Theme.textSec; font.pixelSize: 12 }
+            Rectangle {
+                width: parent.width; height: 72; radius: 6
+                color: Theme.surface; border.color: descFocus.activeFocus ? Theme.accent : Theme.border
+                TextEdit {
+                    id: editDescField
+                    anchors.fill: parent; anchors.margins: 8
+                    color: Theme.textPrimary; font.pixelSize: 14
+                    wrapMode: TextEdit.WordWrap
+                    selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+                    FocusScope { id: descFocus; anchors.fill: parent }
+                }
+            }
+
+            Row {
+                spacing: 10; anchors.right: parent.right
+                PillButton {
+                    text: "Cancel"; accent: false
+                    onClicked: editPlaylistPopup.close()
+                }
+                PillButton {
+                    text: "Save"; accent: true
+                    onClicked: {
+                        var newTitle = editTitleField.text.trim()
+                        if (newTitle.length > 0) root.playlistTitle = newTitle
+                        root.playlistDescription = editDescField.text.trim()
+                        editPlaylistPopup.close()
+                    }
+                }
+            }
+        }
+    }
 }

@@ -38,6 +38,7 @@ Rectangle {
             TextInput {
                 id: input
                 anchors.fill: parent
+                focus: true
                 color: Theme.textPrimary
                 font.pixelSize: 14
                 verticalAlignment: TextInput.AlignVCenter

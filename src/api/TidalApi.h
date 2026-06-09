@@ -29,6 +29,9 @@ public:
     // which target the OAuth host (auth.tidal.com) and deliberately omit auth headers.
     void postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
     void deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    void getEtag(const QString &endpoint, std::function<void(QString /*etag*/, QString /*error*/)> cb);
+    void deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb);
+    void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
     static constexpr auto kApiBase  = "https://api.tidal.com/v1/";

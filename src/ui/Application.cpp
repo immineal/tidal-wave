@@ -8,6 +8,11 @@
 #include <QSurfaceFormat>
 #include <QLoggingCategory>
 #include <QLibrary>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QWindow>
+#include <QMenu>
+#include <QAction>
 // #include <QQuickStyle>
 
 typedef int (*snd_lib_error_handler_t)(const char *file, int line, const char *function, int err, const char *fmt, ...);
@@ -72,7 +77,33 @@ int Application::run(int argc, char **argv) {
     QSurfaceFormat::setDefaultFormat(format);
 
     QApplication app(argc, argv);
+    QApplication::setQuitOnLastWindowClosed(false);
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/TidalWave/assets/icon.png")));
+
+    // Single-instance check
+    QString socketName = QStringLiteral("TidalWaveSingleInstanceSocket");
+    QLocalSocket socket;
+    socket.connectToServer(socketName);
+    if (socket.waitForConnected(500)) {
+        socket.write("show");
+        socket.waitForBytesWritten(500);
+        return 0; // exit since an instance is already running
+    }
+
+    QLocalServer *server = new QLocalServer(&app);
+    QLocalServer::removeServer(socketName);
+    if (server->listen(socketName)) {
+        connect(server, &QLocalServer::newConnection, this, [this, server]() {
+            QLocalSocket *clientSocket = server->nextPendingConnection();
+            connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
+                QByteArray data = clientSocket->readAll();
+                if (data == "show") {
+                    this->showWindow();
+                }
+                clientSocket->disconnectFromServer();
+            });
+        });
+    }
 
     QFont defaultFont("Inter");
     defaultFont.setFamilies({"Inter", "DejaVu Sans", "sans-serif"});
@@ -99,20 +130,42 @@ int Application::run(int argc, char **argv) {
 
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         m_trayIcon = new QSystemTrayIcon(QIcon(QStringLiteral(":/TidalWave/assets/icon.png")), this);
-        m_trayIcon->setToolTip("Tidal Wave");
+        m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
+
+        QMenu *trayMenu = new QMenu();
+        QAction *showAction = trayMenu->addAction(QStringLiteral("Show"));
+        connect(showAction, &QAction::triggered, this, &Application::showWindow);
+
+        QAction *hideAction = trayMenu->addAction(QStringLiteral("Hide"));
+        connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
+
+        trayMenu->addSeparator();
+
+        QAction *quitAction = trayMenu->addAction(QStringLiteral("Quit"));
+        connect(quitAction, &QAction::triggered, this, &Application::quit);
+
+        m_trayIcon->setContextMenu(trayMenu);
+
+        connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+            if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+                this->toggleWindow();
+            }
+        });
+
         m_trayIcon->show();
     }
 
-    QQmlApplicationEngine engine;
-    engine.addImageProvider("tidal", new TidalImageProvider());
+    m_engine = new QQmlApplicationEngine(this);
+    m_engine->addImageProvider(QStringLiteral("tidal"), new TidalImageProvider());
 
-    QQmlContext *ctx = engine.rootContext();
-    ctx->setContextProperty("auth",   m_auth);
-    ctx->setContextProperty("bridge", m_bridge);
-    ctx->setContextProperty("player", m_player);
+    QQmlContext *ctx = m_engine->rootContext();
+    ctx->setContextProperty(QStringLiteral("auth"),   m_auth);
+    ctx->setContextProperty(QStringLiteral("bridge"), m_bridge);
+    ctx->setContextProperty(QStringLiteral("player"), m_player);
+    ctx->setContextProperty(QStringLiteral("app"),    this);
 
-    engine.load(QUrl(QStringLiteral("qrc:/TidalWave/qml/main.qml")));
-    if (engine.rootObjects().isEmpty()) return -1;
+    m_engine->load(QUrl(QStringLiteral("qrc:/TidalWave/qml/main.qml")));
+    if (m_engine->rootObjects().isEmpty()) return -1;
 
     return app.exec();
 }
@@ -151,5 +204,55 @@ void Application::onPlayerPositionChanged(qint64 ms) {
 
     if (qAbs(ms - expected_pos) > 2000) {
         updateDiscordRPC();
+    }
+}
+
+void Application::quit() {
+    m_reallyQuit = true;
+    emit reallyQuitChanged();
+    QCoreApplication::quit();
+}
+
+void Application::showWindow() {
+    if (m_engine) {
+        const auto rootObjs = m_engine->rootObjects();
+        if (!rootObjs.isEmpty()) {
+            QWindow *window = qobject_cast<QWindow*>(rootObjs.first());
+            if (window) {
+                window->show();
+                window->raise();
+                window->requestActivate();
+            }
+        }
+    }
+}
+
+void Application::hideWindow() {
+    if (m_engine) {
+        const auto rootObjs = m_engine->rootObjects();
+        if (!rootObjs.isEmpty()) {
+            QWindow *window = qobject_cast<QWindow*>(rootObjs.first());
+            if (window) {
+                window->hide();
+            }
+        }
+    }
+}
+
+void Application::toggleWindow() {
+    if (m_engine) {
+        const auto rootObjs = m_engine->rootObjects();
+        if (!rootObjs.isEmpty()) {
+            QWindow *window = qobject_cast<QWindow*>(rootObjs.first());
+            if (window) {
+                if (window->isVisible() && window->windowState() != Qt::WindowMinimized) {
+                    window->hide();
+                } else {
+                    window->show();
+                    window->raise();
+                    window->requestActivate();
+                }
+            }
+        }
     }
 }

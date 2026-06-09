@@ -14,6 +14,13 @@ ApplicationWindow {
     title: "Tidal Wave"
     color: Theme.bg
 
+    onClosing: (close) => {
+        if (!app.reallyQuit) {
+            close.accepted = false
+            root.hide()
+        }
+    }
+
     property string currentPage: "home"
     property var    pageParams:  ({})
     property bool   queueOpen:   false
@@ -43,7 +50,7 @@ ApplicationWindow {
     // action (button, Escape, Alt+Left) makes sense. Top-level destinations
     // (home/search/collection) are reached directly from the sidebar and
     // don't need — or want — a back affordance.
-    readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying"]
+    readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
     function navigate(page, params) {
         var p = params || {}
@@ -78,7 +85,11 @@ ApplicationWindow {
             root.pageParams = p
         }
         currentPage = page
-        focusStealer.forceActiveFocus()
+        if (page === "search") {
+            searchLoader.forceActiveFocus()
+        } else {
+            focusStealer.forceActiveFocus()
+        }
     }
 
     function goBack() {
@@ -205,6 +216,7 @@ ApplicationWindow {
 
                     Loader {
                         id: searchLoader
+                        focus: true
                         anchors.fill: parent
                         source: "pages/SearchPage.qml"
                         visible: root.currentPage === "search"
@@ -251,6 +263,7 @@ ApplicationWindow {
                                 case "playlist":   return "pages/PlaylistPage.qml"
                                 case "mix":        return "pages/MixPage.qml"
                                 case "nowplaying": return "pages/NowPlayingPage.qml"
+                                case "radio":      return "pages/RadioPage.qml"
                                 default:           return ""
                             }
                         }

@@ -37,10 +37,32 @@ public:
     Q_INVOKABLE void fetchArtistTopTracks (qlonglong artistId,     QJSValue cb);
 
     Q_INVOKABLE void search              (const QString &q,        QJSValue cb, int limit = 20);
+    Q_INVOKABLE void copyToClipboard     (const QString &text);
 
-    Q_INVOKABLE bool isTrackFavorite     (qlonglong trackId) const;
-    Q_INVOKABLE void addTrackFavorite    (qlonglong trackId, QJSValue cb);
-    Q_INVOKABLE void removeTrackFavorite (qlonglong trackId, QJSValue cb);
+    Q_INVOKABLE bool isTrackFavorite     (qlonglong trackId)  const;
+    Q_INVOKABLE void addTrackFavorite    (qlonglong trackId,  QJSValue cb);
+    Q_INVOKABLE void removeTrackFavorite (qlonglong trackId,  QJSValue cb);
+
+    Q_INVOKABLE bool isAlbumFavorite     (qlonglong albumId)  const;
+    Q_INVOKABLE void addAlbumFavorite    (qlonglong albumId,  QJSValue cb);
+    Q_INVOKABLE void removeAlbumFavorite (qlonglong albumId,  QJSValue cb);
+
+    Q_INVOKABLE bool isArtistFavorite    (qlonglong artistId) const;
+    Q_INVOKABLE void addArtistFavorite   (qlonglong artistId, QJSValue cb);
+    Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb);
+
+    // Playlist management
+    Q_INVOKABLE void createPlaylist         (const QString &title, QJSValue cb);
+    Q_INVOKABLE void addTracksToPlaylist    (const QString &uuid, qlonglong trackId, QJSValue cb);
+    Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    Q_INVOKABLE QVariantList getUserPlaylists() const;
+
+    // Track features
+    Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb);
+    Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
+
+    // Recently played
+    Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb);
 
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const;
@@ -68,11 +90,11 @@ private:
     static QVariantMap  playlistToMap(const Playlist &p);
     static QVariantMap  mixToMap    (const Mix &m);
 
-    QVariantList tracksToList  (const QList<Track>    &v);
-    QVariantList albumsToList  (const QList<Album>    &v);
-    QVariantList artistsToList (const QList<Artist>   &v);
-    QVariantList playlistsList (const QList<Playlist> &v);
-    QVariantList mixesList     (const QList<Mix>      &v);
+    QVariantList tracksToList  (const QList<Track>    &v) const;
+    QVariantList albumsToList  (const QList<Album>    &v) const;
+    QVariantList artistsToList (const QList<Artist>   &v) const;
+    QVariantList playlistsList (const QList<Playlist> &v) const;
+    QVariantList mixesList     (const QList<Mix>      &v) const;
 
     TidalClient  *m_client;
     QQmlEngine   *m_engine = nullptr;

@@ -8,6 +8,7 @@ class Auth : public QObject {
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(QString userCode READ userCode NOTIFY userCodeChanged)
     Q_PROPERTY(QString verificationUrl READ verificationUrl NOTIFY userCodeChanged)
+    Q_PROPERTY(QString username READ username NOTIFY usernameChanged)
 
 public:
     enum class State { LoggedOut, PendingDevice, LoggedIn };
@@ -18,6 +19,7 @@ public:
     State   state()           const { return m_state; }
     QString userCode()        const { return m_userCode; }
     QString verificationUrl() const { return m_verificationUri; }
+    QString username()        const { return m_username; }
     QString accessToken()     const { return m_accessToken; }
     QString refreshToken()    const { return m_refreshToken; }
     qint64  userId()          const { return m_userId; }
@@ -36,6 +38,7 @@ public:
 signals:
     void stateChanged(State state);
     void userCodeChanged();
+    void usernameChanged();
     void loginSucceeded();
     void loginFailed(const QString &reason);
     void sessionExpired();
@@ -65,6 +68,7 @@ private:
     QDateTime m_tokenExpiry;
     qint64  m_userId     = 0;
     QString m_countryCode;
+    QString m_username;
 
     static constexpr auto kClientId     = "fX2JxdmntZWK0ixT";
     static constexpr auto kClientSecret = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAzxAg=";

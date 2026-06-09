@@ -133,6 +133,22 @@ void Auth::fetchSession() {
         m_userId      = obj["userId"].toVariant().toLongLong();
         m_countryCode = obj["countryCode"].toString();
         m_api->setCountryCode(m_countryCode);
+
+        m_api->get(QStringLiteral("users/%1").arg(m_userId), {},
+            [this](QJsonObject u, QString) {
+                QString name = u["username"].toString();
+                if (name.isEmpty()) {
+                    QString first = u["firstName"].toString();
+                    QString last  = u["lastName"].toString();
+                    name = (first + " " + last).trimmed();
+                }
+                if (!name.isEmpty() && name != m_username) {
+                    m_username = name;
+                    emit usernameChanged();
+                    saveCredentials();
+                }
+            });
+
         saveCredentials();
 
         // Schedule token refresh
@@ -159,6 +175,7 @@ void Auth::loadCredentials() {
     m_tokenExpiry  = QDateTime::fromString(obj["expires_at"].toString(), Qt::ISODate);
     m_userId       = obj["user_id"].toVariant().toLongLong();
     m_countryCode  = obj["country_code"].toString();
+    m_username     = obj["username"].toString();
 
     if (m_accessToken.isEmpty() || m_refreshToken.isEmpty()) return;
 
@@ -187,6 +204,7 @@ void Auth::saveCredentials() {
     obj["expires_at"]    = m_tokenExpiry.toString(Qt::ISODate);
     obj["user_id"]       = m_userId;
     obj["country_code"]  = m_countryCode;
+    obj["username"]      = m_username;
 
     QFile f(path);
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

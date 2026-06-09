@@ -128,6 +128,71 @@ void TidalApi::deleteApi(const QString &endpoint, const QUrlQuery &params, JsonC
     });
 }
 
+void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QString)> cb) {
+    QUrl url(kApiBase + endpoint);
+    if (!m_countryCode.isEmpty()) {
+        QUrlQuery q;
+        q.addQueryItem("countryCode", m_countryCode);
+        url.setQuery(q);
+    }
+    auto *reply = m_nam->get(makeRequest(url));
+    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            cb({}, reply->errorString());
+            return;
+        }
+        QString etag = QString::fromLatin1(reply->rawHeader("ETag"));
+        cb(etag, {});
+    });
+}
+
+void TidalApi::deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb) {
+    QUrl url(kApiBase + endpoint);
+    if (!params.isEmpty()) url.setQuery(params);
+    QNetworkRequest req = makeRequest(url);
+    if (!etag.isEmpty())
+        req.setRawHeader("If-None-Match", etag.toLatin1());
+    auto *reply = m_nam->deleteResource(req);
+    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
+        reply->deleteLater();
+        QByteArray data = reply->readAll();
+        if (data.isEmpty()) {
+            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
+            return;
+        }
+        QJsonParseError err;
+        auto doc = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
+        cb(doc.object(), {});
+    });
+}
+
+void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb) {
+    QUrl url(kApiBase + endpoint);
+    QNetworkRequest req = makeRequest(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+    if (!etag.isEmpty())
+        req.setRawHeader("If-None-Match", etag.toLatin1());
+    auto *reply = m_nam->post(req, form.toString(QUrl::FullyEncoded).toUtf8());
+    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
+        reply->deleteLater();
+        QByteArray data = reply->readAll();
+        if (data.isEmpty()) {
+            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
+            return;
+        }
+        QJsonParseError err;
+        auto doc = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
+        auto obj = doc.object();
+        if (obj.contains("error"))
+            cb(obj, obj["error_description"].toString(obj["error"].toString()));
+        else
+            cb(obj, {});
+    });
+}
+
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
     auto *reply = m_nam->get(makeRequest(url));
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {

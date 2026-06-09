@@ -29,7 +29,12 @@ Item {
             spacing: 8
             VectorIcon {
                 id: glyphIcon
-                name: root.glyph === "▶" ? "play" : (root.glyph === "⇌" ? "shuffle" : root.glyph)
+                name: root.glyph === "▶" ? "play"
+                    : root.glyph === "⇌" ? "shuffle"
+                    : root.glyph === "♥" ? "heart-filled"
+                    : root.glyph === "♡" ? "heart"
+                    : root.glyph === "✎" ? "edit"
+                    : root.glyph
                 color: root.accent ? "white" : Theme.textPrimary
                 width: 14
                 height: 14

@@ -87,6 +87,7 @@ qt_add_qml_module(tidal-wave
         qml/pages/PlaylistPage.qml
         qml/pages/MixPage.qml
         qml/pages/NowPlayingPage.qml
+        qml/pages/RadioPage.qml
     RESOURCES
         assets/icon.png
 )

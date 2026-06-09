@@ -12,11 +12,21 @@ Rectangle {
     property var albumData: ({})
     property var tracks: []
     property bool loading: false
+    property bool isSaved: false
+
+    function updateSavedState() {
+        isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
+    }
 
     readonly property int effectiveArtistId: albumData.artistId > 0 ? albumData.artistId
         : (tracks.length > 0 && tracks[0].artistId > 0 ? tracks[0].artistId : 0)
 
-    onAlbumIdChanged: if (albumId > 0) loadAlbum()
+    onAlbumIdChanged: if (albumId > 0) { loadAlbum(); updateSavedState() }
+
+    Connections {
+        target: bridge
+        function onFavoriteAlbumsChanged() { root.updateSavedState() }
+    }
 
     function loadAlbum() {
         loading = true
@@ -67,6 +77,7 @@ Rectangle {
                 RowLayout {
                     anchors.fill: parent
                     anchors.margins: 24
+                    anchors.leftMargin: 64
                     spacing: 24
 
                     Rectangle {
@@ -127,9 +138,19 @@ Rectangle {
                         }
 
                         Text {
-                            text: (albumData.year || "") +
-                                  (albumData.numTracks ? " • " + albumData.numTracks + (albumData.numTracks === 1 ? " track" : " tracks") : "") +
-                                  (albumData.quality ? " • " + albumData.quality : "")
+                            text: {
+                                var parts = []
+                                if (albumData.year) parts.push(albumData.year)
+                                if (albumData.numTracks) parts.push(albumData.numTracks + (albumData.numTracks === 1 ? " track" : " tracks"))
+                                if (albumData.duration > 0) {
+                                    var d = albumData.duration
+                                    var hrs = Math.floor(d / 3600)
+                                    var mins = Math.floor((d % 3600) / 60)
+                                    parts.push(hrs > 0 ? hrs + " hr " + mins + " min" : mins + " min")
+                                }
+                                if (albumData.quality) parts.push(albumData.quality)
+                                return parts.join(" • ")
+                            }
                             color: Theme.textSec
                             font.pixelSize: 13
                         }
@@ -155,28 +176,22 @@ Rectangle {
                                     }
                                 }
                             }
+
+                            PillButton {
+                                text: root.isSaved ? "Saved" : "Save"
+                                glyph: root.isSaved ? "♥" : "♡"
+                                accent: root.isSaved
+                                onClicked: {
+                                    if (root.isSaved) {
+                                        bridge.removeAlbumFavorite(root.albumId, function(success) {})
+                                    } else {
+                                        bridge.addAlbumFavorite(root.albumId, function(success) {})
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
-
-            Item { height: 8; width: parent.width }
-
-            // Column header
-            Rectangle {
-                width: parent.width
-                height: 32
-                color: "transparent"
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 28
-                    anchors.rightMargin: 28
-                    spacing: 12
-                    Text { width: 24; text: "#"; color: Theme.textDim; font.pixelSize: 12 }
-                    Text { Layout.fillWidth: true; text: "TITLE"; color: Theme.textDim; font.pixelSize: 12; font.letterSpacing: 0.5 }
-                    Text { width: 40; text: "⏱"; color: Theme.textDim; font.pixelSize: 12; horizontalAlignment: Text.AlignRight }
-                }
-                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
             }
 
             Item { height: 8; width: parent.width }
@@ -205,11 +220,52 @@ Rectangle {
         }
     }
 
+    // Sticky bar — back button always visible; title fades in once hero scrolls out
+    Rectangle {
+        id: stickyHeader
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: 52
+        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b,
+                       Math.min(0.95, Math.max(0, (tracksList.contentY - 200) / 80)))
+
+        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 64
+            anchors.rightMargin: 16
+            spacing: 12
+            opacity: Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Text {
+                    Layout.fillWidth: true
+                    text: albumData.title || ""
+                    color: Theme.textPrimary
+                    font.pixelSize: 15
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: albumData.artists || ""
+                    color: Theme.textSec
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border
+            opacity: Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+        }
+    }
+
     function navigateTo(page, params) {
         Window.window.navigate(page, params || {})
     }
-
-    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
 
     LoadingOverlay { loading: root.loading }
 }

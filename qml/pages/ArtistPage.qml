@@ -13,8 +13,19 @@ Rectangle {
     property var topTracks: []
     property var albums: []
     property bool loading: false
+    property bool showAllTracks: false
+    property bool isFollowing: false
 
-    onArtistIdChanged: if (artistId > 0) loadArtist()
+    function updateFollowState() {
+        isFollowing = artistId > 0 ? bridge.isArtistFavorite(artistId) : false
+    }
+
+    onArtistIdChanged: if (artistId > 0) { loadArtist(); updateFollowState() }
+
+    Connections {
+        target: bridge
+        function onFavoriteArtistsChanged() { root.updateFollowState() }
+    }
 
     function loadArtist() {
         loading = true
@@ -85,24 +96,51 @@ Rectangle {
                         accent: true
                         onClicked: if (topTracks.length > 0) player.playTracks(topTracks, 0)
                     }
+
+                    PillButton {
+                        text: root.isFollowing ? "Following" : "Follow"
+                        glyph: root.isFollowing ? "♥" : "♡"
+                        accent: root.isFollowing
+                        onClicked: {
+                            if (root.isFollowing) {
+                                bridge.removeArtistFavorite(root.artistId, function(success) {})
+                            } else {
+                                bridge.addArtistFavorite(root.artistId, function(success) {})
+                            }
+                        }
+                    }
                 }
             }
 
             Item { height: 8 }
 
-            Text {
+            RowLayout {
                 visible: root.topTracks.length > 0
+                Layout.fillWidth: true
                 Layout.leftMargin: 24
-                text: "Popular"
-                color: Theme.textPrimary
-                font.pixelSize: 20
-                font.bold: true
+                Layout.rightMargin: 24
+                Text {
+                    text: "Popular"
+                    color: Theme.textPrimary
+                    font.pixelSize: 20
+                    font.bold: true
+                    Layout.fillWidth: true
+                }
+                Text {
+                    visible: root.topTracks.length > 5
+                    text: root.showAllTracks ? "Show less" : "Show all"
+                    color: showAllHov.hovered ? Theme.textPrimary : Theme.textSec
+                    font.pixelSize: 13
+                    HoverHandler { id: showAllHov }
+                    TapHandler { onTapped: root.showAllTracks = !root.showAllTracks }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                }
             }
 
             Item { height: 8; visible: root.topTracks.length > 0 }
 
             Repeater {
-                model: root.topTracks.slice(0, 5)
+                model: root.showAllTracks ? root.topTracks : root.topTracks.slice(0, 5)
                 TrackRow {
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
@@ -119,12 +157,46 @@ Rectangle {
                 }
             }
 
+            Item { height: 24; visible: root.topTracks.length > 0 }
+
             HorizontalSection {
+                id: albumsSection
                 Layout.fillWidth: true
-                visible: root.albums.length > 0
-                title: "Discography"
+                property var mainAlbums: root.albums.filter(function(a) {
+                    var t = a.type || ""
+                    if (t === "SINGLE" || t === "EP") return false
+                    if (t === "ALBUM" || t === "COMPILATION") return true
+                    return (a.numTracks || 1) > 3
+                })
+                visible: mainAlbums.length > 0
+                title: singlesSection.singles.length > 0 ? "Albums" : "Discography"
+                showViewAll: false
                 mediaType: "album"
-                items: root.albums.map(function(a) {
+                items: mainAlbums.map(function(a) {
+                    return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
+                })
+                onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
+                onItemPlayClicked: function(i, item) {
+                    bridge.fetchAlbumTracks(item.id, function(tracks, err) {
+                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                    })
+                }
+            }
+
+            HorizontalSection {
+                id: singlesSection
+                Layout.fillWidth: true
+                property var singles: root.albums.filter(function(a) {
+                    var t = a.type || ""
+                    if (t === "SINGLE" || t === "EP") return true
+                    if (t === "ALBUM" || t === "COMPILATION") return false
+                    return (a.numTracks || 1) <= 3
+                })
+                visible: singles.length > 0
+                title: "Singles & EPs"
+                showViewAll: false
+                mediaType: "album"
+                items: singles.map(function(a) {
                     return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
                 })
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
@@ -174,6 +246,18 @@ Rectangle {
                 }
             }
 
+            HorizontalSection {
+                Layout.fillWidth: true
+                visible: (artistData.similarArtists || []).length > 0
+                title: "Related Artists"
+                mediaType: "artist"
+                showViewAll: false
+                items: (artistData.similarArtists || []).map(function(a) {
+                    return { id: a.id, title: a.name, subtitle: "Artist", coverUrl: a.coverUrl || "" }
+                })
+                onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }
+            }
+
             Item { height: 32 }
         }
     }
@@ -195,7 +279,11 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    BackButton { anchors { top: parent.top; left: parent.left; margins: 16 } }
+    Rectangle {
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: 52; color: "transparent"
+        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    }
 
     LoadingOverlay { loading: root.loading }
 }

@@ -269,11 +269,33 @@ void TidalClient::removeTrackFavorite(qint64 trackId, std::function<void(bool)> 
 }
 
 void TidalClient::addAlbumFavorite(qint64 albumId, std::function<void(bool)> cb) {
-    Q_UNUSED(albumId); Q_UNUSED(cb);
+    QUrlQuery form;
+    form.addQueryItem("albumIds", QString::number(albumId));
+    form.addQueryItem("countryCode", m_api->countryCode());
+    m_api->postApiForm(QStringLiteral("users/%1/favorites/albums").arg(m_userId), form,
+        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
+}
+
+void TidalClient::removeAlbumFavorite(qint64 albumId, std::function<void(bool)> cb) {
+    QUrlQuery params;
+    params.addQueryItem("countryCode", m_api->countryCode());
+    m_api->deleteApi(QStringLiteral("users/%1/favorites/albums/%2").arg(m_userId).arg(albumId), params,
+        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
 }
 
 void TidalClient::addArtistFavorite(qint64 artistId, std::function<void(bool)> cb) {
-    Q_UNUSED(artistId); Q_UNUSED(cb);
+    QUrlQuery form;
+    form.addQueryItem("artistIds", QString::number(artistId));
+    form.addQueryItem("countryCode", m_api->countryCode());
+    m_api->postApiForm(QStringLiteral("users/%1/favorites/artists").arg(m_userId), form,
+        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
+}
+
+void TidalClient::removeArtistFavorite(qint64 artistId, std::function<void(bool)> cb) {
+    QUrlQuery params;
+    params.addQueryItem("countryCode", m_api->countryCode());
+    m_api->deleteApi(QStringLiteral("users/%1/favorites/artists/%2").arg(m_userId).arg(artistId), params,
+        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
 }
 
 // ─── Streaming ─────────────────────────────────────
@@ -328,11 +350,79 @@ QNetworkReply* TidalClient::fetchRaw(const QUrl &url, std::function<void(QByteAr
 void TidalClient::createPlaylist(const QString &title,
     std::function<void(Playlist, QString)> cb)
 {
-    Q_UNUSED(title); Q_UNUSED(cb);
+    QUrlQuery form;
+    form.addQueryItem("title",       title);
+    form.addQueryItem("description", "");
+    m_api->postApiForm(QStringLiteral("users/%1/playlists").arg(m_userId), form,
+        [cb](QJsonObject root, QString err) {
+            if (!err.isEmpty()) { cb({}, err); return; }
+            cb(Playlist::fromJson(root), {});
+        });
 }
 
 void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
     std::function<void(bool)> cb)
 {
-    Q_UNUSED(uuid); Q_UNUSED(trackId); Q_UNUSED(cb);
+    m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
+        [this, uuid, trackId, cb](QString etag, QString err) {
+            if (!err.isEmpty()) { cb(false); return; }
+            QUrlQuery form;
+            form.addQueryItem("trackIds",           QString::number(trackId));
+            form.addQueryItem("onArtifactNotFound", "FAIL");
+            form.addQueryItem("onDuplicateFound",   "SKIP");
+            m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
+                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+        });
+}
+
+void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,
+    std::function<void(bool)> cb)
+{
+    m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
+        [this, uuid, itemIndex, cb](QString etag, QString err) {
+            if (!err.isEmpty()) { cb(false); return; }
+            QUrlQuery params;
+            params.addQueryItem("toIndex",   QString::number(itemIndex));
+            params.addQueryItem("fromIndex", QString::number(itemIndex));
+            params.addQueryItem("order",     "INDEX");
+            m_api->deleteApiEtag(QStringLiteral("playlists/%1/items").arg(uuid), params, etag,
+                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+        });
+}
+
+void TidalClient::fetchTrackRadio(qint64 trackId, TracksCallback cb) {
+    QUrlQuery q;
+    q.addQueryItem("limit", "50");
+    m_api->get(QStringLiteral("tracks/%1/radio").arg(trackId), q,
+        [this, cb](QJsonObject root, QString err) {
+            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err);
+        });
+}
+
+void TidalClient::fetchLyrics(qint64 trackId, std::function<void(QString, bool, QString)> cb) {
+    m_api->get(QStringLiteral("tracks/%1/lyrics").arg(trackId), {},
+        [cb](QJsonObject root, QString err) {
+            if (!err.isEmpty()) { cb({}, false, err); return; }
+            QString text = root["subtitles"].toString();
+            bool timed = !text.isEmpty();
+            if (text.isEmpty()) text = root["text"].toString();
+            cb(text, timed, {});
+        });
+}
+
+void TidalClient::fetchRecentlyPlayed(TracksCallback cb) {
+    QUrlQuery q;
+    q.addQueryItem("limit", "20");
+    m_api->get(QStringLiteral("users/%1/history").arg(m_userId), q,
+        [this, cb](QJsonObject root, QString err) {
+            if (!err.isEmpty()) { cb({}, err); return; }
+            QList<Track> tracks;
+            for (const auto &v : root["items"].toArray()) {
+                auto obj  = v.toObject();
+                auto item = obj["item"].toObject();
+                if (item.contains("id"))
+                    tracks.append(Track::fromJson(item));
+            }
+            cb(tracks, {});
+        });
 }

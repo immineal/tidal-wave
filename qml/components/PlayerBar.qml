@@ -87,6 +87,7 @@ Rectangle {
                             var q = player.audioQuality
                             if (q === "HI_RES_LOSSLESS") return "MAX"
                             if (q === "LOSSLESS") return "LOSSLESS"
+                            if (q === "HIGH") return "HI-FI"
                             return q
                         }
                         color: Theme.accent; font.pixelSize: 9; font.bold: true
@@ -100,6 +101,10 @@ Rectangle {
                 icon: root.isLiked ? "heart-filled" : "heart"
                 size: 16
                 iconColor: root.isLiked ? Theme.accent : Theme.textSec
+                ToolTip.visible: likeTipHov.hovered
+                ToolTip.text: root.isLiked ? "Unlike track" : "Like track"
+                ToolTip.delay: 600
+                HoverHandler { id: likeTipHov }
                 onClicked: {
                     var trackId = root.track.id
                     if (root.isLiked) {
@@ -133,8 +138,8 @@ Rectangle {
                         anchors.centerIn: parent
                         name: player.playing ? "pause" : "play"
                         color: Theme.bg
-                        width: 14
-                        height: 14
+                        width: 24
+                        height: 24
                         strokeWidth: 1.5
                         visible: !player.loading
                     }
@@ -181,6 +186,10 @@ Rectangle {
                 width: 90
                 value: player.muted ? 0 : player.volume
                 onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
+                ToolTip.visible: volTipHov.hovered
+                ToolTip.text: Math.round((player.muted ? 0 : player.volume) * 100) + "%"
+                ToolTip.delay: 400
+                HoverHandler { id: volTipHov }
             }
 
             IconButton {

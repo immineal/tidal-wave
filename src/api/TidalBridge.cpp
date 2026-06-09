@@ -1,6 +1,8 @@
 #include "TidalBridge.h"
 #include <QJSEngine>
 #include <QSettings>
+#include <QGuiApplication>
+#include <QClipboard>
 
 TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
@@ -76,6 +78,7 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["trackNumber"] = t.trackNumber;
     m["explicit_"]   = t.explicit_;
     m["quality"]     = t.audioQuality;
+    m["popularity"]  = t.popularity;
     // pre-computed display
     int s = t.duration % 60, mm = t.duration / 60;
     m["durationStr"] = QString("%1:%2").arg(mm).arg(s, 2, 10, QChar('0'));
@@ -92,7 +95,9 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["coverUrl640"] = a.coverUrl(640);
     m["releaseDate"] = a.releaseDate;
     m["numTracks"]   = a.numTracks;
+    m["duration"]    = a.duration;
     m["quality"]     = a.audioQuality;
+    m["type"]        = a.type;
     m["year"]        = a.releaseDate.left(4);
     return m;
 }
@@ -111,10 +116,13 @@ QVariantMap TidalBridge::artistToMap(const Artist &a) {
 
 QVariantMap TidalBridge::playlistToMap(const Playlist &p) {
     QVariantMap m;
-    m["uuid"]      = p.uuid;
-    m["title"]     = p.title;
-    m["numTracks"] = p.numTracks;
-    m["coverUrl"]  = p.coverUrl(320);
+    m["uuid"]        = p.uuid;
+    m["title"]       = p.title;
+    m["description"] = p.description;
+    m["numTracks"]   = p.numTracks;
+    m["duration"]    = p.duration;
+    m["coverUrl"]    = p.coverUrl(320);
+    m["type"]        = p.type;
     return m;
 }
 
@@ -127,19 +135,19 @@ QVariantMap TidalBridge::mixToMap(const Mix &m_) {
     return m;
 }
 
-QVariantList TidalBridge::tracksToList(const QList<Track> &v) {
+QVariantList TidalBridge::tracksToList(const QList<Track> &v) const {
     QVariantList r; for (const auto &t : v) r << trackToMap(t); return r;
 }
-QVariantList TidalBridge::albumsToList(const QList<Album> &v) {
+QVariantList TidalBridge::albumsToList(const QList<Album> &v) const {
     QVariantList r; for (const auto &a : v) r << albumToMap(a); return r;
 }
-QVariantList TidalBridge::artistsToList(const QList<Artist> &v) {
+QVariantList TidalBridge::artistsToList(const QList<Artist> &v) const {
     QVariantList r; for (const auto &a : v) r << artistToMap(a); return r;
 }
-QVariantList TidalBridge::playlistsList(const QList<Playlist> &v) {
+QVariantList TidalBridge::playlistsList(const QList<Playlist> &v) const {
     QVariantList r; for (const auto &p : v) r << playlistToMap(p); return r;
 }
-QVariantList TidalBridge::mixesList(const QList<Mix> &v) {
+QVariantList TidalBridge::mixesList(const QList<Mix> &v) const {
     QVariantList r; for (const auto &m : v) r << mixToMap(m); return r;
 }
 
@@ -281,6 +289,106 @@ void TidalBridge::removeTrackFavorite(qlonglong trackId, QJSValue cb) {
             emit favoriteTracksChanged();
         }
         call(cb, { success });
+    });
+}
+
+void TidalBridge::copyToClipboard(const QString &text) {
+    QGuiApplication::clipboard()->setText(text);
+}
+
+bool TidalBridge::isAlbumFavorite(qlonglong albumId) const {
+    for (const auto &a : m_favoriteAlbums)
+        if (a.id == albumId) return true;
+    return false;
+}
+
+void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
+    m_client->addAlbumFavorite(albumId, [this, albumId, cb](bool success) mutable {
+        if (success) emit favoriteAlbumsChanged();
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
+    m_client->removeAlbumFavorite(albumId, [this, albumId, cb](bool success) mutable {
+        if (success) {
+            for (int i = 0; i < m_favoriteAlbums.size(); ++i) {
+                if (m_favoriteAlbums[i].id == albumId) { m_favoriteAlbums.removeAt(i); break; }
+            }
+            emit favoriteAlbumsChanged();
+        }
+        call(cb, { success });
+    });
+}
+
+bool TidalBridge::isArtistFavorite(qlonglong artistId) const {
+    for (const auto &a : m_favoriteArtists)
+        if (a.id == artistId) return true;
+    return false;
+}
+
+void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
+    m_client->addArtistFavorite(artistId, [this, artistId, cb](bool success) mutable {
+        if (success) emit favoriteArtistsChanged();
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::removeArtistFavorite(qlonglong artistId, QJSValue cb) {
+    m_client->removeArtistFavorite(artistId, [this, artistId, cb](bool success) mutable {
+        if (success) {
+            for (int i = 0; i < m_favoriteArtists.size(); ++i) {
+                if (m_favoriteArtists[i].id == artistId) { m_favoriteArtists.removeAt(i); break; }
+            }
+            emit favoriteArtistsChanged();
+        }
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::createPlaylist(const QString &title, QJSValue cb) {
+    m_client->createPlaylist(title, [this, cb](Playlist p, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(playlistToMap(p)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
+    m_client->addTrackToPlaylist(uuid, trackId, [this, cb](bool success) mutable {
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
+    m_client->removeTrackFromPlaylist(uuid, itemIndex, [this, cb](bool success) mutable {
+        call(cb, { success });
+    });
+}
+
+QVariantList TidalBridge::getUserPlaylists() const {
+    return playlistsList(m_favoritePlaylists);
+}
+
+void TidalBridge::fetchTrackRadio(qlonglong trackId, QJSValue cb) {
+    m_client->fetchTrackRadio(trackId, [this, cb](QList<Track> tracks, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchLyrics(qlonglong trackId, QJSValue cb) {
+    m_client->fetchLyrics(trackId, [this, cb](QString text, bool timed, QString err) mutable {
+        QVariantMap result;
+        result["text"]  = text;
+        result["timed"] = timed;
+        call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchRecentlyPlayed(QJSValue cb) {
+    m_client->fetchRecentlyPlayed([this, cb](QList<Track> tracks, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+                   qjsEngine(this)->toScriptValue(err) });
     });
 }
 
