@@ -68,7 +68,7 @@ int Application::run(int argc, char **argv) {
     silenceLogsAndAlsa();
 
     QApplication::setApplicationName("Tidal Wave");
-    QApplication::setApplicationVersion("0.1.0");
+    QApplication::setApplicationVersion("0.2.1-beta");
     QApplication::setOrganizationName("TidalWave");
     QApplication::setDesktopFileName("tidal-wave");
 
@@ -76,7 +76,6 @@ int Application::run(int argc, char **argv) {
     format.setSamples(4);
     QSurfaceFormat::setDefaultFormat(format);
 
-    QApplication app(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/TidalWave/assets/icon.png")));
 
@@ -90,7 +89,7 @@ int Application::run(int argc, char **argv) {
         return 0; // exit since an instance is already running
     }
 
-    QLocalServer *server = new QLocalServer(&app);
+    QLocalServer *server = new QLocalServer(QCoreApplication::instance());
     QLocalServer::removeServer(socketName);
     if (server->listen(socketName)) {
         connect(server, &QLocalServer::newConnection, this, [this, server]() {
@@ -162,7 +161,7 @@ int Application::run(int argc, char **argv) {
     m_engine->load(QUrl(QStringLiteral("qrc:/TidalWave/qml/main.qml")));
     if (m_engine->rootObjects().isEmpty()) return -1;
 
-    return app.exec();
+    return QApplication::exec();
 }
 
 

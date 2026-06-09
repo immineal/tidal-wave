@@ -29,6 +29,149 @@ ApplicationWindow {
     property var    previousPageParams: ({})
     property var    _currentNavParams: ({})
 
+    // ─── Sleep Timer Core State & Logic ──────────────────
+    property bool   sleepTimerActive: false
+    property int    sleepTimeTotal: 0      // total seconds
+    property int    sleepTimeLeft: 0       // seconds remaining
+    property bool   sleepStopAtEndOfTrack: false
+    property bool   sleepFadeOut: true     // whether to fade out volume
+    property double sleepOriginalVolume: 1.0
+    property bool   sleepIsFading: false
+
+    property int lastTrackPosition: 0
+    property int lastTrackDuration: 0
+
+    function startSleepTimer(minutes, stopAtEnd) {
+        cancelSleepTimer()
+        if (stopAtEnd) {
+            sleepStopAtEndOfTrack = true
+            sleepTimerActive = true
+            sleepTimeLeft = 0
+            sleepTimeTotal = 0
+        } else {
+            sleepStopAtEndOfTrack = false
+            sleepTimeTotal = minutes * 60
+            sleepTimeLeft = minutes * 60
+            sleepTimerActive = true
+        }
+    }
+
+    function cancelSleepTimer() {
+        volumeRestoreTimer.stop()
+        if (sleepIsFading) {
+            player.setVolume(sleepOriginalVolume)
+        }
+        sleepTimerActive = false
+        sleepIsFading = false
+        sleepTimeLeft = 0
+        sleepStopAtEndOfTrack = false
+    }
+
+    function triggerSleepStop() {
+        if (player.playing) {
+            player.playPause()
+        }
+        if (sleepIsFading) {
+            volumeRestoreTimer.originalVol = sleepOriginalVolume
+            volumeRestoreTimer.start()
+        }
+        sleepTimerActive = false
+        sleepIsFading = false
+        sleepTimeLeft = 0
+        sleepStopAtEndOfTrack = false
+    }
+
+    function formatSleepTime(seconds) {
+        var h = Math.floor(seconds / 3600)
+        var m = Math.floor((seconds % 3600) / 60)
+        var s = seconds % 60
+        if (h > 0) {
+            return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
+        }
+        return m + ":" + (s < 10 ? "0" : "") + s
+    }
+
+    Timer {
+        id: sleepTimer
+        interval: 1000
+        running: root.sleepTimerActive && !root.sleepStopAtEndOfTrack && player.playing
+        repeat: true
+        onTriggered: {
+            if (root.sleepTimeLeft > 0) {
+                root.sleepTimeLeft -= 1
+                var fadeDuration = 30 // fade out in the last 30 seconds
+                if (root.sleepFadeOut && root.sleepTimeLeft <= fadeDuration && player.playing) {
+                    if (!root.sleepIsFading) {
+                        root.sleepIsFading = true
+                        root.sleepOriginalVolume = player.volume
+                    }
+                    var ratio = Math.max(0.0, root.sleepTimeLeft / fadeDuration)
+                    player.setVolume(root.sleepOriginalVolume * ratio)
+                } else if (root.sleepIsFading) {
+                    // Timer adjusted back up! Restore volume
+                    player.setVolume(root.sleepOriginalVolume)
+                    root.sleepIsFading = false
+                }
+                if (root.sleepTimeLeft === 0) {
+                    root.triggerSleepStop()
+                }
+            } else {
+                root.triggerSleepStop()
+            }
+        }
+    }
+
+    Timer {
+        id: volumeRestoreTimer
+        interval: 300 // 300ms delay to allow playback to stop fully before restoring volume
+        repeat: false
+        property double originalVol: 1.0
+        onTriggered: {
+            player.setVolume(originalVol)
+        }
+    }
+
+    Connections {
+        target: player
+        
+        function onPositionChanged(ms) {
+            if (player.duration > 0) {
+                root.lastTrackPosition = ms
+                root.lastTrackDuration = player.duration
+                
+                // End-of-track fade out logic (last 15 seconds)
+                if (root.sleepTimerActive && root.sleepStopAtEndOfTrack && root.sleepFadeOut) {
+                    var timeLeftMs = player.duration - ms
+                    var fadeDurationMs = 15000 // 15s fade out
+                    if (timeLeftMs > 0 && timeLeftMs <= fadeDurationMs) {
+                        if (!root.sleepIsFading) {
+                            root.sleepIsFading = true
+                            root.sleepOriginalVolume = player.volume
+                        }
+                        var ratio = Math.max(0.0, timeLeftMs / fadeDurationMs)
+                        player.setVolume(root.sleepOriginalVolume * ratio)
+                    } else if (root.sleepIsFading) {
+                        // User must have seeked back! Restore volume
+                        player.setVolume(root.sleepOriginalVolume)
+                        root.sleepIsFading = false
+                    }
+                }
+            }
+        }
+        
+        function onCurrentTrackChanged() {
+            if (root.sleepTimerActive && root.sleepStopAtEndOfTrack) {
+                // If it transitioned naturally, last known position was close to duration
+                var finishedNaturally = (root.lastTrackDuration > 0) && (root.lastTrackDuration - root.lastTrackPosition < 2000)
+                if (finishedNaturally) {
+                    root.triggerSleepStop()
+                }
+            }
+            root.lastTrackPosition = 0
+            root.lastTrackDuration = 0
+        }
+    }
+
     function applyParams(item, params) {
         if (!item || !params) return
         for (var k in params) {
