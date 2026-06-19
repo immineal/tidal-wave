@@ -47,12 +47,13 @@ jobs:
       - name: Package binary (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          tar -czf ${{ matrix.asset_name }} -C build tidal-wave
+          tar -czf ${{ matrix.asset_name }} -C build tidal-wave TidalWave
 
       - name: Package binary (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           macdeployqt build/tidal-wave.app -qmldir=qml
+          cp -r build/TidalWave build/tidal-wave.app/Contents/MacOS/
           tar -czf ${{ matrix.asset_name }} -C build tidal-wave.app
 
       - name: Package binary (Windows)
@@ -60,6 +61,7 @@ jobs:
         shell: pwsh
         run: |
           windeployqt --qmldir qml build\Release\tidal-wave.exe
+          Copy-Item -Path build\TidalWave -Destination build\Release\TidalWave -Recurse
           Compress-Archive -Path build\Release\* -DestinationPath ${{ matrix.asset_name }}
 
       - name: Upload binaries to Release

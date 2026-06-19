@@ -52,6 +52,9 @@ qt_add_executable(tidal-wave
     ${HEADERS}
 )
 
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(tidal-wave

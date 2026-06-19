@@ -158,7 +158,7 @@ int Application::run(int argc, char **argv) {
     ctx->setContextProperty(QStringLiteral("player"), m_player);
     ctx->setContextProperty(QStringLiteral("app"),    this);
 
-    m_engine->load(QUrl(QStringLiteral("qrc:/TidalWave/qml/main.qml")));
+    m_engine->loadFromModule("TidalWave", "main");
     if (m_engine->rootObjects().isEmpty()) return -1;
 
     return QApplication::exec();

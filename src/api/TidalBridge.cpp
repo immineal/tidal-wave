@@ -3,6 +3,7 @@
 #include <QSettings>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QDebug>
 
 TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
@@ -534,6 +535,7 @@ void TidalBridge::markPlaylistPlayed(const QString &uuid) {
     QVariantMap playtimes = settings.value(key).toMap();
     playtimes[uuid] = QDateTime::currentMSecsSinceEpoch();
     settings.setValue(key, playtimes);
+    qDebug() << "[TidalBridge] markPlaylistPlayed uuid:" << uuid << "timestamp:" << playtimes[uuid].toLongLong();
     emit favoritePlaylistsChanged();
 }
 
@@ -544,6 +546,8 @@ void TidalBridge::sortPlaylists(QList<Playlist> &playlists) const {
     QSettings settings;
     QString key = QStringLiteral("user_%1/playlists/lastPlayed").arg(uid);
     QVariantMap playtimes = settings.value(key).toMap();
+
+    qDebug() << "[TidalBridge] sortPlaylists count:" << playlists.size() << "playtimes keys:" << playtimes.keys();
 
     std::stable_sort(playlists.begin(), playlists.end(), [&playtimes](const Playlist &a, const Playlist &b) {
         qint64 timeA = playtimes.value(a.uuid, 0LL).toLongLong();
