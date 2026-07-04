@@ -24,12 +24,35 @@ Item {
     property string playlistUuid: ""
     property int    trackItemIndex: -1  // 0-based position in playlist
     property bool   showPopularity: false
+    // Download state for this row: "idle" | "busy" | "done" | "error"
+    property string dlState: "idle"
+    property string dlError: ""
 
     Connections {
         target: bridge
         function onFavoriteTracksChanged() {
             root.isLiked = root.trackData ? bridge.isTrackFavorite(root.trackData.id) : false
         }
+    }
+
+    // Reflect download progress for this track. Delegates are recycled on scroll,
+    // so re-evaluate whenever trackData is (re)assigned.
+    Connections {
+        target: downloader
+        function onDownloadStarted(id) {
+            if (root.trackData && id === root.trackData.id) root.dlState = "busy"
+        }
+        function onDownloadFinished(id, path) {
+            if (root.trackData && id === root.trackData.id) { root.dlState = "done"; dlResetTimer.restart() }
+        }
+        function onDownloadError(id, msg) {
+            if (root.trackData && id === root.trackData.id) { root.dlState = "error"; root.dlError = msg; dlResetTimer.restart() }
+        }
+    }
+    Timer { id: dlResetTimer; interval: 3000; onTriggered: root.dlState = "idle" }
+    onTrackDataChanged: {
+        root.dlState = (root.trackData && downloader.isDownloading(root.trackData.id)) ? "busy" : "idle"
+        root.dlError = ""
     }
 
     signal playRequested()
@@ -175,6 +198,69 @@ Item {
                 HoverHandler { id: popHov }
             }
 
+            // Download button — revealed on hover; stays visible while busy/done/error
+            Item {
+                id: dlButton
+                visible: hov.hovered || root.dlState !== "idle"
+                Layout.preferredWidth: 24
+                Layout.fillHeight: true
+                Layout.alignment: Qt.AlignVCenter
+
+                // idle / error glyph (error tints red)
+                VectorIcon {
+                    anchors.centerIn: parent
+                    visible: root.dlState === "idle" || root.dlState === "error"
+                    name: "download"
+                    color: root.dlState === "error" ? Theme.red : Theme.textSec
+                    width: 16; height: 16
+                    strokeWidth: 1.8
+                }
+                // done glyph
+                VectorIcon {
+                    anchors.centerIn: parent
+                    visible: root.dlState === "done"
+                    name: "check"
+                    color: Theme.green
+                    width: 16; height: 16
+                    strokeWidth: 2
+                }
+                // busy spinner (matches LoadingOverlay idiom)
+                Item {
+                    id: dlSpinner
+                    anchors.centerIn: parent
+                    width: 16; height: 16
+                    visible: root.dlState === "busy"
+                    Rectangle {
+                        width: 3; height: 7; radius: 1.5
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        color: Theme.accent
+                    }
+                    RotationAnimator {
+                        target: dlSpinner
+                        from: 0; to: 360
+                        duration: 800
+                        loops: Animation.Infinite
+                        running: root.dlState === "busy"
+                    }
+                }
+
+                // Mirror the menu button exactly: a plain click MouseArea with NO
+                // hover detection. Anything that tracks hover on the button itself
+                // (hoverEnabled MouseArea or a HoverHandler) desyncs from the row's
+                // hover and makes the button flicker/shift as it toggles.
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    enabled: root.dlState !== "busy"
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.trackData && root.dlState !== "busy")
+                            downloader.downloadTrack(root.trackData)
+                    }
+                }
+            }
+
             // Context menu button
             Item {
                 visible: hov.hovered
@@ -216,6 +302,13 @@ Item {
             contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: { if (root.trackData) player.appendQueue([root.trackData]) }
+        }
+        MenuItem {
+            text: "⬇  Download…"
+            enabled: root.trackData !== null && root.dlState !== "busy"
+            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+            onTriggered: { if (root.trackData) downloader.downloadTrack(root.trackData) }
         }
         MenuItem {
             text: "📋  Add to playlist"

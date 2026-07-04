@@ -269,8 +269,15 @@ void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
             emit favoriteTracksChanged();
             m_client->fetchTrack(trackId, [this](Track t, QString err) {
                 if (err.isEmpty() && t.id > 0) {
-                    m_favoriteTracks.append(t);
-                    emit favoriteTracksChanged();
+                    // Don't add a second row if it's already in the list (e.g.
+                    // re-liking a track that was loaded during paging).
+                    const bool exists = std::any_of(
+                        m_favoriteTracks.cbegin(), m_favoriteTracks.cend(),
+                        [&](const Track &x) { return x.id == t.id; });
+                    if (!exists) {
+                        m_favoriteTracks.append(t);
+                        emit favoriteTracksChanged();
+                    }
                 }
             });
         }
@@ -449,6 +456,10 @@ QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
 }
 
 void TidalBridge::loadFavoriteTrackIds() {
+    // Invalidate any in-flight tracks-paging chain so its stale callbacks stop
+    // appending after this reset (otherwise the old chain re-adds page 0).
+    ++m_favTracksLoadGen;
+
     m_favoriteTrackIds.clear();
     m_favoriteTracks.clear();
     m_favoriteAlbums.clear();
@@ -463,13 +474,19 @@ void TidalBridge::loadFavoriteTrackIds() {
 
 void TidalBridge::loadNextFavoriteTracksPage(int offset) {
     if (m_client->userId() == 0) return;
-    m_client->fetchFavoriteTracks([this, offset](QList<Track> tracks, QString err) {
+    const int gen = m_favTracksLoadGen;
+    m_client->fetchFavoriteTracks([this, offset, gen](QList<Track> tracks, QString err) {
+        // A newer load has superseded this chain — stop before touching state.
+        if (gen != m_favTracksLoadGen) return;
         if (!err.isEmpty() || tracks.isEmpty()) {
             std::reverse(m_favoriteTracks.begin(), m_favoriteTracks.end());
             emit favoriteTracksChanged();
             return;
         }
         for (const auto &t : tracks) {
+            // Skip tracks already seen this load — overlapping API windows
+            // (order=DATE) would otherwise duplicate boundary items.
+            if (m_favoriteTrackIds.contains(t.id)) continue;
             m_favoriteTrackIds.insert(t.id);
             m_favoriteTracks.append(t);
         }

@@ -14,6 +14,12 @@ Rectangle {
     property bool loading: false
     property bool isSaved: false
 
+    // Records this album as the "playing from" source, then starts playback.
+    function playFrom(list, i) {
+        player.setPlaybackSource("album", "" + root.albumId, root.albumData.title || "")
+        player.playTracks(list, i)
+    }
+
     function updateSavedState() {
         isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
     }
@@ -162,7 +168,7 @@ Rectangle {
                                 text: "Play"
                                 glyph: "▶"
                                 accent: true
-                                onClicked: if (root.tracks.length > 0) player.playTracks(root.tracks, 0)
+                                onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
                             }
 
                             PillButton {
@@ -172,7 +178,7 @@ Rectangle {
                                 onClicked: {
                                     if (root.tracks.length > 0) {
                                         player.setShuffle(true)
-                                        player.playTracks(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                                        root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                     }
                                 }
                             }
@@ -209,7 +215,7 @@ Rectangle {
             showCover:   false
             isPlaying:   player.currentTrack.id === modelData.id && player.playing
             trackData:   modelData
-            onPlayRequested: player.playTracks(root.tracks, index)
+            onPlayRequested: root.playFrom(root.tracks, index)
         }
 
         footer: Item { height: 32; width: tracksList.width }

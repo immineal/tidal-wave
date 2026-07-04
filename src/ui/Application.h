@@ -5,11 +5,13 @@
 #include "api/TidalClient.h"
 #include "api/TidalBridge.h"
 #include "player/Player.h"
+#include "player/Downloader.h"
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include <QSystemTrayIcon>
 
 class QQmlApplicationEngine;
+class CastManager;
 
 class Application : public QObject {
     Q_OBJECT
@@ -34,6 +36,8 @@ private:
     TidalClient *m_client = nullptr;
     TidalBridge *m_bridge = nullptr;
     Player      *m_player = nullptr;
+    Downloader  *m_downloader = nullptr;
+    CastManager *m_cast   = nullptr;
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;

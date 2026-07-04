@@ -16,6 +16,12 @@ Rectangle {
     property bool showAllTracks: false
     property bool isFollowing: false
 
+    // Records this artist as the "playing from" source, then plays.
+    function playFrom(list, i) {
+        player.setPlaybackSource("artist", "" + root.artistId, root.artistData.name || "")
+        player.playTracks(list, i)
+    }
+
     function updateFollowState() {
         isFollowing = artistId > 0 ? bridge.isArtistFavorite(artistId) : false
     }
@@ -96,7 +102,7 @@ Rectangle {
                             text: "Play"
                             glyph: "▶"
                             accent: true
-                            onClicked: if (topTracks.length > 0) player.playTracks(topTracks, 0)
+                            onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
                         }
 
                         PillButton {
@@ -156,7 +162,7 @@ Rectangle {
                     coverUrl:    modelData.coverUrl80
                     isPlaying:   player.currentTrack.id === modelData.id && player.playing
                     trackData:   modelData
-                    onPlayRequested: player.playTracks(root.topTracks, index)
+                    onPlayRequested: root.playFrom(root.topTracks, index)
                 }
             }
 

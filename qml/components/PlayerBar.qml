@@ -83,13 +83,7 @@ Rectangle {
                     }
                     Text {
                         id: ql; anchors.centerIn: parent
-                        text: {
-                            var q = player.audioQuality
-                            if (q === "HI_RES_LOSSLESS") return "MAX"
-                            if (q === "LOSSLESS") return "LOSSLESS"
-                            if (q === "HIGH") return "HI-FI"
-                            return q
-                        }
+                        text: player.qualityLabel(player.audioQuality).toUpperCase()
                         color: Theme.accent; font.pixelSize: 9; font.bold: true
                     }
                 }
@@ -192,12 +186,93 @@ Rectangle {
                 HoverHandler { id: volTipHov }
             }
 
+            // Cast to a Chromecast / Google Home device (Linux only — `cast`
+            // is null elsewhere, which hides the button).
+            IconButton {
+                id: castBtn
+                visible: !!cast
+                icon: "cast"; size: 20
+                iconColor: (cast && cast.connected) ? Theme.accent : Theme.textSec
+                onClicked: { if (cast) cast.startScan(); castPopup.open() }
+
+                Popup {
+                    id: castPopup
+                    y: -height - 10
+                    x: parent.width - width
+                    width: 260
+                    padding: 6
+                    background: Rectangle {
+                        color: Theme.surfaceHigh; border.color: Theme.border; radius: 8
+                    }
+                    contentItem: ColumnLayout {
+                        spacing: 2
+                        Text {
+                            text: "Cast to"; color: Theme.textDim
+                            font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                            Layout.leftMargin: 8; Layout.topMargin: 4; Layout.bottomMargin: 2
+                        }
+                        CastRow {
+                            label: "This computer"
+                            active: !(cast && cast.connected)
+                            onSelected: { if (cast) cast.disconnect(); castPopup.close() }
+                        }
+                        Repeater {
+                            model: cast ? cast.devices : []
+                            delegate: CastRow {
+                                required property var modelData
+                                label: modelData.name
+                                active: cast && cast.connected && cast.deviceName === modelData.name
+                                onSelected: { if (cast) cast.connectToDevice(modelData.id); castPopup.close() }
+                            }
+                        }
+                        Text {
+                            visible: !cast || cast.devices.length === 0
+                            text: "Searching for devices…"
+                            color: Theme.textSec; font.pixelSize: 12
+                            Layout.margins: 8
+                        }
+                    }
+                }
+            }
+
             IconButton {
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
                 onClicked: root.showQueue()
             }
         }
+    }
+
+    // A selectable row in the cast device picker.
+    component CastRow : Rectangle {
+        id: cr
+        property string label
+        property bool   active: false
+        signal selected()
+        Layout.fillWidth: true
+        implicitWidth: 240
+        implicitHeight: 36
+        radius: 6
+        color: crHov.hovered ? Theme.surfaceHov : "transparent"
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 8
+            VectorIcon {
+                name: "cast"; width: 16; height: 16; strokeWidth: 1.6
+                color: cr.active ? Theme.accent : Theme.textSec
+            }
+            Text {
+                Layout.fillWidth: true; text: cr.label
+                color: cr.active ? Theme.accent : Theme.textPrimary
+                font.pixelSize: 13; elide: Text.ElideRight
+            }
+            VectorIcon {
+                visible: cr.active; name: "check"
+                width: 14; height: 14; strokeWidth: 2; color: Theme.accent
+            }
+        }
+        HoverHandler { id: crHov; cursorShape: Qt.PointingHandCursor }
+        TapHandler   { onTapped: cr.selected() }
     }
 
     component IconButton : Item {

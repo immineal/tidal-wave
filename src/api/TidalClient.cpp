@@ -7,8 +7,8 @@
 TidalClient::TidalClient(TidalApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
 
-QString TidalClient::qualityString() const {
-    switch (m_quality) {
+QString TidalClient::qualityString(AudioQuality q) {
+    switch (q) {
         case AudioQuality::Low96k:       return "LOW";
         case AudioQuality::Low320k:      return "HIGH";
         case AudioQuality::Lossless:     return "LOSSLESS";
@@ -301,10 +301,14 @@ void TidalClient::removeArtistFavorite(qint64 artistId, std::function<void(bool)
 // ─── Streaming ─────────────────────────────────────
 
 void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
+    fetchStreamManifest(trackId, m_quality, std::move(cb));
+}
+
+void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb) {
     QUrlQuery q;
     q.addQueryItem("playbackmode",      "STREAM");
     q.addQueryItem("assetpresentation", "FULL");
-    q.addQueryItem("audioquality",      qualityString());
+    q.addQueryItem("audioquality",      qualityString(quality));
     q.addQueryItem("prefetch",          "false");
 
     m_api->get(QStringLiteral("tracks/%1/playbackinfopostpaywall").arg(trackId), q,

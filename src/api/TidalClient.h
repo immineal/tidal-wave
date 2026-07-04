@@ -106,6 +106,9 @@ public:
 
     // Streaming
     void fetchStreamManifest(qint64 trackId, StreamCb cb);
+    // Request a specific quality (e.g. HiResLossless for downloads) without
+    // touching the persisted playback preference m_quality.
+    void fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb);
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
 
     // Playlist management
@@ -136,7 +139,7 @@ private:
     QList<Artist>   parseArtists  (const QJsonObject &root);
     QList<Playlist> parsePlaylists(const QJsonObject &root);
 
-    QString qualityString() const;
+    static QString qualityString(AudioQuality q);
 
     TidalApi     *m_api;
     qint64        m_userId  = 0;

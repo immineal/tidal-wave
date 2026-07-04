@@ -14,6 +14,7 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 *   **Media Keys and MPRIS2**: Full Linux media player integration via D-Bus MPRIS2, supporting lockscreen controls, system volume widgets, and media keys.
 *   **Secure Authentication**: Implements Tidal OAuth device login flow with secure local session caching using SQLite.
 *   **Custom Audio Player**: Native streaming audio engine utilizing QMediaPlayer and QAudioOutput with selectable stream qualities.
+*   **Chromecast Output** (Linux): Cast audio to Chromecast / Google Home devices — native mDNS discovery (Avahi) and CASTV2 control, with a built-in HTTP server that streams the current track (FLAC up to 96 kHz, or AAC) directly to the device. Downloads/downsamples on the fly so every quality tier casts.
 *   **Persistent Navigation State**: Separate loaders retain individual page states when jumping between Home, Search, and My Collection views.
 *   **Queue Panel**: Full queue management including track ordering, shuffle, and cycle repeat modes.
 *   **System Tray Integration**: Background playback support with system tray control options to show, hide, and quit the application.
@@ -47,12 +48,26 @@ I used Claude Code over the course of 3 days to generate most of the code for th
 | Alt + Left | Go back |
 | Ctrl + , | Open Settings |
 
+## Installation (Linux)
+
+The easiest way to install on Debian/Ubuntu-based distros is the prebuilt **`.deb`** from the
+[latest GitHub Release](https://github.com/immineal/tidal-wave/releases/latest). It declares all
+runtime dependencies, so `apt` pulls in the Qt6 runtime, QML modules, and everything else for you —
+no more hunting down packages by hand:
+
+```bash
+sudo apt install ./tidal-wave-linux-x86_64.deb
+```
+
+For downloads and Chromecast transcoding, also install `ffmpeg` (a `Recommends`, so most setups get
+it automatically). To build from source instead, see below.
+
 ## Prerequisites
 
 *   C++20-compliant compiler (GCC 11+, Clang 13+, MSVC 2022+)
 *   CMake 3.20+
 *   Qt 6 SDK (6.4+), specifically the following modules: Core, Gui, Widgets, Quick, Qml, QmlModels, Network, DBus, Multimedia, Sql, Svg, Concurrent
-*   On Linux: libsqlite3-dev and libasound2-dev (or similar ALSA development libraries)
+*   On Linux: libsqlite3-dev, libasound2-dev (or similar ALSA development libraries), and libavahi-client-dev (for Chromecast device discovery)
 
 ## Building from Source
 
@@ -72,6 +87,22 @@ On Windows:
 ```cmd
 build\Release\tidal-wave.exe
 ```
+
+## Building a Debian package (.deb)
+
+The build ships a CPack configuration that produces a `.deb` with the correct runtime
+dependencies declared (so users no longer have to hunt down packages by hand), plus a
+desktop entry and hicolor icons:
+
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel 4
+cd build && cpack -G DEB
+sudo apt install ./tidal-wave-*-Linux.deb   # pulls in Qt6 runtime, QML modules, ffmpeg, etc.
+```
+
+`ffmpeg` is a `Recommends` (only needed for the download feature); everything else is a
+hard `Depends`, including the easy-to-miss `qml6-module-*` runtime modules.
 
 ## License
 

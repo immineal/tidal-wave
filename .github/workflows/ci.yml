@@ -1,0 +1,40 @@
+name: CI
+
+# Build on every push and pull request so cross-platform breakage (e.g. Linux-only
+# /tmp paths, resource-prefix changes) is caught before a release, not after.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          # qtmultimedia for playback; qtsvg provides Qt6::Svg (find_package fails without it).
+          modules: 'qtmultimedia qtsvg'
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+
+      - name: Configure
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
