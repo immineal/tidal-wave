@@ -80,8 +80,15 @@ qt_add_executable(tidal-wave
     ${HEADERS}
 )
 
-qt_policy(SET QTP0001 NEW)
-qt_policy(SET QTP0004 NEW)
+# Qt policies — guarded by version so the project builds across Qt releases:
+# QTP0001 exists since Qt 6.5, QTP0004 only since Qt 6.7 (setting an unknown
+# policy is a hard error, which broke CI on Qt 6.5.3).
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
+    qt_policy(SET QTP0001 NEW)
+endif()
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.7)
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
