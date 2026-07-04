@@ -86,7 +86,7 @@ qt_add_executable(tidal-wave
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
     qt_policy(SET QTP0001 NEW)
 endif()
-if(Qt6_VERSION VERSION_GREATER_EQUAL 6.7)
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8)
     qt_policy(SET QTP0004 NEW)
 endif()
 
