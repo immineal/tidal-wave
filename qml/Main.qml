@@ -11,7 +11,10 @@ ApplicationWindow {
     height: 800
     minimumWidth: 900
     minimumHeight: 600
-    title: "Tidal Wave"
+    // Show the current track in the window/taskbar/dock title.
+    title: (player.currentTrack && player.currentTrack.title)
+           ? player.currentTrack.title + " — " + player.currentTrack.artists + " · Tidal Wave"
+           : "Tidal Wave"
     color: Theme.bg
 
     onClosing: (close) => {

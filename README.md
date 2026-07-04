@@ -48,58 +48,92 @@ I used Claude Code over the course of 3 days to generate most of the code for th
 | Alt + Left | Go back |
 | Ctrl + , | Open Settings |
 
-## Installation (Linux)
+## Installation
 
-The easiest way to install on Debian/Ubuntu-based distros is the prebuilt **`.deb`** from the
-[latest GitHub Release](https://github.com/immineal/tidal-wave/releases/latest). It declares all
-runtime dependencies, so `apt` pulls in the Qt6 runtime, QML modules, and everything else for you —
-no more hunting down packages by hand:
+Prebuilt downloads for every platform are on the **[latest release](https://github.com/immineal/tidal-wave/releases/latest)**.
+Pick your system below. (`ffmpeg` is optional but needed for the download and Chromecast features.)
+
+<details open>
+<summary><b>🐧 Linux — Debian / Ubuntu / Mint (recommended)</b></summary>
+
+Download **`tidal-wave-linux-x86_64.deb`**, then:
 
 ```bash
 sudo apt install ./tidal-wave-linux-x86_64.deb
 ```
 
-For downloads and Chromecast transcoding, also install `ffmpeg` (a `Recommends`, so most setups get
-it automatically). To build from source instead, see below.
+That's it — `apt` pulls in the Qt 6 runtime, QML modules, and everything else automatically
+(no chasing missing packages). Launch it from your app menu or run `tidal-wave`.
+</details>
 
-## Prerequisites
+<details>
+<summary><b>🐧 Linux — other distros (Fedora, Arch, …)</b></summary>
 
-*   C++20-compliant compiler (GCC 11+, Clang 13+, MSVC 2022+)
-*   CMake 3.20+
-*   Qt 6 SDK (6.4+), specifically the following modules: Core, Gui, Widgets, Quick, Qml, QmlModels, Network, DBus, Multimedia, Sql, Svg, Concurrent
-*   On Linux: libsqlite3-dev, libasound2-dev (or similar ALSA development libraries), and libavahi-client-dev (for Chromecast device discovery)
-
-## Building from Source
+Download **`tidal-wave-linux-x86_64.tar.gz`**, extract it, and run the binary:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel 4
+tar -xzf tidal-wave-linux-x86_64.tar.gz
+./tidal-wave
 ```
 
-## Running the Application
+Install the runtime yourself via your package manager: the Qt 6 libraries (Core, Gui, Widgets,
+Quick, Qml, Network, DBus, Multimedia, Sql, Svg) and their QML modules, plus `ffmpeg` and
+`avahi` (for Chromecast). If it complains about a missing library, install the matching Qt 6
+runtime package. Building from source (below) is often easier on these distros.
+</details>
 
-On Linux and macOS:
-```bash
-./build/tidal-wave
-```
+<details>
+<summary><b>🍎 macOS (Apple Silicon & Intel)</b></summary>
 
-On Windows:
-```cmd
-build\Release\tidal-wave.exe
-```
-
-## Building a Debian package (.deb)
-
-The build ships a CPack configuration that produces a `.deb` with the correct runtime
-dependencies declared (so users no longer have to hunt down packages by hand), plus a
-desktop entry and hicolor icons:
+Download **`tidal-wave-macos-x64.tar.gz`** and unpack it (double-click, or `tar -xzf …`).
+The app is unsigned, so macOS quarantines it — clear that once:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel 4
-cd build && cpack -G DEB
-sudo apt install ./tidal-wave-*-Linux.deb   # pulls in Qt6 runtime, QML modules, ffmpeg, etc.
+xattr -dr com.apple.quarantine tidal-wave.app
 ```
+
+Then double-click **`tidal-wave.app`**. (Alternatively: right-click the app → **Open** →
+**Open** on the first launch.) For downloads, `brew install ffmpeg`.
+</details>
+
+<details>
+<summary><b>🪟 Windows 10 / 11</b></summary>
+
+Download **`tidal-wave-windows-x64.zip`**, extract the folder anywhere, and run **`tidal-wave.exe`**.
+It's unsigned, so Windows SmartScreen will warn you the first time — click **More info → Run anyway**.
+Everything (Qt runtime, QML) is bundled in the folder. For downloads, install
+[ffmpeg](https://www.gyan.dev/ffmpeg/builds/) and add it to your `PATH`.
+</details>
+
+## Build from source (any OS)
+
+You need a C++20 compiler (GCC 11+ / Clang 13+ / MSVC 2022+), **CMake 3.20+**, and **Qt 6.5+**.
+
+**Install the toolchain:**
+
+| OS | Command |
+|----|---------|
+| Debian/Ubuntu | `sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev qt6-multimedia-dev libqt6svg6-dev qml6-module-qtquick-controls libsqlite3-dev libasound2-dev libavahi-client-dev ffmpeg` |
+| Fedora | `sudo dnf install gcc-c++ cmake qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel qt6-qtsvg-devel sqlite-devel alsa-lib-devel avahi-devel ffmpeg` |
+| Arch | `sudo pacman -S base-devel cmake qt6-base qt6-declarative qt6-multimedia qt6-svg sqlite avahi ffmpeg` |
+| macOS | `brew install cmake qt ffmpeg` |
+| Windows | Install [Qt 6](https://www.qt.io/download-qt-installer) (MSVC 2022) + [CMake](https://cmake.org/download/) + Visual Studio 2022 Build Tools |
+
+**Build & run:**
+
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release   # macOS: add -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
+cmake --build build --config Release --parallel
+./build/tidal-wave                                # Windows: build\Release\tidal-wave.exe ; macOS: open build/tidal-wave.app
+```
+
+**Make a Debian package** (produces a `.deb` with all dependencies declared):
+
+```bash
+cd build && cpack -G DEB && sudo apt install ./tidal-wave-*-Linux.deb
+```
+
+> Chromecast output is Linux-only (it uses Avahi/mDNS); it's automatically excluded on macOS and Windows.
 
 `ffmpeg` is a `Recommends` (only needed for the download feature); everything else is a
 hard `Depends`, including the easy-to-miss `qml6-module-*` runtime modules.
