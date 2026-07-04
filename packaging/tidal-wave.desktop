@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Tidal Wave
+GenericName=Music Player
+Comment=A native desktop client for Tidal
+Exec=tidal-wave
+Icon=tidal-wave
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;streaming;tidal;audio;hifi;
+StartupNotify=true
+StartupWMClass=tidal-wave

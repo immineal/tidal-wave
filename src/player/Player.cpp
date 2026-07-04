@@ -4,6 +4,8 @@
 #include <QTimer>
 #include <QNetworkReply>
 #include <QSettings>
+#include <QDir>
+#include "cast/CastSession.h"
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
@@ -49,9 +51,9 @@ Player::~Player() {
     delete m_mpdTempFile;
 }
 
-bool   Player::playing()  const { return m_player  && m_player->playbackState() == QMediaPlayer::PlayingState; }
-qint64 Player::position() const { return m_player  ? m_player->position() : 0; }
-qint64 Player::duration() const { return m_player  ? m_player->duration() : 0; }
+bool   Player::playing()  const { return casting() ? m_castPlaying  : (m_player && m_player->playbackState() == QMediaPlayer::PlayingState); }
+qint64 Player::position() const { return casting() ? m_castPosition : (m_player ? m_player->position() : 0); }
+qint64 Player::duration() const { return casting() ? m_castDuration : (m_player ? m_player->duration() : 0); }
 double Player::volume()   const { return m_audioOut ? m_audioOut->volume() : m_pendingVolume; }
 bool   Player::muted()    const { return m_audioOut ? m_audioOut->isMuted() : m_pendingMuted; }
 
@@ -70,6 +72,14 @@ void Player::setLoading(bool l) {
 
 void Player::playTracks(const QVariantList &tracks, int startIndex) {
     if (tracks.isEmpty()) return;
+    // Clear a stale "playing from" if this play didn't set its own source.
+    if (!m_pendingSource && !m_sourceType.isEmpty()) {
+        m_sourceType.clear();
+        m_sourceId.clear();
+        m_sourceName.clear();
+        emit sourceChanged();
+    }
+    m_pendingSource = false;
     cancelPreload();
     m_queue.clear();
     for (const auto &v : tracks)
@@ -78,6 +88,15 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
     if (m_shuffle) buildShuffleOrder();
     emit queueChanged();
     loadAndPlay(m_index);
+}
+
+void Player::setPlaybackSource(const QString &type, const QString &id, const QString &name) {
+    m_pendingSource = true;   // consumed by the playTracks() that follows
+    if (m_sourceType == type && m_sourceId == id && m_sourceName == name) return;
+    m_sourceType = type;
+    m_sourceId   = id;
+    m_sourceName = name;
+    emit sourceChanged();
 }
 
 void Player::appendQueue(const QVariantList &tracks) {
@@ -155,6 +174,37 @@ QVariantList Player::queueTracks() const {
     return out;
 }
 
+QVariantList Player::upcomingTracks(int max) const {
+    QVariantList out;
+    if (m_queue.isEmpty() || m_index < 0) return out;
+    if (m_shuffle) {
+        // Walk the shuffle permutation forward from the current track.
+        int si = m_shuffleOrder.indexOf(m_index);
+        for (int i = si + 1; i >= 0 && i < m_shuffleOrder.count(); ++i) {
+            out.append(m_queue[m_shuffleOrder[i]]);
+            if (max >= 0 && out.count() >= max) break;
+        }
+    } else {
+        for (int i = m_index + 1; i < m_queue.count(); ++i) {
+            out.append(m_queue[i]);
+            if (max >= 0 && out.count() >= max) break;
+        }
+    }
+    return out;
+}
+
+QVariantList Player::playbackOrderTracks() const {
+    if (!m_shuffle) return queueTracks();
+    QVariantList out;
+    for (int idx : m_shuffleOrder) {
+        if (idx < 0 || idx >= m_queue.count()) continue;
+        QVariantMap m = m_queue[idx];
+        m[QStringLiteral("_queueIndex")] = idx;
+        out.append(m);
+    }
+    return out;
+}
+
 QVariantList Player::recentlyPlayed() const {
     QVariantList out;
     for (const auto &m : m_recentlyPlayed)
@@ -163,6 +213,11 @@ QVariantList Player::recentlyPlayed() const {
 }
 
 void Player::playPause() {
+    if (casting()) {
+        if (m_castPlaying) m_castSession->pause();
+        else               m_castSession->play();
+        return;
+    }
     if (!m_player) return;
     if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
@@ -180,22 +235,27 @@ void Player::next() {
 }
 
 void Player::previous() {
-    if (!m_player) return;
-    if (m_player->position() > 3000) {
-        m_player->setPosition(0);
-        return;
-    }
+    if (position() > 3000) { seek(0); return; }
     int p = previousIndex();
-    if (p < 0) { m_player->setPosition(0); return; }
+    if (p < 0) { seek(0); return; }
     m_index = p;
     emit queueChanged();
     loadAndPlay(m_index);
 }
 
-void Player::seek(qint64 ms) { if (m_player) m_player->setPosition(ms); }
+void Player::seek(qint64 ms) {
+    if (casting()) {
+        if (m_castSession) m_castSession->seek(ms / 1000.0);
+        m_castPosition = ms;              // optimistic; device status corrects it
+        emit positionChanged(ms);
+        return;
+    }
+    if (m_player) m_player->setPosition(ms);
+}
 
 void Player::setVolume(double v) {
     m_pendingVolume = qBound(0.0, v, 1.0);
+    if (casting() && m_castSession) m_castSession->setVolume(m_pendingVolume);
     if (m_audioOut) m_audioOut->setVolume(m_pendingVolume);
     emit volumeChanged(m_pendingVolume);
 }
@@ -210,6 +270,8 @@ void Player::setShuffle(bool s) {
     m_shuffle = s;
     if (s) buildShuffleOrder();
     emit shuffleChanged(s);
+    // The upcoming-tracks order depends on shuffle, so refresh every queue view.
+    emit queueChanged();
 }
 
 void Player::setRepeatMode(int m) {
@@ -318,6 +380,14 @@ void Player::loadAndPlay(int index) {
         settings.setValue(QStringLiteral("user_%1/playback/recentlyPlayed").arg(uid), saveList);
     }
 
+    // If casting, don't play locally — hand the (already-updated) current track
+    // off to the cast device; CastManager re-prepares and LOADs it.
+    if (casting()) {
+        setLoading(false);
+        emit castTrackChanged();
+        return;
+    }
+
     // Use preloaded file if it's ready for this exact index
     if (m_preloadIndex == index && m_preloadReady && m_preloadTempFile) {
         m_mpdTempFile     = m_preloadTempFile;
@@ -362,7 +432,7 @@ void Player::loadAndPlay(int index) {
                         return;
                     }
                     m_mpdTempFile = new QTemporaryFile(
-                        QStringLiteral("/tmp/tidal-wave-XXXXXX.mp4"));
+                        QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
                     m_mpdTempFile->setAutoRemove(false);
                     if (m_mpdTempFile->open()) {
                         m_mpdTempFile->write(data);
@@ -377,7 +447,7 @@ void Player::loadAndPlay(int index) {
                 });
             } else {
                 m_mpdTempFile = new QTemporaryFile(
-                    QStringLiteral("/tmp/tidal-wave-XXXXXX.mpd"));
+                    QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
                 m_mpdTempFile->setAutoRemove(false);
                 if (m_mpdTempFile->open()) {
                     m_mpdTempFile->write(manifest.url.toUtf8());
@@ -459,7 +529,7 @@ void Player::preloadNext() {
             m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, next](QByteArray data, QString dlErr) {
                 m_preloadDownload = nullptr;
                 if (m_preloadIndex != next || !dlErr.isEmpty() || data.isEmpty()) return;
-                auto *f = new QTemporaryFile(QStringLiteral("/tmp/tidal-wave-XXXXXX.mp4"));
+                auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
                 f->setAutoRemove(false);
                 if (f->open()) {
                     f->write(data); f->flush(); f->close();
@@ -470,7 +540,7 @@ void Player::preloadNext() {
                 }
             });
         } else {
-            auto *f = new QTemporaryFile(QStringLiteral("/tmp/tidal-wave-XXXXXX.mpd"));
+            auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
             f->setAutoRemove(false);
             if (f->open()) {
                 f->write(manifest.url.toUtf8()); f->flush(); f->close();
@@ -509,6 +579,57 @@ QString Player::audioQuality() const {
         case AudioQuality::HiResLossless: return QStringLiteral("HI_RES_LOSSLESS");
     }
     return QStringLiteral("LOSSLESS");
+}
+
+QString Player::qualityLabel(const QString &code) const {
+    // Tidal-consistent tier names (matches the labels Tidal's own apps show),
+    // replacing the older "HI-FI"/"MASTER" branding.
+    if (code == QStringLiteral("HI_RES_LOSSLESS")) return QStringLiteral("Max");
+    if (code == QStringLiteral("LOSSLESS"))        return QStringLiteral("Lossless");
+    if (code == QStringLiteral("HIGH"))            return QStringLiteral("High");
+    if (code == QStringLiteral("LOW"))             return QStringLiteral("Low");
+    return code;
+}
+
+void Player::beginCast(CastSession *session) {
+    m_castSession = session;
+    // Silence local output; playback continues on the device.
+    if (m_player) m_player->pause();
+    cancelPreload();
+    m_castPosition = 0;
+    m_castDuration = duration();   // seed from current until the device reports
+    m_castPlaying  = true;
+    emit playingChanged(true);
+}
+
+void Player::endCast() {
+    if (!m_castSession) return;
+    m_castSession = nullptr;
+    m_castPosition = 0;
+    m_castPlaying  = false;
+    // Resume playback locally from the top of the current track.
+    if (m_index >= 0 && m_index < m_queue.count())
+        loadAndPlay(m_index);
+    else
+        emit playingChanged(false);
+}
+
+void Player::onCastPosition(double sec) {
+    m_castPosition = qint64(sec * 1000.0);
+    if (casting()) emit positionChanged(m_castPosition);
+}
+
+void Player::onCastDuration(double sec) {
+    const qint64 d = qint64(sec * 1000.0);
+    if (d <= 0) return;
+    m_castDuration = d;
+    if (casting()) emit durationChanged(m_castDuration);
+}
+
+void Player::onCastPlaying(bool playing) {
+    if (m_castPlaying == playing) return;
+    m_castPlaying = playing;
+    if (casting()) emit playingChanged(playing);
 }
 
 void Player::handleUserIdChanged(qint64 uid) {

@@ -8,6 +8,12 @@ Rectangle {
     color: Theme.surface
     border.color: Theme.border
 
+    // The queue in true play order (respects shuffle). Rebound on queueChanged
+    // (via player.queueTracks) and on shuffle toggle. In shuffle mode each entry
+    // carries "_queueIndex" so rows still map back to the real queue index.
+    property var queueModel: (player.queueTracks, player.shuffle,
+                              player.shuffle ? player.playbackOrderTracks() : player.queueTracks)
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -23,6 +29,11 @@ Rectangle {
                 Text { text: "Queue"; color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
                 Item { Layout.fillWidth: true }
                 Text { text: player.queueCount + " tracks"; color: Theme.textSec; font.pixelSize: 12 }
+                Text {
+                    visible: player.shuffle
+                    text: "· Shuffled"
+                    color: Theme.accent; font.pixelSize: 12
+                }
                 Item { width: 8 }
                 Text {
                     text: "Clear"
@@ -43,13 +54,15 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: player.queueTracks
+            model: root.queueModel
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             delegate: QueueDelegate {
                 required property int     index
                 required property var     modelData
-                trackIndex: index
+                // In shuffle mode the row's real queue index travels in the map.
+                trackIndex: (modelData && modelData._queueIndex !== undefined)
+                            ? modelData._queueIndex : index
                 track:      modelData
                 width: queueListView.width
             }
@@ -98,9 +111,11 @@ Rectangle {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // Up/Down reorder buttons
+                // Up/Down reorder buttons — hidden while shuffled, where a
+                // linear move would fight the displayed play order.
                 Column {
                     spacing: 1
+                    visible: !player.shuffle
                     opacity: qHov.hovered ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 120 } }
                     Repeater {

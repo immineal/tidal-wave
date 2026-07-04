@@ -18,6 +18,12 @@ Rectangle {
 
     readonly property bool isUserPlaylist: playlistType === "USER"
 
+    // Records this playlist as the "playing from" source, then starts playback.
+    function playFrom(list, i) {
+        player.setPlaybackSource("playlist", root.playlistUuid, root.playlistTitle)
+        player.playTracks(list, i)
+    }
+
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
     function loadPlaylist() {
@@ -158,7 +164,7 @@ Rectangle {
                             onClicked: {
                                 if (root.tracks.length > 0) {
                                     bridge.markPlaylistPlayed(root.playlistUuid)
-                                    player.playTracks(root.tracks, 0)
+                                    root.playFrom(root.tracks, 0)
                                 }
                             }
                         }
@@ -171,7 +177,7 @@ Rectangle {
                                 if (root.tracks.length > 0) {
                                     bridge.markPlaylistPlayed(root.playlistUuid)
                                     player.setShuffle(true)
-                                    player.playTracks(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                 }
                             }
                         }
@@ -207,7 +213,7 @@ Rectangle {
             trackItemIndex: index
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)
-                player.playTracks(root.tracks, index)
+                root.playFrom(root.tracks, index)
             }
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {

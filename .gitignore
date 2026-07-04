@@ -47,7 +47,8 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
-/build/
+# Any build directory (build/, build_custom/, build_dl/, …)
+/build*/
 
 # IDE files
 .idea/

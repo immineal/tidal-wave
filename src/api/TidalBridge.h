@@ -101,6 +101,11 @@ private:
     TidalClient  *m_client;
     QQmlEngine   *m_engine = nullptr;
     QSet<qlonglong> m_favoriteTrackIds;
+    // Bumped each time loadFavoriteTrackIds() restarts paging; in-flight
+    // callbacks from a superseded load compare against it and bail, so two
+    // overlapping load chains can't both re-append page 0 (was duplicating the
+    // top liked song).
+    int             m_favTracksLoadGen = 0;
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;

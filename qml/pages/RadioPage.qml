@@ -13,6 +13,12 @@ Rectangle {
     property var    tracks:     []
     property bool   loading:    false
 
+    // Records this radio station as the "playing from" source, then plays.
+    function playFrom(list, i) {
+        player.setPlaybackSource("radio", "" + root.trackId, root.radioTitle)
+        player.playTracks(list, i)
+    }
+
     onTrackIdChanged: if (trackId > 0) loadRadio()
 
     function loadRadio() {
@@ -65,7 +71,7 @@ Rectangle {
                 text: "Play all"
                 glyph: "▶"
                 accent: true
-                onClicked: player.playTracks(root.tracks, 0)
+                onClicked: root.playFrom(root.tracks, 0)
             }
         }
 
@@ -96,7 +102,7 @@ Rectangle {
                 coverUrl:    modelData.coverUrl80
                 isPlaying:   player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
-                onPlayRequested: player.playTracks(root.tracks, index)
+                onPlayRequested: root.playFrom(root.tracks, index)
             }
         }
     }

@@ -14,6 +14,12 @@ Rectangle {
     property var    tracks: []
     property bool   loading: false
 
+    // Records this mix as the "playing from" source, then starts playback.
+    function playFrom(list, i) {
+        player.setPlaybackSource("mix", root.mixId, root.title)
+        player.playTracks(list, i)
+    }
+
     onMixIdChanged: if (mixId.length > 0) loadMix()
 
     function loadMix() {
@@ -115,7 +121,7 @@ Rectangle {
                             text: "Play"
                             glyph: "▶"
                             accent: true
-                            onClicked: if (root.tracks.length > 0) player.playTracks(root.tracks, 0)
+                            onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
                         }
 
                         PillButton {
@@ -125,7 +131,7 @@ Rectangle {
                             onClicked: {
                                 if (root.tracks.length > 0) {
                                     player.setShuffle(true)
-                                    player.playTracks(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                 }
                             }
                         }
@@ -145,7 +151,7 @@ Rectangle {
             coverUrl:    modelData.coverUrl80
             isPlaying:   player.currentTrack.id === modelData.id && player.playing
             trackData:   modelData
-            onPlayRequested: player.playTracks(root.tracks, index)
+            onPlayRequested: root.playFrom(root.tracks, index)
         }
 
         footer: Item { height: 32; width: tracksList.width }

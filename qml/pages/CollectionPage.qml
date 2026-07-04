@@ -177,7 +177,10 @@ Rectangle {
                 coverUrl:    modelData.coverUrl80
                 isPlaying:   player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
-                onPlayRequested: player.playTracks(tracksList.sortedTracks, index)
+                onPlayRequested: {
+                    player.setPlaybackSource("collection", "tracks", "Liked Songs")
+                    player.playTracks(tracksList.sortedTracks, index)
+                }
             }
 
             ScrollBar.vertical: ScrollBar {

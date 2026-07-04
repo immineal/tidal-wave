@@ -12,6 +12,8 @@ Rectangle {
     property bool hasTrack: track && track.id > 0
     property bool isLiked: false
     property bool showLyrics: false
+    // Download state for the current track: "idle" | "busy" | "done" | "error"
+    property string dlState: "idle"
 
     // Sleep Timer Delegation (mapping properties to Window.window to persist in background)
     readonly property bool   sleepTimerActive:      Window.window ? Window.window.sleepTimerActive : false
@@ -122,6 +124,8 @@ Rectangle {
             ignoreSyncTimer.stop()
             root.updateLikedState()
             root.loadLyrics()
+            var t = player.currentTrack
+            root.dlState = (t && t.id > 0 && downloader.isDownloading(t.id)) ? "busy" : "idle"
         }
     }
 
@@ -129,6 +133,15 @@ Rectangle {
         target: bridge
         function onFavoriteTracksChanged() { root.updateLikedState() }
     }
+
+    // Reflect download progress for the currently-playing track.
+    Connections {
+        target: downloader
+        function onDownloadStarted(id)         { if (root.hasTrack && id === root.track.id) root.dlState = "busy" }
+        function onDownloadFinished(id, path)  { if (root.hasTrack && id === root.track.id) { root.dlState = "done";  npDlReset.restart() } }
+        function onDownloadError(id, msg)      { if (root.hasTrack && id === root.track.id) { root.dlState = "error"; npDlReset.restart() } }
+    }
+    Timer { id: npDlReset; interval: 3000; onTriggered: root.dlState = "idle" }
     function updateLikedState() {
         isLiked = (hasTrack && track.id > 0)
             ? bridge.isTrackFavorite(track.id)
@@ -137,6 +150,7 @@ Rectangle {
     Component.onCompleted: {
         updateLikedState()
         loadLyrics()
+        if (hasTrack && downloader.isDownloading(track.id)) dlState = "busy"
     }
 
     Rectangle {
@@ -324,6 +338,23 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
+                        // "Playing from" source link — navigates back to the
+                        // playlist / album / mix / liked songs it started from.
+                        Text {
+                            id: sourceLink
+                            visible: hasTrack && player.sourceName.length > 0
+                            text: "Playing from " + player.sourceName
+                            color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
+                            font.pixelSize: 12
+                            font.letterSpacing: 0.5
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                            HoverHandler { id: sourceLinkHov; cursorShape: Qt.PointingHandCursor }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: goToSource()
+                            }
+                        }
                         Text {
                             text: hasTrack ? track.title : "—"; color: Theme.textPrimary
                             font.pixelSize: 32; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
@@ -366,6 +397,56 @@ Rectangle {
                         }
                     }
 
+                    // Download button — always visible while a track is playing
+                    Item {
+                        id: npDownloadBtn
+                        visible: root.hasTrack
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        activeFocusOnTab: root.dlState !== "busy"
+                        Keys.onReturnPressed: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track)
+                        Keys.onSpacePressed:  if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track)
+                        Rectangle {
+                            anchors.fill: parent; radius: width / 2; color: "transparent"
+                            border.width: npDownloadBtn.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            visible: root.dlState === "idle" || root.dlState === "error"
+                            name: "download"
+                            color: root.dlState === "error" ? Theme.red
+                                   : (npDlHov.hovered ? Theme.textPrimary : Theme.textSec)
+                            width: 24; height: 24; strokeWidth: 1.5
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            visible: root.dlState === "done"
+                            name: "check"; color: Theme.green
+                            width: 24; height: 24; strokeWidth: 2
+                        }
+                        Item {
+                            id: npSpinner
+                            anchors.centerIn: parent
+                            width: 22; height: 22
+                            visible: root.dlState === "busy"
+                            Rectangle {
+                                width: 3.5; height: 9; radius: 1.75
+                                anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter
+                                color: Theme.accent
+                            }
+                            RotationAnimator {
+                                target: npSpinner; from: 0; to: 360; duration: 800
+                                loops: Animation.Infinite; running: root.dlState === "busy"
+                            }
+                        }
+                        HoverHandler { id: npDlHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track) }
+                        ToolTip.visible: npDlHov.hovered && root.dlState === "error"
+                        ToolTip.text: "Download failed — click to retry"
+                        ToolTip.delay: 300
+                    }
+
                     CtrlBtn {
                         id: npLikeBtn
                         visible: root.hasTrack
@@ -395,10 +476,9 @@ Rectangle {
                                player.audioQuality === "LOSSLESS" ? "#1a4a3a" : Theme.surfaceHigh
                         Text {
                             id: qlbl; anchors.centerIn: parent
-                            text: player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ MASTER" :
-                                  player.audioQuality === "LOSSLESS" ? "◆ LOSSLESS" :
-                                  player.audioQuality === "HIGH" ? "HI-FI" :
-                                  player.audioQuality
+                            text: (player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ " :
+                                   player.audioQuality === "LOSSLESS" ? "◆ " : "")
+                                  + player.qualityLabel(player.audioQuality)
                             color: Theme.accent; font.pixelSize: 11; font.bold: true
                         }
                     }
@@ -802,9 +882,13 @@ Rectangle {
 
                 // Up Next preview
                 ColumnLayout {
+                    id: upNextCol
                     Layout.fillWidth: true
                     spacing: 12
-                    visible: player.queueCount > player.queueIndex + 1
+                    // Reflects the true play order (respects shuffle). Depends on
+                    // queueTracks/queueIndex so it refreshes on queueChanged.
+                    property var upNext: (player.queueTracks, player.queueIndex, player.upcomingTracks(3))
+                    visible: upNext.length > 0
 
                     Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
 
@@ -817,14 +901,15 @@ Rectangle {
                     }
 
                     Repeater {
-                        model: Math.min(3, Math.max(0, player.queueCount - player.queueIndex - 1))
+                        model: upNextCol.upNext
                         delegate: RowLayout {
                             required property int index
+                            required property var modelData
                             Layout.fillWidth: true
                             Layout.topMargin: 4
                             Layout.bottomMargin: 4
                             spacing: 12
-                            property var upTrack: player.queueTrackAt(player.queueIndex + 1 + index)
+                            property var upTrack: modelData
                             Rectangle {
                                 width: 44; height: 44; radius: 6; color: Theme.surfaceHigh; clip: true
                                 Image {
@@ -904,5 +989,22 @@ Rectangle {
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params || {})
+    }
+
+    // Maps the current "playing from" source to a navigation target, or null if
+    // the source can't be navigated to. Param names match each detail page.
+    function sourceNav() {
+        var t = player.sourceType
+        if (t === "album")      return { page: "album",      params: { albumId: Number(player.sourceId) } }
+        if (t === "artist")     return { page: "artist",     params: { artistId: Number(player.sourceId) } }
+        if (t === "playlist")   return { page: "playlist",   params: { playlistUuid: player.sourceId, playlistTitle: player.sourceName, coverUrl: "", playlistType: "" } }
+        if (t === "mix")        return { page: "mix",        params: { mixId: player.sourceId } }
+        if (t === "radio")      return { page: "radio",      params: { radioTitle: player.sourceName, trackId: Number(player.sourceId) } }
+        if (t === "collection") return { page: "collection", params: { activeTab: 0 } }
+        return null
+    }
+    function goToSource() {
+        var n = sourceNav()
+        if (n) navigateTo(n.page, n.params)
     }
 }
