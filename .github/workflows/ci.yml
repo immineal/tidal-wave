@@ -14,7 +14,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Per-OS Qt: Windows aqt lacks 6.11.x binaries, but 6.7.3 builds there;
+        # macOS needs >= 6.8 (6.7.x links a removed 'AGL' framework); Linux is
+        # happy on either. Match what's proven to build on each platform.
+        include:
+          - os: ubuntu-latest
+            qt: '6.11.1'
+          - os: windows-latest
+            qt: '6.7.3'
+          - os: macos-latest
+            qt: '6.11.1'
 
     steps:
       - name: Checkout repository
@@ -23,7 +32,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.1'
+          version: ${{ matrix.qt }}
           # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
           # ship in the base desktop install (aqt has no separate 'qtsvg' module).
           modules: 'qtmultimedia'

@@ -14,14 +14,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Per-OS Qt (see ci.yml): Windows on 6.7.3 (aqt lacks 6.11 there),
+        # macOS/Linux on 6.11.1 (6.7.x links a removed 'AGL' framework on macOS).
         include:
           - os: ubuntu-latest
             asset_name: tidal-wave-linux-x86_64.tar.gz
+            qt: '6.11.1'
           - os: windows-latest
             asset_name: tidal-wave-windows-x64.zip
+            qt: '6.7.3'
           - os: macos-latest
             asset_name: tidal-wave-macos-x64.tar.gz
+            qt: '6.11.1'
 
     steps:
       - name: Checkout repository
@@ -30,7 +34,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.1'
+          version: ${{ matrix.qt }}
           # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
           # ship in the base desktop install (aqt has no separate 'qtsvg' module).
           modules: 'qtmultimedia'
