@@ -228,7 +228,13 @@ int Application::run(int argc, char **argv) {
     ctx->setContextProperty(QStringLiteral("bridge"), m_bridge);
     ctx->setContextProperty(QStringLiteral("player"), m_player);
     ctx->setContextProperty(QStringLiteral("downloader"), m_downloader);
-    ctx->setContextProperty(QStringLiteral("cast"), m_cast);   // null on non-Linux
+    // `cast` is Linux-only; register it as null elsewhere (m_cast is an
+    // incomplete type off-Linux since CastManager.h isn't included there).
+    QObject *castObj = nullptr;
+#ifdef Q_OS_LINUX
+    castObj = m_cast;
+#endif
+    ctx->setContextProperty(QStringLiteral("cast"), castObj);
     ctx->setContextProperty(QStringLiteral("app"),    this);
 
     m_engine->loadFromModule("TidalWave", "Main");
