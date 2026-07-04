@@ -213,11 +213,13 @@ QVariantList Player::recentlyPlayed() const {
 }
 
 void Player::playPause() {
+#ifdef Q_OS_LINUX
     if (casting()) {
         if (m_castPlaying) m_castSession->pause();
         else               m_castSession->play();
         return;
     }
+#endif
     if (!m_player) return;
     if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
@@ -244,18 +246,22 @@ void Player::previous() {
 }
 
 void Player::seek(qint64 ms) {
+#ifdef Q_OS_LINUX
     if (casting()) {
         if (m_castSession) m_castSession->seek(ms / 1000.0);
         m_castPosition = ms;              // optimistic; device status corrects it
         emit positionChanged(ms);
         return;
     }
+#endif
     if (m_player) m_player->setPosition(ms);
 }
 
 void Player::setVolume(double v) {
     m_pendingVolume = qBound(0.0, v, 1.0);
+#ifdef Q_OS_LINUX
     if (casting() && m_castSession) m_castSession->setVolume(m_pendingVolume);
+#endif
     if (m_audioOut) m_audioOut->setVolume(m_pendingVolume);
     emit volumeChanged(m_pendingVolume);
 }
