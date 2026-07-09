@@ -129,7 +129,7 @@ int Application::run(int argc, char **argv) {
     silenceLogsAndAlsa();
 
     QApplication::setApplicationName("Tidal Wave");
-    QApplication::setApplicationVersion("0.3.0");
+    QApplication::setApplicationVersion("0.3.1");
     QApplication::setOrganizationName("TidalWave");
     QApplication::setDesktopFileName("tidal-wave");
 

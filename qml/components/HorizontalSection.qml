@@ -79,8 +79,13 @@ Item {
                 orientation: ListView.Horizontal
                 clip: true
                 spacing: 16
-                leftMargin: 24
-                rightMargin: 24
+                // Leading/trailing inset as real content (header/footer) rather than
+                // leftMargin/rightMargin: with margins the rest position is contentX
+                // = -leftMargin, which the wheel handler (clamped to >= 0) can't reach,
+                // so the inset was lost after scrolling right and back. As content the
+                // inset lives in [0, contentWidth-width] and is always preserved.
+                header: Item { width: 24; height: 1 }
+                footer: Item { width: 24; height: 1 }
                 model: root.items
                 interactive: false  // let parent page handle wheel; users drag the scrollbar
 

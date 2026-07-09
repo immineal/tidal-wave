@@ -268,7 +268,9 @@ void Player::setVolume(double v) {
 
 void Player::setMuted(bool m) {
     m_pendingMuted = m;
-    if (m_audioOut) m_audioOut->setMuted(m);
+    // While casting the local output is force-muted; don't override that here
+    // (the preference is re-applied on endCast). Mute still updates the UI state.
+    if (m_audioOut && !casting()) m_audioOut->setMuted(m);
     emit mutedChanged(m);
 }
 
@@ -444,6 +446,9 @@ void Player::loadAndPlay(int index) {
                         m_mpdTempFile->write(data);
                         m_mpdTempFile->flush();
                         m_mpdTempFile->close();
+                        // Casting may have started while this fetch was in flight;
+                        // if so, hand off to the device instead of playing locally.
+                        if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                         m_player->play();
                     } else {
@@ -459,6 +464,9 @@ void Player::loadAndPlay(int index) {
                     m_mpdTempFile->write(manifest.url.toUtf8());
                     m_mpdTempFile->flush();
                     m_mpdTempFile->close();
+                    // Casting may have started while this fetch was in flight;
+                    // if so, hand off to the device instead of playing locally.
+                    if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                     m_player->play();
                 } else {
@@ -599,8 +607,11 @@ QString Player::qualityLabel(const QString &code) const {
 
 void Player::beginCast(CastSession *session) {
     m_castSession = session;
-    // Silence local output; playback continues on the device.
+    // Silence local output; playback continues on the device. Muting the output
+    // (not just pausing) is a hard guard: any in-flight stream fetch that resolves
+    // after this point must not leak audio to the local speakers alongside the cast.
     if (m_player) m_player->pause();
+    if (m_audioOut) m_audioOut->setMuted(true);
     cancelPreload();
     m_castPosition = 0;
     m_castDuration = duration();   // seed from current until the device reports
@@ -613,6 +624,8 @@ void Player::endCast() {
     m_castSession = nullptr;
     m_castPosition = 0;
     m_castPlaying  = false;
+    // Restore the user's local mute preference (beginCast force-muted the output).
+    if (m_audioOut) m_audioOut->setMuted(m_pendingMuted);
     // Resume playback locally from the top of the current track.
     if (m_index >= 0 && m_index < m_queue.count())
         loadAndPlay(m_index);

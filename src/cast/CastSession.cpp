@@ -55,6 +55,19 @@ void CastSession::connectToDevice(const QString &host, int port) {
 
 void CastSession::disconnectFromDevice() {
     if (m_timer) m_timer->stop();
+    // The Default Media Receiver keeps playing after the sender simply drops the
+    // socket, so explicitly stop playback and quit the receiver app first —
+    // otherwise "disconnect" in the UI leaves the device playing (the user then
+    // has to stop it from the Google Home app).
+    if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        stopMedia();
+        if (!m_sessionId.isEmpty())
+            sendMessage(NS_RECEIVER, RECEIVER,
+                        jsonToString({{"type", "STOP"}, {"requestId", nextRequestId()},
+                                      {"sessionId", m_sessionId}}));
+        m_socket->flush();
+        m_socket->waitForBytesWritten(300);
+    }
     if (m_socket) {
         m_socket->disconnect(this);
         m_socket->abort();
@@ -63,6 +76,7 @@ void CastSession::disconnectFromDevice() {
     }
     m_buffer.clear();
     m_transportId.clear();
+    m_sessionId.clear();
     m_mediaSessionId = 0;
     m_appConnected = false;
     m_haveLoad = false;
@@ -125,6 +139,7 @@ void CastSession::handleMessage(const CastMessage &msg) {
         for (const QJsonValue &a : apps) {
             const QJsonObject app = a.toObject();
             if (app.value("appId").toString() == MEDIA_APP_ID) {
+                m_sessionId = app.value("sessionId").toString();
                 establishAppConnection(app.value("transportId").toString());
                 return;
             }

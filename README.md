@@ -133,6 +133,15 @@ cmake --build build --config Release --parallel
 cd build && cpack -G DEB && sudo apt install ./tidal-wave-*-Linux.deb
 ```
 
+> **Linker error about `lame_*` / `mp3lame`?** A few distros ship a *statically*
+> linked FFmpeg inside Qt Multimedia, which leaks an undeclared `libmp3lame`
+> dependency at final link time. If the build fails with undefined references to
+> `lame_*`, install your distro's `libmp3lame`/`lame` dev package and configure with:
+>
+> ```bash
+> cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="-lmp3lame -lm"
+> ```
+
 > Chromecast output is Linux-only (it uses Avahi/mDNS); it's automatically excluded on macOS and Windows.
 
 `ffmpeg` is a `Recommends` (only needed for the download feature); everything else is a

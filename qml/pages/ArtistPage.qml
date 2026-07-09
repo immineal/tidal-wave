@@ -43,8 +43,41 @@ Rectangle {
         })
         bridge.fetchArtistAlbums(artistId, function(a, err) {
             loading = false
-            if (!err) albums = a
+            // Tidal's artist/albums endpoint lists every edition of a release
+            // (Standard, Deluxe, Explicit, retailer-exclusives …) as separate ids,
+            // so the discography shows the same cover many times. Collapse them by
+            // artwork + base title (title minus trailing "(…)"/"[…]" qualifiers).
+            // Different covers are kept apart, so genuinely distinct releases like
+            // "Fearless" vs "Fearless (Taylor's Version)" still both show.
+            if (!err) albums = root.dedupeEditions(a)
         })
+    }
+
+    // Title without trailing edition qualifiers, e.g.
+    // "1989 (Deluxe Edition) [Explicit]" -> "1989". Only strips parenthetical/
+    // bracketed suffixes, so "(Taylor's Version)" collapses editions of that
+    // re-recording together but never merges it with the original album.
+    function baseTitle(t) {
+        var s = ("" + (t || "")).toLowerCase().trim()
+        for (var k = 0; k < 2; k++)
+            s = s.replace(/\s*[\(\[][^\(\)\[\]]*[\)\]]\s*$/, "").trim()
+        return s
+    }
+
+    // Collapse duplicate album editions, keying on artwork + base title so that
+    // same-release editions merge while distinct releases (different covers) stay.
+    function dedupeEditions(list) {
+        var seen = ({})
+        var out = []
+        for (var i = 0; i < list.length; i++) {
+            var a = list[i]
+            var cover = a.coverUrl || ("id:" + a.id)
+            var key = cover + "" + root.baseTitle(a.title)
+            if (seen[key]) continue
+            seen[key] = true
+            out.push(a)
+        }
+        return out
     }
 
     ScrollView {

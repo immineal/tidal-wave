@@ -58,6 +58,7 @@ private:
     QByteArray  m_buffer;
 
     QString m_transportId;               // media app destination (RECEIVER_STATUS)
+    QString m_sessionId;                  // receiver app session (to STOP/quit it)
     int     m_mediaSessionId = 0;
     int     m_requestId      = 0;
     int     m_tick           = 0;
