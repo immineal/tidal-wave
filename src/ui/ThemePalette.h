@@ -2,6 +2,7 @@
 #include <QColor>
 #include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QQmlEngine>
 #include <QString>
 #include <QVariantList>
@@ -85,6 +86,8 @@ signals:
 private:
     void refresh();
 
-    Prefs      *m_prefs = nullptr;
+    // QPointer, not a bare pointer: setPrefs() disconnects from the old one,
+    // and a Prefs destroyed before the palette made that a hard crash.
+    QPointer<Prefs> m_prefs;
     QVariantMap m_current;
 };

@@ -349,6 +349,34 @@ Gotcha found while writing its tests: Qt 6.12 `moc` mis-lexes a `//` inside a
 raw string literal and silently emits an empty `.moc`, which shows up as
 `undefined reference to vtable`. See the comment at `tests/tst_update.cpp:150`.
 
+### First-run audit findings, still open
+From `tests/firstrun/run.sh` (it passed offscreen, software, xcb under a
+private Xvfb, nested `kwin_wayland`, offline under `unshare -rn`, no-tray,
+corrupt settings and the single-instance handoff). Fixed already: the missing
+`qml6-module-qtquick-shapes` dependency, `qt6-wayland`, the two unlisted Qt
+libs, the em dash in the window title, and the dangling `Prefs*` in
+`ThemePalette::setPrefs`. Still open:
+
+- **`QLocalServer::listen()` failure is swallowed** (`Application.cpp:179`, no
+  `else`). The lock is `$TMPDIR/TidalWaveSingleInstanceSocket`; a TMPDIR long
+  enough to breach the 107-byte `sockaddr_un` limit makes listen() fail
+  silently and then *every* launch starts a full second instance. Same on a
+  multi-user box, since the path has no uid in it. Log it at minimum; better,
+  put the uid in the name.
+- **Proxy settings are ignored entirely.** No
+  `QNetworkProxyFactory::setUseSystemConfiguration` anywhere in `src/`, so
+  anyone behind a corporate proxy gets silence with no explanation.
+- **No tray plus close equals a vanished app.** `setQuitOnLastWindowClosed(false)`
+  with `onClosing -> root.hide()` unconditionally (`Main.qml:20-25`). With no
+  tray there is no way back. Quit on close when
+  `QSystemTrayIcon::isSystemTrayAvailable()` is false.
+- **PipeWire/PulseAudio connect errors print on every run** with no audio
+  server. `silenceLogsAndAlsa()` misses them because they are not Qt logging.
+- A real `.deb` install was never tested: this box is openSUSE, no dpkg. The
+  dependency findings come from `ldd`, the QML imports and a mount-namespace
+  reproduction, so **verify the package on an actual Debian box** before
+  release.
+
 ### Next up, in order
 - Finish/verify the three above, then commit and push.
 - **B. German translation**: the C++ half is done; the ~175 QML strings, the

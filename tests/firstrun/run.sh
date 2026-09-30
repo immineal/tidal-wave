@@ -164,7 +164,10 @@ guard_check() {
     local now; now=$(guard_structure)
     if [ "$now" != "$GUARD_STRUCT" ]; then
         printf '%s\n' "--- before ---" "$GUARD_STRUCT" "--- after ---" "$now" >&2
-        die "scenario '$1' changed the real settings directory or the real single-instance lock"
+        printf 'The real lock or settings directory changed while %s ran.\n' "$1" >&2
+        printf 'Restarting the app by hand mid-run does this too, and is harmless.\n' >&2
+        printf 'Anything else means a sandbox leaked, so the run stops here either way.\n' >&2
+        die "guard tripped during '$1'"
     fi
     local body; body=$(guard_contents)
     if [ "$body" != "$GUARD_BODY" ]; then
@@ -359,8 +362,18 @@ if wanted xcb; then
             APP_JOB=$!
             sleep $(( DWELL > 5 ? 4 : 2 ))
 
+            # Qt also maps a 1x1 helper and a 3x3 selection-owner window, so
+            # take the child with the largest area rather than the first listed.
             WIN=$(DISPLAY="$DISP" xwininfo -root -children 2>/dev/null \
-                  | grep -iE '"[^"]*"' | grep -vi 'root window' | head -1)
+                  | awk '/^ *0x[0-9a-f]+ / {
+                             geo = ""
+                             for (i = 1; i <= NF; i++)
+                                 if ($i ~ /^[0-9]+x[0-9]+\+-?[0-9]+\+-?[0-9]+$/) { geo = $i; break }
+                             if (geo == "") next
+                             split(geo, g, /[x+]/)
+                             print g[1] * g[2], $0
+                         }' \
+                  | sort -rn | head -1 | cut -d" " -f2-)
             if [ -n "$WIN" ]; then
                 info "mapped window: $(echo "$WIN" | sed 's/^ *//')"
                 WID=$(echo "$WIN" | awk '{print $1}')
@@ -456,12 +469,32 @@ if wanted wayland; then
                         DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" \
                         XDG_CURRENT_DESKTOP=KDE
                 verdict wayland "wayland (nested kwin)"
-                # On Wayland the taskbar entry is matched through the desktop file
-                # name, not through setWindowIcon.
-                if grep -aq 'desktop' "$RUN_ERR" 2>/dev/null; then
-                    info "desktop-file related stderr:"
-                    grep -a 'desktop' "$RUN_ERR" | sed 's/^/         /'
+
+                # On Wayland the taskbar icon comes from the .desktop file
+                # matched against xdg_toplevel.set_app_id, not from
+                # setWindowIcon. WAYLAND_DEBUG prints the protocol traffic, so
+                # the id the app actually sent can be read rather than assumed.
+                env -i "${BOX_ENV[@]}" WAYLAND_DISPLAY="$WD" QT_QPA_PLATFORM=wayland \
+                    DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" XDG_CURRENT_DESKTOP=KDE \
+                    WAYLAND_DEBUG=1 \
+                    timeout -s TERM 6 "$APP" \
+                    >"$BOX/logs/wl-debug.out" 2>"$BOX/logs/wl-debug.err"
+                APPID=$(grep -aoE 'xdg_toplevel#[0-9]+\.set_app_id\("[^"]*"\)' \
+                        "$BOX/logs/wl-debug.err" | head -1 | sed 's/.*("\(.*\)").*/\1/')
+                WANT=$(basename "$REPO_ROOT/packaging/tidal-wave.desktop" .desktop)
+                if [ -z "$APPID" ]; then
+                    if grep -aq 'get_toplevel' "$BOX/logs/wl-debug.err"; then
+                        fail wayland-appid "a toplevel was created but no app id was set, so the taskbar icon cannot resolve"
+                    else
+                        fail wayland-appid "no xdg_toplevel was ever created; no window reached the compositor"
+                    fi
+                elif [ "$APPID" = "$WANT" ]; then
+                    pass wayland-appid "set_app_id(\"$APPID\") matches $WANT.desktop, so the Wayland icon resolves"
+                    info "set_title: $(grep -aoE 'set_title\("[^"]*"\)' "$BOX/logs/wl-debug.err" | head -1)"
+                else
+                    fail wayland-appid "set_app_id(\"$APPID\") does not match $WANT.desktop; the taskbar shows a generic icon"
                 fi
+                guard_check wayland-appid
             fi
         fi
         reap_all
@@ -535,9 +568,11 @@ fi
 
 if wanted missing-qml; then
     head2 "missing QML module (QtQuick.Shapes)"
-    QMLROOT=$("$APP" --help >/dev/null 2>&1; true)
-    SHAPES_DIR=$(find "$(dirname "$(ldd "$APP" | awk '/libQt6Quick\.so/ {print $3}')")/../qml/QtQuick/Shapes" \
-                 -maxdepth 0 2>/dev/null)
+    # Located from the linked Qt, never by running the binary: an unsandboxed
+    # launch would find the developer's instance through the lock in /tmp and
+    # pop their window.
+    QT_LIBDIR=$(dirname "$(ldd "$APP" | awk '/libQt6Quick\.so/ {print $3}')")
+    SHAPES_DIR=$(cd "$QT_LIBDIR/../qml/QtQuick/Shapes" 2>/dev/null && pwd)
     if [ -z "$SHAPES_DIR" ]; then
         skip missing-qml "could not locate the QtQuick/Shapes module directory"
     elif ! unshare -rm true 2>/dev/null; then
@@ -556,7 +591,7 @@ if wanted missing-qml; then
         # This one is expected to break: the point is to show what a user who
         # installed the .deb without qml6-module-qtquick-shapes actually sees.
         if grep -aqE 'QtQuick.Shapes.*is not installed|failed to load component' "$RUN_ERR"; then
-            pass missing-qml "reproduced the packaging failure a missing QtQuick.Shapes causes"
+            pass missing-qml "reproduced the packaging failure a missing QtQuick.Shapes causes (exit $RUN_STATUS)"
             head -6 "$RUN_ERR" | sed 's/^/         /'
             note "CPACK_DEBIAN_PACKAGE_DEPENDS has no qml6-module-qtquick-shapes"
         elif [ "$RUN_STATUS" = 124 ]; then
