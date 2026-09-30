@@ -41,7 +41,7 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "TIDAL WAVE"
+                text: "Tidal Wave"
                 color: Theme.textPrimary
                 font.pixelSize: 28
                 font.bold: true

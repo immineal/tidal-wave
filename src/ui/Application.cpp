@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "ui/I18n.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
 #ifdef Q_OS_LINUX
@@ -144,6 +145,9 @@ int Application::run(int argc, char **argv) {
     // Prefs first: QSettings needs the names above, and the scene graph backend
     // below is chosen once, before any window exists, and never revisited.
     m_prefs = new Prefs(this);
+    // Before the engine, so the tray menu and any startup error are already
+    // translated. The engine is handed over below for live retranslation.
+    m_i18n = new I18n(m_prefs, this);
 
     // Someone debugging a graphics problem from the shell outranks the stored
     // setting, so an explicit backend in the environment is left alone.
@@ -221,15 +225,15 @@ int Application::run(int argc, char **argv) {
         m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
         QMenu *trayMenu = new QMenu();
-        QAction *showAction = trayMenu->addAction(QStringLiteral("Show"));
+        QAction *showAction = trayMenu->addAction(tr("Show"));
         connect(showAction, &QAction::triggered, this, &Application::showWindow);
 
-        QAction *hideAction = trayMenu->addAction(QStringLiteral("Hide"));
+        QAction *hideAction = trayMenu->addAction(tr("Hide"));
         connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
 
         trayMenu->addSeparator();
 
-        QAction *quitAction = trayMenu->addAction(QStringLiteral("Quit"));
+        QAction *quitAction = trayMenu->addAction(tr("Quit"));
         connect(quitAction, &QAction::triggered, this, &Application::quit);
 
         m_trayIcon->setContextMenu(trayMenu);
@@ -244,6 +248,7 @@ int Application::run(int argc, char **argv) {
     }
 
     m_engine = new QQmlApplicationEngine(this);
+    m_i18n->setEngine(m_engine);
     m_engine->addImageProvider(QStringLiteral("tidal"), new TidalImageProvider());
 
     // The palette singleton is created by the engine, so it has to know about
@@ -252,6 +257,7 @@ int Application::run(int argc, char **argv) {
 
     QQmlContext *ctx = m_engine->rootContext();
     ctx->setContextProperty(QStringLiteral("prefs"),  m_prefs);
+    ctx->setContextProperty(QStringLiteral("i18n"),   m_i18n);
     ctx->setContextProperty(QStringLiteral("auth"),   m_auth);
     ctx->setContextProperty(QStringLiteral("bridge"), m_bridge);
     ctx->setContextProperty(QStringLiteral("player"), m_player);
