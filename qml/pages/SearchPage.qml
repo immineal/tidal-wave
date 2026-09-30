@@ -56,7 +56,7 @@ Rectangle {
                     id: searchTab
                     required property string modelData
                     required property int    index
-                    height: 30; width: tabLabel.implicitWidth + 24; radius: 15
+                    height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
                     color: root.activeTab === index ? Theme.accent
                            : tabMA.containsMouse ? Theme.surfaceHov : "transparent"
                     border.width: searchTab.activeFocus ? 2 : 0
@@ -67,7 +67,7 @@ Rectangle {
                     Text {
                         id: tabLabel; anchors.centerIn: parent
                         text: modelData
-                        color: root.activeTab === index ? "white" : Theme.textSec
+                        color: root.activeTab === index ? Theme.onAccent : Theme.textSec
                         font.pixelSize: 13
                     }
                     MouseArea {

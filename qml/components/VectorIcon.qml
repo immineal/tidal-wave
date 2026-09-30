@@ -1,10 +1,11 @@
 import QtQuick
 import QtQuick.Shapes
+import TidalWave
 
 Item {
     id: root
     property string name: ""
-    property color color: "white"
+    property color color: Theme.textPrimary
     property real strokeWidth: 1.8
 
     implicitWidth: 24

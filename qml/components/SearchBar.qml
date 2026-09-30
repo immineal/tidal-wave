@@ -5,7 +5,7 @@ import TidalWave
 Rectangle {
     id: root
     height: 40
-    radius: Theme.radius
+    radius: Theme.radiusField
     color: Theme.surfaceHigh
     border.color: focused ? Theme.accent : "transparent"
     border.width: 1
@@ -64,7 +64,7 @@ Rectangle {
             Keys.onReturnPressed: input.text = ""
             Keys.onSpacePressed:  input.text = ""
             Rectangle {
-                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0
                 border.color: Theme.accent
             }

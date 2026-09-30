@@ -124,6 +124,10 @@ QVariantMap build(const Spec &s) {
     m.insert(QStringLiteral("redSoft"), withAlpha(red, 0.12));
     m.insert(QStringLiteral("onRed"),   QColor(QString::fromLatin1(s.onRed)));
     m.insert(QStringLiteral("green"),   QColor(QString::fromLatin1(s.green)));
+    // Pairs with accentWash. The two audio-quality badges were filled with a
+    // hardcoded #1a4a7a / #1a4a3a, which are dark chips that vanish into a
+    // light theme; a wash over whatever surface they sit on works in both.
+    m.insert(QStringLiteral("greenWash"), withAlpha(QColor(QString::fromLatin1(s.green)), wash));
 
     // Dimming the app behind a modal. A light theme needs less of it.
     m.insert(QStringLiteral("scrim"), QColor(0, 0, 0, s.dark ? 140 : 97));

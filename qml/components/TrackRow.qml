@@ -73,8 +73,8 @@ Item {
     Rectangle {
         anchors.fill: parent
         anchors.margins: 2
-        radius: 6
-        color: isPlaying ? Qt.rgba(0, 0.698, 0.973, 0.08)
+        radius: Theme.radiusRow
+        color: isPlaying ? Theme.accentSoft
                : hov.hovered ? Theme.surfaceHov : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
@@ -132,7 +132,7 @@ Item {
             // Cover art
             Rectangle {
                 visible: showCover
-                width: 36; height: 36; radius: 4
+                width: 36; height: 36; radius: Theme.radiusArt
                 color: Theme.surfaceHigh
                 clip: true
                 Image {
@@ -289,7 +289,7 @@ Item {
 
     Menu {
         id: contextMenu
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 8; implicitWidth: 200 }
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 200 }
 
         MenuItem {
             text: "▶  Play now"
@@ -413,7 +413,7 @@ Item {
             }, 50, 0)
         }
 
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 12 }
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
         Column {
             width: parent.width
@@ -450,7 +450,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: 4
-                        radius: 6
+                        radius: Theme.radiusRow
                         color: plHov2.hovered ? Theme.surfaceHov : "transparent"
                         HoverHandler { id: plHov2 }
                         TapHandler {
@@ -464,7 +464,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 10
                             Rectangle {
-                                width: 28; height: 28; radius: 4; color: Theme.surface; clip: true
+                                width: 28; height: 28; radius: Theme.radiusArt; color: Theme.surface; clip: true
                                 Image {
                                     anchors.fill: parent
                                     source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""

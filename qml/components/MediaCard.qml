@@ -30,7 +30,7 @@ Item {
             id: imgRect
             Layout.fillWidth: true
             height: cardSize
-            radius: mediaType === "artist" ? cardSize/2 : Theme.radiusLg
+            radius: mediaType === "artist" ? cardSize/2 : Theme.radiusCard
             color: Theme.surfaceHigh
             clip: true
             border.width: root.activeFocus ? 4 : 0
@@ -60,7 +60,9 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: parent.radius
-                color: Qt.rgba(0, 0, 0, hov.hovered ? 0.45 : 0)
+                // Dims the art so the play button reads; a wash over cover art
+                // cannot follow the ground, so it is the same in every theme.
+                color: hov.hovered ? Theme.artScrim : "transparent"
                 Behavior on color { ColorAnimation { duration: 150 } }
 
                 Rectangle {
@@ -76,7 +78,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: "▶"
-                        color: "white"
+                        color: Theme.onAccent
                         font.pixelSize: 16
                         leftPadding: 2
                     }

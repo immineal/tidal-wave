@@ -19,7 +19,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: 20
+        radius: Theme.radiusChip
         color: root.accent ? Theme.accent : Theme.surfaceHigh
         border.width: root.activeFocus ? 2 : (root.accent ? 0 : 1)
         border.color: root.activeFocus ? Theme.accent : Theme.border
@@ -35,14 +35,14 @@ Item {
                     : root.glyph === "♡" ? "heart"
                     : root.glyph === "✎" ? "edit"
                     : root.glyph
-                color: root.accent ? "white" : Theme.textPrimary
+                color: root.accent ? Theme.onAccent : Theme.textPrimary
                 width: 14
                 height: 14
                 strokeWidth: 1.8
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.glyph !== ""
             }
-            Text { text: root.text;  color: root.accent ? "white" : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: root.text;  color: root.accent ? Theme.onAccent : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
         }
 
         HoverHandler { cursorShape: Qt.PointingHandCursor }

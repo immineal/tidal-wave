@@ -126,7 +126,7 @@ Rectangle {
                         font.pixelSize: 36
                         font.bold: true
                         style: Text.Outline
-                        styleColor: Qt.rgba(0, 0, 0, 0.5)
+                        styleColor: Theme.artScrimStrong
                     }
 
                     Row {

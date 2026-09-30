@@ -24,7 +24,7 @@ Item {
             x: root.value * track.width - 5
             anchors.verticalCenter: parent.verticalCenter
             width: 10; height: 10; radius: 5
-            color: "white"
+            color: Theme.textPrimary
         }
     }
 

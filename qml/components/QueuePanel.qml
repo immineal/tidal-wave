@@ -100,8 +100,8 @@ Rectangle {
             anchors.rightMargin: 8
             anchors.topMargin: 2
             anchors.bottomMargin: 2
-            radius: 6
-            color: isCurrent ? Qt.rgba(0, 0.698, 0.973, 0.08) : qHov.hovered ? Theme.surfaceHov : "transparent"
+            radius: Theme.radiusRow
+            color: isCurrent ? Theme.accentSoft : qHov.hovered ? Theme.surfaceHov : "transparent"
             border.width: queueItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 
@@ -145,7 +145,7 @@ Rectangle {
                 Rectangle {
                     width: 36
                     height: 36
-                    radius: 4
+                    radius: Theme.radiusArt
                     color: Theme.surfaceHigh
                     clip: true
                     Image {
@@ -206,7 +206,7 @@ Rectangle {
             }
             Menu {
                 id: queueContextMenu
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 8; implicitWidth: 180 }
+                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                 MenuItem {
                     text: "Remove from queue"
                     contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }

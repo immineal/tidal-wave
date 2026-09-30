@@ -47,7 +47,7 @@ const QStringList kColourTokens = {
     // interaction
     "hoverFill",
     // semantic
-    "red", "redSoft", "onRed", "green",
+    "red", "redSoft", "onRed", "green", "greenWash",
     // things drawn over arbitrary cover art, which is neither light nor dark
     "scrim", "artScrim", "artScrimStrong", "onArt", "artBorder",
 };
@@ -214,7 +214,8 @@ private slots:
         QFETCH(QString, name);
         const QVariantMap p = theme::palette(name);
         for (const char *k : {"hoverFill", "accentSoft", "accentTint", "accentWash",
-                              "redSoft", "scrim", "artScrim", "artScrimStrong", "artBorder"}) {
+                              "redSoft", "greenWash", "scrim", "artScrim",
+                              "artScrimStrong", "artBorder"}) {
             const QColor c = p.value(QLatin1String(k)).value<QColor>();
             QVERIFY2(c.alphaF() < 1.0, qPrintable(name + "." + QLatin1String(k) + " is opaque"));
             QVERIFY2(c.alphaF() > 0.0, qPrintable(name + "." + QLatin1String(k) + " is invisible"));

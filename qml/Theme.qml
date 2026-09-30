@@ -53,6 +53,8 @@ QtObject {
     readonly property color redSoft: p.redSoft
     readonly property color onRed:   p.onRed
     readonly property color green:   p.green
+    // Fill for the lossless quality badge, as accentWash is for hi-res.
+    readonly property color greenWash: p.greenWash
 
     // ── overlays ─────────────────────────────────────────────────────────
     // Dims the app behind a modal.
