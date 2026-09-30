@@ -10,6 +10,16 @@ Item {
     implicitWidth: 24
     implicitHeight: 24
 
+    // Glyphs drawn as solid shapes. An extra stroke on these at small sizes
+    // bridges adjacent bars/edges into an unrecognizable blob (e.g. the pause
+    // bars merging into a single square).
+    readonly property var _filled: ["play", "pause", "more-vertical", "more", "heart-filled", "pin-filled"]
+    // Dot-grid glyphs are zero-length segments with round caps: the stroke
+    // width *is* the dot diameter, so they need a heavier one to read.
+    readonly property var _fat: ["grip"]
+
+    readonly property bool isFilled: _filled.indexOf(name) !== -1
+
     Shape {
         id: shapeItem
         width: 24
@@ -27,14 +37,30 @@ Item {
 
         ShapePath {
             strokeColor: root.color
-            // Filled glyphs render as solid shapes; an extra stroke at small
-            // sizes just bridges adjacent bars/edges into an unrecognizable
-            // blob (e.g. the pause bars merging into a single square).
-            strokeWidth: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "more" || root.name === "heart-filled") ? 0 : root.strokeWidth
-            fillColor: (root.name === "play" || root.name === "pause" || root.name === "more-vertical" || root.name === "more" || root.name === "heart-filled") ? root.color : "transparent"
+            strokeWidth: root.isFilled
+                         ? 0
+                         : (root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth)
+            fillColor: root.isFilled ? root.color : "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
             PathSvg { path: root._pathFor(root.name) }
+        }
+
+        // Solid detail drawn on top of a stroked glyph.
+        ShapePath {
+            strokeWidth: 0
+            fillColor: root.color
+            PathSvg { path: root._accentFor(root.name) }
+        }
+
+        // Stroked detail drawn on top of a filled glyph.
+        ShapePath {
+            strokeColor: root.color
+            strokeWidth: root._overlayFor(root.name) === "" ? 0 : root.strokeWidth
+            fillColor: "transparent"
+            capStyle: ShapePath.RoundCap
+            joinStyle: ShapePath.RoundJoin
+            PathSvg { path: root._overlayFor(root.name) }
         }
     }
 
@@ -49,8 +75,11 @@ Item {
             return "M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z"
         case "music":
             return "M 9 18 V 5 L 21 3 V 16 M 9 8 L 21 6 M 9 18 A 3 3 0 1 1 6 15 A 3 3 0 0 1 9 18 Z M 21 16 A 3 3 0 1 1 18 13 A 3 3 0 0 1 21 16 Z"
+        // A microphone, not a bust: the old "artist" glyph was a head and
+        // shoulders, indistinguishable from "user" at 18px, so an artist row
+        // read as an account row.
         case "artist":
-            return "M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z M 4 21 A 8 8 0 0 1 20 21"
+            return "M 12 15 A 3.5 3.5 0 0 0 15.5 11.5 V 5.5 A 3.5 3.5 0 0 0 8.5 5.5 V 11.5 A 3.5 3.5 0 0 0 12 15 Z M 5.5 10.5 V 11.5 A 6.5 6.5 0 0 0 18.5 11.5 V 10.5 M 12 18 V 22 M 8.5 22 H 15.5"
         case "user":
             return "M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z"
         case "settings":
@@ -79,8 +108,43 @@ Item {
             return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3 M 11 11 L 12 10 V 14 M 10 14 H 14"
         case "clock":
             return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 6 V 12 L 16 14"
+        // A list with a note on it. The old "queue" was three bare lines,
+        // identical to a hamburger menu, so it read as "menu" not "up next".
         case "queue":
-            return "M 4 6 H 20 M 4 12 H 20 M 4 18 H 20"
+            return "M 3 6 H 21 M 3 12 H 21 M 3 18 H 13"
+        case "playlist":
+            return "M 3 6 H 16 M 3 12 H 12 M 3 18 H 11 M 21 18 V 6 M 21 18 A 2.5 2.5 0 1 0 16 18 A 2.5 2.5 0 1 0 21 18"
+        case "album":
+            return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 9.5 A 2.5 2.5 0 1 0 12 14.5 A 2.5 2.5 0 1 0 12 9.5"
+        case "mix":
+            return "M 8.6 8.6 A 4.8 4.8 0 0 0 8.6 15.4 M 15.4 8.6 A 4.8 4.8 0 0 1 15.4 15.4"
+                 + " M 5.2 5.2 A 9.6 9.6 0 0 0 5.2 18.8 M 18.8 5.2 A 9.6 9.6 0 0 1 18.8 18.8"
+        case "library":
+            return "M 4 4 V 20 M 8.5 8 V 20 M 13 6 V 20 M 17 7.5 L 20.5 20"
+        case "waves":
+            return "M 2 6 C 3.67 4 5.33 4 7 6 C 8.67 8 10.33 8 12 6 C 13.67 4 15.33 4 17 6 C 18.67 8 20.33 8 22 6"
+                 + " M 2 12 C 3.67 10 5.33 10 7 12 C 8.67 14 10.33 14 12 12 C 13.67 10 15.33 10 17 12 C 18.67 14 20.33 14 22 12"
+                 + " M 2 18 C 3.67 16 5.33 16 7 18 C 8.67 20 10.33 20 12 18 C 13.67 16 15.33 16 17 18 C 18.67 20 20.33 20 22 18"
+        case "pin":
+            return "M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 L 8 3 Z M 12 13 V 21"
+        case "pin-filled":
+            return "M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 Z"
+        case "globe":
+            return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 2.5 9 H 21.5 M 2.5 15 H 21.5 M 12 2 C 15 5.5 15 18.5 12 22 M 12 2 C 9 5.5 9 18.5 12 22"
+        case "speaker":
+            return "M 6 2 H 18 A 1.5 1.5 0 0 1 19.5 3.5 V 20.5 A 1.5 1.5 0 0 1 18 22 H 6 A 1.5 1.5 0 0 1 4.5 20.5 V 3.5 A 1.5 1.5 0 0 1 6 2 Z M 12 17.5 A 3.5 3.5 0 1 0 12 10.5 A 3.5 3.5 0 0 0 12 17.5 Z M 12 6 H 12.01"
+        case "grip":
+            return "M 9 6 H 9.01 M 9 12 H 9.01 M 9 18 H 9.01 M 15 6 H 15.01 M 15 12 H 15.01 M 15 18 H 15.01"
+        case "panel-left":
+            return "M 3.5 4 H 20.5 A 1.5 1.5 0 0 1 22 5.5 V 18.5 A 1.5 1.5 0 0 1 20.5 20 H 3.5 A 1.5 1.5 0 0 1 2 18.5 V 5.5 A 1.5 1.5 0 0 1 3.5 4 Z M 9 4 V 20"
+        case "chevron-left":
+            return "M 15 5 L 8 12 L 15 19"
+        case "chevron-right":
+            return "M 9 5 L 16 12 L 9 19"
+        case "plus":
+            return "M 12 5 V 19 M 5 12 H 19"
+        case "info":
+            return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 16.5 V 11 M 12 7.8 H 12.01"
         case "more-vertical":
             return "M 12 14 A 2 2 0 1 1 12 10 A 2 2 0 0 1 12 14 Z M 12 7 A 2 2 0 1 1 12 3 A 2 2 0 0 1 12 7 Z M 12 21 A 2 2 0 1 1 12 17 A 2 2 0 0 1 12 21 Z"
         case "x":
@@ -94,8 +158,23 @@ Item {
         case "check":
             return "M 5 12 L 10 17 L 19 7"
         case "cast":
-            return "M 3 12 V 5 H 21 V 18 H 11 M 3 15 A 4 4 0 0 1 7 19 M 3 18 A 1 1 0 0 1 4 19"
+            return "M 3 11 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 10"
+                 + " M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18"
         }
+        return ""
+    }
+
+    function _accentFor(n) {
+        switch (n) {
+        case "queue":  return "M 16.5 14.6 L 22 18 L 16.5 21.4 Z"
+        case "mix":    return "M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z"
+        case "cast":   return "M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z"
+        }
+        return ""
+    }
+
+    function _overlayFor(n) {
+        if (n === "pin-filled") return "M 12 13 V 21"
         return ""
     }
 }
