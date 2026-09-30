@@ -5,7 +5,9 @@ import TidalWave
 Rectangle {
     id: root
     width: 36; height: 36; radius: 18
-    color: hov.hovered ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0, 0, 0, 0.35)
+    // Sits on cover art, which is neither light nor dark, so the wash is the
+    // same in every theme.
+    color: hov.hovered ? Theme.artScrimStrong : Theme.artScrim
     border.width: root.activeFocus ? 2 : 0
     border.color: Theme.accent
     z: 100
@@ -19,7 +21,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         text: "←"
-        color: Theme.textPrimary
+        color: Theme.onArt
         font.pixelSize: 18
     }
 

@@ -1,9 +1,10 @@
 import QtQuick
+import TidalWave
 
 VectorIcon {
     id: root
     name: "home"
-    color: "white"
+    color: Theme.textPrimary
     implicitWidth: 18
     implicitHeight: 18
     width: 18

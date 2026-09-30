@@ -8,9 +8,9 @@ Menu {
 
     background: Rectangle {
         implicitWidth: 200
-        color: "#1E1E1E"
+        color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radius
+        radius: Theme.radiusPopup
     }
 
     function show(x, y, track) {

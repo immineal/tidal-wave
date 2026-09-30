@@ -88,7 +88,7 @@ Rectangle {
                         id: collectionTab
                         required property string modelData
                         required property int    index
-                        height: 34; width: tl.implicitWidth + 24; radius: 17
+                        height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusChip
                         color: root.activeTab === index ? Theme.accent : Theme.surfaceHigh
                         border.width: collectionTab.activeFocus ? 2 : 0
                         border.color: Theme.accent
@@ -101,7 +101,7 @@ Rectangle {
                                 var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.mixes.length]
                                 return modelData + " (" + counts[index] + ")"
                             }
-                            color: root.activeTab === index ? "white" : Theme.textSec
+                            color: root.activeTab === index ? Theme.onAccent : Theme.textSec
                             font.pixelSize: 14; font.bold: root.activeTab === index
                         }
                         MouseArea {
@@ -123,12 +123,12 @@ Rectangle {
                     Rectangle {
                         required property string modelData
                         required property int    index
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: 15
+                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusChip
                         color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
                         Text {
                             id: sortLbl; anchors.centerIn: parent
                             text: modelData
-                            color: root.sortMode === index ? "white" : Theme.textSec
+                            color: root.sortMode === index ? Theme.onAccent : Theme.textSec
                             font.pixelSize: 13
                         }
                         MouseArea {
@@ -233,7 +233,7 @@ Rectangle {
                 }
                 Menu {
                     id: albumCtxMenu
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 8; implicitWidth: 180 }
+                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                     MenuItem {
                         text: "Remove from library"
                         contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
@@ -294,7 +294,7 @@ Rectangle {
                 }
                 Menu {
                     id: artistCtxMenu
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 8; implicitWidth: 180 }
+                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                     MenuItem {
                         text: "Unfollow artist"
                         contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }

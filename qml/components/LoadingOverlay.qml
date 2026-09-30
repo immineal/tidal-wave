@@ -8,7 +8,7 @@ Item {
     anchors.fill: parent
     z: 100
 
-    Rectangle { anchors.fill: parent; color: Qt.rgba(0,0,0,0.4) }
+    Rectangle { anchors.fill: parent; color: Theme.scrim }
 
     Rectangle {
         anchors.centerIn: parent

@@ -28,12 +28,12 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 width: 64
                 height: 64
-                radius: 16
+                radius: Theme.radiusMark
                 color: Theme.accent
                 Text {
                     anchors.centerIn: parent
                     text: "≋"
-                    color: "white"
+                    color: Theme.onAccent
                     font.pixelSize: 32
                     font.bold: true
                 }
@@ -61,7 +61,7 @@ Rectangle {
         // Auth card
         Rectangle {
             Layout.fillWidth: true
-            radius: Theme.radiusLg
+            radius: Theme.radiusCard
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
@@ -126,7 +126,7 @@ Rectangle {
                         id: loginBtn
                         Layout.fillWidth: true
                         height: 48
-                        radius: Theme.radius
+                        radius: Theme.radiusButton
                         color: Theme.accent
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.textPrimary
@@ -140,7 +140,7 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text: "Log in with Tidal"
-                            color: "white"
+                            color: Theme.onAccent
                             font.pixelSize: 15
                             font.bold: true
                         }
@@ -183,7 +183,7 @@ Rectangle {
                         id: verificationLink
                         Layout.fillWidth: true
                         height: 44
-                        radius: Theme.radius
+                        radius: Theme.radiusButton
                         color: Theme.surfaceHigh
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.accent
@@ -215,7 +215,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: 200
                         height: 64
-                        radius: Theme.radius
+                        radius: Theme.radiusCard
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1

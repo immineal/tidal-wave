@@ -49,7 +49,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 gradient: Gradient {
-                    GradientStop { position: 0; color: Qt.rgba(0,0.698,0.973,0.15) }
+                    GradientStop { position: 0; color: Theme.accentTint }
                     GradientStop { position: 1; color: Theme.bg }
                 }
             }
@@ -63,8 +63,8 @@ Rectangle {
                 Rectangle {
                     width: 180
                     height: 180
-                    radius: Theme.radiusLg
-                    color: Qt.rgba(0,0.698,0.973,0.2)
+                    radius: Theme.radiusArt
+                    color: Theme.accentWash
                     clip: true
                     Image {
                         id: playlistCover
@@ -252,7 +252,7 @@ Rectangle {
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 20
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: 12 }
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
         Column {
             width: parent.width
@@ -264,7 +264,7 @@ Rectangle {
 
             Text { text: "Title"; color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
-                width: parent.width; height: 36; radius: 6
+                width: parent.width; height: 36; radius: Theme.radiusField
                 color: Theme.surface; border.color: titleFocus.activeFocus ? Theme.accent : Theme.border
                 TextInput {
                     id: editTitleField
@@ -277,7 +277,7 @@ Rectangle {
 
             Text { text: "Description"; color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
-                width: parent.width; height: 72; radius: 6
+                width: parent.width; height: 72; radius: Theme.radiusField
                 color: Theme.surface; border.color: descFocus.activeFocus ? Theme.accent : Theme.border
                 TextEdit {
                     id: editDescField

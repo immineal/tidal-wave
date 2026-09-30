@@ -27,9 +27,9 @@ Rectangle {
             Rectangle {
                 width: 28
                 height: 28
-                radius: 4
+                radius: Theme.radiusBadge
                 color: Theme.accent
-                Text { anchors.centerIn: parent; text: "≋"; color: "white"; font.pixelSize: 16; font.bold: true }
+                Text { anchors.centerIn: parent; text: "≋"; color: Theme.onAccent; font.pixelSize: 16; font.bold: true }
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -105,7 +105,7 @@ Rectangle {
                     id: plRect
                     anchors.fill: parent
                     anchors.margins: 2
-                    radius: 6
+                    radius: Theme.radiusRow
                     color: plHov.hovered ? Theme.surfaceHov : "transparent"
                     border.width: plDelegate.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -132,7 +132,7 @@ Rectangle {
                         background: Rectangle {
                             color: Theme.surfaceHigh
                             border.color: Theme.border
-                            radius: 4
+                            radius: Theme.radiusBadge
                         }
                         contentItem: Text {
                             text: plToolTip.text
@@ -183,7 +183,7 @@ Rectangle {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: -2
-                    radius: 6
+                    radius: Theme.radiusButton
                     color: "transparent"
                     border.width: parent.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -250,7 +250,7 @@ Rectangle {
         background: Rectangle {
             color: Theme.surfaceHigh
             border.color: Theme.border
-            radius: 12
+            radius: Theme.radiusPopup
         }
 
         ScrollView {
@@ -307,7 +307,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Rectangle {
                             width: 36; height: 36; radius: 18; color: Theme.accent
-                            Text { anchors.centerIn: parent; text: "♪"; color: "white"; font.pixelSize: 16 }
+                            Text { anchors.centerIn: parent; text: "♪"; color: Theme.onAccent; font.pixelSize: 16 }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -316,12 +316,12 @@ Rectangle {
                             Text { text: "v0.1-alpha"; color: Theme.textDim; font.pixelSize: 12 }
                         }
                         Rectangle {
-                            height: 30; width: logoutLabel.implicitWidth + 20; radius: 6
+                            height: 30; width: logoutLabel.implicitWidth + 20; radius: Theme.radiusButton
                             color: logoutHov.hovered ? Theme.red : Theme.surface
                             border.color: logoutHov.hovered ? Theme.red : Theme.border
                             Text {
                                 id: logoutLabel; anchors.centerIn: parent
-                                text: "Log out"; color: logoutHov.hovered ? "white" : Theme.red
+                                text: "Log out"; color: logoutHov.hovered ? Theme.onRed : Theme.red
                                 font.pixelSize: 12
                             }
                             HoverHandler { id: logoutHov }
@@ -426,7 +426,7 @@ Rectangle {
                                 border.color: qualityCombo.pressed ? Theme.accent : Theme.border
                                 border.width: 1
                                 color: Theme.surfaceHigh
-                                radius: Theme.radius
+                                radius: Theme.radiusButton
                             }
 
                             popup: Popup {
@@ -438,7 +438,7 @@ Rectangle {
                                     border.color: Theme.border
                                     border.width: 1
                                     color: Theme.surfaceHigh
-                                    radius: Theme.radius
+                                    radius: Theme.radiusPopup
                                 }
                                 contentItem: ListView {
                                     clip: true
@@ -489,7 +489,7 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 12
                             Rectangle {
-                                color: Theme.surface; radius: 4; border.color: Theme.border
+                                color: Theme.surface; radius: Theme.radiusBadge; border.color: Theme.border
                                 implicitWidth: shortcutLabel.implicitWidth + 14; implicitHeight: 22
                                 Text {
                                     id: shortcutLabel; anchors.centerIn: parent
@@ -530,10 +530,10 @@ Rectangle {
             anchors.rightMargin: 8
             anchors.topMargin: 2
             anchors.bottomMargin: 2
-            radius: Theme.radius
+            radius: Theme.radiusRow
             color: root.currentPage === page
                    ? Theme.surfaceHov
-                   : sideHov.hovered ? Qt.rgba(1,1,1,0.04) : "transparent"
+                   : sideHov.hovered ? Theme.hoverFill : "transparent"
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 

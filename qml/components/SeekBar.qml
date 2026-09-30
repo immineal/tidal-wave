@@ -57,7 +57,7 @@ Item {
                     width:  hov.hovered || _dragging ? 12 : 0
                     height: hov.hovered || _dragging ? 12 : 0
                     radius: 6
-                    color: "white"
+                    color: Theme.textPrimary
                     Behavior on width  { NumberAnimation { duration: 100 } }
                     Behavior on height { NumberAnimation { duration: 100 } }
                 }

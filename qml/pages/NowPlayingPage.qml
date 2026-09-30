@@ -156,7 +156,7 @@ Rectangle {
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0; color: Qt.rgba(0,0.698,0.973,0.07) }
+            GradientStop { position: 0; color: Theme.accentSoft }
             GradientStop { position: 1; color: Theme.bg }
         }
     }
@@ -173,7 +173,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 anchors.margins: -4
-                radius: 4
+                radius: Theme.radiusButton
                 color: "transparent"
                 border.width: backLink.activeFocus ? 2 : 0
                 border.color: Theme.accent
@@ -196,7 +196,7 @@ Rectangle {
                 // Album art
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusLg; color: Theme.surfaceHigh; clip: true
+                    radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
                     visible: !root.showLyrics
                     Image {
                         anchors.fill: parent
@@ -208,7 +208,8 @@ Rectangle {
                 // Lyrics panel
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusLg
+                    // Takes the cover's slot, so it takes the cover's corner too
+                    radius: Theme.radiusArt
                     color: Theme.surface
                     border.color: Theme.border
                     visible: root.showLyrics
@@ -282,14 +283,14 @@ Rectangle {
                         anchors.bottom: parent.bottom
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.bottomMargin: 10
-                        width: rsText.implicitWidth + 20; height: 28; radius: 14
-                        color: Qt.rgba(0,0,0,0.65)
-                        border.color: Qt.rgba(1,1,1,0.2)
+                        width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusChip
+                        color: Theme.artScrimStrong
+                        border.color: Theme.artBorder
                         Text {
                             id: rsText
                             anchors.centerIn: parent
                             text: "⟳ Resync"
-                            color: "white"; font.pixelSize: 12
+                            color: Theme.onArt; font.pixelSize: 12
                         }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler {
@@ -309,14 +310,14 @@ Rectangle {
                     anchors.right: parent.right
                     anchors.margins: 10
                     width: lyricsToggleText.implicitWidth + 16
-                    height: 26; radius: 13
-                    color: root.showLyrics ? Theme.accent : Qt.rgba(0,0,0,0.5)
-                    border.color: root.showLyrics ? "transparent" : Qt.rgba(1,1,1,0.3)
+                    height: 26; radius: Theme.radiusChip
+                    color: root.showLyrics ? Theme.accent : Theme.artScrimStrong
+                    border.color: root.showLyrics ? "transparent" : Theme.artBorder
                     Text {
                         id: lyricsToggleText
                         anchors.centerIn: parent
                         text: root.lyricsState === "loading" ? "Loading…" : "Lyrics"
-                        color: "white"; font.pixelSize: 11; font.bold: true
+                        color: root.showLyrics ? Theme.onAccent : Theme.onArt; font.pixelSize: 11; font.bold: true
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler {
@@ -367,7 +368,7 @@ Rectangle {
                             Keys.onReturnPressed: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
                             Keys.onSpacePressed:  if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
                             Rectangle {
-                                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                                 border.width: artistLink.activeFocus ? 2 : 0
                                 border.color: Theme.accent
                             }
@@ -385,7 +386,7 @@ Rectangle {
                             Keys.onReturnPressed: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
                             Keys.onSpacePressed:  if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
                             Rectangle {
-                                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                                 border.width: albumLink.activeFocus ? 2 : 0
                                 border.color: Theme.accent
                             }
@@ -471,15 +472,15 @@ Rectangle {
                     // Quality badge
                     Rectangle {
                         visible: player.audioQuality.length > 0
-                        height: 24; width: qlbl.implicitWidth + 12; radius: 4
-                        color: player.audioQuality === "HI_RES_LOSSLESS" ? "#1a4a7a" :
-                               player.audioQuality === "LOSSLESS" ? "#1a4a3a" : Theme.surfaceHigh
+                        height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusBadge
+                        color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
+                               player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
                         Text {
                             id: qlbl; anchors.centerIn: parent
                             text: (player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ " :
                                    player.audioQuality === "LOSSLESS" ? "◆ " : "")
                                   + player.qualityLabel(player.audioQuality)
-                            color: Theme.accent; font.pixelSize: 11; font.bold: true
+                            color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
                         }
                     }
 
@@ -490,8 +491,8 @@ Rectangle {
                         id: sleepTimerBtn
                         height: 24
                         width: sleepTimerRow.implicitWidth + 16
-                        radius: 12
-                        color: root.sleepTimerActive ? Qt.rgba(0, 178, 248, 0.15) : Theme.surfaceHigh
+                        radius: Theme.radiusChip
+                        color: root.sleepTimerActive ? Theme.accentTint : Theme.surfaceHigh
                         border.color: root.sleepTimerActive ? Theme.accent : Theme.border
                         border.width: 1
                         
@@ -541,7 +542,7 @@ Rectangle {
                         color: Theme.surfaceHigh
                         border.color: Theme.border
                         border.width: 1
-                        radius: Theme.radiusLg
+                        radius: Theme.radiusPopup
                         
                         MouseArea {
                             anchors.fill: parent
@@ -588,7 +589,7 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: 32
-                                radius: Theme.radius
+                                radius: Theme.radiusButton
                                 color: maEndOfTrack.containsMouse ? Theme.surfaceHov : Theme.surface
                                 border.color: Theme.border
                                 border.width: 1
@@ -667,7 +668,8 @@ Rectangle {
                                     Rectangle {
                                         id: customTrack
                                         anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                                        height: 3; radius: 2
+                                        // A 3px bar, so the chip radius clamps to a capsule
+                                        height: 3; radius: Theme.radiusChip
                                         color: Theme.border
 
                                         Rectangle {
@@ -680,7 +682,7 @@ Rectangle {
                                             x: Math.max(0, Math.min(customTrack.width - width, ((customSlider.value - 1) / 119.0) * customTrack.width - width / 2))
                                             anchors.verticalCenter: parent.verticalCenter
                                             width: 10; height: 10; radius: 5
-                                            color: "white"
+                                            color: Theme.textPrimary
                                         }
                                     }
 
@@ -712,10 +714,10 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: 50
-                                color: Qt.rgba(0, 178, 248, 0.08)
+                                color: Theme.accentSoft
                                 border.color: Theme.accentDim
                                 border.width: 1
-                                radius: Theme.radius
+                                radius: Theme.radiusCard
                                 
                                 ColumnLayout {
                                     anchors.centerIn: parent
@@ -742,8 +744,8 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 height: 32
-                                radius: Theme.radius
-                                color: Qt.rgba(255, 77, 77, 0.1)
+                                radius: Theme.radiusButton
+                                color: Theme.redSoft
                                 border.color: Theme.red
                                 border.width: 1
                                 
@@ -788,7 +790,7 @@ Rectangle {
                             Rectangle {
                                 width: 34
                                 height: 18
-                                radius: 9
+                                radius: Theme.radiusChip
                                 color: root.sleepFadeOut ? Theme.accent : Theme.surface
                                 border.color: Theme.border
                                 border.width: 1
@@ -799,7 +801,7 @@ Rectangle {
                                     width: 16
                                     height: 16
                                     radius: 8
-                                    color: "white"
+                                    color: root.sleepFadeOut ? Theme.onAccent : Theme.textPrimary
                                     Behavior on x { NumberAnimation { duration: 150 } }
                                 }
                             }
@@ -860,7 +862,7 @@ Rectangle {
                         Keys.onReturnPressed: player.setMuted(!player.muted)
                         Keys.onSpacePressed:  player.setMuted(!player.muted)
                         Rectangle {
-                            anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                            anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                             border.width: muteBtn.activeFocus ? 2 : 0
                             border.color: Theme.accent
                         }
@@ -911,7 +913,7 @@ Rectangle {
                             spacing: 12
                             property var upTrack: modelData
                             Rectangle {
-                                width: 44; height: 44; radius: 6; color: Theme.surfaceHigh; clip: true
+                                width: 44; height: 44; radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
                                 Image {
                                     anchors.fill: parent
                                     source: upTrack && upTrack.coverUrl80 ? "image://tidal/" + upTrack.coverUrl80 : ""
@@ -936,7 +938,7 @@ Rectangle {
         property int minutes
         Layout.fillWidth: true
         height: 28
-        radius: Theme.radius
+        radius: Theme.radiusButton
         color: ma.containsMouse ? Theme.surfaceHov : Theme.surface
         border.color: Theme.border
         border.width: 1

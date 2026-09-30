@@ -75,7 +75,7 @@ Rectangle {
                     anchors.fill: parent
                     gradient: Gradient {
                         orientation: Gradient.Vertical
-                        GradientStop { position: 0; color: Qt.rgba(0.04,0.04,0.04,0.6) }
+                        GradientStop { position: 0; color: Theme.artScrimStrong }
                         GradientStop { position: 1; color: Theme.bg }
                     }
                 }
@@ -89,7 +89,7 @@ Rectangle {
                     Rectangle {
                         width: 200
                         height: 200
-                        radius: Theme.radiusLg
+                        radius: Theme.radiusArt
                         color: Theme.surfaceHigh
                         clip: true
                         Image {
@@ -132,7 +132,7 @@ Rectangle {
                             Keys.onReturnPressed: if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
                             Keys.onSpacePressed:  if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
                             Rectangle {
-                                anchors.fill: parent; anchors.margins: -4; radius: 4; color: "transparent"
+                                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                                 border.width: artistNameText.activeFocus ? 2 : 0
                                 border.color: Theme.accent
                             }

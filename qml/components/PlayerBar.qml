@@ -45,7 +45,7 @@ Rectangle {
             spacing: 12
 
             Rectangle {
-                width: 56; height: 56; radius: 4
+                width: 56; height: 56; radius: Theme.radiusArt
                 color: Theme.surfaceHigh; clip: true
                 Image {
                     anchors.fill: parent
@@ -74,17 +74,17 @@ Rectangle {
                 }
                 Rectangle {
                     visible: hasTrack && player.audioQuality.length > 0
-                    height: 16; width: ql.implicitWidth + 8; radius: 3
+                    height: 16; width: ql.implicitWidth + 8; radius: Theme.radiusBadge
                     color: {
                         var q = player.audioQuality
-                        if (q === "HI_RES_LOSSLESS") return "#1a4a7a"
-                        if (q === "LOSSLESS") return "#1a4a3a"
+                        if (q === "HI_RES_LOSSLESS") return Theme.accentWash
+                        if (q === "LOSSLESS") return Theme.greenWash
                         return Theme.surfaceHigh
                     }
                     Text {
                         id: ql; anchors.centerIn: parent
                         text: player.qualityLabel(player.audioQuality).toUpperCase()
-                        color: Theme.accent; font.pixelSize: 9; font.bold: true
+                        color: Theme.textPrimary; font.pixelSize: 9; font.bold: true
                     }
                 }
             }
@@ -202,7 +202,7 @@ Rectangle {
                     width: 260
                     padding: 6
                     background: Rectangle {
-                        color: Theme.surfaceHigh; border.color: Theme.border; radius: 8
+                        color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup
                     }
                     contentItem: ColumnLayout {
                         spacing: 2
@@ -252,7 +252,7 @@ Rectangle {
         Layout.fillWidth: true
         implicitWidth: 240
         implicitHeight: 36
-        radius: 6
+        radius: Theme.radiusRow
         color: crHov.hovered ? Theme.surfaceHov : "transparent"
         RowLayout {
             anchors.fill: parent
