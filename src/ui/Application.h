@@ -22,6 +22,7 @@ public:
 
     bool reallyQuit() const { return m_reallyQuit; }
     Q_INVOKABLE void quit();
+    Q_INVOKABLE void openUrl(const QString &url);
 
     void showWindow();
     void hideWindow();

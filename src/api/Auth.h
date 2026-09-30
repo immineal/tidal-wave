@@ -9,6 +9,7 @@ class Auth : public QObject {
     Q_PROPERTY(QString userCode READ userCode NOTIFY userCodeChanged)
     Q_PROPERTY(QString verificationUrl READ verificationUrl NOTIFY userCodeChanged)
     Q_PROPERTY(QString username READ username NOTIFY usernameChanged)
+    Q_PROPERTY(bool hasSavedCredentials READ hasSavedCredentials NOTIFY hasSavedCredentialsChanged)
 
 public:
     enum class State { LoggedOut, PendingDevice, LoggedIn };
@@ -16,8 +17,9 @@ public:
 
     explicit Auth(TidalApi *api, QObject *parent = nullptr);
 
-    State   state()           const { return m_state; }
-    QString userCode()        const { return m_userCode; }
+    State   state()               const { return m_state; }
+    bool    hasSavedCredentials() const { return !m_refreshToken.isEmpty(); }
+    QString userCode()            const { return m_userCode; }
     QString verificationUrl() const { return m_verificationUri; }
     QString username()        const { return m_username; }
     QString accessToken()     const { return m_accessToken; }
@@ -42,6 +44,7 @@ signals:
     void loginSucceeded();
     void loginFailed(const QString &reason);
     void sessionExpired();
+    void hasSavedCredentialsChanged();
 
 private slots:
     void pollForToken();

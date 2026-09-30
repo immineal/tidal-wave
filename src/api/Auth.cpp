@@ -87,6 +87,7 @@ void Auth::pollForToken() {
         m_pollTimer->stop();
         m_accessToken  = obj["access_token"].toString();
         m_refreshToken = obj["refresh_token"].toString();
+        emit hasSavedCredentialsChanged();
         m_tokenExpiry  = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
         fetchSession();
@@ -107,27 +108,58 @@ void Auth::refreshAccessToken() {
 
     m_api->postForm("oauth2/token", form, [this](QJsonObject obj, QString err) {
         if (!err.isEmpty()) {
-            emit sessionExpired();
-            setState(State::LoggedOut);
+            if (obj.contains("error")) {
+                clearCredentials();
+                emit sessionExpired();
+                setState(State::LoggedOut);
+            } else {
+                // Transient network failure (e.g. system just booted and network is not yet up).
+                // Retry in 5 seconds if not yet logged in without discarding saved session.
+                if (m_state != State::LoggedIn && !m_refreshToken.isEmpty()) {
+                    QTimer::singleShot(5000, this, &Auth::refreshAccessToken);
+                }
+            }
             return;
         }
         m_accessToken = obj["access_token"].toString();
-        if (obj.contains("refresh_token"))
+        if (obj.contains("refresh_token")) {
             m_refreshToken = obj["refresh_token"].toString();
+            emit hasSavedCredentialsChanged();
+        }
         m_tokenExpiry = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
         saveCredentials();
         // Schedule next refresh 60s before expiry
         qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
         if (msec > 0) m_refreshTimer->start(msec);
+
+        if (m_state != State::LoggedIn) {
+            fetchSession();
+        }
     });
 }
 
 void Auth::fetchSession() {
     m_api->get("sessions", {}, [this](QJsonObject obj, QString err) {
         if (!err.isEmpty()) {
-            emit loginFailed(err);
-            setState(State::LoggedOut);
+            if (obj.contains("error") || obj["status"].toInt() == 401) {
+                if (!m_refreshToken.isEmpty()) {
+                    refreshAccessToken();
+                    return;
+                }
+                emit loginFailed(err);
+                setState(State::LoggedOut);
+            } else {
+                // Network error: don't log out if we have saved user credentials
+                if (m_state != State::LoggedIn && m_userId > 0) {
+                    emit loginSucceeded();
+                    setState(State::LoggedIn);
+                    QTimer::singleShot(5000, this, &Auth::fetchSession);
+                } else if (m_state != State::LoggedIn) {
+                    emit loginFailed(err);
+                    setState(State::LoggedOut);
+                }
+            }
             return;
         }
         m_userId      = obj["userId"].toVariant().toLongLong();
@@ -179,6 +211,8 @@ void Auth::loadCredentials() {
 
     if (m_accessToken.isEmpty() || m_refreshToken.isEmpty()) return;
 
+    emit hasSavedCredentialsChanged();
+
     m_api->setAccessToken(m_accessToken);
     m_api->setCountryCode(m_countryCode);
 
@@ -186,7 +220,10 @@ void Auth::loadCredentials() {
     if (QDateTime::currentDateTime() >= m_tokenExpiry) {
         refreshAccessToken();
     } else {
-        // Validate session
+        // Valid token: transition to LoggedIn immediately so UI renders home page
+        emit loginSucceeded();
+        setState(State::LoggedIn);
+        // Validate session and refresh user info in the background
         fetchSession();
         qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
         if (msec > 0) m_refreshTimer->start(msec);
@@ -215,6 +252,8 @@ void Auth::saveCredentials() {
 
 void Auth::clearCredentials() {
     QFile::remove(QDir::homePath() + kCredsFile);
+    m_refreshToken.clear();
+    emit hasSavedCredentialsChanged();
 }
 
 void Auth::logout() {

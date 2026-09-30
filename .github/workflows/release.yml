@@ -14,18 +14,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Per-OS Qt (see ci.yml): Windows on 6.7.3 (aqt lacks 6.11 there),
-        # macOS/Linux on 6.11.1 (6.7.x links a removed 'AGL' framework on macOS).
+        # One Qt for all three platforms (see ci.yml) — keep the two in sync.
         include:
           - os: ubuntu-latest
             asset_name: tidal-wave-linux-x86_64.tar.gz
-            qt: '6.11.1'
+            qt: '6.12.0'
           - os: windows-latest
             asset_name: tidal-wave-windows-x64.zip
-            qt: '6.7.3'
+            qt: '6.12.0'
           - os: macos-latest
             asset_name: tidal-wave-macos-x64.tar.gz
-            qt: '6.11.1'
+            qt: '6.12.0'
 
     steps:
       - name: Checkout repository

@@ -14,16 +14,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Per-OS Qt: Windows aqt lacks 6.11.x binaries, but 6.7.3 builds there;
-        # macOS needs >= 6.8 (6.7.x links a removed 'AGL' framework); Linux is
-        # happy on either. Match what's proven to build on each platform.
+        # One Qt for all three platforms: 6.12.0 has aqt binaries everywhere
+        # (win64_msvc2022_64 / clang_64 / linux_gcc_64), which the old per-OS
+        # split existed to work around. Keep this in sync with release.yml.
         include:
           - os: ubuntu-latest
-            qt: '6.11.1'
+            qt: '6.12.0'
           - os: windows-latest
-            qt: '6.7.3'
+            qt: '6.12.0'
           - os: macos-latest
-            qt: '6.11.1'
+            qt: '6.12.0'
 
     steps:
       - name: Checkout repository
