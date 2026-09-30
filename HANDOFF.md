@@ -271,3 +271,70 @@ Full audit was done in session; the findings:
   18. Everything else as drafted.
 - **Update check:** once per 24h, prompt at next launch only (section K).
 - **Privacy notice:** Settings panel plus the bottom of README.md (section K).
+
+## Session of 2026-10-01 (00:45 to ~01:20)
+
+Branch is **pushed**: https://github.com/immineal/tidal-wave/tree/beta-0.4.0
+(`origin/beta-0.4.0`, tracking set). main untouched, still awaiting approval.
+
+### Landed and committed
+- `aab01a8` **Six themes.** `src/ui/ThemePalette.{h,cpp}` holds the palette
+  table and the radius scale; `qml/Theme.qml` is now a binding layer over
+  `ThemePalette.current`, so a theme swap repaints every existing binding.
+  `tests/tst_theme.cpp` (43 cases) checks WCAG contrast for every token against
+  bg/surface/surfaceHigh, the ramp direction, translucency, and pins the radius
+  scale. Two findings worth keeping: white on the accent fails contrast on all
+  four dark themes, so `onAccent` is near-black there; and `hoverFill` had to
+  become per-palette because `Qt.rgba(1,1,1,0.04)` is invisible on light.
+  Six palettes: Midnight, **Forest** (green, replaced the violet Graphite per
+  the user), Ember, Deep dark; Daylight and Paper light.
+- `2100153` **Token adoption across all of qml/.** Also fixed three live bugs:
+  `NowPlayingPage` passed 0-255 values to `Qt.rgba()` (which takes 0..1 and
+  clamps) in three places, so a "15% blue tint" was near-opaque cyan and a red
+  wash rendered pure white.
+- `15ef6e6` **I18n + software rendering.** `I18n` resolves system locale
+  (de_AT/de_CH find German, untranslated locales fall back to English,
+  `LANGUAGE=de:en` consulted), installs the catalogue, retranslates live.
+  20 tests. `Prefs::softwareRendering` added, read before the engine, skips 4x
+  MSAA too; an explicit `QT_QUICK_BACKEND`/`QSG_RHI_BACKEND` wins over it.
+  `tst_prefs` (14 cases) covers fresh-install defaults and layout-constant
+  coherence.
+- `4d7600b` **Translator wired into `Application`**, tray strings via `tr()`,
+  and the caps-maxxing removed ("TIDAL WAVE", "PLAYLISTS", "ACCOUNT",
+  "PLAYBACK", "KEYBOARD SHORTCUTS", `.toUpperCase()` on the quality badge).
+
+6 test binaries, all green:
+`QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure`
+
+### In flight when the usage limit hit - CHECK THESE FIRST
+Three subagents were still running and their work is **uncommitted on disk**.
+Run `git status` and inspect before doing anything else; each may be complete,
+partial, or broken.
+1. **Audio output (section H).** Owns `src/player/Player.{h,cpp}` and
+   `tests/tst_audio.cpp`. `Player.h` is modified and `tst_audio.cpp` (14.8K)
+   exists. It was told to add `Player::setPrefs(Prefs*)` and NOT to touch
+   `Application.cpp`, so **the one-line wiring in `Application::run()` is still
+   owed** - add `m_player->setPrefs(m_prefs);` after the player is constructed.
+2. **Update check (section K).** Owns `src/ui/UpdateCheck.{h,cpp}`,
+   `tests/tst_update.cpp` and `CMakeLists.txt`. Only `UpdateCheck.h` exists so
+   far. It was sent the real repo id: **`immineal/tidal-wave`**. If the .cpp is
+   missing, the CMakeLists entry may be missing too - check both.
+3. **First-run simulation (section M).** Owns `tests/firstrun/`. Nothing on
+   disk yet; likely lost. Probably needs redoing from scratch.
+
+### Next up, in order
+- Finish/verify the three above, then commit and push.
+- **B. German translation**: the C++ half is done; the ~175 QML strings, the
+  ~30 concatenated ones and the plurals are untouched. Also add `qttools` to
+  the CI Qt modules so `lrelease` exists there.
+- **C** responsive layout, then **D/E/F** sidebar rebuild, sizing and pinning,
+  then **G** navigation.
+- Settings UI still needs: the theme picker, the language picker, the audio
+  device picker, the hardware-acceleration toggle, the privacy block, and the
+  real app version.
+- Keep `docs/design-review.html` current and republish it to the artifact URL.
+
+### Note for whoever picks this up
+The user asked for **at most three concurrent subagents**. Six were running at
+once here and that is what exhausted the budget. Dispatch three, wait, commit
+that batch, then dispatch the next three.
