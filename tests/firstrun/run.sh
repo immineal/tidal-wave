@@ -1,0 +1,698 @@
+#!/usr/bin/env bash
+#
+# First-run simulation harness (HANDOFF section M).
+#
+# Starts the built binary the way a brand new install would see it - empty HOME,
+# no settings file, no saved Tidal session, no cache, no window geometry - once
+# per environment the app claims to support, and reports what each one printed.
+#
+# Usage
+#   tests/firstrun/run.sh                 run every scenario this box can run
+#   tests/firstrun/run.sh --list          list scenario ids and exit
+#   tests/firstrun/run.sh offscreen xcb   run only the named scenarios
+#   tests/firstrun/run.sh --keep          leave the sandbox behind for poking at
+#   DWELL=15 tests/firstrun/run.sh        seconds to let each run live (default 8)
+#   TIDALWAVE_BIN=/path/to/tidal-wave tests/firstrun/run.sh
+#
+# Exit status is 0 only if every scenario that ran passed. Skipped scenarios say
+# why they were skipped and do not fail the run.
+#
+# Safety, because a real instance of this app is usually running on the dev box:
+#
+#   * Nothing here ever pkills, killalls or pattern-matches a process name. The
+#     only processes killed are helpers this script started, by recorded pid.
+#   * Every run gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME under a
+#     private scratch directory, and is launched through `env -i` so no variable
+#     from the caller's session leaks in.
+#   * The single-instance lock is a QLocalServer named
+#     "TidalWaveSingleInstanceSocket". Qt puts it at QDir::tempPath(), so TMPDIR
+#     is what isolates it - not XDG_RUNTIME_DIR. Without that isolation a second
+#     launch just connects to the developer's own instance, tells it to show
+#     itself and exits 0, which proves nothing and pops their window.
+#   * A unix socket path is capped at 107 bytes, so the scratch root has to be
+#     short or listen() fails and the lock silently never exists. The script
+#     checks this and refuses to run rather than report a false pass.
+#   * The developer's real ~/.config/TidalWave and the real temp-dir lock are
+#     fingerprinted up front and re-checked after every scenario. Any change
+#     aborts the whole run.
+#   * No synthetic input. Observation only: exit codes, stdout, stderr, window
+#     properties and screenshots.
+#   * Every launch runs under `timeout`, so nothing started here outlives the run.
+#
+set -u
+
+# ── locations ───────────────────────────────────────────────────────────────
+
+SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
+APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
+DWELL=${DWELL:-8}
+KEEP=0
+WANTED=()
+
+for arg in "$@"; do
+    case $arg in
+        --keep) KEEP=1 ;;
+        --list)
+            printf '%s\n' offscreen software xcb wayland offline no-tray \
+                          bad-settings missing-qml single-instance \
+                          desktop-file deps
+            exit 0 ;;
+        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+        -*) echo "unknown option: $arg" >&2; exit 2 ;;
+        *)  WANTED+=("$arg") ;;
+    esac
+done
+
+wanted() {
+    [ ${#WANTED[@]} -eq 0 ] && return 0
+    local w
+    for w in "${WANTED[@]}"; do [ "$w" = "$1" ] && return 0; done
+    return 1
+}
+
+# ── reporting ───────────────────────────────────────────────────────────────
+
+C_RED=''; C_GRN=''; C_YEL=''; C_DIM=''; C_OFF=''
+if [ -t 1 ]; then
+    C_RED=$'\033[31m'; C_GRN=$'\033[32m'; C_YEL=$'\033[33m'
+    C_DIM=$'\033[2m';  C_OFF=$'\033[0m'
+fi
+
+PASSED=(); FAILED=(); SKIPPED=(); NOTES=()
+
+head2()  { printf '\n%s== %s ==%s\n' "$C_DIM" "$1" "$C_OFF"; }
+pass()   { PASSED+=("$1");  printf '  %sPASS%s %s\n' "$C_GRN" "$C_OFF" "${2:-$1}"; }
+fail()   { FAILED+=("$1");  printf '  %sFAIL%s %s\n' "$C_RED" "$C_OFF" "${2:-$1}"; }
+skip()   { SKIPPED+=("$1"); printf '  %sSKIP%s %s: %s\n' "$C_YEL" "$C_OFF" "$1" "$2"; }
+note()   { NOTES+=("$1");   printf '  %snote%s %s\n' "$C_YEL" "$C_OFF" "$1"; }
+info()   { printf '       %s\n' "$1"; }
+
+die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
+
+# ── scratch root and cleanup ────────────────────────────────────────────────
+
+[ -x "$APP" ] || die "no binary at $APP (build with: cmake --build build-t --parallel 8)"
+
+REAL_TMPDIR=${TMPDIR:-/tmp}
+# Deliberately short: see the sun_path note at the top.
+SCRATCH=$(mktemp -d /tmp/twfr.XXXXXX) || die "cannot create a scratch directory"
+
+SOCKET_NAME=TidalWaveSingleInstanceSocket
+probe_len=${#SCRATCH}
+probe_len=$(( probe_len + ${#SOCKET_NAME} + 20 ))
+[ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
+
+HELPER_PIDS=()
+track()   { HELPER_PIDS+=("$1"); }
+reap_all() {
+    local pid
+    for pid in ${HELPER_PIDS[@]+"${HELPER_PIDS[@]}"}; do
+        [ -n "$pid" ] || continue
+        # Only pids this script started, never a name match.
+        kill -TERM "$pid" 2>/dev/null
+    done
+    for pid in ${HELPER_PIDS[@]+"${HELPER_PIDS[@]}"}; do
+        [ -n "$pid" ] || continue
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.2
+        done
+        kill -KILL "$pid" 2>/dev/null
+    done
+    HELPER_PIDS=()
+}
+cleanup() {
+    reap_all
+    if [ "$KEEP" -eq 1 ]; then
+        printf '\nsandbox kept at %s\n' "$SCRATCH"
+    else
+        rm -rf "$SCRATCH"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+# ── guard: the developer's own config and lock must not move ────────────────
+
+REAL_CONF_DIR=$HOME/.config/TidalWave
+REAL_LOCK=$REAL_TMPDIR/$SOCKET_NAME
+
+fingerprint() {
+    { [ -e "$REAL_LOCK" ] && stat -c '%n %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
+    { [ -d "$REAL_CONF_DIR" ] && find "$REAL_CONF_DIR" -type f -exec md5sum {} + | sort; } 2>/dev/null
+    true
+}
+GUARD_BEFORE=$(fingerprint)
+
+guard_check() {
+    local now; now=$(fingerprint)
+    if [ "$now" != "$GUARD_BEFORE" ]; then
+        printf '%s\n' "--- before ---" "$GUARD_BEFORE" "--- after ---" "$now" >&2
+        die "scenario '$1' touched the real config or the real single-instance lock"
+    fi
+}
+
+# ── sandbox construction ────────────────────────────────────────────────────
+
+BOX=''        # current sandbox dir
+BOX_ENV=()    # current `env -i` argument list
+
+sandbox() {
+    BOX=$SCRATCH/$1
+    rm -rf "$BOX"
+    mkdir -p "$BOX/home/.config" "$BOX/home/.cache" "$BOX/home/.local/share" \
+             "$BOX/home/.local/state" "$BOX/run" "$BOX/tmp" "$BOX/logs"
+    # Qt complains and falls back if the runtime dir is group or world readable.
+    chmod 700 "$BOX/run"
+    BOX_ENV=(
+        "PATH=/usr/local/bin:/usr/bin:/bin"
+        "LANG=C.UTF-8"
+        "LC_ALL=C.UTF-8"
+        "HOME=$BOX/home"
+        "TMPDIR=$BOX/tmp"
+        "TMP=$BOX/tmp"
+        "TEMP=$BOX/tmp"
+        "XDG_RUNTIME_DIR=$BOX/run"
+        "XDG_CONFIG_HOME=$BOX/home/.config"
+        "XDG_CACHE_HOME=$BOX/home/.cache"
+        "XDG_DATA_HOME=$BOX/home/.local/share"
+        "XDG_STATE_HOME=$BOX/home/.local/state"
+        "XDG_CONFIG_DIRS=/etc/xdg"
+        "XDG_DATA_DIRS=/usr/local/share:/usr/share"
+        # A dead address rather than an unset one: unset makes libdbus try to
+        # autolaunch a daemon, and a live one would put this run's MPRIS name on
+        # the developer's session bus.
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=$BOX/run/absent-session-bus"
+        "QT_LOGGING_RULES="
+    )
+}
+
+# Start a private session bus inside the sandbox. Needed by kwin_wayland; not
+# used by the plain app scenarios, which are meant to survive without one.
+private_bus() {
+    local addr_file=$BOX/run/bus-address
+    dbus-daemon --session --fork --print-address=3 --print-pid=4 \
+        3>"$addr_file" 4>"$BOX/run/bus-pid" 2>/dev/null || return 1
+    local pid; pid=$(cat "$BOX/run/bus-pid" 2>/dev/null)
+    [ -n "$pid" ] || return 1
+    track "$pid"
+    PRIVATE_BUS=$(cat "$addr_file")
+    return 0
+}
+
+# ── running the app ─────────────────────────────────────────────────────────
+
+RUN_STATUS=0; RUN_OUT=''; RUN_ERR=''
+
+# run_app <log-name> [extra VAR=VAL ...]
+# Honours RUN_WRAPPER, an array prefixed to the command line (unshare, kwin, ...).
+run_app() {
+    local name=$1; shift
+    RUN_OUT=$BOX/logs/$name.out
+    RUN_ERR=$BOX/logs/$name.err
+    env -i "${BOX_ENV[@]}" "$@" \
+        ${RUN_WRAPPER[@]+"${RUN_WRAPPER[@]}"} \
+        timeout -s TERM "$DWELL" "$APP" >"$RUN_OUT" 2>"$RUN_ERR"
+    RUN_STATUS=$?
+    return 0
+}
+
+# Noise that says something about the box, not about the app, and that a real
+# first-run user on a normal desktop would not see. Reported, never failed on.
+BENIGN='pipewire|PulseAudioService|pa_context|ALSA|snd_pcm|snd_lib|Detected locale|[Ff]ontconfig|libEGL|libGL|MESA|swrast|DRI[0-9]|Could not connect to any X display|session bus|D-Bus|dbus|Failed to create wl_display|XDG_RUNTIME_DIR|Icon theme|QStandardPaths|xkbcommon|Wayland does not support'
+
+# Anything here means the app is broken for a first-run user.
+FATAL='QQmlApplicationEngine failed to load component|is not installed|is not a type|Invalid image provider|ReferenceError|TypeError|Cannot assign|Unable to assign|Cannot read propert|ASSERT|Segmentation fault|SIGSEGV|failed to start because|Could not (load|find) the Qt platform plugin|QQmlComponent: Component is not ready|Binding loop'
+
+qml_errors() { grep -aEn "$FATAL" "$RUN_ERR" "$RUN_OUT" 2>/dev/null; }
+other_noise() { grep -avE "$BENIGN" "$RUN_ERR" 2>/dev/null | grep -av '^[[:space:]]*$'; }
+
+# Shared verdict for "the app has to come up and stay up".
+# verdict <id> <human label>
+verdict() {
+    local id=$1 label=$2 bad ok=1
+
+    case $RUN_STATUS in
+        124) : ;;  # killed by our own timeout, which is what staying up looks like
+        0)   fail "$id" "$label: exited 0 straight away - the sandbox leaked and it found another instance"
+             ok=0 ;;
+        139) fail "$id" "$label: segfault (exit 139)"; ok=0 ;;
+        255) fail "$id" "$label: engine refused to load a root object (exit 255 / -1)"; ok=0 ;;
+        *)   fail "$id" "$label: exited $RUN_STATUS before the timeout"; ok=0 ;;
+    esac
+
+    bad=$(qml_errors)
+    if [ -n "$bad" ]; then
+        [ "$ok" -eq 1 ] && { fail "$id" "$label: stayed up but logged QML or plugin errors"; ok=0; }
+        printf '%s\n' "$bad" | sed 's/^/         /'
+    fi
+
+    if [ "$ok" -eq 1 ]; then
+        pass "$id" "$label: stayed up ${DWELL}s, no QML or plugin errors"
+    fi
+
+    local noise; noise=$(other_noise)
+    [ -n "$noise" ] && { info "unclassified stderr:"; printf '%s\n' "$noise" | sed 's/^/         /'; }
+
+    # Every first run writes the hicolor icon export; if it did not, the tray and
+    # the taskbar have nothing to resolve "tidal-wave" against.
+    if [ -f "$BOX/home/.local/share/icons/hicolor/128x128/apps/tidal-wave.png" ]; then
+        info "icon export: ok (\$XDG_DATA_HOME/icons/hicolor/*/apps/tidal-wave.png)"
+    else
+        note "$id: no icon written to \$XDG_DATA_HOME/icons/hicolor - the named icon will not resolve"
+    fi
+
+    guard_check "$id"
+}
+
+# ── scenario 1: offscreen, the CI shape and the baseline ────────────────────
+
+if wanted offscreen; then
+    head2 "offscreen (CI baseline)"
+    sandbox offscreen
+    RUN_WRAPPER=()
+    run_app offscreen QT_QPA_PLATFORM=offscreen
+    verdict offscreen "offscreen"
+fi
+
+# ── scenario 2: software scene graph, the no-GPU path ───────────────────────
+
+if wanted software; then
+    head2 "software scene graph (no GPU)"
+    sandbox software
+    RUN_WRAPPER=()
+    run_app software QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software
+    verdict software "QT_QUICK_BACKEND=software"
+fi
+
+# ── scenario 3: X11 on a private Xvfb, so no window of the developer's moves ─
+
+pick_display() {
+    local n
+    for n in $(seq 90 99); do
+        [ -e "/tmp/.X11-unix/X$n" ] || { echo ":$n"; return 0; }
+    done
+    return 1
+}
+
+if wanted xcb; then
+    head2 "X11 / xcb"
+    if ! command -v Xvfb >/dev/null 2>&1; then
+        skip xcb "Xvfb is not installed, and running on the real display would touch the developer's session"
+    elif ! DISP=$(pick_display); then
+        skip xcb "no free X display between :90 and :99"
+    else
+        sandbox xcb
+        Xvfb "$DISP" -screen 0 1280x800x24 -nolisten tcp >"$BOX/logs/xvfb.log" 2>&1 &
+        XVFB_PID=$!; track "$XVFB_PID"
+        ready=0
+        for _ in $(seq 1 40); do
+            [ -e "/tmp/.X11-unix/X${DISP#:}" ] && { ready=1; break; }
+            sleep 0.25
+        done
+        if [ "$ready" -eq 0 ]; then
+            skip xcb "Xvfb never came up on $DISP"
+        else
+            info "private display $DISP (pid $XVFB_PID), nothing on the real session is touched"
+            RUN_WRAPPER=()
+            # Backgrounded so the window can be inspected while it is mapped.
+            ( env -i "${BOX_ENV[@]}" DISPLAY="$DISP" QT_QPA_PLATFORM=xcb \
+                timeout -s TERM "$DWELL" "$APP" \
+                >"$BOX/logs/xcb.out" 2>"$BOX/logs/xcb.err" ) &
+            APP_JOB=$!
+            sleep $(( DWELL > 5 ? 4 : 2 ))
+
+            WIN=$(DISPLAY="$DISP" xwininfo -root -children 2>/dev/null \
+                  | grep -iE '"[^"]*"' | grep -vi 'root window' | head -1)
+            if [ -n "$WIN" ]; then
+                info "mapped window: $(echo "$WIN" | sed 's/^ *//')"
+                WID=$(echo "$WIN" | awk '{print $1}')
+                CLASS=$(DISPLAY="$DISP" xprop -id "$WID" WM_CLASS 2>/dev/null)
+                NAME=$(DISPLAY="$DISP" xprop -id "$WID" _NET_WM_NAME 2>/dev/null)
+                ICON=$(DISPLAY="$DISP" xprop -id "$WID" _NET_WM_ICON 2>/dev/null | head -c 80)
+                info "$CLASS"
+                info "$NAME"
+                if echo "$ICON" | grep -q 'CARDINAL'; then
+                    info "_NET_WM_ICON: present (the taskbar icon resolves on X11)"
+                else
+                    note "xcb: no _NET_WM_ICON on the window"
+                fi
+                # StartupWMClass in the .desktop file has to match, or the running
+                # window never associates with the launcher entry.
+                DESK_WMCLASS=$(grep -m1 '^StartupWMClass=' \
+                               "$REPO_ROOT/packaging/tidal-wave.desktop" 2>/dev/null | cut -d= -f2-)
+                if [ -n "$DESK_WMCLASS" ] && ! echo "$CLASS" | grep -qi "\"$DESK_WMCLASS\""; then
+                    note "xcb: StartupWMClass=$DESK_WMCLASS does not appear in $CLASS"
+                fi
+                if command -v import >/dev/null 2>&1; then
+                    SHOT=$BOX/logs/xcb.png
+                    import -display "$DISP" -window root "$SHOT" 2>/dev/null
+                    if [ -s "$SHOT" ] && command -v convert >/dev/null 2>&1; then
+                        TOP=$(convert "$SHOT" -format %c -depth 8 histogram:info:- 2>/dev/null \
+                              | sort -rn | head -1)
+                        info "screenshot at $SHOT"
+                        info "dominant colour: $(echo "$TOP" | sed 's/^ *//')"
+                        # The default theme is "midnight": #0A0A0A page background.
+                        if echo "$TOP" | grep -qi '#0A0A0A'; then
+                            info "default theme: midnight background painted (#0A0A0A)"
+                        else
+                            note "xcb: the dominant colour is not the midnight background #0A0A0A"
+                        fi
+                        NCOL=$(convert "$SHOT" -format %k info: 2>/dev/null)
+                        if [ -n "$NCOL" ] && [ "$NCOL" -lt 8 ] 2>/dev/null; then
+                            note "xcb: only $NCOL distinct colours on screen - the window may be blank"
+                        else
+                            info "distinct colours: $NCOL (content was actually drawn)"
+                        fi
+                    fi
+                fi
+            else
+                note "xcb: no client window was mapped on $DISP"
+            fi
+
+            wait "$APP_JOB"; RUN_STATUS=$?
+            RUN_OUT=$BOX/logs/xcb.out; RUN_ERR=$BOX/logs/xcb.err
+            verdict xcb "xcb on $DISP"
+        fi
+        reap_all
+    fi
+fi
+
+# ── scenario 4: Wayland, nested in a headless compositor ────────────────────
+
+if wanted wayland; then
+    head2 "Wayland"
+    if [ "${XDG_SESSION_TYPE:-}" != "wayland" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+        skip wayland "this box is not running a Wayland session"
+    elif ! command -v kwin_wayland >/dev/null 2>&1; then
+        skip wayland "no nested compositor available (kwin_wayland), and the real session must not be used"
+    elif ! command -v dbus-daemon >/dev/null 2>&1; then
+        skip wayland "kwin_wayland needs a session bus and dbus-daemon is not installed"
+    else
+        sandbox wayland
+        PRIVATE_BUS=''
+        if ! private_bus; then
+            skip wayland "could not start a private session bus"
+        else
+            WD=wayland-twfr
+            info "nested kwin_wayland on a virtual framebuffer, socket $WD, private bus"
+            # --virtual renders to an offscreen framebuffer, so nothing appears on
+            # the developer's screen and no focus is taken.
+            env -i "${BOX_ENV[@]}" DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" \
+                QT_QPA_PLATFORM=offscreen \
+                kwin_wayland --virtual --width 1280 --height 800 \
+                             --no-lockscreen --no-global-shortcuts --socket "$WD" \
+                >"$BOX/logs/kwin.log" 2>&1 &
+            KWIN_PID=$!; track "$KWIN_PID"
+            ready=0
+            for _ in $(seq 1 60); do
+                [ -S "$BOX/run/$WD" ] && { ready=1; break; }
+                kill -0 "$KWIN_PID" 2>/dev/null || break
+                sleep 0.25
+            done
+            if [ "$ready" -eq 0 ]; then
+                skip wayland "kwin_wayland did not create $WD (see $BOX/logs/kwin.log)"
+                info "$(tail -3 "$BOX/logs/kwin.log" 2>/dev/null)"
+            else
+                RUN_WRAPPER=()
+                run_app wayland WAYLAND_DISPLAY="$WD" QT_QPA_PLATFORM=wayland \
+                        DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" \
+                        XDG_CURRENT_DESKTOP=KDE
+                verdict wayland "wayland (nested kwin)"
+                # On Wayland the taskbar entry is matched through the desktop file
+                # name, not through setWindowIcon.
+                if grep -aq 'desktop' "$RUN_ERR" 2>/dev/null; then
+                    info "desktop-file related stderr:"
+                    grep -a 'desktop' "$RUN_ERR" | sed 's/^/         /'
+                fi
+            fi
+        fi
+        reap_all
+    fi
+fi
+
+# ── scenario 5: no network at all ───────────────────────────────────────────
+
+if wanted offline; then
+    head2 "no network"
+    if unshare -rn true 2>/dev/null; then
+        sandbox offline
+        # A private network namespace with loopback down: DNS and every connect
+        # fail immediately, exactly like a machine with the cable out. It needs
+        # no root and touches no system configuration.
+        RUN_WRAPPER=(unshare --user --map-root-user --net --)
+        run_app offline QT_QPA_PLATFORM=offscreen
+        verdict offline "offline (private netns)"
+        if [ "$RUN_STATUS" = 124 ]; then
+            info "did not hang on a dead network; it was still running when the timeout fired"
+        fi
+    else
+        skip offline "unprivileged network namespaces are unavailable, and the app ignores http_proxy (it never calls QNetworkProxyFactory::setUseSystemConfiguration), so a proxy-based simulation would prove nothing"
+    fi
+fi
+
+# ── scenario 6: no system tray ──────────────────────────────────────────────
+
+if wanted no-tray; then
+    head2 "no system tray"
+    sandbox no-tray
+    RUN_WRAPPER=()
+    # No XDG_CURRENT_DESKTOP, no session bus, so there is no StatusNotifier host
+    # and QSystemTrayIcon::isSystemTrayAvailable() is false.
+    run_app no-tray QT_QPA_PLATFORM=offscreen
+    verdict no-tray "no tray, no session bus"
+    info "note: the window is 'visible: true' in Main.qml, so it still appears;"
+    info "closing it calls root.hide() and only a relaunch brings it back."
+fi
+
+# ── scenario 7: a corrupt settings file from a future version ───────────────
+
+if wanted bad-settings; then
+    head2 "corrupt / future settings file"
+    sandbox bad-settings
+    CONF_DIR=$BOX/home/.config/TidalWave
+    mkdir -p "$CONF_DIR"
+    cat > "$CONF_DIR/Tidal Wave.conf" <<'CONF'
+[ui]
+theme=chartreuse-from-2027
+language=klingon
+sidebarWidth=999999
+softwareRendering=maybe
+
+[audio]
+outputDevice=
+
+[General]
+this line has no equals sign at all
+[unterminated section
+binaryJunk=@ByteArray(\x00\x01\x02\xff)
+CONF
+    RUN_WRAPPER=()
+    run_app bad-settings QT_QPA_PLATFORM=offscreen
+    verdict bad-settings "corrupt settings"
+    info "stored sidebarWidth=999999 must clamp to Prefs::maxSidebarWidth (420);"
+    info "an unknown theme name must still resolve to a paintable palette."
+fi
+
+# ── scenario 8: a QML module the package forgot to depend on ────────────────
+
+if wanted missing-qml; then
+    head2 "missing QML module (QtQuick.Shapes)"
+    QMLROOT=$("$APP" --help >/dev/null 2>&1; true)
+    SHAPES_DIR=$(find "$(dirname "$(ldd "$APP" | awk '/libQt6Quick\.so/ {print $3}')")/../qml/QtQuick/Shapes" \
+                 -maxdepth 0 2>/dev/null)
+    if [ -z "$SHAPES_DIR" ]; then
+        skip missing-qml "could not locate the QtQuick/Shapes module directory"
+    elif ! unshare -rm true 2>/dev/null; then
+        skip missing-qml "unprivileged mount namespaces are unavailable, so the module cannot be hidden"
+    else
+        sandbox missing-qml
+        mkdir -p "$BOX/empty"
+        info "hiding $SHAPES_DIR inside a private mount namespace"
+        env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
+            SHAPES_DIR="$SHAPES_DIR" EMPTY="$BOX/empty" APPBIN="$APP" DW="$DWELL" \
+            unshare --user --map-root-user --mount --propagation private -- \
+            sh -c 'mount --bind "$EMPTY" "$SHAPES_DIR" && exec timeout -s TERM "$DW" "$APPBIN"' \
+            >"$BOX/logs/missing-qml.out" 2>"$BOX/logs/missing-qml.err"
+        RUN_STATUS=$?
+        RUN_OUT=$BOX/logs/missing-qml.out; RUN_ERR=$BOX/logs/missing-qml.err
+        # This one is expected to break: the point is to show what a user who
+        # installed the .deb without qml6-module-qtquick-shapes actually sees.
+        if grep -aqE 'QtQuick.Shapes.*is not installed|failed to load component' "$RUN_ERR"; then
+            pass missing-qml "reproduced the packaging failure a missing QtQuick.Shapes causes"
+            head -6 "$RUN_ERR" | sed 's/^/         /'
+            note "CPACK_DEBIAN_PACKAGE_DEPENDS has no qml6-module-qtquick-shapes"
+        elif [ "$RUN_STATUS" = 124 ]; then
+            pass missing-qml "survived without QtQuick.Shapes (the module is optional after all)"
+        else
+            fail missing-qml "hiding QtQuick.Shapes gave exit $RUN_STATUS with no clear message"
+            head -6 "$RUN_ERR" | sed 's/^/         /'
+        fi
+        guard_check missing-qml
+    fi
+fi
+
+# ── scenario 9: the single-instance lock, inside the sandbox ────────────────
+
+if wanted single-instance; then
+    head2 "single-instance lock"
+    sandbox single-instance
+    RUN_WRAPPER=()
+    ( env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
+        timeout -s TERM "$DWELL" "$APP" \
+        >"$BOX/logs/first.out" 2>"$BOX/logs/first.err" ) &
+    FIRST=$!
+    sock_ok=0
+    for _ in $(seq 1 40); do
+        [ -S "$BOX/tmp/$SOCKET_NAME" ] && { sock_ok=1; break; }
+        sleep 0.25
+    done
+    if [ "$sock_ok" -eq 1 ]; then
+        info "lock created at \$TMPDIR/$SOCKET_NAME (inside the sandbox, not in /tmp)"
+    else
+        fail single-instance "the first instance never created \$TMPDIR/$SOCKET_NAME; listen() failed and the app said nothing"
+    fi
+    env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
+        timeout -s TERM "$DWELL" "$APP" \
+        >"$BOX/logs/second.out" 2>"$BOX/logs/second.err"
+    SECOND=$?
+    wait "$FIRST" >/dev/null 2>&1
+    if [ "$sock_ok" -eq 1 ]; then
+        if [ "$SECOND" = 0 ]; then
+            pass single-instance "a second launch handed off to the first and exited 0"
+        else
+            fail single-instance "a second launch exited $SECOND instead of handing off"
+        fi
+    fi
+    guard_check single-instance
+fi
+
+# ── static check: the desktop entry ─────────────────────────────────────────
+
+if wanted desktop-file; then
+    head2 "desktop entry and icon name"
+    DESKTOP=$REPO_ROOT/packaging/tidal-wave.desktop
+    if [ ! -f "$DESKTOP" ]; then
+        fail desktop-file "packaging/tidal-wave.desktop is missing"
+    else
+        ok=1
+        if command -v desktop-file-validate >/dev/null 2>&1; then
+            OUT=$(desktop-file-validate "$DESKTOP" 2>&1)
+            if [ -n "$OUT" ]; then
+                fail desktop-file "desktop-file-validate complained"
+                printf '%s\n' "$OUT" | sed 's/^/         /'
+                ok=0
+            else
+                info "desktop-file-validate: clean"
+            fi
+        else
+            info "desktop-file-validate not installed, skipping validation"
+        fi
+        # setDesktopFileName has to match the installed basename, or Wayland
+        # cannot match the window to the launcher entry and the icon is generic.
+        SET_NAME=$(grep -o 'setDesktopFileName("[^"]*")' "$REPO_ROOT/src/ui/Application.cpp" \
+                   | head -1 | sed 's/.*("\(.*\)").*/\1/')
+        BASE=$(basename "$DESKTOP" .desktop)
+        if [ "$SET_NAME" = "$BASE" ]; then
+            info "setDesktopFileName(\"$SET_NAME\") matches $BASE.desktop"
+        else
+            fail desktop-file "setDesktopFileName(\"$SET_NAME\") does not match $BASE.desktop"
+            ok=0
+        fi
+        ICON=$(grep -m1 '^Icon=' "$DESKTOP" | cut -d= -f2-)
+        if grep -q "QStringLiteral(\"$ICON\")" "$REPO_ROOT/src/ui/Application.cpp"; then
+            info "Icon=$ICON matches the name loadAppIcon() exports and looks up"
+        else
+            note "desktop-file: Icon=$ICON is not the name loadAppIcon() uses"
+        fi
+        EXECNAME=$(grep -m1 '^Exec=' "$DESKTOP" | cut -d= -f2- | awk '{print $1}')
+        [ "$EXECNAME" = "$(basename "$APP")" ] \
+            && info "Exec=$EXECNAME matches the built binary name" \
+            || note "desktop-file: Exec=$EXECNAME but the binary is $(basename "$APP")"
+        [ "$ok" -eq 1 ] && pass desktop-file "desktop entry is consistent with the app"
+    fi
+fi
+
+# ── static check: runtime dependencies against the .deb depends list ────────
+
+if wanted deps; then
+    head2 "runtime dependencies vs CPACK_DEBIAN_PACKAGE_DEPENDS"
+    # The first quoted string inside the set(...) call, not the RECOMMENDS one.
+    DEPS=$(sed -n '/set(CPACK_DEBIAN_PACKAGE_DEPENDS/,/)/p' "$REPO_ROOT/CMakeLists.txt" \
+           | grep -o '"[^"]*"' | head -1 | tr -d '"')
+    if [ -z "$DEPS" ]; then
+        skip deps "could not read CPACK_DEBIAN_PACKAGE_DEPENDS from CMakeLists.txt"
+    else
+        # Exact token membership: substring matching would let
+        # "qml6-module-qtquick" pretend to satisfy "qml6-module-qtquick-shapes".
+        listed() {
+            local want=$1 have
+            for have in $(printf '%s' "$DEPS" | tr ',' ' '); do
+                [ "$have" = "$want" ] && return 0
+            done
+            return 1
+        }
+        missing=0
+        # Qt libraries the binary really needs, mapped to their Debian package.
+        # dpkg-shlibdeps would catch these too, but only if it runs; the explicit
+        # list is what a reader trusts.
+        while read -r soname pkg; do
+            [ -n "$soname" ] || continue
+            ldd "$APP" 2>/dev/null | grep -q "$soname" || continue
+            listed "$pkg" \
+                || { note "deps: $soname is linked but $pkg is not in the depends list"; missing=1; }
+        done <<'MAP'
+libQt6Core.so.6 libqt6core6
+libQt6Gui.so.6 libqt6gui6
+libQt6Widgets.so.6 libqt6widgets6
+libQt6Quick.so.6 libqt6quick6
+libQt6Qml.so.6 libqt6qml6
+libQt6Network.so.6 libqt6network6
+libQt6DBus.so.6 libqt6dbus6
+libQt6Multimedia.so.6 libqt6multimedia6
+libQt6Sql.so.6 libqt6sql6
+libQt6Svg.so.6 libqt6svg6
+libQt6Concurrent.so.6 libqt6concurrent6
+libQt6OpenGL.so.6 libqt6opengl6
+libasound.so.2 libasound2
+libavahi-client.so.3 libavahi-client3
+MAP
+
+        # QML modules are dlopened at runtime, so dpkg-shlibdeps cannot see them.
+        # This is where a missing dependency turns into a blank window.
+        for imp in $(grep -rh '^import Qt' "$REPO_ROOT/qml" | awk '{print $2}' | sort -u); do
+            pkg="qml6-module-$(echo "$imp" | tr '[:upper:].' '[:lower:]-')"
+            if listed "$pkg"; then
+                info "$imp -> $pkg (listed)"
+            else
+                note "deps: qml/ imports $imp but $pkg is not in the depends list"
+                missing=1
+            fi
+        done
+
+        # The platform plugin is dlopened too, and on Debian the Wayland one is a
+        # separate package from libqt6gui6.
+        if listed qt6-wayland; then
+            info "qt6-wayland is listed"
+        else
+            note "deps: qt6-wayland is not listed; on a Wayland-only desktop the app falls back to XWayland or fails to start"
+            missing=1
+        fi
+
+        [ "$missing" -eq 0 ] && pass deps "every linked library and QML import is covered" \
+                             || fail deps "the depends list has gaps (see the notes above)"
+    fi
+fi
+
+# ── summary ─────────────────────────────────────────────────────────────────
+
+printf '\n%s== summary ==%s\n' "$C_DIM" "$C_OFF"
+printf '  passed:  %d  %s\n' "${#PASSED[@]}"  "${PASSED[*]:-}"
+printf '  failed:  %d  %s\n' "${#FAILED[@]}"  "${FAILED[*]:-}"
+printf '  skipped: %d  %s\n' "${#SKIPPED[@]}" "${SKIPPED[*]:-}"
+if [ "${#NOTES[@]}" -gt 0 ]; then
+    printf '  notes:\n'
+    printf '    - %s\n' "${NOTES[@]}"
+fi
+printf '\n'
+[ "${#FAILED[@]}" -eq 0 ]

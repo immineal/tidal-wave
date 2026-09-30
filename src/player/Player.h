@@ -2,6 +2,8 @@
 #include <QObject>
 #include <QMediaPlayer>
 #include <QAudioOutput>
+#include <QAudioDevice>
+#include <QPointer>
 #include <QVariantMap>
 #include <QVariantList>
 #include <QTemporaryFile>
@@ -9,7 +11,9 @@
 #include "api/Models.h"
 
 class QNetworkReply;
+class QMediaDevices;
 class CastSession;
+class Prefs;
 
 class Player : public QObject {
     Q_OBJECT
@@ -66,6 +70,39 @@ public:
     Track currentTrack() const { return m_currentTrack; }
     qlonglong currentTrackId() const { return m_currentTrack.id; }
 
+    // ── Audio output routing ────────────────────────────────────────────
+    // The output device is rebound live: on a system-default change, on
+    // hot-plug, and when the user picks a device in Settings. Everything
+    // below exists so that swap is invisible to whoever is listening.
+
+    // Watches prefs->audioDevice(). Empty means "follow the system default".
+    void setPrefs(Prefs *prefs);
+
+    // For the Settings picker: [{id, label, isDefault}], "System default"
+    // first with an empty id. isDefault marks the device the OS currently
+    // treats as the default, so the picker can say what "System default"
+    // resolves to; the sentinel row itself is never marked.
+    Q_INVOKABLE QVariantList availableAudioDevices() const;
+    // Id of the device the output is bound to right now; empty before the
+    // output exists, or on a box with no audio devices.
+    Q_INVOKABLE QString activeAudioDeviceId() const;
+    // Re-resolves the preference against the current device list and rebinds
+    // if the answer changed. Cheap and idempotent.
+    Q_INVOKABLE void refreshAudioDevice();
+
+    // What has to come through a device swap untouched.
+    struct AudioState {
+        qint64 position = 0;
+        bool   playing  = false;
+        double volume   = 0.0;
+        bool   muted    = false;
+    };
+    // Public so a test can exercise the swap even where a device list of one
+    // makes every rebind a no-op, and the snapshot even where nothing plays.
+    AudioState captureAudioState() const;
+    void       restoreAudioState(const AudioState &state);
+    void       rebindAudioOutput(const QAudioDevice &device);
+
     // ── Chromecast handoff ──────────────────────────────────────────────
     // While casting, playback lives on the device: transport routes to the
     // CastSession and position/duration/playing mirror the device's status.
@@ -121,6 +158,7 @@ signals:
 
 private slots:
     void initAudio();
+    void onAudioOutputsChanged();
     void onMediaStatusChanged(QMediaPlayer::MediaStatus status);
     void onPlaybackStateChanged(QMediaPlayer::PlaybackState state);
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
@@ -135,10 +173,20 @@ private:
     int  previousIndex() const;
     void preloadNext();
     void cancelPreload();
+    // The device the current preference resolves to: the chosen one if it is
+    // still present, the system default otherwise (never silence).
+    QAudioDevice resolveAudioDevice() const;
+    // Rebinds only when the resolved device differs from the bound one.
+    void applyAudioDevice();
 
     TidalClient         *m_client;
     QMediaPlayer        *m_player    = nullptr;
     QAudioOutput        *m_audioOut  = nullptr;
+    QMediaDevices       *m_devices   = nullptr;
+    QPointer<Prefs>      m_prefs;
+    // Set while an output swap is in flight, so the transport churn the swap
+    // causes stays inside the Player instead of reaching the UI.
+    bool                 m_rebinding     = false;
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
 

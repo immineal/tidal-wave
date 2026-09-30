@@ -203,6 +203,8 @@ int Application::run(int argc, char **argv) {
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
     m_player = new Player(m_client, this);
+    // Follows the system default output live, or the device chosen in Settings.
+    m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
