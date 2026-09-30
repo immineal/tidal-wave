@@ -20,6 +20,9 @@
 #include <QWindow>
 #include <QMenu>
 #include <QAction>
+#include <QProcess>
+#include <QDesktopServices>
+#include <QUrl>
 // #include <QQuickStyle>
 
 typedef int (*snd_lib_error_handler_t)(const char *file, int line, const char *function, int err, const char *fmt, ...);
@@ -249,6 +252,19 @@ void Application::quit() {
     m_reallyQuit = true;
     emit reallyQuitChanged();
     QCoreApplication::quit();
+}
+
+void Application::openUrl(const QString &url) {
+    if (url.isEmpty()) return;
+#if defined(Q_OS_LINUX)
+    // On Linux/Wayland with Qt 6.12, QDesktopServices::openUrl triggers a use-after-free
+    // crash in QDesktopUnixServices::openUrl due to an asynchronous xdgActivationTokenCreated
+    // callback accessing a destroyed stack frame. Using xdg-open directly avoids this completely.
+    if (QProcess::startDetached(QStringLiteral("xdg-open"), { url })) {
+        return;
+    }
+#endif
+    QDesktopServices::openUrl(QUrl(url));
 }
 
 void Application::showWindow() {

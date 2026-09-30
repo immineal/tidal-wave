@@ -65,7 +65,7 @@ Rectangle {
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
-            height: auth.state === 0 ? (errorMessage.length > 0 ? 260 : 220) : auth.state === 1 ? 400 : 100
+            height: auth.state === 0 ? (auth.hasSavedCredentials ? 140 : (errorMessage.length > 0 ? 260 : 220)) : auth.state === 1 ? 400 : 100
             Behavior on height { NumberAnimation { duration: 200 } }
 
             ColumnLayout {
@@ -73,9 +73,46 @@ Rectangle {
                 anchors.margins: 32
                 spacing: 20
 
+                // Restoring session state
+                ColumnLayout {
+                    visible: auth.state === 0 && auth.hasSavedCredentials
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: 16
+
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Restoring session…"
+                        color: Theme.textSec
+                        font.pixelSize: 14
+                    }
+
+                    Row {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 6
+                        Repeater {
+                            model: 3
+                            Rectangle {
+                                required property int index
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: Theme.accent
+                                opacity: 0.3
+                                SequentialAnimation on opacity {
+                                    loops: Animation.Infinite
+                                    running: auth.state === 0 && auth.hasSavedCredentials
+                                    PauseAnimation { duration: index * 200 }
+                                    NumberAnimation { to: 1; duration: 400 }
+                                    NumberAnimation { to: 0.3; duration: 400 }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Initial state
                 ColumnLayout {
-                    visible: auth.state === 0
+                    visible: auth.state === 0 && !auth.hasSavedCredentials
                     spacing: 16
 
                     Text {
@@ -151,8 +188,8 @@ Rectangle {
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.accent
                         activeFocusOnTab: true
-                        Keys.onReturnPressed: Qt.openUrlExternally(auth.verificationUrl)
-                        Keys.onSpacePressed:  Qt.openUrlExternally(auth.verificationUrl)
+                        Keys.onReturnPressed: app.openUrl(auth.verificationUrl)
+                        Keys.onSpacePressed:  app.openUrl(auth.verificationUrl)
                         Text {
                             anchors.centerIn: parent
                             text: auth.verificationUrl || "tidal.com/link"
@@ -163,7 +200,7 @@ Rectangle {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: Qt.openUrlExternally(auth.verificationUrl)
+                            onClicked: app.openUrl(auth.verificationUrl)
                         }
                     }
 
