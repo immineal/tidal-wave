@@ -22,6 +22,10 @@ class Prefs : public QObject {
     // Qt device id of the chosen audio output, or empty to follow the system
     // default (which is the default, and what most people want).
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
+    // Draw the interface on the CPU instead of the GPU. Off by default; Qt
+    // chooses the scene graph backend once at startup, so a change only takes
+    // effect on the next launch.
+    Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -39,11 +43,13 @@ public:
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
+    bool    softwareRendering() const { return m_softwareRendering; }
 
     void setTheme(const QString &v);
     void setLanguage(const QString &v);
     void setSidebarWidth(int v);
     void setAudioDevice(const QString &v);
+    void setSoftwareRendering(bool v);
 
     // Exposed so QML can lay out against the same numbers the C++ side uses.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -60,6 +66,7 @@ signals:
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
+    void softwareRenderingChanged();
 
 private:
     QSettings m_settings;
@@ -67,4 +74,5 @@ private:
     QString   m_language;
     int       m_sidebarWidth;
     QString   m_audioDevice;
+    bool      m_softwareRendering;
 };
