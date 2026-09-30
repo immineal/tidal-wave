@@ -1,6 +1,5 @@
 #include "UpdateCheck.h"
 
-#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>

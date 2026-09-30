@@ -329,6 +329,26 @@ partial, or broken.
 3. **First-run simulation (section M).** Owns `tests/firstrun/`. Nothing on
    disk yet; likely lost. Probably needs redoing from scratch.
 
+### UpdateCheck still needs wiring into Application (4 lines)
+1. `#include "ui/UpdateCheck.h"` and an `UpdateCheck *m_update = nullptr;`
+   member in `Application.h`.
+2. `m_update = new UpdateCheck(this);` anywhere after the org/app names are
+   set (it only reads QSettings).
+3. `ctx->setContextProperty(QStringLiteral("update"), m_update);`
+4. `m_update->startupCheck();` **after** the engine loads, so the request is
+   never in front of the first frame. Async, self-throttling, silent on
+   failure, so it needs no guard.
+
+The QML popup reads `update.updateAvailable` / `update.latestVersion`; its
+three buttons are `app.openUrl(update.releaseUrl)`, `update.remindLater()`
+and `update.skipThisVersion()`. The Settings switch binds `update.enabled`,
+and a "check now" button calls `update.checkNow()` (skips the 24h throttle,
+still respects the switch).
+
+Gotcha found while writing its tests: Qt 6.12 `moc` mis-lexes a `//` inside a
+raw string literal and silently emits an empty `.moc`, which shows up as
+`undefined reference to vtable`. See the comment at `tests/tst_update.cpp:150`.
+
 ### Next up, in order
 - Finish/verify the three above, then commit and push.
 - **B. German translation**: the C++ half is done; the ~175 QML strings, the
