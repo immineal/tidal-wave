@@ -1,0 +1,546 @@
+<title>Tidal Wave Icon Set</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one measured column. Specimens sit on the app's own surfaces rather
+   than the page ground, so every judgement is made against the real context. */
+:root {
+  --bg: #F4F7F9; --surface: #FFFFFF; --sunken: #E9EFF2;
+  --fg: #0D1417; --muted: #566a73; --faint: #8fa2ab;
+  --line: #D6E1E6; --accent: #0079AB; --warn: #9A5B00; --good: #1B7F4B;
+  --display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0A0E10; --surface: #131A1D; --sunken: #0E1416;
+  --fg: #ECF3F6; --muted: #8DA0A9; --faint: #64767E;
+  --line: #202B30; --accent: #42C6FB; --warn: #E3A24A; --good: #4ECB8B;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0A0E10; --surface: #131A1D; --sunken: #0E1416;
+  --fg: #ECF3F6; --muted: #8DA0A9; --faint: #64767E;
+  --line: #202B30; --accent: #42C6FB; --warn: #E3A24A; --good: #4ECB8B;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body);
+  font-size: 15px; line-height: 1.55; margin: 0;
+  padding-inline: 24px; padding-block: 40px 72px; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(30px,5.4vw,46px);
+     line-height: 1.05; letter-spacing: -.02em; margin: 0 0 10px; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 60ch; margin: 0 0 6px; }
+.meta { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-top: 14px; }
+.meta b { color: var(--fg); font-weight: 500; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 21px; letter-spacing: -.01em; margin: 0 0 4px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 15px; margin: 0 0 10px; }
+section { margin-top: 52px; }
+section > .note { color: var(--muted); font-size: 14px; margin: 0 0 20px; max-width: 64ch; }
+.controls { position: sticky; top: env(safe-area-inset-top,0px); z-index: 5;
+  display: flex; flex-wrap: wrap; gap: 16px 26px; align-items: center;
+  padding: 12px 16px; margin: 28px 0 0; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px; }
+.ctl { display: flex; align-items: center; gap: 9px; }
+.ctl label { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.ctl output { font-family: var(--mono); font-size: 12px; min-width: 44px; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 120px; accent-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { font: 500 12px/1 var(--body); padding: 7px 12px; border: 0; cursor: pointer;
+  background: transparent; color: var(--muted); }
+.seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(148px,1fr));
+  gap: 1px; background: var(--line); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden; }
+.cell { background: #141414; padding: 18px 12px 12px; display: flex; flex-direction: column;
+  align-items: center; gap: 11px; min-width: 0; }
+.cell .stage { height: 44px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.cell .nm { font-family: var(--mono); font-size: 10.5px; color: #A0A0A0; word-break: break-all;
+  text-align: center; line-height: 1.3; }
+.cell.is-new { background: #14181c; } .cell.is-new .nm { color: #7fd6ff; }
+.cell .usedwith { font-size: 11px; color: #555; text-align: center; min-height: 1.3em; }
+
+.bench { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-end; padding: 26px 22px;
+  border-radius: 12px; background: #0A0A0A; border: 1px solid #2A2A2A; }
+.bench .item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.bench .cap { font-family: var(--mono); font-size: 10px; color: #555; }
+.tray { display: inline-flex; align-items: center; gap: 12px; background: #1b1e20;
+  border: 1px solid #2f3437; border-radius: 8px; padding: 6px 12px; }
+
+.fixrow { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 14px; }
+.fixcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.fixcard .pair { display: flex; gap: 18px; align-items: center; margin-bottom: 10px; }
+.fixcard .ba { display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: #141414; border-radius: 10px; padding: 12px 16px; color: #A0A0A0; }
+.fixcard .ba span { font-family: var(--mono); font-size: 9.5px; color: #666; }
+.fixcard .ba.after { color: #00B2F8; }
+.fixcard p { margin: 0; font-size: 13px; color: var(--muted); }
+.fixcard code { font-family: var(--mono); font-size: 12px; color: var(--fg); }
+
+.themes { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 16px; }
+.tcard { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.tcard .head { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px;
+  background: var(--surface); border-bottom: 1px solid var(--line); }
+.tcard .head b { font-family: var(--display); font-size: 14px; }
+.tcard .head span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.tcard .head .badge { margin-left: auto; font-family: var(--mono); font-size: 10px;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.tmock { display: flex; height: 168px; }
+.tmock .sbm { width: 108px; padding: 10px 8px; display: flex; flex-direction: column; gap: 5px; }
+.tmock .main { flex: 1; padding: 12px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.tmock .r { height: 9px; border-radius: 999px; }
+.tmock .navrow { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 7px; font-size: 10px; }
+.tmock .card { flex: 1; border-radius: 10px; }
+.tmock .cards { display: flex; gap: 8px; height: 56px; }
+.tmock .bar { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 34px; }
+.swatches { display: flex; gap: 0; height: 10px; }
+.swatches i { flex: 1; }
+
+.radtable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.radtable th, .radtable td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.radtable th { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--muted); font-weight: 500; }
+.radtable td.mono, .radtable td code { font-family: var(--mono); font-size: 12px; }
+.radtable .chipdemo { display: inline-block; background: #00B2F8; height: 26px; width: 62px; }
+.radtable .old { color: var(--warn); } .radtable .new { color: var(--good); }
+.scroller { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+
+.mocks { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.stagebox { position: relative; background: #0A0A0A; border: 1px solid #2A2A2A;
+  border-radius: 12px; overflow: hidden; display: flex; }
+.sb { background: #141414; font-family: var(--body); flex: 0 0 auto; overflow: hidden; }
+.sb .brand { display: flex; align-items: center; gap: 9px; padding: 15px 14px 9px; }
+.sb .wm { font: 600 13.5px/1 var(--body); color: #fff; }
+.sb .nav { padding: 5px 8px 2px; }
+.sb .row { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 7px;
+  color: #A0A0A0; font-size: 13.5px; white-space: nowrap; overflow: hidden; }
+.sb .row.on { background: #262626; color: #fff; font-weight: 600; position: relative; }
+.sb .row.on::before { content: ""; position: absolute; left: -6px; top: 25%; height: 50%;
+  width: 3px; border-radius: 2px; background: #00B2F8; }
+.sb .row .lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sb hr { border: 0; height: 1px; background: #2A2A2A; margin: 9px 14px; }
+/* Search field and chips are one unit: shared ground, field on top, chips
+   tucked into the same block with no gap between them. */
+.finder { margin: 8px 12px 10px; background: #0A0A0A; border: 1px solid #2A2A2A;
+  border-radius: 14px; padding: 4px; }
+.finder .field { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  color: #666; font-size: 12.5px; border-radius: 11px; }
+.finder .chips { display: flex; gap: 3px; padding: 2px 4px 3px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+  padding: 5px; color: #A0A0A0; background: transparent; font-size: 11.5px; border: 0; }
+.chip.wide { padding: 5px 9px 5px 7px; }
+.chip.on { color: #00B2F8; background: rgba(0,178,248,.14); }
+.sb .cap { font-size: 10.5px; font-weight: 600; color: #555; padding: 9px 14px 3px; }
+.sb .art { width: 20px; height: 20px; border-radius: 4px; flex: 0 0 auto; }
+.sb .railrow { display: flex; justify-content: center; padding: 10px 0; color: #A0A0A0; }
+.sb .railrow.on { color: #00B2F8; }
+.sb .railart { width: 28px; height: 28px; border-radius: 5px; margin: 5px auto; }
+.fly { position: absolute; left: 0; top: 0; bottom: 0; z-index: 2;
+  box-shadow: 0 18px 40px rgba(0,0,0,.72), 0 2px 10px rgba(0,0,0,.5); }
+.pagefill { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pagefill .r { height: 10px; border-radius: 999px; background: #1E1E1E; }
+.pagefill .cards { display: flex; gap: 10px; height: 68px; }
+.pagefill .cards i { flex: 1; border-radius: 10px; background: #1E1E1E; }
+.caption { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin: 8px 0 0; text-align: center; }
+.callout { border-left: 3px solid var(--warn); background: var(--sunken); padding: 12px 16px;
+  border-radius: 0 10px 10px 0; font-size: 14px; color: var(--muted); margin: 18px 0 0; }
+.callout b { color: var(--fg); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <h1>Tidal Wave Icon Set</h1>
+  <p class="lede">The mark, every glyph the app draws, the six themes and the corner-radius scale. Revised against your notes: the queue and playlist glyphs are no longer the same drawing, the filled pin kept its needle, the mix icon is a broadcast hub, the cast arcs grew and the mark is now continuous bands with no visible line ends.</p>
+  <p class="meta">grid <b>24&times;24</b> &nbsp;·&nbsp; stroke <b>1.8</b> round cap/join &nbsp;·&nbsp; drawn at <b>0.85&times;</b> the box, as <b>VectorIcon.qml</b> scales &nbsp;·&nbsp; <b>28</b> existing &nbsp;·&nbsp; <b id="newcount">15</b> new</p>
+
+  <div class="controls">
+    <div class="ctl"><label for="size">size</label><input id="size" type="range" min="12" max="34" step="1" value="18"><output id="sizeout">18 px</output></div>
+    <div class="ctl"><label for="stroke">stroke</label><input id="stroke" type="range" min="1.2" max="2.6" step=".1" value="1.8"><output id="strokeout">1.8</output></div>
+    <div class="ctl"><label>state</label><div class="seg" id="stateseg">
+      <button type="button" data-state="rest" aria-pressed="true">rest</button>
+      <button type="button" data-state="hover" aria-pressed="false">hover</button>
+      <button type="button" data-state="active" aria-pressed="false">active</button></div></div>
+    <div class="ctl"><label>labels</label><div class="seg" id="langseg">
+      <button type="button" data-lang="en" aria-pressed="true">English</button>
+      <button type="button" data-lang="de" aria-pressed="false">Deutsch</button></div></div>
+  </div>
+
+  <section>
+    <h2>The mark</h2>
+    <p class="note">Three identical parallel bands, filled rather than stroked, so nothing shows a rounded line end. Solving <span style="font-family:var(--mono)">7W + 2A = 64</span> makes the band thickness, the blue gaps and the top and bottom margins all exactly equal. The half period is now 32 units rather than 16: a vertically offset band is only <span style="font-family:var(--mono)">cos(slope)</span> as thick as at the crests, so at the old 46&deg; the white looked visibly thinner where it crossed. At 25&deg; the variation is about 9% and stops reading. Stretched that way three bands still survive 16px, so there is <b>one mark at every size</b> and no separate tray asset.</p>
+    <div class="bench" id="benchNew"></div>
+    <p class="caption">128 &nbsp; 48 &nbsp; 32 &nbsp; 22 &nbsp; 16 &nbsp; and in a panel</p>
+    <h3 style="margin-top:26px">What it replaced</h3>
+    <div class="bench" id="benchOld"></div>
+    <p class="caption">the old mark: the text glyph <span style="font-family:var(--mono)">&#8779;</span> set in DejaVu Sans, which rendered differently wherever that font was missing</p>
+  </section>
+
+  <section>
+    <h2>The five fixes</h2>
+    <p class="note">Everything you flagged, before and after.</p>
+    <div class="fixrow" id="fixes"></div>
+  </section>
+
+  <section>
+    <h2>New icons</h2>
+    <div class="grid" id="gridNew"></div>
+  </section>
+
+  <section>
+    <h2>Existing icons</h2>
+    <p class="note">Unchanged, shown so the new ones can be judged beside them. <b>user</b> is gone: it appeared exactly once, in the sidebar footer, where it read as a missing profile picture. The username takes that space now and the gear stays.</p>
+    <div class="grid" id="gridOld"></div>
+  </section>
+
+  <section>
+    <h2>Themes</h2>
+    <p class="note">Four dark and two light. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette. The name under each is what appears in Settings.</p>
+    <div class="themes" id="themes"></div>
+    <div class="callout"><b>This is the part that needs your eye most.</b> The two light themes are the real work: about forty places in the QML assume a dark ground, including white-on-cover text, the overlay gradients on the page heroes and the <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> hover fills. Say which six you want and I will tune them properly rather than guessing.</div>
+  </section>
+
+  <section>
+    <h2>Corner radius</h2>
+    <p class="note">Today almost everything is <span style="font-family:var(--mono)">radius: 8</span>, with ad-hoc 3, 4, 6, 12, 16 and 20 scattered around. One radius on everything is exactly the default look you wanted gone. This scale gives the radius a job: the rounder something is, the more it reads as a floating control rather than a surface.</p>
+    <div class="scroller">
+      <table class="radtable">
+        <thead><tr><th>what</th><th>now</th><th>proposed</th><th>shape</th><th>why</th></tr></thead>
+        <tbody id="radbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sidebar</h2>
+    <p class="note">Full width, the compact rail, and the rail hover-expanded over the page the way compact mode works in Zen. It is the same sidebar in all three, just with the finder and the library hidden when compact. No toggle button: the width decides. Chips stay icon-only at every width; the labels moved to tooltips.</p>
+    <div class="mocks" id="mocks"></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var OLD = {
+    home:"M 3 9 L 12 2 L 21 9 V 20 A 2 2 0 0 1 19 22 H 5 A 2 2 0 0 1 3 20 Z M 9 22 V 12 H 15 V 22",
+    search:"M 11 19 A 8 8 0 1 0 11 3 A 8 8 0 0 0 11 19 Z M 21 21 L 16.65 16.65",
+    heart:"M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z",
+    "heart-filled":"M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z",
+    music:"M 9 18 V 5 L 21 3 V 16 M 9 8 L 21 6 M 9 18 A 3 3 0 1 1 6 15 A 3 3 0 0 1 9 18 Z M 21 16 A 3 3 0 1 1 18 13 A 3 3 0 0 1 21 16 Z",
+    settings:"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M 12 15 A 3 3 0 1 1 12 9 A 3 3 0 0 1 12 15 Z",
+    "volume-mute":"M 11 5 L 6 9 H 2 V 15 H 6 L 11 19 V 5 Z M 22 9 L 16 15 M 16 9 L 22 15",
+    "volume-low":"M 11 5 L 6 9 H 2 V 15 H 6 L 11 19 V 5 Z M 15.18 8.82 A 4.5 4.5 0 0 1 15.18 15.18",
+    "volume-mid":"M 11 5 L 6 9 H 2 V 15 H 6 L 11 19 V 5 Z M 15.18 8.82 A 4.5 4.5 0 0 1 15.18 15.18 M 17.3 6.7 A 7.5 7.5 0 0 1 17.3 17.3",
+    "volume-high":"M 11 5 L 6 9 H 2 V 15 H 6 L 11 19 V 5 Z M 15.18 8.82 A 4.5 4.5 0 0 1 15.18 15.18 M 17.3 6.7 A 7.5 7.5 0 0 1 17.3 17.3 M 19.42 4.58 A 10.5 10.5 0 0 1 19.42 19.42",
+    play:"M 6 4 L 19 12 L 6 20 Z", pause:"M 6 4 H 10 V 20 H 6 Z M 14 4 H 18 V 20 H 14 Z",
+    shuffle:"M 16 3 H 21 V 8 M 4 20 L 21 3 M 21 16 V 21 H 16 M 15 15 L 21 21 M 4 4 L 9 9",
+    previous:"M 19 20 L 9 12 L 19 4 Z M 5 19 V 5", next:"M 5 4 L 15 12 L 5 20 Z M 19 5 V 19",
+    repeat:"M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3",
+    "repeat-one":"M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3 M 11 11 L 12 10 V 14 M 10 14 H 14",
+    clock:"M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 6 V 12 L 16 14",
+    "more-vertical":"M 12 14 A 2 2 0 1 1 12 10 A 2 2 0 0 1 12 14 Z M 12 7 A 2 2 0 1 1 12 3 A 2 2 0 0 1 12 7 Z M 12 21 A 2 2 0 1 1 12 17 A 2 2 0 0 1 12 21 Z",
+    x:"M 18 6 L 6 18 M 6 6 L 18 18",
+    more:"M 3.5 12 A 1.5 1.5 0 1 0 6.5 12 A 1.5 1.5 0 1 0 3.5 12 Z M 10.5 12 A 1.5 1.5 0 1 0 13.5 12 A 1.5 1.5 0 1 0 10.5 12 Z M 17.5 12 A 1.5 1.5 0 1 0 20.5 12 A 1.5 1.5 0 1 0 17.5 12 Z",
+    edit:"M 11 4 H 4 A 2 2 0 0 0 2 6 V 20 A 2 2 0 0 0 4 22 H 18 A 2 2 0 0 0 20 20 V 13 M 18.5 2.5 A 2.121 2.121 0 1 1 21.5 5.5 L 12 15 L 8 16 L 9 12 L 18.5 2.5 Z",
+    download:"M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20",
+    check:"M 5 12 L 10 17 L 19 7"
+  };
+  var OLD_FILLED = ["play","pause","more-vertical","more","heart-filled"];
+  var OLD_USE = { home:"Home", search:"Search", heart:"Collection", "heart-filled":"liked track",
+    music:"Songs, empty states", settings:"Settings",
+    "volume-high":"player bar", "volume-mute":"muted", "volume-low":"player bar", "volume-mid":"player bar",
+    play:"play button", pause:"play button", shuffle:"Shuffle", previous:"player bar", next:"player bar",
+    repeat:"player bar", "repeat-one":"repeat one", clock:"Recently played", x:"close",
+    more:"row menu", "more-vertical":"row menu", edit:"Edit playlist", download:"Download",
+    check:"selected device" };
+
+  var NEW = {
+    queue:        { d:"M 3 6 H 21 M 3 12 H 21 M 3 18 H 13", acc:"M 16.5 14.6 L 22 18 L 16.5 21.4 Z", use:"Queue" },
+    playlist:     { d:"M 3 6 H 16 M 3 12 H 12 M 3 18 H 11 M 21 18 V 6 M 21 18 A 2.5 2.5 0 1 0 16 18 A 2.5 2.5 0 1 0 21 18", use:"Playlists" },
+    album:        { d:"M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 9.5 A 2.5 2.5 0 1 0 12 14.5 A 2.5 2.5 0 1 0 12 9.5", use:"Albums" },
+    artist:       { d:"M 12 15 A 3.5 3.5 0 0 0 15.5 11.5 V 5.5 A 3.5 3.5 0 0 0 8.5 5.5 V 11.5 A 3.5 3.5 0 0 0 12 15 Z M 5.5 10.5 V 11.5 A 6.5 6.5 0 0 0 18.5 11.5 V 10.5 M 12 18 V 22 M 8.5 22 H 15.5", use:"Artists" },
+    mix:          { d:"M 8.6 8.6 A 4.8 4.8 0 0 0 8.6 15.4 M 15.4 8.6 A 4.8 4.8 0 0 1 15.4 15.4 M 5.2 5.2 A 9.6 9.6 0 0 0 5.2 18.8 M 18.8 5.2 A 9.6 9.6 0 0 1 18.8 18.8", acc:"M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z", use:"Mixes" },
+    cast:         { d:"M 3 11 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 10 M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18", acc:"M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z", use:"Cast to" },
+    pin:          { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 L 8 3 Z M 12 13 V 21", use:"Pin" },
+    "pin-filled": { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 Z", fill:true, ovl:"M 12 13 V 21", use:"pinned" },
+    library:      { d:"M 4 4 V 20 M 8.5 8 V 20 M 13 6 V 20 M 17 7.5 L 20.5 20", use:"library" },
+    waves:        { d:"M 2 6 C 3.67 4 5.33 4 7 6 C 8.67 8 10.33 8 12 6 C 13.67 4 15.33 4 17 6 C 18.67 8 20.33 8 22 6 M 2 12 C 3.67 10 5.33 10 7 12 C 8.67 14 10.33 14 12 12 C 13.67 10 15.33 10 17 12 C 18.67 14 20.33 14 22 12 M 2 18 C 3.67 16 5.33 16 7 18 C 8.67 20 10.33 20 12 18 C 13.67 16 15.33 16 17 18 C 18.67 20 20.33 20 22 18", use:"wordmark" },
+    globe:        { d:"M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 2.5 9 H 21.5 M 2.5 15 H 21.5 M 12 2 C 15 5.5 15 18.5 12 22 M 12 2 C 9 5.5 9 18.5 12 22", use:"Language" },
+    speaker:      { d:"M 6 2 H 18 A 1.5 1.5 0 0 1 19.5 3.5 V 20.5 A 1.5 1.5 0 0 1 18 22 H 6 A 1.5 1.5 0 0 1 4.5 20.5 V 3.5 A 1.5 1.5 0 0 1 6 2 Z M 12 17.5 A 3.5 3.5 0 1 0 12 10.5 A 3.5 3.5 0 0 0 12 17.5 Z M 12 6 H 12.01", use:"Audio output" },
+    palette:      { d:"M 12 2 A 10 10 0 1 0 12 22 C 13.1 22 14 21.1 14 20 C 14 19.5 13.8 19 13.5 18.6 C 13.2 18.2 13 17.7 13 17.2 C 13 16.1 13.9 15.2 15 15.2 H 17.2 A 4.8 4.8 0 0 0 22 10.4 C 22 5.8 17.5 2 12 2 Z", acc:"M 8.2 8.2 A 1.35 1.35 0 1 0 5.5 8.2 A 1.35 1.35 0 1 0 8.2 8.2 Z M 13.35 6.4 A 1.35 1.35 0 1 0 10.65 6.4 A 1.35 1.35 0 1 0 13.35 6.4 Z M 18 8.6 A 1.35 1.35 0 1 0 15.3 8.6 A 1.35 1.35 0 1 0 18 8.6 Z M 8.6 13.9 A 1.35 1.35 0 1 0 5.9 13.9 A 1.35 1.35 0 1 0 8.6 13.9 Z", use:"Theme" },
+    grip:         { d:"M 9 6 H 9.01 M 9 12 H 9.01 M 9 18 H 9.01 M 15 6 H 15.01 M 15 12 H 15.01 M 15 18 H 15.01", fat:true, use:"drag to reorder" },
+    plus:         { d:"M 12 5 V 19 M 5 12 H 19", use:"New playlist" }
+  };
+  document.getElementById("newcount").textContent = String(Object.keys(NEW).length);
+
+  // ── the mark: parallel filled bands, 7W + 2A = 64 ──
+  var HALF = 32;
+  function bandPath(cy, A, W) {
+    var n = 64 / HALF;
+    function edge(off, rev) {
+      var out = [], i, xa, xb, yc, t;
+      for (var k = 0; k < n; k++) {
+        i = rev ? n - 1 - k : k;
+        xa = rev ? (i + 1) * HALF : i * HALF;
+        xb = rev ? i * HALF : (i + 1) * HALF;
+        yc = cy + (i % 2 === 0 ? A : -A) + off;
+        t = (xb - xa) / 3;
+        out.push("C " + (xa + t).toFixed(2) + " " + yc.toFixed(2) + " " +
+                 (xb - t).toFixed(2) + " " + yc.toFixed(2) + " " + xb + " " + (cy + off).toFixed(2));
+      }
+      return out.join(" ");
+    }
+    return "M 0 " + (cy - W / 2).toFixed(2) + " " + edge(-W / 2, false) +
+           " L 64 " + (cy + W / 2).toFixed(2) + " " + edge(W / 2, true) + " Z";
+  }
+  function markSvg(px, bands) {
+    var A, W, cys;
+    if (bands === 2) { A = 5.5; W = (64 - 2 * A) / 5; cys = [1.5 * W + A, 64 - (1.5 * W + A)]; }
+    else { A = 5; W = (64 - 2 * A) / 7; cys = [1.5 * W + A, 32, 64 - (1.5 * W + A)]; }
+    var p = cys.map(function (cy) { return '<path d="' + bandPath(cy, A, W) + '" fill="#fff"/>'; }).join("");
+    return '<svg width="' + px + '" height="' + px + '" viewBox="0 0 64 64" aria-hidden="true">' +
+           '<rect width="64" height="64" rx="14" fill="#00B2F8"/>' + p + '</svg>';
+  }
+  function oldMark(px) {
+    return '<svg width="' + px + '" height="' + px + '" viewBox="0 0 64 64" aria-hidden="true">' +
+      '<rect width="64" height="64" rx="14" fill="#00B2F8"/><text x="32" y="46" font-size="36" ' +
+      'text-anchor="middle" fill="#fff" font-family="DejaVu Sans, sans-serif" font-weight="bold">≋</text></svg>';
+  }
+  function fillBench(el, maker) {
+    el.innerHTML = [128, 48, 32, 22, 16].map(function (s) {
+      return '<div class="item">' + maker(s) + '<span class="cap">' + s + '</span></div>';
+    }).join("") + '<div class="item"><div class="tray">' + maker(22) +
+      '<span class="cap" style="color:#6b7478">Tidal Wave</span></div><span class="cap">tray</span></div>';
+  }
+  fillBench(document.getElementById("benchNew"), function (s) { return markSvg(s, 3); });
+  fillBench(document.getElementById("benchOld"), oldMark);
+
+  // ── icon renderer, mirroring VectorIcon.qml ──
+  function iconSvg(d, px, sw, filled, fat, acc, ovl) {
+    var scale = .85, inner = 24 / scale, off = (inner - 24) / 2;
+    var stroke = filled ? 0 : (fat ? sw * 1.45 : sw);
+    var parts = '<path d="' + d + '" fill="' + (filled ? "currentColor" : "none") +
+      '" stroke="currentColor" stroke-width="' + stroke +
+      '" stroke-linecap="round" stroke-linejoin="round"/>';
+    if (acc) parts += '<path d="' + acc + '" fill="currentColor" stroke="none"/>';
+    if (ovl) parts += '<path d="' + ovl + '" fill="none" stroke="currentColor" stroke-width="' +
+      sw + '" stroke-linecap="round"/>';
+    return '<svg width="' + px + '" height="' + px + '" viewBox="' + (-off) + ' ' + (-off) + ' ' +
+      inner + ' ' + inner + '" aria-hidden="true" style="overflow:visible">' + parts + '</svg>';
+  }
+  var state = { size: 18, stroke: 1.8, mode: "rest", lang: "en" };
+  var COLOR = { rest: "#A0A0A0", hover: "#FFFFFF", active: "#00B2F8" };
+
+  function ic(name, px) {
+    var it = NEW[name];
+    if (it) return iconSvg(it.d, px || 17, state.stroke, !!it.fill, !!it.fat, it.acc, it.ovl);
+    return iconSvg(OLD[name], px || 17, state.stroke, OLD_FILLED.indexOf(name) !== -1, false);
+  }
+  function cell(name, cfg, use, isNew) {
+    return '<div class="cell' + (isNew ? " is-new" : "") + '"><div class="stage" style="color:' +
+      COLOR[state.mode] + '">' +
+      iconSvg(cfg.d, state.size, state.stroke, !!cfg.fill, !!cfg.fat, cfg.acc, cfg.ovl) +
+      iconSvg(cfg.d, 24, state.stroke, !!cfg.fill, !!cfg.fat, cfg.acc, cfg.ovl) +
+      '</div><div class="nm">' + name + '</div><div class="usedwith">' + (use || "") + '</div></div>';
+  }
+  function drawGrids() {
+    document.getElementById("gridNew").innerHTML = Object.keys(NEW).map(function (k) {
+      return cell(k, NEW[k], NEW[k].use, true);
+    }).join("");
+    document.getElementById("gridOld").innerHTML = Object.keys(OLD).map(function (k) {
+      return cell(k, { d: OLD[k], fill: OLD_FILLED.indexOf(k) !== -1 }, OLD_USE[k], false);
+    }).join("");
+  }
+
+  // ── the five fixes ──
+  var FIXES = [
+    { t: "queue", before: { d: "M 4 6 H 20 M 4 12 H 20 M 4 18 H 20" }, after: NEW.queue,
+      p: "Three bare lines were a hamburger menu. Now list lines with a play arrow, and no longer the same drawing as <code>playlist</code>." },
+    { t: "pin-filled", before: { d: "M 8 3 H 16 M 10 3 V 9 L 7 13 H 17 L 14 9 V 3 M 12 13 V 21", fill: true },
+      after: NEW["pin-filled"],
+      p: "Filling the whole path swallowed the needle. The head is now a closed silhouette that fills, and the needle is stroked on top of it." },
+    { t: "mix", before: { d: "M 4 10 V 14 M 8 6 V 18 M 12 9 V 15 M 16 4 V 20 M 20 11 V 13" }, after: NEW.mix,
+      p: "Was an equaliser. Now a broadcast hub: a solid centre with two arc pairs around it." },
+    { t: "cast", before: { d: "M 3 12 V 5 H 21 V 18 H 11 M 3 15 A 4 4 0 0 1 7 19 M 3 18 A 1 1 0 0 1 4 19" },
+      after: NEW.cast,
+      p: "Arcs grew from r4 to r5, and the gap from the outer arc to the screen is now exactly 2 against the left edge and 2 against the bottom edge. It was 3 and 4." },
+    { t: "artist", before: { d: "M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z M 4 21 A 8 8 0 0 1 20 21" },
+      after: NEW.artist,
+      p: "A head and shoulders, indistinguishable from <code>user</code> at 18px, so an artist row read as an account row. Now a microphone." }
+  ];
+  function drawFixes() {
+    document.getElementById("fixes").innerHTML = FIXES.map(function (f) {
+      return '<div class="fixcard"><h3>' + f.t + '</h3><div class="pair">' +
+        '<div class="ba">' + iconSvg(f.before.d, 30, state.stroke, !!f.before.fill, false) + '<span>before</span></div>' +
+        '<div class="ba after">' + iconSvg(f.after.d, 30, state.stroke, !!f.after.fill, !!f.after.fat, f.after.acc, f.after.ovl) + '<span>after</span></div>' +
+        '</div><p>' + f.p + '</p></div>';
+    }).join("");
+  }
+
+  // ── themes ──
+  var THEMES = [
+    { n: "Midnight", k: "dark", note: "today's palette",
+      bg:"#0A0A0A", sf:"#141414", hi:"#1E1E1E", hv:"#262626", ln:"#2A2A2A",
+      ac:"#00B2F8", tp:"#FFFFFF", ts:"#A0A0A0", td:"#555555" },
+    { n: "Graphite", k: "dark", note: "cooler, violet accent",
+      bg:"#0D0F13", sf:"#161A20", hi:"#1F242C", hv:"#282E38", ln:"#2C323B",
+      ac:"#8B7CF6", tp:"#F2F4F8", ts:"#99A2B0", td:"#5A6270" },
+    { n: "Ember", k: "dark", note: "warm neutrals",
+      bg:"#100D0C", sf:"#1A1614", hi:"#241F1C", hv:"#2E2825", ln:"#332C28",
+      ac:"#FF7A45", tp:"#F7F2EF", ts:"#A89C95", td:"#615853" },
+    { n: "Deep", k: "dark", note: "true black, for OLED",
+      bg:"#000000", sf:"#0C0C0E", hi:"#16161A", hv:"#1E1E24", ln:"#24242B",
+      ac:"#22D3EE", tp:"#FFFFFF", ts:"#9BA1AB", td:"#4E545E" },
+    { n: "Daylight", k: "light", note: "crisp white, high contrast",
+      bg:"#FFFFFF", sf:"#F2F5F8", hi:"#E6EBF0", hv:"#D8E0E8", ln:"#CFD9E2",
+      ac:"#0A6FC4", tp:"#08111A", ts:"#4C5A66", td:"#8A97A3" },
+    { n: "Paper", k: "light", note: "warm, low contrast, green accent",
+      bg:"#F1EDE4", sf:"#FAF7F0", hi:"#E7E1D4", hv:"#DCD4C3", ln:"#D2C9B6",
+      ac:"#2F6F4E", tp:"#1B1913", ts:"#5D564A", td:"#958C7B" }
+  ];
+  function themeCard(t) {
+    return '<div class="tcard"><div class="head"><b>' + t.n + '</b><span>' + t.note +
+      '</span><span class="badge">' + t.k + '</span></div>' +
+      '<div class="swatches">' + [t.bg,t.sf,t.hi,t.hv,t.ac,t.tp,t.ts].map(function(c){
+        return '<i style="background:' + c + '"></i>'; }).join("") + '</div>' +
+      '<div class="tmock" style="background:' + t.bg + '">' +
+        '<div class="sbm" style="background:' + t.sf + '">' +
+          '<div class="navrow" style="background:' + t.hv + ';color:' + t.tp + '">' +
+            '<span style="color:' + t.ac + ';display:flex">' + ic("home", 12) + '</span>Home</div>' +
+          '<div class="navrow" style="color:' + t.ts + '">' + ic("search", 12) + 'Search</div>' +
+          '<div class="navrow" style="color:' + t.ts + '">' + ic("heart", 12) + 'Collection</div>' +
+          '<div style="height:1px;background:' + t.ln + ';margin:4px 2px"></div>' +
+          '<div class="r" style="background:' + t.hi + ';width:78%"></div>' +
+          '<div class="r" style="background:' + t.hi + ';width:60%"></div>' +
+          '<div class="r" style="background:' + t.hi + ';width:70%"></div>' +
+        '</div>' +
+        '<div style="flex:1;display:flex;flex-direction:column">' +
+          '<div class="main">' +
+            '<div class="r" style="background:' + t.tp + ';width:46%;height:11px;opacity:.9"></div>' +
+            '<div class="cards"><div class="card" style="background:' + t.hi + '"></div>' +
+              '<div class="card" style="background:' + t.hi + '"></div>' +
+              '<div class="card" style="background:' + t.ac + ';opacity:.85"></div></div>' +
+          '</div>' +
+          '<div style="margin-top:auto"><div style="height:1px;background:' + t.ln + '"></div>' +
+          '<div class="bar" style="background:' + t.sf + ';color:' + t.ts + '">' +
+            '<span style="display:flex;color:' + t.tp + '">' + ic("previous", 13) + '</span>' +
+            '<span style="display:flex;width:20px;height:20px;border-radius:50%;background:' + t.tp +
+              ';color:' + t.sf + ';align-items:center;justify-content:center">' + ic("play", 11) + '</span>' +
+            '<span style="display:flex;color:' + t.tp + '">' + ic("next", 13) + '</span>' +
+            '<div class="r" style="flex:1;height:3px;background:' + t.hv + '"></div>' +
+            '<span style="display:flex;color:' + t.ac + '">' + ic("cast", 13) + '</span>' +
+          '</div></div>' +
+        '</div>' +
+      '</div></div>';
+  }
+  function drawThemes() {
+    document.getElementById("themes").innerHTML = THEMES.map(themeCard).join("");
+  }
+
+  // ── radius scale ──
+  var RAD = [
+    ["chips, pills, filter toggles", "8 / 999 mixed", "999", 999, "fully round reads as a control that floats above the surface"],
+    ["sidebar search field", "8", "14", 14, "you asked for more rounding; it now matches the block the chips sit in"],
+    ["nav rows, hover fills, list rows", "8", "7", 7, "just enough to soften a hit area without looking like a card"],
+    ["buttons, icon hit areas", "8", "8", 8, "unchanged, this one was right"],
+    ["cover art, thumbnails", "4", "5", 5, "records are square; more rounding fights the artwork"],
+    ["cards and tiles", "8", "11", 11, "bigger than a row so a card reads as an object, not a stripe"],
+    ["popups, dialogs, panels", "12", "18", 18, "clearly detached from everything behind it"],
+    ["quality badge, tiny tags", "3", "4", 4, "at 16px tall anything more turns into a lozenge"],
+    ["the app mark", "12", "14", 14, "matches the platform's own icon masking more closely"]
+  ];
+  function drawRad() {
+    document.getElementById("radbody").innerHTML = RAD.map(function (r) {
+      return "<tr><td>" + r[0] + '</td><td class="mono old">' + r[1] + '</td><td class="mono new">' +
+        r[2] + '</td><td><span class="chipdemo" style="border-radius:' + r[3] + 'px"></span></td><td style="color:var(--muted)">' +
+        r[4] + "</td></tr>";
+    }).join("");
+  }
+
+  // ── sidebar mocks ──
+  var L = {
+    en: { home:"Home", search:"Search", coll:"Collection", find:"Find in your library",
+          pinned:"Pinned", library:"Library",
+          chips:[["music","Songs"],["album","Albums"],["artist","Artists"],["playlist","Playlists"],["mix","Mixes"]],
+          items:["Late Night Drive","In Rainbows","Fred again..","My Daily Mix 1"] },
+    de: { home:"Start", search:"Suche", coll:"Sammlung", find:"Bibliothek durchsuchen",
+          pinned:"Angepinnt", library:"Bibliothek",
+          chips:[["music","Titel"],["album","Alben"],["artist","Künstler"],["playlist","Playlists"],["mix","Mixes"]],
+          items:["Late Night Drive","In Rainbows","Fred again..","My Daily Mix 1"] }
+  };
+  var ART = ["#2d4a63","#5a3d2b","#2f4636","#4a2f4f"];
+  var TYPES = ["playlist","album","artist","mix"];
+
+  function sidebarHtml(w, compact, wideChips) {
+    var t = L[state.lang];
+    if (compact) {
+      return '<div class="sb" style="width:' + w + 'px">' +
+        '<div style="padding:14px 0;display:flex;justify-content:center">' + markSvg(28, 3) + '</div>' +
+        '<div class="railrow on">' + ic("home", 19) + '</div>' +
+        '<div class="railrow">' + ic("search", 19) + '</div>' +
+        '<div class="railrow">' + ic("heart", 19) + '</div>' +
+        '<hr>' + ART.slice(0, 3).map(function (c) {
+          return '<div class="railart" style="background:' + c + '"></div>'; }).join("") +
+        '<hr><div class="railrow">' + ic("settings", 18) + '</div></div>';
+    }
+    return '<div class="sb" style="width:' + w + 'px">' +
+      '<div class="brand">' + markSvg(26, 3) + '<span class="wm">Tidal Wave</span></div>' +
+      '<div class="nav">' +
+        '<div class="row on">' + ic("home") + '<span class="lbl">' + t.home + '</span></div>' +
+        '<div class="row">' + ic("search") + '<span class="lbl">' + t.search + '</span></div>' +
+        '<div class="row">' + ic("heart") + '<span class="lbl">' + t.coll + '</span></div>' +
+      '</div><hr>' +
+      '<div class="finder">' +
+        '<div class="field">' + ic("search", 14) + '<span>' + t.find + '</span></div>' +
+        '<div class="chips">' + t.chips.map(function (c, i) {
+          return '<span class="chip' + (i === 1 ? " on" : "") + '" title="' + c[1] + '">' +
+            ic(c[0], 15) + '</span>'; }).join("") + '</div>' +
+      '</div>' +
+      '<div class="cap">' + t.pinned + '</div>' +
+      '<div class="nav"><div class="row"><span class="art" style="background:' + ART[0] + '"></span>' +
+        '<span class="lbl">Late Night Drive</span>' + ic("pin-filled", 13) + '</div></div>' +
+      '<div class="cap">' + t.library + '</div>' +
+      '<div class="nav">' + t.items.map(function (n, i) {
+        return '<div class="row"><span class="art" style="background:' + ART[i] + '"></span>' +
+          '<span class="lbl">' + n + '</span>' + ic(TYPES[i], 13) + '</div>'; }).join("") + '</div>' +
+      '<hr><div class="nav"><div class="row">' +
+        '<span class="lbl" style="color:#fff">linus</span>' + ic("settings", 15) + '</div></div></div>';
+  }
+  function page() {
+    return '<div class="pagefill"><div class="r" style="width:40%;height:13px"></div>' +
+      '<div class="cards"><i></i><i></i><i></i></div>' +
+      '<div class="r" style="width:80%"></div><div class="r" style="width:66%"></div>' +
+      '<div class="r" style="width:74%"></div></div>';
+  }
+  function drawMocks() {
+    document.getElementById("mocks").innerHTML =
+      '<div><div class="stagebox" style="width:300px;height:470px">' + sidebarHtml(300, false, true) + '</div>' +
+        '<p class="caption">wide</p></div>' +
+      '<div><div class="stagebox" style="width:232px;height:470px">' + sidebarHtml(232, false, false) + '</div>' +
+        '<p class="caption">narrow</p></div>' +
+      '<div><div class="stagebox" style="width:300px;height:470px">' + sidebarHtml(68, true) + page() + '</div>' +
+        '<p class="caption">compact rail</p></div>' +
+      '<div><div class="stagebox" style="width:300px;height:470px">' + sidebarHtml(68, true) + page() +
+        '<div class="fly">' + sidebarHtml(232, false, false) + '</div></div>' +
+        '<p class="caption">hovered: same sidebar, over the page</p></div>';
+  }
+
+  function redraw() { drawGrids(); drawFixes(); drawThemes(); drawMocks(); }
+  var sizeEl = document.getElementById("size"), sizeOut = document.getElementById("sizeout");
+  var strEl = document.getElementById("stroke"), strOut = document.getElementById("strokeout");
+  sizeEl.addEventListener("input", function () { state.size = +sizeEl.value; sizeOut.textContent = state.size + " px"; redraw(); });
+  strEl.addEventListener("input", function () { state.stroke = +strEl.value; strOut.textContent = state.stroke.toFixed(1); redraw(); });
+  function seg(id, key, attr) {
+    document.getElementById(id).addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      Array.prototype.forEach.call(this.querySelectorAll("button"), function (x) {
+        x.setAttribute("aria-pressed", String(x === b)); });
+      state[key] = b.dataset[attr]; redraw();
+    });
+  }
+  seg("stateseg", "mode", "state");
+  seg("langseg", "lang", "lang");
+  redraw(); drawRad();
+})();
+</script>

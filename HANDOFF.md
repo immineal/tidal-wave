@@ -11,7 +11,8 @@ width everything must look right at.
 
 **Design review page (the user reviews design here, keep it current):**
 https://claude.ai/artifact/AkdWsw9NekmW8py6eBZtU3
-Source: publish `icons.html` from the session scratchpad, or rebuild it.
+Source: `docs/design-review.html`. Edit it and republish to that same URL with the
+Artifact tool (pass the URL as `url`, after reading it first).
 
 ## Build and test
 
