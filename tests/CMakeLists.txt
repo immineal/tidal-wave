@@ -18,26 +18,29 @@ if(NOT tidalwave_qml_plugin OR NOT TARGET ${tidalwave_qml_plugin})
 endif()
 
 # ── tst_core: plain QTest console test ───────────────────────────────────────
-qt_add_executable(tst_core
-    tst_placeholder.cpp
-    TestStubs.h
-)
+# One binary per tst_*.cpp, because each carries its own QTEST_MAIN. Globbed so
+# adding a test file needs no edit here; CONFIGURE_DEPENDS re-runs cmake when
+# the set changes.
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tst_*.cpp")
+list(REMOVE_ITEM TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tst_qml.cpp")
 
-target_link_libraries(tst_core PRIVATE
-    tidalwave_qml
-    ${tidalwave_qml_plugin}
-    Qt6::Test
-)
-
-# Picks up any other QML module a test imports (QtQuick, QtTest, ...).
-qt_import_qml_plugins(tst_core)
-
-set_target_properties(tst_core PROPERTIES
-    WIN32_EXECUTABLE FALSE
-    MACOSX_BUNDLE FALSE
-)
-
-add_test(NAME tst_core COMMAND tst_core)
+set(CORE_TEST_TARGETS "")
+foreach(test_src IN LISTS TEST_SOURCES)
+    get_filename_component(test_name "${test_src}" NAME_WE)
+    qt_add_executable(${test_name} "${test_src}" TestStubs.h)
+    target_link_libraries(${test_name} PRIVATE
+        tidalwave_qml
+        ${tidalwave_qml_plugin}
+        Qt6::Test
+    )
+    qt_import_qml_plugins(${test_name})
+    set_target_properties(${test_name} PROPERTIES
+        WIN32_EXECUTABLE FALSE
+        MACOSX_BUNDLE FALSE
+    )
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    list(APPEND CORE_TEST_TARGETS ${test_name})
+endforeach()
 
 # ── tst_qml: QtQuickTest runner over tests/qml/tst_*.qml ─────────────────────
 qt_add_executable(tst_qml
@@ -69,6 +72,6 @@ add_test(NAME tst_qml COMMAND tst_qml)
 
 # QML tests need a QPA plugin. Forcing offscreen keeps `ctest` working on a
 # headless box (and in CI) and stops test windows flashing on a desktop.
-set_tests_properties(tst_core tst_qml PROPERTIES
+set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )

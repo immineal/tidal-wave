@@ -31,4 +31,4 @@ private slots:
 // QTEST_GUILESS_MAIN: no QGuiApplication, so this stays a plain console test.
 // Switch to QTEST_MAIN if a test ever needs widgets or a QML engine.
 QTEST_GUILESS_MAIN(TestPlaceholder)
-#include "tst_placeholder.moc"
+#include "tst_smoke.moc"

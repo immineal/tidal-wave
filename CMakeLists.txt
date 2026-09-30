@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tidal-wave VERSION 0.3.1 LANGUAGES CXX)
+project(tidal-wave VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,10 @@ set(SOURCES
     src/mpris/MprisPlayer.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
+    src/ui/Prefs.cpp
+    src/ui/I18n.cpp
+    src/ui/PinStore.cpp
+    src/api/LibraryIndex.cpp
 )
 
 set(HEADERS
@@ -70,6 +74,10 @@ set(HEADERS
     src/mpris/MprisPlayer.h
     src/ui/Application.h
     src/ui/ImageProvider.h
+    src/ui/Prefs.h
+    src/ui/I18n.h
+    src/ui/PinStore.h
+    src/api/LibraryIndex.h
 )
 
 # Chromecast backend (Linux only — depends on Avahi).
@@ -143,10 +151,15 @@ qt_add_qml_module(tidalwave_qml
         qml/pages/RadioPage.qml
     RESOURCES
         assets/icon.png
+        assets/icon.svg
 )
 
 # PUBLIC: tests include the same headers with the same short paths as the app
 # (e.g. #include "ui/Application.h", #include "Auth.h").
+target_compile_definitions(tidalwave_qml PUBLIC
+    TIDALWAVE_VERSION="${PROJECT_VERSION}"
+)
+
 target_include_directories(tidalwave_qml PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/api
@@ -217,6 +230,24 @@ set_target_properties(tidal-wave PROPERTIES
 if(TIDALWAVE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# ── Translations ───────────────────────────────────────────────────────
+# lupdate/lrelease live in qttools, which not every Qt install carries, so this
+# is optional: without it the app builds and runs in English.
+find_package(Qt6 QUIET COMPONENTS LinguistTools)
+if(Qt6LinguistTools_FOUND)
+    qt_add_translations(tidalwave_qml
+        TS_FILES
+            i18n/tidal-wave_en.ts
+            i18n/tidal-wave_de.ts
+        RESOURCE_PREFIX "/i18n"
+        LUPDATE_OPTIONS -no-obsolete -locations none
+    )
+else()
+    message(WARNING
+        "Qt6 LinguistTools not found - building without translations. "
+        "Install the qttools module to get the German catalogue.")
 endif()
 
 include(GNUInstallDirs)
