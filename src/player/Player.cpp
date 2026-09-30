@@ -5,7 +5,10 @@
 #include <QNetworkReply>
 #include <QSettings>
 #include <QDir>
+#include <QMediaDevices>
+#include <QSet>
 #include "cast/CastSession.h"
+#include "ui/Prefs.h"
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
@@ -25,10 +28,20 @@ Player::Player(TidalClient *client, QObject *parent)
 
 void Player::initAudio() {
     m_player   = new QMediaPlayer(this);
-    m_audioOut = new QAudioOutput(this);
+    // Bind the resolved device explicitly rather than taking QAudioOutput's
+    // default: a default-constructed output latches onto whatever the default
+    // was at construction and never notices a later change.
+    m_audioOut = new QAudioOutput(resolveAudioDevice(), this);
     m_player->setAudioOutput(m_audioOut);
     m_audioOut->setVolume(m_pendingVolume);
     m_audioOut->setMuted(m_pendingMuted);
+
+    // Hot-plug, removal and system-default changes all arrive here. It needs
+    // an instance: audioOutputsChanged is not a static signal. Created inside
+    // initAudio() so it stays behind the same deferral as the rest.
+    m_devices = new QMediaDevices(this);
+    connect(m_devices, &QMediaDevices::audioOutputsChanged,
+            this, &Player::onAudioOutputsChanged);
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged,
             this, &Player::onMediaStatusChanged);
@@ -37,6 +50,7 @@ void Player::initAudio() {
     connect(m_player, &QMediaPlayer::errorOccurred,
             this, &Player::onErrorOccurred);
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
+        if (m_rebinding) return;   // a swap's transient positions are not seeks
         qint64 dur = m_player->duration();
         if (dur > 10000 && pos > 0 && (dur - pos) <= 10000)
             preloadNext();
@@ -49,6 +63,163 @@ void Player::initAudio() {
 Player::~Player() {
     cancelPreload();
     delete m_mpdTempFile;
+    // Detach and drop the output here rather than leaving it to QObject's
+    // child cleanup: an output destroyed after its player calls back into an
+    // object that is already gone.
+    if (m_player) m_player->setAudioOutput(nullptr);
+    delete m_audioOut;
+    m_audioOut = nullptr;
+}
+
+// ─── Audio output routing ──────────────────────────────────
+//
+// The device can change under us in three ways: the user picks one in
+// Settings, the system default moves (PipeWire and PulseAudio both do this
+// when headphones appear), or the device we are on is unplugged. All three
+// end up in applyAudioDevice() -> rebindAudioOutput(), and all three have to
+// be inaudible beyond the gap the hardware itself imposes.
+//
+// Backend note: the device list and its change signal come from Qt's
+// multimedia backend. PipeWire and PulseAudio report add/remove promptly; a
+// plain ALSA backend has a static list and may never emit the change signal,
+// so there a hot-plugged device only shows up the next time the list is read.
+// The fallback path below does not depend on that signal.
+
+void Player::setPrefs(Prefs *prefs) {
+    if (m_prefs == prefs) return;
+    if (m_prefs) disconnect(m_prefs, &Prefs::audioDeviceChanged, this, nullptr);
+    m_prefs = prefs;
+    if (m_prefs) {
+        connect(m_prefs, &Prefs::audioDeviceChanged, this, [this] { applyAudioDevice(); });
+    }
+    applyAudioDevice();
+}
+
+QAudioDevice Player::resolveAudioDevice() const {
+    const QString wanted = m_prefs ? m_prefs->audioDevice() : QString();
+    if (!wanted.isEmpty()) {
+        const QList<QAudioDevice> outs = QMediaDevices::audioOutputs();
+        for (const QAudioDevice &d : outs) {
+            if (QString::fromUtf8(d.id()) == wanted) return d;
+        }
+        // Chosen device is gone (unplugged, renamed, or a settings file from
+        // another machine). Falling back to the default beats going silent.
+    }
+    return QMediaDevices::defaultAudioOutput();
+}
+
+QVariantList Player::availableAudioDevices() const {
+    QVariantList out;
+    QVariantMap sentinel;
+    sentinel[QStringLiteral("id")]        = QString();
+    sentinel[QStringLiteral("label")]     = tr("System default");
+    sentinel[QStringLiteral("isDefault")] = false;
+    out.append(sentinel);
+
+    const QString defaultId = QString::fromUtf8(QMediaDevices::defaultAudioOutput().id());
+    QSet<QString> seen;
+    const QList<QAudioDevice> devices = QMediaDevices::audioOutputs();
+    for (const QAudioDevice &d : devices) {
+        const QString id = QString::fromUtf8(d.id());
+        // An empty id would collide with the sentinel; a repeat would give the
+        // picker two rows that select the same thing.
+        if (id.isEmpty() || seen.contains(id)) continue;
+        seen.insert(id);
+        QVariantMap m;
+        m[QStringLiteral("id")]    = id;
+        m[QStringLiteral("label")] = d.description();   // from the OS, never translated
+        m[QStringLiteral("isDefault")] = (id == defaultId);
+        out.append(m);
+    }
+    return out;
+}
+
+QString Player::activeAudioDeviceId() const {
+    if (!m_audioOut) return QString();
+    return QString::fromUtf8(m_audioOut->device().id());
+}
+
+void Player::refreshAudioDevice() {
+    applyAudioDevice();
+}
+
+void Player::onAudioOutputsChanged() {
+    // Fires for any add or remove, most of which do not concern us.
+    // applyAudioDevice() rebinds only if the device we should be on changed,
+    // which covers both "the default moved" and "our device disappeared".
+    applyAudioDevice();
+}
+
+void Player::applyAudioDevice() {
+    if (!m_player || !m_audioOut) return;   // initAudio() resolves it on the way up
+    const QAudioDevice target = resolveAudioDevice();
+    if (m_audioOut->device() == target) return;
+    rebindAudioOutput(target);
+}
+
+Player::AudioState Player::captureAudioState() const {
+    AudioState s;
+    // Deliberately the local player's state, not playing()/position(), which
+    // report the cast device while casting. The local side is what the swap
+    // disturbs, and the local side is what has to come back.
+    s.position = m_player ? m_player->position() : 0;
+    s.playing  = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
+    s.volume   = m_audioOut ? m_audioOut->volume()  : m_pendingVolume;
+    s.muted    = m_audioOut ? m_audioOut->isMuted() : m_pendingMuted;
+    return s;
+}
+
+void Player::restoreAudioState(const AudioState &state) {
+    if (m_audioOut) {
+        m_audioOut->setVolume(state.volume);
+        // The live value, not m_pendingMuted: while casting the local output is
+        // force-muted and must stay that way across a swap.
+        m_audioOut->setMuted(state.muted);
+    }
+    if (!m_player) return;
+    // A swap can drop the backend back to the start of the track. Seek back
+    // rather than letting it restart, and never re-set the source: that would
+    // re-fetch the stream and look like a track change.
+    if (state.position > 0 && m_player->position() != state.position && m_player->isSeekable())
+        m_player->setPosition(state.position);
+    const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
+    if (state.playing && !playing)      m_player->play();
+    else if (!state.playing && playing) m_player->pause();
+}
+
+void Player::rebindAudioOutput(const QAudioDevice &device) {
+    if (!m_player) return;
+
+    const AudioState state = captureAudioState();
+    m_rebinding = true;
+
+    auto *fresh = new QAudioOutput(device, this);
+    fresh->setVolume(state.volume);
+    fresh->setMuted(state.muted);
+
+    // Order matters. An output that is destroyed while the player still knows
+    // about it calls back and unbinds whatever output is attached at that
+    // moment - which, if the new one were attached first, would leave playback
+    // with no sink at all. So: detach, destroy the old one outright (not
+    // deleteLater, which would fire that callback later), then attach.
+    QAudioOutput *old = m_audioOut;
+    m_audioOut = fresh;
+    if (old) {
+        m_player->setAudioOutput(nullptr);
+        delete old;
+    }
+    m_player->setAudioOutput(fresh);
+
+    restoreAudioState(state);
+    m_rebinding = false;
+
+    // If the swap could not be made invisible after all, tell the UI the truth
+    // instead of leaving it showing a state the player is no longer in.
+    if (!casting()) {
+        const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
+        if (playing != state.playing) emit playingChanged(playing);
+        if (m_player->position() != state.position) emit positionChanged(m_player->position());
+    }
 }
 
 bool   Player::playing()  const { return casting() ? m_castPlaying  : (m_player && m_player->playbackState() == QMediaPlayer::PlayingState); }
@@ -499,6 +670,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 }
 
 void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
+    if (m_rebinding) return;   // rebindAudioOutput() reports the settled state
     emit playingChanged(state == QMediaPlayer::PlayingState);
 }
 
