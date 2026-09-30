@@ -162,20 +162,6 @@ Rectangle {
             anchors.leftMargin: 16
             anchors.rightMargin: 16
             spacing: 10
-            Rectangle {
-                width: 32
-                height: 32
-                radius: 16
-                color: Theme.surfaceHov
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "user"
-                    color: Theme.textSec
-                    width: 16
-                    height: 16
-                    strokeWidth: 1.8
-                }
-            }
             Text {
                 id: acctNameText
                 Layout.fillWidth: true

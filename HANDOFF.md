@@ -81,8 +81,8 @@ QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure
   now supports a filled-accent and a stroked-overlay path so one glyph can mix
   fills and strokes. Fixed per the user's review: `queue` (was a hamburger, and
   must stay distinct from `playlist`), `mix` (broadcast hub), `cast` (bigger
-  arcs, equal gaps, shortened screen edges), `artist` (microphone, was a clone
-  of `user`), `pin-filled` (needle survives the fill).
+  arcs, equal gaps, shortened screen edges), `artist` (now the better of the two
+  near-identical person glyphs; `user` removed), `pin-filled` (needle survives the fill).
 
 ## To do
 
@@ -165,9 +165,9 @@ Full audit was done in session; the findings:
   with the search field, not as loose pills; the field wants generous rounding.
 - Footer shows the **username, not the email address**, and **no avatar icon**.
   The `user` glyph sat there alone and read as a missing profile picture; drop
-  it and give the username the space. The gear stays. `user` is then unused
-  anywhere in the UI, so remove it from `VectorIcon.qml` — `artist` (the
-  microphone) is the only person-ish glyph the app needs.
+  it and give the username the space. The gear stays. The `user` glyph itself
+  is gone from `VectorIcon.qml`: its drawing is now the `artist` glyph, since
+  the two were near-identical at 18px and only one person icon is needed.
 - Implement in `src/api/LibraryIndex.cpp`.
 
 ### E. Sidebar sizing and compact mode

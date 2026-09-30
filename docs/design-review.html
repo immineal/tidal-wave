@@ -190,7 +190,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
 
   <section>
     <h2>Existing icons</h2>
-    <p class="note">Unchanged, shown so the new ones can be judged beside them. <b>user</b> is gone: it appeared exactly once, in the sidebar footer, where it read as a missing profile picture. The username takes that space now and the gear stays.</p>
+    <p class="note">Unchanged, shown so the new ones can be judged beside them. <b>user</b> and the old <b>artist</b> are gone as a pair: the surviving drawing is now the artist glyph, and the sidebar footer that was <b>user</b>'s only home shows the username with no avatar.</p>
     <div class="grid" id="gridOld"></div>
   </section>
 
@@ -259,9 +259,9 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
     queue:        { d:"M 3 6 H 21 M 3 12 H 21 M 3 18 H 13", acc:"M 16.5 14.6 L 22 18 L 16.5 21.4 Z", use:"Queue" },
     playlist:     { d:"M 3 6 H 16 M 3 12 H 12 M 3 18 H 11 M 21 18 V 6 M 21 18 A 2.5 2.5 0 1 0 16 18 A 2.5 2.5 0 1 0 21 18", use:"Playlists" },
     album:        { d:"M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 9.5 A 2.5 2.5 0 1 0 12 14.5 A 2.5 2.5 0 1 0 12 9.5", use:"Albums" },
-    artist:       { d:"M 12 15 A 3.5 3.5 0 0 0 15.5 11.5 V 5.5 A 3.5 3.5 0 0 0 8.5 5.5 V 11.5 A 3.5 3.5 0 0 0 12 15 Z M 5.5 10.5 V 11.5 A 6.5 6.5 0 0 0 18.5 11.5 V 10.5 M 12 18 V 22 M 8.5 22 H 15.5", use:"Artists" },
+    artist:       { d:"M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z", use:"Artists" },
     mix:          { d:"M 8.6 8.6 A 4.8 4.8 0 0 0 8.6 15.4 M 15.4 8.6 A 4.8 4.8 0 0 1 15.4 15.4 M 5.2 5.2 A 9.6 9.6 0 0 0 5.2 18.8 M 18.8 5.2 A 9.6 9.6 0 0 1 18.8 18.8", acc:"M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z", use:"Mixes" },
-    cast:         { d:"M 3 11 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 10 M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18", acc:"M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z", use:"Cast to" },
+    cast:         { d:"M 3 10 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 11 M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18", acc:"M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z", use:"Cast to" },
     pin:          { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 L 8 3 Z M 12 13 V 21", use:"Pin" },
     "pin-filled": { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 Z", fill:true, ovl:"M 12 13 V 21", use:"pinned" },
     library:      { d:"M 4 4 V 20 M 8.5 8 V 20 M 13 6 V 20 M 17 7.5 L 20.5 20", use:"library" },
@@ -364,10 +364,10 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
       p: "Was an equaliser. Now a broadcast hub: a solid centre with two arc pairs around it." },
     { t: "cast", before: { d: "M 3 12 V 5 H 21 V 18 H 11 M 3 15 A 4 4 0 0 1 7 19 M 3 18 A 1 1 0 0 1 4 19" },
       after: NEW.cast,
-      p: "Arcs grew from r4 to r5, and the gap from the outer arc to the screen is now exactly 2 against the left edge and 2 against the bottom edge. It was 3 and 4." },
+      p: "Arcs grew from r4 to r5, and both screen edges were shortened so the gap from the outer arc is exactly 3 on the left and 3 along the bottom. It was 3 and 4, with longer edges." },
     { t: "artist", before: { d: "M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z M 4 21 A 8 8 0 0 1 20 21" },
       after: NEW.artist,
-      p: "A head and shoulders, indistinguishable from <code>user</code> at 18px, so an artist row read as an account row. Now a microphone." }
+      p: "There were two near-identical person glyphs, <code>artist</code> and <code>user</code>, indistinguishable at 18px. One survives, the better-drawn one, and it is the artist glyph. <code>user</code> is gone with the sidebar avatar that was its only use." }
   ];
   function drawFixes() {
     document.getElementById("fixes").innerHTML = FIXES.map(function (f) {

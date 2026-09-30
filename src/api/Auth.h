@@ -37,6 +37,10 @@ public:
     // Called on startup with persisted tokens
     void loadCredentials();
 
+    // Pure, and covered by tst_auth: picks what the sidebar shows for the
+    // signed-in account. Public so the test can reach it without a session.
+    static QString displayNameFrom(const QJsonObject &u);
+
 signals:
     void stateChanged(State state);
     void userCodeChanged();
