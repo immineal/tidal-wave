@@ -58,6 +58,7 @@ set(SOURCES
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
     src/ui/Prefs.cpp
+    src/ui/ThemePalette.cpp
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
     src/api/LibraryIndex.cpp
@@ -75,6 +76,7 @@ set(HEADERS
     src/ui/Application.h
     src/ui/ImageProvider.h
     src/ui/Prefs.h
+    src/ui/ThemePalette.h
     src/ui/I18n.h
     src/ui/PinStore.h
     src/api/LibraryIndex.h

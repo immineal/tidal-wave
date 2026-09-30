@@ -1,4 +1,6 @@
 #include "Application.h"
+#include "ui/Prefs.h"
+#include "ui/ThemePalette.h"
 #ifdef Q_OS_LINUX
 #include "cast/CastManager.h"
 #endif
@@ -132,7 +134,8 @@ int Application::run(int argc, char **argv) {
     silenceLogsAndAlsa();
 
     QApplication::setApplicationName("Tidal Wave");
-    QApplication::setApplicationVersion("0.3.1");
+    // R1: the real version, so Settings and the About line cannot drift.
+    QApplication::setApplicationVersion(QStringLiteral(TIDALWAVE_VERSION));
     QApplication::setOrganizationName("TidalWave");
     QApplication::setDesktopFileName("tidal-wave");
 
@@ -176,6 +179,9 @@ int Application::run(int argc, char **argv) {
 
     m_api    = new TidalApi(this);
     m_auth   = new Auth(m_api, this);
+    // Prefs first: the palette singleton and the audio output both read it
+    // before anything is shown.
+    m_prefs  = new Prefs(this);
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
     m_player = new Player(m_client, this);
@@ -226,7 +232,12 @@ int Application::run(int argc, char **argv) {
     m_engine = new QQmlApplicationEngine(this);
     m_engine->addImageProvider(QStringLiteral("tidal"), new TidalImageProvider());
 
+    // The palette singleton is created by the engine, so it has to know about
+    // Prefs before the first QML file binds Theme.*.
+    ThemePalette::instance()->setPrefs(m_prefs);
+
     QQmlContext *ctx = m_engine->rootContext();
+    ctx->setContextProperty(QStringLiteral("prefs"),  m_prefs);
     ctx->setContextProperty(QStringLiteral("auth"),   m_auth);
     ctx->setContextProperty(QStringLiteral("bridge"), m_bridge);
     ctx->setContextProperty(QStringLiteral("player"), m_player);
