@@ -306,7 +306,14 @@ Branch is **pushed**: https://github.com/immineal/tidal-wave/tree/beta-0.4.0
 6 test binaries, all green:
 `QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure`
 
-### In flight when the usage limit hit - CHECK THESE FIRST
+### Resolved after that note was written
+Audio (H) and the update check (K) both landed in `16c0e18`, with the
+`Player::setPrefs` wiring done. All 8 test binaries pass. `tests/firstrun/`
+was committed too but its agent never reported, so **treat the first-run
+harness as unverified**: read it, run it, and trust nothing it claims until
+you have seen it run.
+
+### The note as written at the time
 Three subagents were still running and their work is **uncommitted on disk**.
 Run `git status` and inspect before doing anything else; each may be complete,
 partial, or broken.

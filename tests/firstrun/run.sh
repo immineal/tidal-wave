@@ -134,21 +134,48 @@ trap cleanup EXIT INT TERM
 
 # ── guard: the developer's own config and lock must not move ────────────────
 
-REAL_CONF_DIR=$HOME/.config/TidalWave
+REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
 REAL_LOCK=$REAL_TMPDIR/$SOCKET_NAME
 
-fingerprint() {
-    { [ -e "$REAL_LOCK" ] && stat -c '%n %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
+# Passive liveness probe. A listening unix socket shows up in /proc/net/unix, so
+# this never signals, connects to, or even names a process. A developer's own
+# running instance rewrites its settings file whenever the volume or the last
+# page changes, so its contents drifting is expected and is not our doing.
+LIVE_INSTANCE=0
+if grep -aqs "$SOCKET_NAME" /proc/net/unix; then
+    LIVE_INSTANCE=1
+fi
+
+# Structure, not contents: the lock's identity, and the set of files that exist.
+# A leak out of the sandbox would either replace the lock or create a file.
+guard_structure() {
+    { [ -e "$REAL_LOCK" ] && stat -c 'lock %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
+    { [ -d "$REAL_CONF_DIR" ] && find "$REAL_CONF_DIR" -type f -printf 'file %p\n' | sort; } 2>/dev/null
+    true
+}
+guard_contents() {
     { [ -d "$REAL_CONF_DIR" ] && find "$REAL_CONF_DIR" -type f -exec md5sum {} + | sort; } 2>/dev/null
     true
 }
-GUARD_BEFORE=$(fingerprint)
+GUARD_STRUCT=$(guard_structure)
+GUARD_BODY=$(guard_contents)
 
 guard_check() {
-    local now; now=$(fingerprint)
-    if [ "$now" != "$GUARD_BEFORE" ]; then
-        printf '%s\n' "--- before ---" "$GUARD_BEFORE" "--- after ---" "$now" >&2
-        die "scenario '$1' touched the real config or the real single-instance lock"
+    local now; now=$(guard_structure)
+    if [ "$now" != "$GUARD_STRUCT" ]; then
+        printf '%s\n' "--- before ---" "$GUARD_STRUCT" "--- after ---" "$now" >&2
+        die "scenario '$1' changed the real settings directory or the real single-instance lock"
+    fi
+    local body; body=$(guard_contents)
+    if [ "$body" != "$GUARD_BODY" ]; then
+        if [ "$LIVE_INSTANCE" -eq 1 ]; then
+            # Expected: the developer's own instance is running and saving state.
+            # Our runs are killed by SIGTERM, so QSettings never syncs and they
+            # write no settings file at all, not even inside their sandbox.
+            GUARD_BODY=$body
+        else
+            die "scenario '$1' rewrote $REAL_CONF_DIR and no other instance is running"
+        fi
     fi
 }
 
