@@ -139,6 +139,23 @@ void Auth::refreshAccessToken() {
     });
 }
 
+// Tidal's "username" field is the account's email address on most accounts, so
+// it is the last thing to reach for, not the first: a profile name or a real
+// name is what belongs in the sidebar. An address is never shown.
+QString Auth::displayNameFrom(const QJsonObject &u) {
+    const QString profile = u["profileName"].toString().trimmed();
+    if (!profile.isEmpty()) return profile;
+
+    const QString full = (u["firstName"].toString() + QLatin1Char(' ')
+                          + u["lastName"].toString()).trimmed();
+    if (!full.isEmpty()) return full;
+
+    const QString username = u["username"].toString().trimmed();
+    if (!username.contains(QLatin1Char('@'))) return username;
+
+    return {};
+}
+
 void Auth::fetchSession() {
     m_api->get("sessions", {}, [this](QJsonObject obj, QString err) {
         if (!err.isEmpty()) {
@@ -168,12 +185,7 @@ void Auth::fetchSession() {
 
         m_api->get(QStringLiteral("users/%1").arg(m_userId), {},
             [this](QJsonObject u, QString) {
-                QString name = u["username"].toString();
-                if (name.isEmpty()) {
-                    QString first = u["firstName"].toString();
-                    QString last  = u["lastName"].toString();
-                    name = (first + " " + last).trimmed();
-                }
+                const QString name = displayNameFrom(u);
                 if (!name.isEmpty() && name != m_username) {
                     m_username = name;
                     emit usernameChanged();
@@ -208,6 +220,7 @@ void Auth::loadCredentials() {
     m_userId       = obj["user_id"].toVariant().toLongLong();
     m_countryCode  = obj["country_code"].toString();
     m_username     = obj["username"].toString();
+    if (m_username.contains(QLatin1Char('@'))) m_username.clear();
 
     if (m_accessToken.isEmpty() || m_refreshToken.isEmpty()) return;
 

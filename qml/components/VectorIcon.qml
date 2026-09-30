@@ -75,12 +75,11 @@ Item {
             return "M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z"
         case "music":
             return "M 9 18 V 5 L 21 3 V 16 M 9 8 L 21 6 M 9 18 A 3 3 0 1 1 6 15 A 3 3 0 0 1 9 18 Z M 21 16 A 3 3 0 1 1 18 13 A 3 3 0 0 1 21 16 Z"
-        // A microphone, not a bust: the old "artist" glyph was a head and
-        // shoulders, indistinguishable from "user" at 18px, so an artist row
-        // read as an account row.
+        // One person glyph, for artists. There used to be two near-identical
+        // ones -- "artist" (a circle on a shoulders arc) and "user" -- which
+        // were indistinguishable at 18px. This is the better-drawn of the two;
+        // "user" is gone, along with the sidebar avatar that was its only use.
         case "artist":
-            return "M 12 15 A 3.5 3.5 0 0 0 15.5 11.5 V 5.5 A 3.5 3.5 0 0 0 8.5 5.5 V 11.5 A 3.5 3.5 0 0 0 12 15 Z M 5.5 10.5 V 11.5 A 6.5 6.5 0 0 0 18.5 11.5 V 10.5 M 12 18 V 22 M 8.5 22 H 15.5"
-        case "user":
             return "M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z"
         case "settings":
             return "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M 12 15 A 3 3 0 1 1 12 9 A 3 3 0 0 1 12 15 Z"
