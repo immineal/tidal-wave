@@ -223,7 +223,27 @@ Full audit was done in session; the findings:
   push without asking.
 - Delete this file in that merge.
 
-## Open questions to put to the user
+### K. Update check and privacy notice
+- Poll the GitHub releases API for a tag newer than `PROJECT_VERSION`.
+  **Once per 24h**, cached to disk, so a launch does not always hit the network.
+- **Prompt at the next launch**, never mid-session: no idle timer, no popup
+  over playback. Decided with the user.
+- Buttons: **Open release / Later / Skip this version.** Skip and Later both
+  persist. The popup links out to the GitHub release page; the app never
+  downloads or self-installs. Keeping that complexity out is the point.
+- Privacy notice lives in **two places**, per the user: a block in the
+  **Settings** panel and a section at the **bottom of `README.md`**. No
+  separate PRIVACY.md. It covers every outbound request: the Tidal API, cover
+  art fetches, Chromecast mDNS on the LAN, and the new GitHub version check.
+- The check must be switchable off, and the notice has to say so.
 
-- The two light theme palettes, once they are properly distinct.
-- Whether the radius scale in the review page is right before it is applied.
+## Answered since the handoff
+
+- **Themes:** keep the six palettes from the review page, but **"Graphite" is
+  replaced by a green dark theme** ("Forest"). The user called the violet
+  sloppy. The light pair stays **Daylight** (crisp white, blue) and **Paper**
+  (warm, green accent) - the user likes Paper as drawn.
+- **Radius scale:** the review page table, with **popups/dialogs at 14**, not
+  18. Everything else as drafted.
+- **Update check:** once per 24h, prompt at next launch only (section K).
+- **Privacy notice:** Settings panel plus the bottom of README.md (section K).

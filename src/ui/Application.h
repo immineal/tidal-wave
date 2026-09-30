@@ -12,6 +12,7 @@
 
 class QQmlApplicationEngine;
 class CastManager;
+class Prefs;
 
 class Application : public QObject {
     Q_OBJECT
@@ -32,6 +33,7 @@ signals:
     void reallyQuitChanged();
 
 private:
+    Prefs       *m_prefs  = nullptr;
     TidalApi    *m_api    = nullptr;
     Auth        *m_auth   = nullptr;
     TidalClient *m_client = nullptr;
