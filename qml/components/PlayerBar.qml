@@ -83,7 +83,7 @@ Rectangle {
                     }
                     Text {
                         id: ql; anchors.centerIn: parent
-                        text: player.qualityLabel(player.audioQuality).toUpperCase()
+                        text: player.qualityLabel(player.audioQuality)
                         color: Theme.textPrimary; font.pixelSize: 9; font.bold: true
                     }
                 }

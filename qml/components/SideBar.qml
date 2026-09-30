@@ -33,7 +33,7 @@ Rectangle {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "TIDAL WAVE"
+                text: "Tidal Wave"
                 color: Theme.textPrimary
                 font.pixelSize: 14
                 font.bold: true
@@ -71,7 +71,7 @@ Rectangle {
 
         Text {
             Layout.leftMargin: 20
-            text: "PLAYLISTS"
+            text: "Playlists"
             color: Theme.textDim
             font.pixelSize: 10
             font.bold: true
@@ -298,7 +298,7 @@ Rectangle {
                     spacing: 10
 
                     Text {
-                        text: "ACCOUNT"
+                        text: "Account"
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
@@ -343,7 +343,7 @@ Rectangle {
                     spacing: 10
 
                     Text {
-                        text: "PLAYBACK"
+                        text: "Playback"
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
@@ -465,7 +465,7 @@ Rectangle {
                     spacing: 6
 
                     Text {
-                        text: "KEYBOARD SHORTCUTS"
+                        text: "Keyboard shortcuts"
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
