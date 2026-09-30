@@ -286,7 +286,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A native desktop client for Tidal")
     set(CPACK_PACKAGE_CONTACT "Linus Linhof <tidal-wave@linu.li>")
-    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/user/tidal-wave")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/immineal/tidal-wave")
 
     set(CPACK_GENERATOR "DEB")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")

@@ -179,6 +179,16 @@ guard_check() {
     fi
 }
 
+head2 "sandbox"
+info "binary:  $APP"
+info "scratch: $SCRATCH (short on purpose: a unix socket path caps at 107 bytes)"
+if [ "$LIVE_INSTANCE" -eq 1 ]; then
+    info "another instance is already listening on $SOCKET_NAME; it is left strictly alone."
+    info "its settings file may change under us, which the guard tolerates but never causes."
+else
+    info "no other instance is listening; any write to the real settings would be a hard failure."
+fi
+
 # ── sandbox construction ────────────────────────────────────────────────────
 
 BOX=''        # current sandbox dir
