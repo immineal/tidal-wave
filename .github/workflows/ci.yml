@@ -48,3 +48,37 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
+
+  # Tests are Linux-only on purpose: the suite is platform-independent, and one
+  # runner keeps CI fast. QML tests need a QPA plugin, hence offscreen.
+  test:
+    name: Tests (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          # qtmultimedia as in the build job; Qt6::Test and Qt6::QuickTest ship
+          # with the base desktop install.
+          modules: 'qtmultimedia'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+
+      - name: Configure
+        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-tests --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build-tests --output-on-failure

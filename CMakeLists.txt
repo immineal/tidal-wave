@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# Tests are opt-in: a plain `cmake -B build -S .` builds exactly what it always
+# did (app only, no Qt6::Test/QuickTest requirement).
+option(TIDALWAVE_BUILD_TESTS "Build tests" OFF)
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
@@ -23,14 +27,27 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 
 qt_standard_project_setup()
 
+# Qt policies — guarded by version so the project builds across Qt releases:
+# QTP0001 exists since Qt 6.5, QTP0004 only since Qt 6.7 (setting an unknown
+# policy is a hard error, which broke CI on Qt 6.5.3). These must be set before
+# qt_add_qml_module() below, since QTP0001 decides the module's resource prefix
+# (":/qt/qml/TidalWave/..." vs ":/TidalWave/...").
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
+    qt_policy(SET QTP0001 NEW)
+endif()
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8)
+    qt_policy(SET QTP0004 NEW)
+endif()
+
 # Chromecast support (Linux only) needs Avahi for mDNS discovery.
 if(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(AVAHI REQUIRED IMPORTED_TARGET avahi-client)
 endif()
 
+# Everything except main.cpp lives in the tidalwave_qml library (see below), so
+# both the app and the test binaries get the same C++ *and* the same QML module.
 set(SOURCES
-    src/main.cpp
     src/api/TidalApi.cpp
     src/api/Auth.cpp
     src/api/TidalClient.cpp
@@ -75,26 +92,26 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-qt_add_executable(tidal-wave
+# ── QML module + app logic as a static library ───────────────────────────────
+# The QML module used to be attached to the executable, which made both the QML
+# files and the C++ QML_ELEMENT registrations unreachable from a test binary
+# (you cannot link an executable). Hosting the module on a static library lets
+# tidal-wave and tests/ link the exact same module, resources included.
+qt_add_library(tidalwave_qml STATIC
     ${SOURCES}
     ${HEADERS}
 )
 
-# Qt policies — guarded by version so the project builds across Qt releases:
-# QTP0001 exists since Qt 6.5, QTP0004 only since Qt 6.7 (setting an unknown
-# policy is a hard error, which broke CI on Qt 6.5.3).
-if(Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
-    qt_policy(SET QTP0001 NEW)
-endif()
-if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8)
-    qt_policy(SET QTP0004 NEW)
-endif()
-
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
-qt_add_qml_module(tidal-wave
+qt_add_qml_module(tidalwave_qml
     URI TidalWave
     VERSION 1.0
+    # A library-hosted module gets its own directory in the build tree; without
+    # this it lands in the build root, which doesn't match the TidalWave target
+    # path and makes Qt warn that qmllint may misbehave. The app still loads the
+    # module out of the embedded resources, not from here.
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave
     QML_FILES
         qml/Theme.qml
         qml/Main.qml
@@ -128,9 +145,19 @@ qt_add_qml_module(tidal-wave
         assets/icon.png
 )
 
-target_include_directories(tidal-wave PRIVATE src src/api src/player src/mpris src/ui src/cast)
+# PUBLIC: tests include the same headers with the same short paths as the app
+# (e.g. #include "ui/Application.h", #include "Auth.h").
+target_include_directories(tidalwave_qml PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/api
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/player
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mpris
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cast
+)
 
-target_link_libraries(tidal-wave PRIVATE
+# PUBLIC so linking tidalwave_qml is all the app and the tests have to do.
+target_link_libraries(tidalwave_qml PUBLIC
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
@@ -147,8 +174,36 @@ target_link_libraries(tidal-wave PRIVATE
 
 # Avahi for Chromecast discovery (Linux only).
 if(UNIX AND NOT APPLE)
-    target_link_libraries(tidal-wave PRIVATE PkgConfig::AVAHI)
+    target_link_libraries(tidalwave_qml PUBLIC PkgConfig::AVAHI)
 endif()
+
+# ── Application ──────────────────────────────────────────────────────────────
+qt_add_executable(tidal-wave
+    src/main.cpp
+)
+
+target_link_libraries(tidal-wave PRIVATE tidalwave_qml)
+
+# The QML module is static, so the app has to import its plugin
+# (tidalwave_qmlplugin) or QML loading fails with "module TidalWave is not
+# installed". Linking the plugin target does exactly that: Qt propagates the
+# plugin's generated Q_IMPORT_PLUGIN init object library along with it.
+#
+# qt_import_qml_plugins(tidal-wave) is the usual one-liner here and it does work,
+# but it runs qmlimportscanner with -rootPath <target source dir> — the whole
+# repo — so it also reads tests/qml/*.qml and records QtTest as a dependency of
+# the *app*. That warns at configure time on Qt installs without the QuickTest
+# CMake package (a distro Qt without qt6-quicktest-devel) and would link
+# Qt6::QuickTest into the shipped binary on a static Qt. qmlimportscanner's
+# -exclude option has no effect on -rootPath scans (checked against 6.12), so the
+# scan is turned off and the plugin named directly instead.
+set_target_properties(tidal-wave PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+
+get_target_property(tidalwave_qml_plugin tidalwave_qml QT_QML_MODULE_PLUGIN_TARGET)
+if(NOT tidalwave_qml_plugin OR NOT TARGET ${tidalwave_qml_plugin})
+    message(FATAL_ERROR "tidalwave_qml has no QML plugin target to link into tidal-wave.")
+endif()
+target_link_libraries(tidal-wave PRIVATE ${tidalwave_qml_plugin})
 
 set_target_properties(tidal-wave PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER com.tidalwave.client
@@ -157,6 +212,12 @@ set_target_properties(tidal-wave PROPERTIES
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+if(TIDALWAVE_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 include(GNUInstallDirs)
 
