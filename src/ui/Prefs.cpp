@@ -7,6 +7,7 @@ constexpr auto kTheme    = "ui/theme";
 constexpr auto kLanguage = "ui/language";
 constexpr auto kSidebar  = "ui/sidebarWidth";
 constexpr auto kAudioDev = "audio/outputDevice";
+constexpr auto kSoftRender = "ui/softwareRendering";
 }
 
 Prefs::Prefs(QObject *parent)
@@ -15,6 +16,7 @@ Prefs::Prefs(QObject *parent)
     , m_language(m_settings.value(kLanguage, QStringLiteral("system")).toString())
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
     , m_audioDevice(m_settings.value(kAudioDev).toString())
+    , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
 {
     // A width written by a future build, or a corrupted settings file, must not
     // leave the sidebar unusable.
@@ -49,6 +51,13 @@ void Prefs::setAudioDevice(const QString &v) {
     m_audioDevice = v;
     m_settings.setValue(kAudioDev, v);
     emit audioDeviceChanged();
+}
+
+void Prefs::setSoftwareRendering(bool v) {
+    if (v == m_softwareRendering) return;
+    m_softwareRendering = v;
+    m_settings.setValue(kSoftRender, v);
+    emit softwareRenderingChanged();
 }
 
 QString Prefs::appVersion() const {

@@ -218,6 +218,30 @@ Full audit was done in session; the findings:
   CI. Windows and macOS via the CI build matrix.
 - Animations must stay smooth in all of the above.
 
+### L. Hardware acceleration toggle
+- A Settings switch that turns the GPU path off, for people who noticed the
+  app using a slice of their GPU while idle.
+- Qt decides the scene-graph backend **before the first window exists**, so
+  this is read in `Application::run()` ahead of the engine and the toggle has
+  to say it needs a restart. `QQuickWindow::setSceneGraphBackend("software")`,
+  persisted as `Prefs::softwareRendering`.
+- Turn off the 4x multisampling in the same breath when it is on; that is GPU
+  work too.
+- Must not strand anyone: if software rendering is what makes the app usable
+  on their machine, the setting has to survive and apply on every launch.
+
+### M. First-run simulation
+- Actually run the app as a brand new install would see it and look for the
+  stupid stuff: **empty `HOME`, no settings file, no saved session, no cache**.
+- Cover the environments the app claims to support: X11, Wayland,
+  `QT_QUICK_BACKEND=software`, offscreen, and a session where the tray is
+  missing. Windows and macOS stay on the CI matrix.
+- Check: does it start, does it land on the login page, does it survive with no
+  network, are there console errors or QML warnings, does the window icon
+  resolve, is the default sidebar width sane, does the default theme apply.
+- Isolate every run with `TMPDIR=… HOME=… XDG_*=…`. **Never** `pkill
+  tidal-wave` and never let a run touch the user's real instance or settings.
+
 ### J. Release
 - Merge `beta-0.4.0` into `main` once complete **and approved**. Do not tag or
   push without asking.

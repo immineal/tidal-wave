@@ -15,6 +15,8 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QSurfaceFormat>
+#include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QLoggingCategory>
 #include <QLibrary>
 #include <QLocalServer>
@@ -139,9 +141,24 @@ int Application::run(int argc, char **argv) {
     QApplication::setOrganizationName("TidalWave");
     QApplication::setDesktopFileName("tidal-wave");
 
-    QSurfaceFormat format;
-    format.setSamples(4);
-    QSurfaceFormat::setDefaultFormat(format);
+    // Prefs first: QSettings needs the names above, and the scene graph backend
+    // below is chosen once, before any window exists, and never revisited.
+    m_prefs = new Prefs(this);
+
+    // Someone debugging a graphics problem from the shell outranks the stored
+    // setting, so an explicit backend in the environment is left alone.
+    const bool backendForced = qEnvironmentVariableIsSet("QT_QUICK_BACKEND")
+                            || qEnvironmentVariableIsSet("QSG_RHI_BACKEND");
+
+    if (m_prefs->softwareRendering() && !backendForced) {
+        QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+    } else {
+        // 4x multisampling is GPU work, so it is pointless once the raster
+        // backend is drawing.
+        QSurfaceFormat format;
+        format.setSamples(4);
+        QSurfaceFormat::setDefaultFormat(format);
+    }
 
     QApplication::setQuitOnLastWindowClosed(false);
     const QIcon appIcon = loadAppIcon();
@@ -179,9 +196,6 @@ int Application::run(int argc, char **argv) {
 
     m_api    = new TidalApi(this);
     m_auth   = new Auth(m_api, this);
-    // Prefs first: the palette singleton and the audio output both read it
-    // before anything is shown.
-    m_prefs  = new Prefs(this);
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
     m_player = new Player(m_client, this);
