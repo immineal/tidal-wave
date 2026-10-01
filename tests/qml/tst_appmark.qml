@@ -129,54 +129,55 @@ TestCase {
                 "at " + data.size + "px the mark paints outside itself: " + bad.join(", "))
     }
 
-    // ── the tokens, not the colours ──────────────────────────────────────
+    // ── the brand colours, deliberately not the tokens ──────────────────
 
-    function test_tile_and_bands_follow_the_tokens() {
+    // The mark is the same artwork the window, tray and launcher show, and
+    // those are a fixed PNG and SVG that cannot follow the in-app palette. A
+    // logo that changed colour with the theme would stop reading as the same
+    // thing as the icon beside it in the taskbar, so it is pinned to the brand
+    // colours on purpose. assets/icon.svg is the source of truth for both.
+    function test_tile_and_bands_use_the_brand_colours() {
         var mark = makeMark(64)
         var tile = findByName(mark, "appMarkTile")
         var bands = bandPaths(mark)
 
         // toString() because a colour read into a var is a value type whose
         // identity is not stable across a repaint; the hex is.
-        compare(tile.color.toString(), Theme.accent.toString())
+        compare(tile.color.toString(), "#00b2f8")
         for (var i = 0; i < bands.length; ++i)
-            compare(bands[i].fillColor.toString(), Theme.accentInk.toString(),
-                    "band " + i + " is not on accentInk")
+            compare(bands[i].fillColor.toString(), "#ffffff",
+                    "band " + i + " is not the brand white")
     }
 
-    // Switching the theme has to repaint the mark. Written as one pass over
-    // every palette rather than one case per theme because the contract is
-    // "the binding tracks the token", not "this palette differs from that
-    // one": two palettes are allowed to share an ink, and the accents get
-    // retuned. What must hold is that the mark never stops following.
-    function test_theme_switch_repaints() {
+    // The inverse of the old contract: switching the theme must NOT repaint
+    // it. This is the assertion that catches someone "helpfully" rebinding the
+    // mark to Theme.accent again.
+    function test_theme_switch_leaves_the_mark_alone() {
         var mark = makeMark(64)
         var tile = findByName(mark, "appMarkTile")
         var bands = bandPaths(mark)
-        var names = ["midnight", "forest", "ember", "deep", "daylight", "paper"]
-        var tiles = {}
+        var names = ["midnight", "forest", "ember", "daylight", "paper", "dawn"]
 
         for (var t = 0; t < names.length; ++t) {
             prefs.theme = names[t]
             waitForRendering(mark)
 
-            // toString() because a colour read into a var is a value type
-            // whose identity is not stable across a repaint; the hex is.
-            compare(tile.color.toString(), Theme.accent.toString(),
-                    names[t] + " did not reach the tile")
+            compare(tile.color.toString(), "#00b2f8",
+                    names[t] + " changed the mark's tile")
             for (var i = 0; i < bands.length; ++i)
-                compare(bands[i].fillColor.toString(), Theme.accentInk.toString(),
-                        names[t] + " did not reach band " + i)
-
-            tiles[tile.color.toString()] = true
+                compare(bands[i].fillColor.toString(), "#ffffff",
+                        names[t] + " changed band " + i)
         }
 
-        // And it really did repaint, rather than every palette agreeing on a
-        // colour the mark had baked in. Only the tile can show that: every
-        // palette currently draws the ink white, so an accentInk that is the
-        // same in all six is correct rather than a stuck binding.
-        verify(Object.keys(tiles).length > 1,
-               "the tile painted the same colour in all six themes")
+        // ...and the accent really did move across those six, so the test
+        // above is not passing because every palette happens to agree.
+        var accents = {}
+        for (var k = 0; k < names.length; ++k) {
+            prefs.theme = names[k]
+            accents[Theme.accent.toString()] = true
+        }
+        verify(Object.keys(accents).length > 1,
+               "the accent never changed, so this proves nothing")
     }
 
     // ── the regression that matters ──────────────────────────────────────

@@ -13,7 +13,7 @@ import TidalWave
 // thing that decides.
 //
 // The overlay is why this item is not the panel it draws. The root is the slot
-// the layout gives it — rail-wide while compact — and `panel` inside it is free
+// the layout gives it (rail-wide while compact) and `panel` inside it is free
 // to grow past that slot and cover the page without the layout reflowing and
 // shoving the page sideways. Main.qml gives the root `z: 2` so it covers the
 // page rather than sliding under it.
@@ -67,7 +67,7 @@ Item {
     // A drag is a continuous stream of new widths, so animating it would make
     // the border lag behind the pointer. Reduced motion goes through the
     // duration instead of through `enabled`, so the slide still runs and still
-    // finishes — it just finishes in the frame it started.
+    // finishes; it just finishes in the frame it started.
     Behavior on panelWidth {
         enabled: !dragHandle.dragging
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
@@ -96,6 +96,10 @@ Item {
             if (kinds.indexOf(all[i].kind) >= 0) out.push(all[i])
         root.rows = out
     }
+
+    // What the rail draws. The library as the data layer ordered it, with no
+    // finder applied, because the finder is not on screen in the rail.
+    readonly property var railRows: library.entries
 
     // ── the pinned block, and dragging inside it (P3, P4) ────────────────
 
@@ -360,9 +364,21 @@ Item {
                 }
             }
 
-            // ── the rail's pinned covers (S9) ────────────────────────────
+            // ── the rail's covers (S9, amended) ──────────────────────────
+            //
+            // The whole library, not just the pinned items. S9 as written had
+            // the rail carry "the pinned covers" and nothing else, which means
+            // an empty strip for anyone who has never pinned anything, which
+            // is most people and was what the user actually saw. The rail is
+            // the same sidebar, so it shows the same list in the same order:
+            // pinned first, then recently played, then A to Z (S2).
+            //
+            // `library.entries` rather than `root.rows`, because the finder is
+            // not on screen here. A chip or a half-typed query left behind
+            // before the window narrowed would otherwise silently empty a rail
+            // with no visible control to explain why.
             ListView {
-                id: railPins
+                id: railCovers
                 objectName: "sidebarRailPins"
                 visible: !root.showsWide
                 opacity: 1 - root.wideness
@@ -372,66 +388,101 @@ Item {
                 topMargin: 4
                 bottomMargin: 8
                 spacing: 4
-                model: pins.items
+                model: root.railRows
+                // As long as the library list, so the same reasoning applies:
+                // nothing outside the viewport stays alive.
+                cacheBuffer: 240
                 boundsBehavior: Flickable.StopAtBounds
 
                 delegate: Item {
-                    id: pinDelegate
+                    id: railDelegate
+                    required property int index
                     required property var modelData
+
+                    readonly property bool pinned: modelData.pinned === true
+                    // The same break the wide list draws between the pinned
+                    // block and the rest (P3), so the two shapes of the
+                    // sidebar tell the same story.
+                    readonly property bool blockBreak: index > 0 && !pinned
+                                                       && root.railRows[index - 1].pinned === true
+
                     width: ListView.view.width
-                    height: 44
+                    height: 44 + (blockBreak ? 9 : 0)
+
+                    Rectangle {
+                        objectName: "railPinnedBlockBreak"
+                        visible: railDelegate.blockBreak
+                        anchors.top: parent.top
+                        anchors.topMargin: 4
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 28
+                        height: 1
+                        color: Theme.border
+                    }
 
                     Rectangle {
                         objectName: "railPinCover"
-                        anchors.centerIn: parent
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 2
                         width: 40
                         height: 40
                         radius: Theme.radiusArt
                         color: Theme.surfaceHigh
-                        border.width: pinHov.hovered ? 1 : 0
+                        // A pinned cover keeps its ring once the break above
+                        // has scrolled away, which is the only thing left to
+                        // tell it apart in a strip of bare artwork.
+                        border.width: coverHov.hovered ? 2 : (railDelegate.pinned ? 1 : 0)
                         border.color: Theme.accent
                         clip: true
 
                         Image {
                             anchors.fill: parent
-                            source: (pinDelegate.modelData.imageUrl || "").length > 0
-                                    ? "image://tidal/" + pinDelegate.modelData.imageUrl : ""
+                            source: (railDelegate.modelData.imageUrl || "").length > 0
+                                    ? "image://tidal/" + railDelegate.modelData.imageUrl : ""
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
                             visible: status === Image.Ready
                         }
+                        // No artwork, and no label either at this width, so
+                        // the type glyph is all there is to say what the tile
+                        // is. The tooltip carries the name.
                         VectorIcon {
+                            objectName: "railCoverFallbackIcon"
                             anchors.centerIn: parent
                             width: 18
                             height: 18
-                            visible: (pinDelegate.modelData.imageUrl || "").length === 0
-                            name: root.glyphFor(pinDelegate.modelData.kind)
-                            color: Theme.textDim
+                            visible: (railDelegate.modelData.imageUrl || "").length === 0
+                            name: root.glyphFor(railDelegate.modelData.kind)
+                            color: railDelegate.pinned ? Theme.accent : Theme.textDim
                         }
 
-                        HoverHandler { id: pinHov; cursorShape: Qt.PointingHandCursor }
+                        // Passive, so the panel's own hover handler still sees
+                        // the pointer and the rail keeps expanding (L4).
+                        HoverHandler { id: coverHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler {
-                            onTapped: root.open(pinDelegate.modelData.kind,
-                                                pinDelegate.modelData.id,
-                                                pinDelegate.modelData)
+                            onTapped: root.open(railDelegate.modelData.kind,
+                                                railDelegate.modelData.id,
+                                                railDelegate.modelData)
                         }
 
-                        // The rail carries the pinned covers and nothing else
-                        // of the library, so the one thing a right-click here
-                        // can mean is Unpin. Reordering stays in the full
-                        // sidebar, which a hover brings back anyway (L4).
+                        // P2, the same menu the wide rows get: the rail is no
+                        // longer a pinned-only strip, so a right-click here
+                        // can mean Pin as well as Unpin.
                         MouseArea {
                             objectName: "railPinMenuArea"
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
                             onClicked: function (mouse) {
                                 var p = mapToItem(root, mouse.x, mouse.y)
-                                root.showPinMenu(p.x, p.y, pinDelegate.modelData)
+                                root.showPinMenu(p.x, p.y, railDelegate.modelData)
                             }
                         }
 
-                        ToolTip.visible: pinHov.hovered
-                        ToolTip.text: pinDelegate.modelData.title || ""
+                        // The rail has no labels, so without this the only
+                        // clue to what a tile is is the artwork.
+                        ToolTip.visible: coverHov.hovered
+                        ToolTip.text: railDelegate.modelData.title || ""
                         ToolTip.delay: 450
                     }
                 }
@@ -642,9 +693,6 @@ Item {
         readonly property string itemId: modelData.id
         readonly property string title:  modelData.title
         readonly property bool   pinned: modelData.pinned === true
-        // S7: a row the search pulled in because of a neighbouring hit, rather
-        // than because the user typed its name.
-        readonly property bool   derived: modelData.expanded === true
 
         // The break between the pinned block and the rest (P3/P5). Search
         // results have no pinned block, so they have nothing to break.
@@ -715,7 +763,7 @@ Item {
                 id: rowIcon
                 objectName: "libraryRowIcon"
                 anchors.left: parent.left
-                anchors.leftMargin: 8 + (rowItem.derived ? 12 : 0)
+                anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 name: root.glyphFor(rowItem.kind)
                 width: 15
@@ -735,7 +783,7 @@ Item {
                 anchors.rightMargin: rowItem.draggable ? 28 : 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: rowItem.title
-                color: rowItem.derived ? Theme.textDim : Theme.textSec
+                color: Theme.textSec
                 font.pixelSize: 13
                 elide: Text.ElideRight
             }

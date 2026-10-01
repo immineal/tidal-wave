@@ -71,16 +71,22 @@ Popup {
     // ThemePalette::available() hands over {name, label, dark} and no colours,
     // and theme::palette() is not reachable from QML, so the three each swatch
     // draws are repeated from the kSpecs table in src/ui/ThemePalette.cpp:
-    // ground, border, accent. tst_settings.qml asserts this table and
-    // ThemePalette.available() cover the same six names, which is the drift
-    // that can actually happen.
+    // ground, border, accent. These are the palettes as written, never the
+    // pure-black variant: the swatch is what the theme *is*, and the switch
+    // below the column says what happens to it.
+    //
+    // tst_settings.qml asserts this table covers the same six names as
+    // ThemePalette.available() and that each row matches the palette it
+    // claims to show, which is the drift that can actually happen - these
+    // three columns sat two accent revisions behind the C++ for a while and
+    // nothing noticed.
     readonly property var swatches: ({
-        "midnight": { bg: "#0A0A0A", edge: "#2A2A2A", accent: "#00B2F8" },
-        "forest":   { bg: "#0B0F0C", edge: "#29332B", accent: "#3DD68C" },
-        "ember":    { bg: "#100D0C", edge: "#332C28", accent: "#FF7A45" },
-        "deep":     { bg: "#000000", edge: "#24242B", accent: "#22D3EE" },
+        "midnight": { bg: "#0A0A0A", edge: "#2A2A2A", accent: "#0079A8" },
+        "forest":   { bg: "#0B0F0C", edge: "#29332B", accent: "#18814E" },
+        "ember":    { bg: "#100D0C", edge: "#332C28", accent: "#C14A18" },
         "daylight": { bg: "#FFFFFF", edge: "#CFD9E2", accent: "#0A6FC4" },
-        "paper":    { bg: "#FAF7F0", edge: "#CBC0A6", accent: "#2F6F4E" }
+        "paper":    { bg: "#FAF7F0", edge: "#CBC0A6", accent: "#2F6F4E" },
+        "dawn":     { bg: "#FFF7F1", edge: "#E8D0BE", accent: "#B4481C" }
     })
 
     function swatchFor(name) {
@@ -288,8 +294,19 @@ Popup {
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
-                ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
-                ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
+                // Side by side, not stacked. kSpecs lists the dark palettes
+                // and the light ones in the same hue order, so the two
+                // columns line up row by row - Midnight beside Daylight,
+                // Forest beside Paper, Ember beside Dawn - and the picker
+                // reads as a grid of three colour families rather than as
+                // one long list and one short one. The pure-black switch
+                // belongs to the left column and lives inside it.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
+                    ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
+                }
 
                 Text {
                     text: qsTr("Language")
@@ -665,9 +682,10 @@ Popup {
         TapHandler { onTapped: tg.toggled() }
     }
 
-    // The dark half or the light half of the palette list. Two columns, each
-    // half the panel: six swatches in one strip would be 50px each at 480px,
-    // and the labels would have nowhere to go.
+    // One column of the picker: the dark palettes or the light ones, in table
+    // order, so the row a tile sits in is its hue family. Half the panel each,
+    // because six swatches in one strip would be 50px apiece at 480px and the
+    // labels would have nowhere to go.
     component ThemeGroup : ColumnLayout {
         id: group
         objectName: "settingsThemeGroup"
@@ -675,6 +693,13 @@ Popup {
         property string title: ""
 
         Layout.fillWidth: true
+        // Exactly half the row each, whatever the labels measure. Without
+        // these two the wrapping note under the switch sets a minimum width
+        // for the left column, the right one gets what is left, and the hue
+        // rows stop lining up.
+        Layout.preferredWidth: 0
+        Layout.minimumWidth: 0
+        Layout.alignment: Qt.AlignTop
         spacing: 6
 
         Text {
@@ -686,15 +711,41 @@ Popup {
             Layout.fillWidth: true
         }
 
-        GridLayout {
-            Layout.fillWidth: true
-            columns: 2
-            columnSpacing: 8
-            rowSpacing: 6
+        Repeater {
+            model: root.themesWhere(group.dark)
+            delegate: ThemeTile { }
+        }
 
-            Repeater {
-                model: root.themesWhere(group.dark)
-                delegate: ThemeTile { }
+        // The pure-black switch. Under the dark column because that is what
+        // it acts on, and gone rather than greyed out on a light theme: a
+        // disabled control invites you to work out how to enable it, and
+        // there is nothing to work out here.
+        ColumnLayout {
+            objectName: "settingsOledBlock"
+            visible: group.dark && ThemePalette.isDark
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 2
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    text: qsTr("Pure black")
+                    color: Theme.textPrimary; font.pixelSize: 13
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+                Toggle {
+                    objectName: "settingsOledToggle"
+                    checked: prefs.oledBlack
+                    onToggled: prefs.oledBlack = !prefs.oledBlack
+                }
+            }
+            Text {
+                objectName: "settingsOledNote"
+                text: qsTr("Saves power on OLED screens.")
+                color: Theme.textDim; font.pixelSize: 11
+                wrapMode: Text.Wrap; Layout.fillWidth: true
             }
         }
     }
@@ -736,7 +787,8 @@ Popup {
             spacing: 8
 
             // Ground, edge and accent, which is as much of a palette as fits
-            // in 34x20 and enough to tell all six apart.
+            // in 34x20 and enough to tell all six apart. Two of the six are
+            // warm lights, so the accent dot is doing most of that work.
             Rectangle {
                 objectName: "settingsThemeSwatch"
                 Layout.preferredWidth: 34

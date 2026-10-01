@@ -972,6 +972,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Pure black</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saves power on OLED screens.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1143,15 +1151,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Deep</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Daylight</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Paper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dawn</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

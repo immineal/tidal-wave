@@ -1,5 +1,7 @@
 // LibraryIndex: the flat sidebar library and the search over it
-// (spec S1 to S7, plus P5 for the pinned entries).
+// (spec S1 to S6, plus P5 for the pinned entries). S7, result expansion, was
+// withdrawn by the user; the case below named for it is the one that keeps it
+// from coming back.
 //
 // Written before LibraryIndex.cpp. The interesting cases are the ones the live
 // API made expensive to reach: paging that has to terminate even when the
@@ -394,7 +396,7 @@ private slots:
         QVERIFY(keysOf(second.entries()).first() != QStringLiteral("mix:m1"));
     }
 
-    // ── search (S5 to S7) ────────────────────────────────────────────────
+    // ── search (S5, S6) ────────────────────────────────────────────────
 
     void searchIgnoresCaseAndAccents() {
         PinStore pins; pins.setUserId(kUser);
@@ -421,7 +423,7 @@ private slots:
         QVERIFY(lib.search(QStringLiteral("   "), {}).isEmpty());
     }
 
-    void searchRanksPrefixAboveWordStartAboveMidWord() {
+    void whereTheQueryLandsInTheTitleDecidesMostOfTheOrder() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
         fillSearchLibrary(lib);
@@ -480,8 +482,10 @@ private slots:
         QVERIFY(lib.search(QStringLiteral("love"), {QStringLiteral("podcast")}).isEmpty());
     }
 
-    // S7: an artist hit drags in that artist's saved albums and saved songs.
-    void anArtistMatchExpandsToItsAlbumsAndSongs() {
+    // S7 is withdrawn. The user saw the greyed, indented rows it produced,
+    // asked what they were, and said to drop the whole idea: a result is now
+    // only ever something whose own title was typed.
+    void searchingAnArtistNoLongerDragsInTheirAlbumsAndSongs() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
         fillSearchLibrary(lib);
@@ -489,73 +493,104 @@ private slots:
         lib.refresh();
         waitForIndex(lib);
 
-        const QVariantList hits = lib.search(QStringLiteral("portishead"), {});
-        QCOMPARE(keysOf(hits).first(), QStringLiteral("artist:21"));
+        // Portishead the artist, and nothing else. "Dummy", "Glory Box" and
+        // "Roads" are all theirs and all saved, and none of them is a match
+        // for what was typed.
+        const QStringList artistHit = keysOf(lib.search(QStringLiteral("portishead"), {}));
+        QCOMPARE(artistHit, QStringList{QStringLiteral("artist:21")});
 
-        for (const QString &key : {QStringLiteral("album:101"),      // "Dummy"
-                                   QStringLiteral("track:501"),      // liked song
-                                   QStringLiteral("track:504")}) {   // only in the album index
-            const QVariantMap row = rowFor(hits, key);
-            QVERIFY2(!row.isEmpty(), qPrintable(key));
-            QVERIFY2(row.value(QStringLiteral("expanded")).toBool(), qPrintable(key));
-            QCOMPARE(row.value(QStringLiteral("expandedFrom")).toString(), QStringLiteral("artist:21"));
+        // And the other direction: a song no longer brings its album along.
+        const QStringList songHit = keysOf(lib.search(QStringLiteral("bachelorette"), {}));
+        QCOMPARE(songHit, QStringList{QStringLiteral("track:503")});
+
+        // No row carries the flags the expansion used to set.
+        for (const QVariant &v : lib.search(QStringLiteral("glory"), {})) {
+            const QVariantMap row = v.toMap();
+            QVERIFY(!row.contains(QStringLiteral("expanded")));
+            QVERIFY(!row.contains(QStringLiteral("expandedFrom")));
         }
-
-        // Another artist's work stays out of it.
-        QVERIFY(indexOfKey(hits, QStringLiteral("album:100")) < 0);
-        QVERIFY(indexOfKey(hits, QStringLiteral("track:500")) < 0);
-
-        // The artist itself is a direct hit, not an expansion.
-        QCOMPARE(rowFor(hits, QStringLiteral("artist:21")).value(QStringLiteral("expanded")).toBool(), false);
     }
 
-    // S7, the other direction: a song hit drags in the album holding it.
-    void aSongMatchExpandsToItsAlbum() {
+    // ── what "most relevant" means (S5) ──────────────────────────────────
+
+    // Type a name that is an artist, one of their albums, a playlist about
+    // them and a song on that album, and the artist is what was meant.
+    void typingANameThatIsAnArtistPutsTheArtistFirst() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
-        fillSearchLibrary(lib);
+        fillRankingLibrary(lib);
         lib.setUserId(kUser);
         lib.refresh();
         waitForIndex(lib);
 
-        const QVariantList hits = lib.search(QStringLiteral("bachelorette"), {});
-        QCOMPARE(keysOf(hits).first(), QStringLiteral("track:503"));
-        const QVariantMap album = rowFor(hits, QStringLiteral("album:100"));
-        QVERIFY(!album.isEmpty());
-        QVERIFY(album.value(QStringLiteral("expanded")).toBool());
-        QCOMPARE(album.value(QStringLiteral("expandedFrom")).toString(), QStringLiteral("track:503"));
+        const QStringList hits = keysOf(lib.search(QStringLiteral("moderat"), {}));
+        QCOMPARE(hits, (QStringList{QStringLiteral("artist:40"),      // Moderat
+                                    QStringLiteral("album:300"),      // "Moderat"
+                                    QStringLiteral("playlist:p-mod"), // "Moderat Mixtape"
+                                    QStringLiteral("track:701")}));   // "Moderat Intro"
     }
 
-    void expandedResultsNeverDisplaceADirectHit() {
+    // "Sun" is certainly what was meant. "Sun King" probably. "Sunflower
+    // Reverie" gives three of its seventeen characters to the query, which is
+    // the weakest claim of the three, so it comes last.
+    void aShortTitleMatchedInFullBeatsALongOneThatMerelyStartsWithIt() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
-        fillSearchLibrary(lib);
+        fillRankingLibrary(lib);
         lib.setUserId(kUser);
         lib.refresh();
         waitForIndex(lib);
 
-        // "Glory Box" is a prefix hit, "Morning Glory" only a word-start hit,
-        // and "Dummy" matches the query not at all: it is here because the
-        // song that matched sits on it. It has to come last even so.
-        const QVariantList hits = lib.search(QStringLiteral("glory"), {});
-        const int box     = indexOfKey(hits, QStringLiteral("track:501"));
-        const int morning = indexOfKey(hits, QStringLiteral("playlist:p-glory"));
-        const int dummy   = indexOfKey(hits, QStringLiteral("album:101"));
-        QVERIFY(box >= 0 && morning >= 0 && dummy >= 0);
-        QVERIFY(box < morning);
-        QVERIFY2(morning < dummy, "an expansion must rank below every direct hit");
+        const QStringList hits = titlesOf(lib.search(QStringLiteral("sun"),
+                                                     {QStringLiteral("album")}));
+        QCOMPARE(hits, (QStringList{QStringLiteral("Sun"),
+                                    QStringLiteral("Sun King"),
+                                    QStringLiteral("Sunflower Reverie")}));
+    }
 
-        // Every direct hit precedes every expansion, not just this pair.
-        bool seenExpanded = false;
-        for (const QVariant &v : hits) {
-            const bool expanded = v.toMap().value(QStringLiteral("expanded")).toBool();
-            if (expanded) seenExpanded = true;
-            else QVERIFY2(!seenExpanded, "a direct hit turned up after an expanded one");
-        }
+    // Three albums whose titles are the same length and begin with the same
+    // word, so nothing but the user's own history can separate them. The
+    // sidebar list is ordered pinned, then recently played, then the rest
+    // (S2); the search agrees with it.
+    void amongEquallyGoodMatchesThePinnedAndRecentlyPlayedComeFirst() {
+        PinStore pins; pins.setUserId(kUser);
+        pins.pin(QStringLiteral("album"), QStringLiteral("310"),
+                 QStringLiteral("Blue Grass"), QString(), QString());
+        pins.pin(QStringLiteral("album"), QStringLiteral("313"),
+                 QStringLiteral("Deep Blue"), QString(), QString());
+        TestLibrary lib(&pins);
+        fillRankingLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("311"));   // Blue Train
 
-        // An entry that is both a direct hit and an expansion is listed once,
-        // as the direct hit.
-        QCOMPARE(keysOf(hits).count(QStringLiteral("album:101")), 1);
+        const QStringList hits = titlesOf(lib.search(QStringLiteral("blue"),
+                                                     {QStringLiteral("album")}));
+        QCOMPARE(hits.mid(0, 3), (QStringList{QStringLiteral("Blue Grass"),
+                                              QStringLiteral("Blue Train"),
+                                              QStringLiteral("Blue Horse")}));
+
+        // ...but only among equals. "Deep Blue" is pinned too and still comes
+        // last, because the query is not where its title starts. Pinning
+        // breaks ties; it does not override what was typed.
+        QCOMPARE(hits.last(), QStringLiteral("Deep Blue"));
+    }
+
+    // A song the user liked is a song they chose. A song the background
+    // indexer found on a saved album is one they have possibly never heard.
+    void aLikedSongBeatsOneMerelyFoundOnASavedAlbum() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillRankingLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+
+        const QStringList hits = titlesOf(lib.search(QStringLiteral("ocean"),
+                                                     {QStringLiteral("track")}));
+        QCOMPARE(hits, (QStringList{QStringLiteral("Ocean Choir"),    // liked
+                                    QStringLiteral("Ocean Drive")})); // only indexed
     }
 
     // ── the lazy album tracklist index (S6) ──────────────────────────────
@@ -583,9 +618,6 @@ private slots:
         QCOMPARE(lib.indexedAlbumCount(), 1);
         QVERIFY(indexOfKey(lib.search(QStringLiteral("bachelorette"), {}), QStringLiteral("track:503")) >= 0);
         QVERIFY(lib.search(QStringLiteral("roads"), {}).isEmpty());
-        // ...and an artist expansion only offers what is indexed so far.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("portishead"), {}), QStringLiteral("track:504")) < 0);
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("portishead"), {}), QStringLiteral("track:501")) >= 0);
 
         lib.deliverAllTracklists();
         QTRY_VERIFY(!lib.indexing());
@@ -783,6 +815,36 @@ private:
         lib.albumTracks[102] = {mkTrack(502, QStringLiteral("Endless Love"), lovely, {various}),
                                 mkTrack(505, QStringLiteral("Love Supreme"), lovely, {various})};
         lib.albumTracks[103] = {mkTrack(506, QStringLiteral("Clover Song"),  clover, {various})};
+    }
+
+    // A library built for the ranking cases. One name is shared by four kinds;
+    // one family of titles differs only in length; one differs only in how
+    // familiar it is, down to the character count, so coverage ties exactly
+    // and nothing but pinning and play history can decide the order.
+    static void fillRankingLibrary(TestLibrary &lib) {
+        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
+        const Artist various = mkArtist(41, QStringLiteral("Various"));
+
+        const Album selfTitled = mkAlbum(300, QStringLiteral("Moderat"), {moderat}, 1);
+        const Album sun        = mkAlbum(301, QStringLiteral("Sun"), {various}, 0);
+        const Album sunKing    = mkAlbum(302, QStringLiteral("Sun King"), {various}, 0);
+        const Album sunflower  = mkAlbum(303, QStringLiteral("Sunflower Reverie"), {various}, 0);
+        const Album blueGrass  = mkAlbum(310, QStringLiteral("Blue Grass"), {various}, 0);
+        const Album blueTrain  = mkAlbum(311, QStringLiteral("Blue Train"), {various}, 0);
+        const Album blueHorse  = mkAlbum(312, QStringLiteral("Blue Horse"), {various}, 0);
+        const Album deepBlue   = mkAlbum(313, QStringLiteral("Deep Blue"),  {various}, 0);
+        const Album ocean      = mkAlbum(320, QStringLiteral("Ocean Sides"), {various}, 2);
+
+        lib.artists = {moderat, various};
+        lib.albums  = {selfTitled, sun, sunKing, sunflower,
+                       blueGrass, blueTrain, blueHorse, deepBlue, ocean};
+        lib.playlists = {mkPlaylist(QStringLiteral("p-mod"), QStringLiteral("Moderat Mixtape"))};
+
+        lib.favoriteTracks = {mkTrack(700, QStringLiteral("Ocean Choir"), ocean, {various})};
+
+        lib.albumTracks[300] = {mkTrack(701, QStringLiteral("Moderat Intro"), selfTitled, {moderat})};
+        lib.albumTracks[320] = {mkTrack(700, QStringLiteral("Ocean Choir"), ocean, {various}),
+                                mkTrack(702, QStringLiteral("Ocean Drive"), ocean, {various})};
     }
 
     static void waitForIndex(TestLibrary &lib) {

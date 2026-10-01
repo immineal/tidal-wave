@@ -29,7 +29,7 @@ TestCase {
     // change to either is a test failure rather than a tautology.
     readonly property int railBreak: 820
     readonly property int railWidth: 68
-    readonly property int minSidebar: 180
+    readonly property int minSidebar: 190
     readonly property int maxSidebar: 420
     readonly property int defaultSidebar: 220
 
@@ -221,7 +221,7 @@ TestCase {
                 "the rail must not show nav labels")
 
         var covers = collectVisibleByName(sb, "railPinCover", [])
-        compare(covers.length, 2, "both pinned items want a cover in the rail")
+        compare(covers.length, 6, "every library row wants a cover in the rail")
 
         verify(!findByName(sb, "sidebarFinder").visible, "the finder must hide in the rail")
         verify(!findByName(sb, "sidebarLibraryList").visible, "the library list must hide in the rail")
@@ -550,7 +550,7 @@ TestCase {
     // fifth chip sliding under the finder's clip.
     function test_chips_fit_at_every_sidebar_width_data() {
         return [
-            { tag: "180", w: 180 },
+            { tag: "190", w: 190 },
             { tag: "200", w: 200 },
             { tag: "220", w: 220 },
             { tag: "268", w: 268 },

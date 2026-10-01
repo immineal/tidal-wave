@@ -10,6 +10,10 @@
 // pane is narrower than the window by the sidebar, so a page that passes at
 // 640 here is still fine in a 640 window.
 //
+// The grid tests below do not use that list. A card clipped at the window edge
+// is the one thing that may never happen, and the widths that did it were not
+// the round ones, so those sweep 640 to 3840 instead.
+//
 // Two blanket assertions run over every page at every width:
 //   * no visible child sticks out of its parent horizontally, and
 //   * no visible Text reports itself truncated unless it has an elide mode,
@@ -56,6 +60,7 @@ TestCase {
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
     Component { id: trackRowC;   TrackRow       { } }
     Component { id: pillC;       PillButton     { } }
+    Component { id: mediaCardC;  MediaCard      { } }
 
     function makeTracks(n) {
         var out = []
@@ -152,6 +157,13 @@ TestCase {
         return item.truncated !== undefined && item.elide !== undefined && item.text !== undefined
     }
 
+    // One deliberate overdraw: the ring that rounds an artist's artwork is
+    // wider than the art on purpose and the art box clips it back. Named rather
+    // than inferred from clipping, so nothing else picks the exemption up.
+    function drawnOutsideOnPurpose(item) {
+        return item.objectName === "cardArtCorners"
+    }
+
     // Recursive: nothing visible leaves its parent's horizontal bounds, and no
     // Text without an elide mode is truncated.
     function audit(item, label) {
@@ -162,6 +174,7 @@ TestCase {
             var c = kids[i]
             if (!c || c.visible === undefined || !c.visible) continue
             if (c.width === undefined || c.width <= 0) continue
+            if (drawnOutsideOnPurpose(c)) continue
 
             verify(c.x + c.width <= item.width + overflowSlack,
                    label + ": " + describe(c) + " ends at " + (c.x + c.width).toFixed(1)
@@ -448,5 +461,281 @@ TestCase {
                + label.implicitWidth.toFixed(1) + ", leaving no padding")
         verify(pill.width > 120, "the pill is still stuck at the old fixed 120px")
         audit(pill, "PillButton")
+    }
+
+    // ── the grid may never clip a card ─────────────────────────────────────
+
+    // Three deliberately awkward covers, inline so the test carries them: 4:1,
+    // 1:4 and square. Nothing about the shape of a cover may reach the layout,
+    // and the only way to show that is to hand the cards shapes that differ.
+    readonly property var coverShapes: [
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAIAAAAphe5+AAAAMElEQVR4"
+      + "nO3PUQ0AAAiEUDX1xTeEH8yNlwA6SX02dMCVAzQHaA7QHKA5QHOA5gBtAcG/AYhY2ShCAAAAAElFTkSuQmCC",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAABACAIAAACcH2DBAAAAKElEQVR4"
+      + "nO3LMREAAAjEMED1y0cDK5fOTSepS3O6AQAAAAAAAAB4BBZUnAHo3pX5/QAAAABJRU5ErkJggg==",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4"
+      + "nO3NMQEAAAjDMED15GMCvlRA00nqs3m9AwAAAAAAAAAAgMMWm14BqD+TOGcAAAAASUVORK5CYII="
+    ]
+
+    // A card's cover comes from the image://tidal provider, which the stubs
+    // answer with a blank square. Assigning over it is the point: it is the
+    // only way to put covers of three different shapes in one row.
+    function giveCardsDifferentCovers(container, count) {
+        var given = 0
+        for (var i = 0; i < count; ++i) {
+            var d = container.itemAtIndex(i)
+            if (!d) continue
+            var img = findByName(d, "cardImage")
+            if (!img) continue
+            img.source = coverShapes[i % coverShapes.length]
+            given++
+        }
+        return given
+    }
+
+    // The absolute one. Two sweeps, because they catch different things.
+    //
+    // The first runs the page's own grid arithmetic at every single pixel from
+    // 640 to 3840. It is cheap enough to be exhaustive, and exhaustive is the
+    // point: the widths that used to break were never the round ones.
+    //
+    // The second resizes one live page across the same range and measures the
+    // cards that come out of it, which is the only way to catch the GridView or
+    // a delegate disagreeing with the arithmetic above it.
+    function test_collection_grid_never_clips_a_card() {
+        var page = makePane(collectionC, 1000)
+        fillCollection(page, 1)
+        settle(page)
+
+        for (var w = 640; w <= 3840; ++w) {
+            var cols  = page.gridColumns(w)
+            var cell  = page.gridCell(w)
+            var left  = page.gridLeft(w)
+            var right = page.gridRight(w)
+
+            verify(cols >= 1, "@" + w + ": " + cols + " columns")
+            verify(cell >= page.gridMinCell,
+                   "@" + w + ": cells of " + cell + ", under the " + page.gridMinCell
+                   + " a cover plus two lines needs")
+            verify(left >= page.gridEdge && right >= page.gridEdge,
+                   "@" + w + ": insets of " + left + " and " + right + " eat into the pane inset")
+            // The guarantee: the columns and the two insets are exactly the
+            // pane, so the last column cannot be sitting past the right edge.
+            compare(left + cols * cell + right, w,
+                    "@" + w + ": " + cols + " x " + cell + " between insets of " + left
+                    + " and " + right + " does not add up to " + w)
+            verify(Math.abs(left - right) <= 1,
+                   "@" + w + ": the two outer gutters are " + left + " and " + right)
+            verify(page.gridCardSize(cell) <= cell - 1,
+                   "@" + w + ": a " + page.gridCardSize(cell) + "px card in a " + cell + "px cell")
+        }
+
+        // Now the real thing, resized rather than rebuilt: a card built at one
+        // width and then shown at another is exactly how the broken ones got
+        // made. 48 albums so even a 3840px pane has a full row to measure.
+        var holder = createTemporaryObject(holderC, testCase, { width: 640, height: paneHeight })
+        var live = createTemporaryObject(collectionC, holder, {})
+        verify(live, "the page was not created")
+        live.activeTab = 1
+        live.filteredAlbums = makeAlbums(48)
+        settle(holder)
+
+        var grid = findByName(live, "collectionAlbumsGrid")
+        verify(grid, "the albums grid was not found")
+
+        for (w = 640; w <= 3840; w += 7) {
+            holder.width = w
+            settle(holder)
+
+            var leftGutter = Number.MAX_VALUE
+            var rightEdge  = -Number.MAX_VALUE
+            var seen = 0
+            for (var k = 0; k < 48; ++k) {
+                var d = grid.itemAtIndex(k)
+                if (!d) continue
+                var art = findByName(d, "cardArt")
+                if (!art) continue
+                var x = art.mapToItem(grid, 0, 0).x
+                verify(x >= -0.5,
+                       "@" + w + ": card " + k + " starts at " + x.toFixed(1))
+                verify(x + art.width <= grid.width + 0.5,
+                       "@" + w + ": card " + k + " ends at " + (x + art.width).toFixed(1)
+                       + " in a viewport " + grid.width.toFixed(1) + " wide")
+                if (x < leftGutter) leftGutter = x
+                if (x + art.width > rightEdge) rightEdge = x + art.width
+                seen++
+            }
+            verify(seen >= grid.columns, "@" + w + ": only " + seen + " cards were realized")
+            verify(Math.abs(leftGutter - (grid.width - rightEdge)) <= 1,
+                   "@" + w + ": the gutters are " + leftGutter.toFixed(1) + " on the left and "
+                   + (grid.width - rightEdge).toFixed(1) + " on the right")
+        }
+    }
+
+    // ── one row, one art box, one baseline ─────────────────────────────────
+
+    // The art box used to be a ColumnLayout child carrying a plain height, and
+    // a layout only reads that the first time it measures a child: a card built
+    // while its grid was still settling kept the stale box and drew its title
+    // across its cover. Covers of three different shapes go in to prove the
+    // other half of it, that nothing about the picture can move the layout.
+    function test_grid_cards_share_a_box_and_a_baseline() {
+        for (var i = 0; i < widths.length; ++i) {
+            var w = widths[i]
+            var page = makePane(collectionC, w)
+            fillCollection(page, 1)
+            settle(page)
+
+            var grid = findByName(page, "collectionAlbumsGrid")
+            verify(grid, "the albums grid was not found")
+            verify(giveCardsDifferentCovers(grid, 12) > 1,
+                   "@" + w + ": the covers were not replaced")
+            settle(page)
+
+            var cols = grid.columns
+            var ref = null
+            for (var k = 0; k < cols; ++k) {
+                var d = grid.itemAtIndex(k)
+                verify(d, "@" + w + ": card " + k + " of the first row is missing")
+                var art   = findByName(d, "cardArt")
+                var title = findByName(d, "cardTitle")
+                verify(art && title, "@" + w + ": card " + k + " has no art box or title")
+
+                var here = {
+                    aw: art.width, ah: art.height,
+                    ay: art.mapToItem(grid, 0, 0).y,
+                    ty: title.mapToItem(grid, 0, 0).y
+                }
+                verify(here.aw === here.ah,
+                       "@" + w + ": card " + k + "'s art is " + here.aw + "x" + here.ah
+                       + " rather than square")
+                if (!ref) { ref = here; continue }
+                compare(here.aw, ref.aw, "@" + w + ": card " + k + "'s art is a different width")
+                compare(here.ah, ref.ah, "@" + w + ": card " + k + "'s art is a different height")
+                compare(here.ay, ref.ay, "@" + w + ": card " + k + "'s art sits at a different height")
+                compare(here.ty, ref.ty, "@" + w + ": card " + k + "'s title is off the baseline")
+            }
+        }
+    }
+
+    // The same for a horizontal row, which is where the QA screenshot came
+    // from: four cards of one album, the third of them smaller and lower.
+    function test_section_cards_share_a_box_and_a_baseline() {
+        for (var i = 0; i < widths.length; ++i) {
+            var w = widths[i]
+            var page = makePane(artistC, w)
+            page.artistId = 7
+            page.artistData = { name: "Interpret", bio: "", coverUrl750: "", similarArtists: [] }
+            page.topTracks = []
+            page.albums = makeAlbums(14)
+            settle(page)
+
+            var list = findByName(page, "sectionList")
+            verify(list, "the section's list was not found")
+            verify(giveCardsDifferentCovers(list, 14) > 1,
+                   "@" + w + ": the covers were not replaced")
+            settle(page)
+
+            var ref = null
+            for (var k = 0; k < 6; ++k) {
+                var d = list.itemAtIndex(k)
+                if (!d) continue
+                var art   = findByName(d, "cardArt")
+                var title = findByName(d, "cardTitle")
+                verify(art && title, "@" + w + ": card " + k + " has no art box or title")
+                var here = {
+                    aw: art.width, ah: art.height,
+                    ay: art.mapToItem(list, 0, 0).y,
+                    ty: title.mapToItem(list, 0, 0).y
+                }
+                verify(here.aw === here.ah,
+                       "@" + w + ": card " + k + "'s art is " + here.aw + "x" + here.ah)
+                if (!ref) { ref = here; continue }
+                compare(here.aw, ref.aw, "@" + w + ": card " + k + "'s art is a different width")
+                compare(here.ah, ref.ah, "@" + w + ": card " + k + "'s art is a different height")
+                compare(here.ay, ref.ay, "@" + w + ": card " + k + "'s art sits at a different height")
+                compare(here.ty, ref.ty, "@" + w + ": card " + k + "'s title is off the baseline")
+            }
+            verify(ref, "@" + w + ": no card in the row was realized")
+        }
+    }
+
+    // ── the artist card is a disc, and the hover has to know it ─────────────
+
+    // Everything the hover draws has to stay on the circle: the wash, the play
+    // button and the focus ring. The button used to be anchored to the bottom
+    // right of the bounding box, which on a disc is a corner that is not there.
+    function test_artist_card_hover_stays_in_the_circle() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
+        var card = createTemporaryObject(mediaCardC, holder, {
+            x: 40, y: 40, cardSize: 160, mediaType: "artist",
+            title: "Ein langer Interpretenname", subtitle: "Artist"
+        })
+        verify(card, "the card was not created")
+        settle(holder)
+
+        var art = findByName(card, "cardArt")
+        verify(art, "the art box was not found")
+        compare(art.width, art.height, "an artist's art box is not square")
+        compare(art.radius, art.width / 2, "an artist's art box is not a disc")
+
+        var cx = art.width / 2
+        var cy = art.height / 2
+        var r  = art.width / 2
+
+        var scrim = findByName(card, "cardScrim")
+        verify(scrim, "the wash was not found")
+        compare(scrim.radius, art.radius, "the wash is not the same shape as the art")
+        compare(scrim.width, art.width, "the wash is not the size of the art")
+
+        var ring = findByName(card, "cardFocusRing")
+        verify(ring, "the focus ring was not found")
+        compare(ring.radius, art.radius, "the focus ring is not the same shape as the art")
+
+        mouseMove(holder, 40 + cx, 40 + cy)
+        settle(holder)
+
+        var play = findByName(card, "cardPlayButton")
+        verify(play, "the play button was not found")
+        verify(play.visible, "the play button did not appear on hover")
+
+        // Dead centre of the art, and far enough inside it that the whole
+        // button is on the disc rather than straddling its edge.
+        var p = play.mapToItem(art, play.width / 2, play.height / 2)
+        var off = Math.sqrt(Math.pow(p.x - cx, 2) + Math.pow(p.y - cy, 2))
+        var reach = Math.max(play.width, play.height) / 2
+        verify(off + reach <= r + 0.5,
+               "the play button reaches " + (off + reach).toFixed(1)
+               + " from the middle of a circle of " + r.toFixed(1))
+
+        mouseMove(holder, -20, -20)
+        settle(holder)
+    }
+
+    // A square card keeps the corner the hover was designed around.
+    function test_album_card_keeps_its_corner_play_button() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
+        var card = createTemporaryObject(mediaCardC, holder, {
+            x: 40, y: 40, cardSize: 160, mediaType: "album",
+            title: "Ein langer Albumtitel", subtitle: "Interpret"
+        })
+        verify(card, "the card was not created")
+        settle(holder)
+
+        var art = findByName(card, "cardArt")
+        verify(art.radius < art.width / 2, "an album's art box was drawn as a disc")
+
+        mouseMove(holder, 40 + art.width / 2, 40 + art.height / 2)
+        settle(holder)
+
+        var play = findByName(card, "cardPlayButton")
+        verify(play.visible, "the play button did not appear on hover")
+        var p = play.mapToItem(art, 0, 0)
+        verify(p.x + play.width > art.width * 0.6 && p.y + play.height > art.height * 0.6,
+               "the play button left the bottom right corner (" + p.x.toFixed(1)
+               + "," + p.y.toFixed(1) + ")")
+
+        mouseMove(holder, -20, -20)
+        settle(holder)
     }
 }

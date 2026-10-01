@@ -12,8 +12,13 @@ class Prefs : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the prefs context property")
 
-    // One of the palette names defined in qml/Theme.qml.
+    // One of the palette names defined in src/ui/ThemePalette.cpp.
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    // Pull the chosen dark theme's grounds down to true black, for OLED
+    // screens. On a light theme it does nothing, and Settings hides the
+    // switch rather than greying it out. On by default, because the palette
+    // it produces from the default theme is the one the user settled on.
+    Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
     // "system", "en" or "de".
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     // Width of the expanded sidebar, in logical pixels. Clamped to
@@ -30,7 +35,10 @@ class Prefs : public QObject {
 public:
     explicit Prefs(QObject *parent = nullptr);
 
-    static constexpr int minSidebarWidth = 180;
+    // 190, not a round 180: the five filter chips need 166px of finder and the
+    // finder is the sidebar less 24. Narrower than this and the chips had to
+    // resize during the last few pixels of a drag, which read as twitchy.
+    static constexpr int minSidebarWidth = 190;
     static constexpr int maxSidebarWidth = 420;
     // Below this window width the sidebar collapses to the icon rail.
     static constexpr int railBreakpoint  = 820;
@@ -38,12 +46,14 @@ public:
     static constexpr int railWidth       = 68;
 
     QString theme() const        { return m_theme; }
+    bool    oledBlack() const    { return m_oledBlack; }
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
 
     void setTheme(const QString &v);
+    void setOledBlack(bool v);
     void setLanguage(const QString &v);
     void setSidebarWidth(int v);
     void setAudioDevice(const QString &v);
@@ -60,6 +70,7 @@ public:
 
 signals:
     void themeChanged();
+    void oledBlackChanged();
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
@@ -68,6 +79,7 @@ signals:
 private:
     QSettings m_settings;
     QString   m_theme;
+    bool      m_oledBlack;
     QString   m_language;
     int       m_sidebarWidth;
     QString   m_audioDevice;

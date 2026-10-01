@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "TidalBridge.h"
 #include <QJSEngine>
 #include <QSettings>
@@ -325,7 +326,25 @@ bool TidalBridge::isAlbumFavorite(qlonglong albumId) const {
 
 void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
     m_client->addAlbumFavorite(albumId, [this, albumId, cb](bool success) mutable {
-        if (success) emit favoriteAlbumsChanged();
+        if (success) {
+            // The server accepted it, but isAlbumFavorite() answers from
+            // m_favoriteAlbums, so without this the Save button stayed on
+            // "Save" and the album never appeared in the collection until the
+            // next full fetch. removeAlbumFavorite has always maintained the
+            // list; only the add side was missing it.
+            m_client->fetchAlbum(albumId, [this](Album a, QString err) {
+                if (err.isEmpty() && a.id > 0) {
+                    const bool exists = std::any_of(
+                        m_favoriteAlbums.cbegin(), m_favoriteAlbums.cend(),
+                        [&](const Album &x) { return x.id == a.id; });
+                    if (!exists) {
+                        m_favoriteAlbums.append(a);
+                        emit favoriteAlbumsChanged();
+                    }
+                }
+            });
+            emit favoriteAlbumsChanged();
+        }
         call(cb, { success });
     });
 }
@@ -350,7 +369,28 @@ bool TidalBridge::isArtistFavorite(qlonglong artistId) const {
 
 void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
     m_client->addArtistFavorite(artistId, [this, artistId, cb](bool success) mutable {
-        if (success) emit favoriteArtistsChanged();
+        if (success) {
+            // Same gap as albums had: Follow reported success and then read
+            // back as not-following, because isArtistFavorite() answers from
+            // m_favoriteArtists. There is no fetchArtist, so the detail
+            // endpoint supplies the three fields an Artist needs.
+            m_client->fetchArtistDetail(artistId, [this](ArtistDetail d, QString err) {
+                if (err.isEmpty() && d.id > 0) {
+                    const bool exists = std::any_of(
+                        m_favoriteArtists.cbegin(), m_favoriteArtists.cend(),
+                        [&](const Artist &x) { return x.id == d.id; });
+                    if (!exists) {
+                        Artist a;
+                        a.id      = d.id;
+                        a.name    = d.name;
+                        a.picture = d.picture;
+                        m_favoriteArtists.append(a);
+                        emit favoriteArtistsChanged();
+                    }
+                }
+            });
+            emit favoriteArtistsChanged();
+        }
         call(cb, { success });
     });
 }

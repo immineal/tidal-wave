@@ -16,20 +16,65 @@ Rectangle {
     property var filteredPlaylists: []
     property var mixes: []
     property bool loading:  false
-    property int  sortMode: 0  // 0=default, 1=A-Z, 2=Z-A
+    // 0=default, 1=A-Z, 2=Z-A. Default is the order the library arrived in,
+    // which is most recently saved first: the favourites endpoints are asked
+    // for order=DATE. It is not persisted, so it is 0 on every visit.
+    property int  sortMode: 0
 
-    // Grid metrics. The cell was a fixed 184, which against the 740px pane this
-    // page gets at a 960px window left 3 cells and 140px of ragged gutter. The
-    // cells now split the pane evenly: pick the column count that lands nearest
-    // the 184 the cards were drawn at, then share the width out between them.
+    // Grid metrics, shared by the four grids below. A grid of width w is split
+    //
+    //     leftMargin | columns x cellWidth | rightMargin
+    //
+    // and every one of those four numbers comes out of w alone. That matters:
+    // the previous pass measured the space for the cells as
+    // `width - leftMargin - rightMargin`, which is the same arithmetic reading
+    // back the margins it is there to decide. Whether those had been assigned
+    // when the binding first ran decided how many columns were counted, and a
+    // grid that counts its columns against the full width and then has 48px of
+    // inset applied under it has one column more than it has room for. Nothing
+    // depends on an assignment order any more.
+    //
+    // columns lands nearest the 184 the cards were drawn at, then backs off
+    // while a cell would fall under gridMinCell. cellWidth is *floored*, so
+    // columns * cellWidth is never wider than the space between the two edge
+    // insets - that, and nothing else, is what guarantees the last column
+    // cannot cross the viewport at any width.
+    //
+    // Flooring leaves a remainder of 0..columns-1 px over. It is split between
+    // the two edge insets rather than left to pile up on the right, so the
+    // gutter outside the first card and the gutter outside the last match to
+    // within the odd pixel. The smallest either of them gets is gridEdge, and
+    // the card sits a further gridGutter/2 inside its cell, so the overlaid
+    // scrollbar never reaches the artwork.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
-    readonly property int gridGutter: 24     // breathing room inside a cell
-    function gridColumns(avail) {
+    readonly property int gridGutter: 24     // breathing room in a cell, split either side of the card
+    readonly property int gridEdge: 24       // the pane inset, matching the header above
+
+    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge) }
+    function gridColumns(w) {
+        var avail = gridSpace(w)
         var n = Math.max(1, Math.round(avail / gridTargetCell))
         while (n > 1 && avail / n < gridMinCell) n--
         return n
     }
+    // At least 1: a pane too narrow to hold anything would otherwise hand
+    // GridView a cellWidth of zero, which it divides by.
+    function gridCell(w) {
+        return Math.max(1, Math.floor(gridSpace(w) / gridColumns(w)))
+    }
+    function gridLeft(w) {
+        return gridEdge + Math.floor((gridSpace(w) - gridColumns(w) * gridCell(w)) / 2)
+    }
+    // Chosen so that width - leftMargin - rightMargin is exactly
+    // columns * cellWidth. That difference is the figure GridView itself
+    // divides by cellWidth to decide how many columns to lay out, so it can
+    // never arrive at one more than was budgeted for.
+    function gridRight(w) {
+        return Math.max(0, w - gridLeft(w) - gridColumns(w) * gridCell(w))
+    }
+    // The card inside a cell, never smaller than a pixel.
+    function gridCardSize(cell) { return Math.max(1, cell - gridGutter) }
 
     onActiveTabChanged: {
         updateFilteredContent()
@@ -246,13 +291,20 @@ Rectangle {
             clip: true
             property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
             model: root.activeTab === 1 ? sortedAlbums : []
-            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
-            readonly property int columns: root.gridColumns(availWidth)
-            cellWidth: Math.floor(availWidth / columns)
+            readonly property int columns: root.gridColumns(width)
+            cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
-            leftMargin: 24
-            rightMargin: 24
+            leftMargin: root.gridLeft(width)
+            rightMargin: root.gridRight(width)
             topMargin: 16
+            // Flickable parks its content at contentX = -leftMargin, but it
+            // only moves there of its own accord when the view can flick that
+            // way, and a vertical grid cannot. The inset here follows the pane
+            // width, so without this a grid that has been resized keeps the
+            // offset it was built with and the whole thing sits a few pixels
+            // off: left gutter short by the remainder, right gutter long by it.
+            onLeftMarginChanged: contentX = -leftMargin
+            Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
@@ -264,7 +316,7 @@ Rectangle {
 
                 MediaCard {
                     anchors.centerIn: parent
-                    cardSize: albumsGrid.cellWidth - root.gridGutter
+                    cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
                     subtitle: modelData.artists
                     coverUrl: modelData.coverUrl
@@ -321,13 +373,20 @@ Rectangle {
             clip: true
             property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
             model: root.activeTab === 2 ? sortedArtists : []
-            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
-            readonly property int columns: root.gridColumns(availWidth)
-            cellWidth: Math.floor(availWidth / columns)
+            readonly property int columns: root.gridColumns(width)
+            cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
-            leftMargin: 24
-            rightMargin: 24
+            leftMargin: root.gridLeft(width)
+            rightMargin: root.gridRight(width)
             topMargin: 16
+            // Flickable parks its content at contentX = -leftMargin, but it
+            // only moves there of its own accord when the view can flick that
+            // way, and a vertical grid cannot. The inset here follows the pane
+            // width, so without this a grid that has been resized keeps the
+            // offset it was built with and the whole thing sits a few pixels
+            // off: left gutter short by the remainder, right gutter long by it.
+            onLeftMarginChanged: contentX = -leftMargin
+            Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
@@ -339,7 +398,7 @@ Rectangle {
 
                 MediaCard {
                     anchors.centerIn: parent
-                    cardSize: artistsGrid.cellWidth - root.gridGutter
+                    cardSize: root.gridCardSize(artistsGrid.cellWidth)
                     title: modelData.name
                     subtitle: qsTr("Artist")
                     coverUrl: modelData.coverUrl || ""
@@ -385,13 +444,20 @@ Rectangle {
             visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
             clip: true
             model: root.activeTab === 3 ? root.filteredPlaylists : []
-            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
-            readonly property int columns: root.gridColumns(availWidth)
-            cellWidth: Math.floor(availWidth / columns)
+            readonly property int columns: root.gridColumns(width)
+            cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
-            leftMargin: 24
-            rightMargin: 24
+            leftMargin: root.gridLeft(width)
+            rightMargin: root.gridRight(width)
             topMargin: 16
+            // Flickable parks its content at contentX = -leftMargin, but it
+            // only moves there of its own accord when the view can flick that
+            // way, and a vertical grid cannot. The inset here follows the pane
+            // width, so without this a grid that has been resized keeps the
+            // offset it was built with and the whole thing sits a few pixels
+            // off: left gutter short by the remainder, right gutter long by it.
+            onLeftMarginChanged: contentX = -leftMargin
+            Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
@@ -399,7 +465,7 @@ Rectangle {
                 height: playlistsGrid.cellHeight
                 MediaCard {
                     anchors.centerIn: parent
-                    cardSize: playlistsGrid.cellWidth - root.gridGutter
+                    cardSize: root.gridCardSize(playlistsGrid.cellWidth)
                     title: modelData.title
                     subtitle: qsTr("%n track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
@@ -453,13 +519,20 @@ Rectangle {
             visible: root.activeTab === 4 && root.mixes.length > 0
             clip: true
             model: root.activeTab === 4 ? root.mixes : []
-            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
-            readonly property int columns: root.gridColumns(availWidth)
-            cellWidth: Math.floor(availWidth / columns)
+            readonly property int columns: root.gridColumns(width)
+            cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
-            leftMargin: 24
-            rightMargin: 24
+            leftMargin: root.gridLeft(width)
+            rightMargin: root.gridRight(width)
             topMargin: 16
+            // Flickable parks its content at contentX = -leftMargin, but it
+            // only moves there of its own accord when the view can flick that
+            // way, and a vertical grid cannot. The inset here follows the pane
+            // width, so without this a grid that has been resized keeps the
+            // offset it was built with and the whole thing sits a few pixels
+            // off: left gutter short by the remainder, right gutter long by it.
+            onLeftMarginChanged: contentX = -leftMargin
+            Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
@@ -467,7 +540,7 @@ Rectangle {
                 height: mixesGrid.cellHeight
                 MediaCard {
                     anchors.centerIn: parent
-                    cardSize: mixesGrid.cellWidth - root.gridGutter
+                    cardSize: root.gridCardSize(mixesGrid.cellWidth)
                     title: modelData.title
                     subtitle: modelData.subtitle || ""
                     coverUrl: modelData.coverUrl || ""

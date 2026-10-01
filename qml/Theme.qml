@@ -10,11 +10,15 @@ import TidalWave
 // is a binding onto it, every `Theme.accent` in the app repaints on its own.
 // The C++ side is where the palettes are written down and where the contrast
 // tests can reach them.
+//
+// prefs.oledBlack, which pulls a dark theme's grounds to true black, is a
+// transform applied over there for the same reason: it arrives as a different
+// `current` map, so there is no token for it and nothing below has to branch.
 QtObject {
     readonly property var p: ThemePalette.current
     readonly property var r: ThemePalette.radius
 
-    // True for the four dark palettes. Only for the handful of places that
+    // True for the three dark palettes. Only for the handful of places that
     // genuinely have to branch; prefer a token over asking this.
     readonly property bool dark: ThemePalette.isDark
 

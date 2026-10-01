@@ -69,7 +69,7 @@ noise), the dead `Qt6::Sql` dependency removed, and `tests/visual/`.
 - The two light themes have now been seen running (screenshots in
   `tests/visual/out/`), but nobody has used them for real work.
 - Theme names are translated: Midnight becomes Mitternacht, Forest becomes
-  Wald, Deep becomes Tiefe. "Tiefe" is the weak one. Say the word and all six
+  Wald. Deep is gone, replaced by the pure-black switch. Say the word and all
   stay in English.
 
 
@@ -138,9 +138,13 @@ Scaffolding and infrastructure:
   Settings panel shows it (`SideBar.qml`, `objectName: "settingsVersion"`).
 - `src/ui/Prefs.{h,cpp}`: theme, language, sidebar width, audio device,
   software rendering, all persisted, plus the layout constants
-  (`railBreakpoint` 820, `railWidth` 68, `minSidebarWidth` 180,
+  (`railBreakpoint` 820, `railWidth` 68, `minSidebarWidth` 190,
   `maxSidebarWidth` 420). `chipLabelWidth` is gone, dropped in `2dbd1c9` when
-  the user settled on icon-only chips.
+  the user settled on icon-only chips. `minSidebarWidth` went 180 to 190 in QA:
+  five 30px chips plus their insets want 166px of finder, the finder is the
+  sidebar less 24, and at 180 the chips shrank during the last few pixels of a
+  drag. The shrink formula is gone and `LibraryFinder`'s `chipWidth` is a
+  constant again.
 - New app mark: `assets/icon.svg` + `assets/icon.png`, one mark at every size,
   no separate tray asset. Icon set in `qml/components/VectorIcon.qml`: 15 new
   glyphs, `VectorIcon` supports a filled-accent and a stroked-overlay path,
@@ -152,11 +156,11 @@ Scaffolding and infrastructure:
 palette table and the radius scale, and made `qml/Theme.qml` a binding layer
 over `ThemePalette.current`. `2100153` moved every hardcoded colour in `qml/`
 onto a token. `58811d6` fixed a real bug where switching the theme repainted
-nothing. Six palettes, **four dark** (Midnight, Forest, Ember, Deep) and two
+nothing. Six palettes, **three dark** (Midnight, Forest, Ember) and three
 light (Daylight, Paper); "Forest" replaced the drafted violet "Graphite" at the
 user's request. `tests/tst_theme.cpp` checks WCAG contrast for every token
 against bg/surface/surfaceHigh; `tests/qml/tst_theme_live.qml` covers the live
-swap. Two findings kept: white on the accent fails contrast on all four dark
+swap. Two findings kept: white on the accent fails contrast on all three dark
 themes, so `onAccent` is near-black there, and `hoverFill` had to become
 per-palette because `Qt.rgba(1,1,1,0.04)` is invisible on light.
 **Still owed: the theme picker in Settings.**
@@ -195,6 +199,45 @@ content, and has no manual toggle. Chips are **icons only at every width** and
 sit inside the field's rounded container, which is the user's later decision and
 differs from SPEC S8 as written. The footer shows the username with no avatar
 (`dacc5f5`). Tests: `tests/qml/tst_sidebar.qml`, `tests/tst_library.cpp`.
+
+**S9 is amended: the rail shows the whole library, not just the pins.** The
+user reported the compact sidebar showing no covers at all. The cause was not a
+drawing bug: the rail's model was `pins.items`, so it was correctly drawing
+nothing for anyone who had not pinned anything, which is where everyone starts.
+What they want is the type icon plus the name in the wide sidebar (which is
+already what it does) and the cover alone in the rail. The rail's `ListView`
+now takes `root.railRows`, which is `library.entries`: the same list, the same
+order (pinned, recently played, A to Z). A row with no artwork falls back to
+its type glyph on a plain tile, every cover has a tooltip with the name, the
+pinned run keeps the break the wide list draws and each pinned cover keeps an
+accent ring once that break has scrolled away, and a right-click gets the
+shared Pin menu rather than Unpin alone. The cover hover handler is passive, so
+the panel still hover-expands (L4).
+
+It binds `library.entries` and not `root.rows` on purpose. The finder is hidden
+in the rail, so a chip or a half-typed query left over from before the window
+narrowed would quietly empty the rail with no visible control to explain it.
+
+**S7, result expansion, was withdrawn in QA and the code is gone.** The user
+saw the greyed, indented rows, asked what they were, and said to drop it: a
+row only earns its place if the user typed that row's name. `search()` returns
+direct title matches only; `expanded` / `expandedFrom` and the indent-and-grey
+in the `LibraryRow` delegate are removed. The expansion was drawn and never
+worded, so no entry in the German catalogue was orphaned by taking it out.
+
+What replaced it is a real relevance order. Four terms, added up:
+
+| term | values |
+| --- | --- |
+| where the query lands in the title | exact 400, prefix 300, word start 200, mid-word 100 |
+| how much of the title it covers | up to 40, by `40 * query / title` |
+| what kind of thing matched | artist 25, album 20, playlist 20, liked song 12, mix 10, a song known only from a saved album 0 |
+| familiarity | pinned 30, played 15, neither 0 |
+
+The three adjustments cannot reach 95, and the tiers are 100 apart, so a pin
+reorders equals and never lifts a weak match over a strong one. Ties break on
+most recently played, then A-Z, so the order never depends on fetch order. The
+reasoning sits above `matchScore` in `src/api/LibraryIndex.cpp`.
 
 **F. Pinning.** Landed in `0f39a77`. `src/ui/PinStore.cpp` persists per Tidal
 user id; the pinned block sits above the library list with drag-to-reorder
@@ -402,13 +445,23 @@ Do not reopen these.
 - **Themes:** six palettes, but **"Graphite" was replaced by a green dark theme
   ("Forest")**. The user called the violet sloppy. The light pair stays
   **Daylight** (crisp white, blue) and **Paper** (warm, green accent), and the
-  user likes Paper as drawn. Shipped as four dark and two light, not the three
+  user likes Paper as drawn. Now three dark and three light, paired by hue,
+  with a pure-black switch in place of a separate Deep theme. Not the three
   and two the spec says.
 - **Radius scale:** the review page table, with **popups and dialogs at 14**,
   not 18. Everything else as drafted.
 - **Filter chips:** **icons only, always.** The user saw the labelled variant
   and said the pills were too big. They must read as one unit with the search
   field, which is why they sit inside its container. This overrides SPEC S8.
+  They are a fixed 30px wide and never resize; `Prefs::minSidebarWidth` is 190
+  because that is the narrowest sidebar all five fit in.
+- **The rail shows the whole library as covers**, not only the pinned ones.
+  A rail that is blank until you pin something is dead UI for most people.
+  Wide sidebar: type icon plus name. Rail: cover only. This overrides SPEC S9.
+- **No search result expansion.** SPEC S7 shipped and the user did not
+  recognise the rows it added. Searching an artist does not list their albums
+  and songs, and searching a song does not list its album. Results are direct
+  title matches, ranked. This overrides SPEC S7.
 - **No manual sidebar toggle button.** The `panel-left` glyph was dropped on
   purpose; compact mode is entered by window width alone.
 - **One app mark at every size.** No `icon-small.svg`, no separate tray asset.

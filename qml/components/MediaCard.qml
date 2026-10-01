@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Layouts
 import TidalWave
 
 Item {
@@ -10,6 +9,11 @@ Item {
     property string subtitle: ""
     property string mediaType: "album"
     property int    cardSize: 160
+
+    // Artist tiles are discs, every other kind is a rounded square. Named once
+    // here because the art, the wash, the focus ring and the play button all
+    // have to agree on which shape this card is.
+    readonly property bool roundArt: mediaType === "artist"
 
     // What a right-click pins (P2). The tile's own type doubles as the pin
     // kind; without an id there is nothing to pin and no menu is offered.
@@ -22,8 +26,30 @@ Item {
 
     readonly property alias pinMenu: cardMenu
 
+    // What shows through where a round tile's artwork is cut away. It has to be
+    // whatever the card is sitting on; every page that shows cards is a
+    // Theme.bg ground, so that is the default, and a host on anything else
+    // overrides it rather than getting a seam.
+    property color artBackdrop: Theme.bg
+
+    // The gaps the card is built from, so its height below and the art box's
+    // position stay one piece of arithmetic.
+    readonly property int artGap:    8   // art to title
+    readonly property int lineGap:   2   // title to subtitle
+    readonly property int bottomPad: 8
+
     width: cardSize
-    height: col.height + 8
+    // Spelled out instead of measured from a ColumnLayout. A layout takes a
+    // child's preferred height from Layout.preferredHeight, else implicitHeight,
+    // else - once, when it first measures - the child's plain height; a later
+    // plain `height:` assignment does not invalidate that cache. The art box
+    // carried a plain `height: cardSize`, so a card built while its grid was
+    // still settling kept the stale box: its title was laid out across the
+    // cover and its whole card came out shorter than the rest of its row (QA:
+    // the leading card of every row sat lower and inset). Every card of a given
+    // cardSize now derives the same height, so across a row the art boxes and
+    // the title baselines line up by construction, whatever the covers are.
+    height: cardSize + artGap + titleText.height + lineGap + subText.height + bottomPad
 
     signal clicked()
     signal playClicked()
@@ -32,102 +58,161 @@ Item {
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed:  root.clicked()
 
-    ColumnLayout {
-        id: col
-        width: parent.width
-        spacing: 8
+    Rectangle {
+        id: imgRect
+        objectName: "cardArt"
+        // A fixed square, driven by cardSize alone: nothing about the cover
+        // that loads into it may move it or its neighbours.
+        width:  root.cardSize
+        height: root.cardSize
+        radius: root.roundArt ? width / 2 : Theme.radiusCard
+        color: Theme.surfaceHigh
+        clip: true
+        // No focus ring here: a Rectangle paints its border under its own
+        // children, so on a card with a cover the ring was invisible. It is
+        // drawn over the art further down instead.
+
+        Image {
+            id: img
+            objectName: "cardImage"
+            anchors.fill: parent
+            source: coverUrl.length > 0 ? "image://tidal/" + coverUrl : ""
+            // Crop, never fit. A fit letterboxes a cover that is not square,
+            // which reads as a smaller picture than the card next to it; a crop
+            // fills the box whatever the source's shape. Either way the box
+            // itself is fixed, so no cover can reach the layout - and the
+            // source is left to decode at its own resolution, because pinning
+            // sourceSize on a crop makes Qt fit the decode into that box and
+            // then scale the result back up to cover.
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            mipmap: true
+            opacity: status === Image.Ready ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
+        }
+
+        // Qt clips to an item's bounding box, never to its rounded outline, so
+        // an artist's photo filled the square and left only the wash over it
+        // round: a disc drawn on a square picture. This paints the four corners
+        // back out in the ground colour, so the art really is the circle that
+        // the wash, the ring and the play button are placed against.
+        //
+        // A square's corner sits sqrt(2)/2 of the side from the centre and its
+        // inscribed circle only 1/2, so a band of (sqrt(2)-1)/2 = 0.2072 of the
+        // side covers the corners. A Rectangle paints its border inwards from
+        // its radius, so a circle of (side + 2*band) with a border of `band`
+        // has its inner edge exactly on the inscribed circle. It overshoots the
+        // card either side, which is what imgRect's clip is for.
+        Rectangle {
+            id: artCorners
+            objectName: "cardArtCorners"
+            visible: root.roundArt
+            anchors.centerIn: parent
+            readonly property int band: Math.ceil(root.cardSize * 0.2072) + 1
+            width:  root.cardSize + 2 * band
+            height: width
+            radius: width / 2
+            color: "transparent"
+            border.width: band
+            border.color: root.artBackdrop
+            antialiasing: true
+        }
+
+        VectorIcon {
+            visible: root.coverUrl.length === 0 || img.status === Image.Error
+            anchors.centerIn: parent
+            name: mediaType === "artist" ? "artist" : "music"
+            color: Theme.textDim
+            width: 48
+            height: 48
+            strokeWidth: 1.5
+        }
 
         Rectangle {
-            id: imgRect
-            Layout.fillWidth: true
-            height: cardSize
-            radius: mediaType === "artist" ? cardSize/2 : Theme.radiusCard
-            color: Theme.surfaceHigh
-            clip: true
-            border.width: root.activeFocus ? 4 : 0
-            border.color: Theme.accent
-
-            Image {
-                id: img
-                anchors.fill: parent
-                source: coverUrl.length > 0 ? "image://tidal/" + coverUrl : ""
-                fillMode: Image.PreserveAspectCrop
-                smooth: true
-                mipmap: true
-                opacity: status === Image.Ready ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
-            }
-
-            VectorIcon {
-                visible: root.coverUrl.length === 0 || img.status === Image.Error
-                anchors.centerIn: parent
-                name: mediaType === "artist" ? "artist" : "music"
-                color: Theme.textDim
-                width: 48
-                height: 48
-                strokeWidth: 1.5
-            }
+            id: scrim
+            objectName: "cardScrim"
+            anchors.fill: parent
+            radius: parent.radius
+            // Dims the art so the play button reads; a wash over cover art
+            // cannot follow the ground, so it is the same in every theme.
+            color: hov.hovered ? Theme.artScrim : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
 
             Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                // Dims the art so the play button reads; a wash over cover art
-                // cannot follow the ground, so it is the same in every theme.
-                color: hov.hovered ? Theme.artScrim : "transparent"
-                Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
+                id: playButton
+                objectName: "cardPlayButton"
+                visible: hov.hovered
+                width: 44
+                height: 44
+                radius: 22
+                // A square card has a corner to tuck the button into. A disc
+                // does not: the bottom right of its bounding box is outside the
+                // art, so the button floated off the circle with the wash
+                // ending behind it. On a disc it goes in the middle, which is
+                // the only spot that stays fully on the art at every card size.
+                anchors.centerIn: root.roundArt ? parent : undefined
+                anchors.bottom:   root.roundArt ? undefined : parent.bottom
+                anchors.right:    root.roundArt ? undefined : parent.right
+                anchors.margins:  root.roundArt ? 0 : 12
+                color: Theme.accent
 
-                Rectangle {
-                    visible: hov.hovered
-                    width: 44
-                    height: 44
-                    radius: 22
-                    anchors.bottom: parent.bottom
-                    anchors.right: parent.right
-                    anchors.margins: 12
-                    color: Theme.accent
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "▶"
-                        color: Theme.accentInk
-                        font.pixelSize: 16
-                        leftPadding: 2
-                    }
-
-                    scale: playHov.hovered ? 1.05 : 1
-                    Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
-                    HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
-                    TapHandler   { onTapped: root.playClicked() }
+                Text {
+                    anchors.centerIn: parent
+                    text: "▶"
+                    color: Theme.accentInk
+                    font.pixelSize: 16
+                    leftPadding: 2
                 }
-            }
 
-            HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-            TapHandler   { onTapped: root.clicked() }
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 2
-
-            Text {
-                Layout.fillWidth: true
-                text: root.title
-                color: Theme.textPrimary
-                font.pixelSize: 14
-                font.bold: true
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: root.subtitle
-                color: Theme.textSec
-                font.pixelSize: 12
-                elide: Text.ElideRight
-                wrapMode: Text.NoWrap
+                scale: playHov.hovered ? 1.05 : 1
+                Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
+                HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler   { onTapped: root.playClicked() }
             }
         }
+
+        // Over everything, and on the tile's own radius, so it traces the
+        // circle on an artist and the rounded square on everything else.
+        Rectangle {
+            objectName: "cardFocusRing"
+            anchors.fill: parent
+            visible: root.activeFocus
+            color: "transparent"
+            radius: parent.radius
+            border.width: 4
+            border.color: Theme.accent
+            antialiasing: true
+        }
+
+        HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
+        TapHandler   { onTapped: root.clicked() }
+    }
+
+    Text {
+        id: titleText
+        objectName: "cardTitle"
+        anchors.top: imgRect.bottom
+        anchors.topMargin: root.artGap
+        width: root.cardSize
+        text: root.title
+        color: Theme.textPrimary
+        font.pixelSize: 14
+        font.bold: true
+        elide: Text.ElideRight
+        wrapMode: Text.NoWrap
+    }
+
+    Text {
+        id: subText
+        objectName: "cardSubtitle"
+        anchors.top: titleText.bottom
+        anchors.topMargin: root.lineGap
+        width: root.cardSize
+        text: root.subtitle
+        color: Theme.textSec
+        font.pixelSize: 12
+        elide: Text.ElideRight
+        wrapMode: Text.NoWrap
     }
 
     // P2. Right button only, so the cover's tap and hover handlers underneath

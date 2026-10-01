@@ -14,7 +14,6 @@
 #include <QDateTime>
 #include <QFont>
 #include <QIcon>
-#include <QImage>
 #include <QFile>
 #include <QDir>
 #include <QSettings>
@@ -127,23 +126,73 @@ static void silenceLogsAndAlsa() {
 #endif
 }
 
-// Locates the bundled app icon in the Qt resource system.
+// Locates one of the bundled icon files in the Qt resource system.
 //
 // The QML module's RESOURCES prefix moved from ":/TidalWave/..." to
 // ":/qt/qml/TidalWave/..." when QTP0001 was set to NEW (commit 749527a). A
 // hardcoded single path silently broke the tray icon when that happened, so we
-// probe both prefixes and return whichever actually exists — future policy
+// probe both prefixes and return whichever actually exists - future policy
 // churn can't blank the tray again.
-static QString appIconResourcePath() {
+static QString appIconResourcePath(const QString &fileName) {
     const QStringList candidates = {
-        QStringLiteral(":/qt/qml/TidalWave/assets/icon.png"),
-        QStringLiteral(":/TidalWave/assets/icon.png"),
+        QStringLiteral(":/qt/qml/TidalWave/assets/") + fileName,
+        QStringLiteral(":/TidalWave/assets/") + fileName,
     };
     for (const QString &p : candidates) {
         if (QFile::exists(p))
             return p;
     }
     return candidates.first();
+}
+
+// Copies the bundled icon into the user's hicolor theme, so an app started
+// straight out of a build tree still has a named icon to hand the tray.
+//
+// This only ever runs when the theme has no "tidal-wave" in it, which is the
+// important part. It used to run on every single launch and rescale the
+// embedded PNG over whatever `cmake --install` had written, so one stale binary
+// left in ~/.local/bin would stamp old artwork back over a freshly installed
+// icon on every start. That is the loop the old logo kept coming back through,
+// and why fixing the asset alone never stuck. An installed icon now wins.
+//
+// The files are copied, never rescaled: the SVG is what the desktop should
+// render at an arbitrary size, and a raster upscaled from the 128 (the old code
+// wrote a 256 that way) is worse than letting it do that, while still being
+// preferred over the SVG by the icon lookup.
+static void exportIconToUserTheme(const QString &iconName) {
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                         + QStringLiteral("/icons/hicolor");
+    struct Copy { const char *resource; const char *themeDir; const char *suffix; };
+    static constexpr Copy copies[] = {
+        { "icon.svg", "scalable", "svg" },
+        { "icon.png", "128x128",  "png" },
+    };
+
+    bool wrote = false;
+    for (const Copy &c : copies) {
+        const QString res = appIconResourcePath(QString::fromLatin1(c.resource));
+        if (!QFile::exists(res))
+            continue;
+        const QString dir = QStringLiteral("%1/%2/apps").arg(base, QString::fromLatin1(c.themeDir));
+        if (!QDir().mkpath(dir))
+            continue;
+        const QString path = QStringLiteral("%1/%2.%3")
+                                 .arg(dir, iconName, QString::fromLatin1(c.suffix));
+        // QFile::copy refuses to overwrite, and a half-written file from a
+        // previous run would otherwise be kept for ever.
+        QFile::remove(path);
+        if (QFile::copy(res, path)) {
+            QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                                      | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+            wrote = true;
+        }
+    }
+
+    // Force Qt's icon-theme loader to re-scan, so the file just written is
+    // found on this launch rather than the next one; the index it built a
+    // moment ago does not have it.
+    if (wrote && !QIcon::themeName().isEmpty())
+        QIcon::setThemeName(QIcon::themeName());
 }
 
 // Returns the application icon as a *named* theme icon ("tidal-wave").
@@ -153,29 +202,18 @@ static QString appIconResourcePath() {
 // frequently renders blank on Plasma 6, even though the same QIcon works fine for
 // the window/taskbar icon (those go through X11's native _NET_WM_ICON). SNI hosts
 // render reliably when the icon is referenced by NAME and resolved from the icon
-// theme. So we export the bundled icon into the user's hicolor theme and hand the
-// tray a named icon; KDE then finds "tidal-wave" in ~/.local/share/icons/hicolor.
+// theme. So the icon has to be in the theme, and the tray has to be handed a
+// named icon rather than a pixmap. Normally `cmake --install` puts it there (see
+// the hicolor install rules in CMakeLists.txt); exportIconToUserTheme() is the
+// fallback for when nobody has.
 static QIcon loadAppIcon() {
     const QString iconName = QStringLiteral("tidal-wave");
-    const QString resPath = appIconResourcePath();
-    const QImage src(resPath);
-    if (!src.isNull()) {
-        const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
-                             + QStringLiteral("/icons/hicolor");
-        for (int s : {16, 22, 24, 32, 48, 64, 128, 256}) {
-            const QString dir  = QStringLiteral("%1/%2x%2/apps").arg(base).arg(s);
-            const QString path = QStringLiteral("%1/%2.png").arg(dir, iconName);
-            QDir().mkpath(dir);
-            src.scaled(s, s, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(path);
-        }
-        // Force Qt's icon-theme loader to re-scan so the just-written file is
-        // found on first launch (otherwise the cached index misses it).
-        if (!QIcon::themeName().isEmpty())
-            QIcon::setThemeName(QIcon::themeName());
-    }
+    if (!QIcon::hasThemeIcon(iconName))
+        exportIconToUserTheme(iconName);
     // Named themed icon (so SNI sends IconName), with the embedded pixmap as a
     // fallback for non-KDE trays / if theme lookup fails.
-    return QIcon::fromTheme(iconName, QIcon(resPath));
+    return QIcon::fromTheme(iconName,
+                            QIcon(appIconResourcePath(QStringLiteral("icon.png"))));
 }
 
 // Whether the desktop has asked for less animation (SPEC X6).

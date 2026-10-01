@@ -563,7 +563,7 @@ TestCase {
         settle(host.contentItem)
 
         var covers = collectVisibleByName(sb, "railPinCover", [])
-        compare(covers.length, 2, "both pins want a cover in the rail")
+        compare(covers.length, 6, "every library row wants a cover in the rail")
 
         rightClickItem(host, covers[0])
         var menu = sb.pinMenu
@@ -575,7 +575,7 @@ TestCase {
 
         verify(!pins.isPinned("playlist", "uuid-p1"), "unpinning from the rail did nothing")
         tryVerify(function () {
-            return collectVisibleByName(sb, "railPinCover", []).length === 1
+            return collectVisibleByName(sb, "railPinCover", []).length === 6
         }, 2000, "the rail kept the cover of an unpinned item")
     }
 }

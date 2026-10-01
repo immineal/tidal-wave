@@ -735,6 +735,7 @@ public:
 class StubPrefs : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
@@ -745,12 +746,13 @@ public:
     // Same numbers as Prefs::minSidebarWidth and friends. Kept as literals
     // rather than pulled from Prefs so a change there shows up as a failing
     // assertion here instead of quietly agreeing with itself.
-    static constexpr int kMinSidebar    = 180;
+    static constexpr int kMinSidebar    = 190;
     static constexpr int kMaxSidebar    = 420;
     static constexpr int kRailBreak     = 820;
     static constexpr int kRail          = 68;
 
     QString theme() const        { return m_theme; }
+    bool    oledBlack() const    { return m_oledBlack; }
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
@@ -760,6 +762,11 @@ public:
         if (v.isEmpty() || v == m_theme) return;
         m_theme = v;
         emit themeChanged();
+    }
+    void setOledBlack(bool v) {
+        if (v == m_oledBlack) return;
+        m_oledBlack = v;
+        emit oledBlackChanged();
     }
     void setLanguage(const QString &v) {
         if (v == m_language) return;
@@ -796,6 +803,7 @@ public:
 
 signals:
     void themeChanged();
+    void oledBlackChanged();
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
@@ -803,6 +811,10 @@ signals:
 
 private:
     QString m_theme    = QStringLiteral("midnight");
+    // Off, unlike the real Prefs, so a QML test that says nothing about it
+    // measures the palette as written in the table rather than the pulled
+    // down one. The tests that care about the transform set it themselves.
+    bool    m_oledBlack = false;
     QString m_language = QStringLiteral("system");
     int     m_sidebarWidth = 220;
     QString m_audioDevice;

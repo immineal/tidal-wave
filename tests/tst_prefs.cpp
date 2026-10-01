@@ -5,6 +5,7 @@
 // Settings even once.
 
 #include <QTest>
+#include <QColor>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
@@ -34,7 +35,11 @@ private slots:
 
     void freshInstallDefaults() {
         Prefs p;
-        QCOMPARE(p.theme(), QStringLiteral("deep"));
+        // Midnight with the pure-black switch on, which is what the retired
+        // "Deep" palette was. Both halves matter: the theme alone is a
+        // lighter app than the user signed off on.
+        QCOMPARE(p.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p.oledBlack(), true);
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
@@ -42,8 +47,8 @@ private slots:
         // or the sidebar jumps on the first drag.
         QVERIFY(p.sidebarWidth() >= Prefs::minSidebarWidth);
         QVERIFY(p.sidebarWidth() <= Prefs::maxSidebarWidth);
-        // ...and wide enough that the filter chips start out with their
-        // labels rather than collapsed to icons.
+        // ...and wider than the rail it replaces, or the sidebar would come up
+        // narrower than its own collapsed form.
         QVERIFY(p.sidebarWidth() > Prefs::railWidth);
     }
 
@@ -61,12 +66,32 @@ private slots:
         QVERIFY(Prefs().sidebarWidth() <= Prefs::maxSidebarWidth);
     }
 
+    // The narrowest sidebar still has to hold the five filter chips at their
+    // fixed size, because nothing in LibraryFinder shrinks any more. SideBar
+    // gives the finder a 12px margin on each side, and inside it the strip
+    // keeps a 4px inset either end with 2px between chips, so five 30px chips
+    // want 4 + 5*30 + 4*2 + 4 = 166px of finder. Drop minSidebarWidth below
+    // what that needs and the fifth chip is sliced by the finder's clip.
+    void theNarrowestSidebarStillFitsTheFilterChips() {
+        constexpr int finderMargin = 12;
+        constexpr int chipInset    = 4;
+        constexpr int chipSpacing  = 2;
+        constexpr int chipWidth    = 30;
+        constexpr int chips        = 5;
+
+        const int needed = 2 * chipInset + chips * chipWidth + (chips - 1) * chipSpacing;
+        QCOMPARE(needed, 166);
+        QVERIFY2(Prefs::minSidebarWidth - 2 * finderMargin >= needed,
+                 "the narrowest sidebar cannot hold five filter chips");
+    }
+
     // ── persistence ──────────────────────────────────────────────────────
 
     void valuesSurviveARestart() {
         {
             Prefs p;
             p.setTheme(QStringLiteral("paper"));
+            p.setOledBlack(false);
             p.setLanguage(QStringLiteral("de"));
             p.setSidebarWidth(310);
             p.setAudioDevice(QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -74,6 +99,10 @@ private slots:
         }
         Prefs p2;
         QCOMPARE(p2.theme(), QStringLiteral("paper"));
+        // Off has to survive as well as on: this one defaults to true, so a
+        // setter that only ever wrote the non-default value would still pass
+        // a round trip in the other direction.
+        QCOMPARE(p2.oledBlack(), false);
         QCOMPARE(p2.language(), QStringLiteral("de"));
         QCOMPARE(p2.sidebarWidth(), 310);
         QCOMPARE(p2.audioDevice(), QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -101,6 +130,11 @@ private slots:
         p.setSoftwareRendering(true);
         p.setSoftwareRendering(true);
         QCOMPARE(render.count(), 1);
+
+        QSignalSpy oled(&p, &Prefs::oledBlackChanged);
+        p.setOledBlack(false);
+        p.setOledBlack(false);
+        QCOMPARE(oled.count(), 1);
     }
 
     // ── guarding against a bad settings file ─────────────────────────────
@@ -132,6 +166,38 @@ private slots:
         QCOMPARE(p.language(), QStringLiteral("system"));   // unchanged
         p.setLanguage(QStringLiteral("de"));
         QCOMPARE(p.language(), QStringLiteral("de"));
+    }
+
+    // ── migrating off a palette that no longer exists ────────────────────
+
+    // "Deep" was a teal palette whose grounds were pure black; it is now the
+    // pure-black switch over whichever dark theme is picked. Someone who was
+    // on it has to come back to the same app, so the stored name is rewritten
+    // on load rather than falling through to the default palette, which would
+    // have put them on Midnight with the switch off and no idea why the app
+    // got lighter.
+    void storedDeepBecomesMidnightInBlack() {
+        { QSettings s; s.setValue(QStringLiteral("ui/theme"), "deep"); }
+        Prefs p;
+        QCOMPARE(p.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p.oledBlack(), true);
+        QCOMPARE(theme::palette(p.theme(), p.oledBlack()).value("bg").value<QColor>(),
+                 QColor(Qt::black));
+    }
+
+    // ...and the rewrite reaches the settings file, so it happens once rather
+    // than every launch. A user who migrates and then turns the switch off
+    // must not find it back on next time.
+    void theDeepMigrationIsWrittenBack() {
+        { QSettings s; s.setValue(QStringLiteral("ui/theme"), "deep"); }
+        { Prefs p; QCOMPARE(p.oledBlack(), true); p.setOledBlack(false); }
+        {
+            QSettings s;
+            QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("midnight"));
+        }
+        Prefs p2;
+        QCOMPARE(p2.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p2.oledBlack(), false);
     }
 
     // A theme name is free-form on the way in, because the palette table is

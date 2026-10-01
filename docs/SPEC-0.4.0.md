@@ -86,6 +86,45 @@ sit inside the field's rounded container rather than as pills under it. The
 `Prefs::chipLabelWidth` constant that the labelled variant needed is gone.
 S10 landed in `dacc5f5`.
 
+**S7 is withdrawn.** It shipped and the user could not tell what it was. On
+seeing the results they asked what the greyed, indented rows meant, which is
+the whole feature failing on its own terms: an expansion only helps if it reads
+as a consequence of a hit, and it read as noise. `LibraryIndex::search()` now
+returns direct title matches only, and the `expanded` / `expandedFrom` flags
+and the indent-and-grey in `SideBar.qml` are gone. **Do not re-add it.**
+
+In its place, S5's "performant, simple" became a real relevance order rather
+than a flat substring filter. The score is four terms added up: where the query
+lands in the title (exact 400, prefix 300, word start 200, mid-word 100), plus
+how much of the title the query covers (up to 40), plus what kind of thing
+matched (artist 25, album and playlist 20, liked song 12, mix 10, a song known
+only from a saved album's tracklist 0), plus familiarity (pinned 30, played 15,
+neither 0). The three adjustments total less than the 100 between tiers, so
+they reorder results among equals and can never lift a weaker match over a
+better-placed one. Ties break on most recently played, then A-Z. The reasoning
+is above `matchScore` in `LibraryIndex.cpp`; the cases are in
+`tests/tst_library.cpp`.
+
+**S9 is amended.** As written the rail carried "only the logo, the nav icons
+and the pinned covers", and in QA the user saw an empty strip: the rail drew
+`pins.items`, so with nothing pinned there was nothing to draw, which is where
+most people start. Their words: in the wide sidebar you see the type icon and
+the name, and in the rail you see just the cover. The rail now draws
+`library.entries`, the same list the wide sidebar shows and in the same order
+(pinned first, then recently played, then A to Z), as 40px covers with the type
+glyph on a plain tile where a row has no artwork, a tooltip carrying the name,
+and the pinned run marked off by the same break the wide list draws plus an
+accent ring that survives scrolling. Right-click is the shared Pin menu now,
+not Unpin alone. It reads `library.entries` rather than the filtered rows,
+because the finder is not on screen in the rail and a filter left behind before
+the window narrowed would empty it again with nothing to explain why.
+
+**`Prefs::minSidebarWidth` is 190, not 180.** The five chips need 166px of
+finder and the finder is the sidebar less 24, so at 180 the chips had to shrink
+in the last few pixels of a drag. The user called that twitchy; the sidebar now
+stops where the chips stop fitting and `LibraryFinder`'s chip width is a
+constant again.
+
 - **S1** One **flat library list** holding playlists, albums, artists and mixes,
   each row carrying a small type icon.
 - **S2** Order: **pinned first, then recently played, then A–Z**.
@@ -101,9 +140,10 @@ S10 landed in `dacc5f5`.
 - **S6** Search also matches **songs**: liked songs are already fully cached so
   they are instant; tracklists of saved albums are indexed lazily in the
   background and cached to disk. **No artist top tracks.**
-- **S7** Search result expansion: searching an **artist** also shows that
+- **S7** ~~Search result expansion: searching an **artist** also shows that
   artist's saved albums and saved songs; searching a **song** also shows the
-  saved album that contains it.
+  saved album that contains it.~~ **Withdrawn by the user after seeing it.**
+  See the Status block above.
 - **S8** **Type filter chips** between the search field and the list:
   songs / albums / artists / playlists / mixes. **Icon-only when narrow, icon
   plus text when the sidebar is wide enough.** They must sit visually with the
@@ -111,6 +151,8 @@ S10 landed in `dacc5f5`.
 - **S9** In the rail only the **logo, the nav icons and the pinned covers**
   remain. The search field, the chips and the library list are hidden until the
   rail hover-expands (L4), which restores the ordinary full sidebar.
+  **Amended: the rail shows the whole library as covers, not the pins alone.**
+  See the Status block above.
 - **S10** Footer shows the **username**, not the email address.
 
 ## 3. Pinning
@@ -176,7 +218,9 @@ yet, so the only way to choose a language is the `ui/language` key.
 
 **Status: landed** in `aab01a8` and `2100153`, with a real bug fixed in
 `58811d6` where switching repainted nothing. **TH1 reads differently than it
-shipped:** six themes, but **four dark** (Midnight, Forest, Ember, Deep) and
+shipped:** six themes, but **three dark** (Midnight, Forest, Ember) and three
+light (Daylight, Paper, Dawn), paired by hue, with a pure-black switch standing
+in for what was a separate Deep theme. Originally shipped as four dark and
 two light (Daylight, Paper), and "Graphite" became the green "Forest" at the
 user's request. `tests/tst_theme.cpp` checks WCAG contrast per token per
 palette. **Not done:** the theme picker in Settings.

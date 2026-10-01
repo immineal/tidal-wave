@@ -75,8 +75,8 @@ CLEAN=0
 WANTED=()
 
 # The six palette names in src/ui/ThemePalette.cpp, in the order Settings lists
-# them: four dark, then the two light ones this run exists to look at.
-THEMES=(midnight forest ember deep daylight paper)
+# them: three dark, then the three light ones this run exists to look at.
+THEMES=(midnight forest ember dawn daylight paper)
 
 # Half the user's 1920x1200 monitor, and the width the layout was designed
 # against (SPEC L1, tests/qml/tst_layout_player.qml).

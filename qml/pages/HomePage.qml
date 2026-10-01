@@ -12,7 +12,6 @@ Rectangle {
     property var recentAlbums: []
     property var playlists: []
     property var artists: []
-    property var recentlyPlayed: []
     property bool loading: false
     property string greeting: greetingFor(new Date().getHours())
 
@@ -30,22 +29,6 @@ Rectangle {
     // Access the window root for navigation
     function appWindow() { return Window.window }
 
-    Connections {
-        target: player
-        function onRecentlyPlayedChanged() { root.updateRecentlyPlayed() }
-    }
-
-    function updateRecentlyPlayed() {
-        var trackList = player.recentlyPlayed
-        var items = []
-        for (var i = 0; i < Math.min(trackList.length, 12); i++) {
-            var t = trackList[i]
-            items.push({ id: t.id, title: t.title, subtitle: t.artists,
-                         coverUrl: t.coverUrl || "",
-                         albumId: t.albumId || 0, type: "track" })
-        }
-        recentlyPlayed = items
-    }
 
     Component.onCompleted: loadContent()
 
@@ -96,7 +79,6 @@ Rectangle {
             artists = items
         }, 12, 0)
 
-        updateRecentlyPlayed()
     }
 
     ScrollView {
@@ -139,25 +121,6 @@ Rectangle {
 
             Item { height: 32 }
 
-            HorizontalSection {
-                Layout.fillWidth: true
-                visible: recentlyPlayed.length > 0
-                title: qsTr("Recently Played")
-                items: root.recentlyPlayed
-                mediaType: "track"
-                showViewAll: false
-                onItemClicked: (idx, item) => {
-                    if (item.albumId > 0)
-                        navigateTo("album", { albumId: item.albumId })
-                }
-                onItemPlayClicked: (idx, item) => {
-                    if (item.albumId > 0) {
-                        bridge.fetchAlbumTracks(item.albumId, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
-                        })
-                    }
-                }
-            }
 
             Item { height: 32 }
 

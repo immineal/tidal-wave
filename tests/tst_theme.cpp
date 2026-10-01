@@ -1,12 +1,19 @@
 // Palette tests. Written before src/ui/ThemePalette.cpp per the project's
 // tests-first rule.
 //
-// The point of the contrast assertions is the two light themes: about forty
+// The point of the contrast assertions is the three light themes: about forty
 // places in the QML were written against a dark ground, and a palette that
 // looks fine in a swatch strip can still put #8A97A3 hint text on white. The
 // thresholds are WCAG contrast ratios against the surface a token is actually
 // drawn on, so a palette edit that breaks legibility fails here rather than in
 // the user's eyes.
+//
+// Every one of those thresholds is checked twice over on a dark theme: once
+// as written, and once with the pure-black transform applied. themeRows()
+// below emits both, so a test added here covers the OLED variant for free and
+// a transform that gains contrast in one place by losing it in another cannot
+// land. That is the half most likely to break: the transform moves the
+// grounds and leaves the type and the accents where they were.
 
 #include <QTest>
 #include <QColor>
@@ -78,14 +85,58 @@ private slots:
 
     // ── the set of themes ────────────────────────────────────────────────
 
-    void sixThemes_fourDarkTwoLight() {
+    void sixThemes_threeDarkThreeLight() {
         const auto all = theme::themes();
         QCOMPARE(all.size(), 6);
 
         int dark = 0, light = 0;
         for (const auto &t : all) (t.dark ? dark : light)++;
-        QCOMPARE(dark, 4);
-        QCOMPARE(light, 2);
+        QCOMPARE(dark, 3);
+        QCOMPARE(light, 3);
+    }
+
+    // Settings draws the two halves as columns side by side and relies on the
+    // table order to pair them up by hue: Midnight beside Daylight, Forest
+    // beside Paper, Ember beside Dawn. That is a layout contract, not a
+    // coincidence, so the shape it needs is asserted here rather than left to
+    // whoever next inserts a palette in the middle of the list.
+    void darkThenLight_pairedByPosition() {
+        const auto all = theme::themes();
+        QCOMPARE(all.size(), 6);
+        for (int i = 0; i < 3; ++i)
+            QVERIFY2(all.at(i).dark, qPrintable(all.at(i).name + " is not in the dark half"));
+        for (int i = 3; i < 6; ++i)
+            QVERIFY2(!all.at(i).dark, qPrintable(all.at(i).name + " is not in the light half"));
+
+        const QStringList expected{"midnight", "forest", "ember", "daylight", "paper", "dawn"};
+        QStringList actual;
+        for (const auto &t : all) actual << t.name;
+        QCOMPARE(actual, expected);
+    }
+
+    // The accent is what makes a row read as one colour family, so the two
+    // halves of each row have to agree about hue. Loosely: these are an azure
+    // and a blue, a green and a green, a burnt orange and a burnt orange, not
+    // matched swatches.
+    void eachRowIsOneHue_data() {
+        QTest::addColumn<QString>("darkName");
+        QTest::addColumn<QString>("lightName");
+        QTest::newRow("blue")  << "midnight" << "daylight";
+        QTest::newRow("green") << "forest"   << "paper";
+        QTest::newRow("amber") << "ember"    << "dawn";
+    }
+
+    void eachRowIsOneHue() {
+        QFETCH(QString, darkName);
+        QFETCH(QString, lightName);
+        const QColor a = theme::palette(darkName).value("accent").value<QColor>();
+        const QColor b = theme::palette(lightName).value("accent").value<QColor>();
+        // Degrees around the wheel, the short way.
+        int gap = qAbs(a.hue() - b.hue());
+        if (gap > 180) gap = 360 - gap;
+        QVERIFY2(gap <= 30, qPrintable(
+            darkName + " (" + QString::number(a.hue()) + " deg) and " + lightName
+            + " (" + QString::number(b.hue()) + " deg) are not the same colour family"));
     }
 
     void namesAreUniqueAndLabelled() {
@@ -108,8 +159,33 @@ private slots:
         for (const auto &t : theme::themes()) names.insert(t.name);
         QVERIFY(names.contains(theme::defaultTheme()));
         // Which one is a design decision, so it is written down here the way
-        // the radius scale is: the user picked Deep over Midnight.
-        QCOMPARE(theme::defaultTheme(), QStringLiteral("deep"));
+        // the radius scale is. Midnight with the pure-black switch on is what
+        // the retired "Deep" palette was, which is what the user settled on.
+        QCOMPARE(theme::defaultTheme(), QStringLiteral("midnight"));
+        QCOMPARE(theme::defaultOledBlack(), true);
+        // ...and the switch does nothing on a light theme, so a light default
+        // with it on would be a default that quietly lies about itself.
+        for (const auto &t : theme::themes())
+            if (t.name == theme::defaultTheme()) QVERIFY(t.dark);
+    }
+
+    // The one palette this build dropped. Someone on Deep has to come back to
+    // the same pixels, not to a theme one shade lighter, or the removal reads
+    // as a bug.
+    void deepMigratesToMidnightInBlack() {
+        QString name;
+        bool    oled = false;
+        QVERIFY(theme::migrated(QStringLiteral("deep"), &name, &oled));
+        QCOMPARE(name, QStringLiteral("midnight"));
+        QCOMPARE(oled, true);
+        QVERIFY(!theme::isKnown(QStringLiteral("deep")));
+
+        // ...and nothing else is rewritten behind the user's back.
+        for (const auto &t : theme::themes())
+            QVERIFY2(!theme::migrated(t.name, nullptr, nullptr),
+                     qPrintable(t.name + " is being migrated away from"));
+        QVERIFY(!theme::migrated(QStringLiteral("graphite"), nullptr, nullptr));
+        QVERIFY(!theme::migrated(QString(), nullptr, nullptr));
     }
 
     // Prefs takes its default from the table above rather than keeping its own
@@ -125,7 +201,8 @@ private slots:
     void everyPaletteHasEveryToken_data() { themeRows(); }
     void everyPaletteHasEveryToken() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
 
         for (const QString &key : kColourTokens) {
             QVERIFY2(p.contains(key), qPrintable(name + " is missing " + key));
@@ -161,7 +238,8 @@ private slots:
     void darkFlagMatchesTheGround() {
         QFETCH(QString, name);
         QFETCH(bool, dark);
-        const QColor bg = theme::palette(name).value("bg").value<QColor>();
+        QFETCH(bool, oled);
+        const QColor bg = theme::palette(name, oled).value("bg").value<QColor>();
         QCOMPARE(luminance(bg) < 0.5, dark);
     }
 
@@ -170,7 +248,8 @@ private slots:
     void textIsLegible_data() { themeRows(); }
     void textIsLegible() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         // Text is drawn on bg, on surface and on surfaceHigh (cards), so all
@@ -235,7 +314,8 @@ private slots:
     void inkOnAFillIsWhite_data() { themeRows(); }
     void inkOnAFillIsWhite() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         for (const char *k : {"accentInk", "redInk"}) {
             const QColor ink = p.value(QLatin1String(k)).value<QColor>();
             QVERIFY2(contrast(ink, QColor(Qt::white)) <= 1.1,
@@ -247,15 +327,28 @@ private slots:
     void structureIsVisible_data() { themeRows(); }
     void structureIsVisible() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         // A border that matches its surface is not a border.
         QVERIFY2(contrast(col("border"), col("surface")) >= 1.12,
                  qPrintable(name + ": border invisible against surface"));
-        // The elevation ramp has to actually ramp.
-        QVERIFY(luminance(col("surfaceHigh")) != luminance(col("surface")));
-        QVERIFY(luminance(col("surfaceHov")) != luminance(col("surfaceHigh")));
+
+        // The elevation ramp has to actually ramp, and by enough to see. This
+        // was "the luminances differ", which a transform that compresses the
+        // ramp toward black passes while flattening the page into one slab;
+        // 1.06 is just under the tightest step any palette here takes.
+        const char *ladder[][2] = {{"bg", "surface"},
+                                   {"surface", "surfaceHigh"},
+                                   {"surfaceHigh", "surfaceHov"}};
+        for (const auto &step : ladder) {
+            const double c = contrast(col(step[0]), col(step[1]));
+            QVERIFY2(c >= 1.06, qPrintable(
+                name + ": " + QLatin1String(step[0]) + " and " + QLatin1String(step[1])
+                + " are the same slab (" + QString::number(c, 'f', 3) + ")"));
+        }
+
         const bool dark = p.value("dark").toBool();
         // Raised surfaces move away from the ground, in whichever direction
         // "away" is for this theme.
@@ -283,7 +376,8 @@ private slots:
     void hoverIsVisibleButNotASelection_data() { themeRows(); }
     void hoverIsVisibleButNotASelection() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         const QColor hover = col("hoverFill");
@@ -321,7 +415,8 @@ private slots:
     void translucentTokensAreTranslucent_data() { themeRows(); }
     void translucentTokensAreTranslucent() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         for (const char *k : {"hoverFill", "accentSoft", "accentTint", "accentWash",
                               "redSoft", "greenWash", "scrim", "artScrim",
                               "artScrimStrong", "artBorder"}) {
@@ -351,7 +446,8 @@ private slots:
     void heroGradientStillReads_data() { themeRows(); }
     void heroGradientStillReads() {
         QFETCH(QString, name);
-        const QVariantMap p = theme::palette(name);
+        QFETCH(bool, oled);
+        const QVariantMap p = theme::palette(name, oled);
         const QColor bg  = p.value("bg").value<QColor>();
         const QColor top = composite(p.value("accentTint").value<QColor>(), bg);
         QVERIFY2(contrast(top, bg) >= 1.15,
@@ -372,13 +468,107 @@ private slots:
         }
     }
 
+    // Including the black variants: nine distinct palettes, so the switch is
+    // never a no-op on a theme that is supposed to have one, and no theme is
+    // secretly another theme's black variant.
     void noTwoThemesAreTheSame() {
         QList<QVariantMap> seen;
+        QStringList tags;
         for (const auto &t : theme::themes()) {
-            const QVariantMap p = theme::palette(t.name);
-            for (const QVariantMap &other : seen) QVERIFY(p != other);
-            seen.append(p);
+            for (bool oled : {false, true}) {
+                if (oled && !t.dark) continue;
+                const QVariantMap p = theme::palette(t.name, oled);
+                const QString tag = t.name + (oled ? " in black" : "");
+                for (int i = 0; i < seen.size(); ++i)
+                    QVERIFY2(p != seen.at(i),
+                             qPrintable(tag + " is identical to " + tags.at(i)));
+                seen.append(p);
+                tags.append(tag);
+            }
         }
+        QCOMPARE(seen.size(), 9);
+    }
+
+    // ── the pure-black transform ─────────────────────────────────────────
+    //
+    // What it is allowed to touch. Everything above already runs twice on a
+    // dark theme, as written and in black, so legibility is covered; these
+    // are about the transform itself behaving like one.
+
+    void oledPullsEveryGroundDown_data() { darkThemeRows(); }
+    void oledPullsEveryGroundDown() {
+        QFETCH(QString, name);
+        const QVariantMap plain = theme::palette(name, false);
+        const QVariantMap black = theme::palette(name, true);
+        auto col = [](const QVariantMap &p, const char *k) {
+            return p.value(QLatin1String(k)).value<QColor>();
+        };
+
+        // The whole point of the switch.
+        QCOMPARE(col(black, "bg"), QColor(Qt::black));
+
+        // ...and the rest of the ramp comes with it, or the page would be
+        // black with the old grounds floating on top of it.
+        for (const char *k : {"surface", "surfaceHigh", "surfaceHov", "border"}) {
+            const double was = luminance(col(plain, k));
+            const double now = luminance(col(black, k));
+            QVERIFY2(now < was, qPrintable(
+                name + "." + QLatin1String(k) + " did not come down ("
+                + col(plain, k).name() + " -> " + col(black, k).name() + ")"));
+        }
+
+        // The tint survives the trip: scaling the channels rather than
+        // subtracting a constant is what stops Forest going grey down there.
+        for (const char *k : {"surface", "surfaceHigh", "surfaceHov", "border"}) {
+            const QColor a = col(plain, k), b = col(black, k);
+            if (a.saturation() < 12) continue;   // Midnight is grey on purpose
+            QVERIFY2(qAbs(a.hue() - b.hue()) <= 12, qPrintable(
+                name + "." + QLatin1String(k) + " changed hue, " + a.name()
+                + " -> " + b.name()));
+        }
+    }
+
+    // Nothing but the grounds and the hover wash. The type and the accents
+    // were tuned against the thresholds above and have no business moving
+    // because a switch was flipped.
+    void oledTouchesNothingButTheGrounds_data() { darkThemeRows(); }
+    void oledTouchesNothingButTheGrounds() {
+        QFETCH(QString, name);
+        const QVariantMap plain = theme::palette(name, false);
+        const QVariantMap black = theme::palette(name, true);
+
+        const QSet<QString> mayMove = {
+            "bg", "surface", "surfaceHigh", "surfaceHov", "border", "hoverFill"
+        };
+        QCOMPARE(plain.keys(), black.keys());
+        for (auto it = plain.cbegin(); it != plain.cend(); ++it) {
+            if (mayMove.contains(it.key())) continue;
+            QVERIFY2(black.value(it.key()) == it.value(),
+                     qPrintable(name + ": the black variant moved " + it.key()));
+        }
+        // A 10% white wash vanishes over a true-black page, so the hover
+        // treatment is the one non-ground that has to follow.
+        const QColor was = plain.value("hoverFill").value<QColor>();
+        const QColor now = black.value("hoverFill").value<QColor>();
+        QVERIFY2(now.alpha() > was.alpha(),
+                 qPrintable(name + ": the hover wash did not keep up with the ground"));
+    }
+
+    // There is no such thing as a black Daylight, and the picker hides the
+    // switch rather than greying it out, so asking for one has to be inert
+    // rather than merely harmless.
+    void oledIsANoOpOnALightTheme_data() { lightThemeRows(); }
+    void oledIsANoOpOnALightTheme() {
+        QFETCH(QString, name);
+        QCOMPARE(theme::palette(name, true), theme::palette(name, false));
+    }
+
+    // An unknown stored name still has to paint, with the switch either way.
+    void oledSurvivesAnUnknownName() {
+        const QVariantMap fallback = theme::palette(theme::defaultTheme(), true);
+        QCOMPARE(theme::palette(QStringLiteral("no-such-theme"), true), fallback);
+        QCOMPARE(theme::palette(QString(), true), fallback);
+        QVERIFY(fallback.value("bg").value<QColor>() == QColor(Qt::black));
     }
 
     // ── lookup behaviour ─────────────────────────────────────────────────
@@ -429,6 +619,7 @@ private slots:
     void createReturnsTheWiredInstance() {
         Prefs prefs;
         prefs.setTheme(QStringLiteral("ember"));
+        prefs.setOledBlack(false);
         ThemePalette::instance()->setPrefs(&prefs);
 
         ThemePalette *fromQml = ThemePalette::create(nullptr, nullptr);
@@ -444,6 +635,7 @@ private slots:
     void currentFollowsPrefs() {
         Prefs prefs;
         prefs.setTheme(QStringLiteral("midnight"));
+        prefs.setOledBlack(false);
         ThemePalette palette(&prefs);
 
         QCOMPARE(palette.current(), theme::palette(QStringLiteral("midnight")));
@@ -455,6 +647,31 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QCOMPARE(palette.current(), theme::palette(QStringLiteral("daylight")));
         QVERIFY(!palette.isDark());
+    }
+
+    // The switch has to arrive through the same pipe the theme does, or the
+    // app would need a binding that knows about it - which is the thing
+    // qml/Theme.qml is built to avoid.
+    void currentFollowsOledBlack() {
+        Prefs prefs;
+        prefs.setTheme(QStringLiteral("forest"));
+        prefs.setOledBlack(false);
+        ThemePalette palette(&prefs);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("forest"), false));
+
+        QSignalSpy spy(&palette, &ThemePalette::currentChanged);
+        prefs.setOledBlack(true);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("forest"), true));
+        QVERIFY(palette.isDark());
+
+        // On a light theme the same flip paints nothing, so it must not even
+        // claim to have changed anything.
+        prefs.setTheme(QStringLiteral("paper"));
+        spy.clear();
+        prefs.setOledBlack(false);
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("paper")));
     }
 
     // Settings needs {name, label, dark} to build the picker.
@@ -477,18 +694,40 @@ private slots:
     void staleSettingStillPaints() {
         Prefs prefs;
         prefs.setTheme(QStringLiteral("graphite"));   // renamed to "forest"
+        prefs.setOledBlack(false);
         ThemePalette palette(&prefs);
         QCOMPARE(palette.current(), theme::palette(theme::defaultTheme()));
         QVERIFY(palette.current().contains("bg"));
     }
 
 private:
-    // Shared _data() body: one row per theme.
+    // Shared _data() body: one row per palette a user can actually be looking
+    // at. That is every theme as written, plus the pure-black variant of each
+    // dark one - the light themes have no second variant, because the switch
+    // is a no-op there and a duplicate row would only make the output longer.
+    // The dark half and the light half on their own, for the tests that only
+    // make sense on one of the two.
+    static void darkThemeRows() {
+        QTest::addColumn<QString>("name");
+        for (const auto &t : theme::themes())
+            if (t.dark) QTest::newRow(qPrintable(t.name)) << t.name;
+    }
+
+    static void lightThemeRows() {
+        QTest::addColumn<QString>("name");
+        for (const auto &t : theme::themes())
+            if (!t.dark) QTest::newRow(qPrintable(t.name)) << t.name;
+    }
+
     static void themeRows() {
         QTest::addColumn<QString>("name");
         QTest::addColumn<bool>("dark");
-        for (const auto &t : theme::themes())
-            QTest::newRow(qPrintable(t.name)) << t.name << t.dark;
+        QTest::addColumn<bool>("oled");
+        for (const auto &t : theme::themes()) {
+            QTest::newRow(qPrintable(t.name)) << t.name << t.dark << false;
+            if (t.dark)
+                QTest::newRow(qPrintable(t.name + " in black")) << t.name << t.dark << true;
+        }
     }
 
     QTemporaryDir m_dir;

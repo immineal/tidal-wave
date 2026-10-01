@@ -196,27 +196,32 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
 
   <section>
     <h2>Themes</h2>
-    <p class="note">Four dark and two light. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette. The name under each is what appears in Settings.</p>
+    <p class="note">Three dark and three light, in three pairs. Each pair is one colour family with a dark side and a light side: Midnight with Daylight in blue, Forest with Paper in green, Ember with Dawn in amber. Settings draws them as two columns in exactly this order, so a row of the picker is a row of this list. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette.</p>
     <div class="themes" id="themes"></div>
-    <div class="callout"><b>Settled, and these are the six that shipped.</b> Graphite is gone: you called the violet accent sloppy, so the fourth dark theme is Forest, a green accent on green-grey neutrals. Daylight and Paper went in as drafted, Paper warm with the green accent. The two light themes were the real work, as expected: about forty places in the QML assumed a dark ground, including white-on-cover text, the overlay gradients on the page heroes and the <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> hover fills. Measuring the contrast instead of judging it by eye caught two things the swatch strips hid: white on the accent fails on every dark theme, and Paper had its ground and its surface the wrong way round, so cards sat lighter than the page they were on. Both are fixed, and both now have a test holding them in place.</div>
+
+    <h3 style="margin:22px 0 8px;font-family:var(--display);font-size:15px">Pure black</h3>
+    <p class="note">Not a seventh palette. One persisted switch, on by default, that pulls the chosen dark theme's grounds down to true black and leaves its type and accents alone, so it composes with all three instead of competing with them. On a light theme it does nothing and Settings hides it rather than greying it out.</p>
+    <div class="themes" id="oled"></div>
+
+    <div class="callout"><b>Deep is gone, and the teal with it.</b> It was Midnight with its grounds pulled to black, which is a treatment and not a palette, so it is a switch now: the same look, available on Forest and Ember too. Anyone whose setting says <span style="font-family:var(--mono)">deep</span> lands on Midnight with the switch on, which is byte for byte what they were already looking at. A fresh install gets the same thing. <b>Dawn is the one new palette</b>, the light half of the amber row, because three dark against two light read as a mistake rather than a choice. Paper already owns warm-and-quiet, so Dawn is warm-and-crisp: peach grounds rather than cream, a longer step between elevation levels, and Ember's burnt orange instead of a green. The contrast work still holds in all nine combinations: every threshold is checked against the pulled-down grounds as well as the written ones, because the transform moves the ground and leaves the text where it was.</div>
   </section>
 
   <section>
     <h2>Tokens</h2>
-    <p class="note">25 colour tokens, written down once in <span style="font-family:var(--mono)">ThemePalette.cpp</span> and surfaced one for one by <span style="font-family:var(--mono)">Theme.qml</span>. Most were already there as the dark palette's literals. The ones below were added while the two light themes were being made to work, and they are the reason those themes are possible at all.</p>
+    <p class="note">25 colour tokens, written down once in <span style="font-family:var(--mono)">ThemePalette.cpp</span> and surfaced one for one by <span style="font-family:var(--mono)">Theme.qml</span>. Most were already there as the dark palette's literals. The ones below were added while the light themes were being made to work, and they are the reason those themes are possible at all.</p>
     <div class="scroller">
       <table class="radtable">
         <thead><tr><th>token</th><th>what it is</th><th>why it exists</th></tr></thead>
         <tbody>
-          <tr><td class="mono">onAccent</td><td>ink on a solid accent fill</td><td style="color:var(--muted)">White on the accent fails on all four dark themes: it measures 1.8:1 to 2.6:1. So the ink there is a near-black drawn from the accent's own hue, and white only on Daylight and Paper. The contrast tests found this. By eye the white looked fine.</td></tr>
-          <tr><td class="mono">hoverFill</td><td>the hover wash on rows and icon buttons</td><td style="color:var(--muted)">Was <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> everywhere, which is invisible on a light ground. Each palette names its own direction instead: white at alpha 12 of 255 on the dark themes, black at 14 on the light ones.</td></tr>
-          <tr><td class="mono">accentSoft<br>accentTint<br>accentWash</td><td>three strengths of accent wash: a playing row, a hero gradient, a filled badge</td><td style="color:var(--muted)">Derived from the accent rather than written out, so they cannot drift off-hue. 8, 15 and 22% on the dark themes, 10, 18 and 26% on the light ones, because a wash over a light ground has to be heavier to read at all.</td></tr>
+          <tr><td class="mono">onAccent</td><td>ink on a solid accent fill</td><td style="color:var(--muted)">White on the accent measured 1.8:1 to 2.6:1 on the dark themes, so the ink was a near-black drawn from the accent's own hue. You wanted the label on a filled chip white everywhere, so the fill moved instead: every accent is deep enough to carry white at 4.5:1 and still read as text on its own grounds at 3:1. The contrast tests found the original. By eye the white looked fine.</td></tr>
+          <tr><td class="mono">hoverFill</td><td>the hover wash on rows and icon buttons</td><td style="color:var(--muted)">Was <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> everywhere, which is invisible on a light ground. Each palette names its own direction instead: white at alpha 26 of 255 on the dark themes, black at 26 on the light ones, and 30 when the pure-black switch is on, because a 10% white wash disappears over true black.</td></tr>
+          <tr><td class="mono">accentSoft<br>accentTint<br>accentWash</td><td>three strengths of accent wash: a playing row, a hero gradient, a filled badge</td><td style="color:var(--muted)">Derived from the accent rather than written out, so they cannot drift off-hue. 12, 22 and 26% on the dark themes, 10, 18 and 26% on the light ones. The dark ones take more, which is the reverse of the old rule: darkening the accents to carry white ink took the tints down with them.</td></tr>
           <tr><td class="mono">artScrim<br>artScrimStrong<br>onArt<br>artBorder</td><td>the layers drawn over cover art</td><td style="color:var(--muted)">Identical in all six themes. Cover art is neither light nor dark, so these cannot follow the ground: black at 35 and 60%, white ink, a white border at 22%.</td></tr>
           <tr><td class="mono">greenWash</td><td>the fill behind the lossless badge</td><td style="color:var(--muted)">The two audio-quality badges were filled with a hardcoded <span style="font-family:var(--mono)">#1a4a7a</span> and <span style="font-family:var(--mono)">#1a4a3a</span>, dark chips that vanish into a light theme. Lossless takes this wash and hi-res the accent wash, each over whatever surface it lands on.</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin:18px 0 0">The palettes are tested rather than eyeballed: 43 cases check WCAG contrast for every token against each of the three grounds it is drawn on (bg, surface, surfaceHigh), that the elevation ramp moves away from the ground in whichever direction away is for that theme, that the translucent tokens really are translucent and really are on the accent's hue, and that no token is present in one palette and missing from another. Thresholds: textPrimary 7:1, textSec 4.5:1, textDim 2:1, accent 3:1, and ink on a solid fill 4:1.</p>
+    <p class="note" style="margin:18px 0 0">The palettes are tested rather than eyeballed, and the nine combinations are tested, not the six: every case runs once per theme as written and once more per dark theme with the pure-black switch on. They check WCAG contrast for every token against each of the three grounds it is drawn on (bg, surface, surfaceHigh), that the elevation ramp moves away from the ground in whichever direction away is for that theme and by enough to see, that a hover wash is visible without reading as a selected row, that the translucent tokens really are translucent and really are on the accent's hue, and that no token is present in one palette and missing from another. Thresholds: textPrimary 7:1, textSec 4.5:1, textDim 3:1 and no closer than two thirds of textSec, accent 3:1, and ink on a solid fill 4.5:1.</p>
   </section>
 
   <section>
@@ -397,26 +402,57 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
   }
 
   // ── themes ──
+  // kSpecs in src/ui/ThemePalette.cpp, column for column, in table order: the
+  // dark half first, then the light half, each in the same hue order so a
+  // card and the one three along are the two sides of one colour family.
+  // These went two accent revisions stale once; tst_theme.cpp is the source
+  // of truth and this list is the copy, so it is the one that has to move.
   var THEMES = [
-    { n: "Midnight", k: "dark", note: "today's palette",
-      bg:"#0A0A0A", sf:"#141414", hi:"#1E1E1E", hv:"#262626", ln:"#2A2A2A",
-      ac:"#00B2F8", tp:"#FFFFFF", ts:"#A0A0A0", td:"#555555" },
-    { n: "Forest", k: "dark", note: "cool neutrals, green accent",
-      bg:"#0B0F0C", sf:"#141A16", hi:"#1C241E", hv:"#242E26", ln:"#29332B",
-      ac:"#3DD68C", tp:"#EEF5F0", ts:"#94A69B", td:"#56655C" },
-    { n: "Ember", k: "dark", note: "warm neutrals",
-      bg:"#100D0C", sf:"#1A1614", hi:"#241F1C", hv:"#2E2825", ln:"#332C28",
-      ac:"#FF7A45", tp:"#F7F2EF", ts:"#A89C95", td:"#615853" },
-    { n: "Deep", k: "dark", note: "true black, for OLED",
-      bg:"#000000", sf:"#0C0C0E", hi:"#16161A", hv:"#1E1E24", ln:"#24242B",
-      ac:"#22D3EE", tp:"#FFFFFF", ts:"#9BA1AB", td:"#4E545E" },
+    { n: "Midnight", k: "dark", note: "azure on neutral grey",
+      bg:"#0A0A0A", sf:"#141414", hi:"#1E1E1E", hv:"#383838", ln:"#2A2A2A",
+      ac:"#0079A8", tp:"#FFFFFF", ts:"#A0A0A0", td:"#6B6B6B" },
+    { n: "Forest", k: "dark", note: "green on green-grey neutrals",
+      bg:"#0B0F0C", sf:"#141A16", hi:"#1C241E", hv:"#323C34", ln:"#29332B",
+      ac:"#18814E", tp:"#EEF5F0", ts:"#94A69B", td:"#637269" },
+    { n: "Ember", k: "dark", note: "burnt orange on warm neutrals",
+      bg:"#100D0C", sf:"#1A1614", hi:"#241F1C", hv:"#3E3836", ln:"#332C28",
+      ac:"#C14A18", tp:"#F7F2EF", ts:"#A89C95", td:"#736B66" },
     { n: "Daylight", k: "light", note: "crisp white, high contrast",
-      bg:"#FFFFFF", sf:"#F2F5F8", hi:"#E6EBF0", hv:"#D8E0E8", ln:"#CFD9E2",
-      ac:"#0A6FC4", tp:"#08111A", ts:"#4C5A66", td:"#8A97A3" },
-    { n: "Paper", k: "light", note: "warm, low contrast, green accent",
-      bg:"#FAF7F0", sf:"#F1EBDC", hi:"#E7DFCB", hv:"#DBD1B9", ln:"#CBC0A6",
-      ac:"#2F6F4E", tp:"#1B1913", ts:"#5D564A", td:"#958C7B" }
+      bg:"#FFFFFF", sf:"#F2F5F8", hi:"#E6EBF0", hv:"#C1C8D0", ln:"#CFD9E2",
+      ac:"#0A6FC4", tp:"#08111A", ts:"#4C5A66", td:"#798591" },
+    { n: "Paper", k: "light", note: "cream, low contrast, green accent",
+      bg:"#FAF7F0", sf:"#F1EBDC", hi:"#E7DFCB", hv:"#CAC0AA", ln:"#CBC0A6",
+      ac:"#2F6F4E", tp:"#1B1913", ts:"#5D564A", td:"#837B6C" },
+    { n: "Dawn", k: "light", note: "peach, crisp, burnt orange accent",
+      bg:"#FFF7F1", sf:"#FAEBE1", hi:"#F3DDCE", hv:"#D7BAA6", ln:"#E8D0BE",
+      ac:"#B4481C", tp:"#241510", ts:"#6E4F3E", td:"#96705D" }
   ];
+
+  // The pure-black switch, as the same operation the C++ applies: each ground
+  // scaled toward black by its own factor, the top of the ramp least so the
+  // hover wash stays under the selected row, and the wash itself dialled up
+  // because a 10% white one disappears over true black.
+  var OLED = { sf: 0.60, hi: 0.72, ln: 0.86, hv: 0.96 };
+  function pullToBlack(hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    var c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(function (v) {
+      return Math.min(255, Math.round(v * f));
+    });
+    return "#" + c.map(function (v) { return ("0" + v.toString(16)).slice(-2); })
+                  .join("").toUpperCase();
+  }
+  function inBlack(t) {
+    var out = {};
+    for (var k in t) out[k] = t[k];
+    out.n = t.n + " in black";
+    out.note = "the switch on";
+    out.bg = "#000000";
+    out.sf = pullToBlack(t.sf, OLED.sf);
+    out.hi = pullToBlack(t.hi, OLED.hi);
+    out.hv = pullToBlack(t.hv, OLED.hv);
+    out.ln = pullToBlack(t.ln, OLED.ln);
+    return out;
+  }
   function themeCard(t) {
     return '<div class="tcard"><div class="head"><b>' + t.n + '</b><span>' + t.note +
       '</span><span class="badge">' + t.k + '</span></div>' +
@@ -454,6 +490,9 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
   }
   function drawThemes() {
     document.getElementById("themes").innerHTML = THEMES.map(themeCard).join("");
+    document.getElementById("oled").innerHTML =
+      THEMES.filter(function (t) { return t.k === "dark"; })
+            .map(inBlack).map(themeCard).join("");
   }
 
   // ── radius scale ──

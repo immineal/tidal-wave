@@ -21,8 +21,9 @@ struct Spec {
     const char *surfaceHov;
     const char *border;
     // The hover wash's alpha, 0-255. Per theme rather than one number for
-    // light and one for dark: the same wash reads differently over "deep",
-    // whose ground is pure black, than over the other three dark palettes.
+    // light and one for dark, because the pure-black transform below has to
+    // raise it: a 10% white wash over a true-black page lands at 1.21:1,
+    // just under the floor tst_theme.cpp holds it to.
     int         hoverAlpha;
     const char *textPrimary;
     const char *textSec;
@@ -35,22 +36,27 @@ struct Spec {
     const char *green;
 };
 
-// Four dark, two light.
+// Three dark, three light, paired by hue: Midnight with Daylight (blue),
+// Forest with Paper (green), Ember with Dawn (amber). Settings lays the two
+// lists out as columns and relies on that order, so a theme inserted here
+// moves a row in the picker.
 //
 // "Forest" stands where a violet "Graphite" was drafted; the user asked for a
-// green one instead.
+// green one instead. A teal "Deep" stood where the OLED switch now is: it was
+// Midnight with its grounds pulled to black, which is a treatment rather than
+// a palette, so it became one - see kOled* below.
 //
 // accentInk and redInk are white in all six. They were a near-black on the
-// four dark themes, because white on those bright accents measured 1.8-2.6:1
-// and failed; the user wants the label on a filled chip white, so the fill
-// moved instead of the ink. Every accent and every red below is now dark
-// enough to carry white at 4.5:1 and still light enough to read as text and
-// icons on bg, surface and surfaceHigh at 3:1. Those two pull against each
-// other and leave a relative luminance band of roughly 0.15 to 0.18 on the
-// dark themes, which is why the dark accents are so much deeper than they
-// were. The hue of each is untouched, so Midnight is still azure, Deep cyan,
-// Forest green and Ember orange, and the two light themes did not have to
-// move at all: their accents were already deep enough.
+// dark themes, because white on those bright accents measured 1.8-2.6:1 and
+// failed; the user wants the label on a filled chip white, so the fill moved
+// instead of the ink. Every accent and every red below is now dark enough to
+// carry white at 4.5:1 and still light enough to read as text and icons on
+// bg, surface and surfaceHigh at 3:1. Those two pull against each other and
+// leave a relative luminance band of roughly 0.15 to 0.18 on the dark themes,
+// which is why the dark accents are so much deeper than they were. The hue of
+// each is untouched, so Midnight is still azure, Forest green and Ember
+// orange, and the light themes did not have to move at all: their accents
+// were already deep enough.
 //
 // Two columns were moved after a screenshot audit, and both are load-bearing:
 //
@@ -81,12 +87,6 @@ const Spec kSpecs[] = {
       "#C14A18", "#93340C", "#FFFFFF",
       "#CF3939", "#FFFFFF", "#5FBF7A" },
 
-    { "deep",     QT_TRANSLATE_NOOP("Theme", "Deep"),     true,
-      "#000000", "#0C0C0E", "#16161A", "#343439", "#24242B", 32,
-      "#FFFFFF", "#9BA1AB", "#61666F",
-      "#007C8F", "#005D6C", "#FFFFFF",
-      "#D03647", "#FFFFFF", "#34D399" },
-
     { "daylight", QT_TRANSLATE_NOOP("Theme", "Daylight"), false,
       "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
       "#08111A", "#4C5A66", "#798591",
@@ -98,6 +98,19 @@ const Spec kSpecs[] = {
       "#1B1913", "#5D564A", "#837B6C",
       "#2F6F4E", "#22543A", "#FFFFFF",
       "#A8342A", "#FFFFFF", "#4F7A35" },
+
+    // Ember's light partner, and the one palette on this list that is new.
+    // Paper already owns warm-and-quiet, so Dawn is warm-and-crisp instead:
+    // the grounds are peach rather than cream (R leads G by 8-29 and G leads
+    // B by only 6-20, where Paper has that the other way round and reads
+    // yellow), the ramp steps further per level, and the accent is Ember's
+    // burnt orange rather than Paper's green. Side by side the two never read
+    // as the same idea even though both are warm.
+    { "dawn",     QT_TRANSLATE_NOOP("Theme", "Dawn"),     false,
+      "#FFF7F1", "#FAEBE1", "#F3DDCE", "#D7BAA6", "#E8D0BE", 26,
+      "#241510", "#6E4F3E", "#96705D",
+      "#B4481C", "#8A3310", "#FFFFFF",
+      "#B3302A", "#FFFFFF", "#3F7A3A" },
 };
 
 QColor withAlpha(const QColor &c, double a) {
@@ -106,15 +119,58 @@ QColor withAlpha(const QColor &c, double a) {
     return out;
 }
 
+// ── the pure-black transform ─────────────────────────────────────────────
+//
+// What the retired "Deep" palette was, as an operation any dark theme can
+// take. Deep was Midnight with its grounds pulled down, and these factors are
+// the ratios it sat at, rounded: 12/20, 22/30, 36/42 and 52/56. Scaling each
+// channel rather than subtracting a constant is what keeps the tint - Forest
+// stays green down there and Ember stays warm, which a flat subtraction would
+// have bleached out.
+//
+// They are not one number because the ramp has to survive being compressed.
+// bg goes all the way to black, and if the rest followed it that far the
+// elevation steps would close up: tst_theme.cpp wants surface, surfaceHigh
+// and surfaceHov still separated, and - the binding constraint - it wants an
+// opaque surfaceHov to stay stronger against surfaceHigh than the hoverFill
+// wash laid over it. The wash gets *heavier* here (below), so the top of the
+// ramp has to give up the least ground. Hence a curve: the darker the step,
+// the harder it is pulled.
+constexpr double kOledSurface     = 0.60;
+constexpr double kOledSurfaceHigh = 0.72;
+constexpr double kOledBorder      = 0.86;
+constexpr double kOledSurfaceHov  = 0.96;
+
+// A 10% white wash over a true-black page measures 1.21:1, which is under the
+// floor, so the hover treatment is dialled up along with the grounds. Deep
+// used 32 for the same reason; 30 reads the same and leaves more room between
+// a hovered row and a selected one.
+constexpr int kOledHoverAlpha = 30;
+
+QColor pulledToBlack(const QColor &c, double factor) {
+    return QColor::fromRgb(qRound(c.red()   * factor),
+                           qRound(c.green() * factor),
+                           qRound(c.blue()  * factor));
+}
+
 // Things layered over cover art are the same in every theme: the artwork
 // underneath is whatever it is, so these cannot follow the ground.
 constexpr double kArtScrim       = 0.35;
 constexpr double kArtScrimStrong = 0.60;
 constexpr double kArtBorder      = 0.22;
 
-QVariantMap build(const Spec &s) {
+// `oled` is only ever honoured on a dark theme; palette() already refuses to
+// pass it for a light one, and the assert here is what keeps that true if a
+// second caller appears.
+QVariantMap build(const Spec &s, bool oled) {
+    Q_ASSERT(!oled || s.dark);
     const QColor accent(QString::fromLatin1(s.accent));
     const QColor red(QString::fromLatin1(s.red));
+
+    auto ground = [oled](const char *hex, double factor) {
+        const QColor c(QString::fromLatin1(hex));
+        return oled ? pulledToBlack(c, factor) : c;
+    };
 
     // A wash reads by what it paints, not by its alpha. The dark accents lost
     // about half their luminance when they were darkened to carry white text,
@@ -132,11 +188,11 @@ QVariantMap build(const Spec &s) {
     QVariantMap m;
     m.insert(QStringLiteral("dark"), s.dark);
 
-    m.insert(QStringLiteral("bg"),          QColor(QString::fromLatin1(s.bg)));
-    m.insert(QStringLiteral("surface"),     QColor(QString::fromLatin1(s.surface)));
-    m.insert(QStringLiteral("surfaceHigh"), QColor(QString::fromLatin1(s.surfaceHigh)));
-    m.insert(QStringLiteral("surfaceHov"),  QColor(QString::fromLatin1(s.surfaceHov)));
-    m.insert(QStringLiteral("border"),      QColor(QString::fromLatin1(s.border)));
+    m.insert(QStringLiteral("bg"),          ground(s.bg, 0.0));
+    m.insert(QStringLiteral("surface"),     ground(s.surface,     kOledSurface));
+    m.insert(QStringLiteral("surfaceHigh"), ground(s.surfaceHigh, kOledSurfaceHigh));
+    m.insert(QStringLiteral("surfaceHov"),  ground(s.surfaceHov,  kOledSurfaceHov));
+    m.insert(QStringLiteral("border"),      ground(s.border,      kOledBorder));
 
     m.insert(QStringLiteral("textPrimary"), QColor(QString::fromLatin1(s.textPrimary)));
     m.insert(QStringLiteral("textSec"),     QColor(QString::fromLatin1(s.textSec)));
@@ -155,9 +211,10 @@ QVariantMap build(const Spec &s) {
     // to be unmistakable, and still well short of surfaceHov, which the
     // sidebar uses for the row you are actually on - see tst_theme.cpp,
     // hoverIsVisibleButNotASelection().
+    const int hoverAlpha = oled ? kOledHoverAlpha : s.hoverAlpha;
     m.insert(QStringLiteral("hoverFill"),
-             s.dark ? QColor(255, 255, 255, s.hoverAlpha)
-                    : QColor(0, 0, 0, s.hoverAlpha));
+             s.dark ? QColor(255, 255, 255, hoverAlpha)
+                    : QColor(0, 0, 0, hoverAlpha));
 
     m.insert(QStringLiteral("red"),     red);
     m.insert(QStringLiteral("redSoft"), withAlpha(red, 0.12));
@@ -198,17 +255,49 @@ bool isKnown(const QString &name) {
     return false;
 }
 
-// Deep rather than Midnight: the user's pick after living with all six.
-QString defaultTheme() { return QStringLiteral("deep"); }
+// Midnight with the pure-black switch on, which is byte for byte what the
+// user was running when Deep was still a palette of its own.
+QString defaultTheme()   { return QStringLiteral("midnight"); }
+bool    defaultOledBlack() { return true; }
 
-QVariantMap palette(const QString &name) {
-    static const QHash<QString, QVariantMap> built = [] {
+bool migrated(const QString &stored, QString *theme, bool *oledBlack) {
+    // "deep" was Midnight pulled to black, so that is where it lands: anyone
+    // who was on it sees the same app after the update, not a lighter one.
+    if (stored != QLatin1String("deep")) return false;
+    if (theme)     *theme     = QStringLiteral("midnight");
+    if (oledBlack) *oledBlack = true;
+    return true;
+}
+
+QVariantMap palette(const QString &name, bool oledBlack) {
+    // Two tables, built once each: the plain palettes and the pulled-down
+    // ones. Building on demand instead would re-run the transform on every
+    // repaint, and ThemePalette compares the whole map to decide whether to
+    // emit currentChanged().
+    static const QHash<QString, QVariantMap> plain = [] {
         QHash<QString, QVariantMap> out;
-        for (const Spec &s : kSpecs) out.insert(QString::fromLatin1(s.name), build(s));
+        for (const Spec &s : kSpecs) out.insert(QString::fromLatin1(s.name), build(s, false));
         return out;
     }();
-    const auto it = built.constFind(name);
-    return it != built.cend() ? *it : built.value(defaultTheme());
+    static const QHash<QString, QVariantMap> black = [] {
+        QHash<QString, QVariantMap> out;
+        // Light themes have no black variant, so they are absent here and the
+        // lookup below falls back to the plain one. That is the whole of
+        // "the switch does nothing on Daylight".
+        for (const Spec &s : kSpecs)
+            if (s.dark) out.insert(QString::fromLatin1(s.name), build(s, true));
+        return out;
+    }();
+
+    if (oledBlack) {
+        const auto it = black.constFind(name);
+        if (it != black.cend()) return *it;
+        // An unknown name falls back to the default palette, and the default
+        // palette is a dark one, so it gets the transform too.
+        if (!plain.contains(name)) return black.value(defaultTheme());
+    }
+    const auto it = plain.constFind(name);
+    return it != plain.cend() ? *it : plain.value(defaultTheme());
 }
 
 QVariantMap radii() {
@@ -261,23 +350,26 @@ void ThemePalette::setThemeSource(QObject *source) {
         // Connect by meta-object rather than to Prefs::themeChanged, so a test
         // double works here without the palette knowing the concrete type.
         const QMetaObject *mo = m_source->metaObject();
-        const int index = mo->indexOfProperty("theme");
-        if (index >= 0) {
-            const QMetaProperty prop = mo->property(index);
-            if (prop.hasNotifySignal()) {
-                const int slot = metaObject()->indexOfSlot("refresh()");
-                connect(m_source, prop.notifySignal(), this, metaObject()->method(slot));
+        const int slot = metaObject()->indexOfSlot("refresh()");
+        for (const char *name : {"theme", "oledBlack"}) {
+            const int index = mo->indexOfProperty(name);
+            if (index < 0) {
+                qWarning("ThemePalette: theme source has no \"%s\" property", name);
+                continue;
             }
-        } else {
-            qWarning("ThemePalette: theme source has no \"theme\" property");
+            const QMetaProperty prop = mo->property(index);
+            if (prop.hasNotifySignal())
+                connect(m_source, prop.notifySignal(), this, metaObject()->method(slot));
         }
     }
     refresh();
 }
 
 void ThemePalette::refresh() {
-    const QVariantMap next = theme::palette(
-        m_source ? m_source->property("theme").toString() : theme::defaultTheme());
+    const QVariantMap next =
+        m_source ? theme::palette(m_source->property("theme").toString(),
+                                  m_source->property("oledBlack").toBool())
+                 : theme::palette(theme::defaultTheme(), theme::defaultOledBlack());
     if (next == m_current) return;
     m_current = next;
     emit currentChanged();
