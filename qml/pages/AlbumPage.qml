@@ -20,6 +20,17 @@ Rectangle {
         player.playTracks(list, i)
     }
 
+    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
+    // translation can reorder or re-unit it instead of inheriting English order.
+    function durationText(seconds) {
+        var loc  = Qt.locale()
+        var hrs  = Math.floor(seconds / 3600)
+        var mins = Math.floor((seconds % 3600) / 60)
+        return hrs > 0
+            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
+            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    }
+
     function updateSavedState() {
         isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
     }
@@ -107,7 +118,7 @@ Rectangle {
                         spacing: 8
 
                         Text {
-                            text: "Album"
+                            text: qsTr("Album")
                             color: Theme.textDim
                             font.pixelSize: 12
                             font.bold: true
@@ -145,16 +156,13 @@ Rectangle {
 
                         Text {
                             text: {
+                                // Bullet-separated facts, each a complete qsTr unit.
                                 var parts = []
                                 if (albumData.year) parts.push(albumData.year)
-                                if (albumData.numTracks) parts.push(albumData.numTracks + (albumData.numTracks === 1 ? " track" : " tracks"))
-                                if (albumData.duration > 0) {
-                                    var d = albumData.duration
-                                    var hrs = Math.floor(d / 3600)
-                                    var mins = Math.floor((d % 3600) / 60)
-                                    parts.push(hrs > 0 ? hrs + " hr " + mins + " min" : mins + " min")
-                                }
-                                if (albumData.quality) parts.push(albumData.quality)
+                                if (albumData.numTracks) parts.push(qsTr("%n track(s)", "", albumData.numTracks))
+                                if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
+                                // Raw API codes like HI_RES_LOSSLESS never reach the user
+                                if (albumData.quality) parts.push(player.qualityLabel(albumData.quality))
                                 return parts.join(" • ")
                             }
                             color: Theme.textSec
@@ -165,14 +173,14 @@ Rectangle {
                             spacing: 12
 
                             PillButton {
-                                text: "Play"
+                                text: qsTr("Play", "verb, button label")
                                 glyph: "▶"
                                 accent: true
                                 onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
                             }
 
                             PillButton {
-                                text: "Shuffle"
+                                text: qsTr("Shuffle")
                                 glyph: "⇌"
                                 accent: false
                                 onClicked: {
@@ -184,7 +192,8 @@ Rectangle {
                             }
 
                             PillButton {
-                                text: root.isSaved ? "Saved" : "Save"
+                                text: root.isSaved ? qsTr("Saved", "state, album is in the library")
+                                                   : qsTr("Save", "verb, add album to the library")
                                 glyph: root.isSaved ? "♥" : "♡"
                                 accent: root.isSaved
                                 onClicked: {

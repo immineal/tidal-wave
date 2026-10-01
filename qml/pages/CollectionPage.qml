@@ -68,7 +68,7 @@ Rectangle {
         Item { height: 24 }
         Text {
             Layout.leftMargin: 24
-            text: "My Collection"
+            text: qsTr("My Collection")
             color: Theme.textPrimary
             font.pixelSize: 28; font.bold: true
         }
@@ -83,7 +83,7 @@ Rectangle {
             Row {
                 spacing: 4
                 Repeater {
-                    model: ["Tracks", "Albums", "Artists", "Playlists", "Mixes"]
+                    model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                     Rectangle {
                         id: collectionTab
                         required property string modelData
@@ -99,7 +99,9 @@ Rectangle {
                             id: tl; anchors.centerIn: parent
                             text: {
                                 var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.mixes.length]
-                                return modelData + " (" + counts[index] + ")"
+                                // Tab name followed by how many items it holds
+                                return qsTr("%1 (%2)").arg(modelData)
+                                                      .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                             }
                             color: root.activeTab === index ? Theme.onAccent : Theme.textSec
                             font.pixelSize: 14; font.bold: root.activeTab === index
@@ -119,7 +121,7 @@ Rectangle {
                 visible: root.activeTab < 4
                 spacing: 4
                 Repeater {
-                    model: ["Default", "A→Z", "Z→A"]
+                    model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
                     Rectangle {
                         required property string modelData
                         required property int    index
@@ -144,7 +146,10 @@ Rectangle {
 
             SearchBar {
                 id: collectionSearch
-                placeholder: "Search saved " + ["tracks", "albums", "artists", "playlists"][root.activeTab] + "…"
+                // A whole phrase per tab: German cannot take "Search saved " + a noun
+                placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
+                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                             ][root.activeTab] || qsTr("Search saved items…")
                 Layout.preferredWidth: 220
                 Layout.preferredHeight: 36
                 onTextEdited: (txt) => {
@@ -178,7 +183,7 @@ Rectangle {
                 isPlaying:   player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
                 onPlayRequested: {
-                    player.setPlaybackSource("collection", "tracks", "Liked Songs")
+                    player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
                     player.playTracks(tracksList.sortedTracks, index)
                 }
             }
@@ -235,13 +240,13 @@ Rectangle {
                     id: albumCtxMenu
                     background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                     MenuItem {
-                        text: "Remove from library"
+                        text: qsTr("Remove from library")
                         contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
                         background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: bridge.removeAlbumFavorite(albumDelegate.modelData.id, function(ok) {})
                     }
                     MenuItem {
-                        text: "Go to album"
+                        text: qsTr("Go to album")
                         contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
                         background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: navigateTo("album", { albumId: albumDelegate.modelData.id })
@@ -281,7 +286,7 @@ Rectangle {
                 MediaCard {
                     anchors.centerIn: parent
                     title: modelData.name
-                    subtitle: "Artist"
+                    subtitle: qsTr("Artist")
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "artist"
                     onClicked: navigateTo("artist", { artistId: modelData.id })
@@ -296,13 +301,13 @@ Rectangle {
                     id: artistCtxMenu
                     background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                     MenuItem {
-                        text: "Unfollow artist"
+                        text: qsTr("Unfollow artist")
                         contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
                         background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: bridge.removeArtistFavorite(artistDelegate.modelData.id, function(ok) {})
                     }
                     MenuItem {
-                        text: "Go to artist"
+                        text: qsTr("Go to artist")
                         contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
                         background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: navigateTo("artist", { artistId: artistDelegate.modelData.id })
@@ -337,7 +342,7 @@ Rectangle {
                 MediaCard {
                     anchors.centerIn: parent
                     title: modelData.title
-                    subtitle: modelData.numTracks === 1 ? "1 track" : modelData.numTracks + " tracks"
+                    subtitle: qsTr("%n track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "playlist"
                     onClicked: navigateTo("playlist", {
@@ -372,8 +377,8 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 12
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "No playlists yet"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Your saved playlists will appear here"; color: Theme.textSec; font.pixelSize: 13 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
             }
         }
 
@@ -425,8 +430,8 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 12
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "No mixes"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Your Tidal mixes will appear here"; color: Theme.textSec; font.pixelSize: 13 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: 13 }
             }
         }
 
@@ -439,8 +444,8 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 12
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "heart"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "No saved tracks"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Like tracks to see them here"; color: Theme.textSec; font.pixelSize: 13 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }
         }
 
@@ -453,8 +458,8 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 12
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "No saved albums"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Save albums to see them here"; color: Theme.textSec; font.pixelSize: 13 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }
         }
 
@@ -467,8 +472,8 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 12
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "artist"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "No followed artists"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Follow artists to see them here"; color: Theme.textSec; font.pixelSize: 13 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }
         }
     }

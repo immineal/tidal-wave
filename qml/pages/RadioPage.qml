@@ -50,7 +50,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 4
                 Text {
-                    text: "Radio"
+                    text: qsTr("Radio")
                     color: Theme.textDim
                     font.pixelSize: 11
                     font.bold: true
@@ -58,7 +58,7 @@ Rectangle {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.radioTitle || "Track Radio"
+                    text: root.radioTitle || qsTr("Track Radio")
                     color: Theme.textPrimary
                     font.pixelSize: 22
                     font.bold: true
@@ -68,7 +68,7 @@ Rectangle {
 
             PillButton {
                 visible: root.tracks.length > 0
-                text: "Play all"
+                text: qsTr("Play all")
                 glyph: "▶"
                 accent: true
                 onClicked: root.playFrom(root.tracks, 0)

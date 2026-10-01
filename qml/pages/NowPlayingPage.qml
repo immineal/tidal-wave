@@ -166,7 +166,7 @@ Rectangle {
 
         Text {
             id: backLink
-            text: "←  Now Playing"; color: Theme.textSec; font.pixelSize: 14
+            text: qsTr("←  Now Playing"); color: Theme.textSec; font.pixelSize: 14
             activeFocusOnTab: true
             Keys.onReturnPressed: Window.window.goBack()
             Keys.onSpacePressed:  Window.window.goBack()
@@ -266,13 +266,13 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             visible: root.lyricsState === "loading"
-                            text: "Loading lyrics…"
+                            text: qsTr("Loading lyrics…")
                             color: Theme.textDim; font.pixelSize: 14
                         }
                         Text {
                             anchors.centerIn: parent
                             visible: root.lyricsState === "unavailable"
-                            text: "No lyrics available"
+                            text: qsTr("No lyrics available")
                             color: Theme.textDim; font.pixelSize: 14
                         }
                     }
@@ -289,7 +289,7 @@ Rectangle {
                         Text {
                             id: rsText
                             anchors.centerIn: parent
-                            text: "⟳ Resync"
+                            text: qsTr("⟳ Resync")
                             color: Theme.onArt; font.pixelSize: 12
                         }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -316,7 +316,7 @@ Rectangle {
                     Text {
                         id: lyricsToggleText
                         anchors.centerIn: parent
-                        text: root.lyricsState === "loading" ? "Loading…" : "Lyrics"
+                        text: root.lyricsState === "loading" ? qsTr("Loading…") : qsTr("Lyrics")
                         color: root.showLyrics ? Theme.onAccent : Theme.onArt; font.pixelSize: 11; font.bold: true
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -344,7 +344,7 @@ Rectangle {
                         Text {
                             id: sourceLink
                             visible: hasTrack && player.sourceName.length > 0
-                            text: "Playing from " + player.sourceName
+                            text: qsTr("Playing from %1").arg(player.sourceName)
                             color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
                             font.pixelSize: 12
                             font.letterSpacing: 0.5
@@ -357,7 +357,7 @@ Rectangle {
                             }
                         }
                         Text {
-                            text: hasTrack ? track.title : "—"; color: Theme.textPrimary
+                            text: hasTrack ? track.title : "–"; color: Theme.textPrimary
                             font.pixelSize: 32; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
                         }
                         Text {
@@ -444,7 +444,7 @@ Rectangle {
                         HoverHandler { id: npDlHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler { onTapped: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track) }
                         ToolTip.visible: npDlHov.hovered && root.dlState === "error"
-                        ToolTip.text: "Download failed — click to retry"
+                        ToolTip.text: qsTr("Download failed. Click to retry.")
                         ToolTip.delay: 300
                     }
 
@@ -510,8 +510,8 @@ Rectangle {
                             
                             Text {
                                 text: root.sleepTimerActive ? 
-                                      (root.sleepStopAtEndOfTrack ? "End of Track" : root.formatSleepTime(root.sleepTimeLeft)) : 
-                                      "Sleep Timer"
+                                      (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) : 
+                                      qsTr("Sleep Timer")
                                 color: root.sleepTimerActive ? Theme.accent : Theme.textSec
                                 font.pixelSize: 11
                                 font.bold: root.sleepTimerActive
@@ -559,7 +559,7 @@ Rectangle {
                         spacing: 12
 
                         Text {
-                            text: "Sleep Timer"
+                            text: qsTr("Sleep Timer")
                             color: Theme.textPrimary
                             font.pixelSize: 14
                             font.bold: true
@@ -578,12 +578,12 @@ Rectangle {
                                 columnSpacing: 8
                                 rowSpacing: 8
                                 
-                                SleepOptionBtn { label: "5m"; minutes: 5 }
-                                SleepOptionBtn { label: "15m"; minutes: 15 }
-                                SleepOptionBtn { label: "30m"; minutes: 30 }
-                                SleepOptionBtn { label: "45m"; minutes: 45 }
-                                SleepOptionBtn { label: "60m"; minutes: 60 }
-                                SleepOptionBtn { label: "90m"; minutes: 90 }
+                                SleepOptionBtn { minutes: 5 }
+                                SleepOptionBtn { minutes: 15 }
+                                SleepOptionBtn { minutes: 30 }
+                                SleepOptionBtn { minutes: 45 }
+                                SleepOptionBtn { minutes: 60 }
+                                SleepOptionBtn { minutes: 90 }
                             }
 
                             Rectangle {
@@ -604,7 +604,7 @@ Rectangle {
                                         height: 12
                                     }
                                     Text {
-                                        text: "Stop at End of Track"
+                                        text: qsTr("Stop at End of Track")
                                         color: Theme.textPrimary
                                         font.pixelSize: 12
                                         font.bold: true
@@ -637,13 +637,13 @@ Rectangle {
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
-                                        text: "Custom: " + customSlider.value + " min"
+                                        text: qsTr("Custom: %1 min").arg(customSlider.value)
                                         color: Theme.textSec
                                         font.pixelSize: 12
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
-                                        text: "Start"
+                                        text: qsTr("Start", "verb, begins the sleep timer")
                                         color: Theme.accent
                                         font.pixelSize: 12
                                         font.bold: true
@@ -723,16 +723,16 @@ Rectangle {
                                     anchors.centerIn: parent
                                     spacing: 2
                                     Text {
-                                        text: root.sleepStopAtEndOfTrack ? "Stopping at end of track" : 
-                                              root.sleepIsFading ? "Fading out audio..." : 
-                                              "Remaining: " + root.formatSleepTime(root.sleepTimeLeft)
+                                        text: root.sleepStopAtEndOfTrack ? qsTr("Stopping at end of track") : 
+                                              root.sleepIsFading ? qsTr("Fading out audio…") : 
+                                              qsTr("Remaining: %1").arg(root.formatSleepTime(root.sleepTimeLeft))
                                         color: Theme.textPrimary
                                         font.pixelSize: 13
                                         font.bold: true
                                         Layout.alignment: Qt.AlignHCenter
                                     }
                                     Text {
-                                        text: root.sleepStopAtEndOfTrack ? "Fades out last 15s" : "Fades out last 30s"
+                                        text: root.sleepStopAtEndOfTrack ? qsTr("Fades out last 15s") : qsTr("Fades out last 30s")
                                         color: Theme.textDim
                                         font.pixelSize: 10
                                         visible: root.sleepFadeOut
@@ -751,7 +751,7 @@ Rectangle {
                                 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "Cancel Sleep Timer"
+                                    text: qsTr("Cancel Sleep Timer")
                                     color: Theme.red
                                     font.pixelSize: 12
                                     font.bold: true
@@ -781,7 +781,7 @@ Rectangle {
                             spacing: 12
                             
                             Text {
-                                text: "Fade out audio"
+                                text: qsTr("Fade out audio")
                                 color: Theme.textSec
                                 font.pixelSize: 12
                                 Layout.fillWidth: true
@@ -879,7 +879,11 @@ Rectangle {
                         value: player.muted ? 0 : player.volume
                         onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
                     }
-                    Text { text: Math.round((player.muted ? 0 : player.volume)*100)+"%"; color: Theme.textDim; font.pixelSize: 12; width: 36 }
+                    Text {
+                        text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
+                                                  .toLocaleString(Qt.locale(), 'f', 0))
+                        color: Theme.textDim; font.pixelSize: 12; width: 36
+                    }
                 }
 
                 // Up Next preview
@@ -895,7 +899,7 @@ Rectangle {
                     Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
 
                     Text {
-                        text: "Up Next"
+                        text: qsTr("Up Next")
                         color: Theme.textDim
                         font.pixelSize: 11
                         font.bold: true
@@ -934,8 +938,9 @@ Rectangle {
 
     component SleepOptionBtn : Rectangle {
         id: optBtn
-        property string label
         property int minutes
+        // Derived, so the unit suffix is one translatable string instead of six
+        property string label: qsTr("%1m", "compact duration in minutes").arg(optBtn.minutes)
         Layout.fillWidth: true
         height: 28
         radius: Theme.radiusButton

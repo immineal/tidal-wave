@@ -35,7 +35,7 @@ Rectangle {
             Layout.leftMargin: 24
             Layout.rightMargin: 24
             height: 46
-            placeholder: "Search tracks, albums, artists, playlists…"
+            placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
                 root.query = text
                 if (text.length < 2) { clearResults(); return }
@@ -51,7 +51,7 @@ Rectangle {
             Layout.leftMargin: 24
             spacing: 4
             Repeater {
-                model: ["All", "Tracks", "Albums", "Artists", "Playlists"]
+                model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists")]
                 Rectangle {
                     id: searchTab
                     required property string modelData
@@ -100,8 +100,8 @@ Rectangle {
                     height: 48
                     strokeWidth: 2.0
                 }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Search Tidal"; color: Theme.textPrimary; font.pixelSize: 22; font.bold: true }
-                Text { Layout.alignment: Qt.AlignHCenter; text: "Find tracks, albums, artists and more"; color: Theme.textSec; font.pixelSize: 14 }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Search Tidal"); color: Theme.textPrimary; font.pixelSize: 22; font.bold: true }
+                Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Find tracks, albums, artists and more"); color: Theme.textSec; font.pixelSize: 14 }
             }
         }
 
@@ -123,7 +123,7 @@ Rectangle {
                     spacing: 0
 
                     Item { height: 16 }
-                    Text { Layout.leftMargin: 24; text: "Tracks"; color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
+                    Text { Layout.leftMargin: 24; text: qsTr("Tracks"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                     Item { height: 8 }
 
                     Repeater {
@@ -155,7 +155,7 @@ Rectangle {
                     visible: root.tracks.length === 0 && root.albums.length === 0 && root.artists.length === 0 && root.playlists.length === 0 && !root.loading
                     Text {
                         anchors.centerIn: parent
-                        text: "No results for \"" + root.query + "\""
+                        text: qsTr("No results for \"%1\"").arg(root.query)
                         color: Theme.textSec
                         font.pixelSize: 15
                     }
@@ -165,7 +165,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: (root.activeTab === 0 || root.activeTab === 2) && root.albums.length > 0 && root.activeTab !== 4
-                    title: "Albums"
+                    title: qsTr("Albums")
                     showViewAll: false
                     items: root.albums.map(function(a) {
                         return { id: a.id, title: a.title, subtitle: a.artists, coverUrl: a.coverUrl }
@@ -183,10 +183,10 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: (root.activeTab === 0 || root.activeTab === 3) && root.artists.length > 0 && root.activeTab !== 4
-                    title: "Artists"
+                    title: qsTr("Artists")
                     showViewAll: false
                     items: root.artists.map(function(a) {
-                        return { id: a.id, title: a.name, subtitle: "Artist", coverUrl: a.coverUrl || "" }
+                        return { id: a.id, title: a.name, subtitle: qsTr("Artist"), coverUrl: a.coverUrl || "" }
                     })
                     mediaType: "artist"
                     onItemClicked: (i, item) => navigateTo("artist", { artistId: item.id })
@@ -196,10 +196,10 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: (root.activeTab === 0 || root.activeTab === 4) && root.playlists.length > 0
-                    title: "Playlists"
+                    title: qsTr("Playlists")
                     showViewAll: false
                     items: root.playlists.map(function(p) {
-                        return { id: p.uuid, title: p.title, subtitle: p.numTracks + " tracks", coverUrl: p.coverUrl || "", playlistType: p.type || "" }
+                        return { id: p.uuid, title: p.title, subtitle: qsTr("%n track(s)", "", p.numTracks), coverUrl: p.coverUrl || "", playlistType: p.type || "" }
                     })
                     mediaType: "playlist"
                     onItemClicked: (i, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
