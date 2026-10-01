@@ -121,6 +121,56 @@ private slots:
         QVERIFY(i18n.isCatalogueLoaded());
     }
 
+
+    // ── plurals ──────────────────────────────────────────────────────────
+    //
+    // Sources are written "%n track(s)", which is lupdate's shorthand and NOT
+    // something to show a person. With no English catalogue installed Qt falls
+    // back to the source verbatim and the queue reads "14 track(s)", so English
+    // needs a catalogue carrying just the numerus forms.
+    void englishResolvesPlurals_data() {
+        QTest::addColumn<QString>("context");
+        QTest::addColumn<int>("n");
+        QTest::addColumn<QString>("expected");
+        for (const char *ctx : {"QueuePanel", "HomePage", "AlbumPage"}) {
+            QTest::newRow(qPrintable(QString("%1, one").arg(ctx)))   << QString(ctx) << 1 << "1 track";
+            QTest::newRow(qPrintable(QString("%1, many").arg(ctx)))  << QString(ctx) << 14 << "14 tracks";
+            QTest::newRow(qPrintable(QString("%1, zero").arg(ctx)))  << QString(ctx) << 0 << "0 tracks";
+        }
+    }
+
+    void englishResolvesPlurals() {
+        QFETCH(QString, context);
+        QFETCH(int, n);
+        QFETCH(QString, expected);
+
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("en"));
+        I18n i18n(&prefs);
+        QVERIFY2(i18n.isCatalogueLoaded(), "English catalogue not installed");
+
+        const QString out = QCoreApplication::translate(
+            qPrintable(context), "%n track(s)", nullptr, n);
+        QCOMPARE(out, expected);
+        // The shorthand must never reach a person.
+        QVERIFY(!out.contains(QLatin1String("(s)")));
+    }
+
+    void germanResolvesPlurals() {
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+
+        const QString one  = QCoreApplication::translate("QueuePanel", "%n track(s)", nullptr, 1);
+        const QString many = QCoreApplication::translate("QueuePanel", "%n track(s)", nullptr, 7);
+        QVERIFY(!one.contains(QLatin1String("(s)")));
+        QVERIFY(!many.contains(QLatin1String("(s)")));
+        QVERIFY2(one != many, "German singular and plural are identical");
+        // Sanity: it really is German, not the untranslated source.
+        QVERIFY(!one.contains(QLatin1String("track")));
+    }
+
     // ── the Settings picker ──────────────────────────────────────────────
 
     void availableLanguagesIsPickerReady() {
