@@ -223,6 +223,32 @@ if(NOT tidalwave_qml_plugin OR NOT TARGET ${tidalwave_qml_plugin})
 endif()
 target_link_libraries(tidal-wave PRIVATE ${tidalwave_qml_plugin})
 
+# An installed binary has to find the Qt it was built against. qt_standard_
+# project_setup() presets CMAKE_INSTALL_RPATH to $ORIGIN, and `cmake --install`
+# otherwise drops the build tree's own RPATH, so a binary built against a Qt
+# outside the default linker search path falls back to whatever Qt the system
+# has. Here that meant a 6.12 build silently loading the distro's 6.11 and
+# dying with "version `Qt_6.12' not found" the moment it ran from ~/.local/bin
+# instead of from the build directory. CMAKE_INSTALL_RPATH_USE_LINK_PATH does
+# not cover it, because Qt reaches the link line through a static library.
+# Appending the directory Qt6::Core actually came from does.
+if(UNIX AND NOT APPLE)
+    get_target_property(_tw_qt_core Qt6::Core IMPORTED_LOCATION_RELEASE)
+    if(NOT _tw_qt_core)
+        get_target_property(_tw_qt_core Qt6::Core IMPORTED_LOCATION)
+    endif()
+    if(_tw_qt_core)
+        get_filename_component(_tw_qt_libdir "${_tw_qt_core}" DIRECTORY)
+        get_target_property(_tw_rpath tidal-wave INSTALL_RPATH)
+        if(NOT _tw_rpath)
+            set(_tw_rpath "")
+        endif()
+        list(APPEND _tw_rpath "${_tw_qt_libdir}")
+        list(REMOVE_DUPLICATES _tw_rpath)
+        set_target_properties(tidal-wave PROPERTIES INSTALL_RPATH "${_tw_rpath}")
+    endif()
+endif()
+
 set_target_properties(tidal-wave PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER com.tidalwave.client
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
