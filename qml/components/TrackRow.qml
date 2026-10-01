@@ -9,17 +9,55 @@ Item {
     height: 52
     implicitWidth: 100
 
+    // The five text inputs are `var`, not `string`, on purpose. Every page
+    // feeds them straight off an API map (`title: modelData.title`), and a
+    // truncated or timed-out response simply has no such key: against a string
+    // property that is one "Unable to assign [undefined] to QString" per
+    // delegate per field, and a row of empty columns. A wrongly typed field
+    // (an object where a name was expected) warned the same way. Taking them
+    // as `var` and deciding what to draw here means one place does it for all
+    // seven pages, instead of a guard at every call site.
     property int    trackNum: 1
-    property string title: ""
-    property string artists: ""
-    property string albumTitle: ""
-    property string durationStr: ""
-    property string coverUrl: ""
+    property var    title
+    property var    artists
+    property var    albumTitle
+    property var    durationStr
+    property var    coverUrl
     property bool   isPlaying: false
     property bool   showAlbum: true
     property bool   showCover: true
     property var    trackData: null   // full track map (has albumId, id, etc.)
-    property bool   isLiked: trackData ? bridge.isTrackFavorite(trackData.id) : false
+
+    // ── what a partial payload degrades to ──────────────────────────────
+    // Only a non-empty string counts; anything else is "we were not told".
+    function textOf(v) { return (typeof v === "string") ? v : "" }
+
+    // Name the track and whoever made it, rather than leaving the row to read
+    // as an empty stripe the user cannot tell from a loading placeholder.
+    readonly property string titleText:   textOf(root.title)   || qsTr("Unknown track")
+    readonly property string artistsText: textOf(root.artists) || qsTr("Unknown artist")
+    // No honest stand-in exists for an album nobody named, and the column is
+    // supplementary, so it stays empty rather than inventing one.
+    readonly property string albumText:   textOf(root.albumTitle)
+    // A length the payload forgot to pre-format is still in the map as whole
+    // seconds, so recover it there before giving up on the column.
+    readonly property string durationText: {
+        var s = textOf(root.durationStr)
+        if (s.length > 0) return s
+        var secs = root.trackData ? Number(root.trackData.duration) : NaN
+        if (!isFinite(secs) || secs <= 0) return ""
+        return Math.floor(secs / 60) + ":" + ("0" + Math.floor(secs % 60)).slice(-2)
+    }
+    readonly property string coverText:   textOf(root.coverUrl)
+
+    // 0 when the payload carried no usable id, which is what every id-keyed
+    // action below checks before offering itself.
+    readonly property real trackId: {
+        var n = root.trackData ? Number(root.trackData.id) : 0
+        return isFinite(n) ? n : 0
+    }
+
+    property bool   isLiked: trackId > 0 ? bridge.isTrackFavorite(trackId) : false
     // Playlist context: set when TrackRow is inside a PlaylistPage
     property string playlistUuid: ""
     property int    trackItemIndex: -1  // 0-based position in playlist
@@ -45,7 +83,7 @@ Item {
     Connections {
         target: bridge
         function onFavoriteTracksChanged() {
-            root.isLiked = root.trackData ? bridge.isTrackFavorite(root.trackData.id) : false
+            root.isLiked = root.trackId > 0 ? bridge.isTrackFavorite(root.trackId) : false
         }
     }
 
@@ -54,18 +92,18 @@ Item {
     Connections {
         target: downloader
         function onDownloadStarted(id) {
-            if (root.trackData && id === root.trackData.id) root.dlState = "busy"
+            if (root.trackId > 0 && id === root.trackId) root.dlState = "busy"
         }
         function onDownloadFinished(id, path) {
-            if (root.trackData && id === root.trackData.id) { root.dlState = "done"; dlResetTimer.restart() }
+            if (root.trackId > 0 && id === root.trackId) { root.dlState = "done"; dlResetTimer.restart() }
         }
         function onDownloadError(id, msg) {
-            if (root.trackData && id === root.trackData.id) { root.dlState = "error"; root.dlError = msg; dlResetTimer.restart() }
+            if (root.trackId > 0 && id === root.trackId) { root.dlState = "error"; root.dlError = msg; dlResetTimer.restart() }
         }
     }
     Timer { id: dlResetTimer; interval: 3000; onTriggered: root.dlState = "idle" }
     onTrackDataChanged: {
-        root.dlState = (root.trackData && downloader.isDownloading(root.trackData.id)) ? "busy" : "idle"
+        root.dlState = (root.trackId > 0 && downloader.isDownloading(root.trackId)) ? "busy" : "idle"
         root.dlError = ""
     }
 
@@ -151,7 +189,7 @@ Item {
                 clip: true
                 Image {
                     anchors.fill: parent
-                    source: coverUrl.length > 0 ? "image://tidal/" + coverUrl : ""
+                    source: root.coverText.length > 0 ? "image://tidal/" + root.coverText : ""
                     fillMode: Image.PreserveAspectCrop
                     smooth: true
                     mipmap: true
@@ -165,14 +203,14 @@ Item {
                 Text {
                     objectName: "trackTitle"
                     Layout.fillWidth: true
-                    text: root.title
+                    text: root.titleText
                     color: isPlaying ? Theme.accent : Theme.textPrimary
                     font.pixelSize: 14
                     elide: Text.ElideRight
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.artists
+                    text: root.artistsText
                     color: Theme.textSec
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -185,7 +223,7 @@ Item {
                 objectName: "trackAlbumColumn"
                 visible: showAlbum && root.width >= root.albumBreakpoint
                 Layout.preferredWidth: 160
-                text: root.albumTitle
+                text: root.albumText
                 color: Theme.textSec
                 font.pixelSize: 13
                 elide: Text.ElideRight
@@ -193,7 +231,7 @@ Item {
 
             // Duration
             Text {
-                text: root.durationStr
+                text: root.durationText
                 color: Theme.textDim
                 font.pixelSize: 13
                 Layout.preferredWidth: 40
@@ -204,10 +242,13 @@ Item {
             Text {
                 id: popText
                 objectName: "trackPopularityColumn"
+                readonly property real score:
+                    root.trackData ? Number(root.trackData.popularity) : NaN
                 visible: root.showPopularity && root.width >= root.popularityBreakpoint
-                         && root.trackData && root.trackData.popularity > 0
-                text: root.trackData
-                      ? qsTr("%1%").arg(Number(root.trackData.popularity).toLocaleString(Qt.locale(), 'f', 0))
+                         && isFinite(score) && score > 0
+                // Guarded, or a payload without the field prints "NaN%".
+                text: (isFinite(score) && score > 0)
+                      ? qsTr("%1%").arg(score.toLocaleString(Qt.locale(), 'f', 0))
                       : ""
                 color: Theme.textDim
                 font.pixelSize: 11
@@ -277,10 +318,10 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
-                    enabled: dlButton.shown && root.dlState !== "busy"
+                    enabled: dlButton.shown && root.dlState !== "busy" && root.trackId > 0
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (root.trackData && root.dlState !== "busy")
+                        if (root.trackId > 0 && root.dlState !== "busy")
                             downloader.downloadTrack(root.trackData)
                     }
                 }
@@ -333,17 +374,17 @@ Item {
         }
         MenuItem {
             text: "⬇  " + qsTr("Download…")
-            enabled: root.trackData !== null && root.dlState !== "busy"
+            enabled: root.trackId > 0 && root.dlState !== "busy"
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: { if (root.trackData) downloader.downloadTrack(root.trackData) }
+            onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
         }
         MenuItem {
             text: "📋  " + qsTr("Add to playlist")
-            enabled: root.trackData !== null
+            enabled: root.trackId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: { if (root.trackData) playlistPicker.openFor(root.trackData.id) }
+            onTriggered: { if (root.trackId > 0) playlistPicker.openFor(root.trackId) }
         }
         MenuItem {
             text: "🗑  " + qsTr("Remove from playlist")
@@ -359,62 +400,62 @@ Item {
         }
         MenuItem {
             text: "📻  " + qsTr("Start radio")
-            enabled: root.trackData !== null
+            enabled: root.trackId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: {
-                if (!root.trackData) return
+                if (root.trackId <= 0) return
                 Window.window.navigate("radio", {
-                    trackId:    root.trackData.id,
-                    radioTitle: root.trackData.title
+                    trackId:    root.trackId,
+                    radioTitle: root.titleText
                 })
             }
         }
         MenuItem {
             text: root.isLiked ? "♥  " + qsTr("Unlike", "verb, remove from favourites")
                                : "♡  " + qsTr("Like", "verb, add to favourites")
-            enabled: root.trackData !== null
+            enabled: root.trackId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: {
-                if (!root.trackData) return
+                if (root.trackId <= 0) return
                 if (root.isLiked) {
-                    bridge.removeTrackFavorite(root.trackData.id, function(success) {})
+                    bridge.removeTrackFavorite(root.trackId, function(success) {})
                 } else {
-                    bridge.addTrackFavorite(root.trackData.id, function(success) {})
+                    bridge.addTrackFavorite(root.trackId, function(success) {})
                 }
             }
         }
         MenuSeparator {}
         MenuItem {
             text: "💿  " + qsTr("Go to album")
-            enabled: root.trackData && root.trackData.albumId > 0
+            enabled: root.trackData && Number(root.trackData.albumId) > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: {
-                if (root.trackData && root.trackData.albumId > 0)
-                    Window.window.navigate("album", { albumId: root.trackData.albumId })
+                if (root.trackData && Number(root.trackData.albumId) > 0)
+                    Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
             }
         }
         MenuItem {
             text: "🎤  " + qsTr("Go to artist")
-            enabled: root.trackData && root.trackData.artistId > 0
+            enabled: root.trackData && Number(root.trackData.artistId) > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: {
-                if (root.trackData && root.trackData.artistId > 0)
-                    Window.window.navigate("artist", { artistId: root.trackData.artistId })
+                if (root.trackData && Number(root.trackData.artistId) > 0)
+                    Window.window.navigate("artist", { artistId: Number(root.trackData.artistId) })
             }
         }
         MenuSeparator {}
         MenuItem {
             text: "🔗  " + qsTr("Copy link")
-            enabled: root.trackData !== null
+            enabled: root.trackId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: {
-                if (root.trackData)
-                    bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackData.id)
+                if (root.trackId > 0)
+                    bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackId)
             }
         }
     }

@@ -28,7 +28,10 @@ class Player : public QObject {
     Q_PROPERTY(int        repeatMode   READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString    audioQuality READ audioQuality NOTIFY currentTrackChanged)
     Q_PROPERTY(int        queueCount      READ queueCount      NOTIFY queueChanged)
-    Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY queueChanged)
+    // Notified separately from queueChanged: moving the current track is not a
+    // change to the queue, and a 5000-row queue cannot afford to be republished
+    // on every advance. See the signals below.
+    Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariantList queueTracks   READ queueTracks     NOTIFY queueChanged)
     Q_PROPERTY(QVariantList recentlyPlayed READ recentlyPlayed NOTIFY recentlyPlayedChanged)
     // "Playing from" context — where the current queue was started from.
@@ -150,7 +153,12 @@ signals:
     void currentTrackChanged();
     void shuffleChanged      (bool s);
     void repeatModeChanged   (int  m);
+    // The queue itself: tracks added, removed, reordered, shuffled, cleared, or
+    // replaced by a new context. Anything bound to it copies the whole queue
+    // into QML, so this must not stand in for "the current track moved".
     void queueChanged        ();
+    // Only the current position moved. Highlighting and "up next" bind to this.
+    void currentIndexChanged (int index);
     void recentlyPlayedChanged();
     void sourceChanged       ();
     void castTrackChanged    ();   // current track changed while casting
@@ -165,6 +173,9 @@ private slots:
 
 private:
     void handleUserIdChanged(qint64 uid);
+    // Single door onto m_index, so no path can move the current track without
+    // saying so.
+    void setIndex(int i);
     void loadAndPlay(int index);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;

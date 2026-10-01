@@ -1050,8 +1050,12 @@ Rectangle {
                                 }
                                 contentItem: ColumnLayout {
                                     spacing: 2
+                                    // Same three strings as the player bar's
+                                    // picker. Borrowed from its context rather
+                                    // than duplicated, so a language pays for
+                                    // them once and they cannot drift apart.
                                     Text {
-                                        text: qsTr("Cast to")
+                                        text: qsTranslate("PlayerBar", "Cast to")
                                         color: Theme.textDim
                                         font.pixelSize: 11; font.bold: true
                                         Layout.leftMargin: 8
@@ -1059,7 +1063,7 @@ Rectangle {
                                         Layout.bottomMargin: 2
                                     }
                                     CastDeviceRow {
-                                        label: qsTr("This computer")
+                                        label: qsTranslate("PlayerBar", "This computer")
                                         active: !(cast && cast.connected)
                                         onSelected: { if (cast) cast.disconnect(); npCastPopup.close() }
                                     }
@@ -1074,7 +1078,7 @@ Rectangle {
                                     }
                                     Text {
                                         visible: !cast || cast.devices.length === 0
-                                        text: qsTr("Searching for devices…")
+                                        text: qsTranslate("PlayerBar", "Searching for devices…")
                                         color: Theme.textSec; font.pixelSize: 12
                                         Layout.margins: 8
                                     }
@@ -1088,9 +1092,15 @@ Rectangle {
                         id: upNextCol
                         Layout.fillWidth: true
                         spacing: 12
-                        // Reflects the true play order (respects shuffle). Depends on
-                        // queueTracks/queueIndex so it refreshes on queueChanged.
-                        property var upNext: (player.queueTracks, player.queueIndex, player.upcomingTracks(3))
+                        // Reflects the true play order (respects shuffle).
+                        // queueCount, not queueTracks, is read for the
+                        // dependency: both are notified by queueChanged, but
+                        // queueTracks copies the entire queue into JS to be
+                        // thrown away, which on a 5000-track queue is the
+                        // whole cost of a track change. queueIndex brings the
+                        // advance, shuffle brings a reorder.
+                        property var upNext: (player.queueCount, player.queueIndex,
+                                              player.shuffle, player.upcomingTracks(3))
                         visible: upNext.length > 0
 
                         Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }

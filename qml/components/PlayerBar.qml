@@ -78,6 +78,25 @@ Rectangle {
             ? bridge.isTrackFavorite(track.id)
             : false
     }
+
+    // S4: recently-played is tracked locally, and it is what orders the
+    // sidebar. Every page declares where a play came from immediately before
+    // starting it, so one listener on the always-present player bar records
+    // all of them, rather than a markPlayed() call bolted onto each page's
+    // play action (and forgotten on the next one). markPlayed() drops anything
+    // that is not one of the four kinds the sidebar lists, so a "collection"
+    // or "radio" source needs no filtering here.
+    //
+    // sourceChanged rather than a signal of its own per play: the one case it
+    // misses is starting the same context twice in a row, and that cannot
+    // change the ordering, because nothing was played in between and the
+    // entry is already the most recent one.
+    Connections {
+        target: player
+        function onSourceChanged() {
+            library.markPlayed(player.sourceType, player.sourceId)
+        }
+    }
     Component.onCompleted: updateLikedState()
 
     RowLayout {
