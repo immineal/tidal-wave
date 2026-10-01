@@ -6,6 +6,7 @@
 namespace {
 constexpr auto kTheme    = "ui/theme";
 constexpr auto kOled     = "ui/oledBlack";
+constexpr auto kTinted   = "ui/tintedGreys";
 constexpr auto kLanguage = "ui/language";
 constexpr auto kSidebar  = "ui/sidebarWidth";
 constexpr auto kAudioDev = "audio/outputDevice";
@@ -19,6 +20,14 @@ Prefs::Prefs(QObject *parent)
     // the name here, so the two cannot disagree about which theme ships.
     , m_theme(m_settings.value(kTheme, theme::defaultTheme()).toString())
     , m_oledBlack(m_settings.value(kOled, theme::defaultOledBlack()).toBool())
+    // The migration story for this one is the absence of a key: a settings file
+    // written before the colour switch existed says nothing about the greys, and
+    // nothing resolves to the default, which is the neutral ramp - and the
+    // neutral ramp is also roughly what those builds painted, because the
+    // grounds in kSpecs only gained their tint in this release. A key holding
+    // something that is not a bool at all lands there too, rather than on
+    // garbage: QVariant::toBool() of nonsense is false.
+    , m_tintedGreys(m_settings.value(kTinted, theme::defaultTintedGreys()).toBool())
     , m_language(m_settings.value(kLanguage, QStringLiteral("system")).toString())
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
     , m_audioDevice(m_settings.value(kAudioDev).toString())
@@ -39,6 +48,12 @@ Prefs::Prefs(QObject *parent)
     if (theme::migrated(m_theme, &m_theme, &m_oledBlack)) {
         m_settings.setValue(kTheme, m_theme);
         m_settings.setValue(kOled, m_oledBlack);
+        // The resolved colour state goes down as well, even though nothing
+        // migrates it. "Deep" promises a particular set of pixels - Sea's old
+        // grounds pulled to black, which is the neutral ramp in black - and
+        // leaving that to a default would let a later change to what a fresh
+        // install gets move an old user's palette out from under them.
+        m_settings.setValue(kTinted, m_tintedGreys);
     }
 }
 
@@ -54,6 +69,13 @@ void Prefs::setOledBlack(bool v) {
     m_oledBlack = v;
     m_settings.setValue(kOled, v);
     emit oledBlackChanged();
+}
+
+void Prefs::setTintedGreys(bool v) {
+    if (v == m_tintedGreys) return;
+    m_tintedGreys = v;
+    m_settings.setValue(kTinted, v);
+    emit tintedGreysChanged();
 }
 
 void Prefs::setLanguage(const QString &v) {

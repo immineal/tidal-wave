@@ -41,6 +41,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include "ui/Application.h"
 #include "ui/ThemePalette.h"
 
 // ─── shared plumbing ────────────────────────────────────────────────────────
@@ -302,11 +303,18 @@ public:
 
     // Local (already-loaded) filters used by CollectionPage's search field and by
     // HomePage's refresh, which reads this in-memory copy rather than going back
-    // to the network. Albums and artists answer from lists a test can fill (see
-    // the hooks below); the query itself is ignored, because the real filter is
-    // a substring match and every caller under test passes "", which there means
+    // to the network. All four answer from lists a test can fill (see the hooks
+    // below); the query itself is ignored, because the real filter is a
+    // substring match and every caller under test passes "", which there means
     // "the whole cache".
-    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return {}; }
+    //
+    // Tracks used to be the exception: this returned {} for every input, with
+    // no backing list and no setter, while the comment above claimed all of
+    // them were fillable. A stub that answers emptily for every input makes
+    // every assertion about it pass without testing anything, which is how the
+    // empty quality badge survived a full visual suite. Any test of the Tracks
+    // filter went green against nothing.
+    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return m_favoriteTrackList; }
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
     // The real bridge filters the same playlist cache getUserPlaylists() answers
@@ -347,6 +355,10 @@ public:
         m_favoriteArtistList = artists;
         emit favoriteArtistsChanged();
     }
+    Q_INVOKABLE void setFavoriteTracksListForTest(const QVariantList &tracks) {
+        m_favoriteTrackList = tracks;
+        emit favoriteTracksChanged();
+    }
 
 signals:
     void preferredQualityChanged();
@@ -365,6 +377,7 @@ private:
     // only answer isAlbumFavorite()/isArtistFavorite().
     QVariantList m_favoriteAlbumList;
     QVariantList m_favoriteArtistList;
+    QVariantList m_favoriteTrackList;
     QString m_lastClipboardText;
     QString m_lastPlaylistPlayed;
     int     m_userPlaylistFetches = 0;
@@ -950,6 +963,7 @@ class StubPrefs : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
+    Q_PROPERTY(bool tintedGreys READ tintedGreys WRITE setTintedGreys NOTIFY tintedGreysChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
@@ -968,6 +982,7 @@ public:
 
     QString theme() const        { return m_theme; }
     bool    oledBlack() const    { return m_oledBlack; }
+    bool    tintedGreys() const  { return m_tintedGreys; }
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
@@ -983,6 +998,11 @@ public:
         if (v == m_oledBlack) return;
         m_oledBlack = v;
         emit oledBlackChanged();
+    }
+    void setTintedGreys(bool v) {
+        if (v == m_tintedGreys) return;
+        m_tintedGreys = v;
+        emit tintedGreysChanged();
     }
     void setLanguage(const QString &v) {
         if (v == m_language) return;
@@ -1025,6 +1045,7 @@ public:
 signals:
     void themeChanged();
     void oledBlackChanged();
+    void tintedGreysChanged();
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
@@ -1037,6 +1058,10 @@ private:
     // measures the palette as written in the table rather than the pulled
     // down one. The tests that care about the transform set it themselves.
     bool    m_oledBlack = false;
+    // Off, as in the real Prefs: the six palettes share one grey ramp per mode
+    // until a test asks for the tinted grounds. A QML test that says nothing
+    // about it therefore measures the state a fresh install is in.
+    bool    m_tintedGreys = false;
     QString m_language = QStringLiteral("system");
     int     m_sidebarWidth = 220;
     QString m_audioDevice;
@@ -1307,6 +1332,18 @@ struct TestStubs {
 // ownership of the stubs (pass the test/setup object); defaults to the engine.
 inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) {
     QObject *parent = owner ? owner : static_cast<QObject *>(engine);
+
+    // The same call Application::run() makes on its own engine, and for the same
+    // reason: on Qt 6.4 "qrc:/qt/qml" is not a default import path, so without it
+    // `import TidalWave` resolves only the C++ types and every .qml file in the
+    // module - Theme included - is undefined. A test engine is not given one for
+    // free the way the app's is by sitting next to its build tree, so every
+    // engine a test builds goes through here. See Application.cpp for the whole
+    // story.
+    Application::addEmbeddedQmlImportPath(engine);
+    // ...and the same style the app pins, for the same anti-drift reason. On a
+    // platform where the app pins nothing this is a no-op.
+    Application::applyQuickControlsStyle();
 
     TestStubs s;
     s.auth       = new StubAuth(parent);

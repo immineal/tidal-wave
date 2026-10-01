@@ -558,7 +558,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Playing from %1</source>
+        <source>Playing from: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1006,6 +1006,14 @@
     <message>
         <source>Light</source>
         <comment>heading over the light themes</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Let the colour in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

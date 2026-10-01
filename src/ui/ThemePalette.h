@@ -12,7 +12,8 @@ class Prefs;
 class QQmlEngine;
 class QJSEngine;
 
-// The six palettes, the OLED transform and the corner-radius scale.
+// The six palettes, the two grey ramps, the OLED transform and the
+// corner-radius scale.
 //
 // qml/Theme.qml is a thin wrapper over this: it declares one `readonly property
 // color` per token, bound to the map ThemePalette::current() hands back, so
@@ -48,6 +49,9 @@ bool    isKnown(const QString &name);
 QString defaultTheme();
 // Whether a fresh install starts with the pure-black transform on.
 bool    defaultOledBlack();
+// ...and whether it starts with the tinted grounds on. False: the six palettes
+// share one neutral grey ramp per mode until somebody asks otherwise.
+bool    defaultTintedGreys();
 
 // What a theme name written by an older build becomes: the six pre-rename
 // names, plus "deep", which was a palette and is now the pure-black switch.
@@ -61,21 +65,36 @@ bool migrated(const QString &stored, QString *theme, bool *oledBlack);
 // palette rather than an empty map, so a settings file written by a build that
 // had different theme names still paints.
 //
-// `oledBlack` pulls the grounds down to true black. It is a transform rather
-// than a seventh palette so that it composes with whichever dark theme is
-// picked; on a light theme it is ignored, because there is no sense in which
-// Sky has an OLED variant.
-QVariantMap palette(const QString &name, bool oledBlack = false);
+// Two switches, neither of them a palette of its own:
+//
+//   `oledBlack`    pulls the grounds down to true black. A transform rather
+//                  than a seventh palette so that it composes with whichever
+//                  dark theme is picked; on a light theme it is ignored,
+//                  because there is no sense in which Sky has an OLED variant.
+//   `tintedGreys`  paints the palette in its own grounds and type, as written
+//                  down in kSpecs, instead of in the neutral grey ramp its mode
+//                  shares. Off by default, which is the state where the accent
+//                  is the only thing telling the six apart - and that is the
+//                  design, not a fallback. Offered on all six, unlike the one
+//                  above.
+//
+// The ramp is chosen first and the grounds are then pulled down, which is the
+// only order that leaves the pure-black switch working in both states; see
+// build() in the .cpp, and theTwoSwitchesComposeInEitherOrder() in
+// tests/tst_theme.cpp, which holds the result to being a function of the two
+// settings rather than of the order they were flipped in.
+QVariantMap palette(const QString &name, bool oledBlack = false,
+                    bool tintedGreys = false);
 
 // The radius scale, keyed chip/field/row/button/art/card/popup/badge/mark.
 QVariantMap radii();
 
 } // namespace theme
 
-// QML singleton in front of the table above. Tracks Prefs::theme and
-// Prefs::oledBlack so QML never has to ask which palette is current, and so
-// nothing in the QML has to know the OLED switch exists: it arrives as a
-// different `current` map and every binding repaints on its own.
+// QML singleton in front of the table above. Tracks Prefs::theme,
+// Prefs::oledBlack and Prefs::tintedGreys so QML never has to ask which palette
+// is current, and so nothing in the QML has to know either switch exists: both
+// arrive as a different `current` map and every binding repaints on its own.
 class ThemePalette : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -102,18 +121,25 @@ public:
     void setPrefs(Prefs *prefs);
 
     // The same thing, against anything exposing a notifying QString "theme"
-    // property and a notifying bool "oledBlack" one. It exists so a test
-    // double can stand in for Prefs: the QML tests install a stub with extra
-    // hooks the real class has no business carrying, and this is the whole of
-    // what the palette needs from it.
+    // property and notifying bool "oledBlack" and "tintedGreys" ones. It exists
+    // so a test double can stand in for Prefs: the QML tests install a stub
+    // with extra hooks the real class has no business carrying, and this is the
+    // whole of what the palette needs from it. A source missing one of the
+    // three warns rather than painting something nobody asked for.
     void setThemeSource(QObject *source);
 
     QVariantMap current() const { return m_current; }
     QVariantMap radius() const  { return theme::radii(); }
     bool        isDark() const  { return m_current.value(QStringLiteral("dark")).toBool(); }
 
-    // [{name, label, dark}] for the Settings picker. Labels are translated at
-    // call time, so the picker re-reads this when the language changes.
+    // [{name, label, dark, bg, border, accent}] for the Settings picker: the
+    // three colours a swatch draws come from here rather than from a copy of
+    // the table in the QML, which drifted two accent revisions behind it.
+    //
+    // Read live off the theme source, so the swatches show the state the colour
+    // switch is actually in. The caller has to re-read it when that switch
+    // moves - it is an invokable, not a bound property - which is why
+    // SettingsPanel.qml keeps prefs.tintedGreys in the binding that calls it.
     Q_INVOKABLE QVariantList available() const;
 
 signals:

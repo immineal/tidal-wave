@@ -372,9 +372,18 @@ ApplicationWindow {
             sequence: Shortcuts.sequence("escape")
             context: Qt.ApplicationShortcut
             // An application shortcut outranks the key handling of an open
-            // Popup, so while the update dialog is up this one has to stand
-            // down or Escape would navigate back instead of dismissing it.
+            // Popup, so while a modal is up this one has to stand down or
+            // Escape would navigate back instead of dismissing it.
+            //
+            // Settings was missing from this list, and the bug was invisible
+            // until someone signed in on the Debian box: the shortcut only
+            // exists when `auth.state === 2`, so the whole class was
+            // unreachable signed out. Escape over an open Settings panel
+            // navigated the page back instead of closing it, which made its
+            // own closePolicy's CloseOnEscape dead. Any Popup added here in
+            // future has to be named on this line too.
             enabled: auth.state === 2 && !updatePrompt.visible
+                     && !sideBar.settingsPanel.visible
             // Innermost first, so one Escape undoes one thing: the overlay on
             // top of the page, then the window state, then the page itself.
             // Leaving fullscreen before navigating matters because the two

@@ -558,8 +558,8 @@
         <translation>Songtext</translation>
     </message>
     <message>
-        <source>Playing from %1</source>
-        <translation>Wiedergabe von %1</translation>
+        <source>Playing from: %1</source>
+        <translation>Wiedergabe von: %1</translation>
     </message>
     <message>
         <source>Download failed. Click to retry.</source>
@@ -1007,6 +1007,14 @@
         <source>Light</source>
         <comment>heading over the light themes</comment>
         <translation>Hell</translation>
+    </message>
+    <message>
+        <source>Let the colour in</source>
+        <translation>Farbe hereinlassen</translation>
+    </message>
+    <message>
+        <source>Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.</source>
+        <translation>Jedes Thema färbt seine Grautöne in seine eigene Farbe. Aus teilen sich alle sechs dieselben Grautöne und unterscheiden sich nur in der Akzentfarbe.</translation>
     </message>
     <message>
         <source>Pure black</source>

@@ -9,6 +9,8 @@
 #include "cast/CastManager.h"
 #endif
 #include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QDateTime>
@@ -28,6 +30,9 @@
 #include <QSGRendererInterface>
 #include <QLoggingCategory>
 #include <QLibrary>
+
+#include <algorithm>
+#include <cmath>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QWindow>
@@ -100,6 +105,10 @@ static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, 
         return; // Ignore and silence this log message completely
     }
     if (suppressAudioServerNoise && Application::isAudioServerStartupNoise(msg)) {
+        return;
+    }
+    // Not gated on anything: this one is printed on every launch, everywhere.
+    if (Application::isMediaBackendStartupNoise(msg)) {
         return;
     }
     if (originalMessageHandler) {
@@ -396,6 +405,211 @@ bool Application::isAudioServerStartupNoise(const QString &msg) {
         || msg.contains(QLatin1String("pa_context_connect() failed"));
 }
 
+bool Application::isMediaBackendStartupNoise(const QString &msg) {
+    // Debian 12's Qt 6.4.2 ffmpeg media plugin opens with a bare
+    //     >>>> listing codecs
+    // on qDebug()'s *default* category, so neither qt.multimedia*=false nor
+    // anything else category-based reaches it - only "default=false" does, and
+    // that would silence the app's own messages too. It is a leftover debug print
+    // in the plugin, not information, and selecting the FFmpeg backend on 6.4
+    // (see src/main.cpp) is what makes it appear, so it is filtered here rather
+    // than left to spoil an otherwise empty stderr.
+    return msg.startsWith(QLatin1String(">>>> listing codecs"));
+}
+
+double Application::snapScaleFactor(double factor) {
+    if (!(factor > 0) || !std::isfinite(factor))
+        return kMinScaleFactor;
+    const double snapped = std::round(factor / kScaleFactorStep) * kScaleFactorStep;
+    return std::clamp(snapped, kMinScaleFactor, kMaxScaleFactor);
+}
+
+double Application::scaleFactorCeilingFor(const ScreenMetrics &screen) {
+    if (screen.widthPx <= 0 || screen.heightPx <= 0)
+        return kMaxScaleFactor;
+    // The window is sized in logical pixels, so the device pixels it asks for
+    // are its logical size times the factor. Invert that for each axis.
+    const double byWidth  = (screen.widthPx  * kWindowFitFraction) / kDefaultWindowWidth;
+    const double byHeight = (screen.heightPx * kWindowFitFraction) / kDefaultWindowHeight;
+    const double fits = std::min(byWidth, byHeight);
+    // Floor, not round, to the step: the point is that the window fits, and
+    // rounding up here would defeat it by a quarter step.
+    const double stepped = std::floor(fits / kScaleFactorStep) * kScaleFactorStep;
+    return std::clamp(stepped, kMinScaleFactor, kMaxScaleFactor);
+}
+
+double Application::autoScaleFactor(const ScreenMetrics &screen) {
+    // The platform has already said something, so it knows its display better
+    // than any rule here can: a compositor with per-output scaling, or an OS with
+    // real DPI awareness. This is the branch that keeps a Wayland session and a
+    // Retina Mac correct without naming either of them.
+    if (screen.platformDpr > 0 && !qFuzzyCompare(screen.platformDpr, 1.0))
+        return kMinScaleFactor;
+
+    // No usable density: nothing to derive from. Qt reports physicalDpi equal to
+    // logicalDpi when the platform gives it no physical size at all, so this is
+    // also the EDID-is-absent case.
+    if (!(screen.physicalDpi > 0) || !std::isfinite(screen.physicalDpi))
+        return kMinScaleFactor;
+    if (screen.logicalDpi > 0
+        && qFuzzyCompare(screen.physicalDpi, screen.logicalDpi))
+        return kMinScaleFactor;
+    // A monitor claiming a density no panel has is lying - a projector with no
+    // EDID, a KVM, a VM with a made-up physical size. Refuse rather than guess.
+    constexpr double kAbsurdDpi = 1000.0;
+    if (screen.physicalDpi > kAbsurdDpi)
+        return kMinScaleFactor;
+
+    const double wanted = snapScaleFactor(screen.physicalDpi / kAutoTargetDpi);
+    if (wanted < kAutoEngageAt)
+        return kMinScaleFactor;
+    // ...and never a factor that puts the default window off the screen.
+    return std::min(wanted, scaleFactorCeilingFor(screen));
+}
+
+double Application::resolveScaleFactor(const ScreenMetrics &screen, double userFactor) {
+    // The user's own number, on any platform. The fit ceiling still applies to
+    // it: a 3.0 chosen on a 4K panel and then carried to a 1366x768 projector
+    // would otherwise open a window whose controls - including the slider that
+    // would undo it - are off the screen, and there is no way back from that.
+    if (userFactor > 0) {
+        const double chosen = std::min(snapScaleFactor(userFactor),
+                                       scaleFactorCeilingFor(screen));
+        return qFuzzyCompare(chosen, 1.0) ? 0.0 : chosen;
+    }
+    const double automatic = autoScaleFactor(screen);
+    // 1.0 means "leave Qt alone" rather than "set the factor to 1": pinning it
+    // would stop Qt following a screen it would otherwise have followed.
+    return qFuzzyCompare(automatic, 1.0) ? 0.0 : automatic;
+}
+
+bool Application::scaleFactorSetInEnvironment() {
+    // Someone launching the app with one of these has decided deliberately, and
+    // outranks both the stored setting and the automatic rule. QT_USE_PHYSICAL_DPI
+    // and the rounding policy are in the list for the same reason even though
+    // they name a rule rather than a number: both change what Qt computes.
+    for (const char *var : { "QT_SCALE_FACTOR",
+                             "QT_SCREEN_SCALE_FACTORS",
+                             "QT_ENABLE_HIGHDPI_SCALING",
+                             "QT_FONT_DPI",
+                             "QT_USE_PHYSICAL_DPI",
+                             "QT_SCALE_FACTOR_ROUNDING_POLICY" }) {
+        if (!qEnvironmentVariableIsEmpty(var))
+            return true;
+    }
+    return false;
+}
+
+void Application::applyScaleFactor() {
+    if (scaleFactorSetInEnvironment())
+        return;
+
+    // QSettings needs these to find the same file Prefs will later open. They
+    // are statics, so they work before any QCoreApplication exists, and run()
+    // setting them again to the same values costs nothing.
+    QCoreApplication::setOrganizationName(QStringLiteral("TidalWave"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("tidalwave.com"));
+    QCoreApplication::setApplicationName(QStringLiteral("Tidal Wave"));
+    // Read straight out of QSettings rather than through Prefs: Prefs is a
+    // QObject the app owns and nothing should exist yet at this point. The key is
+    // the one the Settings slider writes; 0, and anything unparseable, is Auto.
+    const double userFactor =
+        QSettings().value(QStringLiteral("ui/scaleFactor"), 0.0).toDouble();
+
+    // Measuring the screen needs a QGuiApplication, and the factor has to be in
+    // the environment before the real one is built, so the measurement is taken
+    // by a throwaway that is destroyed again before anything else happens. Qt
+    // reads the scale factor once, while the application object is being
+    // constructed, and never looks at it again - which is the whole reason this
+    // cannot simply live in run().
+    ScreenMetrics screen;
+    {
+        int   probeArgc = 1;
+        char  probeName[] = "tidal-wave";
+        char *probeArgv[] = { probeName, nullptr };
+        QGuiApplication probe(probeArgc, probeArgv);
+        if (const QScreen *s = QGuiApplication::primaryScreen()) {
+            screen.physicalDpi = s->physicalDotsPerInch();
+            screen.logicalDpi  = s->logicalDotsPerInch();
+            screen.platformDpr = s->devicePixelRatio();
+            screen.widthPx     = s->geometry().width();
+            screen.heightPx    = s->geometry().height();
+        }
+        // Mixed densities across monitors are a real setup and this cannot serve
+        // both: QT_SCALE_FACTOR is one number for the whole process, and a
+        // display system that does per-output scaling properly has already been
+        // deferred to by the devicePixelRatio branch above. So the primary screen
+        // decides - it is the one the window opens on - and the Settings slider
+        // is how the remaining cases get settled by eye.
+    }
+    if (screen.widthPx <= 0)
+        return;
+
+    const double factor = resolveScaleFactor(screen, userFactor);
+    if (factor <= 0)
+        return;
+
+    qputenv("QT_SCALE_FACTOR", QByteArray::number(factor));
+    // PassThrough so the factor chosen above is the factor used: a rounding
+    // policy would quietly turn 2.5 into 2 or 3. Measured as already the default
+    // on Linux/xcb, but stated rather than assumed because it is not the default
+    // on Windows.
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+}
+
+void Application::applyQuickControlsStyle() {
+    // See the long note at the call site in run() for why Linux is left on
+    // whatever Qt picks. The decision itself is here, in one place, because the
+    // test harnesses have to make exactly the same one: a test engine running the
+    // native macOS style while the app ran Basic produced 1431 style warnings in
+    // the suite against 0 in the app, and three test failures that were about the
+    // style rather than about the product.
+    //
+    // Safe to call more than once and from any harness; QQuickStyle only has to
+    // be set before the first Controls type is created.
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+#endif
+}
+
+void Application::addEmbeddedQmlImportPath(QQmlEngine *engine) {
+    if (!engine)
+        return;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // RESOURCE_PREFIX "/qt/qml" in CMakeLists.txt puts the module's qmldir at
+    // qrc:/qt/qml/TidalWave/qmldir, which is where every Qt from 6.5 on looks:
+    // 6.5 added "qrc:/qt/qml" to QQmlImportDatabase's built-in import paths. Qt
+    // 6.4 did not have it, and its defaults are only the Qt installation's qml
+    // directory, "qrc:/qt-project.org/imports" and applicationDirPath(). So on
+    // 6.4 `import TidalWave` found no qmldir at all; the C++ QML_ELEMENT types
+    // still resolved, because those come from the static plugin's type
+    // registration rather than the qmldir, and every QML file in the module -
+    // Theme, PlayerBar, QueuePanel, all 31 - did not.
+    //
+    // That failed in two different ways, which is why it went unnoticed for so
+    // long. A binary run out of its own build tree got away with it: the build
+    // tree has a TidalWave/qmldir beside the executable, so applicationDirPath()
+    // covered for the missing path and the app came up looking perfect. The
+    // *installed* binary in /usr/bin has no such neighbour and stopped dead -
+    //
+    //     QQmlApplicationEngine failed to load component
+    //     qrc:/qt/qml/TidalWave/qml/Main.qml:527:9: PlayerBar is not a type
+    //
+    // - and run() returned -1 with no window. A test binary had no neighbour
+    // either, but QuickTest's own engine keeps going: there the singleton
+    // `Theme` was simply never defined, so every colour binding in every file
+    // under test evaluated to undefined and the Rectangles painted their
+    // built-in white. tests/qml/tst_theme_live.qml is the file that says so out
+    // loud (20 failures on 6.4, none on 6.12), but it was never a theme bug.
+    //
+    // Guarded rather than unconditional because on 6.5+ this path is already in
+    // the list and addImportPath() prepends: re-adding it would put the app's
+    // resources ahead of the Qt installation's own modules for no reason.
+    engine->addImportPath(QStringLiteral("qrc:/qt/qml"));
+#endif
+}
+
 bool Application::reallyQuit() const {
     // Main.qml reads this in onClosing, imperatively, which is why the missing
     // notify on the tray half of the answer costs nothing, and merely hides
@@ -580,9 +794,7 @@ int Application::run(int argc, char **argv) {
     // that is a regression, not a rounding error. Linux ships; Linux is left on
     // whatever Qt chooses, and both Fusion and Basic honour customisation, so
     // nothing there needs this.
-#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
-#endif
+    applyQuickControlsStyle();
 
     m_api    = new TidalApi(this);
     m_auth   = new Auth(m_api, this);
@@ -669,6 +881,9 @@ int Application::run(int argc, char **argv) {
     });
 
     m_engine = new QQmlApplicationEngine(this);
+    // Before anything is loaded: on Qt 6.4 the module's own qmldir is not on the
+    // default import path, and without this the load below finds no types.
+    addEmbeddedQmlImportPath(m_engine);
     m_i18n->setEngine(m_engine);
     m_engine->addImageProvider(QStringLiteral("tidal"), new TidalImageProvider());
 

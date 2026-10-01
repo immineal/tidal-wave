@@ -19,6 +19,12 @@ class Prefs : public QObject {
     // switch rather than greying it out. On by default, because the palette
     // it produces from the default theme is the one the user settled on.
     Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
+    // Paint the chosen theme in its own grounds and type instead of in the
+    // neutral grey ramp its mode shares with the other two. Off by default: the
+    // six palettes are one grey ramp per mode and six accents until this is
+    // turned on, which is the design the user settled on. Unlike the switch
+    // above it does something on all six, so Settings always shows it.
+    Q_PROPERTY(bool tintedGreys READ tintedGreys WRITE setTintedGreys NOTIFY tintedGreysChanged)
     // "system", "en" or "de".
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     // Width of the expanded sidebar, in logical pixels. Clamped to
@@ -52,6 +58,7 @@ public:
 
     QString theme() const        { return m_theme; }
     bool    oledBlack() const    { return m_oledBlack; }
+    bool    tintedGreys() const  { return m_tintedGreys; }
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
@@ -60,6 +67,7 @@ public:
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
+    void setTintedGreys(bool v);
     void setLanguage(const QString &v);
     void setSidebarWidth(int v);
     void setAudioDevice(const QString &v);
@@ -78,6 +86,7 @@ public:
 signals:
     void themeChanged();
     void oledBlackChanged();
+    void tintedGreysChanged();
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
@@ -88,6 +97,7 @@ private:
     QSettings m_settings;
     QString   m_theme;
     bool      m_oledBlack;
+    bool      m_tintedGreys;
     QString   m_language;
     int       m_sidebarWidth;
     QString   m_audioDevice;

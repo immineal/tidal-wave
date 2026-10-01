@@ -183,6 +183,29 @@ qt_add_qml_module(tidalwave_qml
         assets/icon.svg
 )
 
+# Qt 6.4's qmlcachegen miscompiles at least one binding in this module. It emits
+# an ahead-of-time compiled C++ function that reads a property straight off a
+# QQuickItem pointer with no null check, and QueuePanel's delegate hands it one -
+#
+#   QQuickItem::z() const
+#   QQmlPrivate::AOTCompiledContext::getValueLookup(unsigned int, void*, void*)
+#   QmlCacheGeneratedCode::_qt_qml_TidalWave_qml_components_QueuePanel_qml
+#       ::aotBuiltFunctions::{lambda(...)#18}
+#
+# - which is a SIGSEGV inside waitForRendering(), taking the whole tst_qml binary
+# down partway through. Qt 6.12's qmlcachegen does not generate the same code and
+# the suite is clean there.
+#
+# --only-bytecode keeps the compile-to-bytecode cache, which is what makes QML
+# load fast, and skips just the AOT C++ generation that is wrong here. It is the
+# narrowest switch that covers it: QT_QML_SKIP_CACHEGEN would throw the bytecode
+# away too. Guarded by version so the newer Qt everyone develops against keeps
+# generating AOT code, and so this disappears on its own when 6.4 is dropped.
+if(Qt6_VERSION VERSION_LESS 6.5)
+    set_target_properties(tidalwave_qml PROPERTIES
+        QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
+endif()
+
 # PUBLIC: tests include the same headers with the same short paths as the app
 # (e.g. #include "ui/Application.h", #include "Auth.h").
 target_compile_definitions(tidalwave_qml PUBLIC
@@ -263,13 +286,26 @@ if(UNIX AND NOT APPLE)
     endif()
     if(_tw_qt_core)
         get_filename_component(_tw_qt_libdir "${_tw_qt_core}" DIRECTORY)
-        get_target_property(_tw_rpath tidal-wave INSTALL_RPATH)
-        if(NOT _tw_rpath)
-            set(_tw_rpath "")
+        # ...but only when the dynamic linker would not have found it anyway. A
+        # distro Qt lives in /usr/lib/x86_64-linux-gnu, which is already on the
+        # default search path, so appending it writes a RUNPATH entry that
+        # changes nothing and that lintian flags as a custom library search path
+        # on a package built exactly the way a release is built. The implicit
+        # link directories are the authoritative list of what needs no RPATH, so
+        # ask them rather than matching on the path's spelling.
+        if("${_tw_qt_libdir}" IN_LIST CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES)
+            message(STATUS
+                "Qt is in a default linker directory (${_tw_qt_libdir}); "
+                "leaving it out of the install RPATH.")
+        else()
+            get_target_property(_tw_rpath tidal-wave INSTALL_RPATH)
+            if(NOT _tw_rpath)
+                set(_tw_rpath "")
+            endif()
+            list(APPEND _tw_rpath "${_tw_qt_libdir}")
+            list(REMOVE_DUPLICATES _tw_rpath)
+            set_target_properties(tidal-wave PROPERTIES INSTALL_RPATH "${_tw_rpath}")
         endif()
-        list(APPEND _tw_rpath "${_tw_qt_libdir}")
-        list(REMOVE_DUPLICATES _tw_rpath)
-        set_target_properties(tidal-wave PROPERTIES INSTALL_RPATH "${_tw_rpath}")
     endif()
 endif()
 
@@ -363,10 +399,43 @@ if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGE_CONTACT "Linus Linhof <tidal-wave@linu.li>")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/immineal/tidal-wave")
 
+    # What apt and every Debian mirror expect a file to be called:
+    # tidal-wave_0.4.0_amd64.deb. CPack's own default is the CMake-ish
+    # "tidal-wave-0.4.0-Linux.deb", which names an architecture that does not
+    # exist and sorts wrongly next to anything else in a release directory.
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+
     set(CPACK_GENERATOR "DEB")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
     set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+
+    # The binary shipped with its whole symbol table attached: 4,810,408 bytes
+    # installed against 3,884,384 stripped, so 926 KB of a 4.8 MB package - 19%
+    # - was a .symtab nothing reads. Debian Policy 10.1 asks for it stripped,
+    # and a Release build has no debug info to lose on top of that. The GNU
+    # build-id survives stripping, so a backtrace off a user's machine can still
+    # be symbolised against the matching unstripped build.
+    set(CPACK_STRIP_FILES TRUE)
+
+    # Debian's Description field is a one-line synopsis plus an indented
+    # extended description, and only the synopsis was set - which lintian calls
+    # extended-description-is-empty and which leaves every package manager's
+    # detail pane blank. CPack prepends CPACK_PACKAGE_DESCRIPTION_SUMMARY as the
+    # synopsis and indents what follows, so this is the long half only.
+    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION
+"Tidal Wave is a desktop client for the Tidal music service, written in C++ with
+Qt Quick rather than wrapped around a web view. It plays your collection,
+playlists and mixes, searches the catalogue, follows album and artist pages, and
+keeps a queue you can reorder.
+
+It integrates with the desktop it runs on: a tray icon, MPRIS so the usual media
+keys and the panel's player widget work, Chromecast output, and downloads for
+offline listening. Lossless and hi-res streams are labelled where the account
+allows them.
+
+An account with an active subscription is required. This package is not produced
+by or affiliated with Tidal.")
     # Every Qt dependency carries a floor, and the floor is the Qt this package
     # was actually built against rather than a number typed in by hand.
     #
