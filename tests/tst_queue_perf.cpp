@@ -16,6 +16,8 @@
 // visible in the first place.
 
 #include <QTest>
+#include <QTemporaryDir>
+#include <QSettings>
 #include <QElapsedTimer>
 #include <QJSEngine>
 #include <QJSValue>
@@ -77,6 +79,12 @@ private slots:
     void initTestCase() {
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_queue_perf"));
+        // Redirect the settings file into a scratch directory as well as
+        // renaming it. Renaming alone keeps the user's own config safe but
+        // still leaves a stray directory in their home after every run.
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QVERIFY(m_settingsDir.isValid());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDir.path());
     }
 
     // ── the regression itself ───────────────────────────────────────────────
@@ -296,6 +304,9 @@ private slots:
                                 .arg(elapsed).arg(kAdvanceCeilingMs).arg(rebuilds)));
         QCOMPARE(rebuilds, 0);
     }
+
+private:
+    QTemporaryDir m_settingsDir;
 };
 
 QTEST_MAIN(TestQueuePerf)

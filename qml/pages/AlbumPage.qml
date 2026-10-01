@@ -45,6 +45,18 @@ Rectangle {
         function onFavoriteAlbumsChanged() { root.updateSavedState() }
     }
 
+    // What the hero's queue actions act on: the whole album, which is not
+    // always what the list is showing. The menu can be opened while
+    // fetchAlbumTracks() is still out, so an empty page asks again rather
+    // than queueing nothing.
+    function allTracks(cb) {
+        if (root.tracks.length > 0) { cb(root.tracks); return }
+        if (!(root.albumId > 0)) return
+        bridge.fetchAlbumTracks(root.albumId, function (t, err) {
+            if (!err && t.length > 0) cb(t)
+        })
+    }
+
     function loadAlbum() {
         loading = true
         bridge.fetchAlbum(albumId, function(album, err) {
@@ -110,6 +122,7 @@ Rectangle {
                     spacing: 24
 
                     Rectangle {
+                        objectName: "heroArt"
                         width: 200
                         height: 200
                         radius: Theme.radiusArt
@@ -193,8 +206,15 @@ Rectangle {
                         // Three pills are 384px at the old fixed width, more
                         // than the 328px the column gets in a 640px pane.
                         Flow {
+                            id: heroActions
                             Layout.fillWidth: true
                             spacing: 12
+                            // The queue confirmation is drawn just above the
+                            // row of actions it confirms. Assigned rather than
+                            // bound: the hero lives in the list's header, and
+                            // an id inside that component is out of reach from
+                            // the page root, where the menu is.
+                            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
 
                             PillButton {
                                 text: qsTr("Play", "verb, button label")
@@ -330,6 +350,7 @@ Rectangle {
     ContextMenu {
         id: heroPinMenu
         objectName: "heroPinMenu"
+        trackSource: root.allTracks
     }
 
     LoadingOverlay { loading: root.loading }

@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="de">
 <context>
@@ -229,6 +229,16 @@
         <translation>Lieblingstitel</translation>
     </message>
     <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation>Als Nächstes abspielen</translation>
+    </message>
+    <message>
+        <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
+        <translation>Zur Warteschlange hinzufügen</translation>
+    </message>
+    <message>
         <source>Remove from library</source>
         <translation>Aus der Mediathek entfernen</translation>
     </message>
@@ -298,6 +308,32 @@
 </context>
 <context>
     <name>ContextMenu</name>
+    <message numerus="yes">
+        <source>%n track(s) added to play next</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s) added to queue</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation>Als Nächstes abspielen</translation>
+    </message>
+    <message>
+        <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
+        <translation>Zur Warteschlange hinzufügen</translation>
+    </message>
     <message>
         <source>Pin</source>
         <comment>verb, pin to the sidebar</comment>
@@ -312,10 +348,6 @@
         <source>Play</source>
         <comment>verb, menu item</comment>
         <translation>Abspielen</translation>
-    </message>
-    <message>
-        <source>Add to queue</source>
-        <translation>Zur Warteschlange hinzufügen</translation>
     </message>
     <message>
         <source>Like</source>
@@ -402,10 +434,6 @@
     <message>
         <source>My Mixes</source>
         <translation>Meine Mixe</translation>
-    </message>
-    <message>
-        <source>Recently Played</source>
-        <translation>Zuletzt gespielt</translation>
     </message>
     <message>
         <source>Saved Albums</source>
@@ -531,8 +559,24 @@
 <context>
     <name>NowPlayingPage</name>
     <message>
-        <source>←  Now Playing</source>
-        <translation>←  Jetzt läuft</translation>
+        <source>Close Now Playing</source>
+        <comment>returns to the page you came from</comment>
+        <translation>Jetzt läuft schließen</translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <comment>page title</comment>
+        <translation>Jetzt läuft</translation>
+    </message>
+    <message>
+        <source>Leave fullscreen</source>
+        <comment>button, restores the window</comment>
+        <translation>Vollbild verlassen</translation>
+    </message>
+    <message>
+        <source>Fullscreen</source>
+        <comment>button, fills the screen with this page</comment>
+        <translation>Vollbild</translation>
     </message>
     <message>
         <source>Loading lyrics…</source>
@@ -692,6 +736,11 @@
         <translation>Gefällt mir</translation>
     </message>
     <message>
+        <source>Open Now Playing</source>
+        <comment>player bar button, opens the full-page player</comment>
+        <translation>Jetzt läuft öffnen</translation>
+    </message>
+    <message>
         <source>%1%</source>
         <translation>%1 %</translation>
     </message>
@@ -786,6 +835,26 @@
         </translation>
     </message>
     <message>
+        <source>Played</source>
+        <translation>Abgespielt</translation>
+    </message>
+    <message>
+        <source>Next in queue</source>
+        <translation>Als Nächstes in der Warteschlange</translation>
+    </message>
+    <message>
+        <source>Next from: %1</source>
+        <translation>Als Nächstes von: %1</translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation>Jetzt läuft</translation>
+    </message>
+    <message>
+        <source>Up Next</source>
+        <translation>Als Nächstes</translation>
+    </message>
+    <message>
         <source>· Shuffled</source>
         <translation>· Zufällig</translation>
     </message>
@@ -793,6 +862,14 @@
         <source>Clear</source>
         <comment>verb, empties the play queue</comment>
         <translation>Leeren</translation>
+    </message>
+    <message>
+        <source>Nothing queued yet</source>
+        <translation>Noch nichts in der Warteschlange</translation>
+    </message>
+    <message>
+        <source>Jump to current track</source>
+        <translation>Zum aktuellen Titel</translation>
     </message>
     <message>
         <source>Remove from queue</source>
@@ -856,7 +933,7 @@
         <translation>Titel, Alben, Künstler und mehr finden</translation>
     </message>
     <message>
-        <source>No results for "%1"</source>
+        <source>No results for &quot;%1&quot;</source>
         <translation>Keine Ergebnisse für „%1“</translation>
     </message>
     <message>
@@ -1083,6 +1160,15 @@
         <translation>Jetzt läuft</translation>
     </message>
     <message>
+        <source>F11</source>
+        <comment>keyboard key</comment>
+        <translation>F11</translation>
+    </message>
+    <message>
+        <source>Fullscreen Now Playing</source>
+        <translation>Jetzt läuft im Vollbild</translation>
+    </message>
+    <message>
         <source>Ctrl+Q</source>
         <translation>Strg+Q</translation>
     </message>
@@ -1181,12 +1267,34 @@
         <source>Popularity</source>
         <translation>Beliebtheit</translation>
     </message>
+    <message numerus="yes">
+        <source>%n track(s) added to play next</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s) added to queue</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Play now</source>
         <translation>Jetzt abspielen</translation>
     </message>
     <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation>Als Nächstes abspielen</translation>
+    </message>
+    <message>
         <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
         <translation>Zur Warteschlange hinzufügen</translation>
     </message>
     <message>

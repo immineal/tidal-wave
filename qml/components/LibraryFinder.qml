@@ -54,6 +54,17 @@ Rectangle {
 
     function releaseFocus() { input.focus = false }
 
+    // Put the finder back to "no filter at all". Guarded on both halves: the
+    // sidebar rebuilds its model whenever `kinds` changes, and `kinds = []` on
+    // an already empty list is still a new array and still emits, which would
+    // hand the library list a new model in the middle of a slide and destroy
+    // the very covers the slide is moving.
+    function reset() {
+        if (input.text.length > 0) input.text = ""
+        if (kinds.length > 0)      kinds = []
+        releaseFocus()
+    }
+
     function toggleKind(kind) {
         var next = kinds.slice()
         var at = next.indexOf(kind)

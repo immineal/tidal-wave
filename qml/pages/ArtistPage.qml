@@ -8,6 +8,22 @@ Rectangle {
     id: root
     color: Theme.bg
 
+    // How much of this pane's width is only on loan. Below Prefs::railBreakpoint
+    // the sidebar collapses to its 68px rail and hands the page back the ~150px
+    // it had been using, so the pane gets *wider* as the window gets narrower:
+    // the pane's width does not fall with the window's, it has a step in it.
+    // Any column that switches on the pane therefore un-hides itself halfway
+    // down a drag. The track rows' album column dropped out at an 892px window,
+    // came back at 819 when the rail took over, and went again at 740, which is
+    // the flicker the user saw. Subtracting the loan measures the breakpoint
+    // against a width that only ever shrinks with the window, and across the
+    // step it is the same number on both sides, so nothing jumps there either.
+    readonly property int sidebarReclaim: {
+        var w = Window.window ? Window.window.width : 0
+        return (w > 0 && w < prefs.railBreak())
+               ? Math.max(0, prefs.sidebarWidth - prefs.rail()) : 0
+    }
+
     property var artistId: 0
     property var artistData: ({})
     property var topTracks: []
@@ -141,6 +157,7 @@ Rectangle {
                     // A Flow, so the pills wrap instead of running off the
                     // hero once a German label makes them wider.
                     Flow {
+                        id: heroActions
                         Layout.fillWidth: true
                         spacing: 12
                         PillButton {
@@ -210,6 +227,10 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16
+                    // Against the width this row would have with the sidebar
+                    // out, so the column cannot reappear as the window
+                    // narrows. See root.sidebarReclaim.
+                    showAlbum:   width - root.sidebarReclaim >= albumBreakpoint
                     trackNum:    index + 1
                     title:       modelData.title
                     artists:     modelData.artists
@@ -356,6 +377,15 @@ Rectangle {
     ContextMenu {
         id: heroPinMenu
         objectName: "heroPinMenu"
+        // No trackSource, so the menu offers no queue actions here. An artist
+        // is not a tracklist: the only thing to queue would be the top ten,
+        // which is a chart position rather than anything the user picked, so
+        // "add this artist to the queue" would not mean what it says. Play and
+        // Shuffle in the hero still play those tracks, which is honest because
+        // the button says play, not queue. Pinning is unaffected.
+
+        // The hero's action row, which has the page above it to draw over.
+        confirmAnchor: heroActions
     }
 
     Rectangle {

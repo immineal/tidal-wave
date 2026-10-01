@@ -117,7 +117,7 @@ Item {
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             root.menuRequested(width / 2, height / 2)
-            contextMenu.popup()
+            root.openMenu()
             event.accepted = true
         }
     }
@@ -141,7 +141,7 @@ Item {
 
             onClicked: (mouse) => {
                 if (mouse.button === Qt.RightButton) {
-                    contextMenu.popup()
+                    root.openMenu()
                 } else {
                     root.playRequested()
                 }
@@ -352,210 +352,277 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: (m) => {
                         root.menuRequested(m.x, m.y)
-                        contextMenu.popup()
+                        root.openMenu()
                     }
                 }
             }
         }
     }
 
-    Menu {
-        id: contextMenu
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 200 }
+    // The row's menu and the playlist picker it opens are built the first
+    // time one of them is asked for. The track lists are stress-tested at
+    // 5000 rows (X4), and a Menu of a dozen items plus a Popup holding a
+    // ListView, on every one of them, is tens of thousands of objects built
+    // for two things almost no row is ever asked for.
+    readonly property alias rowMenu: menuLoader.item
 
-        MenuItem {
-            text: "▶  " + qsTr("Play now")
-            contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: root.playRequested()
-        }
-        MenuItem {
-            text: "+  " + qsTr("Add to queue")
-            contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: { if (root.trackData) player.appendQueue([root.trackData]) }
-        }
-        MenuItem {
-            text: "⬇  " + qsTr("Download…")
-            enabled: root.trackId > 0 && root.dlState !== "busy"
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
-        }
-        MenuItem {
-            text: "📋  " + qsTr("Add to playlist")
-            enabled: root.trackId > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: { if (root.trackId > 0) playlistPicker.openFor(root.trackId) }
-        }
-        MenuItem {
-            text: "🗑  " + qsTr("Remove from playlist")
-            visible: root.playlistUuid.length > 0
-            height: visible ? implicitHeight : 0
-            enabled: root.trackData !== null && root.playlistUuid.length > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.red : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
-                    root.removeFromPlaylistRequested(root.trackItemIndex)
+    function openMenu() {
+        menuLoader.active = true
+        menuLoader.item.popup()
+    }
+
+    function openPicker() {
+        if (root.trackId <= 0) return
+        pickerLoader.active = true
+        pickerLoader.item.openFor(root.trackId)
+    }
+
+    // The same confirmation the shared ContextMenu gives, and for the same
+    // reason: queueing without a sign it worked is how a track ends up in
+    // the queue twice. Drawn over the row the user just acted on. The dwell
+    // is deliberately not Theme.dur() - see ContextMenu.confirmMs.
+    readonly property int confirmMs: 2000
+
+    function confirmQueued(atFront) {
+        ToolTip.show(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", 1)
+                             : qsTr("%n track(s) added to queue", "queue confirmation", 1),
+                     root.confirmMs)
+    }
+
+    Loader {
+        id: menuLoader
+        active: false
+        // Parented to the row rather than to this Loader, which is a zero
+        // sized item at the row's origin.
+        sourceComponent: Menu {
+            parent: root
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 200 }
+
+            // So a test can read the two queue labels without walking a
+            // popup's contents, the way ContextMenu exposes its pin item.
+            readonly property alias playNextItem:   playNextEntry
+            readonly property alias addToQueueItem: addToQueueEntry
+
+            MenuItem {
+                text: "▶  " + qsTr("Play now")
+                contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: root.playRequested()
             }
-        }
-        MenuItem {
-            text: "📻  " + qsTr("Start radio")
-            enabled: root.trackId > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackId <= 0) return
-                Window.window.navigate("radio", {
-                    trackId:    root.trackId,
-                    radioTitle: root.titleText
-                })
-            }
-        }
-        MenuItem {
-            text: root.isLiked ? "♥  " + qsTr("Unlike", "verb, remove from favourites")
-                               : "♡  " + qsTr("Like", "verb, add to favourites")
-            enabled: root.trackId > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackId <= 0) return
-                if (root.isLiked) {
-                    bridge.removeTrackFavorite(root.trackId, function(success) {})
-                } else {
-                    bridge.addTrackFavorite(root.trackId, function(success) {})
+            // Above Add to queue: of the two, playing the track next is what
+            // a user reaches for more often.
+            MenuItem {
+                id: playNextEntry
+                objectName: "playNextMenuItem"
+                enabled: root.trackData !== null
+                text: "⏭  " + qsTr("Play next", "verb, play this right after the current track")
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (!root.trackData) return
+                    player.playNext([root.trackData])
+                    root.confirmQueued(true)
                 }
             }
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: "💿  " + qsTr("Go to album")
-            enabled: root.trackData && Number(root.trackData.albumId) > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackData && Number(root.trackData.albumId) > 0)
-                    Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
+            MenuItem {
+                id: addToQueueEntry
+                objectName: "addToQueueMenuItem"
+                enabled: root.trackData !== null
+                text: "+  " + qsTr("Add to queue", "verb, put this at the end of the queue")
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (!root.trackData) return
+                    player.addToQueue([root.trackData])
+                    root.confirmQueued(false)
+                }
             }
-        }
-        MenuItem {
-            text: "🎤  " + qsTr("Go to artist")
-            enabled: root.trackData && Number(root.trackData.artistId) > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackData && Number(root.trackData.artistId) > 0)
-                    Window.window.navigate("artist", { artistId: Number(root.trackData.artistId) })
+            MenuItem {
+                text: "⬇  " + qsTr("Download…")
+                enabled: root.trackId > 0 && root.dlState !== "busy"
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
             }
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: "🔗  " + qsTr("Copy link")
-            enabled: root.trackId > 0
-            contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-            background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-            onTriggered: {
-                if (root.trackId > 0)
-                    bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackId)
+            MenuItem {
+                text: "📋  " + qsTr("Add to playlist")
+                enabled: root.trackId > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: root.openPicker()
+            }
+            MenuItem {
+                text: "🗑  " + qsTr("Remove from playlist")
+                visible: root.playlistUuid.length > 0
+                height: visible ? implicitHeight : 0
+                enabled: root.trackData !== null && root.playlistUuid.length > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.red : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
+                        root.removeFromPlaylistRequested(root.trackItemIndex)
+                }
+            }
+            MenuItem {
+                text: "📻  " + qsTr("Start radio")
+                enabled: root.trackId > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackId <= 0) return
+                    Window.window.navigate("radio", {
+                        trackId:    root.trackId,
+                        radioTitle: root.titleText
+                    })
+                }
+            }
+            MenuItem {
+                text: root.isLiked ? "♥  " + qsTr("Unlike", "verb, remove from favourites")
+                                   : "♡  " + qsTr("Like", "verb, add to favourites")
+                enabled: root.trackId > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackId <= 0) return
+                    if (root.isLiked) {
+                        bridge.removeTrackFavorite(root.trackId, function(success) {})
+                    } else {
+                        bridge.addTrackFavorite(root.trackId, function(success) {})
+                    }
+                }
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "💿  " + qsTr("Go to album")
+                enabled: root.trackData && Number(root.trackData.albumId) > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackData && Number(root.trackData.albumId) > 0)
+                        Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
+                }
+            }
+            MenuItem {
+                text: "🎤  " + qsTr("Go to artist")
+                enabled: root.trackData && Number(root.trackData.artistId) > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackData && Number(root.trackData.artistId) > 0)
+                        Window.window.navigate("artist", { artistId: Number(root.trackData.artistId) })
+                }
+            }
+            MenuSeparator {}
+            MenuItem {
+                text: "🔗  " + qsTr("Copy link")
+                enabled: root.trackId > 0
+                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                onTriggered: {
+                    if (root.trackId > 0)
+                        bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackId)
+                }
             }
         }
     }
 
     // Playlist picker popup (for "Add to playlist")
-    Popup {
-        id: playlistPicker
-        anchors.centerIn: Overlay.overlay
-        width: 340
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        padding: 0
-        property var pendingTrackId: 0
+    Loader {
+        id: pickerLoader
+        active: false
+        sourceComponent: Popup {
+            id: trackPicker
+            anchors.centerIn: Overlay.overlay
+            width: 340
+            modal: true
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            padding: 0
+            property var pendingTrackId: 0
 
-        function openFor(trackId) {
-            pendingTrackId = trackId
-            plPickerModel.clear()
-            open()
-            bridge.fetchUserPlaylists(function(pls, err) {
+            function openFor(trackId) {
+                pendingTrackId = trackId
                 plPickerModel.clear()
-                for (var i = 0; i < pls.length; i++) {
-                    plPickerModel.append(pls[i])
-                }
-            }, 50, 0)
-        }
-
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
-
-        Column {
-            width: parent.width
-
-            Item {
-                width: parent.width
-                height: 52
-                Text {
-                    anchors.left: parent.left; anchors.leftMargin: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Add to playlist")
-                    color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
-                }
-                VectorIcon {
-                    anchors.right: parent.right; anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "x"; color: Theme.textSec; width: 12; height: 12; strokeWidth: 2
-                    MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: playlistPicker.close() }
-                }
+                open()
+                bridge.fetchUserPlaylists(function(pls, err) {
+                    plPickerModel.clear()
+                    for (var i = 0; i < pls.length; i++) {
+                        plPickerModel.append(pls[i])
+                    }
+                }, 50, 0)
             }
-            Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-            ListView {
-                id: plPickerList
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+
+            Column {
                 width: parent.width
-                height: Math.min(contentHeight, 300)
-                clip: true
-                model: ListModel { id: plPickerModel }
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                delegate: Item {
-                    width: plPickerList.width
-                    height: 44
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        radius: Theme.radiusRow
-                        color: plHov2.hovered ? Theme.surfaceHov : "transparent"
-                        HoverHandler { id: plHov2 }
-                        TapHandler {
-                            onTapped: {
-                                bridge.addTracksToPlaylist(model.uuid, playlistPicker.pendingTrackId, function(ok) {})
-                                playlistPicker.close()
-                            }
-                        }
-                        Row {
-                            anchors.left: parent.left; anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 10
-                            Rectangle {
-                                width: 28; height: 28; radius: Theme.radiusArt; color: Theme.surface; clip: true
-                                Image {
-                                    anchors.fill: parent
-                                    source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
-                                    fillMode: Image.PreserveAspectCrop; smooth: true
+                Item {
+                    width: parent.width
+                    height: 52
+                    Text {
+                        anchors.left: parent.left; anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Add to playlist")
+                        color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
+                    }
+                    VectorIcon {
+                        anchors.right: parent.right; anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "x"; color: Theme.textSec; width: 12; height: 12; strokeWidth: 2
+                        MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: trackPicker.close() }
+                    }
+                }
+                Rectangle { width: parent.width; height: 1; color: Theme.border }
+
+                ListView {
+                    id: plPickerList
+                    width: parent.width
+                    height: Math.min(contentHeight, 300)
+                    clip: true
+                    model: ListModel { id: plPickerModel }
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Item {
+                        width: plPickerList.width
+                        height: 44
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            radius: Theme.radiusRow
+                            color: plHov2.hovered ? Theme.surfaceHov : "transparent"
+                            HoverHandler { id: plHov2 }
+                            TapHandler {
+                                onTapped: {
+                                    bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId, function(ok) {})
+                                    trackPicker.close()
                                 }
                             }
-                            Column {
+                            Row {
+                                anchors.left: parent.left; anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 1
-                                Text { text: model.title; color: Theme.textPrimary; font.pixelSize: 13 }
-                                Text { text: qsTr("%n track(s)", "", model.numTracks); color: Theme.textSec; font.pixelSize: 11 }
+                                spacing: 10
+                                Rectangle {
+                                    width: 28; height: 28; radius: Theme.radiusArt; color: Theme.surface; clip: true
+                                    Image {
+                                        anchors.fill: parent
+                                        source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
+                                        fillMode: Image.PreserveAspectCrop; smooth: true
+                                    }
+                                }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 1
+                                    Text { text: model.title; color: Theme.textPrimary; font.pixelSize: 13 }
+                                    Text { text: qsTr("%n track(s)", "", model.numTracks); color: Theme.textSec; font.pixelSize: 11 }
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            Item { width: parent.width; height: 8 }
+                Item { width: parent.width; height: 8 }
+            }
         }
     }
 }

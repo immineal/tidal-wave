@@ -57,6 +57,7 @@ TestCase {
         var q = []
         for (var i = 0; i < 6; i++) q.push(makeTrack(i))
         player.setQueueForTest(q, 0)
+        player.setManualForTest([])
         player.setCurrentTrackForTest(makeTrack(0))
         player.setAudioQualityForTest("LOSSLESS")
         player.setDurationForTest(215000)
@@ -353,15 +354,19 @@ TestCase {
     }
 
     // The swallowing MouseArea sits behind the panel's content, so the content
-    // still gets its clicks first. "Clear" is a TapHandler on a bare Text,
-    // which is the thing most likely to be eaten by a MouseArea underneath it.
+    // still gets its clicks first. "Clear" is a bare Text with a handler on
+    // it, which is the thing most likely to be eaten by a MouseArea
+    // underneath. It empties the *manual* queue now - the list the user built
+    // - and is only offered while there is one, so the fixture has to make
+    // one first.
     function test_queue_panel_content_still_gets_clicks() {
+        player.setManualForTest([makeTrack(90), makeTrack(91)])
         var host = showHost(queueHost, 960, 1200)
         var clear = findText(host.panel, qsTr("Clear", "verb, empties the play queue"))
         verify(clear, "the Clear control was not found")
-        verify(player.queueCount > 0, "fixture should have left a queue")
+        compare(player.queueManual.length, 2, "fixture should have left a manual queue")
         mouseClick(clear, Math.round(clear.width / 2), Math.round(clear.height / 2))
-        compare(player.queueCount, 0, "the panel swallowed its own content's click")
+        compare(player.queueManual.length, 0, "the panel swallowed its own content's click")
         compare(host.dismissals, 0, "a click on the panel is not a dismissal")
     }
 

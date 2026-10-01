@@ -26,6 +26,32 @@ Item {
 
     readonly property alias pinMenu: cardMenu
 
+    // ── queueing ───────────────────────────────────────────────────────
+    // The three kinds that ARE a tracklist. An artist is not one: "queue this
+    // artist" has no honest meaning, and the only list available is their top
+    // ten, which is a chart position rather than anything the user chose. A
+    // song tile is not one either; a song is already a single track.
+    readonly property bool canQueue: itemId.length > 0
+        && (mediaType === "album" || mediaType === "playlist"
+            || mediaType === "mix")
+
+    // A tile carries an id and nothing else, so queueing one always fetches:
+    // "add this album" has to mean every track on it, not the nothing the
+    // tile itself knows. The callback is skipped on an error or an empty
+    // result, so a failed fetch queues nothing and says nothing.
+    function fetchTracks(cb) {
+        function done(t, err) { if (!err && t && t.length > 0) cb(t) }
+        if (mediaType === "album")         bridge.fetchAlbumTracks(Number(itemId), done)
+        else if (mediaType === "playlist") bridge.fetchPlaylistTracks(itemId, done)
+        else if (mediaType === "mix")      bridge.fetchMixTracks(itemId, done)
+    }
+
+    // Offered on the tile's own menu below, and callable from a host that
+    // covers the tile with a menu of its own (CollectionPage's album grid),
+    // so both routes queue the same thing and confirm the same way.
+    function playNext()   { cardMenu.playNext() }
+    function addToQueue() { cardMenu.addToQueue() }
+
     // What shows through where a round tile's artwork is cut away. It has to be
     // whatever the card is sitting on; every page that shows cards is a
     // Theme.bg ground, so that is the default, and a host on anything else
@@ -231,5 +257,9 @@ Item {
     ContextMenu {
         id: cardMenu
         objectName: "cardPinMenu"
+        trackSource: root.canQueue ? root.fetchTracks : null
+        // The tile has room above it on every page that shows one, and the
+        // confirmation belongs next to the thing it is about.
+        confirmAnchor: root
     }
 }

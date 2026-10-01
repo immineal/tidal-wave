@@ -360,12 +360,35 @@ class StubPlayer : public QObject {
     Q_PROPERTY(int repeatMode READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString audioQuality READ audioQuality NOTIFY currentTrackChanged)
     Q_PROPERTY(int queueCount READ queueCount NOTIFY queueChanged)
-    Q_PROPERTY(int queueIndex READ queueIndex NOTIFY queueChanged)
+    Q_PROPERTY(int queueIndex READ queueIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariantList queueTracks READ queueTracks NOTIFY queueChanged)
     Q_PROPERTY(QVariantList recentlyPlayed READ recentlyPlayed NOTIFY recentlyPlayedChanged)
     Q_PROPERTY(QString sourceType READ sourceType NOTIFY sourceChanged)
     Q_PROPERTY(QString sourceId READ sourceId NOTIFY sourceChanged)
     Q_PROPERTY(QString sourceName READ sourceName NOTIFY sourceChanged)
+
+    // ── the reworked queue (0.4.0) ──────────────────────────────────────
+    //
+    // One list in play order, exactly as Player holds it: what has played, the
+    // track playing, the `m_manualCount` rows the user queued by hand, then
+    // the rest of the context. The three slices are views onto that list, not
+    // lists of their own.
+    //
+    // The signalling matters as much as the shape. An *advance* moves the
+    // index and shortens the manual run; it does not say the queue changed,
+    // because it did not, and because republishing 5000 rows per track is the
+    // regression tests/tst_queue_perf.cpp exists to keep out. advanceForTest()
+    // below reproduces exactly that, so a view bound to the slices instead of
+    // to queueTracks + queueIndex + manualCount is caught here.
+    Q_PROPERTY(QVariantList queuePlayed  READ queuePlayed  NOTIFY queueChanged)
+    Q_PROPERTY(QVariantList queueManual  READ queueManual  NOTIFY queueChanged)
+    Q_PROPERTY(QVariantList queueContext READ queueContext NOTIFY queueChanged)
+    Q_PROPERTY(QString contextName READ contextName NOTIFY queueChanged)
+    Q_PROPERTY(QString contextType READ contextType NOTIFY queueChanged)
+    Q_PROPERTY(int manualCount READ manualCount NOTIFY manualCountChanged)
+    // test hook: the calls the view made, in order, so a test can assert the
+    // call and its arguments and not only the state they left behind.
+    Q_PROPERTY(QStringList queueCalls READ queueCalls NOTIFY queueCallsChanged)
 public:
     explicit StubPlayer(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -400,7 +423,9 @@ public:
         m_queue = tracks;
         m_index = tracks.isEmpty() ? -1 : qBound(0, startIndex, int(tracks.size()) - 1);
         m_currentTrack = m_index < 0 ? QVariantMap() : tracks.at(m_index).toMap();
+        setManualCount(0);
         emit queueChanged();
+        emit currentIndexChanged(m_index);
         emit currentTrackChanged();
         setPlayingForTest(m_index >= 0);
     }
@@ -413,18 +438,22 @@ public:
         m_index = index;
         m_currentTrack = m_queue.at(index).toMap();
         emit queueChanged();
+        emit currentIndexChanged(m_index);
         emit currentTrackChanged();
     }
     Q_INVOKABLE void clearQueue() {
         m_queue.clear();
         m_index = -1;
+        setManualCount(0);
         emit queueChanged();
+        emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void removeFromQueue(int index) {
         if (index < 0 || index >= m_queue.size()) return;
         m_queue.removeAt(index);
         if (m_index >= m_queue.size()) m_index = int(m_queue.size()) - 1;
         emit queueChanged();
+        emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void moveQueueItem(int from, int to) {
         if (from < 0 || from >= m_queue.size() || to < 0 || to >= m_queue.size()) return;
@@ -474,6 +503,117 @@ public:
     }
     Q_INVOKABLE QVariantList playbackOrderTracks() const { return m_queue; }
 
+    // ── the reworked queue (0.4.0) ──────────────────────────────────────
+
+    int manualCount() const { return m_manualCount; }
+
+    QVariantList queuePlayed() const {
+        QVariantList out;
+        const int end = qMax(0, qMin(m_index, int(m_queue.size())));
+        for (int i = 0; i < end; ++i) out << m_queue.at(i);
+        return out;
+    }
+    QVariantList queueManual() const {
+        QVariantList out;
+        for (int i = 0; i < m_manualCount; ++i) {
+            const int at = m_index + 1 + i;
+            if (at >= 0 && at < m_queue.size()) out << m_queue.at(at);
+        }
+        return out;
+    }
+    QVariantList queueContext() const {
+        QVariantList out;
+        for (int i = qMax(0, m_index + 1 + m_manualCount); i < m_queue.size(); ++i)
+            out << m_queue.at(i);
+        return out;
+    }
+    QString contextName() const { return m_sourceName; }
+    QString contextType() const { return m_sourceType; }
+    QStringList queueCalls() const { return m_queueCalls; }
+
+    Q_INVOKABLE void playNext(const QVariantList &tracks) {
+        note(QStringLiteral("playNext %1").arg(tracks.size()));
+        insertManual(tracks, 0);
+    }
+    Q_INVOKABLE void addToQueue(const QVariantList &tracks) {
+        note(QStringLiteral("addToQueue %1").arg(tracks.size()));
+        insertManual(tracks, m_manualCount);
+    }
+    Q_INVOKABLE void removeManual(int index) {
+        note(QStringLiteral("removeManual %1").arg(index));
+        if (index < 0 || index >= m_manualCount) return;
+        m_queue.removeAt(m_index + 1 + index);
+        setManualCount(m_manualCount - 1);
+        emit queueChanged();
+    }
+    Q_INVOKABLE void moveManual(int from, int to) {
+        note(QStringLiteral("moveManual %1 %2").arg(from).arg(to));
+        if (from < 0 || from >= m_manualCount ||
+            to   < 0 || to   >= m_manualCount || from == to) return;
+        m_queue.move(m_index + 1 + from, m_index + 1 + to);
+        emit queueChanged();
+    }
+    Q_INVOKABLE void clearManual() {
+        note(QStringLiteral("clearManual"));
+        if (m_manualCount <= 0) return;
+        for (int i = 0; i < m_manualCount; ++i) m_queue.removeAt(m_index + 1);
+        setManualCount(0);
+        emit queueChanged();
+    }
+    // Playing a manual row consumes it and everything queued ahead of it.
+    Q_INVOKABLE void jumpToManual(int index) {
+        note(QStringLiteral("jumpToManual %1").arg(index));
+        if (index < 0 || index >= m_manualCount) return;
+        const int start = m_index + 1;
+        for (int i = 0; i < index; ++i) m_queue.removeAt(start);
+        setManualCount(m_manualCount - index - 1);
+        m_index = start;
+        m_currentTrack = m_queue.at(m_index).toMap();
+        emit queueChanged();
+        emit currentIndexChanged(m_index);
+        emit currentTrackChanged();
+    }
+    Q_INVOKABLE void jumpToContext(int index) {
+        note(QStringLiteral("jumpToContext %1").arg(index));
+        if (index < 0) return;
+        jumpToQueue(m_index + m_manualCount + 1 + index);
+    }
+    Q_INVOKABLE void jumpToPlayed(int index) {
+        note(QStringLiteral("jumpToPlayed %1").arg(index));
+        if (index < 0 || index >= qMax(0, m_index)) return;
+        jumpToQueue(index);
+    }
+
+    // Replaces whatever manual run is there, in place, where the real Player
+    // keeps it: immediately after the current track.
+    Q_INVOKABLE void setManualForTest(const QVariantList &tracks) {
+        for (int i = 0; i < m_manualCount && m_index + 1 < m_queue.size(); ++i)
+            m_queue.removeAt(m_index + 1);
+        const int base = qBound(0, m_index + 1, int(m_queue.size()));
+        for (int i = 0; i < tracks.size(); ++i) {
+            QVariantMap t = tracks.at(i).toMap();
+            t[QStringLiteral("_userQueued")] = true;
+            m_queue.insert(base + i, t);
+        }
+        setManualCount(int(tracks.size()));
+        emit queueChanged();
+    }
+    // A track ending, reported the way the real Player reports it: the index
+    // moves, the manual run shortens, and *nothing* says the queue changed,
+    // because nothing about the queue did.
+    Q_INVOKABLE void advanceForTest() {
+        if (m_index + 1 >= m_queue.size()) return;
+        if (m_manualCount > 0) setManualCount(m_manualCount - 1);
+        m_index += 1;
+        m_currentTrack = m_queue.at(m_index).toMap();
+        emit currentIndexChanged(m_index);
+        emit currentTrackChanged();
+    }
+    Q_INVOKABLE void resetQueueCallsForTest() {
+        m_queueCalls.clear();
+        emit queueCallsChanged();
+    }
+
     // test hooks
     Q_INVOKABLE void setCurrentTrackForTest(const QVariantMap &track) {
         m_currentTrack = track;
@@ -501,7 +641,9 @@ public:
     Q_INVOKABLE void setQueueForTest(const QVariantList &tracks, int index = -1) {
         m_queue = tracks;
         m_index = index;
+        setManualCount(0);          // a brand new queue has no manual run in it
         emit queueChanged();
+        emit currentIndexChanged(m_index);
     }
     Q_INVOKABLE void setRecentlyPlayedForTest(const QVariantList &tracks) {
         m_recentlyPlayed = tracks;
@@ -521,6 +663,9 @@ signals:
     void repeatModeChanged(int m);
     void queueChanged();
     void recentlyPlayedChanged();
+    void currentIndexChanged(int index);
+    void manualCountChanged(int count);
+    void queueCallsChanged();
     void sourceChanged();
     void castTrackChanged();
     void error(const QString &msg);
@@ -542,6 +687,33 @@ private:
     QString      m_sourceType;
     QString      m_sourceId;
     QString      m_sourceName;
+    int          m_manualCount = 0;
+    QStringList  m_queueCalls;
+
+    void setManualCount(int n) {
+        if (m_manualCount == n) return;
+        m_manualCount = n;
+        emit manualCountChanged(m_manualCount);
+    }
+
+    void insertManual(const QVariantList &tracks, int at) {
+        if (tracks.isEmpty()) return;
+        const int base = qBound(0, m_index + 1 + qBound(0, at, m_manualCount),
+                                int(m_queue.size()));
+        for (int i = 0; i < tracks.size(); ++i) {
+            QVariantMap t = tracks.at(i).toMap();
+            // Legacy marker, kept because the old panel styled rows by it.
+            t[QStringLiteral("_userQueued")] = true;
+            m_queue.insert(base + i, t);
+        }
+        setManualCount(m_manualCount + int(tracks.size()));
+        emit queueChanged();
+    }
+
+    void note(const QString &call) {
+        m_queueCalls << call;
+        emit queueCallsChanged();
+    }
 };
 
 // ─── cast ───────────────────────────────────────────────────────────────────

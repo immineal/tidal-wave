@@ -315,6 +315,7 @@ Rectangle {
                 required property int index
 
                 MediaCard {
+                    id: albumCard
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
@@ -340,9 +341,28 @@ Rectangle {
                     acceptedButtons: Qt.RightButton
                     onClicked: albumCtxMenu.popup()
                 }
+                // This menu covers the tile's own, so it repeats the two queue
+                // actions rather than leaving them unreachable here. The work
+                // is the card's either way, so both routes queue the same
+                // tracks and confirm in the same place.
                 Menu {
                     id: albumCtxMenu
                     background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
+                    MenuItem {
+                        text: qsTr("Play next", "verb, play this right after the current track")
+                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
+                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                        onTriggered: albumCard.playNext()
+                    }
+                    MenuItem {
+                        text: qsTr("Add to queue", "verb, put this at the end of the queue")
+                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
+                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                        onTriggered: albumCard.addToQueue()
+                    }
+                    MenuSeparator {
+                        contentItem: Rectangle { height: 1; color: Theme.border }
+                    }
                     MenuItem {
                         text: qsTr("Remove from library")
                         contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
