@@ -73,6 +73,52 @@ noise), the dead `Qt6::Sql` dependency removed, and `tests/visual/`.
   stay in English.
 
 
+## Queued from QA, not yet started
+
+Decided with the user, waiting on the in-flight icon sweep to land first.
+
+1. **One output picker, replacing the cast button.** The player bar's cast
+   button becomes an output button listing this computer's audio devices and
+   any Chromecast targets in one menu. The icon is the speaker normally and
+   the cast glyph while casting, so the bar shows at a glance that audio is
+   leaving the machine. Same picker in Now Playing where there is room.
+2. **Volume on hover.** At the widths where the bar sheds the slider you can
+   only mute. Hovering the speaker should reveal the slider so it is still
+   adjustable, the way most players handle it.
+3. **The up-arrow moves to the left of the queue button**, grouping the two
+   "open a view" controls and getting it away from Like, which acts on the
+   track rather than opening anything.
+4. **Drop the words "Now Playing" from the page header.** The chevron and the
+   fullscreen button stay; the page is obviously the player, and the German
+   reads badly.
+5. **Redraw the cast glyph.** The two waves at the bottom left want to be
+   bigger, with more space between them and the screen lines, scaled so they
+   match the top line.
+6. **`Lossless (FLAC)` becomes `Lossless (16-bit)`**, which pairs with
+   `Hi-Res (24-bit)`. Tidal's lossless tier is CD quality, 16-bit/44.1kHz, not
+   the 12-bit that was guessed.
+7. **One now-playing indicator.** The queue marks the current track with the
+   three-line wave glyph; album and playlist rows show a music note instead.
+   Use the wave in both so the symbol means one thing.
+
+## Animation, after measuring
+
+The user wants the sidebar's transition quality elsewhere, but only where it
+is genuinely cheap, and **only where something rearranges**, not during
+continuous resizing. Candidates are the breakpoints that currently snap: Now
+Playing stacking at 1000, TrackRow dropping columns at 640 and 560, the player
+bar shedding controls at 720, Collection moving its search field.
+
+**Fix first:** expanding the rail paints a black bar where the panel will
+reach, for a few frames, before the content fills it. The rail is supposed to
+overlay the page, so nothing should reserve that space at all.
+
+**Measure before adding.** Only the nested-Wayland run gives honest frame
+timing; offscreen and Xvfb numbers are throughput. Note `QQuickShape` ignores
+an ancestor's `clip` in Qt 6.12, so any reveal-by-clipping animation will hit
+the same wall the sidebar's finder did.
+
+
 ## Build and test
 
 ```bash
