@@ -2,7 +2,7 @@ import QtQuick
 import TidalWave
 
 // Shared pill-shaped action button (Play / Shuffle / etc.) used across
-// Album, Artist, Playlist and Mix pages — keyboard accessible (Tab to
+// Album, Artist, Playlist and Mix pages. Keyboard accessible (Tab to
 // focus, Enter/Space to activate) with a visible focus ring.
 Item {
     id: root

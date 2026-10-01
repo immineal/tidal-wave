@@ -63,7 +63,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: hasTrack ? track.title : "No track playing"
+                    text: hasTrack ? track.title : qsTr("No track playing")
                     color: Theme.textPrimary; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
                 }
@@ -96,7 +96,7 @@ Rectangle {
                 size: 16
                 iconColor: root.isLiked ? Theme.accent : Theme.textSec
                 ToolTip.visible: likeTipHov.hovered
-                ToolTip.text: root.isLiked ? "Unlike track" : "Like track"
+                ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
                 ToolTip.delay: 600
                 HoverHandler { id: likeTipHov }
                 onClicked: {
@@ -181,13 +181,15 @@ Rectangle {
                 value: player.muted ? 0 : player.volume
                 onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
                 ToolTip.visible: volTipHov.hovered
-                ToolTip.text: Math.round((player.muted ? 0 : player.volume) * 100) + "%"
+                ToolTip.text: qsTr("%1%").arg(
+                    Math.round((player.muted ? 0 : player.volume) * 100)
+                        .toLocaleString(Qt.locale(), 'f', 0))
                 ToolTip.delay: 400
                 HoverHandler { id: volTipHov }
             }
 
-            // Cast to a Chromecast / Google Home device (Linux only — `cast`
-            // is null elsewhere, which hides the button).
+            // Cast to a Chromecast / Google Home device. Linux only: `cast`
+            // is null elsewhere, which hides the button.
             IconButton {
                 id: castBtn
                 visible: !!cast
@@ -207,12 +209,12 @@ Rectangle {
                     contentItem: ColumnLayout {
                         spacing: 2
                         Text {
-                            text: "Cast to"; color: Theme.textDim
+                            text: qsTr("Cast to"); color: Theme.textDim
                             font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                             Layout.leftMargin: 8; Layout.topMargin: 4; Layout.bottomMargin: 2
                         }
                         CastRow {
-                            label: "This computer"
+                            label: qsTr("This computer")
                             active: !(cast && cast.connected)
                             onSelected: { if (cast) cast.disconnect(); castPopup.close() }
                         }
@@ -227,7 +229,7 @@ Rectangle {
                         }
                         Text {
                             visible: !cast || cast.devices.length === 0
-                            text: "Searching for devices…"
+                            text: qsTr("Searching for devices…")
                             color: Theme.textSec; font.pixelSize: 12
                             Layout.margins: 8
                         }

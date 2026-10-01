@@ -26,17 +26,17 @@ Rectangle {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                Text { text: "Queue"; color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+                Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
                 Item { Layout.fillWidth: true }
-                Text { text: player.queueCount + " tracks"; color: Theme.textSec; font.pixelSize: 12 }
+                Text { text: qsTr("%n track(s)", "", player.queueCount); color: Theme.textSec; font.pixelSize: 12 }
                 Text {
                     visible: player.shuffle
-                    text: "· Shuffled"
+                    text: qsTr("· Shuffled")
                     color: Theme.accent; font.pixelSize: 12
                 }
                 Item { width: 8 }
                 Text {
-                    text: "Clear"
+                    text: qsTr("Clear", "verb, empties the play queue")
                     color: clearHov.hovered ? Theme.textPrimary : Theme.textSec
                     font.pixelSize: 12
                     visible: player.queueCount > 0
@@ -111,7 +111,7 @@ Rectangle {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // Up/Down reorder buttons — hidden while shuffled, where a
+                // Up/Down reorder buttons, hidden while shuffled, where a
                 // linear move would fight the displayed play order.
                 Column {
                     spacing: 1
@@ -176,7 +176,7 @@ Rectangle {
                     }
                 }
 
-                // Remove button — visible on hover
+                // Remove button, visible on hover
                 Item {
                     visible: qHov.hovered
                     width: 24; height: 24
@@ -208,7 +208,7 @@ Rectangle {
                 id: queueContextMenu
                 background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
                 MenuItem {
-                    text: "Remove from queue"
+                    text: qsTr("Remove from queue")
                     contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
                     background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                     onTriggered: player.removeFromQueue(queueItem.trackIndex)

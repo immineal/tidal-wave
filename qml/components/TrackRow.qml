@@ -183,22 +183,24 @@ Item {
                 horizontalAlignment: Text.AlignRight
             }
 
-            // Popularity — shown only when showPopularity is true (Search page)
+            // Popularity, shown only when showPopularity is true (Search page)
             Text {
                 id: popText
                 visible: root.showPopularity && root.trackData && root.trackData.popularity > 0
-                text: root.trackData ? root.trackData.popularity + "%" : ""
+                text: root.trackData
+                      ? qsTr("%1%").arg(Number(root.trackData.popularity).toLocaleString(Qt.locale(), 'f', 0))
+                      : ""
                 color: Theme.textDim
                 font.pixelSize: 11
                 Layout.preferredWidth: 40
                 horizontalAlignment: Text.AlignRight
                 ToolTip.visible: popHov.hovered && visible
-                ToolTip.text: "Popularity"
+                ToolTip.text: qsTr("Popularity")
                 ToolTip.delay: 400
                 HoverHandler { id: popHov }
             }
 
-            // Download button — revealed on hover; stays visible while busy/done/error
+            // Download button, revealed on hover; stays visible while busy/done/error
             Item {
                 id: dlButton
                 visible: hov.hovered || root.dlState !== "idle"
@@ -292,33 +294,33 @@ Item {
         background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 200 }
 
         MenuItem {
-            text: "▶  Play now"
+            text: "▶  " + qsTr("Play now")
             contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: root.playRequested()
         }
         MenuItem {
-            text: "+  Add to queue"
+            text: "+  " + qsTr("Add to queue")
             contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: { if (root.trackData) player.appendQueue([root.trackData]) }
         }
         MenuItem {
-            text: "⬇  Download…"
+            text: "⬇  " + qsTr("Download…")
             enabled: root.trackData !== null && root.dlState !== "busy"
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: { if (root.trackData) downloader.downloadTrack(root.trackData) }
         }
         MenuItem {
-            text: "📋  Add to playlist"
+            text: "📋  " + qsTr("Add to playlist")
             enabled: root.trackData !== null
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
             onTriggered: { if (root.trackData) playlistPicker.openFor(root.trackData.id) }
         }
         MenuItem {
-            text: "🗑  Remove from playlist"
+            text: "🗑  " + qsTr("Remove from playlist")
             visible: root.playlistUuid.length > 0
             height: visible ? implicitHeight : 0
             enabled: root.trackData !== null && root.playlistUuid.length > 0
@@ -330,7 +332,7 @@ Item {
             }
         }
         MenuItem {
-            text: "📻  Start radio"
+            text: "📻  " + qsTr("Start radio")
             enabled: root.trackData !== null
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
@@ -343,7 +345,8 @@ Item {
             }
         }
         MenuItem {
-            text: root.isLiked ? "♥  Unlike" : "♡  Like"
+            text: root.isLiked ? "♥  " + qsTr("Unlike", "verb, remove from favourites")
+                               : "♡  " + qsTr("Like", "verb, add to favourites")
             enabled: root.trackData !== null
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
@@ -358,7 +361,7 @@ Item {
         }
         MenuSeparator {}
         MenuItem {
-            text: "💿  Go to album"
+            text: "💿  " + qsTr("Go to album")
             enabled: root.trackData && root.trackData.albumId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
@@ -368,7 +371,7 @@ Item {
             }
         }
         MenuItem {
-            text: "🎤  Go to artist"
+            text: "🎤  " + qsTr("Go to artist")
             enabled: root.trackData && root.trackData.artistId > 0
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
@@ -379,7 +382,7 @@ Item {
         }
         MenuSeparator {}
         MenuItem {
-            text: "🔗  Copy link"
+            text: "🔗  " + qsTr("Copy link")
             enabled: root.trackData !== null
             contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
             background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
@@ -424,7 +427,7 @@ Item {
                 Text {
                     anchors.left: parent.left; anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Add to playlist"
+                    text: qsTr("Add to playlist")
                     color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
                 }
                 VectorIcon {
@@ -475,7 +478,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 1
                                 Text { text: model.title; color: Theme.textPrimary; font.pixelSize: 13 }
-                                Text { text: model.numTracks + " tracks"; color: Theme.textSec; font.pixelSize: 11 }
+                                Text { text: qsTr("%n track(s)", "", model.numTracks); color: Theme.textSec; font.pixelSize: 11 }
                             }
                         }
                     }
