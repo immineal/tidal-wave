@@ -237,22 +237,13 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 28
 
-                Rectangle {
+                AppMark {
                     id: mark
                     // 20 centres the 28px mark in the 68px rail and is also the
                     // sidebar's left inset, so it does not move between the two.
                     x: 20
                     width: 28
                     height: 28
-                    radius: Theme.radiusBadge
-                    color: Theme.accent
-                    Text {
-                        anchors.centerIn: parent
-                        text: "≋"
-                        color: Theme.accentInk
-                        font.pixelSize: 16
-                        font.bold: true
-                    }
                 }
                 Text {
                     anchors.left: mark.right

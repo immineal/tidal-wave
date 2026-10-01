@@ -540,6 +540,68 @@ TestCase {
         h.panel.close()
     }
 
+    // ── the order of the panel ───────────────────────────────────────────
+
+    // Top to bottom, by where the sections actually land rather than by the
+    // order they are declared in. The shortcuts sit above the privacy notice:
+    // the notice is long prose and the natural end of the panel, and a
+    // reference table buried under it is a reference table nobody finds.
+    // Asserted as the whole list, so no section can be moved quietly.
+    readonly property string sectionOrder:
+        "account,appearance,playback,performance,updates,shortcuts,privacy"
+
+    function test_sections_are_in_order() {
+        var h = openPanel(1280, 1200)
+        var sections = collectByName(h.panel.contentItem, "settingsSection", [])
+        compare(sections.length, sectionOrder.split(",").length,
+                "the panel has " + sections.length + " sections")
+
+        var placed = []
+        for (var i = 0; i < sections.length; ++i) {
+            verify(sections[i].key.length > 0,
+                   "a section with the heading \"" + sections[i].heading
+                   + "\" has no key for the order assertion")
+            placed.push({ key: sections[i].key,
+                          y: sections[i].mapToItem(h.panel.contentItem, 0, 0).y })
+        }
+        placed.sort(function (a, b) { return a.y - b.y })
+
+        var got = []
+        for (i = 0; i < placed.length; ++i) got.push(placed[i].key)
+        compare(got.join(","), sectionOrder, "the Settings sections are in the wrong order")
+
+        h.panel.close()
+    }
+
+    // The same thing said the way the user said it, so the reason survives
+    // even if the list above is ever rewritten.
+    function test_shortcuts_sit_above_the_privacy_note() {
+        var h = openPanel(1280, 1200)
+        var shortcuts = null, privacy = null
+        var sections = collectByName(h.panel.contentItem, "settingsSection", [])
+        for (var i = 0; i < sections.length; ++i) {
+            if (sections[i].key === "shortcuts") shortcuts = sections[i]
+            if (sections[i].key === "privacy")   privacy   = sections[i]
+        }
+        verify(shortcuts, "there is no keyboard shortcuts section")
+        verify(privacy, "there is no privacy section")
+
+        var sy = shortcuts.mapToItem(h.panel.contentItem, 0, 0).y
+        var py = privacy.mapToItem(h.panel.contentItem, 0, 0).y
+        verify(sy + shortcuts.height <= py + 1,
+               "the shortcuts table starts at y=" + sy.toFixed(0)
+               + " and the privacy note at y=" + py.toFixed(0)
+               + "; the shortcuts belong above the note, clear of it")
+
+        // And the note really is the end of the panel.
+        for (i = 0; i < sections.length; ++i)
+            verify(sections[i] === privacy
+                   || sections[i].mapToItem(h.panel.contentItem, 0, 0).y < py,
+                   "\"" + sections[i].heading + "\" sits below the privacy note")
+
+        h.panel.close()
+    }
+
     // ── 6. the privacy block ─────────────────────────────────────────────
 
     function test_privacy_text_is_present() {

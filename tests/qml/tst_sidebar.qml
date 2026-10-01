@@ -540,6 +540,101 @@ TestCase {
             compare(sb.rows[i].kind, "album", "a non-album survived the albums chip")
     }
 
+    // The chips are icons at every width, so all five have to stand side by
+    // side however narrow the sidebar is dragged. The arithmetic, measured off
+    // LibraryFinder: the finder is the panel less SideBar's 12px margin on
+    // each side, and inside it the strip keeps a 4px inset left and right with
+    // 2px between chips, so five full-size 30px chips want
+    // 4 + 5*30 + 4*2 + 4 = 166px of finder, i.e. a 190px sidebar. Below that
+    // something has to give, and the one thing that may never give is the
+    // fifth chip sliding under the finder's clip.
+    function test_chips_fit_at_every_sidebar_width_data() {
+        return [
+            { tag: "180", w: 180 },
+            { tag: "200", w: 200 },
+            { tag: "220", w: 220 },
+            { tag: "268", w: 268 },
+            { tag: "320", w: 320 },
+            { tag: "420", w: 420 }
+        ]
+    }
+
+    // The floor the chips may shrink to and still be worth aiming at. These
+    // are below the 32px touch target on purpose: the chips are a dense
+    // desktop control driven by a pointer, and they were already 30x24 before
+    // anything shrank. 26 is where a 15px icon runs out of breathing room.
+    readonly property int minChipWidth:  26
+    readonly property int minChipHeight: 24
+
+    function test_chips_fit_at_every_sidebar_width(row) {
+        var host = showHost(1280, 700)
+        var sb = host.sidebar
+        prefs.setSidebarWidthForTest(row.w)
+        tryCompare(sb, "panelWidth", row.w, 2000,
+                   "the sidebar never settled at " + row.tag + "px")
+        settle(host.contentItem)
+
+        var finder = findByName(sb, "sidebarFinder")
+        verify(finder && finder.visible, "the finder is not showing at " + row.tag)
+        var strip = findByName(finder, "finderChips")
+        verify(strip, "the finder has no chip strip")
+
+        var chips = collectVisibleByName(finder, "finderChip", [])
+        compare(chips.length, 5, "all five chips must still be on screen at " + row.tag)
+
+        var prevRight = -1
+        for (var i = 0; i < chips.length; ++i) {
+            var c = chips[i]
+            var where = "the " + c.kind + " chip at a " + row.tag + "px sidebar"
+
+            verify(c.width >= minChipWidth && c.height >= minChipHeight,
+                   where + " shrank to " + c.width.toFixed(1) + "x"
+                   + c.height.toFixed(1) + ", past the " + minChipWidth + "x"
+                   + minChipHeight + " floor")
+
+            // Inside the finder block, which is the item that clips: anything
+            // past its right edge is the bug from the screenshot.
+            var at = c.mapToItem(finder, 0, 0)
+            verify(at.x >= -0.5,
+                   where + " starts at " + at.x.toFixed(1) + ", left of the finder")
+            verify(at.x + c.width <= finder.width + 0.5,
+                   where + " spans " + at.x.toFixed(1) + ".."
+                   + (at.x + c.width).toFixed(1) + " in a finder only "
+                   + finder.width.toFixed(1) + " wide")
+
+            // And inside the strip that holds it, so the row cannot overflow
+            // its own block even if the block itself grew.
+            var inStrip = c.mapToItem(strip, 0, 0)
+            verify(inStrip.x >= -0.5 && inStrip.x + c.width <= strip.width + 0.5,
+                   where + " hangs out of the chip strip")
+
+            // In order and not stacked on top of one another.
+            verify(at.x >= prevRight,
+                   where + " overlaps the chip before it")
+            prevRight = at.x + c.width
+        }
+
+        // The field above them survives the same squeeze: the placeholder may
+        // elide, but neither the magnifier nor the clear button may be cut.
+        finder.query = "a"
+        settle(host.contentItem)
+        var field = findByName(finder, "finderField")
+        var marks = [findByName(finder, "finderSearchIcon"), findByName(finder, "finderClear")]
+        for (i = 0; i < marks.length; ++i) {
+            verify(marks[i] && marks[i].visible,
+                   "the finder lost one of its field marks at " + row.tag)
+            var m = marks[i].mapToItem(finder, 0, 0)
+            verify(m.x >= -0.5 && m.x + marks[i].width <= finder.width + 0.5,
+                   marks[i].objectName + " spans " + m.x.toFixed(1) + ".."
+                   + (m.x + marks[i].width).toFixed(1) + " in a finder "
+                   + finder.width.toFixed(1) + " wide at " + row.tag)
+        }
+        var input = findByName(field, "finderInput")
+        verify(input && input.width > 0,
+               "the search field was squeezed out of existence at " + row.tag)
+        finder.query = ""
+    }
+
     // ── S10: the footer ──────────────────────────────────────────────────
 
     function test_footer_shows_the_username_and_no_avatar() {
@@ -621,10 +716,16 @@ TestCase {
             var c = kids[i]
             if (!c || c.visible === false || typeof c.width !== "number" || c.width <= 0) continue
             var here = label + " > " + (c.objectName.length > 0 ? c.objectName : ("" + c).split("(")[0])
-            if (c.x < -overflowSlack || c.x + c.width > item.width + overflowSlack)
-                out.push(here + " spans " + c.x.toFixed(1) + ".."
-                         + (c.x + c.width).toFixed(1) + " in a parent "
-                         + item.width.toFixed(1) + " wide")
+            // Mapped rather than read off x and width: a Shape drawn at its
+            // design size and scaled down by a transform, which is how both
+            // VectorIcon and the app mark are built, is only as wide as the
+            // transform leaves it while its own `width` still says 24 or 64.
+            var l = c.mapToItem(item, 0, 0).x
+            var r = c.mapToItem(item, c.width, 0).x
+            if (r < l) { var swap = l; l = r; r = swap }
+            if (l < -overflowSlack || r > item.width + overflowSlack)
+                out.push(here + " spans " + l.toFixed(1) + ".." + r.toFixed(1)
+                         + " in a parent " + item.width.toFixed(1) + " wide")
             if (c.truncated !== undefined && c.elide === Text.ElideNone
                     && ("" + c.text).length > 0 && c.truncated)
                 out.push(here + ": \"" + c.text + "\" is clipped with no elide mode")

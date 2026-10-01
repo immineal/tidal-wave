@@ -241,6 +241,7 @@ Popup {
             // ── account ──────────────────────────────────────────────────
             Section {
                 heading: qsTr("Account")
+                key: "account"
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -279,6 +280,7 @@ Popup {
             // ── appearance ───────────────────────────────────────────────
             Section {
                 heading: qsTr("Appearance")
+                key: "appearance"
 
                 Text {
                     text: qsTr("Theme")
@@ -308,6 +310,7 @@ Popup {
             // ── playback ─────────────────────────────────────────────────
             Section {
                 heading: qsTr("Playback")
+                key: "playback"
 
                 Text {
                     text: qsTr("Streaming quality")
@@ -362,6 +365,7 @@ Popup {
             // ── performance ──────────────────────────────────────────────
             Section {
                 heading: qsTr("Performance")
+                key: "performance"
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -396,6 +400,7 @@ Popup {
             // ── updates ──────────────────────────────────────────────────
             Section {
                 heading: qsTr("Updates")
+                key: "updates"
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -428,37 +433,11 @@ Popup {
 
             Separator { inset: true }
 
-            // ── privacy ──────────────────────────────────────────────────
-            // The text the user approved, one qsTr() per paragraph. Split any
-            // finer and a translator would be handed half-sentences to join
-            // back together in a language whose word order is not ours.
-            Section {
-                heading: qsTr("Privacy")
-
-                PrivacyLine {
-                    text: qsTr("Tidal Wave has no analytics and no telemetry.")
-                }
-                PrivacyLine {
-                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.")
-                }
-                PrivacyLine {
-                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.")
-                }
-                PrivacyLine {
-                    text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
-                }
-                PrivacyLine {
-                    text: qsTr("The full version, with the source file behind every line, is at the bottom of the README.")
-                }
-            }
-
-            Separator { inset: true }
-
             // ── keyboard shortcuts ───────────────────────────────────────
             Section {
                 heading: qsTr("Keyboard shortcuts")
+                key: "shortcuts"
                 spacing: 6
-                Layout.bottomMargin: 20
 
                 Repeater {
                     model: [
@@ -496,6 +475,39 @@ Popup {
                             Layout.fillWidth: true
                         }
                     }
+                }
+            }
+
+            Separator { inset: true }
+
+            // ── privacy ──────────────────────────────────────────────────
+            // Last on purpose. This is a wall of prose and reads as the end of
+            // the panel, while the shortcuts above it are a reference table
+            // people open Settings to look things up in; underneath this they
+            // were not found. tst_settings pins the order.
+            //
+            // The text the user approved, one qsTr() per paragraph. Split any
+            // finer and a translator would be handed half-sentences to join
+            // back together in a language whose word order is not ours.
+            Section {
+                heading: qsTr("Privacy")
+                key: "privacy"
+                Layout.bottomMargin: 20
+
+                PrivacyLine {
+                    text: qsTr("Tidal Wave has no analytics and no telemetry.")
+                }
+                PrivacyLine {
+                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.")
+                }
+                PrivacyLine {
+                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.")
+                }
+                PrivacyLine {
+                    text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
+                }
+                PrivacyLine {
+                    text: qsTr("The full version, with the source file behind every line, is at the bottom of the README.")
                 }
             }
         }
@@ -543,7 +555,11 @@ Popup {
     // under the heading, because ColumnLayout's default property is its data.
     component Section : ColumnLayout {
         id: sec
+        objectName: "settingsSection"
         property string heading: ""
+        // A name that is not the heading, so tst_settings can assert the order
+        // of the panel without the assertion turning into a translation test.
+        property string key: ""
         Layout.fillWidth: true
         Layout.leftMargin: root.sideMargin
         Layout.rightMargin: root.sideMargin

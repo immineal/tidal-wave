@@ -145,6 +145,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/QueuePanel.qml
         qml/components/UpdatePrompt.qml
         qml/components/VectorIcon.qml
+        qml/components/AppMark.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml

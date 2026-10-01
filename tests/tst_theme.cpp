@@ -107,10 +107,14 @@ private slots:
         QSet<QString> names;
         for (const auto &t : theme::themes()) names.insert(t.name);
         QVERIFY(names.contains(theme::defaultTheme()));
+        // Which one is a design decision, so it is written down here the way
+        // the radius scale is: the user picked Deep over Midnight.
+        QCOMPARE(theme::defaultTheme(), QStringLiteral("deep"));
     }
 
-    // Prefs ships "midnight" as its default; if the palette table ever renames
-    // it the app would boot to the fallback and silently ignore the setting.
+    // Prefs takes its default from the table above rather than keeping its own
+    // copy of the name; if the two ever stopped agreeing the app would boot to
+    // the fallback palette and silently ignore the stored setting.
     void prefsDefaultResolves() {
         Prefs prefs;
         QVERIFY(theme::isKnown(prefs.theme()));
@@ -196,23 +200,48 @@ private slots:
                      qPrintable(where + ": textDim is not quieter than textSec ("
                                 + QString::number(contrast(col("textDim"), g), 'f', 2) + " vs "
                                 + QString::number(contrast(col("textSec"), g), 'f', 2) + ")"));
-            // The accent is used for icons and small bold labels.
+            // The accent is used for icons and small bold labels: the active
+            // nav row, an artist link, the title of the playing row. This is
+            // the floor the accents are darkened down to and no further, now
+            // that they also have to carry white ink from the other side.
             QVERIFY2(contrast(col("accent"), g) >= 3.0,
                      qPrintable(where + ": accent below AA-large ("
                                 + QString::number(contrast(col("accent"), g), 'f', 2) + ")"));
         }
 
-        // Text on a solid accent fill (PillButton, the play button).
-        QVERIFY2(contrast(col("accentInk"), col("accent")) >= 4.0,
+        // Text on a solid accent fill (PillButton, the play button, the
+        // Collection filter pills). AA, not AA-large: a filter pill's count is
+        // small text, and this is the requirement the accents were darkened to
+        // meet.
+        QVERIFY2(contrast(col("accentInk"), col("accent")) >= 4.5,
                  qPrintable(name + ": accentInk on accent is "
                             + QString::number(contrast(col("accentInk"), col("accent")), 'f', 2)));
 
         // Error text has to be readable too, not just red.
         QVERIFY2(contrast(col("red"), col("surface")) >= 3.0, qPrintable(name + ": red too dim"));
-        // ...and the label on a solid red fill (the sidebar's Log out button).
-        QVERIFY2(contrast(col("redInk"), col("red")) >= 4.0,
+        // ...and the label on a solid red fill (the danger buttons in
+        // Settings, which fill with red on hover). Same argument as the
+        // accent, same threshold.
+        QVERIFY2(contrast(col("redInk"), col("red")) >= 4.5,
                  qPrintable(name + ": redInk on red is "
                             + QString::number(contrast(col("redInk"), col("red")), 'f', 2)));
+    }
+
+    // The ratio above would still pass with near-black ink on a bright accent,
+    // which is the arrangement the user asked to be rid of: on the Collection
+    // filter pills the word, the parentheses and the count all have to be
+    // white on the accent fill. So the ink is white in all six, and this is
+    // what stops a later palette edit from quietly putting dark ink back.
+    void inkOnAFillIsWhite_data() { themeRows(); }
+    void inkOnAFillIsWhite() {
+        QFETCH(QString, name);
+        const QVariantMap p = theme::palette(name);
+        for (const char *k : {"accentInk", "redInk"}) {
+            const QColor ink = p.value(QLatin1String(k)).value<QColor>();
+            QVERIFY2(contrast(ink, QColor(Qt::white)) <= 1.1,
+                     qPrintable(name + "." + QLatin1String(k) + " is "
+                                + ink.name() + ", which does not read as white"));
+        }
     }
 
     void structureIsVisible_data() { themeRows(); }
@@ -313,6 +342,21 @@ private slots:
         const double wash = p.value("accentWash").value<QColor>().alphaF();
         QVERIFY(soft < tint);
         QVERIFY(tint < wash);
+    }
+
+    // The album, mix and playlist heroes are accentTint fading into bg.
+    // Darkening the accents took luminance out of the tints along with them,
+    // so the tint alphas went up to compensate; this is the check that the
+    // compensation held and the hero did not fade to nothing.
+    void heroGradientStillReads_data() { themeRows(); }
+    void heroGradientStillReads() {
+        QFETCH(QString, name);
+        const QVariantMap p = theme::palette(name);
+        const QColor bg  = p.value("bg").value<QColor>();
+        const QColor top = composite(p.value("accentTint").value<QColor>(), bg);
+        QVERIFY2(contrast(top, bg) >= 1.15,
+                 qPrintable(name + ": the hero gradient is invisible against the page ("
+                            + QString::number(contrast(top, bg), 'f', 3) + ")"));
     }
 
     // Things layered over cover art can't depend on the theme: the artwork is

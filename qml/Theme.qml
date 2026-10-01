@@ -33,12 +33,14 @@ QtObject {
     // ── accent ───────────────────────────────────────────────────────────
     readonly property color accent:    p.accent
     readonly property color accentDim: p.accentDim
-    // Ink on a solid accent fill. Not always white: on the dark themes the
-    // accent is bright enough that white text on it fails contrast.
+    // Ink on a solid accent fill, white in every theme. The accents were
+    // darkened until white cleared contrast on all six, rather than the ink
+    // changing colour per theme, so a filled chip reads the same everywhere.
     readonly property color accentInk: p.accentInk
-    // Three strengths of accent wash, heavier on the light themes so they
-    // still read. accentSoft tints a playing row, accentTint a hero gradient,
-    // accentWash a filled badge.
+    // Three strengths of accent wash. Heavier on the dark themes, because
+    // darkening their accents took the derived tints down with them.
+    // accentSoft tints a playing row, accentTint a hero gradient, accentWash
+    // a filled badge.
     readonly property color accentSoft: p.accentSoft
     readonly property color accentTint: p.accentTint
     readonly property color accentWash: p.accentWash

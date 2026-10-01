@@ -34,7 +34,7 @@ private slots:
 
     void freshInstallDefaults() {
         Prefs p;
-        QCOMPARE(p.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p.theme(), QStringLiteral("deep"));
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
