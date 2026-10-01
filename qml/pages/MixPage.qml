@@ -96,7 +96,7 @@ Rectangle {
 
                     Text {
                         text: qsTr("Mix", "noun, a Tidal mix")
-                        color: Theme.textDim
+                        color: Theme.textSec
                         font.pixelSize: 12
                         font.bold: true
                         font.letterSpacing: 1

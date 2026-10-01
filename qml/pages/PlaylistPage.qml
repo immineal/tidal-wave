@@ -130,7 +130,7 @@ Rectangle {
 
                     Text {
                         text: qsTr("Playlist")
-                        color: Theme.textDim
+                        color: Theme.textSec
                         font.pixelSize: 12
                         font.bold: true
                         font.letterSpacing: 1

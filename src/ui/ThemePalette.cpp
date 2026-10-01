@@ -20,6 +20,10 @@ struct Spec {
     const char *surfaceHigh;
     const char *surfaceHov;
     const char *border;
+    // The hover wash's alpha, 0-255. Per theme rather than one number for
+    // light and one for dark: the same wash reads differently over "deep",
+    // whose ground is pure black, than over the other three dark palettes.
+    int         hoverAlpha;
     const char *textPrimary;
     const char *textSec;
     const char *textDim;
@@ -37,40 +41,51 @@ struct Spec {
 // green one instead. On the dark themes the accent is bright enough that white
 // text on it fails contrast, so accentInk is a near-black drawn from the same
 // hue; on the light themes the accent is deep and accentInk is white.
+//
+// Two columns were moved after a screenshot audit, and both are load-bearing:
+//
+//   textDim    carries the track number and duration columns, "Playing from",
+//              every Settings heading and the login disclaimer, so it is
+//              content and not decoration. It sat at 2.2-3.1:1 and now clears
+//              3:1 on bg, surface and surfaceHigh while staying roughly half
+//              of textSec's contrast, which is what makes it read as quiet.
+//   surfaceHov is the hover fill for a track row and the highlight for a menu
+//              item. At 1.27-1.42:1 against the page you could not tell a
+//              hovered row from its neighbours; it is ~1.69:1 now.
 const Spec kSpecs[] = {
     { "midnight", QT_TRANSLATE_NOOP("Theme", "Midnight"), true,
-      "#0A0A0A", "#141414", "#1E1E1E", "#262626", "#2A2A2A",
-      "#FFFFFF", "#A0A0A0", "#555555",
+      "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A", 26,
+      "#FFFFFF", "#A0A0A0", "#6B6B6B",
       "#00B2F8", "#0082B8", "#04161F",
       "#FF4D4D", "#2A0A0A", "#1DB954" },
 
     { "forest",   QT_TRANSLATE_NOOP("Theme", "Forest"),   true,
-      "#0B0F0C", "#141A16", "#1C241E", "#242E26", "#29332B",
-      "#EEF5F0", "#94A69B", "#56655C",
+      "#0B0F0C", "#141A16", "#1C241E", "#323C34", "#29332B", 26,
+      "#EEF5F0", "#94A69B", "#637269",
       "#3DD68C", "#2A9E66", "#04180F",
       "#FF5A5A", "#2A0A0A", "#4ADE80" },
 
     { "ember",    QT_TRANSLATE_NOOP("Theme", "Ember"),    true,
-      "#100D0C", "#1A1614", "#241F1C", "#2E2825", "#332C28",
-      "#F7F2EF", "#A89C95", "#615853",
+      "#100D0C", "#1A1614", "#241F1C", "#3E3836", "#332C28", 26,
+      "#F7F2EF", "#A89C95", "#736B66",
       "#FF7A45", "#C25A2E", "#1F0B04",
       "#FF5F5F", "#2A0A0A", "#5FBF7A" },
 
     { "deep",     QT_TRANSLATE_NOOP("Theme", "Deep"),     true,
-      "#000000", "#0C0C0E", "#16161A", "#1E1E24", "#24242B",
-      "#FFFFFF", "#9BA1AB", "#4E545E",
+      "#000000", "#0C0C0E", "#16161A", "#343439", "#24242B", 32,
+      "#FFFFFF", "#9BA1AB", "#61666F",
       "#22D3EE", "#0E9BB3", "#03181C",
       "#FF5C6E", "#2A0A0F", "#34D399" },
 
     { "daylight", QT_TRANSLATE_NOOP("Theme", "Daylight"), false,
-      "#FFFFFF", "#F2F5F8", "#E6EBF0", "#D8E0E8", "#CFD9E2",
-      "#08111A", "#4C5A66", "#8A97A3",
+      "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
+      "#08111A", "#4C5A66", "#798591",
       "#0A6FC4", "#08528F", "#FFFFFF",
       "#C0392B", "#FFFFFF", "#1B7F4B" },
 
     { "paper",    QT_TRANSLATE_NOOP("Theme", "Paper"),    false,
-      "#FAF7F0", "#F1EBDC", "#E7DFCB", "#DBD1B9", "#CBC0A6",
-      "#1B1913", "#5D564A", "#958C7B",
+      "#FAF7F0", "#F1EBDC", "#E7DFCB", "#CAC0AA", "#CBC0A6", 26,
+      "#1B1913", "#5D564A", "#837B6C",
       "#2F6F4E", "#22543A", "#FFFFFF",
       "#A8342A", "#FFFFFF", "#4F7A35" },
 };
@@ -117,9 +132,15 @@ QVariantMap build(const Spec &s) {
     m.insert(QStringLiteral("accentTint"),  withAlpha(accent, tint));
     m.insert(QStringLiteral("accentWash"),  withAlpha(accent, wash));
 
-    // Was Qt.rgba(1,1,1,0.04) everywhere, which is invisible on a light ground.
+    // Was Qt.rgba(1,1,1,0.04) everywhere, which is invisible on a light
+    // ground, then ~5% in both directions, which was barely better: a hovered
+    // row came out at 1.1:1 against the ground it sits on. Strong enough now
+    // to be unmistakable, and still well short of surfaceHov, which the
+    // sidebar uses for the row you are actually on - see tst_theme.cpp,
+    // hoverIsVisibleButNotASelection().
     m.insert(QStringLiteral("hoverFill"),
-             s.dark ? QColor(255, 255, 255, 12) : QColor(0, 0, 0, 14));
+             s.dark ? QColor(255, 255, 255, s.hoverAlpha)
+                    : QColor(0, 0, 0, s.hoverAlpha));
 
     m.insert(QStringLiteral("red"),     red);
     m.insert(QStringLiteral("redSoft"), withAlpha(red, 0.12));

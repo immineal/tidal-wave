@@ -86,9 +86,16 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
+                    // accentTint, not artScrimStrong. The hero is a tint over
+                    // the page, not a wash over cover art - the artwork behind
+                    // it is at 0.18 - and artScrimStrong is black at 60% in
+                    // every theme by design. On the two light themes that
+                    // composited to a mud grey that put the eyebrow at 1.3:1
+                    // and the artist link at 2.2:1. Playlist, Mix and Now
+                    // Playing already tint the same header from the accent.
                     gradient: Gradient {
                         orientation: Gradient.Vertical
-                        GradientStop { position: 0; color: Theme.artScrimStrong }
+                        GradientStop { position: 0; color: Theme.accentTint }
                         GradientStop { position: 1; color: Theme.bg }
                     }
                 }
@@ -124,7 +131,7 @@ Rectangle {
 
                         Text {
                             text: qsTr("Album")
-                            color: Theme.textDim
+                            color: Theme.textSec
                             font.pixelSize: 12
                             font.bold: true
                             font.letterSpacing: 1

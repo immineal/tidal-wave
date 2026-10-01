@@ -139,12 +139,65 @@ Popup {
     // set of four numbers copied six times.
     readonly property int sideMargin: 20
 
+    // The panel's own ground at a given alpha. "transparent" is transparent
+    // *black*, which greys a fade out on the two light themes.
+    function fadeStop(a) {
+        return Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, a)
+    }
+
+    // Roughly 1400px of content in a 640px panel, and the default AsNeeded
+    // scrollbar drew nothing at all: Updates, Privacy and Keyboard shortcuts
+    // were below the fold with no sign they existed. Two signals now, because
+    // one of them has to survive a glance: a bar that is always there, and a
+    // fade at the bottom edge that goes away once you reach the end.
     ScrollView {
         id: scroller
         objectName: "settingsScroll"
         anchors.fill: parent
         contentWidth: availableWidth
         clip: true
+
+        // The bar gets a gutter of its own rather than being laid over the
+        // right edge of the content it describes.
+        rightPadding: 10
+
+        // parent, x, y and height are spelled out because ScrollView only
+        // lays out the scrollbar it makes for itself. Hand it one and it is
+        // left at 0,0 with its implicit 10x6 size: the first attempt at this
+        // put a grey nub in the top-left corner of the panel and no bar.
+        ScrollBar.vertical: ScrollBar {
+            id: vbar
+            objectName: "settingsScrollBar"
+            parent: scroller
+            x: scroller.width - width
+            // Held off the popup's rounded corners, which the ScrollView's
+            // rectangular clip does not follow.
+            y: scroller.topPadding + Theme.radiusPopup
+            height: scroller.availableHeight - 2 * Theme.radiusPopup
+            policy: ScrollBar.AlwaysOn
+            padding: 3
+
+            contentItem: Rectangle {
+                implicitWidth: 4
+                radius: width / 2
+                color: vbar.pressed || vbar.hovered ? Theme.textSec : Theme.textDim
+                Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
+            }
+
+            // A groove the full height of the view, so the handle's length
+            // says how much of the panel you are looking at.
+            background: Rectangle {
+                implicitWidth: 10
+                color: "transparent"
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 4
+                    height: parent.height
+                    radius: width / 2
+                    color: Theme.hoverFill
+                }
+            }
+        }
 
         ColumnLayout {
             width: scroller.availableWidth
@@ -445,6 +498,31 @@ Popup {
                     }
                 }
             }
+        }
+    }
+
+    // The bottom edge of a scrollable panel, faded into the panel's own
+    // background: text that runs under it reads as cut off rather than as the
+    // end of the list. It hides itself at the end of the travel, so "nothing
+    // below" and "more below" look different.
+    Rectangle {
+        id: bottomFade
+        objectName: "settingsBottomFade"
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 28
+        readonly property var flick: scroller.contentItem
+        readonly property bool moreBelow:
+            flick ? flick.contentHeight - flick.contentY - flick.height > 1 : false
+        opacity: moreBelow ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        // Weighted to the last few pixels: a linear fade over 28px takes a
+        // readable line and leaves it half there, which is worse than either
+        // showing it or cutting it.
+        gradient: Gradient {
+            GradientStop { position: 0;    color: root.fadeStop(0) }
+            GradientStop { position: 0.5;  color: root.fadeStop(0.25) }
+            GradientStop { position: 1;    color: root.fadeStop(1) }
         }
     }
 
