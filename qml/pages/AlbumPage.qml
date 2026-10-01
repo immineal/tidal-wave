@@ -177,7 +177,10 @@ Rectangle {
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
                                 if (albumData.quality) parts.push(player.qualityLabel(albumData.quality))
-                                return parts.join(" • ")
+                                // qualityLabel echoes a code it does not know, and an
+                                // unknown code can be empty, which otherwise leaves the
+                                // line ending in a dangling separator.
+                                return parts.filter(function (p) { return p && String(p).length > 0 }).join(" • ")
                             }
                             color: Theme.textSec
                             font.pixelSize: 13
