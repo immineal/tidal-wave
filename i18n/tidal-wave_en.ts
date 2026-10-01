@@ -425,6 +425,33 @@
     </message>
 </context>
 <context>
+    <name>LibraryFinder</name>
+    <message>
+        <source>Find in library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Songs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playlists</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mixes</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LoginPage</name>
     <message>
         <source>Native Linux Tidal Client</source>
@@ -579,6 +606,18 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Cast to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Searching for devices…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Up Next</source>
         <translation type="unfinished"></translation>
     </message>
@@ -637,6 +676,11 @@
 </context>
 <context>
     <name>PlayerBar</name>
+    <message>
+        <source>, </source>
+        <comment>between two artist names</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>No track playing</source>
         <translation type="unfinished"></translation>
@@ -846,7 +890,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Playlists</source>
+        <source>No matches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing saved yet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -55,10 +55,10 @@ private slots:
         // A rail appears below this window width; the sidebar it replaces has
         // to fit above it with room for content beside it.
         QVERIFY(Prefs::railBreakpoint > Prefs::maxSidebarWidth);
-        // The chips only get labels somewhere inside the draggable range,
-        // otherwise the threshold is unreachable.
-        QVERIFY(Prefs::chipLabelWidth > Prefs::minSidebarWidth);
-        QVERIFY(Prefs::chipLabelWidth < Prefs::maxSidebarWidth);
+        // The default width has to sit inside the draggable range too, or the
+        // sidebar jumps the first time the handle is touched.
+        QVERIFY(Prefs().sidebarWidth() >= Prefs::minSidebarWidth);
+        QVERIFY(Prefs().sidebarWidth() <= Prefs::maxSidebarWidth);
     }
 
     // ── persistence ──────────────────────────────────────────────────────

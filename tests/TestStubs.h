@@ -747,7 +747,6 @@ public:
     static constexpr int kMaxSidebar    = 420;
     static constexpr int kRailBreak     = 820;
     static constexpr int kRail          = 68;
-    static constexpr int kChipLabelMin  = 268;
 
     QString theme() const        { return m_theme; }
     QString language() const     { return m_language; }
@@ -786,7 +785,6 @@ public:
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
     Q_INVOKABLE int railBreak() const    { return kRailBreak; }
     Q_INVOKABLE int rail() const         { return kRail; }
-    Q_INVOKABLE int chipLabelMin() const { return kChipLabelMin; }
 
     Q_INVOKABLE QString appVersion() const { return m_version; }
 
