@@ -18,7 +18,7 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 *   **Chromecast Output** (Linux): Cast audio to Chromecast / Google Home devices. Native mDNS discovery (Avahi) and CASTV2 control, with a built-in HTTP server that streams the current track (FLAC up to 96 kHz, or AAC) directly to the device. Downloads/downsamples on the fly so every quality tier casts.
 *   **Library Sidebar**: One flat list of your playlists, albums, artists and mixes, ordered pinned first, then recently played, then A-Z. A search field above it also matches saved songs, with type filter chips next to it. Below 820px of window width the sidebar collapses to a 68px icon rail that hover-expands back over the content; its border is a drag handle (`qml/components/SideBar.qml`, `qml/components/LibraryFinder.qml`).
 *   **Pinning**: Pin albums, playlists, artists and mixes to a block above the library list, reorder them by dragging. Stored per Tidal user id (`src/ui/PinStore.cpp`).
-*   **Six Themes**: Four dark (Midnight, Forest, Ember, Deep) and two light (Daylight, Paper). Switching repaints the running app (`src/ui/ThemePalette.cpp`).
+*   **Six Themes**: Three dark (Midnight, Forest, Ember) and three light (Daylight, Paper, Dawn), paired by hue. A pure-black switch pulls any dark theme down to true black for OLED screens. Switching repaints the running app (`src/ui/ThemePalette.cpp`).
 *   **German Translation**: A complete German catalogue. The language follows your system locale by default and can be switched without restarting (`src/ui/I18n.cpp`, `i18n/tidal-wave_de.ts`).
 *   **Responsive Down to 640px**: The window minimum is 640x600. Narrow windows stack the Now Playing transport, drop the player bar's volume and cast controls, and trim the track list's columns.
 *   **Persistent Navigation State**: Separate loaders retain individual page states when jumping between Home, Search, and My Collection views.
@@ -225,8 +225,12 @@ source in a few minutes; the file that does each thing is named.
     `~/.local/share/TidalWave/Tidal Wave/`, holds `library/albumtracks-<userId>.json`: a
     cache of your library's album track listings, so searching your collection does not
     re-fetch it (`src/api/LibraryIndex.cpp`).
-*   **`~/.local/share/icons/hicolor/*/apps/tidal-wave.png`** is the app icon, exported on
-    first launch so the tray and taskbar can resolve it by name (`Application::loadAppIcon`).
+*   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
+    **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so
+    the tray, taskbar and launcher can resolve it by name. The app writes a copy itself
+    only when the icon theme has none, which is the case when it runs from a build tree
+    (`Application::loadAppIcon`). `docs/ICONS.md` lists every surface the icon appears on
+    and how to refresh each one.
 *   **Downloads** go wherever you choose in the save dialog, defaulting to your Music
     folder. **Cast transcodes** are temporary files named `tidal-wave-cast-*` in your temp
     directory. Each one is deleted when the next track is prepared and when the app shuts

@@ -972,6 +972,14 @@
         <translation>Hell</translation>
     </message>
     <message>
+        <source>Pure black</source>
+        <translation>Reines Schwarz</translation>
+    </message>
+    <message>
+        <source>Saves power on OLED screens.</source>
+        <translation>Spart Strom auf OLED-Bildschirmen.</translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation>Der Systemstandard ist derzeit %1.</translation>
     </message>
@@ -1143,16 +1151,16 @@
         <translation>Glut</translation>
     </message>
     <message>
-        <source>Deep</source>
-        <translation>Tiefe</translation>
-    </message>
-    <message>
         <source>Daylight</source>
         <translation>Tageslicht</translation>
     </message>
     <message>
         <source>Paper</source>
         <translation>Papier</translation>
+    </message>
+    <message>
+        <source>Dawn</source>
+        <translation>Morgenrot</translation>
     </message>
 </context>
 <context>

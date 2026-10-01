@@ -105,6 +105,7 @@ TestCase {
 
     function init() {
         prefs.theme = "midnight"
+        prefs.oledBlack = false
         prefs.language = "system"
         prefs.audioDevice = ""
         prefs.softwareRendering = false
@@ -122,6 +123,7 @@ TestCase {
 
     function cleanupTestCase() {
         prefs.theme = "midnight"
+        prefs.oledBlack = false
     }
 
     Component {
@@ -331,8 +333,68 @@ TestCase {
             verify(heading && heading.visible && heading.text.length > 0,
                    "a theme group has no heading")
         }
-        compare(dark, 4, "there are four dark palettes")
-        compare(light, 2, "there are two light palettes")
+        compare(dark, 3, "there are three dark palettes")
+        compare(light, 3, "there are three light palettes")
+
+        h.panel.close()
+    }
+
+    // The two halves are columns side by side, and the nth tile of one sits
+    // on the same line as the nth tile of the other, so each line reads as
+    // one colour family: Midnight with Daylight, Forest with Paper, Ember
+    // with Dawn. Stack the halves instead and the pairing is gone.
+    function test_the_two_columns_read_as_hue_rows() {
+        var h = openPanel(1280, 1200)
+        var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
+        compare(groups.length, 2)
+
+        var darkGroup  = groups[0].dark ? groups[0] : groups[1]
+        var lightGroup = groups[0].dark ? groups[1] : groups[0]
+
+        var a = collectByName(darkGroup,  "settingsThemeOption", [])
+        var b = collectByName(lightGroup, "settingsThemeOption", [])
+        compare(a.length, b.length, "the two columns are not the same length")
+
+        // Beside, not below.
+        var ax = darkGroup.mapToItem(h.panel.contentItem, 0, 0).x
+        var bx = lightGroup.mapToItem(h.panel.contentItem, 0, 0).x
+        verify(Math.abs(ax - bx) > 40,
+               "the two halves are stacked, not side by side")
+        verify(Math.abs(darkGroup.width - lightGroup.width) <= 2,
+               "the columns are not the same width, so the rows cannot line up")
+
+        var expect = [["midnight", "daylight"], ["forest", "paper"], ["ember", "dawn"]]
+        for (var i = 0; i < a.length; i++) {
+            var ay = a[i].mapToItem(h.panel.contentItem, 0, 0).y
+            var by = b[i].mapToItem(h.panel.contentItem, 0, 0).y
+            verify(Math.abs(ay - by) <= 1,
+                   a[i].themeName + " and " + b[i].themeName
+                   + " are not on the same row (" + ay.toFixed(1) + " vs " + by.toFixed(1) + ")")
+            compare([a[i].themeName, b[i].themeName].join(","), expect[i].join(","),
+                    "row " + i + " is not the pair the palette table defines")
+        }
+
+        h.panel.close()
+    }
+
+    // The swatch table in the panel is a hand copy of three columns of the
+    // C++ one, and it drifted two accent revisions behind before anyone
+    // looked. Picking a theme and reading the live palette back is the only
+    // check that can catch that.
+    function test_every_swatch_matches_the_palette_it_claims() {
+        var h = openPanel(1280, 1200)
+        var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
+        verify(tiles.length > 0)
+
+        for (var i = 0; i < tiles.length; i++) {
+            prefs.theme = tiles[i].themeName
+            settle(h.panel.contentItem)
+            var swatch = findByName(tiles[i], "settingsThemeSwatch")
+            compare(swatch.color.toString(), Theme.bg.toString(),
+                    tiles[i].themeName + "'s swatch shows a ground the palette does not have")
+            compare(swatch.border.color.toString(), Theme.border.toString(),
+                    tiles[i].themeName + "'s swatch shows the wrong border")
+        }
 
         h.panel.close()
     }
@@ -350,6 +412,7 @@ TestCase {
         // Start somewhere else, or picking the current theme is a no-op and
         // the repaint cannot be seen.
         prefs.theme = (row.name === "midnight") ? "forest" : "midnight"
+        prefs.oledBlack = false
 
         var h = openPanel(1280, 1200)
         var before = probe.color.toString()
@@ -367,6 +430,95 @@ TestCase {
         verify(probe.color.toString() !== before,
                "picking " + row.name + " wrote the setting but nothing repainted")
         verify(target.selected, "the picked tile does not read as selected")
+
+        h.panel.close()
+    }
+
+    // ── 1b. the pure-black switch ────────────────────────────────────────
+
+    // It belongs to the dark column, and on a light theme it is gone rather
+    // than greyed out: there is nothing to work out about how to enable it,
+    // so there is nothing to invite the user to try.
+    function test_the_pure_black_switch_is_hidden_on_a_light_theme_data() {
+        return [
+            { tag: "daylight", name: "daylight" },
+            { tag: "paper",    name: "paper" },
+            { tag: "dawn",     name: "dawn" }
+        ]
+    }
+
+    function test_the_pure_black_switch_is_hidden_on_a_light_theme(row) {
+        prefs.theme = row.name
+        var h = openPanel(1280, 1200)
+
+        var toggle = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(toggle, "the switch was removed rather than hidden")
+        verify(!toggle.visible, row.name + " still shows the pure-black switch")
+        var note = findByName(h.panel.contentItem, "settingsOledNote")
+        verify(note && !note.visible, row.name + " still shows the switch's note")
+
+        h.panel.close()
+    }
+
+    function test_the_pure_black_switch_is_shown_on_a_dark_theme_data() {
+        return [
+            { tag: "midnight", name: "midnight" },
+            { tag: "forest",   name: "forest" },
+            { tag: "ember",    name: "ember" }
+        ]
+    }
+
+    function test_the_pure_black_switch_is_shown_on_a_dark_theme(row) {
+        prefs.theme = row.name
+        var h = openPanel(1280, 1200)
+
+        var toggle = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(toggle && toggle.visible, row.name + " hides the pure-black switch")
+        var note = findByName(h.panel.contentItem, "settingsOledNote")
+        verify(note && note.visible && note.text.length > 0,
+               "the switch is offered with no explanation of what it does")
+
+        // Under the dark column, not floating between the two.
+        var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
+        var darkGroup = groups[0].dark ? groups[0] : groups[1]
+        var tiles = collectByName(darkGroup, "settingsThemeOption", [])
+        var lowest = 0
+        for (var i = 0; i < tiles.length; i++)
+            lowest = Math.max(lowest, tiles[i].mapToItem(h.panel.contentItem, 0, 0).y)
+        var ty = toggle.mapToItem(h.panel.contentItem, 0, 0).y
+        verify(ty > lowest, "the switch is not below the dark palettes")
+        var tx = toggle.mapToItem(h.panel.contentItem, 0, 0).x
+        var dx = darkGroup.mapToItem(h.panel.contentItem, 0, 0).x
+        verify(tx >= dx - 1 && tx <= dx + darkGroup.width + 1,
+               "the switch is not inside the dark column")
+
+        h.panel.close()
+    }
+
+    // Flipping it writes the setting and the live palette follows, the same
+    // way picking a theme does. The probe is the proof: a switch that stores
+    // a bool and repaints nothing is the bug this whole file exists for.
+    function test_flipping_the_pure_black_switch_repaints() {
+        prefs.theme = "forest"
+        prefs.oledBlack = false
+
+        var h = openPanel(1280, 1200)
+        var before = probe.color.toString()
+        var toggle = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(toggle && toggle.visible)
+        verify(!toggle.checked, "the switch does not follow prefs.oledBlack")
+
+        clickItem(h.panel, toggle)
+
+        verify(prefs.oledBlack, "the switch did not write prefs.oledBlack")
+        verify(toggle.checked, "the switch did not follow the setting it just wrote")
+        compare(probe.color.toString(), "#000000", "the page did not go black")
+        verify(probe.color.toString() !== before)
+
+        clickItem(h.panel, toggle)
+
+        verify(!prefs.oledBlack)
+        compare(probe.color.toString(), before, "turning it off did not come back")
 
         h.panel.close()
     }

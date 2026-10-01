@@ -119,18 +119,54 @@ void TidalClient::fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) 
     QUrlQuery q;
     q.addQueryItem("limit",  QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
-    m_api->get(QStringLiteral("users/%1/favorites/albums").arg(m_userId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseAlbums(root) : QList<Album>{}, err); });
+    // Newest saved first. Without an order the endpoint answers order=NAME, so
+    // the collection opened alphabetically and anything just saved landed in
+    // the middle of it. The date lives on the favourites row, not on the album
+    // the row wraps, and nothing here parses it, so this ordering has to come
+    // from the server: a client-side sort has no timestamp to sort on.
+    q.addQueryItem("order",  "DATE");
+    q.addQueryItem("orderDirection", "DESC");
+
+    // If the server will not take the ordering, fall back to an unordered
+    // request rather than letting the collection come back empty. The order
+    // params have not been exercised against a live account, and a rejected
+    // parameter would otherwise turn a cosmetic preference into a library that
+    // does not load at all.
+    const QString path = QStringLiteral("users/%1/favorites/albums").arg(m_userId);
+    QUrlQuery plain;
+    plain.addQueryItem("limit",  QString::number(limit));
+    plain.addQueryItem("offset", QString::number(offset));
+
+    m_api->get(path, q, [this, cb, path, plain](QJsonObject root, QString err) mutable {
+        if (err.isEmpty()) { cb(parseAlbums(root), err); return; }
+        qWarning("TidalClient: favourites by date failed (%s); retrying unordered",
+                 qPrintable(err));
+        m_api->get(path, plain, [this, cb](QJsonObject root2, QString err2) {
+            cb(err2.isEmpty() ? parseAlbums(root2) : QList<Album>{}, err2); });
+    });
 }
 
 void TidalClient::fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset) {
     QUrlQuery q;
     q.addQueryItem("limit", QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
-    m_api->get(QStringLiteral("users/%1/favorites/artists").arg(m_userId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseArtists(root) : QList<Artist>{}, err); });
+    // Newest followed first, for the same reason as the albums above.
+    q.addQueryItem("order", "DATE");
+    q.addQueryItem("orderDirection", "DESC");
+
+    // Same fallback as the albums above.
+    const QString path = QStringLiteral("users/%1/favorites/artists").arg(m_userId);
+    QUrlQuery plain;
+    plain.addQueryItem("limit",  QString::number(limit));
+    plain.addQueryItem("offset", QString::number(offset));
+
+    m_api->get(path, q, [this, cb, path, plain](QJsonObject root, QString err) mutable {
+        if (err.isEmpty()) { cb(parseArtists(root), err); return; }
+        qWarning("TidalClient: followed artists by date failed (%s); retrying unordered",
+                 qPrintable(err));
+        m_api->get(path, plain, [this, cb](QJsonObject root2, QString err2) {
+            cb(err2.isEmpty() ? parseArtists(root2) : QList<Artist>{}, err2); });
+    });
 }
 
 void TidalClient::fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) {

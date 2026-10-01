@@ -81,14 +81,75 @@ QString stripLeadingArticle(const QString &title) {
     return trimmed;
 }
 
-// 0 for no match. A hit at the start of the title beats one at the start of a
-// word, which beats one buried inside a word: typing "love" should find
-// "Lovely Days" before "Clover Field".
-int scoreOf(const QString &foldedHaystack, const QString &foldedNeedle) {
+// ── how a search result is ranked (S5) ──────────────────────────────────────
+//
+// Four terms, added up. The first is where in the title the query landed and
+// it dominates: the tiers are 100 apart and the other three together can never
+// reach 95, so a weaker match can be reordered among its equals but can never
+// climb over a better-placed one. Someone who pinned a playlist still does not
+// want it above the album they just spelled out in full.
+//
+// The three that follow are the difference between a substring filter and a
+// ranking, and each answers a question the bare position cannot:
+//
+//   coverage      how much of the title the query accounts for. "Dub" is all
+//                 of "Dub" and a sixth of "Dubstep Essentials Volume Four".
+//   kind          what sort of thing matched. The four library kinds were
+//                 saved on purpose, so they beat a song; a liked song beats a
+//                 song the background indexer merely found sitting on a saved
+//                 album, which is the weakest evidence in the whole index.
+//   familiarity   pinned, or played recently. The library list itself is
+//                 ordered that way (S2), so the search agrees with it.
+
+constexpr int kNoMatch        = 0;
+constexpr int kMatchMidWord   = 100;   // buried inside a word
+constexpr int kMatchWordStart = 200;   // a later word starts with it
+constexpr int kMatchPrefix    = 300;   // the title starts with it
+constexpr int kMatchExact     = 400;   // the title is the query
+
+// Ceilings for the three adjustments. 40 + 25 + 30 < 100, which is what keeps
+// a tier sealed.
+constexpr int kCoverageMax    = 40;
+constexpr int kKindMax        = 25;
+constexpr int kFamiliarityMax = 30;
+
+// kNoMatch for no match. Typing "love" finds "Lovely Days" before "Endless
+// Love" before "Clover Field".
+int matchScore(const QString &foldedHaystack, const QString &foldedNeedle) {
     const qsizetype at = foldedHaystack.indexOf(foldedNeedle);
-    if (at < 0) return 0;
-    if (at == 0) return foldedHaystack.size() == foldedNeedle.size() ? 100 : 90;
-    return foldedHaystack.at(at - 1).isLetterOrNumber() ? 40 : 70;
+    if (at < 0) return kNoMatch;
+    if (at == 0)
+        return foldedHaystack.size() == foldedNeedle.size() ? kMatchExact : kMatchPrefix;
+    return foldedHaystack.at(at - 1).isLetterOrNumber() ? kMatchMidWord : kMatchWordStart;
+}
+
+// A short title matched in full is a far stronger signal than a long one that
+// happens to contain the same letters. Plain integer arithmetic, so two titles
+// of the same length always tie exactly.
+int coverageBonus(qsizetype needleLen, qsizetype titleLen) {
+    if (titleLen <= 0) return 0;
+    return int(kCoverageMax * needleLen / titleLen);
+}
+
+// An artist is the widest door: their page leads to every album, every song
+// and the rest of the catalogue, so when a name is both an artist and an album
+// the artist is nearly always the one meant.
+int kindBonus(const QString &kind, bool liked) {
+    if (kind == QLatin1String(kKindArtist))   return kKindMax;        // 25
+    if (kind == QLatin1String(kKindAlbum))    return 20;
+    if (kind == QLatin1String(kKindPlaylist)) return 20;
+    // A mix is a destination too, but Tidal picked it, not the user.
+    if (kind == QLatin1String(kKindMix))      return 10;
+    return liked ? 12 : 0;
+}
+
+// Pinned beats played beats neither. Deliberately coarse: how recently
+// something was played breaks ties further down rather than scoring here, so
+// a play five minutes ago cannot outweigh a better match.
+int familiarityBonus(int pinIndex, qint64 lastPlayed) {
+    if (pinIndex >= 0)  return kFamiliarityMax;   // 30
+    if (lastPlayed > 0) return 15;
+    return 0;
 }
 
 QString artistPictureUrl(const QString &picture, int size = 320) {
@@ -394,13 +455,12 @@ void LibraryIndex::rebuild() {
 
     m_entries.clear();
     m_entries.reserve(m_library.size());
-    for (const Entry &e : m_library) m_entries.append(toRow(e, 0, false, QString()));
+    for (const Entry &e : m_library) m_entries.append(toRow(e, 0));
 
     emit entriesChanged();
 }
 
-QVariantMap LibraryIndex::toRow(const Entry &e, int score, bool expanded,
-                                const QString &expandedFrom) {
+QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     QVariantMap m;
     m[QStringLiteral("kind")]       = e.kind;
     m[QStringLiteral("id")]         = e.id;
@@ -417,9 +477,7 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score, bool expanded,
         m[QStringLiteral("type")] = e.playlistType;
     if (e.albumId > 0) m[QStringLiteral("albumId")] = e.albumId;
     if (!e.artistIds.isEmpty()) m[QStringLiteral("artistId")] = e.artistIds.first();
-    m[QStringLiteral("score")]        = score;
-    m[QStringLiteral("expanded")]     = expanded;
-    m[QStringLiteral("expandedFrom")] = expandedFrom;
+    m[QStringLiteral("score")] = score;
     return m;
 }
 
@@ -484,7 +542,9 @@ void LibraryIndex::rebuildTrackEntries() {
     for (const Track &t : m_favoriteTracks) {
         if (m_trackIds.contains(t.id)) continue;
         m_trackIds.insert(t.id);
-        m_trackEntries.append(entryFor(t, 0));
+        Entry e = entryFor(t, 0);
+        e.liked = true;
+        m_trackEntries.append(e);
     }
 
     for (auto it = m_albumTrackCache.constBegin(); it != m_albumTrackCache.constEnd(); ++it) {
@@ -670,7 +730,7 @@ void LibraryIndex::saveTrackCache() const {
     f.commit();
 }
 
-// ── search (S5 to S7) ───────────────────────────────────────────────────────
+// ── search (S5, S6) ─────────────────────────────────────────────────────────
 
 QVariantList LibraryIndex::search(const QString &query, const QStringList &kinds) const {
     const QString needle = fold(query.trimmed());
@@ -678,73 +738,41 @@ QVariantList LibraryIndex::search(const QString &query, const QStringList &kinds
 
     struct Hit {
         const Entry *entry = nullptr;
-        int     score = 0;
-        bool    expanded = false;
-        QString from;
+        int score = 0;
     };
 
-    // Only titles are matched. An album is deliberately not found through its
-    // artist's name here: that relationship is what result expansion is for
-    // (S7), and an expanded row is flagged so the sidebar can show it as a
-    // consequence of the artist match rather than as a hit of its own.
-    QList<Hit> direct;
-    QSet<QString> taken;
+    // Titles only, and only the thing whose title matched. An album is not
+    // found through its artist's name and an artist does not drag their work
+    // in behind them: that was S7, and the user withdrew it after seeing the
+    // rows it produced. docs/SPEC-0.4.0.md says so under S7.
+    QList<Hit> hits;
     const auto consider = [&](const Entry &e) {
-        const int score = scoreOf(e.foldTitle, needle);
-        if (score == 0) return;
-        direct.append({&e, score, false, {}});
-        taken.insert(e.key());
+        if (!kinds.isEmpty() && !kinds.contains(e.kind)) return;
+        const int where = matchScore(e.foldTitle, needle);
+        if (where == kNoMatch) return;
+        hits.append({&e, where
+                         + coverageBonus(needle.size(), e.foldTitle.size())
+                         + kindBonus(e.kind, e.liked)
+                         + familiarityBonus(e.pinIndex, e.lastPlayed)});
     };
     for (const Entry &e : m_library)      consider(e);
     for (const Entry &e : m_trackEntries) consider(e);
 
-    QHash<QString, const Entry *> byKey;
-    byKey.reserve(int(m_library.size()));
-    for (const Entry &e : m_library) byKey.insert(e.key(), &e);
-
-    QList<Hit> expanded;
-    const auto expand = [&](const Entry &e, const Hit &parent) {
-        if (taken.contains(e.key())) return;
-        taken.insert(e.key());
-        expanded.append({&e, parent.score, true, parent.entry->key()});
-    };
-
-    for (const Hit &hit : direct) {
-        if (hit.entry->kind == QLatin1String(kKindArtist)) {
-            const qint64 artistId = hit.entry->id.toLongLong();
-            for (const Entry &e : m_library)
-                if (e.kind == QLatin1String(kKindAlbum) && e.artistIds.contains(artistId))
-                    expand(e, hit);
-            for (const Entry &e : m_trackEntries)
-                if (e.artistIds.contains(artistId))
-                    expand(e, hit);
-        } else if (hit.entry->kind == QLatin1String(kKindTrack) && hit.entry->albumId > 0) {
-            const auto it = byKey.constFind(QLatin1String(kKindAlbum) + QLatin1Char(':')
-                                            + QString::number(hit.entry->albumId));
-            if (it != byKey.constEnd()) expand(**it, hit);
-        }
-    }
-
     QCollator collator{QLocale()};
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    const auto byScoreThenTitle = [&](const Hit &a, const Hit &b) {
+    std::stable_sort(hits.begin(), hits.end(), [&](const Hit &a, const Hit &b) {
         if (a.score != b.score) return a.score > b.score;
+        // Two results the ranking cannot separate: the one played more
+        // recently first, then A-Z, so the order never depends on the order
+        // the library happened to be fetched in.
+        if (a.entry->lastPlayed != b.entry->lastPlayed)
+            return a.entry->lastPlayed > b.entry->lastPlayed;
         return collator.compare(a.entry->sortKey, b.entry->sortKey) < 0;
-    };
-    std::stable_sort(direct.begin(), direct.end(), byScoreThenTitle);
-    std::stable_sort(expanded.begin(), expanded.end(), byScoreThenTitle);
+    });
 
-    // Expansions always follow the direct hits, however well their parent
-    // scored, so nothing the user actually typed gets pushed down the list.
+    const qsizetype shown = std::min<qsizetype>(hits.size(), kMaxResults);
     QVariantList out;
-    const auto emitHits = [&](const QList<Hit> &hits) {
-        for (const Hit &hit : hits) {
-            if (out.size() >= kMaxResults) return;
-            if (!kinds.isEmpty() && !kinds.contains(hit.entry->kind)) continue;
-            out.append(toRow(*hit.entry, hit.expanded ? 0 : hit.score, hit.expanded, hit.from));
-        }
-    };
-    emitHits(direct);
-    emitHits(expanded);
+    out.reserve(shown);
+    for (qsizetype i = 0; i < shown; ++i) out.append(toRow(*hits[i].entry, hits[i].score));
     return out;
 }

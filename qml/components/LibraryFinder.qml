@@ -30,28 +30,17 @@ Rectangle {
     // Measured, because the number is not obvious. SideBar gives this block a
     // 12px margin on each side, so the block is the sidebar less 24. Inside
     // it the strip keeps `chipInset` left and right and `chipSpacing` between
-    // chips, so five full-size chips want
+    // chips, so five chips want
     //     4 + 5*30 + 4*2 + 4 = 166px of block, i.e. a 190px sidebar.
-    // Prefs::minSidebarWidth is 180, which leaves 156, and the fifth chip used
-    // to run 6px past the right edge and get sliced by the block's clip.
     //
-    // Below 190 the chips give back horizontal padding rather than the row
-    // giving back a chip. The icon stays 15px at every width and the height
-    // never moves, so what shrinks is only the air around the glyph: at the
-    // 180px minimum the formula lands on 28px, which still carries 6.5px of
-    // padding on each side of the icon.
+    // That is exactly why Prefs::minSidebarWidth is 190. The chips were made
+    // to shrink below it instead, and the user saw them twitch in the last few
+    // pixels of the drag, so the sidebar stops where the chips stop fitting
+    // and the size is a constant again.
     readonly property int chipSpacing: 2
     readonly property int chipInset: 4
     readonly property int chipHeight: 24
-    readonly property int chipMaxWidth: 30
-    // The floor, for a minimum sidebar width this file did not get to see:
-    // 15px of icon plus 5.5px of padding each side is the narrowest that still
-    // reads as a chip and is still worth aiming a pointer at. The chips are a
-    // dense desktop control, so this sits under the 32px touch target on
-    // purpose; they were already 30x24 before anything shrank.
-    readonly property int chipMinWidth: 26
-    readonly property int chipWidth: Math.max(chipMinWidth, Math.min(chipMaxWidth,
-        Math.floor((width - 2 * chipInset - 4 * chipSpacing) / 5)))
+    readonly property int chipWidth: 30
 
     implicitHeight: fieldHeight + 1 + chipRowHeight
     implicitWidth: 200

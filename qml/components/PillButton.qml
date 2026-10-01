@@ -27,9 +27,17 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusChip
-        color: root.accent ? Theme.accent : Theme.surfaceHigh
+        // The hover was a cursor change and nothing else, so these read as
+        // labels rather than buttons. An accent pill lifts toward its own
+        // brighter shade; an outlined one fills, since darkening its border
+        // alone is too quiet to notice.
+        color: root.accent
+               ? (hover.hovered ? Qt.lighter(Theme.accent, 1.18) : Theme.accent)
+               : (hover.hovered ? Theme.surfaceHov : Theme.surfaceHigh)
+        Behavior on color { ColorAnimation { duration: Theme.dur(110) } }
         border.width: root.activeFocus ? 2 : (root.accent ? 0 : 1)
-        border.color: root.activeFocus ? Theme.accent : Theme.border
+        border.color: root.activeFocus ? Theme.accent
+                    : (hover.hovered && !root.accent ? Theme.textSec : Theme.border)
 
         Row {
             id: content
@@ -53,7 +61,7 @@ Item {
             Text { objectName: "pillLabel"; text: root.text;  color: root.accent ? Theme.accentInk : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
         }
 
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: root.clicked() }
     }
 

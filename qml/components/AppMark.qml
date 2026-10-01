@@ -12,6 +12,11 @@ import TidalWave
 Item {
     id: root
 
+    // Fixed brand colours, matching assets/icon.svg exactly. Deliberately not
+    // theme tokens: see the tile colour below.
+    readonly property color brandTile: "#00B2F8"
+    readonly property color brandInk:  "#FFFFFF"
+
     implicitWidth: 64
     implicitHeight: 64
 
@@ -41,7 +46,11 @@ Item {
         width: root._side
         height: root._side
         anchors.centerIn: parent
-        color: Theme.accent
+        // The brand blue, not Theme.accent: this is the same mark the window,
+        // tray and launcher show, and those cannot follow the in-app palette.
+        // A logo that changed colour with the theme would not read as the same
+        // thing as the icon sitting next to it in the taskbar.
+        color: root.brandTile
         // radiusMark is the radius at the 64-unit design size. Scaling it with
         // the tile means a 26px mark and a 64px one are the same drawing,
         // rather than a sharp tile small and a near-circle large.
@@ -65,17 +74,17 @@ Item {
             // its flat ends sit exactly on that edge and never show.
             ShapePath {
                 strokeWidth: 0
-                fillColor: Theme.accentInk
+                fillColor: root.brandInk
                 PathSvg { path: root._band(root._centres[0]) }
             }
             ShapePath {
                 strokeWidth: 0
-                fillColor: Theme.accentInk
+                fillColor: root.brandInk
                 PathSvg { path: root._band(root._centres[1]) }
             }
             ShapePath {
                 strokeWidth: 0
-                fillColor: Theme.accentInk
+                fillColor: root.brandInk
                 PathSvg { path: root._band(root._centres[2]) }
             }
         }
@@ -97,7 +106,10 @@ Item {
                 var xb = (reversed ? i : i + 1) * root._half
                 // Alternate crest and trough, so consecutive spans join
                 // smoothly at the zero crossings.
-                var yc = cy + (i % 2 === 0 ? root._amp : -root._amp) + off
+                // Up first, then down, reading left to right, matching the
+                // direction the old "≋" glyph ran. In Qt's coordinates y grows
+                // downward, so "up" is the negative amplitude.
+                var yc = cy + (i % 2 === 0 ? -root._amp : root._amp) + off
                 var t = (xb - xa) / 3
                 out.push("C " + (xa + t) + " " + yc
                        + " " + (xb - t) + " " + yc

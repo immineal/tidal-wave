@@ -1,0 +1,17 @@
+#!/bin/sh
+# Rebuild the desktop's caches once the .desktop entry and the hicolor icons
+# have landed in /usr/share. Neither cache notices a new file on its own, so
+# without this the launcher keeps showing whatever it showed before, which on a
+# first install is a generic placeholder and on an upgrade is the old icon.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database -q /usr/share/applications || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+    fi
+fi
+
+exit 0

@@ -290,10 +290,19 @@ install(TARGETS tidal-wave
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Desktop integration (Linux). Installs a real .desktop entry and hicolor icons
-# so the app appears in menus and the tray/window icon resolve by name — this
-# replaces the runtime icon self-install workaround (loadAppIcon()) with a
-# proper package-installed icon.
+# Desktop integration (Linux). The .desktop entry is what puts the app in the
+# menus, and on Wayland it is also what the taskbar matches the window against:
+# the app calls QGuiApplication::setDesktopFileName("tidal-wave"), the compositor
+# gets that as the surface's app id, and KWin looks up tidal-wave.desktop to find
+# Icon=tidal-wave. So the entry's basename, the Icon= key and the installed icon
+# file names all have to agree, and the StartupWMClass line keeps the X11 session
+# matching the same way.
+#
+# These two install rules are the only writers of the hicolor icon. The app used
+# to rescale its embedded PNG over the same paths on every launch, which let an
+# old binary overwrite a freshly installed icon; loadAppIcon() now installs a
+# copy only when the theme has none. Keep it that way: one writer, one source.
+# docs/ICONS.md has the full list of surfaces and their refresh commands.
 if(UNIX AND NOT APPLE)
     install(FILES packaging/tidal-wave.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
@@ -326,6 +335,15 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg, qt6-wayland")
     # Let dpkg-shlibdeps refine the library deps automatically where possible.
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+    # Installing the icon and the .desktop file is not enough on its own: the
+    # desktop's caches do not notice a new file, so without these the launcher
+    # shows the old icon (or none) until something else rebuilds them. The two
+    # scripts have to be mode 0755, which is what the STRICT_PERMISSION flag
+    # checks, rather than leaving dpkg to refuse the package at install time.
+    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postrm")
+    set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
 
     include(CPack)
 endif()

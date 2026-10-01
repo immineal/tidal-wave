@@ -31,6 +31,11 @@ class PinStore;
 // disk, and a search run while that is half finished answers from whatever is
 // indexed so far. Artist top tracks are deliberately not indexed.
 //
+// A result is always something whose own title the user typed. Spec S7 had an
+// artist hit also listing that artist's albums and songs, and a song hit also
+// listing its album; the user could not tell those rows from real hits and
+// withdrew the whole idea. Do not put it back without asking.
+//
 // Everything this class fetches goes through the protected virtuals below, so
 // the tests can drive it with no network and no Tidal session.
 class LibraryIndex : public QObject {
@@ -65,10 +70,10 @@ public:
     // Records a play so the entry floats to the top of the library list.
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id);
 
-    // Filters the library. `kinds` is an empty list for everything, otherwise a
-    // subset of album/playlist/artist/mix/track. Matching an artist also
-    // surfaces that artist's saved albums and saved tracks; matching a track
-    // also surfaces the saved album it belongs to.
+    // Filters the library by title. `kinds` is an empty list for everything,
+    // otherwise a subset of album/playlist/artist/mix/track. Rows come back
+    // best match first; the ranking is described above `matchScore` in the
+    // .cpp, and each row carries the `score` it was ordered by.
     Q_INVOKABLE QVariantList search(const QString &query, const QStringList &kinds) const;
 
     // Stops the background tracklist index where it stands and keeps what it
@@ -119,11 +124,15 @@ private:
         qint64  albumId = 0;         // tracks: the saved album holding them
         int     trackCount = 0;      // albums and playlists; QML formats it,
                                      // so the count retranslates live
-        QList<qint64> artistIds;     // albums and tracks: for artist expansion
+        QList<qint64> artistIds;     // albums and tracks: the artist page to open
         QString sortKey;             // title without a leading article
         QString foldTitle;           // case- and accent-folded, for matching
         int     pinIndex   = -1;
         qint64  lastPlayed = 0;
+        // Tracks only: the user liked this one, rather than it turning up in
+        // the tracklist of a saved album. Liking is a deliberate act, so it
+        // counts for more when the results are ranked.
+        bool    liked      = false;
 
         QString key() const { return kind + QLatin1Char(':') + id; }
     };
@@ -155,11 +164,9 @@ private:
     static Entry entryFor(const Tidal::Mix &m);
     static Entry entryFor(const Tidal::Track &t, qint64 albumId);
     static void  finishEntry(Entry &e);
-    // One row as QML reads it. `score`, `expanded` and `expandedFrom` are only
-    // meaningful in a search result; the plain library list leaves them at
-    // their defaults.
-    static QVariantMap toRow(const Entry &e, int score, bool expanded,
-                             const QString &expandedFrom);
+    // One row as QML reads it. `score` is only meaningful in a search result;
+    // the plain library list leaves it at zero.
+    static QVariantMap toRow(const Entry &e, int score);
 
     TidalClient *m_client = nullptr;
     PinStore    *m_pins   = nullptr;
