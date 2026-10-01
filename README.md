@@ -12,14 +12,22 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 
 *   **Native Performance**: Built with C++20 and Qt 6, bypassing heavy web wrappers for a minimal CPU and memory footprint.
 *   **Media Keys and MPRIS2**: Full Linux media player integration via D-Bus MPRIS2, supporting lockscreen controls, system volume widgets, and media keys.
-*   **Secure Authentication**: Implements Tidal OAuth device login flow with secure local session caching using SQLite.
+*   **Authentication**: Tidal OAuth device login flow. You enter your password on Tidal's own site in your browser, never in this app. The session is cached locally as a plain JSON file, `~/.config/tidal-wave/credentials.json` (`src/api/Auth.cpp`). It is written readable and writable by your user only, and it is not encrypted and not kept in a system keyring. The Privacy section below says exactly what is in it.
 *   **Custom Audio Player**: Native streaming audio engine utilizing QMediaPlayer and QAudioOutput with selectable stream qualities.
-*   **Chromecast Output** (Linux): Cast audio to Chromecast / Google Home devices — native mDNS discovery (Avahi) and CASTV2 control, with a built-in HTTP server that streams the current track (FLAC up to 96 kHz, or AAC) directly to the device. Downloads/downsamples on the fly so every quality tier casts.
+*   **Live Audio Output Switching**: The player follows the system default output device as it changes, or stays on a device you pick. Playback position and play state survive the switch (`src/player/Player.cpp`).
+*   **Chromecast Output** (Linux): Cast audio to Chromecast / Google Home devices. Native mDNS discovery (Avahi) and CASTV2 control, with a built-in HTTP server that streams the current track (FLAC up to 96 kHz, or AAC) directly to the device. Downloads/downsamples on the fly so every quality tier casts.
+*   **Library Sidebar**: One flat list of your playlists, albums, artists and mixes, ordered pinned first, then recently played, then A-Z. A search field above it also matches saved songs, with type filter chips next to it. Below 820px of window width the sidebar collapses to a 68px icon rail that hover-expands back over the content; its border is a drag handle (`qml/components/SideBar.qml`, `qml/components/LibraryFinder.qml`).
+*   **Pinning**: Pin albums, playlists, artists and mixes to a block above the library list, reorder them by dragging. Stored per Tidal user id (`src/ui/PinStore.cpp`).
+*   **Six Themes**: Four dark (Midnight, Forest, Ember, Deep) and two light (Daylight, Paper). Switching repaints the running app (`src/ui/ThemePalette.cpp`).
+*   **German Translation**: A complete German catalogue. The language follows your system locale by default and can be switched without restarting (`src/ui/I18n.cpp`, `i18n/tidal-wave_de.ts`).
+*   **Responsive Down to 640px**: The window minimum is 640x600. Narrow windows stack the Now Playing transport, drop the player bar's volume and cast controls, and trim the track list's columns.
 *   **Persistent Navigation State**: Separate loaders retain individual page states when jumping between Home, Search, and My Collection views.
 *   **Queue Panel**: Full queue management including track ordering, shuffle, and cycle repeat modes.
 *   **System Tray Integration**: Background playback support with system tray control options to show, hide, and quit the application.
 *   **Rich Detail Pages**: Dedicated views for albums, artists, playlists, and mixes. Biographies are parsed as rich text with clickable navigation links.
-*   **Robust Sleep Timer**: Persistent background sleep timer in the Now Playing page with presets, a custom slider, a toggleable fade-out fader (with pop-prevention delay), and an end-of-track stopping mode.
+*   **Sleep Timer**: Persistent background sleep timer in the Now Playing page with presets, a custom slider, a toggleable fade-out fader (with pop-prevention delay), and an end-of-track stopping mode.
+*   **Software Rendering**: The Qt scene graph can be put on the CPU for machines where the GPU path misbehaves or costs power while the app idles. It also drops the 4x multisampling. Qt picks the backend before the first window exists, so the choice is read at startup and changing it needs a restart. Stored as `ui/softwareRendering` (`src/ui/Prefs.cpp`, `src/ui/Application.cpp`).
+*   **Update Check**: At most one request a day to the GitHub releases API, offered at the next launch rather than mid-session. The app never downloads or installs anything itself. It can be turned off. See Privacy below.
 
 ## AI notice
 
@@ -54,7 +62,7 @@ Prebuilt downloads for every platform are on the **[latest release](https://gith
 Pick your system below. (`ffmpeg` is optional but needed for the download and Chromecast features.)
 
 <details open>
-<summary><b>🐧 Linux — Debian / Ubuntu / Mint (recommended)</b></summary>
+<summary><b>🐧 Linux, Debian / Ubuntu / Mint (recommended)</b></summary>
 
 Download **`tidal-wave-linux-x86_64.deb`**, then:
 
@@ -62,12 +70,12 @@ Download **`tidal-wave-linux-x86_64.deb`**, then:
 sudo apt install ./tidal-wave-linux-x86_64.deb
 ```
 
-That's it — `apt` pulls in the Qt 6 runtime, QML modules, and everything else automatically
-(no chasing missing packages). Launch it from your app menu or run `tidal-wave`.
+That's it. `apt` pulls in the Qt 6 runtime, the QML modules and everything else automatically,
+so there is nothing to chase. Launch it from your app menu or run `tidal-wave`.
 </details>
 
 <details>
-<summary><b>🐧 Linux — other distros (Fedora, Arch, …)</b></summary>
+<summary><b>🐧 Linux, other distros (Fedora, Arch, …)</b></summary>
 
 Download **`tidal-wave-linux-x86_64.tar.gz`**, extract it, and run the binary:
 
@@ -76,17 +84,20 @@ tar -xzf tidal-wave-linux-x86_64.tar.gz
 ./tidal-wave
 ```
 
-Install the runtime yourself via your package manager: the Qt 6 libraries (Core, Gui, Widgets,
-Quick, Qml, Network, DBus, Multimedia, Sql, Svg) and their QML modules, plus `ffmpeg` and
-`avahi` (for Chromecast). If it complains about a missing library, install the matching Qt 6
-runtime package. Building from source (below) is often easier on these distros.
+Install the runtime yourself via your package manager: the Qt 6 libraries this build links
+(Core, Gui, Widgets, Quick, Qml, QmlModels, Network, DBus, Multimedia, Sql, Svg, Concurrent,
+the list in `CMakeLists.txt`) and their QML modules, plus `ffmpeg` and `avahi` for Chromecast.
+The QML modules are the ones people miss: QtQuick, QtQuick.Shapes, QtQuick.Controls,
+QtQuick.Layouts, QtQuick.Window, QtQuick.Templates and QtQml.WorkerScript. On Wayland you also
+need the Qt 6 Wayland platform plugin. If it complains about a missing library, install the
+matching Qt 6 runtime package. Building from source (below) is often easier on these distros.
 </details>
 
 <details>
 <summary><b>🍎 macOS (Apple Silicon & Intel)</b></summary>
 
 Download **`tidal-wave-macos-x64.tar.gz`** and unpack it (double-click, or `tar -xzf …`).
-The app is unsigned, so macOS quarantines it — clear that once:
+The app is unsigned, so macOS quarantines it. Clear that once:
 
 ```bash
 xattr -dr com.apple.quarantine tidal-wave.app
@@ -100,22 +111,25 @@ Then double-click **`tidal-wave.app`**. (Alternatively: right-click the app → 
 <summary><b>🪟 Windows 10 / 11</b></summary>
 
 Download **`tidal-wave-windows-x64.zip`**, extract the folder anywhere, and run **`tidal-wave.exe`**.
-It's unsigned, so Windows SmartScreen will warn you the first time — click **More info → Run anyway**.
+It's unsigned, so Windows SmartScreen will warn you the first time. Click **More info → Run anyway**.
 Everything (Qt runtime, QML) is bundled in the folder. For downloads, install
 [ffmpeg](https://www.gyan.dev/ffmpeg/builds/) and add it to your `PATH`.
 </details>
 
 ## Build from source (any OS)
 
-You need a C++20 compiler (GCC 11+ / Clang 13+ / MSVC 2022+), **CMake 3.20+**, and **Qt 6.5+**.
+You need a C++20 compiler (GCC 11+ / Clang 13+ / MSVC 2022+), **CMake 3.20+**, and **Qt 6**.
+`CMakeLists.txt` asks for Qt 6.4 as its floor and guards the newer Qt policies by version, but
+the only configurations anyone builds are CI's, which is Qt 6.12. Treat anything older than
+6.12 as untested rather than supported.
 
 **Install the toolchain:**
 
 | OS | Command |
 |----|---------|
-| Debian/Ubuntu | `sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev qt6-multimedia-dev libqt6svg6-dev qml6-module-qtquick-controls libsqlite3-dev libasound2-dev libavahi-client-dev ffmpeg` |
-| Fedora | `sudo dnf install gcc-c++ cmake qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel qt6-qtsvg-devel sqlite-devel alsa-lib-devel avahi-devel ffmpeg` |
-| Arch | `sudo pacman -S base-devel cmake qt6-base qt6-declarative qt6-multimedia qt6-svg sqlite avahi ffmpeg` |
+| Debian/Ubuntu | `sudo apt install build-essential cmake qt6-base-dev qt6-declarative-dev qt6-multimedia-dev libqt6svg6-dev qml6-module-qtquick-controls qml6-module-qtquick-shapes libasound2-dev libavahi-client-dev ffmpeg` |
+| Fedora | `sudo dnf install gcc-c++ cmake qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtmultimedia-devel qt6-qtsvg-devel alsa-lib-devel avahi-devel ffmpeg` |
+| Arch | `sudo pacman -S base-devel cmake qt6-base qt6-declarative qt6-multimedia qt6-svg avahi ffmpeg` |
 | macOS | `brew install cmake qt ffmpeg` |
 | Windows | Install [Qt 6](https://www.qt.io/download-qt-installer) (MSVC 2022) + [CMake](https://cmake.org/download/) + Visual Studio 2022 Build Tools |
 
@@ -144,8 +158,9 @@ cd build && cpack -G DEB && sudo apt install ./tidal-wave-*-Linux.deb
 
 > Chromecast output is Linux-only (it uses Avahi/mDNS); it's automatically excluded on macOS and Windows.
 
-`ffmpeg` is a `Recommends` (only needed for the download feature); everything else is a
-hard `Depends`, including the easy-to-miss `qml6-module-*` runtime modules.
+`ffmpeg` and `qt6-wayland` are `Recommends`; everything else is a hard `Depends`, including
+the easy-to-miss `qml6-module-*` runtime modules. Downloads and Chromecast both shell out to
+`ffmpeg` and say so when it is missing, so the app still runs without it.
 
 ## Privacy
 
@@ -232,10 +247,10 @@ GitHub page in your browser.
 updater, no background download and no self-replacing binary. Updating is something you do
 with your package manager or by downloading the release yourself.
 
-To turn it off, open Settings and switch the update check off. The choice is stored as
-`update/enabled` in the settings file above, so you can also set it before first launch.
-With it off, `UpdateCheck::startupCheck()` and `checkNow()` return immediately and no
-`QNetworkAccessManager` is ever created, so nothing is sent to GitHub at all.
+To turn it off, set `update/enabled` to `false` in the settings file above. You can do that
+before the first launch. With it off, `UpdateCheck::startupCheck()` and `checkNow()` return
+immediately and no `QNetworkAccessManager` is ever created, so nothing is sent to GitHub at
+all.
 
 ## License
 
