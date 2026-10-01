@@ -123,6 +123,12 @@ public:
     // Recently played
     void fetchRecentlyPlayed(TracksCallback cb);
 
+    // Public and static only so a test can reach it. The favourites endpoints
+    // wrap each playlist in a row carrying the date this user added it, and
+    // whether that row survives unwrapping is what decides the order of the home
+    // playlist row, so it is worth a regression test. Touches no member state.
+    static QList<Playlist> parsePlaylists(const QJsonObject &root);
+
 signals:
     void error(const QString &msg);
     void userIdChanged(qint64 uid);
@@ -137,7 +143,6 @@ private:
     QList<Track>    parseTracks   (const QJsonObject &root);
     QList<Album>    parseAlbums   (const QJsonObject &root);
     QList<Artist>   parseArtists  (const QJsonObject &root);
-    QList<Playlist> parsePlaylists(const QJsonObject &root);
 
     static QString qualityString(AudioQuality q);
 

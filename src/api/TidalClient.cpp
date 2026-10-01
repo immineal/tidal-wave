@@ -55,11 +55,18 @@ QList<Artist> TidalClient::parseArtists(const QJsonObject &root) {
 QList<Playlist> TidalClient::parsePlaylists(const QJsonObject &root) {
     QList<Playlist> out;
     for (const auto &v : root["items"].toArray()) {
-        auto obj = v.toObject();
-        if (obj.contains("playlist")) obj = obj["playlist"].toObject();
-        else if (obj.contains("item")) obj = obj["item"].toObject();
-        if (obj.contains("uuid") || obj.contains("id"))
-            out.append(Playlist::fromJson(obj));
+        const QJsonObject row = v.toObject();
+        // The favourites and playlistsAndFavoritePlaylists endpoints wrap each
+        // playlist in a row that carries the date this user added it. That row
+        // has to reach Playlist::fromJson(), which prefers it over the
+        // playlist's own creation date; passing only the unwrapped playlist
+        // threw the one date that says "the user touched this" away.
+        QJsonObject item = row;
+        QJsonObject wrapper;
+        if (row.contains("playlist"))  { item = row["playlist"].toObject(); wrapper = row; }
+        else if (row.contains("item")) { item = row["item"].toObject();     wrapper = row; }
+        if (item.contains("uuid") || item.contains("id"))
+            out.append(Playlist::fromJson(item, wrapper));
     }
     return out;
 }

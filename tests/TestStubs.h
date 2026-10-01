@@ -300,11 +300,20 @@ public:
     }
     Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb) { resolve(cb, emptyArray()); }
 
-    // Local (already-loaded) filters used by CollectionPage's search field.
+    // Local (already-loaded) filters used by CollectionPage's search field and by
+    // HomePage's refresh, which reads this in-memory copy rather than going back
+    // to the network. Albums and artists answer from lists a test can fill (see
+    // the hooks below); the query itself is ignored, because the real filter is
+    // a substring match and every caller under test passes "", which there means
+    // "the whole cache".
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return {}; }
-    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return {}; }
-    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return {}; }
-    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return {}; }
+    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
+    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
+    // The real bridge filters the same playlist cache getUserPlaylists() answers
+    // from, so this one does too: a second list here could disagree with that
+    // one, and a page that reads both would then see a library that cannot
+    // exist. setUserPlaylistsForTest() therefore fills both.
+    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
 
     // test hooks
     Q_INVOKABLE void setUserPlaylistsForTest(const QVariantList &playlists) {
@@ -324,6 +333,21 @@ public:
         m_lastPlaylistPlayed.clear();
     }
 
+    // The favourites cache the three searches above read. Setting it emits the
+    // same signal the real bridge emits when a save or a removal lands, so one
+    // call is a whole "the user just saved an album" event: that is what drives
+    // HomePage's refresh in tst_home_rows.qml, where the row used to keep what
+    // it was built with until the app was restarted. Playlists already have
+    // setUserPlaylistsForTest() above, which emits favoritePlaylistsChanged.
+    Q_INVOKABLE void setFavoriteAlbumsForTest(const QVariantList &albums) {
+        m_favoriteAlbumList = albums;
+        emit favoriteAlbumsChanged();
+    }
+    Q_INVOKABLE void setFavoriteArtistsForTest(const QVariantList &artists) {
+        m_favoriteArtistList = artists;
+        emit favoriteArtistsChanged();
+    }
+
 signals:
     void preferredQualityChanged();
     void favoriteTracksChanged();
@@ -337,6 +361,10 @@ private:
     QHash<qlonglong, bool> m_favoriteTracks;
     QHash<qlonglong, bool> m_favoriteAlbums;
     QHash<qlonglong, bool> m_favoriteArtists;
+    // The favourite *objects*, as opposed to the id -> bool maps above, which
+    // only answer isAlbumFavorite()/isArtistFavorite().
+    QVariantList m_favoriteAlbumList;
+    QVariantList m_favoriteArtistList;
     QString m_lastClipboardText;
     QString m_lastPlaylistPlayed;
     int     m_userPlaylistFetches = 0;

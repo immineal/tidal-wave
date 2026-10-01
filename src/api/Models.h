@@ -11,6 +11,16 @@ namespace Tidal {
 enum class AudioQuality { Low96k, Low320k, Lossless, HiResLossless };
 enum class MediaType { Track, Album, Artist, Playlist, Mix };
 
+// Tidal reports dates as ISO-8601 strings ("2024-05-01T10:00:00.000+0000").
+// An unparseable or absent one answers 0, because an invalid QDateTime's
+// toMSecsSinceEpoch() is not defined and would be sorted on as if it were a
+// real instant.
+inline qint64 isoToMSecs(const QString &iso) {
+    if (iso.isEmpty()) return 0;
+    const QDateTime dt = QDateTime::fromString(iso, Qt::ISODate);
+    return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
+}
+
 struct Artist {
     qint64 id = 0;
     QString name;
@@ -124,6 +134,10 @@ struct Playlist {
     int     duration  = 0;
     QString image;  // UUID
     QString type;   // USER / EDITORIAL
+    // When this user acquired the playlist — created it or saved someone
+    // else's — in ms since epoch, 0 when the response carried no usable date.
+    // Half of the ordering key in sortPlaylistsByRecency().
+    qint64  addedAt = 0;
 
     QString coverUrl(int size = 320) const {
         if (image.isEmpty()) return {};
@@ -132,7 +146,13 @@ struct Playlist {
         return QStringLiteral("https://resources.tidal.com/images/%1/%2x%2.jpg").arg(u).arg(size);
     }
 
-    static Playlist fromJson(const QJsonObject &j) {
+    // `wrapper` is the favourites row the playlist arrived in, where there was
+    // one. Its "created" is when *this* user saved the playlist, while the
+    // playlist's own "created" is the original author's and can be years old,
+    // so the wrapper's date wins. "lastUpdated" is deliberately not consulted:
+    // it moves every time anyone adds a track, which would reorder the home row
+    // behind the user's back.
+    static Playlist fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Playlist p;
         p.uuid        = j["uuid"].toString();
         p.title       = j["title"].toString();
@@ -144,6 +164,9 @@ struct Playlist {
         // that 403s at square dimensions, so prefer squareImage.
         p.image       = j["squareImage"].toString(j["image"].toString());
         p.type        = j["type"].toString();
+        p.addedAt     = isoToMSecs(wrapper["created"].toString());
+        if (p.addedAt == 0)
+            p.addedAt = isoToMSecs(j["created"].toString());
         return p;
     }
 };

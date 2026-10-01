@@ -229,21 +229,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Play next</source>
-        <comment>verb, play this right after the current track</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Add to queue</source>
-        <comment>verb, put this at the end of the queue</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Remove from library</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Go to album</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -252,10 +238,6 @@
     </message>
     <message>
         <source>Unfollow artist</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Go to artist</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
@@ -342,24 +324,6 @@
     <message>
         <source>Unpin</source>
         <comment>verb, remove from the pinned block</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Play</source>
-        <comment>verb, menu item</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Like</source>
-        <comment>verb, add to favourites</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Go to album</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Go to artist</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -451,7 +415,7 @@
 <context>
     <name>HorizontalSection</name>
     <message>
-        <source>View all →</source>
+        <source>View all</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -564,11 +528,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Now Playing</source>
-        <comment>page title</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Leave fullscreen</source>
         <comment>button, restores the window</comment>
         <translation type="unfinished"></translation>
@@ -587,7 +546,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>⟳ Resync</source>
+        <source>Resync</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -742,6 +701,11 @@
     </message>
     <message>
         <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio output</source>
+        <comment>player bar button, picks a speaker or a cast target</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -995,10 +959,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lossless (FLAC)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Hi-Res (24-bit)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1082,6 +1042,10 @@
     </message>
     <message>
         <source>Keyboard shortcuts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lossless (16-bit)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

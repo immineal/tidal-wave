@@ -608,24 +608,27 @@ void TidalBridge::markPlaylistPlayed(const QString &uuid) {
     emit favoritePlaylistsChanged();
 }
 
+void sortPlaylistsByRecency(QList<Playlist> &playlists, const QVariantMap &playtimes) {
+    const auto recency = [&playtimes](const Playlist &p) {
+        return std::max(playtimes.value(p.uuid, 0LL).toLongLong(), p.addedAt);
+    };
+    std::stable_sort(playlists.begin(), playlists.end(),
+                     [&recency](const Playlist &a, const Playlist &b) {
+                         return recency(a) > recency(b);
+                     });
+}
+
 void TidalBridge::sortPlaylists(QList<Playlist> &playlists) const {
-    qint64 uid = m_client->userId();
-    if (uid <= 0) return;
-
-    QSettings settings;
-    QString key = QStringLiteral("user_%1/playlists/lastPlayed").arg(uid);
-    QVariantMap playtimes = settings.value(key).toMap();
-
-    qDebug() << "[TidalBridge] sortPlaylists count:" << playlists.size() << "playtimes keys:" << playtimes.keys();
-
-    std::stable_sort(playlists.begin(), playlists.end(), [&playtimes](const Playlist &a, const Playlist &b) {
-        qint64 timeA = playtimes.value(a.uuid, 0LL).toLongLong();
-        qint64 timeB = playtimes.value(b.uuid, 0LL).toLongLong();
-        if (timeA != timeB) {
-            return timeA > timeB;
-        }
-        return false;
-    });
+    QVariantMap playtimes;
+    const qint64 uid = m_client->userId();
+    // The play times are kept per account, so without a session there are none
+    // to read; the playlists' own addedAt still orders them.
+    if (uid > 0) {
+        QSettings settings;
+        playtimes = settings.value(
+            QStringLiteral("user_%1/playlists/lastPlayed").arg(uid)).toMap();
+    }
+    sortPlaylistsByRecency(playlists, playtimes);
 }
 
 

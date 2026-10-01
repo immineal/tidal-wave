@@ -185,6 +185,30 @@ TestCase {
         return row ? findByName(row, "railPinCover") : null
     }
 
+    // The ring is a child of the cover rather than the cover's own `border`,
+    // because a Rectangle paints its border under its own children and the
+    // artwork fills the whole box: as the cover's border it was painted and
+    // then covered over on every row that had a cover at all.
+    function ringFor(sidebar, id) {
+        var cover = coverFor(sidebar, id)
+        return cover ? findByName(cover, "libraryRowRing") : null
+    }
+
+    // Whether the ring is painted after the artwork. Qt draws siblings in
+    // child order, so this is the whole of what made the old ring invisible,
+    // and a width assertion alone would not have caught it.
+    function ringIsOverTheArt(sidebar, id) {
+        var cover = coverFor(sidebar, id)
+        if (!cover) return false
+        var art = -1, ring = -1
+        for (var i = 0; i < cover.children.length; i++) {
+            var n = cover.children[i].objectName
+            if (n === "libraryRowArt")      art  = i
+            if (n === "libraryRowRing")     ring = i
+        }
+        return art >= 0 && ring > art
+    }
+
     // Every cover, keyed by row id, so two snapshots can be compared object
     // by object.
     function coverMap(sidebar) {
@@ -711,6 +735,77 @@ TestCase {
                 data.wide ? 6 : 0, "row titles at " + data.tag)
     }
 
+    // QA: crossing the breakpoint outwards left "a black bar where it will
+    // expand to". The slot the layout reserves used to jump to the full width
+    // the instant `compact` flipped, while the panel animated into it over
+    // 170ms, and for those frames the difference painted the page. The
+    // invariant that fixes it is that the slot never runs ahead of the panel,
+    // so this samples the whole slide rather than one frame of it.
+    function test_the_slot_never_runs_ahead_of_the_panel() {
+        var host = showHost(railBreak - 60, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+        compare(sb.panelWidth, railWidth, "the sidebar did not start as a rail")
+
+        // The window's new width reaches the sidebar through Window.width, which
+        // the platform delivers on its own schedule, so `compact` is not false
+        // on the line after the assignment. The invariant below holds either
+        // way, and compact is asserted once the slide has finished.
+        host.width = railBreak + 60
+
+        // Every frame from the resize until the panel has arrived. A gap of one
+        // pixel is a gap: this is the bug, not a tolerance.
+        var sawSlide = false
+        for (var i = 0; i < 200; i++) {
+            verify(sb.reservedWidth <= sb.panelWidth,
+                   "the layout reserved " + sb.reservedWidth
+                   + " while the panel was only " + sb.panelWidth + " wide")
+            if (sb.panelWidth > railWidth && sb.panelWidth < defaultSidebar)
+                sawSlide = true
+            if (sb.panelWidth === defaultSidebar && i > 4) break
+            wait(4)
+        }
+        compare(sb.compact, false, "the sidebar stayed compact past the breakpoint")
+        compare(sb.panelWidth, defaultSidebar, "the panel never reached full width")
+        compare(sb.reservedWidth, defaultSidebar, "the slot did not end up the panel's width")
+
+        // And the same going back in, where the panel is the one that has to
+        // not run ahead: the page must not be uncovered before the panel has
+        // left it.
+        host.width = railBreak - 60
+        for (var j = 0; j < 200; j++) {
+            verify(sb.reservedWidth <= sb.panelWidth,
+                   "going narrow, the slot was " + sb.reservedWidth
+                   + " against a panel of " + sb.panelWidth)
+            if (sb.panelWidth === railWidth && j > 4) break
+            wait(4)
+        }
+        compare(sb.panelWidth, railWidth, "the panel did not return to the rail")
+        verify(sawSlide, "the panel snapped instead of sliding")
+    }
+
+    // The slide itself still has to exist: it is the hover overlay, where the
+    // panel is wider than its slot and so has nothing to leave a hole in.
+    function test_the_hover_overlay_still_slides() {
+        var host = showHost(railBreak - 60, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        mouseMove(host.contentItem, railWidth / 2, 300)
+        // Caught mid-slide: strictly between the two widths, which is only
+        // possible if the Behavior ran.
+        var sawMidSlide = false
+        for (var i = 0; i < 40 && !sawMidSlide; i++) {
+            if (sb.panelWidth > railWidth && sb.panelWidth < defaultSidebar)
+                sawMidSlide = true
+            wait(4)
+        }
+        verify(sawMidSlide, "the hover overlay snapped open instead of sliding")
+        tryCompare(sb, "panelWidth", defaultSidebar, 2000,
+                   "the overlay did not finish opening")
+        collapseTheRail(host)
+    }
+
     // P3/P4 through the merge: the pinned ring survives in both shapes, and
     // the grip still reorders the block.
     function test_the_pinned_block_survives_the_merged_list() {
@@ -720,9 +815,11 @@ TestCase {
 
         // A pinned cover is ringed in the rail, which is the only thing left
         // telling it apart in a strip of bare artwork.
-        verify(coverFor(sb, "p1").border.width > 0, "a pinned rail cover lost its ring")
-        verify(coverFor(sb, "a1").border.width > 0, "a pinned rail cover lost its ring")
-        compare(coverFor(sb, "a2").border.width, 0, "an unpinned rail cover grew a ring")
+        verify(ringFor(sb, "p1").visible, "a pinned rail cover lost its ring")
+        verify(ringFor(sb, "a1").visible, "a pinned rail cover lost its ring")
+        verify(!ringFor(sb, "a2").visible, "an unpinned rail cover grew a ring")
+        // And it is painted over the artwork, not under it.
+        verify(ringIsOverTheArt(sb, "p1"), "the ring went back under the cover art")
         compare(collectVisibleByName(sb, "pinnedBlockBreak", []).length, 1,
                 "the rail wants the same one break the open sidebar draws")
         // Nothing is draggable in a 68px strip: there is no grip to aim at.
@@ -730,7 +827,7 @@ TestCase {
                 "the rail offered a drag grip")
 
         expandTheRail(host)
-        verify(coverFor(sb, "p1").border.width > 0, "the ring was lost on the way out")
+        verify(ringFor(sb, "p1").visible, "the ring was lost on the way out")
         compare(collectVisibleByName(sb, "pinDragGrip", []).length, 2,
                 "both pinned rows want a grip once the sidebar is open")
         collapseTheRail(host)

@@ -229,22 +229,8 @@
         <translation>Lieblingstitel</translation>
     </message>
     <message>
-        <source>Play next</source>
-        <comment>verb, play this right after the current track</comment>
-        <translation>Als Nächstes abspielen</translation>
-    </message>
-    <message>
-        <source>Add to queue</source>
-        <comment>verb, put this at the end of the queue</comment>
-        <translation>Zur Warteschlange hinzufügen</translation>
-    </message>
-    <message>
         <source>Remove from library</source>
         <translation>Aus der Mediathek entfernen</translation>
-    </message>
-    <message>
-        <source>Go to album</source>
-        <translation>Zum Album</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -253,10 +239,6 @@
     <message>
         <source>Unfollow artist</source>
         <translation>Künstler nicht mehr folgen</translation>
-    </message>
-    <message>
-        <source>Go to artist</source>
-        <translation>Zum Künstler</translation>
     </message>
     <message numerus="yes">
         <source>%n track(s)</source>
@@ -343,24 +325,6 @@
         <source>Unpin</source>
         <comment>verb, remove from the pinned block</comment>
         <translation>Nicht mehr anheften</translation>
-    </message>
-    <message>
-        <source>Play</source>
-        <comment>verb, menu item</comment>
-        <translation>Abspielen</translation>
-    </message>
-    <message>
-        <source>Like</source>
-        <comment>verb, add to favourites</comment>
-        <translation>Gefällt mir</translation>
-    </message>
-    <message>
-        <source>Go to album</source>
-        <translation>Zum Album</translation>
-    </message>
-    <message>
-        <source>Go to artist</source>
-        <translation>Zum Künstler</translation>
     </message>
 </context>
 <context>
@@ -451,8 +415,8 @@
 <context>
     <name>HorizontalSection</name>
     <message>
-        <source>View all →</source>
-        <translation>Alle anzeigen →</translation>
+        <source>View all</source>
+        <translation>Alle anzeigen</translation>
     </message>
 </context>
 <context>
@@ -564,11 +528,6 @@
         <translation>Jetzt läuft schließen</translation>
     </message>
     <message>
-        <source>Now Playing</source>
-        <comment>page title</comment>
-        <translation>Jetzt läuft</translation>
-    </message>
-    <message>
         <source>Leave fullscreen</source>
         <comment>button, restores the window</comment>
         <translation>Vollbild verlassen</translation>
@@ -587,8 +546,8 @@
         <translation>Kein Songtext verfügbar</translation>
     </message>
     <message>
-        <source>⟳ Resync</source>
-        <translation>⟳ Synchronisieren</translation>
+        <source>Resync</source>
+        <translation>Sync</translation>
     </message>
     <message>
         <source>Loading…</source>
@@ -743,6 +702,11 @@
     <message>
         <source>%1%</source>
         <translation>%1 %</translation>
+    </message>
+    <message>
+        <source>Audio output</source>
+        <comment>player bar button, picks a speaker or a cast target</comment>
+        <translation>Audioausgabe</translation>
     </message>
     <message>
         <source>Cast to</source>
@@ -995,10 +959,6 @@
         <translation>High (320 kbit/s)</translation>
     </message>
     <message>
-        <source>Lossless (FLAC)</source>
-        <translation>Lossless (FLAC)</translation>
-    </message>
-    <message>
         <source>Hi-Res (24-bit)</source>
         <translation>Hi-Res (24 Bit)</translation>
     </message>
@@ -1083,6 +1043,10 @@
     <message>
         <source>Keyboard shortcuts</source>
         <translation>Tastenkürzel</translation>
+    </message>
+    <message>
+        <source>Lossless (16-bit)</source>
+        <translation>Lossless (16 Bit)</translation>
     </message>
     <message>
         <source>Space</source>
