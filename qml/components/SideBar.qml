@@ -45,21 +45,21 @@ Rectangle {
 
         SideNavItem {
             icon: "home"
-            label: "Home"
+            label: qsTr("Home", "noun, the home page")
             page: "home"
             currentPage: root.currentPage
             onActivated: root.navigate("home", {})
         }
         SideNavItem {
             icon: "search"
-            label: "Search"
+            label: qsTr("Search", "noun, the search page")
             page: "search"
             currentPage: root.currentPage
             onActivated: root.navigate("search", {})
         }
         SideNavItem {
             icon: "heart"
-            label: "Collection"
+            label: qsTr("Collection")
             page: "collection"
             currentPage: root.currentPage
             onActivated: root.navigate("collection", {})
@@ -71,7 +71,7 @@ Rectangle {
 
         Text {
             Layout.leftMargin: 20
-            text: "Playlists"
+            text: qsTr("Playlists")
             color: Theme.textDim
             font.pixelSize: 10
             font.bold: true
@@ -165,7 +165,7 @@ Rectangle {
             Text {
                 id: acctNameText
                 Layout.fillWidth: true
-                text: auth.username.length > 0 ? auth.username : "My Account"
+                text: auth.username.length > 0 ? auth.username : qsTr("My Account")
                 color: Theme.textPrimary
                 font.pixelSize: 13
                 elide: Text.ElideRight
@@ -197,7 +197,7 @@ Rectangle {
                     height: 18
                     strokeWidth: 1.8
                     ToolTip.visible: settingsHover.hovered
-                    ToolTip.text: "Settings (Ctrl+,)"
+                    ToolTip.text: qsTr("Settings (Ctrl+,)")
                     HoverHandler { id: settingsHover }
                 }
                 TapHandler {
@@ -271,7 +271,7 @@ Rectangle {
                     Layout.bottomMargin: 12
 
                     Text {
-                        text: "Settings"
+                        text: qsTr("Settings")
                         color: Theme.textPrimary
                         font.pixelSize: 18
                         font.bold: true
@@ -298,7 +298,7 @@ Rectangle {
                     spacing: 10
 
                     Text {
-                        text: "Account"
+                        text: qsTr("Account")
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
@@ -313,7 +313,7 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 1
                             Text { text: "Tidal Wave"; color: Theme.textPrimary; font.pixelSize: 14; font.bold: true }
-                            Text { text: "v0.1-alpha"; color: Theme.textDim; font.pixelSize: 12 }
+                            Text { text: qsTr("Version %1").arg(prefs.appVersion()); color: Theme.textDim; font.pixelSize: 12 }
                         }
                         Rectangle {
                             height: 30; width: logoutLabel.implicitWidth + 20; radius: Theme.radiusButton
@@ -321,7 +321,7 @@ Rectangle {
                             border.color: logoutHov.hovered ? Theme.red : Theme.border
                             Text {
                                 id: logoutLabel; anchors.centerIn: parent
-                                text: "Log out"; color: logoutHov.hovered ? Theme.onRed : Theme.red
+                                text: qsTr("Log out"); color: logoutHov.hovered ? Theme.onRed : Theme.red
                                 font.pixelSize: 12
                             }
                             HoverHandler { id: logoutHov }
@@ -343,7 +343,7 @@ Rectangle {
                     spacing: 10
 
                     Text {
-                        text: "Playback"
+                        text: qsTr("Playback")
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
@@ -351,10 +351,11 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
-                        Text { text: "Streaming Quality"; color: Theme.textPrimary; font.pixelSize: 14; Layout.fillWidth: true }
+                        Text { text: qsTr("Streaming quality"); color: Theme.textPrimary; font.pixelSize: 14; Layout.fillWidth: true }
                         ComboBox {
                             id: qualityCombo
-                            model: ["Normal (96 kbps)", "High (320 kbps)", "Lossless (FLAC)", "Hi-Res (24-bit)"]
+                            model: [qsTr("Normal (96 kbps)"), qsTr("High (320 kbps)"),
+                                    qsTr("Lossless (FLAC)"), qsTr("Hi-Res (24-bit)")]
                             currentIndex: {
                                 switch (bridge.preferredQuality) {
                                     case "LOW":             return 0
@@ -465,25 +466,25 @@ Rectangle {
                     spacing: 6
 
                     Text {
-                        text: "Keyboard shortcuts"
+                        text: qsTr("Keyboard shortcuts")
                         color: Theme.textDim
                         font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
                     }
 
                     Repeater {
                         model: [
-                            { k: "Space",              d: "Play / Pause" },
-                            { k: "Ctrl+Right / Left",  d: "Next / Previous track" },
-                            { k: "Right / Left",        d: "Seek forward / back 10s" },
-                            { k: "Up / Down",           d: "Volume up / down" },
-                            { k: "Ctrl+M",             d: "Mute" },
-                            { k: "Ctrl+S",             d: "Toggle shuffle" },
-                            { k: "Ctrl+R",             d: "Cycle repeat mode" },
-                            { k: "Ctrl+1 / 2 / 3",    d: "Home / Search / Collection" },
-                            { k: "Ctrl+N",             d: "Now Playing" },
-                            { k: "Ctrl+Q",             d: "Toggle queue" },
-                            { k: "Alt+Left / Esc",     d: "Go back" },
-                            { k: "Ctrl+,",             d: "Settings" }
+                            { k: qsTr("Space", "keyboard key"),      d: qsTr("Play / Pause") },
+                            { k: qsTr("Ctrl+Right / Left"),          d: qsTr("Next / Previous track") },
+                            { k: qsTr("Right / Left", "arrow keys"), d: qsTr("Seek forward / back 10s") },
+                            { k: qsTr("Up / Down", "arrow keys"),    d: qsTr("Volume up / down") },
+                            { k: qsTr("Ctrl+M"),                     d: qsTr("Mute") },
+                            { k: qsTr("Ctrl+S"),                     d: qsTr("Toggle shuffle") },
+                            { k: qsTr("Ctrl+R"),                     d: qsTr("Cycle repeat mode") },
+                            { k: qsTr("Ctrl+1 / 2 / 3"),             d: qsTr("Home / Search / Collection") },
+                            { k: qsTr("Ctrl+N"),                     d: qsTr("Now Playing") },
+                            { k: qsTr("Ctrl+Q"),                     d: qsTr("Toggle queue") },
+                            { k: qsTr("Alt+Left / Esc"),             d: qsTr("Go back") },
+                            { k: qsTr("Ctrl+,"),                     d: qsTr("Settings") }
                         ]
                         delegate: RowLayout {
                             Layout.fillWidth: true
@@ -508,7 +509,7 @@ Rectangle {
         }
     }
 
-    // Inline component for nav items — properties on separate lines to avoid semicolon issues
+    // Inline component for nav items. Properties on separate lines to avoid semicolon issues.
     component SideNavItem : Item {
         id: navItem
         property string icon: ""

@@ -51,7 +51,7 @@ Item {
             Text {
                 id: viewAllText
                 visible: root.showViewAll
-                text: "View all →"
+                text: qsTr("View all →")
                 color: viewAllText.activeFocus ? Theme.accent : Theme.textSec
                 font.pixelSize: 12
                 font.underline: viewAllText.activeFocus

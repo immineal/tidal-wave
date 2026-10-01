@@ -12,7 +12,7 @@ Rectangle {
 
     property alias text: input.text
     property bool  focused: input.activeFocus
-    property string placeholder: "Search…"
+    property string placeholder: qsTr("Search…")
     signal submitted(string text)
     signal textEdited(string text)
 
