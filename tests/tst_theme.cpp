@@ -43,13 +43,13 @@ const QStringList kColourTokens = {
     // type
     "textPrimary", "textSec", "textDim",
     // accent and the tints derived from it
-    "accent", "accentDim", "onAccent", "accentSoft", "accentTint", "accentWash",
+    "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
     // interaction
     "hoverFill",
     // semantic
-    "red", "redSoft", "onRed", "green", "greenWash",
+    "red", "redSoft", "redInk", "green", "greenWash",
     // things drawn over arbitrary cover art, which is neither light nor dark
-    "scrim", "artScrim", "artScrimStrong", "onArt", "artBorder",
+    "scrim", "artScrim", "artScrimStrong", "artInk", "artBorder",
 };
 
 } // namespace
@@ -128,6 +128,22 @@ private slots:
         }
     }
 
+    // QML parses a property named on<Name> declared beside a property <name>
+    // as a signal handler, not a binding, so Theme.onAccent never evaluated and
+    // kept QColor's default: black. Every label on an accent fill was black in
+    // all six themes, and nothing here noticed, because these tests read the
+    // C++ table and the table was always right.
+    void noTokenLooksLikeASignalHandler() {
+        for (const QString &key : kColourTokens) {
+            const bool trap = key.size() > 2
+                           && key.startsWith(QLatin1String("on"))
+                           && key.at(2).isUpper();
+            QVERIFY2(!trap, qPrintable(
+                "token \"" + key + "\" reads as a QML signal handler for a "
+                "signal named \"" + key.mid(2).toLower() + "\"; rename it"));
+        }
+    }
+
     void darkFlagMatchesTheGround_data() { themeRows(); }
     void darkFlagMatchesTheGround() {
         QFETCH(QString, name);
@@ -168,16 +184,16 @@ private slots:
         }
 
         // Text on a solid accent fill (PillButton, the play button).
-        QVERIFY2(contrast(col("onAccent"), col("accent")) >= 4.0,
-                 qPrintable(name + ": onAccent on accent is "
-                            + QString::number(contrast(col("onAccent"), col("accent")), 'f', 2)));
+        QVERIFY2(contrast(col("accentInk"), col("accent")) >= 4.0,
+                 qPrintable(name + ": accentInk on accent is "
+                            + QString::number(contrast(col("accentInk"), col("accent")), 'f', 2)));
 
         // Error text has to be readable too, not just red.
         QVERIFY2(contrast(col("red"), col("surface")) >= 3.0, qPrintable(name + ": red too dim"));
         // ...and the label on a solid red fill (the sidebar's Log out button).
-        QVERIFY2(contrast(col("onRed"), col("red")) >= 4.0,
-                 qPrintable(name + ": onRed on red is "
-                            + QString::number(contrast(col("onRed"), col("red")), 'f', 2)));
+        QVERIFY2(contrast(col("redInk"), col("red")) >= 4.0,
+                 qPrintable(name + ": redInk on red is "
+                            + QString::number(contrast(col("redInk"), col("red")), 'f', 2)));
     }
 
     void structureIsVisible_data() { themeRows(); }
@@ -241,7 +257,7 @@ private slots:
         const QVariantMap first = theme::palette(theme::themes().first().name);
         for (const auto &t : theme::themes()) {
             const QVariantMap p = theme::palette(t.name);
-            for (const char *k : {"artScrim", "artScrimStrong", "onArt", "artBorder"}) {
+            for (const char *k : {"artScrim", "artScrimStrong", "artInk", "artBorder"}) {
                 QCOMPARE(p.value(QLatin1String(k)).value<QColor>(),
                          first.value(QLatin1String(k)).value<QColor>());
             }

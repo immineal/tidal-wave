@@ -35,7 +35,7 @@ QtObject {
     readonly property color accentDim: p.accentDim
     // Ink on a solid accent fill. Not always white: on the dark themes the
     // accent is bright enough that white text on it fails contrast.
-    readonly property color onAccent: p.onAccent
+    readonly property color accentInk: p.accentInk
     // Three strengths of accent wash, heavier on the light themes so they
     // still read. accentSoft tints a playing row, accentTint a hero gradient,
     // accentWash a filled badge.
@@ -51,7 +51,7 @@ QtObject {
     // ── semantic ─────────────────────────────────────────────────────────
     readonly property color red:     p.red
     readonly property color redSoft: p.redSoft
-    readonly property color onRed:   p.onRed
+    readonly property color redInk:   p.redInk
     readonly property color green:   p.green
     // Fill for the lossless quality badge, as accentWash is for hi-res.
     readonly property color greenWash: p.greenWash
@@ -63,7 +63,7 @@ QtObject {
     // are the same in every theme.
     readonly property color artScrim:       p.artScrim
     readonly property color artScrimStrong: p.artScrimStrong
-    readonly property color onArt:          p.onArt
+    readonly property color artInk:          p.artInk
     readonly property color artBorder:      p.artBorder
 
     // ── corner radii ─────────────────────────────────────────────────────

@@ -43,14 +43,14 @@ Item {
                     : root.glyph === "♡" ? "heart"
                     : root.glyph === "✎" ? "edit"
                     : root.glyph
-                color: root.accent ? Theme.onAccent : Theme.textPrimary
+                color: root.accent ? Theme.accentInk : Theme.textPrimary
                 width: 14
                 height: 14
                 strokeWidth: 1.8
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.glyph !== ""
             }
-            Text { objectName: "pillLabel"; text: root.text;  color: root.accent ? Theme.onAccent : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
+            Text { objectName: "pillLabel"; text: root.text;  color: root.accent ? Theme.accentInk : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
         }
 
         HoverHandler { cursorShape: Qt.PointingHandCursor }

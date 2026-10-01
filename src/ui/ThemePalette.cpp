@@ -25,9 +25,9 @@ struct Spec {
     const char *textDim;
     const char *accent;
     const char *accentDim;
-    const char *onAccent;    // ink on a solid accent fill
+    const char *accentInk;    // ink on a solid accent fill
     const char *red;
-    const char *onRed;       // ink on a solid red fill
+    const char *redInk;       // ink on a solid red fill
     const char *green;
 };
 
@@ -35,8 +35,8 @@ struct Spec {
 //
 // "Forest" stands where a violet "Graphite" was drafted; the user asked for a
 // green one instead. On the dark themes the accent is bright enough that white
-// text on it fails contrast, so onAccent is a near-black drawn from the same
-// hue; on the light themes the accent is deep and onAccent is white.
+// text on it fails contrast, so accentInk is a near-black drawn from the same
+// hue; on the light themes the accent is deep and accentInk is white.
 const Spec kSpecs[] = {
     { "midnight", QT_TRANSLATE_NOOP("Theme", "Midnight"), true,
       "#0A0A0A", "#141414", "#1E1E1E", "#262626", "#2A2A2A",
@@ -112,7 +112,7 @@ QVariantMap build(const Spec &s) {
 
     m.insert(QStringLiteral("accent"),      accent);
     m.insert(QStringLiteral("accentDim"),   QColor(QString::fromLatin1(s.accentDim)));
-    m.insert(QStringLiteral("onAccent"),    QColor(QString::fromLatin1(s.onAccent)));
+    m.insert(QStringLiteral("accentInk"),    QColor(QString::fromLatin1(s.accentInk)));
     m.insert(QStringLiteral("accentSoft"),  withAlpha(accent, soft));
     m.insert(QStringLiteral("accentTint"),  withAlpha(accent, tint));
     m.insert(QStringLiteral("accentWash"),  withAlpha(accent, wash));
@@ -123,7 +123,7 @@ QVariantMap build(const Spec &s) {
 
     m.insert(QStringLiteral("red"),     red);
     m.insert(QStringLiteral("redSoft"), withAlpha(red, 0.12));
-    m.insert(QStringLiteral("onRed"),   QColor(QString::fromLatin1(s.onRed)));
+    m.insert(QStringLiteral("redInk"),   QColor(QString::fromLatin1(s.redInk)));
     m.insert(QStringLiteral("green"),   QColor(QString::fromLatin1(s.green)));
     // Pairs with accentWash. The two audio-quality badges were filled with a
     // hardcoded #1a4a7a / #1a4a3a, which are dark chips that vanish into a
@@ -135,7 +135,7 @@ QVariantMap build(const Spec &s) {
 
     m.insert(QStringLiteral("artScrim"),       withAlpha(QColor(Qt::black), kArtScrim));
     m.insert(QStringLiteral("artScrimStrong"), withAlpha(QColor(Qt::black), kArtScrimStrong));
-    m.insert(QStringLiteral("onArt"),          QColor(Qt::white));
+    m.insert(QStringLiteral("artInk"),          QColor(Qt::white));
     m.insert(QStringLiteral("artBorder"),      withAlpha(QColor(Qt::white), kArtBorder));
 
     return m;

@@ -21,7 +21,7 @@ Rectangle {
     Text {
         anchors.centerIn: parent
         text: "←"
-        color: Theme.onArt
+        color: Theme.artInk
         font.pixelSize: 18
     }
 

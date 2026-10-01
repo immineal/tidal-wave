@@ -195,7 +195,7 @@ Popup {
                         width: 36; height: 36; radius: Theme.radiusChip; color: Theme.accent
                         Text {
                             anchors.centerIn: parent; text: "♪"
-                            color: Theme.onAccent; font.pixelSize: 16
+                            color: Theme.accentInk; font.pixelSize: 16
                         }
                     }
                     ColumnLayout {
@@ -526,7 +526,7 @@ Popup {
             id: btnLabel
             anchors.centerIn: parent
             text: btn.label
-            color: btn.danger ? (btnHov.hovered ? Theme.onRed : Theme.red)
+            color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.red)
                               : Theme.textPrimary
             font.pixelSize: 12
         }
@@ -561,7 +561,7 @@ Popup {
                 radius: Theme.radiusChip
                 y: 3
                 x: tg.checked ? parent.width - width - 3 : 3
-                color: tg.checked ? Theme.onAccent : Theme.textSec
+                color: tg.checked ? Theme.accentInk : Theme.textSec
                 Behavior on x {
                     NumberAnimation { duration: Theme.dur(120); easing.type: Easing.OutCubic }
                 }
