@@ -233,8 +233,8 @@ Popup {
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
-                ThemeGroup { dark: true;  title: qsTr("Dark") }
-                ThemeGroup { dark: false; title: qsTr("Light") }
+                ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
+                ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
 
                 Text {
                     text: qsTr("Language")
@@ -296,7 +296,7 @@ Popup {
                         objectName: "settingsAudioDefaultNote"
                         // Which real output the empty-id sentinel is pointing
                         // at right now, so "System default" is not a guess.
-                        text: qsTr("System default currently uses %1").arg(root.defaultDeviceLabel)
+                        text: qsTr("The system default is currently %1.").arg(root.defaultDeviceLabel)
                         visible: root.defaultDeviceLabel.length > 0
                         color: Theme.textDim; font.pixelSize: 11
                         wrapMode: Text.Wrap; Layout.fillWidth: true
@@ -359,7 +359,7 @@ Popup {
                     }
                 }
                 Text {
-                    text: qsTr("At most once a day, against the GitHub releases page.")
+                    text: qsTr("At most once a day, using the GitHub releases page.")
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
@@ -386,7 +386,7 @@ Popup {
                     text: qsTr("Tidal Wave has no analytics and no telemetry.")
                 }
                 PrivacyLine {
-                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login and every search, page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.")
+                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.")
                 }
                 PrivacyLine {
                     text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.")
