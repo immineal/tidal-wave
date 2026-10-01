@@ -97,9 +97,17 @@ Decided with the user, waiting on the in-flight icon sweep to land first.
 6. **`Lossless (FLAC)` becomes `Lossless (16-bit)`**, which pairs with
    `Hi-Res (24-bit)`. Tidal's lossless tier is CD quality, 16-bit/44.1kHz, not
    the 12-bit that was guessed.
-7. **One now-playing indicator.** The queue marks the current track with the
-   three-line wave glyph; album and playlist rows show a music note instead.
-   Use the wave in both so the symbol means one thing.
+7. **One now-playing indicator**, in the queue and in the track rows, where
+   album and playlist currently show a music note instead.
+   **Decided: four or five bars, not three, and animated** like an equaliser.
+   Two things follow from that:
+   - It must **sit on a baseline**, where the track waveform is symmetric
+     about a centre line. With 5 bars against 7 the animation carries most of
+     the distinction, so under reduced motion that structural difference is
+     the only thing left telling them apart. Park it at a recognisable static
+     shape rather than letting it vanish, the way the spinners do.
+   - Cost is not a concern despite the 5000-row stress case: exactly one row
+     is ever playing, so there is only ever one animated indicator alive.
 8. **Retire the beamed-note glyph entirely.** `VectorIcon`'s `music` is a
    pair of beamed eighth notes, which is Western staff notation rather than a
    universal symbol for audio, and the user does not want it anywhere. Ten
@@ -110,8 +118,8 @@ Decided with the user, waiting on the in-flight icon sweep to land first.
    four different meanings, which is part of why it read badly:
    - **"a track"**, only two sites: the sidebar's type badge
      (`SideBar.qml:630`) and the Tracks filter chip (`LibraryFinder.qml:181`).
-     These need the new drawing, and it has to stay clearly distinct from the
-     wave that means "this is playing" (item 7), or the two blur together.
+     **Decided: a short waveform strip**, seven thin bars of varying height,
+     **symmetric about a centre line**, like a rendered audio file.
    - **"nothing here yet"**, the three `CollectionPage` empty states, which
      currently all show a note under "No playlists yet", "No mixes" and "No
      saved albums". Each should show its own type glyph: `playlist`, `mix`,
