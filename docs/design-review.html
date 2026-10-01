@@ -1,4 +1,4 @@
-<title>Tidal Wave Icon Set</title>
+<title>Tidal Wave Design Review</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: one measured column. Specimens sit on the app's own surfaces rather
@@ -151,7 +151,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
 </style>
 
 <div class="wrap">
-  <h1>Tidal Wave Icon Set</h1>
+  <h1>Tidal Wave Design Review</h1>
   <p class="lede">The mark, every glyph the app draws, the six themes and the corner-radius scale. Revised against your notes: the queue and playlist glyphs are no longer the same drawing, the filled pin kept its needle, the mix icon is a broadcast hub, the cast arcs grew and the mark is now continuous bands with no visible line ends.</p>
   <p class="meta">grid <b>24&times;24</b> &nbsp;·&nbsp; stroke <b>1.8</b> round cap/join &nbsp;·&nbsp; drawn at <b>0.85&times;</b> the box, as <b>VectorIcon.qml</b> scales &nbsp;·&nbsp; <b>28</b> existing &nbsp;·&nbsp; <b id="newcount">15</b> new</p>
 
@@ -198,7 +198,25 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
     <h2>Themes</h2>
     <p class="note">Four dark and two light. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette. The name under each is what appears in Settings.</p>
     <div class="themes" id="themes"></div>
-    <div class="callout"><b>This is the part that needs your eye most.</b> The two light themes are the real work: about forty places in the QML assume a dark ground, including white-on-cover text, the overlay gradients on the page heroes and the <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> hover fills. Say which six you want and I will tune them properly rather than guessing.</div>
+    <div class="callout"><b>Settled, and these are the six that shipped.</b> Graphite is gone: you called the violet accent sloppy, so the fourth dark theme is Forest, a green accent on green-grey neutrals. Daylight and Paper went in as drafted, Paper warm with the green accent. The two light themes were the real work, as expected: about forty places in the QML assumed a dark ground, including white-on-cover text, the overlay gradients on the page heroes and the <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> hover fills. Measuring the contrast instead of judging it by eye caught two things the swatch strips hid: white on the accent fails on every dark theme, and Paper had its ground and its surface the wrong way round, so cards sat lighter than the page they were on. Both are fixed, and both now have a test holding them in place.</div>
+  </section>
+
+  <section>
+    <h2>Tokens</h2>
+    <p class="note">25 colour tokens, written down once in <span style="font-family:var(--mono)">ThemePalette.cpp</span> and surfaced one for one by <span style="font-family:var(--mono)">Theme.qml</span>. Most were already there as the dark palette's literals. The ones below were added while the two light themes were being made to work, and they are the reason those themes are possible at all.</p>
+    <div class="scroller">
+      <table class="radtable">
+        <thead><tr><th>token</th><th>what it is</th><th>why it exists</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">onAccent</td><td>ink on a solid accent fill</td><td style="color:var(--muted)">White on the accent fails on all four dark themes: it measures 1.8:1 to 2.6:1. So the ink there is a near-black drawn from the accent's own hue, and white only on Daylight and Paper. The contrast tests found this. By eye the white looked fine.</td></tr>
+          <tr><td class="mono">hoverFill</td><td>the hover wash on rows and icon buttons</td><td style="color:var(--muted)">Was <span style="font-family:var(--mono)">Qt.rgba(1,1,1,0.04)</span> everywhere, which is invisible on a light ground. Each palette names its own direction instead: white at alpha 12 of 255 on the dark themes, black at 14 on the light ones.</td></tr>
+          <tr><td class="mono">accentSoft<br>accentTint<br>accentWash</td><td>three strengths of accent wash: a playing row, a hero gradient, a filled badge</td><td style="color:var(--muted)">Derived from the accent rather than written out, so they cannot drift off-hue. 8, 15 and 22% on the dark themes, 10, 18 and 26% on the light ones, because a wash over a light ground has to be heavier to read at all.</td></tr>
+          <tr><td class="mono">artScrim<br>artScrimStrong<br>onArt<br>artBorder</td><td>the layers drawn over cover art</td><td style="color:var(--muted)">Identical in all six themes. Cover art is neither light nor dark, so these cannot follow the ground: black at 35 and 60%, white ink, a white border at 22%.</td></tr>
+          <tr><td class="mono">greenWash</td><td>the fill behind the lossless badge</td><td style="color:var(--muted)">The two audio-quality badges were filled with a hardcoded <span style="font-family:var(--mono)">#1a4a7a</span> and <span style="font-family:var(--mono)">#1a4a3a</span>, dark chips that vanish into a light theme. Lossless takes this wash and hi-res the accent wash, each over whatever surface it lands on.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin:18px 0 0">The palettes are tested rather than eyeballed: 43 cases check WCAG contrast for every token against each of the three grounds it is drawn on (bg, surface, surfaceHigh), that the elevation ramp moves away from the ground in whichever direction away is for that theme, that the translucent tokens really are translucent and really are on the accent's hue, and that no token is present in one palette and missing from another. Thresholds: textPrimary 7:1, textSec 4.5:1, textDim 2:1, accent 3:1, and ink on a solid fill 4:1.</p>
   </section>
 
   <section>
@@ -383,9 +401,9 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
     { n: "Midnight", k: "dark", note: "today's palette",
       bg:"#0A0A0A", sf:"#141414", hi:"#1E1E1E", hv:"#262626", ln:"#2A2A2A",
       ac:"#00B2F8", tp:"#FFFFFF", ts:"#A0A0A0", td:"#555555" },
-    { n: "Graphite", k: "dark", note: "cooler, violet accent",
-      bg:"#0D0F13", sf:"#161A20", hi:"#1F242C", hv:"#282E38", ln:"#2C323B",
-      ac:"#8B7CF6", tp:"#F2F4F8", ts:"#99A2B0", td:"#5A6270" },
+    { n: "Forest", k: "dark", note: "cool neutrals, green accent",
+      bg:"#0B0F0C", sf:"#141A16", hi:"#1C241E", hv:"#242E26", ln:"#29332B",
+      ac:"#3DD68C", tp:"#EEF5F0", ts:"#94A69B", td:"#56655C" },
     { n: "Ember", k: "dark", note: "warm neutrals",
       bg:"#100D0C", sf:"#1A1614", hi:"#241F1C", hv:"#2E2825", ln:"#332C28",
       ac:"#FF7A45", tp:"#F7F2EF", ts:"#A89C95", td:"#615853" },
@@ -396,7 +414,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
       bg:"#FFFFFF", sf:"#F2F5F8", hi:"#E6EBF0", hv:"#D8E0E8", ln:"#CFD9E2",
       ac:"#0A6FC4", tp:"#08111A", ts:"#4C5A66", td:"#8A97A3" },
     { n: "Paper", k: "light", note: "warm, low contrast, green accent",
-      bg:"#F1EDE4", sf:"#FAF7F0", hi:"#E7E1D4", hv:"#DCD4C3", ln:"#D2C9B6",
+      bg:"#FAF7F0", sf:"#F1EBDC", hi:"#E7DFCB", hv:"#DBD1B9", ln:"#CBC0A6",
       ac:"#2F6F4E", tp:"#1B1913", ts:"#5D564A", td:"#958C7B" }
   ];
   function themeCard(t) {
@@ -446,7 +464,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
     ["buttons, icon hit areas", "8", "8", 8, "unchanged, this one was right"],
     ["cover art, thumbnails", "4", "5", 5, "records are square; more rounding fights the artwork"],
     ["cards and tiles", "8", "11", 11, "bigger than a row so a card reads as an object, not a stripe"],
-    ["popups, dialogs, panels", "12", "18", 18, "clearly detached from everything behind it"],
+    ["popups, dialogs, panels", "12", "14", 14, "detached from the page behind it, and still clear of the 11 on cards; softer than the 18 first drafted"],
     ["quality badge, tiny tags", "3", "4", 4, "at 16px tall anything more turns into a lozenge"],
     ["the app mark", "12", "14", 14, "matches the platform's own icon masking more closely"]
   ];
