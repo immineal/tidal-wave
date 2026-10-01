@@ -100,6 +100,16 @@ Decided with the user, waiting on the in-flight icon sweep to land first.
 7. **One now-playing indicator.** The queue marks the current track with the
    three-line wave glyph; album and playlist rows show a music note instead.
    Use the wave in both so the symbol means one thing.
+8. **Retire the beamed-note glyph entirely.** `VectorIcon`'s `music` is a
+   pair of beamed eighth notes, which is Western staff notation rather than a
+   universal symbol for audio, and the user does not want it anywhere. Ten
+   call sites: `MediaCard`, `TrackRow`, `SideBar`, `CollectionPage` (three
+   empty states), `SettingsPanel`, `LibraryFinder`'s Tracks chip, `MixPage`,
+   and the case in `VectorIcon` itself.
+   Needs a replacement drawing for "a track", and it has to stay clearly
+   distinct from the wave used for "this is playing" (item 7), or the two
+   collide. A waveform reads as audio without notation but is close to the
+   playing indicator, so the two need deliberately different silhouettes.
 
 ## Animation, after measuring
 
