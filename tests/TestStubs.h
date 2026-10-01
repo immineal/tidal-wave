@@ -41,6 +41,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include "ui/ThemePalette.h"
+
 // ─── shared plumbing ────────────────────────────────────────────────────────
 
 // Base for stubs that hand results back through a QJSValue callback.
@@ -1008,6 +1010,10 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     ctx->setContextProperty(QStringLiteral("cast"), s.cast);
     ctx->setContextProperty(QStringLiteral("app"), s.app);
     ctx->setContextProperty(QStringLiteral("prefs"), s.prefs);
+    // Theme.qml binds to the ThemePalette singleton, which Application wires
+    // to Prefs at startup. Without the same wiring here every QML test paints
+    // in the default palette and a broken theme switch looks like a pass.
+    ThemePalette::instance()->setThemeSource(s.prefs);
     ctx->setContextProperty(QStringLiteral("pins"), s.pins);
     ctx->setContextProperty(QStringLiteral("library"), s.library);
 

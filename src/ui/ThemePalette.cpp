@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QHash>
+#include <QMetaProperty>
 
 namespace theme {
 namespace {
@@ -195,8 +196,10 @@ ThemePalette::ThemePalette(Prefs *prefs, QObject *parent) : QObject(parent) {
     setPrefs(prefs);
 }
 
+void ThemePalette::setPrefs(Prefs *prefs) { setThemeSource(prefs); }
+
 ThemePalette *ThemePalette::instance() {
-    static ThemePalette *self = new ThemePalette();
+    static ThemePalette *self = new ThemePalette(nullptr);
     return self;
 }
 
@@ -207,20 +210,35 @@ ThemePalette *ThemePalette::create(QQmlEngine *, QJSEngine *) {
     return self;
 }
 
-void ThemePalette::setPrefs(Prefs *prefs) {
-    if (m_prefs == prefs) {
+void ThemePalette::setThemeSource(QObject *source) {
+    if (m_source == source) {
         if (m_current.isEmpty()) refresh();
         return;
     }
-    if (m_prefs) disconnect(m_prefs, nullptr, this, nullptr);
-    m_prefs = prefs;
-    if (m_prefs) connect(m_prefs, &Prefs::themeChanged, this, &ThemePalette::refresh);
+    if (m_source) disconnect(m_source, nullptr, this, nullptr);
+    m_source = source;
+
+    if (m_source) {
+        // Connect by meta-object rather than to Prefs::themeChanged, so a test
+        // double works here without the palette knowing the concrete type.
+        const QMetaObject *mo = m_source->metaObject();
+        const int index = mo->indexOfProperty("theme");
+        if (index >= 0) {
+            const QMetaProperty prop = mo->property(index);
+            if (prop.hasNotifySignal()) {
+                const int slot = metaObject()->indexOfSlot("refresh()");
+                connect(m_source, prop.notifySignal(), this, metaObject()->method(slot));
+            }
+        } else {
+            qWarning("ThemePalette: theme source has no \"theme\" property");
+        }
+    }
     refresh();
 }
 
 void ThemePalette::refresh() {
-    const QVariantMap next =
-        theme::palette(m_prefs ? m_prefs->theme() : theme::defaultTheme());
+    const QVariantMap next = theme::palette(
+        m_source ? m_source->property("theme").toString() : theme::defaultTheme());
     if (next == m_current) return;
     m_current = next;
     emit currentChanged();

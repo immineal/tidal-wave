@@ -286,6 +286,37 @@ private slots:
 
     // ── the QML-facing object ────────────────────────────────────────────
 
+    // Qt picks a QML_SINGLETON's construction path by checking
+    // std::is_default_constructible before it looks for create(). While every
+    // constructor argument had a default, QML silently built its own instance
+    // with a null Prefs instead of calling create(), the app wired a second
+    // object, and all six palettes painted as the default one. Theme switching
+    // was dead in the shipped app and every test here still passed, because
+    // they only ever called the free functions.
+    void singletonIsNotDefaultConstructible() {
+        static_assert(!std::is_default_constructible_v<ThemePalette>,
+                      "ThemePalette must not be default-constructible, or Qt "
+                      "ignores create() and QML gets an instance with no Prefs");
+        QVERIFY(!std::is_default_constructible_v<ThemePalette>);
+    }
+
+    // create() is what the QML engine calls. It has to hand back the same
+    // object Application wired Prefs into, not a fresh one.
+    void createReturnsTheWiredInstance() {
+        Prefs prefs;
+        prefs.setTheme(QStringLiteral("ember"));
+        ThemePalette::instance()->setPrefs(&prefs);
+
+        ThemePalette *fromQml = ThemePalette::create(nullptr, nullptr);
+        QCOMPARE(fromQml, ThemePalette::instance());
+        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("ember")));
+
+        // ...and it keeps following Prefs through that same pointer.
+        prefs.setTheme(QStringLiteral("daylight"));
+        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("daylight")));
+        QVERIFY(!fromQml->isDark());
+    }
+
     void currentFollowsPrefs() {
         Prefs prefs;
         prefs.setTheme(QStringLiteral("midnight"));
