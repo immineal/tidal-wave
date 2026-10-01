@@ -106,10 +106,22 @@ Decided with the user, waiting on the in-flight icon sweep to land first.
    call sites: `MediaCard`, `TrackRow`, `SideBar`, `CollectionPage` (three
    empty states), `SettingsPanel`, `LibraryFinder`'s Tracks chip, `MixPage`,
    and the case in `VectorIcon` itself.
-   Needs a replacement drawing for "a track", and it has to stay clearly
-   distinct from the wave used for "this is playing" (item 7), or the two
-   collide. A waveform reads as audio without notation but is close to the
-   playing indicator, so the two need deliberately different silhouettes.
+   **One replacement does not serve all ten.** The note was standing in for
+   four different meanings, which is part of why it read badly:
+   - **"a track"**, only two sites: the sidebar's type badge
+     (`SideBar.qml:630`) and the Tracks filter chip (`LibraryFinder.qml:181`).
+     These need the new drawing, and it has to stay clearly distinct from the
+     wave that means "this is playing" (item 7), or the two blur together.
+   - **"nothing here yet"**, the three `CollectionPage` empty states, which
+     currently all show a note under "No playlists yet", "No mixes" and "No
+     saved albums". Each should show its own type glyph: `playlist`, `mix`,
+     `album`. A note says nothing there.
+   - **"no artwork"**, the `MediaCard` and `MixPage` placeholders. These
+     already know the item's type, so they should fall back to that type's
+     glyph.
+   - **an avatar stand-in**, `SettingsPanel.qml:263`. Not music at all, and it
+     disappears anyway once the footer rework drops the avatar and the
+     Settings restructure moves that row.
 
 ## Animation, after measuring
 
