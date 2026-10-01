@@ -1266,13 +1266,37 @@ TestCase {
         verify(pill, "the sleep timer pill was not found")
 
         var seconds = [600, 599, 61, 60, 59, 10, 9, 1, 0]
-        var first = -1
         var label = findChild(host.page, "nowPlayingSleepTimerLabel")
         verify(label, "the countdown label was not found")
+
+        // Settle before taking the baseline. The pill has just come out of its
+        // idle "Sleep Timer" state, which is a different width, and
+        // Layout.preferredWidth needs a polish pass to land. Capturing `first`
+        // one wait(0) after the flip pinned the *idle* width, so every later
+        // sample disagreed with it and the case failed somewhere in the middle
+        // of the sweep rather than at the start - which is what a real jitter
+        // would look like, and it was not one. It passed alone and failed in a
+        // full run, because tst_qml runs every QML file in one process and the
+        // timing differs under load.
+        host.sleepTimeLeft = seconds[0]
+        var settled = -1
+        tryVerify(function () {
+            var w = pill.width
+            var same = (w === settled)
+            settled = w
+            return same
+        }, 2000, "the sleep timer pill never settled on a width")
+
+        var first = pill.width
+        // And it must be reserving, not merely stable: a pill that had stopped
+        // reserving entirely would hold one width here too, by being wrong the
+        // same way every time.
+        verify(first >= pill.height + label.implicitWidth,
+               "the pill is stable but no longer reserves room for the digits")
+
         for (var i = 0; i < seconds.length; i++) {
             host.sleepTimeLeft = seconds[i]
             wait(0)
-            if (first < 0) first = pill.width
             compare(pill.width, first,
                     "the pill resized at \"" + label.text + "\": "
                     + pill.width.toFixed(1) + " against " + first.toFixed(1))

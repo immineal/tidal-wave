@@ -37,6 +37,16 @@ class Prefs : public QObject {
     // chooses the scene graph backend once at startup, so a change only takes
     // effect on the next launch.
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
+    // The interface scale. 0 means Auto, and Auto is a real value rather than
+    // the absence of one, so someone who picks 2.0 can still ask for automatic
+    // behaviour back afterwards. Otherwise kMinScaleFactor..kMaxScaleFactor in
+    // kScaleFactorStep increments.
+    //
+    // Qt reads the scale factor once, before the QApplication exists, which is
+    // why Application reads this same key straight out of QSettings rather than
+    // through this object, and why changing it only takes effect at next
+    // launch. The Settings row says so.
+    Q_PROPERTY(double uiScale READ uiScale WRITE setUiScale NOTIFY uiScaleChanged)
     // Let the window's close button end the process instead of hiding the
     // window in the tray. Off by default, which is the behaviour the app has
     // always had; with no tray icon a close quits whatever this says, because
@@ -63,6 +73,7 @@ public:
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
+    double  uiScale() const { return m_uiScale; }
     bool    quitOnClose() const       { return m_quitOnClose; }
 
     void setTheme(const QString &v);
@@ -72,6 +83,7 @@ public:
     void setSidebarWidth(int v);
     void setAudioDevice(const QString &v);
     void setSoftwareRendering(bool v);
+    void setUiScale(double v);
     void setQuitOnClose(bool v);
 
     // Exposed so QML can lay out against the same numbers the C++ side uses.
@@ -91,6 +103,7 @@ signals:
     void sidebarWidthChanged();
     void audioDeviceChanged();
     void softwareRenderingChanged();
+    void uiScaleChanged();
     void quitOnCloseChanged();
 
 private:
@@ -102,5 +115,6 @@ private:
     int       m_sidebarWidth;
     QString   m_audioDevice;
     bool      m_softwareRendering;
+    double    m_uiScale;
     bool      m_quitOnClose;
 };

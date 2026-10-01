@@ -339,7 +339,11 @@ private slots:
     void autoScaleFactorDerivesFromTheReportedPanel() {
         const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
         // physicalDpi / kAutoTargetDpi, snapped, then held under the fit ceiling.
-        QCOMPARE(Application::autoScaleFactor(panel), 2.5);
+        // 2.0 is the user's own choice on this exact panel, made by looking at
+        // 2.0, 2.5 and 3.0 rendered side by side at native pixels. It is pinned
+        // here rather than recomputed from the constant on purpose: if someone
+        // moves kAutoTargetDpi, this should fail and make them say why.
+        QCOMPARE(Application::autoScaleFactor(panel), 2.0);
     }
 
     void autoScaleFactorLeavesOrdinaryScreensAlone() {
@@ -367,10 +371,13 @@ private slots:
 
     void anExplicitSettingOutranksTheAutomaticRule() {
         const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
-        // The user asked for 2.0 on a panel whose automatic answer is 2.5.
-        QCOMPARE(Application::resolveScaleFactor(panel, 2.0), 2.0);
+        // 1.5, not 2.0: the automatic answer for this panel is now 2.0 itself,
+        // so asking for 2.0 would pass whether or not the setting was consulted.
+        // The value has to be one the rule cannot produce for the assertion to
+        // mean anything.
+        QCOMPARE(Application::resolveScaleFactor(panel, 1.5), 1.5);
         // 0 is Auto, and Auto is a value rather than the absence of one.
-        QCOMPARE(Application::resolveScaleFactor(panel, 0.0), 2.5);
+        QCOMPARE(Application::resolveScaleFactor(panel, 0.0), 2.0);
         // ...but not even an explicit setting may put the window out of reach.
         QCOMPARE(Application::resolveScaleFactor(panel, 3.0), 2.5);
     }
@@ -410,7 +417,7 @@ private slots:
         // The same panel with the platform reporting nothing is the case we fix.
         Screen unscaled{ 283.5, 96.0, 1.0, 3840, 2400 };
         unscaled.platformDpr = 1.0;
-        QCOMPARE(Application::autoScaleFactor(unscaled), 2.5);
+        QCOMPARE(Application::autoScaleFactor(unscaled), 2.0);
     }
 
     void theUsersSettingAppliesEvenWhenThePlatformScales() {

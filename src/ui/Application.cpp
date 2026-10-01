@@ -582,8 +582,24 @@ void Application::applyQuickControlsStyle() {
     //
     // Safe to call more than once and from any harness; QQuickStyle only has to
     // be set before the first Controls type is created.
-#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    //
+    // Fusion on every platform and every version except 6.4, where it is Basic.
+    // Fusion is what Qt 6.12 already picks on Linux, so it is the look the app
+    // is tuned against and the one all 51 visual baselines capture - forcing
+    // Basic there moved 5.1 million pixels across 24 of them, the Settings
+    // panel alone changing on 845k of its 1.15M, because everything taking a
+    // colour from the style palette rather than a Theme token went grey.
+    //
+    // 6.4 is the exception for a reason we do not control: Fusion's own Popup
+    // calls polish() inside updatePolish() there, which hangs rather than
+    // misdraws, and the output picker is a real user path and not only a test.
+    // Basic has no such bug. A 6.4 system already renders differently in
+    // several ways it cannot avoid, so this is one more honest difference
+    // rather than a new one.
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+#else
+    QQuickStyle::setStyle(QStringLiteral("Fusion"));
 #endif
 }
 
