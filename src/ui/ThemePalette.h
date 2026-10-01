@@ -62,7 +62,13 @@ class ThemePalette : public QObject {
     Q_PROPERTY(bool isDark READ isDark NOTIFY currentChanged)
 
 public:
-    explicit ThemePalette(Prefs *prefs = nullptr, QObject *parent = nullptr);
+    // `prefs` is deliberately NOT defaulted. Qt decides how to build a
+    // QML_SINGLETON by checking std::is_default_constructible FIRST and only
+    // then looking for create(); with a default on every argument this type
+    // was default-constructible, so QML quietly built its own instance with a
+    // null Prefs and create() was never called. The app then wired a second,
+    // different object, and every palette painted as the default one.
+    explicit ThemePalette(Prefs *prefs, QObject *parent = nullptr);
 
     // The instance QML gets. Application wires Prefs into it before the engine
     // loads Main.qml; without that it still serves the default palette rather
@@ -71,6 +77,12 @@ public:
     static ThemePalette *create(QQmlEngine *, QJSEngine *);
 
     void setPrefs(Prefs *prefs);
+
+    // The same thing, against anything exposing a notifying QString "theme"
+    // property. It exists so a test double can stand in for Prefs: the QML
+    // tests install a stub with extra hooks the real class has no business
+    // carrying, and this is the whole of what the palette needs from it.
+    void setThemeSource(QObject *source);
 
     QVariantMap current() const { return m_current; }
     QVariantMap radius() const  { return theme::radii(); }
@@ -83,11 +95,14 @@ public:
 signals:
     void currentChanged();
 
-private:
+private slots:
+    // A slot so it can be connected to the source's notify signal by name,
+    // without knowing the concrete type.
     void refresh();
 
-    // QPointer, not a bare pointer: setPrefs() disconnects from the old one,
-    // and a Prefs destroyed before the palette made that a hard crash.
-    QPointer<Prefs> m_prefs;
+private:
+    // QPointer, not a bare pointer: setThemeSource() disconnects from the old
+    // one, and a source destroyed before the palette made that a hard crash.
+    QPointer<QObject> m_source;
     QVariantMap m_current;
 };
