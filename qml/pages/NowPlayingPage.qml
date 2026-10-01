@@ -319,8 +319,8 @@ Rectangle {
                                 opacity: active ? 1.0 : (hovered ? 0.85 : 0.55)
                                 lineHeight: 1.6
                                 wrapMode: Text.WordWrap
-                                Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                                Behavior on color   { ColorAnimation  { duration: 180 } }
+                                Behavior on opacity { NumberAnimation { duration: Theme.dur(180); easing.type: Easing.OutCubic } }
+                                Behavior on color   { ColorAnimation  { duration: Theme.dur(180) } }
 
                                 HoverHandler {
                                     id: hoverHandler
@@ -570,8 +570,9 @@ Rectangle {
                                     color: Theme.accent
                                 }
                                 RotationAnimator {
-                                    target: npSpinner; from: 0; to: 360; duration: 800
-                                    loops: Animation.Infinite; running: root.dlState === "busy"
+                                    target: npSpinner; from: 0; to: 360; duration: Theme.dur(800)
+                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
+                                    running: root.dlState === "busy"
                                 }
                             }
                             HoverHandler { id: npDlHov; cursorShape: Qt.PointingHandCursor }
@@ -935,7 +936,7 @@ Rectangle {
                                         height: 16
                                         radius: 8
                                         color: root.sleepFadeOut ? Theme.onAccent : Theme.textPrimary
-                                        Behavior on x { NumberAnimation { duration: 150 } }
+                                        Behavior on x { NumberAnimation { duration: Theme.dur(150) } }
                                     }
                                 }
                             
@@ -980,7 +981,7 @@ Rectangle {
                                 height: 32
                                 strokeWidth: 1.5
                             }
-                            scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: 100 } }
+                            scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
                             HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
                             TapHandler   { onTapped: player.playPause() }
                         }

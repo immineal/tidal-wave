@@ -204,7 +204,7 @@ Item {
                     spacing: 1
                     visible: !player.shuffle
                     opacity: qHov.hovered ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
                     Repeater {
                         model: [{ glyph: "▲", delta: -1 }, { glyph: "▼", delta: 1 }]
                         Item {

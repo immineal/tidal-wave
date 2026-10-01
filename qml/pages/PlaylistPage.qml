@@ -92,7 +92,7 @@ Rectangle {
                         smooth: true
                         mipmap: true
                         opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                        Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
                     }
                     Grid {
                         id: collageGrid

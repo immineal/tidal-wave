@@ -16,7 +16,7 @@ Rectangle {
     Keys.onReturnPressed: root.Window.window.goBack()
     Keys.onSpacePressed:  root.Window.window.goBack()
 
-    Behavior on color { ColorAnimation { duration: 100 } }
+    Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
 
     Text {
         anchors.centerIn: parent

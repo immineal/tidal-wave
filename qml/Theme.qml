@@ -78,4 +78,35 @@ QtObject {
     readonly property int radiusPopup:  r.popup    // dialogs, panels
     readonly property int radiusBadge:  r.badge    // quality tag
     readonly property int radiusMark:   r.mark     // the app icon tile
+
+    // ── motion ───────────────────────────────────────────────────────────
+    // X6. One switch for the whole app, so a new animation has one obvious
+    // thing to call and the answer cannot drift from file to file. Where the
+    // preference actually comes from is Application::reducedMotion's problem;
+    // see src/ui/Application.cpp for what each desktop exposes.
+    //
+    // `typeof` rather than a bare `app.reducedMotion` because a singleton is
+    // reachable from anything that imports TidalWave, including hosts that
+    // install only the context properties they need. An unqualified name that
+    // is not there is a QML warning, and tests/tst_firstrun.cpp fails on any
+    // warning at all. Same guard Main.qml uses for `updateCheck`.
+    readonly property bool reduceMotion: (typeof app !== "undefined")
+                                         && app !== null
+                                         && app.reducedMotion === true
+
+    // How long an animation is allowed to run for. Every `duration:` under
+    // qml/ goes through here.
+    //
+    // Reduced motion collapses the duration to zero instead of switching the
+    // animation off: the transition still starts and still finishes, so
+    // anything watching for the end of one keeps working, and the property
+    // lands on its target in the frame it was written. Switching the
+    // animation off instead would be a second code path that only reduced
+    // motion ever takes, which is how the two drift apart.
+    //
+    // An animation that loops forever cannot take this alone — zero-duration
+    // and Animation.Infinite together is a spin loop. Those pair it with
+    // `loops: Theme.reduceMotion ? 1 : Animation.Infinite` so the thing runs
+    // once, instantly, and stops with its indicator still on screen.
+    function dur(ms) { return reduceMotion ? 0 : ms }
 }

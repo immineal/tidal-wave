@@ -47,7 +47,7 @@ Item {
                     height: parent.height
                     radius: parent.radius
                     color: hov.hovered || _dragging ? Theme.accent : Theme.textSec
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: Theme.dur(120) } }
                 }
 
                 // Scrubber dot
@@ -58,8 +58,8 @@ Item {
                     height: hov.hovered || _dragging ? 12 : 0
                     radius: 6
                     color: Theme.textPrimary
-                    Behavior on width  { NumberAnimation { duration: 100 } }
-                    Behavior on height { NumberAnimation { duration: 100 } }
+                    Behavior on width  { NumberAnimation { duration: Theme.dur(100) } }
+                    Behavior on height { NumberAnimation { duration: Theme.dur(100) } }
                 }
             }
 

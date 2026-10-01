@@ -302,11 +302,14 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         color: Theme.accent
                     }
+                    // Still a visible busy mark under reduced motion, just a
+                    // still one; see LoadingOverlay for why it is shaped this
+                    // way rather than switched off.
                     RotationAnimator {
                         target: dlSpinner
                         from: 0; to: 360
-                        duration: 800
-                        loops: Animation.Infinite
+                        duration: Theme.dur(800)
+                        loops: Theme.reduceMotion ? 1 : Animation.Infinite
                         running: root.dlState === "busy"
                     }
                 }

@@ -60,13 +60,14 @@ Rectangle {
 
         // Auth card
         Rectangle {
+            objectName: "loginAuthCard"
             Layout.fillWidth: true
             radius: Theme.radiusCard
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
             height: auth.state === 0 ? (auth.hasSavedCredentials ? 140 : (errorMessage.length > 0 ? 260 : 220)) : auth.state === 1 ? 400 : 100
-            Behavior on height { NumberAnimation { duration: 200 } }
+            Behavior on height { NumberAnimation { duration: Theme.dur(200) } }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -92,18 +93,26 @@ Rectangle {
                         Repeater {
                             model: 3
                             Rectangle {
+                                objectName: "loginPulseDot"
                                 required property int index
                                 width: 6
                                 height: 6
                                 radius: 3
                                 color: Theme.accent
                                 opacity: 0.3
+                                // Reduced motion runs the sequence once with
+                                // every leg at zero, which parks the dot at
+                                // full opacity: three steady dots instead of
+                                // none. Infinite loops at zero would spin.
                                 SequentialAnimation on opacity {
-                                    loops: Animation.Infinite
+                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: auth.state === 0 && auth.hasSavedCredentials
-                                    PauseAnimation { duration: index * 200 }
-                                    NumberAnimation { to: 1; duration: 400 }
-                                    NumberAnimation { to: 0.3; duration: 400 }
+                                    PauseAnimation { duration: Theme.dur(index * 200) }
+                                    NumberAnimation { to: 1; duration: Theme.dur(400) }
+                                    NumberAnimation {
+                                        to: Theme.reduceMotion ? 1 : 0.3
+                                        duration: Theme.dur(400)
+                                    }
                                 }
                             }
                         }
@@ -131,7 +140,7 @@ Rectangle {
                         border.width: activeFocus ? 2 : 0
                         border.color: Theme.textPrimary
                         scale: loginHov.hovered ? 0.98 : 1
-                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
 
                         activeFocusOnTab: true
                         Keys.onReturnPressed: auth.startDeviceFlow()
@@ -235,18 +244,26 @@ Rectangle {
                         Repeater {
                             model: 3
                             Rectangle {
+                                objectName: "loginPulseDot"
                                 required property int index
                                 width: 6
                                 height: 6
                                 radius: 3
                                 color: Theme.accent
                                 opacity: 0.3
+                                // Reduced motion runs the sequence once with
+                                // every leg at zero, which parks the dot at
+                                // full opacity: three steady dots instead of
+                                // none. Infinite loops at zero would spin.
                                 SequentialAnimation on opacity {
-                                    loops: Animation.Infinite
+                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: auth.state === 1
-                                    PauseAnimation { duration: index * 200 }
-                                    NumberAnimation { to: 1; duration: 400 }
-                                    NumberAnimation { to: 0.3; duration: 400 }
+                                    PauseAnimation { duration: Theme.dur(index * 200) }
+                                    NumberAnimation { to: 1; duration: Theme.dur(400) }
+                                    NumberAnimation {
+                                        to: Theme.reduceMotion ? 1 : 0.3
+                                        duration: Theme.dur(400)
+                                    }
                                 }
                             }
                         }

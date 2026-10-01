@@ -22,7 +22,7 @@ Rectangle {
             color: backHov.hovered ? Theme.surfaceHov : "transparent"
             border.width: activeFocus ? 2 : 0
             border.color: Theme.accent
-            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
             activeFocusOnTab: true
             Keys.onReturnPressed: root.backClicked()
             Keys.onSpacePressed:  root.backClicked()
