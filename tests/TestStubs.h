@@ -1,7 +1,8 @@
 #pragma once
 //
-// Test doubles for the six QML context properties the app installs at runtime
-// (see Application::run(): auth, bridge, player, downloader, cast, app).
+// Test doubles for the QML context properties the app installs at runtime
+// (see Application::run(): prefs, auth, bridge, player, downloader, cast, app,
+// pins, library).
 //
 // Why: every page under qml/pages/ reaches straight into those globals in
 // bindings and in Component.onCompleted, so instantiating a page against a bare
@@ -188,7 +189,12 @@ public:
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
     Q_INVOKABLE void fetchUserPlaylists(QJSValue cb, int limit = 50, int offset = 0) {
-        Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
+        Q_UNUSED(limit); Q_UNUSED(offset);
+        // Counted: the sidebar used to call this with limit 30, which is the
+        // reported "new playlists don't show up" bug (SPEC S3). It reads
+        // library.entries now, so tst_sidebar asserts the count stays at zero.
+        m_userPlaylistFetches++;
+        resolve(cb, emptyArray());
     }
 
     // Detail pages — these return maps, not lists.
@@ -309,6 +315,12 @@ public:
     }
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
     Q_INVOKABLE QString lastPlaylistPlayedForTest() const { return m_lastPlaylistPlayed; }
+    Q_INVOKABLE int  userPlaylistFetchCountForTest() const { return m_userPlaylistFetches; }
+    Q_INVOKABLE void resetForTest() {
+        m_userPlaylistFetches = 0;
+        m_lastClipboardText.clear();
+        m_lastPlaylistPlayed.clear();
+    }
 
 signals:
     void preferredQualityChanged();
@@ -325,6 +337,7 @@ private:
     QHash<qlonglong, bool> m_favoriteArtists;
     QString m_lastClipboardText;
     QString m_lastPlaylistPlayed;
+    int     m_userPlaylistFetches = 0;
 };
 
 // ─── player ─────────────────────────────────────────────────────────────────
@@ -590,10 +603,12 @@ private:
 class StubApp : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool reallyQuit READ reallyQuit NOTIFY reallyQuitChanged)
+    Q_PROPERTY(bool reducedMotion READ reducedMotion NOTIFY reducedMotionChanged)
 public:
     explicit StubApp(QObject *parent = nullptr) : QObject(parent) {}
 
     bool reallyQuit() const { return m_reallyQuit; }
+    bool reducedMotion() const { return m_reducedMotion; }
 
     Q_INVOKABLE void quit() {
         m_quitCount++;
@@ -612,9 +627,15 @@ public:
     Q_INVOKABLE QString lastOpenedUrlForTest() const {
         return m_openedUrls.isEmpty() ? QString() : m_openedUrls.last();
     }
+    Q_INVOKABLE void setReducedMotionForTest(bool on) {
+        if (m_reducedMotion == on) return;
+        m_reducedMotion = on;
+        emit reducedMotionChanged();
+    }
     Q_INVOKABLE void resetForTest() {
         m_quitCount = 0;
         m_openedUrls.clear();
+        setReducedMotionForTest(false);
         if (m_reallyQuit) {
             m_reallyQuit = false;
             emit reallyQuitChanged();
@@ -623,9 +644,11 @@ public:
 
 signals:
     void reallyQuitChanged();
+    void reducedMotionChanged();
 
 private:
     bool        m_reallyQuit = false;
+    bool        m_reducedMotion = false;
     int         m_quitCount = 0;
     QStringList m_openedUrls;
 };
@@ -695,6 +718,255 @@ public:
     }
 };
 
+// ─── prefs ──────────────────────────────────────────────────────────────────
+
+// Mirrors Prefs (src/ui/Prefs.h) in memory. Without this the sidebar logged
+// "ReferenceError: prefs is not defined" in every QML test and then laid itself
+// out against undefined widths.
+//
+// In memory on purpose: the real Prefs writes through QSettings, which in a test
+// binary means a file under the user's own config directory, and a persistence
+// test that depends on one is a test that fails differently on every machine.
+// Prefs' own round-tripping is covered by tst_prefs; what the QML has to get
+// right is that it writes the dragged width here at all, and reads it back when
+// a fresh sidebar is built.
+class StubPrefs : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
+    Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
+    Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
+public:
+    explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
+
+    // Same numbers as Prefs::minSidebarWidth and friends. Kept as literals
+    // rather than pulled from Prefs so a change there shows up as a failing
+    // assertion here instead of quietly agreeing with itself.
+    static constexpr int kMinSidebar    = 180;
+    static constexpr int kMaxSidebar    = 420;
+    static constexpr int kRailBreak     = 820;
+    static constexpr int kRail          = 68;
+    static constexpr int kChipLabelMin  = 268;
+
+    QString theme() const        { return m_theme; }
+    QString language() const     { return m_language; }
+    int     sidebarWidth() const { return m_sidebarWidth; }
+    QString audioDevice() const  { return m_audioDevice; }
+    bool    softwareRendering() const { return m_softwareRendering; }
+
+    void setTheme(const QString &v) {
+        if (v.isEmpty() || v == m_theme) return;
+        m_theme = v;
+        emit themeChanged();
+    }
+    void setLanguage(const QString &v) {
+        if (v == m_language) return;
+        m_language = v;
+        emit languageChanged();
+    }
+    void setSidebarWidth(int v) {
+        const int clamped = qBound(kMinSidebar, v, kMaxSidebar);
+        if (clamped == m_sidebarWidth) return;
+        m_sidebarWidth = clamped;
+        emit sidebarWidthChanged();
+    }
+    void setAudioDevice(const QString &v) {
+        if (v == m_audioDevice) return;
+        m_audioDevice = v;
+        emit audioDeviceChanged();
+    }
+    void setSoftwareRendering(bool v) {
+        if (v == m_softwareRendering) return;
+        m_softwareRendering = v;
+        emit softwareRenderingChanged();
+    }
+
+    Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
+    Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
+    Q_INVOKABLE int railBreak() const    { return kRailBreak; }
+    Q_INVOKABLE int rail() const         { return kRail; }
+    Q_INVOKABLE int chipLabelMin() const { return kChipLabelMin; }
+
+    Q_INVOKABLE QString appVersion() const { return m_version; }
+
+    // test hooks
+    Q_INVOKABLE void setSidebarWidthForTest(int v) { setSidebarWidth(v); }
+    Q_INVOKABLE void setAppVersionForTest(const QString &v) { m_version = v; }
+
+signals:
+    void themeChanged();
+    void languageChanged();
+    void sidebarWidthChanged();
+    void audioDeviceChanged();
+    void softwareRenderingChanged();
+
+private:
+    QString m_theme    = QStringLiteral("midnight");
+    QString m_language = QStringLiteral("system");
+    int     m_sidebarWidth = 220;
+    QString m_audioDevice;
+    bool    m_softwareRendering = false;
+    QString m_version = QStringLiteral("0.4.0");
+};
+
+// ─── pins ───────────────────────────────────────────────────────────────────
+
+// Mirrors PinStore (src/ui/PinStore.h) in memory. A pin is
+// {kind, id, title, subtitle, imageUrl}; order is whatever the test sets.
+class StubPins : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList items READ items NOTIFY changed)
+public:
+    explicit StubPins(QObject *parent = nullptr) : QObject(parent) {}
+
+    QVariantList items() const { return m_items; }
+
+    Q_INVOKABLE int indexOf(const QString &kind, const QString &id) const {
+        for (int i = 0; i < m_items.size(); ++i) {
+            const QVariantMap m = m_items.at(i).toMap();
+            if (m.value(QStringLiteral("kind")).toString() == kind
+                && m.value(QStringLiteral("id")).toString() == id)
+                return i;
+        }
+        return -1;
+    }
+    Q_INVOKABLE bool isPinned(const QString &kind, const QString &id) const {
+        return indexOf(kind, id) >= 0;
+    }
+    Q_INVOKABLE void pin(const QString &kind, const QString &id, const QString &title,
+                         const QString &subtitle, const QString &imageUrl) {
+        if (isPinned(kind, id)) return;
+        QVariantMap m;
+        m[QStringLiteral("kind")]     = kind;
+        m[QStringLiteral("id")]       = id;
+        m[QStringLiteral("title")]    = title;
+        m[QStringLiteral("subtitle")] = subtitle;
+        m[QStringLiteral("imageUrl")] = imageUrl;
+        m_items.append(m);
+        emit changed();
+    }
+    Q_INVOKABLE void unpin(const QString &kind, const QString &id) {
+        const int i = indexOf(kind, id);
+        if (i < 0) return;
+        m_items.removeAt(i);
+        emit changed();
+    }
+    Q_INVOKABLE void toggle(const QString &kind, const QString &id, const QString &title,
+                            const QString &subtitle, const QString &imageUrl) {
+        if (isPinned(kind, id)) unpin(kind, id);
+        else                    pin(kind, id, title, subtitle, imageUrl);
+    }
+    Q_INVOKABLE void move(int from, int to) {
+        if (from < 0 || to < 0 || from >= m_items.size() || to >= m_items.size()) return;
+        m_items.move(from, to);
+        emit changed();
+    }
+
+    // test hooks
+    Q_INVOKABLE void setItemsForTest(const QVariantList &items) {
+        m_items = items;
+        emit changed();
+    }
+
+signals:
+    void changed();
+
+private:
+    QVariantList m_items;
+};
+
+// ─── library ────────────────────────────────────────────────────────────────
+
+// Mirrors LibraryIndex (src/api/LibraryIndex.h). The real one pages the whole
+// account in over the network and then indexes saved tracklists in the
+// background; here the rows are set by hand.
+//
+// search() is a plain case-insensitive substring match over the entries plus the
+// song index, filtered by `kinds`. It is not the real scoring (tst_library owns
+// that) — it only has to answer the way the real one does so the QML above it
+// can be tested: entries for the library list, songs for the search only.
+class StubLibrary : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
+    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(bool indexing READ indexing NOTIFY indexingChanged)
+public:
+    explicit StubLibrary(QObject *parent = nullptr) : QObject(parent) {}
+
+    QVariantList entries() const { return m_entries; }
+    bool loading() const  { return m_loading; }
+    bool indexing() const { return m_indexing; }
+
+    Q_INVOKABLE void refresh() { m_refreshes++; }
+    Q_INVOKABLE void markPlayed(const QString &kind, const QString &id) {
+        m_lastPlayed = kind + QLatin1Char(':') + id;
+    }
+    Q_INVOKABLE void cancelIndexing() { m_indexing = false; emit indexingChanged(); }
+    Q_INVOKABLE int  indexedAlbumCount() const { return 0; }
+
+    Q_INVOKABLE QVariantList search(const QString &query, const QStringList &kinds) const {
+        auto *self = const_cast<StubLibrary *>(this);
+        self->m_lastQuery = query;
+        self->m_lastKinds = kinds;
+        self->m_searches++;
+
+        const QString needle = query.trimmed().toCaseFolded();
+        QVariantList out;
+        if (needle.isEmpty()) return out;
+
+        const auto scan = [&](const QVariantList &src) {
+            for (const QVariant &v : src) {
+                const QVariantMap m = v.toMap();
+                if (!kinds.isEmpty() && !kinds.contains(m.value(QStringLiteral("kind")).toString()))
+                    continue;
+                if (m.value(QStringLiteral("title")).toString().toCaseFolded().contains(needle))
+                    out.append(m);
+            }
+        };
+        scan(m_entries);
+        scan(m_tracks);
+        return out;
+    }
+
+    // test hooks
+    Q_INVOKABLE void setEntriesForTest(const QVariantList &rows) {
+        m_entries = rows;
+        emit entriesChanged();
+    }
+    Q_INVOKABLE void setTracksForTest(const QVariantList &rows) { m_tracks = rows; }
+    Q_INVOKABLE void setLoadingForTest(bool v)  { m_loading = v;  emit loadingChanged(); }
+    Q_INVOKABLE void setIndexingForTest(bool v) { m_indexing = v; emit indexingChanged(); }
+    Q_INVOKABLE QString     lastQueryForTest() const { return m_lastQuery; }
+    Q_INVOKABLE QStringList lastKindsForTest() const { return m_lastKinds; }
+    Q_INVOKABLE QString     lastPlayedForTest() const { return m_lastPlayed; }
+    Q_INVOKABLE int         refreshCountForTest() const { return m_refreshes; }
+    Q_INVOKABLE int         searchCountForTest() const { return m_searches; }
+    Q_INVOKABLE void resetCallsForTest() {
+        m_lastQuery.clear();
+        m_lastKinds.clear();
+        m_lastPlayed.clear();
+        m_refreshes = 0;
+        m_searches  = 0;
+    }
+
+signals:
+    void entriesChanged();
+    void loadingChanged();
+    void indexingChanged();
+
+private:
+    QVariantList m_entries;
+    QVariantList m_tracks;
+    bool         m_loading  = false;
+    bool         m_indexing = false;
+    QString      m_lastQuery;
+    QStringList  m_lastKinds;
+    QString      m_lastPlayed;
+    int          m_refreshes = 0;
+    int          m_searches  = 0;
+};
+
 // ─── installation ───────────────────────────────────────────────────────────
 
 // Handles to the installed stubs, so a C++ test can poke state directly.
@@ -705,11 +977,14 @@ struct TestStubs {
     StubCast       *cast = nullptr;
     StubApp        *app = nullptr;
     StubDownloader *downloader = nullptr;
+    StubPrefs      *prefs = nullptr;
+    StubPins       *pins = nullptr;
+    StubLibrary    *library = nullptr;
 };
 
-// Registers the six context properties under exactly the names Application::run()
-// uses, plus the offline "tidal" image provider. `owner` gets ownership of the
-// stubs (pass the test/setup object); defaults to the engine.
+// Registers the nine context properties under exactly the names
+// Application::run() uses, plus the offline "tidal" image provider. `owner` gets
+// ownership of the stubs (pass the test/setup object); defaults to the engine.
 inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) {
     QObject *parent = owner ? owner : static_cast<QObject *>(engine);
 
@@ -720,6 +995,9 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     s.cast       = new StubCast(parent);
     s.app        = new StubApp(parent);
     s.downloader = new StubDownloader(parent);
+    s.prefs      = new StubPrefs(parent);
+    s.pins       = new StubPins(parent);
+    s.library    = new StubLibrary(parent);
 
     // The bridge builds JS arrays/objects for its callbacks.
     s.bridge->setJsEngine(engine);
@@ -731,6 +1009,9 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     ctx->setContextProperty(QStringLiteral("downloader"), s.downloader);
     ctx->setContextProperty(QStringLiteral("cast"), s.cast);
     ctx->setContextProperty(QStringLiteral("app"), s.app);
+    ctx->setContextProperty(QStringLiteral("prefs"), s.prefs);
+    ctx->setContextProperty(QStringLiteral("pins"), s.pins);
+    ctx->setContextProperty(QStringLiteral("library"), s.library);
 
     if (!engine->imageProvider(QStringLiteral("tidal")))
         engine->addImageProvider(QStringLiteral("tidal"), new StubImageProvider());

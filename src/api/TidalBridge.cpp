@@ -70,6 +70,18 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["title"]       = t.title;
     m["artists"]     = t.artistNames();
     m["artistId"]    = t.artists.isEmpty() ? 0LL : t.artists[0].id;
+    // Every artist, so the player bar can make each name its own link
+    // (SPEC N2). `artists` and `artistId` above stay exactly as they were:
+    // the joined string is what most call sites display, and the first id is
+    // what Player::trackFromMap and the TrackRow context menu read back.
+    QVariantList artistList;
+    for (const Artist &a : t.artists) {
+        QVariantMap am;
+        am["id"]   = a.id;
+        am["name"] = a.name;
+        artistList.append(am);
+    }
+    m["artistList"]  = artistList;
     m["albumTitle"]  = t.album.title;
     m["albumId"]     = t.album.id;
     m["albumCover"]  = t.album.cover;

@@ -1,7 +1,9 @@
 #include "Application.h"
 #include "ui/I18n.h"
+#include "ui/PinStore.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
 #include "cast/CastManager.h"
 #endif
@@ -14,6 +16,7 @@
 #include <QImage>
 #include <QFile>
 #include <QDir>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QSurfaceFormat>
 #include <QQuickWindow>
@@ -130,6 +133,42 @@ static QIcon loadAppIcon() {
     return QIcon::fromTheme(iconName, QIcon(resPath));
 }
 
+// Whether the desktop has asked for less animation (SPEC X6).
+//
+// Qt has no cross-platform hint for this - QStyleHints carries nothing of the
+// kind as of 6.12 - so the two Linux desktops that do expose one are read
+// directly out of their config files. Both are plain INI, so there is no new
+// dependency and nothing to fail at runtime; an absent or unreadable file just
+// means "no preference". Windows (SPI_GETCLIENTAREAANIMATION) and macOS
+// (NSWorkspace.accessibilityDisplayShouldReduceMotion) expose one too and are
+// not read yet; the environment override below works everywhere in the
+// meantime.
+static bool detectReducedMotion() {
+    const QByteArray forced = qgetenv("TIDALWAVE_REDUCED_MOTION");
+    if (!forced.isEmpty())
+        return forced != "0" && forced.compare("false", Qt::CaseInsensitive) != 0;
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    const QString cfg =
+        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    if (!cfg.isEmpty()) {
+        // KDE: System Settings > Accessibility, the animation speed slider at
+        // its left-hand end, which writes a factor of 0.
+        QSettings kde(cfg + QStringLiteral("/kdeglobals"), QSettings::IniFormat);
+        const QVariant factor = kde.value(QStringLiteral("KDE/AnimationDurationFactor"));
+        if (factor.isValid() && factor.toDouble() <= 0.0)
+            return true;
+
+        // GNOME and anything else GTK: "Reduce animation".
+        QSettings gtk(cfg + QStringLiteral("/gtk-3.0/settings.ini"), QSettings::IniFormat);
+        const QVariant anim = gtk.value(QStringLiteral("Settings/gtk-enable-animations"));
+        if (anim.isValid() && !anim.toBool())
+            return true;
+    }
+#endif
+    return false;
+}
+
 Application::Application(QObject *parent) : QObject(parent) {
 }
 
@@ -163,6 +202,11 @@ int Application::run(int argc, char **argv) {
         format.setSamples(4);
         QSurfaceFormat::setDefaultFormat(format);
     }
+
+    // Read once: the desktop's animation setting is not something that has to
+    // be followed live, and a binding that changes mid-slide is worse than one
+    // that does not.
+    m_reducedMotion = detectReducedMotion();
 
     QApplication::setQuitOnLastWindowClosed(false);
     const QIcon appIcon = loadAppIcon();
@@ -206,6 +250,10 @@ int Application::run(int argc, char **argv) {
     // Follows the system default output live, or the device chosen in Settings.
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
+    // The sidebar's model and the pins it orders itself by. LibraryIndex asks
+    // PinStore where each row belongs, so the store is built first.
+    m_pins    = new PinStore(this);
+    m_library = new LibraryIndex(m_client, m_pins, this);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
     m_cast = new CastManager(m_client, m_player, this);
@@ -218,6 +266,20 @@ int Application::run(int argc, char **argv) {
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
+        // Pins are stored per account and the library is that account's
+        // library, so both have to know who signed in before the first page is
+        // fetched.
+        m_pins->setUserId(m_auth->userId());
+        m_library->setUserId(m_auth->userId());
+        m_library->refresh();
+    });
+
+    connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
+        // Stop the background tracklist index where it stands rather than let
+        // it keep running against an account that just signed out. It resumes
+        // from the disk cache on the next sign-in.
+        if (s == Auth::State::LoggedOut)
+            m_library->cancelIndexing();
     });
 
     m_auth->loadCredentials();
@@ -264,6 +326,8 @@ int Application::run(int argc, char **argv) {
     ctx->setContextProperty(QStringLiteral("bridge"), m_bridge);
     ctx->setContextProperty(QStringLiteral("player"), m_player);
     ctx->setContextProperty(QStringLiteral("downloader"), m_downloader);
+    ctx->setContextProperty(QStringLiteral("pins"),    m_pins);
+    ctx->setContextProperty(QStringLiteral("library"), m_library);
     // `cast` is Linux-only; register it as null elsewhere (m_cast is an
     // incomplete type off-Linux since CastManager.h isn't included there).
     QObject *castObj = nullptr;

@@ -334,7 +334,14 @@ ApplicationWindow {
             SideBar {
                 id: sideBar
                 visible: auth.state === 2
-                Layout.preferredWidth: 220
+                // Above the content pane, so when the rail hover-expands it
+                // covers the page instead of sliding under it (SPEC L4).
+                z: 2
+                // Compact mode follows the *window* width, and the slot the
+                // layout reserves is the rail width while it is compact — the
+                // expanded panel overflows that slot on purpose.
+                hostWidth: root.width
+                Layout.preferredWidth: sideBar.reservedWidth
                 Layout.fillHeight: true
                 currentPage: root.currentPage
                 onNavigate: function(page, params) { root.navigate(page, params) }

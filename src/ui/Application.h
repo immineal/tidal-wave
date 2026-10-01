@@ -14,15 +14,21 @@ class QQmlApplicationEngine;
 class CastManager;
 class Prefs;
 class I18n;
+class PinStore;
+class LibraryIndex;
 
 class Application : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool reallyQuit READ reallyQuit NOTIFY reallyQuitChanged)
+    // X6. Qt exposes no reduced-motion hint of its own, so this is read off the
+    // desktop once at startup; see the comment on detectReducedMotion().
+    Q_PROPERTY(bool reducedMotion READ reducedMotion NOTIFY reducedMotionChanged)
 public:
     explicit Application(QObject *parent = nullptr);
     int run(int argc, char **argv);
 
     bool reallyQuit() const { return m_reallyQuit; }
+    bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
 
@@ -32,6 +38,7 @@ public:
 
 signals:
     void reallyQuitChanged();
+    void reducedMotionChanged();
 
 private:
     Prefs       *m_prefs  = nullptr;
@@ -43,9 +50,12 @@ private:
     Player      *m_player = nullptr;
     Downloader  *m_downloader = nullptr;
     CastManager *m_cast   = nullptr;
+    PinStore    *m_pins   = nullptr;
+    LibraryIndex *m_library = nullptr;
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
 
     bool         m_reallyQuit = false;
+    bool         m_reducedMotion = false;
 };
