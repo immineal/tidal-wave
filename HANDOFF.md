@@ -731,3 +731,32 @@ page again, so the "picking a theme moves only the accent" behaviour becomes the
 *switched-off* case rather than the one everybody sees first. The tests that
 were re-premised onto the accent still hold; check they are keyed on the switch
 state and not on "the default", or they will invert with this change.
+
+## Collection grid "~200px dead gutter" — second theory also disproven (2026-10-02)
+
+Swept the real arithmetic from `qml/pages/CollectionPage.qml` (`gridSpace`,
+`gridColumns`, `gridCell`, `gridLeft`, `gridRight`) over every integer pane
+width from 320 to 2400:
+
+- **Total dead margin never exceeds 60 px** (2×24 edge inset + ≤12 px of
+  rounding remainder, which is split between the two sides by design).
+- **The column back-off never fires once** in that range — `while (n > 1 &&
+  avail/n < gridMinCell)` is never entered, because `round(avail/184)` keeps
+  `avail/n` near 184, comfortably above the 150 floor.
+- Largest cell anywhere is 299 px at pane width 347 (1 column), which is a
+  single oversized card, not a gutter.
+
+So the grid's own metrics **cannot** produce a 200 px gutter. Upstream is clear
+too: the page `Loader`s are `anchors.fill: parent`, and the content pane is
+`Layout.fillWidth: true` next to the sidebar's `Layout.preferredWidth:
+sideBar.reservedWidth` (`qml/Main.qml:405-432`). Neither caps width.
+
+**Do not propose a third theory.** What is needed is a measurement at the exact
+window width that reproduces it: the real `width`, `leftMargin`, `rightMargin`,
+`cellWidth` and `count` of the live `GridView`, plus the pane's own width and
+`sideBar.reservedWidth`, logged together. Two theories have now died against
+real numbers; the next step is numbers from the failing case, not reasoning.
+
+Open question worth settling first: whether this and the "for some very specific
+window widths, the layout breaks like this" screenshot are the same defect or
+two. They have been treated as one and that has never been checked.
