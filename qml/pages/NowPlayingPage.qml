@@ -253,7 +253,9 @@ Rectangle {
             // The down-arrow mirrors the player bar's up-arrow: the page came
             // up over the bar, this puts it back down. It used to be the text
             // "←  Now Playing", which named the page you were already looking
-            // at and pointed the wrong way.
+            // at and pointed the wrong way; the words went the same way for
+            // the same reason. Nothing between the two buttons now but the
+            // spacer that holds them to their ends.
             RowLayout {
                 id: headerRow
                 Layout.fillWidth: true
@@ -266,13 +268,7 @@ Rectangle {
                     onActivated: Window.window.goBack()
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Now Playing", "page title")
-                    color: Theme.textSec
-                    font.pixelSize: 14
-                    elide: Text.ElideRight
-                }
+                Item { Layout.fillWidth: true }
 
                 ChromeButton {
                     objectName: "nowPlayingFullscreen"
@@ -771,7 +767,7 @@ Rectangle {
                                         anchors.centerIn: parent
                                         spacing: 6
                                         VectorIcon {
-                                            name: "music"
+                                            name: "track"
                                             color: Theme.accent
                                             width: 12
                                             height: 12
@@ -1061,69 +1057,18 @@ Rectangle {
                             color: Theme.textDim; font.pixelSize: 12; width: 36
                         }
 
-                        // Cast picker. The player bar sheds its own cast button
-                        // below 720px (SPEC L8) and this is where casting stays
-                        // reachable. Linux only: `cast` is null elsewhere, which
-                        // hides the button, same as in the bar.
-                        CtrlBtn {
-                            id: npCastBtn
-                            visible: !!cast
-                            icon: "cast"
+                        // The output picker, the same component the player bar
+                        // puts next to its volume slider: this computer's
+                        // outputs and any cast target in one list. It used to
+                        // be a cast-only picker written out twice, once here
+                        // and once in the bar, because the two could not share
+                        // a file without touching CMakeLists.txt. They share
+                        // PlayerBar's inline component instead, so the list,
+                        // the headings and the "stop casting" rule are written
+                        // once.
+                        PlayerBar.OutputPicker {
+                            objectName: "nowPlayingOutputButton"
                             size: 20
-                            active: !!cast && cast.connected
-                            onClicked: { if (cast) cast.startScan(); npCastPopup.open() }
-
-                            Popup {
-                                id: npCastPopup
-                                y: -height - 8
-                                x: parent.width - width
-                                width: 260
-                                padding: 6
-                                modal: true
-                                focus: true
-                                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-                                background: Rectangle {
-                                    color: Theme.surfaceHigh
-                                    border.color: Theme.border
-                                    border.width: 1
-                                    radius: Theme.radiusPopup
-                                }
-                                contentItem: ColumnLayout {
-                                    spacing: 2
-                                    // Same three strings as the player bar's
-                                    // picker. Borrowed from its context rather
-                                    // than duplicated, so a language pays for
-                                    // them once and they cannot drift apart.
-                                    Text {
-                                        text: qsTranslate("PlayerBar", "Cast to")
-                                        color: Theme.textDim
-                                        font.pixelSize: 11; font.bold: true
-                                        Layout.leftMargin: 8
-                                        Layout.topMargin: 4
-                                        Layout.bottomMargin: 2
-                                    }
-                                    CastDeviceRow {
-                                        label: qsTranslate("PlayerBar", "This computer")
-                                        active: !(cast && cast.connected)
-                                        onSelected: { if (cast) cast.disconnect(); npCastPopup.close() }
-                                    }
-                                    Repeater {
-                                        model: cast ? cast.devices : []
-                                        delegate: CastDeviceRow {
-                                            required property var modelData
-                                            label: modelData.name
-                                            active: cast && cast.connected && cast.deviceName === modelData.name
-                                            onSelected: { if (cast) cast.connectToDevice(modelData.id); npCastPopup.close() }
-                                        }
-                                    }
-                                    Text {
-                                        visible: !cast || cast.devices.length === 0
-                                        text: qsTranslate("PlayerBar", "Searching for devices…")
-                                        color: Theme.textSec; font.pixelSize: 12
-                                        Layout.margins: 8
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -1262,40 +1207,6 @@ Rectangle {
                 sleepTimerPopup.close()
             }
         }
-    }
-
-    // A selectable row in the cast device picker. The twin of PlayerBar's
-    // CastRow; the two cannot share a file without a new entry in
-    // CMakeLists.txt, which this change is not allowed to touch.
-    component CastDeviceRow : Rectangle {
-        id: cdr
-        property string label
-        property bool   active: false
-        signal selected()
-        Layout.fillWidth: true
-        implicitWidth: 240
-        implicitHeight: 36
-        radius: Theme.radiusRow
-        color: cdrHov.hovered ? Theme.surfaceHov : "transparent"
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 8
-            VectorIcon {
-                name: "cast"; width: 16; height: 16; strokeWidth: 1.6
-                color: cdr.active ? Theme.accent : Theme.textSec
-            }
-            Text {
-                Layout.fillWidth: true; text: cdr.label
-                color: cdr.active ? Theme.accent : Theme.textPrimary
-                font.pixelSize: 13; elide: Text.ElideRight
-            }
-            VectorIcon {
-                visible: cdr.active; name: "check"
-                width: 14; height: 14; strokeWidth: 2; color: Theme.accent
-            }
-        }
-        HoverHandler { id: cdrHov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: cdr.selected() }
     }
 
     component CtrlBtn : Item {

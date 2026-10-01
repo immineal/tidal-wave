@@ -498,9 +498,10 @@ TestCase {
     // change. A typo in a name is a blank icon and nothing else, which is why
     // "something is actually drawn" is half of what this asserts.
     readonly property var iconNames: [
-        "trash", "play", "pause", "more", "music", "chevron-left", "chevron-right",
+        "trash", "play", "pause", "more", "track", "chevron-left", "chevron-right",
         "heart", "heart-filled", "shuffle", "edit", "download", "check", "x",
-        "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip"
+        "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip",
+        "speaker", "cast", "queue", "volume-high", "volume-mute"
     ]
 
     function markCases() {
@@ -590,5 +591,242 @@ TestCase {
         compare(outside.join(" "), "", data.name + " paints outside its " + size + "px box")
         verify(ink > 20, data.name + " painted only " + ink
                + " pixels at " + size + "px, so it is blank or near enough")
+    }
+
+    // ── 4. the note is gone ──────────────────────────────────────────────
+    //
+    // "music" was a pair of beamed eighth notes standing in for four
+    // unrelated meanings: a track, an empty shelf, a missing cover, and an
+    // avatar. It is Western staff notation rather than a symbol for audio and
+    // it is not coming back, so this is the guard rather than a grep.
+
+    function isVectorIcon(obj) {
+        return obj && typeof obj._pathFor === "function"
+            && typeof obj.name === "string"
+    }
+
+    function collectIcons(item, out) {
+        if (!item) return out
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            if (isVectorIcon(kids[i])) out.push(kids[i])
+            collectIcons(kids[i], out)
+        }
+        return out
+    }
+
+    function test_the_note_is_not_drawn_at_all() {
+        var probe = createTemporaryObject(iconProbeC, testCase, { iconName: "music" })
+        compare(probe.iconItem._pathFor("music"), "",
+                "VectorIcon still knows how to draw a note")
+        compare(probe.iconItem._accentFor("music"), "")
+    }
+
+    // Every component in the app, swept for the name. A VectorIcon nobody
+    // drew a path for is silently blank, so a leftover "music" would not show
+    // up as anything at all in a screenshot.
+    function test_no_component_asks_for_the_note_data() {
+        return test_no_component_ships_a_text_glyph_data()
+    }
+
+    function test_no_component_asks_for_the_note(data) {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var item = createTemporaryObject(data.c, holder, {})
+        verify(item, data.tag + " was not created")
+        settle(holder)
+
+        var icons = collectIcons(item, [])
+        var named = []
+        var blank = []
+        for (var i = 0; i < icons.length; ++i) {
+            var n = icons[i].name
+            if (n === "music") named.push(data.tag)
+            // And nothing else silently blank either, which is the failure
+            // mode retiring a glyph creates: every call site has to have been
+            // given a name that draws.
+            if (n !== "" && icons[i]._pathFor(n) === "" && icons[i]._accentFor(n) === "")
+                blank.push(n)
+        }
+        compare(named.join(" "), "", data.tag + " still asks for the note")
+        compare(blank.join(" "), "", data.tag + " names a glyph nobody drew")
+    }
+
+    function test_now_playing_and_settings_ask_for_no_note() {
+        var win = createTemporaryObject(nowPlayingHostC, testCase, {})
+        win.show()
+        waitForRendering(win.page)
+        wait(1)
+        var icons = collectIcons(win.page, [])
+        verify(icons.length > 5, "the sweep found almost no icons, so it proved nothing")
+        for (var i = 0; i < icons.length; ++i)
+            verify(icons[i].name !== "music", "NowPlayingPage still asks for the note")
+        win.close()
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var panel = createTemporaryObject(settingsC, holder, {})
+        panel.open()
+        tryVerify(function () { return panel.visible }, 2000, "the panel did not open")
+        settle(holder)
+        var pi = collectIcons(panel.contentItem, [])
+        verify(pi.length > 2, "the sweep found almost no icons in Settings")
+        for (var k = 0; k < pi.length; ++k)
+            verify(pi[k].name !== "music", "SettingsPanel still asks for the note")
+        panel.close()
+    }
+
+    // ── 5. the two marks the note was replaced by ────────────────────────
+    //
+    // "a track" and "this is playing" sit next to each other in a track row,
+    // and at five bars against seven the count is not something anyone reads
+    // at 14px. The animation carries the difference while it is running, and
+    // under reduced motion it is not, so the structure has to: a waveform is
+    // symmetric about its centre line, the playing bars stand on a floor.
+    // Both halves of that are asserted below, on geometry rather than on
+    // pixels.
+
+    // "M x y1 V y2" per bar, which is the only shape the waveform's path
+    // takes. Returns [{x, top, bottom}].
+    function barsInPath(path) {
+        var out = []
+        var re = /M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+V\s+(-?[\d.]+)/g
+        var m
+        while ((m = re.exec(path)) !== null) {
+            out.push({ x: parseFloat(m[1]),
+                       top: Math.min(parseFloat(m[2]), parseFloat(m[3])),
+                       bottom: Math.max(parseFloat(m[2]), parseFloat(m[3])) })
+        }
+        return out
+    }
+
+    function test_the_track_mark_is_a_waveform_about_a_centre_line() {
+        var probe = createTemporaryObject(iconProbeC, testCase, { iconName: "track" })
+        var bars = barsInPath(probe.iconItem._pathFor("track"))
+        compare(bars.length, 7, "a waveform strip is seven bars")
+
+        var heights = []
+        for (var i = 0; i < bars.length; ++i) {
+            var centre = (bars[i].top + bars[i].bottom) / 2
+            verify(Math.abs(centre - 12) < 0.01,
+                   "bar " + i + " is centred on " + centre.toFixed(2)
+                   + ", not on the 24 grid's centre line")
+            heights.push(bars[i].bottom - bars[i].top)
+            if (i > 0) verify(bars[i].x > bars[i - 1].x, "the bars are out of order")
+        }
+        // A rendered audio file, not a comb: the heights have to differ.
+        var distinct = {}
+        for (var k = 0; k < heights.length; ++k) distinct[heights[k].toFixed(2)] = true
+        verify(Object.keys(distinct).length >= 5,
+               "only " + Object.keys(distinct).length + " distinct bar heights")
+    }
+
+    Component {
+        id: playingProbeC
+        Item {
+            width: 40; height: 40
+            property alias indicator: ind
+            VectorIcon.PlayingIndicator {
+                id: ind
+                anchors.centerIn: parent
+                width: 16; height: 14
+            }
+        }
+    }
+
+    // The bars, in the indicator's own coordinates.
+    function barsOf(ind) {
+        var out = []
+        function walk(item) {
+            var kids = item.children
+            for (var i = 0; i < kids.length; ++i) {
+                var c = kids[i]
+                if (typeof c.radius === "number" && c.children.length === 0
+                        && c.width > 0 && c.height > 0) {
+                    var at = c.mapToItem(ind, 0, 0)
+                    out.push({ x: at.x, top: at.y, bottom: at.y + c.height,
+                               w: c.width, h: c.height })
+                } else {
+                    walk(c)
+                }
+            }
+        }
+        walk(ind)
+        out.sort(function (a, b) { return a.x - b.x })
+        return out
+    }
+
+    function test_the_playing_mark_stands_on_a_baseline_with_motion_off() {
+        // init() already switched reduced motion on; said out loud because
+        // the whole point of this case is the parked state.
+        app.setReducedMotionForTest(true)
+        var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
+        var probe = createTemporaryObject(playingProbeC, holder, {})
+        verify(probe, "the probe was not created")
+        settle(holder)
+        // Long enough for a sequence that is not parking to have moved on.
+        wait(80)
+
+        var ind = probe.indicator
+        var bars = barsOf(ind)
+        compare(bars.length, 5, "the playing mark is five bars")
+
+        // Standing on a floor: one bottom edge, shared.
+        var floor = bars[0].bottom
+        for (var i = 0; i < bars.length; ++i) {
+            verify(Math.abs(bars[i].bottom - floor) < 0.5,
+                   "bar " + i + " sits at " + bars[i].bottom.toFixed(2)
+                   + " while the first is at " + floor.toFixed(2)
+                   + ", so there is no baseline")
+            // Parked, not vanished: a "this is playing" mark that disappears
+            // under reduced motion says the wrong thing about a playing row.
+            verify(bars[i].h > 1,
+                   "bar " + i + " parked at " + bars[i].h.toFixed(2) + "px, which is nothing")
+            // And inside its own box, like any other mark.
+            verify(bars[i].top >= -0.5 && bars[i].bottom <= ind.height + 0.5
+                       && bars[i].x >= -0.5 && bars[i].x + bars[i].w <= ind.width + 0.5,
+                   "bar " + i + " paints outside the indicator's box")
+        }
+
+        // A recognisable shape, which an even row of five would not be.
+        var distinct = {}
+        for (var k = 0; k < bars.length; ++k) distinct[bars[k].h.toFixed(1)] = true
+        verify(Object.keys(distinct).length >= 3,
+               "the parked mark has only " + Object.keys(distinct).length
+               + " distinct heights, so it is a block rather than a skyline")
+    }
+
+    // The two side by side, with nothing moving: whatever else they share,
+    // one is symmetric about its middle and the other is not.
+    function test_the_two_marks_stay_apart_with_motion_off() {
+        app.setReducedMotionForTest(true)
+        var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
+        var probe = createTemporaryObject(playingProbeC, holder, {})
+        var ico = createTemporaryObject(iconProbeC, holder, { iconName: "track" })
+        settle(holder)
+        wait(80)
+
+        var wave = barsInPath(ico.iconItem._pathFor("track"))
+        var bars = barsOf(probe.indicator)
+        verify(wave.length !== bars.length, "both marks have the same number of bars")
+
+        // The waveform's bars are centred on one line and its tops and its
+        // bottoms both vary.
+        var waveTops = {}, waveBottoms = {}
+        for (var i = 0; i < wave.length; ++i) {
+            waveTops[wave[i].top.toFixed(2)] = true
+            waveBottoms[wave[i].bottom.toFixed(2)] = true
+        }
+        verify(Object.keys(waveTops).length > 1 && Object.keys(waveBottoms).length > 1,
+               "the waveform has a flat edge, so it is not symmetric about anything")
+
+        // The playing mark's bottoms are all one value and only its tops vary,
+        // which is the whole of the difference once nothing is moving.
+        var playTops = {}, playBottoms = {}
+        for (var k = 0; k < bars.length; ++k) {
+            playTops[bars[k].top.toFixed(1)] = true
+            playBottoms[bars[k].bottom.toFixed(1)] = true
+        }
+        compare(Object.keys(playBottoms).length, 1,
+                "the playing mark has no single baseline, so it reads as a waveform too")
+        verify(Object.keys(playTops).length > 1, "the playing mark is a flat block")
     }
 }

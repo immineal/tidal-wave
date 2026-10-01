@@ -709,23 +709,19 @@ Item {
                     }
                 }
 
-                // Three bars for the track that is playing: the row is already
-                // accented, and this says *why* without a word of text.
-                Row {
+                // The track that is playing: the row is already accented, and
+                // this says *why* without a word of text. The same indicator
+                // the track rows show, out of VectorIcon, so the queue and
+                // the lists cannot end up with two different answers to what
+                // "playing" looks like. Three static bars before, which read
+                // as a bar chart rather than as something happening.
+                VectorIcon.PlayingIndicator {
+                    objectName: "queuePlayingIndicator"
                     visible: entry.isCurrent
-                    spacing: 2
-                    Repeater {
-                        model: [9, 14, 6]
-                        Rectangle {
-                            required property var modelData
-                            width: 2
-                            height: modelData
-                            radius: 1
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: Theme.accent
-                            opacity: player.playing ? 1 : 0.45
-                        }
-                    }
+                    animate: player.playing
+                    // Sized by its own implicit 16x14; the row only has to
+                    // say where in the line it sits.
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
                 // Removing is for the manual queue only: the history is

@@ -609,6 +609,52 @@ TestCase {
         }
     }
 
+    // The corner badge has to sit *inside* the cover's rounded corner, not
+    // flush with the box the corner is drawn in.
+    //
+    // Flush, a crescent of cover showed past the badge wherever the two radii
+    // disagreed, and it read as a stray speck rather than as an edge. It is
+    // worse with artwork, because an Image is clipped to its parent's
+    // bounding box and never to its rounded outline, so the art reaches the
+    // square corner the badge's own arc has curved away from.
+    //
+    // Asserted as geometry rather than as a number of pixels, so it holds at
+    // whatever size the cover is next drawn at: the badge's furthest point,
+    // which is its outer corner pushed back along the diagonal by its own
+    // radius, has to fall inside the cover's rounded outline, which is its
+    // corner pushed back the same way by the cover's radius. That inequality
+    // is what "no sliver at any size" means.
+    function roundedInset(radius) { return radius * (1 - Math.SQRT1_2) }
+
+    function checkBadgeClearsTheCorner(badge, glyph, cover, where) {
+        var at = badge.mapToItem(cover, 0, 0)
+        // The badge is in the bottom right, so those are the two edges that
+        // can show a sliver.
+        var badgeRight  = at.x + badge.width
+        var badgeBottom = at.y + badge.height
+        verify(badgeRight <= cover.width - 0.5 && badgeBottom <= cover.height - 0.5,
+               where + ": the badge is flush with the cover's edge at "
+               + badgeRight.toFixed(1) + "," + badgeBottom.toFixed(1)
+               + " in a " + cover.width + "px cover")
+
+        // Measured from the cover's corner, along the diagonal.
+        var badgeOut = Math.min(cover.width - badgeRight, cover.height - badgeBottom)
+                       + roundedInset(badge.radius)
+        var coverOut = roundedInset(cover.radius)
+        verify(badgeOut >= coverOut - 0.01,
+               where + ": the badge reaches " + badgeOut.toFixed(2)
+               + " of the corner, inside the cover's own " + coverOut.toFixed(2)
+               + ", so a sliver of cover shows past it")
+
+        // And the glyph went with it, rather than being left behind in the
+        // corner the badge has moved out of.
+        var g = glyph.mapToItem(cover, 0, 0)
+        verify(g.x >= at.x - 0.5 && g.y >= at.y - 0.5
+                   && g.x + glyph.width  <= at.x + badge.width  + 0.5
+                   && g.y + glyph.height <= at.y + badge.height + 0.5,
+               where + ": the type glyph is not inside its badge")
+    }
+
     // Covers, not type glyphs, in the open sidebar too - which is the decision
     // this reverses. The type stays readable: artwork carries a corner mark,
     // and a row with no artwork is the glyph at full size.
@@ -655,6 +701,8 @@ TestCase {
             verify(at.x >= -0.5 && at.x + glyph.width <= cover.width + 0.5
                    && at.y >= -0.5 && at.y + glyph.height <= cover.height + 0.5,
                    where + ": the type glyph hangs off the cover")
+
+            if (hasArt) checkBadgeClearsTheCorner(badge, glyph, cover, where)
         }
 
         // The title is the other half of the row, and only when there is room

@@ -388,4 +388,67 @@ TestCase {
         verify(spinner.width > 0 && spinner.height > 0,
                "the spinner was collapsed to nothing")
     }
+
+    // The now-playing bars are the other indefinite indicator, and the only
+    // one whose stillness has to stay *legible*: with the animation gone it
+    // is all that distinguishes "this is playing" from the track waveform
+    // next to it in the same row. tst_menus_and_glyphs asserts the shape it
+    // parks at; this asserts that it parks at all, and that it really does
+    // move when it is allowed to.
+    Component {
+        id: playingIndicatorC
+        Item {
+            width: 40; height: 40
+            property alias indicator: ind
+            VectorIcon.PlayingIndicator {
+                id: ind
+                anchors.centerIn: parent
+                width: 16; height: 14
+            }
+        }
+    }
+
+    function tallestBar(ind) {
+        var best = 0
+        function walk(item) {
+            var kids = item.children
+            for (var i = 0; i < kids.length; ++i) {
+                var c = kids[i]
+                if (typeof c.radius === "number" && c.children.length === 0)
+                    best = Math.max(best, c.height)
+                else
+                    walk(c)
+            }
+        }
+        walk(ind)
+        return best
+    }
+
+    function test_playing_indicator_data() { return test_rail_expansion_data() }
+
+    function test_playing_indicator(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
+        var probe = createTemporaryObject(playingIndicatorC, holder)
+        verify(probe, "the indicator probe was not created")
+        settle(holder)
+
+        var ind = probe.indicator
+        verify(ind.visible, "reduced motion removed the playing indicator")
+        var at = tallestBar(ind)
+        verify(at > 1, "the indicator collapsed to nothing, which says the row is not playing")
+
+        if (row.reduced) {
+            // Parked: three waits across more than a full cycle, and the
+            // figure has not moved.
+            wait(300)
+            compare(tallestBar(ind), at, "the bars are still moving under reduced motion")
+            wait(300)
+            compare(tallestBar(ind), at, "the bars are still moving under reduced motion")
+        } else {
+            tryVerify(function () { return tallestBar(ind) !== at },
+                      settleMs, "the bars never moved with motion allowed")
+        }
+    }
 }

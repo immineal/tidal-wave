@@ -701,6 +701,141 @@ TestCase {
         h.panel.close()
     }
 
+    // ── the header, which does not scroll ────────────────────────────────
+    //
+    // It used to be the first row of the scrolling column, so a section or
+    // two down there was nothing saying what the panel was and no visible way
+    // out of it. It sits outside the ScrollView now; the cases below are
+    // about it being outside rather than merely drawn on top, because a
+    // header laid over a scrolling item lets the content show through at its
+    // edges.
+
+    // How far the panel can scroll, and a scroll to the bottom of it.
+    function scrollToEnd(panel) {
+        var flick = scrollerOf(panel)
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+        settle(panel.contentItem)
+        return flick
+    }
+
+    function test_the_header_is_outside_the_scroll_area() {
+        var h = openPanel(1280, 1200)
+        var header = findByName(h.panel.contentItem, "settingsHeader")
+        verify(header, "the panel has no header")
+        var sv = findByName(h.panel.contentItem, "settingsScroll")
+        verify(sv, "the panel has no scroll view")
+
+        // Not a descendant of it, which is the whole difference between a
+        // fixed header and one drawn over the content.
+        var p = header.parent
+        while (p) {
+            verify(p !== sv, "the header is still inside the ScrollView")
+            p = p.parent
+        }
+
+        // And the content starts below it rather than under it.
+        var headerBottom = header.mapToItem(h.panel.contentItem, 0, header.height).y
+        var scrollTop = sv.mapToItem(h.panel.contentItem, 0, 0).y
+        verify(scrollTop >= headerBottom - 0.5,
+               "the scroll area starts at " + scrollTop.toFixed(1)
+               + ", above the header's bottom edge at " + headerBottom.toFixed(1))
+        h.panel.close()
+    }
+
+    function test_the_header_stays_put_while_the_panel_scrolls() {
+        var h = openPanel(1280, 800)
+        var header = findByName(h.panel.contentItem, "settingsHeader")
+        var before = header.mapToItem(h.panel.contentItem, 0, 0).y
+
+        var flick = scrollToEnd(h.panel)
+        verify(flick.contentY > 1, "the panel did not scroll, so this proves nothing")
+
+        var after = header.mapToItem(h.panel.contentItem, 0, 0).y
+        compare(after, before, "the header scrolled away with the content")
+        verify(header.visible, "the header went off screen")
+        h.panel.close()
+    }
+
+    // The way out has to be reachable from the bottom of the panel, which is
+    // the whole reason the header was pinned.
+    function test_the_close_button_still_closes_from_the_bottom() {
+        var h = openPanel(1280, 800)
+        scrollToEnd(h.panel)
+        var close = findByName(h.panel.contentItem, "settingsClose")
+        verify(close, "the header has no close button")
+        var at = close.mapToItem(h.panel.contentItem, close.width / 2, close.height / 2)
+        mouseClick(h.panel.contentItem, Math.round(at.x), Math.round(at.y))
+        tryVerify(function () { return !h.panel.visible }, 2000,
+                  "the close button in the pinned header did not close the panel")
+    }
+
+    // Escape still works, and so does reopening from the sidebar footer.
+    function test_escape_still_closes_and_the_panel_reopens() {
+        var h = openPanel(1280, 800)
+        keyClick(Qt.Key_Escape)
+        tryVerify(function () { return !h.panel.visible }, 2000,
+                  "Escape no longer closes the panel")
+
+        h.host.sidebar.openSettings()
+        tryVerify(function () { return h.panel.visible }, 2000, "the panel did not reopen")
+        h.panel.close()
+    }
+
+    // A fixed header takes vertical room off the scroll area, so the clamp is
+    // re-checked at the window minimum: the panel still fits and there is
+    // still something left to scroll in.
+    function test_the_panel_still_fits_the_minimum_window() {
+        var h = openPanel(minWindowW, minWindowH)
+        verify(h.panel.width <= minWindowW - popupInset + 0.5,
+               "the popup is " + h.panel.width + "px wide in a " + minWindowW + "px window")
+        verify(h.panel.height <= minWindowH - popupInset + 0.5,
+               "the popup is " + h.panel.height + "px tall in a " + minWindowH + "px window")
+
+        var header = findByName(h.panel.contentItem, "settingsHeader")
+        var flick = scrollerOf(h.panel)
+        verify(header.height > 0 && header.height < h.panel.height / 3,
+               "the header takes " + header.height + "px of a "
+               + h.panel.height + "px panel")
+        verify(flick.height > 100,
+               "the header left only " + flick.height.toFixed(1) + "px to scroll in")
+        h.panel.close()
+    }
+
+    // The scrollbar gutter belongs to the scrolling area, not to the whole
+    // panel: it must not run up past the header.
+    function test_the_scrollbar_runs_alongside_the_scrolling_area_only() {
+        var h = openPanel(1280, 800)
+        var bar = findByName(h.panel.contentItem, "settingsScrollBar")
+        verify(bar, "the panel has no scrollbar")
+        var header = findByName(h.panel.contentItem, "settingsHeader")
+
+        var barTop = bar.mapToItem(h.panel.contentItem, 0, 0).y
+        var headerBottom = header.mapToItem(h.panel.contentItem, 0, header.height).y
+        verify(barTop >= headerBottom - 0.5,
+               "the scrollbar starts at " + barTop.toFixed(1)
+               + ", beside the header rather than beside the content")
+        h.panel.close()
+    }
+
+    // The top edge of the scroll area fades once something has scrolled under
+    // it, the way the bottom edge already does, so a half-cut line reads as
+    // "there is more above" rather than as a broken word.
+    function test_the_top_edge_fades_only_once_something_has_scrolled() {
+        var h = openPanel(1280, 800)
+        var fade = findByName(h.panel.contentItem, "settingsTopFade")
+        verify(fade, "the scroll area has no top fade")
+        verify(!fade.visible, "the top of an unscrolled panel is not cut off by anything")
+
+        scrollToEnd(h.panel)
+        verify(fade.visible, "nothing marks the content running under the header")
+
+        var flick = scrollerOf(h.panel)
+        flick.contentY = 0
+        settle(h.panel.contentItem)
+        verify(!fade.visible, "the fade stayed behind at the top of the travel")
+        h.panel.close()
+    }
+
     // ── the order of the panel ───────────────────────────────────────────
 
     // Top to bottom, by where the sections actually land rather than by the

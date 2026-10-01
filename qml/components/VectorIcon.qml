@@ -74,8 +74,25 @@ Item {
         case "heart":
         case "heart-filled":
             return "M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z"
-        case "music":
-            return "M 9 18 V 5 L 21 3 V 16 M 9 8 L 21 6 M 9 18 A 3 3 0 1 1 6 15 A 3 3 0 0 1 9 18 Z M 21 16 A 3 3 0 1 1 18 13 A 3 3 0 0 1 21 16 Z"
+        // "a track": a short waveform strip, the way a rendered audio file
+        // looks. Seven bars, every one of them centred on y=12, so the strip
+        // is symmetric about a centre line -- that symmetry is the whole
+        // distinction from the now-playing bars below, which stand on a
+        // baseline, and it is all that is left to tell the two apart once
+        // reduced motion takes the animation away.
+        //
+        // Pitch 3.2 rather than a rounder number. VectorIcon draws the 24
+        // unit grid into width * 0.85, so at the 15-16px this is used at one
+        // unit comes to about 0.57px; 3.2 of them put the bars just under two
+        // device pixels apart, which is a 1px bar with a 1px gap. That is the
+        // tightest a strip of seven can be drawn and still read as seven.
+        //
+        // This replaced "music", a pair of beamed eighth notes: Western staff
+        // notation standing in for four unrelated meanings. Do not bring it
+        // back; each of its old sites now names what it actually meant.
+        case "track":
+            return "M 2.4 9 V 15 M 5.6 5.5 V 18.5 M 8.8 8 V 16 M 12 3 V 21"
+                 + " M 15.2 7 V 17 M 18.4 4.5 V 19.5 M 21.6 9.5 V 14.5"
         // One person glyph, for artists. There used to be two near-identical
         // ones -- "artist" (a circle on a shoulders arc) and "user" -- which
         // were indistinguishable at 18px. This is the better-drawn of the two;
@@ -179,9 +196,24 @@ Item {
             return "M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20"
         case "check":
             return "M 5 12 L 10 17 L 19 7"
+        // A screen with its bottom left corner opened up, and the signal
+        // rising out of that corner: dot, inner arc, outer arc, all centred
+        // on (2.5, 19.5).
+        //
+        // The arcs were half this size and crowded against the screen's
+        // lines. Three gaps set the drawing now and they are within a tenth
+        // of a unit of each other: dot to inner arc 3.6, inner to outer 3.7,
+        // outer arc to the two line ends it sits between 3.5. Even spacing is
+        // what survives being drawn at 16px; uneven spacing turns into one
+        // smudge and one hole. Growing the arcs to R=8.5 is what
+        // costs the screen its left edge: all that is left of it is a stub
+        // under the top left corner, which the outer arc now rises to meet.
+        // The screen itself grew to 2.5..21.5 x 3.5..19.5 to pay for that, so
+        // the bottom edge is still long enough to read as one.
         case "cast":
-            return "M 3 10 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 11"
-                 + " M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18"
+            return "M 2.5 7.5 V 5 A 1.5 1.5 0 0 1 4 3.5 H 20 A 1.5 1.5 0 0 1 21.5 5 V 18 A 1.5 1.5 0 0 1 20 19.5 H 14.5"
+                 + " M 2.5 14.7 A 4.8 4.8 0 0 1 7.3 19.5"
+                 + " M 2.5 11 A 8.5 8.5 0 0 1 11 19.5"
         // The only mark any menu in the app carries, so it has to be the one
         // thing a bin can be and nothing else: lid, handle, tapered body, two
         // ribs. The ribs are what stop it reading as a cup at 16px, and the
@@ -200,7 +232,7 @@ Item {
         switch (n) {
         case "queue":  return "M 16.5 14.6 L 22 18 L 16.5 21.4 Z"
         case "mix":    return "M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z"
-        case "cast":   return "M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z"
+        case "cast":   return "M 3.7 19.5 A 1.2 1.2 0 1 0 1.3 19.5 A 1.2 1.2 0 1 0 3.7 19.5 Z"
         }
         return ""
     }
@@ -208,5 +240,113 @@ Item {
     function _overlayFor(n) {
         if (n === "pin-filled") return "M 12 13 V 21"
         return ""
+    }
+
+    // ── "this is playing" ────────────────────────────────────────────────
+    //
+    // Not a path, because it moves: five bars rising and falling like an
+    // equaliser. The queue and every track row show it on the one row that is
+    // playing, which is also why its cost does not matter -- a 5000 row list
+    // has exactly one of these alive in it.
+    //
+    // Five bars and not three, and standing on a baseline rather than centred.
+    // Both of those are the "track" waveform's opposite on purpose: at seven
+    // bars against five the count alone is not a difference anyone reads at
+    // 14px, so the structure has to carry it. A waveform is symmetric about
+    // its centre line; this stands on the floor and only its tops move.
+    //
+    // Under reduced motion the durations collapse to zero and `loops` to one,
+    // so the sequence runs through in a single frame and parks on each bar's
+    // resting height -- a still, uneven skyline rather than nothing at all,
+    // the way the spinners park instead of disappearing. Each bar's last step
+    // is what makes that shape: it ends on `rest`, never on a peak or a
+    // trough, so the parked figure is the same one every time.
+    component PlayingIndicator : Item {
+        id: ind
+
+        // Whether the bars move. The mark is drawn either way: a paused row
+        // is still the row you are on, so pausing dims it rather than
+        // deleting it.
+        property bool animate: true
+        property color color: Theme.accent
+
+        implicitWidth: 16
+        implicitHeight: 14
+
+        // Derived from the width so a host can size this like any other
+        // glyph and the bars can never reach past their own box. Five bars
+        // and four gaps of three quarters of a bar come to exactly 8 bar
+        // widths.
+        readonly property real barWidth: width / 8
+        readonly property real gap: barWidth * 0.75
+
+        opacity: animate ? 1 : 0.45
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            height: ind.height
+            spacing: ind.gap
+
+            Repeater {
+                // Heights as fractions of the box, so the figure is the same
+                // at any size. The resting row is uneven on purpose: five
+                // bars of one height is a bar chart, not an equaliser.
+                model: [
+                    { rest: 0.45, peak: 1.00, trough: 0.20, ms: 420 },
+                    { rest: 0.80, peak: 0.55, trough: 1.00, ms: 320 },
+                    { rest: 0.30, peak: 0.90, trough: 0.15, ms: 500 },
+                    { rest: 0.65, peak: 0.35, trough: 0.95, ms: 360 },
+                    { rest: 0.50, peak: 0.85, trough: 0.25, ms: 460 }
+                ]
+
+                delegate: Rectangle {
+                    id: bar
+                    required property var modelData
+
+                    readonly property real restH:   ind.height * modelData.rest
+                    readonly property real peakH:   ind.height * modelData.peak
+                    readonly property real troughH: ind.height * modelData.trough
+
+                    // A Row only places its children horizontally, so the
+                    // floor is set here. Not an anchor: `parent` is null
+                    // while a Repeater is building its delegate, and the
+                    // warning that produces fails tests/tst_firstrun.cpp.
+                    y: ind.height - bar.height
+                    width: ind.barWidth
+                    height: bar.restH
+                    radius: width / 2
+                    color: ind.color
+
+                    // The animation below writes `height` directly, which
+                    // drops the binding above; this puts the resting height
+                    // back if the box is resized while the bars are still.
+                    onRestHChanged: if (!seq.running) bar.height = bar.restH
+
+                    SequentialAnimation {
+                        id: seq
+                        running: ind.animate && ind.visible
+                        loops: Theme.reduceMotion ? 1 : Animation.Infinite
+                        NumberAnimation {
+                            target: bar; property: "height"; to: bar.peakH
+                            duration: Theme.dur(bar.modelData.ms)
+                            easing.type: Easing.InOutSine
+                        }
+                        NumberAnimation {
+                            target: bar; property: "height"; to: bar.troughH
+                            duration: Theme.dur(bar.modelData.ms)
+                            easing.type: Easing.InOutSine
+                        }
+                        NumberAnimation {
+                            target: bar; property: "height"; to: bar.restH
+                            duration: Theme.dur(Math.round(bar.modelData.ms * 0.6))
+                            easing.type: Easing.InOutSine
+                        }
+                        onStopped: bar.height = bar.restH
+                    }
+                }
+            }
+        }
     }
 }

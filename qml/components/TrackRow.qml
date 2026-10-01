@@ -169,14 +169,18 @@ Item {
                     color: Theme.textDim
                     font.pixelSize: 13
                 }
-                VectorIcon {
+                // The one row that is playing, in the album and playlist
+                // track lists as well as everywhere else TrackRow is used.
+                // It used to be a note, which said "this is a song" on a row
+                // that was already a song. Bars that move say the thing the
+                // row cannot: this is the one you are hearing.
+                VectorIcon.PlayingIndicator {
+                    objectName: "trackRowPlayingIndicator"
                     anchors.centerIn: parent
                     visible: isPlaying && !hov.hovered
-                    name: "music"
-                    color: Theme.accent
+                    animate: player.playing
                     width: 14
                     height: 14
-                    strokeWidth: 1.5
                 }
                 VectorIcon {
                     anchors.centerIn: parent

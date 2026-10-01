@@ -154,6 +154,54 @@ Popup {
         return Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, a)
     }
 
+    // ── the header, which does not scroll ────────────────────────────────
+    //
+    // It used to be the first row of the scrolling column, so a few sections
+    // down there was nothing saying what the panel was and no visible way out
+    // of it: the close button had gone off the top. It sits outside the
+    // ScrollView now rather than over it, so the content starts below it and
+    // never passes under it. Laid out with anchors because it is no longer a
+    // child of a layout.
+    Item {
+        id: headerBar
+        objectName: "settingsHeader"
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: headerRow.implicitHeight + 32   // 20 above the row, 12 below
+
+        RowLayout {
+            id: headerRow
+            anchors {
+                top: parent.top; left: parent.left; right: parent.right
+                topMargin: 20; leftMargin: root.sideMargin; rightMargin: 16
+            }
+
+            Text {
+                text: qsTr("Settings")
+                color: Theme.textPrimary
+                font.pixelSize: 18
+                font.bold: true
+                Layout.fillWidth: true
+            }
+            Item {
+                objectName: "settingsClose"
+                // A 26px target around a 14px glyph. The MouseArea this
+                // replaces reached its size with anchors.margins: -6, so
+                // it hung outside its own parent.
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                VectorIcon {
+                    anchors.centerIn: parent
+                    name: "x"
+                    color: closeHov.hovered ? Theme.textPrimary : Theme.textSec
+                    width: 14; height: 14
+                    strokeWidth: 1.8
+                }
+                HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: root.close() }
+            }
+        }
+    }
+
     // Roughly 1400px of content in a 640px panel, and the default AsNeeded
     // scrollbar drew nothing at all: Updates, Privacy and Keyboard shortcuts
     // were below the fold with no sign they existed. Two signals now, because
@@ -162,7 +210,10 @@ Popup {
     ScrollView {
         id: scroller
         objectName: "settingsScroll"
-        anchors.fill: parent
+        anchors {
+            top: headerBar.bottom
+            left: parent.left; right: parent.right; bottom: parent.bottom
+        }
         contentWidth: availableWidth
         clip: true
 
@@ -179,10 +230,13 @@ Popup {
             objectName: "settingsScrollBar"
             parent: scroller
             x: scroller.width - width
-            // Held off the popup's rounded corners, which the ScrollView's
-            // rectangular clip does not follow.
-            y: scroller.topPadding + Theme.radiusPopup
-            height: scroller.availableHeight - 2 * Theme.radiusPopup
+            // Held off the popup's rounded bottom corner, which the
+            // ScrollView's rectangular clip does not follow. Only the bottom
+            // one now: the top of this gutter is the straight edge under the
+            // fixed header, so the bar runs alongside the scrolling area and
+            // stops where it stops.
+            y: scroller.topPadding
+            height: scroller.availableHeight - Theme.radiusPopup
             policy: ScrollBar.AlwaysOn
             padding: 3
 
@@ -212,39 +266,6 @@ Popup {
             width: scroller.availableWidth
             spacing: 0
 
-            // ── header ───────────────────────────────────────────────────
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.leftMargin: root.sideMargin
-                Layout.rightMargin: 16
-                Layout.topMargin: 20
-                Layout.bottomMargin: 12
-
-                Text {
-                    text: qsTr("Settings")
-                    color: Theme.textPrimary
-                    font.pixelSize: 18
-                    font.bold: true
-                    Layout.fillWidth: true
-                }
-                Item {
-                    // A 26px target around a 14px glyph. The MouseArea this
-                    // replaces reached its size with anchors.margins: -6, so
-                    // it hung outside its own parent.
-                    Layout.preferredWidth: 26
-                    Layout.preferredHeight: 26
-                    VectorIcon {
-                        anchors.centerIn: parent
-                        name: "x"
-                        color: closeHov.hovered ? Theme.textPrimary : Theme.textSec
-                        width: 14; height: 14
-                        strokeWidth: 1.8
-                    }
-                    HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: root.close() }
-                }
-            }
-
             // ── account ──────────────────────────────────────────────────
             Section {
                 heading: qsTr("Account")
@@ -253,19 +274,10 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
-                    Rectangle {
-                        width: 36; height: 36; radius: Theme.radiusChip; color: Theme.accent
-                        // Stands in for an avatar, so there is no label
-                        // beside it to carry the meaning; drawn rather than
-                        // set in a font, like every other mark in the app.
-                        VectorIcon {
-                            anchors.centerIn: parent
-                            name: "music"
-                            color: Theme.accentInk
-                            width: 18; height: 18
-                            strokeWidth: 1.6
-                        }
-                    }
+                    // No avatar stand-in. It was an accent tile with a note
+                    // in it, which stood for neither the account nor the
+                    // app, and the sidebar footer has already dropped its
+                    // own.
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 1
@@ -384,7 +396,11 @@ Popup {
                     options: [
                         { value: "LOW",             label: qsTr("Normal (96 kbps)") },
                         { value: "HIGH",            label: qsTr("High (320 kbps)") },
-                        { value: "LOSSLESS",        label: qsTr("Lossless (FLAC)") },
+                        // Tidal's lossless tier is CD quality, 16-bit/44.1kHz.
+                        // Named by its bit depth rather than by its container
+                        // so it pairs with the hi-res row under it: the two
+                        // differ in depth, not in being a FLAC.
+                        { value: "LOSSLESS",        label: qsTr("Lossless (16-bit)") },
                         { value: "HI_RES_LOSSLESS", label: qsTr("Hi-Res (24-bit)") }
                     ]
                     value: bridge.preferredQuality
@@ -590,6 +606,31 @@ Popup {
                 Layout.bottomMargin: 20
                 onActivated: { root.close(); auth.logout() }
             }
+        }
+    }
+
+    // The same treatment at the top edge, and for the same reason rather
+    // than for symmetry: the scroll area's clip cuts the first visible line
+    // in half, and a half line reads as a broken word, not as "there is more
+    // above". A hairline under the header would have drawn a rule between
+    // two things that are already a surface apart, and said nothing about
+    // whether anything had scrolled; this appears only once something has.
+    // Shorter than the bottom fade, because the header is doing half the
+    // work of separating already.
+    Rectangle {
+        id: topFade
+        objectName: "settingsTopFade"
+        anchors { left: parent.left; right: parent.right; top: scroller.top }
+        height: 20
+        readonly property var flick: scroller.contentItem
+        readonly property bool moreAbove: flick ? flick.contentY > 1 : false
+        opacity: moreAbove ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
+        gradient: Gradient {
+            GradientStop { position: 0;    color: root.fadeStop(1) }
+            GradientStop { position: 0.5;  color: root.fadeStop(0.25) }
+            GradientStop { position: 1;    color: root.fadeStop(0) }
         }
     }
 
