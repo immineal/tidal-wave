@@ -72,6 +72,10 @@ TestCase {
         player.setAudioQualityForTest("LOSSLESS")
         player.setDurationForTest(215000)
         player.setPositionForTest(42000)
+        // One case drives this to the top of its range and the stub is shared
+        // across the file, so every case starts from the same volume.
+        player.setVolume(0.7)
+        player.setMuted(false)
         player.setPlaybackSource("playlist", "abc-123",
                                  "A Playlist Whose Name Is Not Short")
         cast.setDevicesForTest([{ id: "d1", name: "Living Room Speaker" }])
@@ -166,7 +170,17 @@ TestCase {
             property bool   sleepFadeOut: true
             function startSleepTimer(minutes, stopAtEnd) { sleepTimerActive = true }
             function cancelSleepTimer() { sleepTimerActive = false }
-            function formatSleepTime(seconds) { return "0:30" }
+            // Main.qml's own formatter, not a constant: one case below counts
+            // the pill down and a fixed string would have hidden the thing it
+            // is looking for.
+            function formatSleepTime(seconds) {
+                var h = Math.floor(seconds / 3600)
+                var m = Math.floor((seconds % 3600) / 60)
+                var sec = seconds % 60
+                if (h > 0)
+                    return h + ":" + (m < 10 ? "0" : "") + m + ":" + (sec < 10 ? "0" : "") + sec
+                return m + ":" + (sec < 10 ? "0" : "") + sec
+            }
             function navigate(page, params) {}
             function goBack() {}
 
@@ -217,6 +231,28 @@ TestCase {
                     anchors.fill: parent
                     onDismissed: qWin.dismissals++
                 }
+            }
+        }
+    }
+
+    // A VolumeSlider on its own, so the handle arithmetic is measured without
+    // the player bar's animated slot in the way. `value` is a plain property
+    // here and `moved` writes it back, which is what the bar does through the
+    // player.
+    Component {
+        id: volumeSliderHost
+        Window {
+            id: vsWin
+            width: 200; height: 100
+            property real lastMoved: -1
+            property int  moves: 0
+            property alias slider: vs
+            VolumeSlider {
+                id: vs
+                width: 90
+                anchors.centerIn: parent
+                value: 0.7
+                onMoved: (v) => { vsWin.lastMoved = v; vsWin.moves++; vs.value = v }
             }
         }
     }
@@ -775,14 +811,25 @@ TestCase {
                   2000, "the wide bar never settled with its slider")
 
         host.width = 640
-        // The controls' own edges rather than collectOverflow: a closing slot
-        // clips a volume slider down to its last pixel, and the handle on that
-        // slider sits 5px off the left end of its own track by design, so the
-        // tree walker reports a child outside its parent that the slot is
-        // clipping and nobody can see. What this case is about is the bar's
-        // right-hand end, so it measures that.
+        // The controls' own edges rather than collectOverflow, and the reason is
+        // not the one that used to be written here. The old note said the handle
+        // "sits 5px off the left end of its own track by design" and excluded
+        // the slider on that basis. It was not by design: it was the bug the
+        // user later met at max volume, and VolumeSlider.qml has since moved the
+        // handle's centre to travel between the two radii, so at every value the
+        // handle is inside its track. test_volume_slider_handle_stays_inside
+        // holds that.
+        //
+        // What is still true is narrower: a closing slot takes the slider below
+        // its own handle's 10px, and a 10px handle in a 4px slider is wider than
+        // its parent however it is positioned. The slot clips it and nobody can
+        // see it, but the tree walker counts it, so this case measures the bar's
+        // right-hand end -- which is what it is about -- and checks the handle
+        // directly for every sample where the slider is wide enough to hold it.
         var controls = [bar.volumeButton, bar.outputButton,
                         bar.nowPlayingButton, bar.queueButton]
+        var handle = findChild(bar.volumeSlider, "volumeSliderHandle")
+        verify(handle, "the volume slider handle was not found")
         for (var i = 0; i < 14; i++) {
             for (var c = 0; c < controls.length; c++) {
                 var item = controls[c]
@@ -794,6 +841,15 @@ TestCase {
                        + right.toFixed(1) + " in a " + bar.width
                        + "px bar while the slot is still "
                        + bar.volumeSlotRoom.toFixed(1) + "px wide")
+            }
+            var slider = bar.volumeSlider
+            if (slider.visible && slider.width >= slider.handleSize) {
+                var hl = handle.mapToItem(slider, 0, 0).x
+                var hr = handle.mapToItem(slider, handle.width, 0).x
+                verify(hl >= -0.5 && hr <= slider.width + 0.5,
+                       "sample " + i + ": the handle is at " + hl.toFixed(1) + ".."
+                       + hr.toFixed(1) + " in a " + slider.width.toFixed(1)
+                       + "px slider, so the closing slot is slicing it")
             }
             wait(16)
         }
@@ -822,6 +878,405 @@ TestCase {
                "a control went missing at " + row.tag)
         var faults = collectOverflow(bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar overflows", row, faults))
+    }
+
+    // ── the volume slider's handle ───────────────────────────────────────
+    //
+    // The user hit this at max volume: the handle was sliced in half. It was
+    // positioned at `value * track.width - 5`, so half of it hung outside the
+    // control at both ends -- 5px past the right edge at full volume -- and the
+    // bar's volume slot clips, so what was left on screen was half a knob. The
+    // handle's centre travels between the two radii now, which is the whole fix
+    // and the thing these cases pin.
+
+    function volumeParts(slider) {
+        var handle = findChild(slider, "volumeSliderHandle")
+        var fill   = findChild(slider, "volumeSliderFill")
+        verify(handle, "the volume slider handle was not found")
+        verify(fill, "the volume slider fill was not found")
+        return {
+            handle: handle,
+            fill: fill,
+            handleLeft:  handle.mapToItem(slider, 0, 0).x,
+            handleRight: handle.mapToItem(slider, handle.width, 0).x,
+            handleTop:    handle.mapToItem(slider, 0, 0).y,
+            handleBottom: handle.mapToItem(slider, 0, handle.height).y,
+            fillLeft:  fill.mapToItem(slider, 0, 0).x,
+            fillRight: fill.mapToItem(slider, fill.width, 0).x
+        }
+    }
+
+    function volumeValueRows() {
+        var rows = []
+        var vals = [0, 0.001, 0.1, 0.25, 0.5, 0.75, 0.999, 1]
+        for (var i = 0; i < vals.length; i++)
+            rows.push({ tag: "value " + vals[i], v: vals[i] })
+        return rows
+    }
+
+    function test_volume_slider_handle_stays_inside_data() { return volumeValueRows() }
+
+    function test_volume_slider_handle_stays_inside(row) {
+        var host = showHost(volumeSliderHost, 200, 100)
+        var slider = host.slider
+        slider.value = row.v
+        wait(0)
+        var p = volumeParts(slider)
+        verify(p.handleLeft >= -0.01,
+               row.tag + ": the handle starts at " + p.handleLeft.toFixed(2)
+               + ", which is off the left end of the slider")
+        verify(p.handleRight <= slider.width + 0.01,
+               row.tag + ": the handle ends at " + p.handleRight.toFixed(2)
+               + " in a " + slider.width + "px slider")
+        verify(p.handleTop >= -0.01 && p.handleBottom <= slider.height + 0.01,
+               row.tag + ": the handle is at " + p.handleTop.toFixed(2) + ".."
+               + p.handleBottom.toFixed(2) + " in a " + slider.height + "px slider")
+    }
+
+    // The fill reaches the handle's centre, so there is no bar of colour
+    // sticking out past the knob and no gap where the two meet.
+    function test_volume_slider_fill_meets_the_handle_data() { return volumeValueRows() }
+
+    function test_volume_slider_fill_meets_the_handle(row) {
+        var host = showHost(volumeSliderHost, 200, 100)
+        var slider = host.slider
+        slider.value = row.v
+        wait(0)
+        var p = volumeParts(slider)
+        verify(p.fillRight <= p.handleRight + 0.01,
+               row.tag + ": the fill ends at " + p.fillRight.toFixed(2)
+               + " and the handle at " + p.handleRight.toFixed(2)
+               + ", so the fill sticks out past the knob")
+        verify(p.fillRight >= p.handleLeft - 0.01,
+               row.tag + ": the fill ends at " + p.fillRight.toFixed(2)
+               + " but the handle only starts at " + p.handleLeft.toFixed(2)
+               + ", so there is a gap at the join")
+        verify(p.fillLeft >= -0.01 && p.fillRight <= slider.width + 0.01,
+               row.tag + ": the fill runs " + p.fillLeft.toFixed(2) + ".."
+               + p.fillRight.toFixed(2) + " in a " + slider.width + "px slider")
+    }
+
+    // The inset the travel needs must not cost the ends: pressing the extreme
+    // left still means silence and the extreme right still means full.
+    function test_volume_slider_ends_are_reachable() {
+        var host = showHost(volumeSliderHost, 200, 100)
+        var slider = host.slider
+        var mid = Math.round(slider.height / 2)
+
+        mouseClick(slider, 0, mid)
+        compare(host.moves, 1, "a press at the left end should move the slider")
+        compare(host.lastMoved, 0, "the extreme left has to reach exactly 0")
+
+        mouseClick(slider, slider.width - 1, mid)
+        compare(host.moves, 2, "a press at the right end should move the slider")
+        compare(host.lastMoved, 1, "the extreme right has to reach exactly 1")
+
+        // And the middle lands near the middle rather than half a handle away.
+        mouseClick(slider, Math.round(slider.width / 2), mid)
+        verify(Math.abs(host.lastMoved - 0.5) <= 0.08,
+               "a press at the midpoint gave " + host.lastMoved.toFixed(3))
+    }
+
+    // The same thing where the user met it: the real bar, at max volume, with
+    // the slot clipping anything that hangs over.
+    function test_player_bar_volume_handle_is_whole_at_max() {
+        player.setVolume(1)
+        var host = showHost(playerBarHost, 960, 200)
+        var bar = host.bar
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
+                  2000, "the bar never settled")
+        verify(bar.volumeSlider.visible, "the 960px bar should have its inline slider")
+        compare(bar.volumeSlider.value, 1, "the fixture did not reach full volume")
+
+        var slot = bar.volumeSlot
+        var handle = findChild(bar.volumeSlider, "volumeSliderHandle")
+        verify(handle, "the volume slider handle was not found")
+        var right = handle.mapToItem(slot, handle.width, 0).x
+        var left  = handle.mapToItem(slot, 0, 0).x
+        verify(left >= -0.01 && right <= slot.width + 0.01,
+               "at full volume the handle is at " + left.toFixed(2) + ".."
+               + right.toFixed(2) + " in a " + slot.width.toFixed(1)
+               + "px slot that clips, so half of it is not drawn")
+        var faults = collectOverflow(bar, "PlayerBar", [])
+        verify(faults.length === 0,
+               "player bar overflows at full volume:\n  " + faults.join("\n  "))
+    }
+
+    // ── lyrics ───────────────────────────────────────────────────────────
+    //
+    // The lyrics used to be poured into the artwork's square. In a short window
+    // that square floors at 180px, so what the user got was a 185x195 box
+    // floating in the middle of the hero with the whole width of the page empty
+    // beside it and lines wrapping after four words. The slot has two shapes
+    // now, one clock between them, and the list gets a measure.
+
+    // The page's own lyrics state is writable, which is how a test gets timed
+    // lyrics: the bridge stub answers fetchLyrics with nothing, by design.
+    function giveLyrics(page, n) {
+        var lines = []
+        for (var i = 0; i < n; i++)
+            lines.push({ ms: i * 5000,
+                         text: "Line " + i + " of a lyric long enough to want a measure" })
+        page.lyricsIsTimed = true
+        page.lyricsData    = lines
+        page.lyricsState   = "ready"
+        page.userScrolled  = false
+        page.currentLyricLine = 0
+        return lines
+    }
+
+    function settlePage(page) {
+        tryVerify(function () {
+            return page.stackness === (page.stackedLayout ? 1 : 0)
+                && page.lyricsness === (page.showLyrics ? 1 : 0)
+        }, 3000, "the page never settled")
+    }
+
+    function openLyrics(host, lines) {
+        var page = host.page
+        settlePage(page)
+        giveLyrics(page, lines === undefined ? 40 : lines)
+        page.showLyrics = true
+        settlePage(page)
+        waitForRendering(host.contentItem)
+        return page
+    }
+
+    function test_lyrics_use_the_page_not_the_cover_square_data() { return sizeRows() }
+
+    function test_lyrics_use_the_page_not_the_cover_square(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = host.page
+        settlePage(page)
+        // The square the lyrics used to be served in.
+        var square = page.coverSize
+
+        openLyrics(host)
+        var box   = findChild(page, "nowPlayingCoverBox")
+        var panel = findChild(page, "nowPlayingLyricsPanel")
+        var view  = findChild(page, "nowPlayingLyricsView")
+        verify(box && panel && view, "the lyrics panel was not found")
+        verify(panel.visible, "the lyrics panel did not open")
+
+        // All the width the page has, up to the measure. This is the half of
+        // the complaint that was "the entire width of the page empty to its
+        // left and right": at 640 the artwork already took the whole content
+        // width, so there is no width there to win, and the gain is the height.
+        verify(Math.abs(box.width - Math.min(page.contentWidth, page.lyricsMeasure)) <= 1,
+               row.tag + ": the lyrics got " + box.width.toFixed(1)
+               + "px of a " + page.contentWidth.toFixed(1) + "px page, capped at "
+               + page.lyricsMeasure)
+        verify(box.height >= 280 - 0.5,
+               row.tag + ": the lyrics column is only " + box.height.toFixed(1) + "px tall")
+        // More room than the square it replaced, at every size. Stacking is
+        // part of opening the lyrics, and stacking can shrink the cover, so this
+        // is measured against the square the lyrics were actually served in.
+        verify(box.width * box.height > square * square,
+               row.tag + ": the lyrics got " + box.width.toFixed(1) + "x"
+               + box.height.toFixed(1) + " where the artwork square was "
+               + square.toFixed(1) + ", which is no more room than before")
+        // And never smaller than the artwork it is standing in for right now,
+        // which is what lets the crossfade leave the cover at its own size while
+        // the slot grows around it.
+        verify(box.width >= page.coverSize - 0.5 && box.height >= page.coverSize - 0.5,
+               row.tag + ": the " + box.width.toFixed(1) + "x" + box.height.toFixed(1)
+               + " slot cannot hold the " + page.coverSize.toFixed(1) + "px cover")
+        // Still inside the page, at both margins.
+        verify(box.x >= -0.5 && box.x + box.width <= page.contentWidth + 0.5,
+               row.tag + ": the lyrics column is at " + box.x.toFixed(1) + ".."
+               + (box.x + box.width).toFixed(1) + " in " + page.contentWidth.toFixed(1))
+        // And the list really has that measure, not just the panel.
+        verify(view.width >= box.width - 33,
+               row.tag + ": the panel is " + box.width.toFixed(1)
+               + " but the list only got " + view.width.toFixed(1))
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0, reportFor("Now Playing overflows with lyrics", row, faults))
+    }
+
+    // The toggle used to be anchored over the list it toggles, which is both why
+    // it covered a line of text and why tapping it seeked. It sits in a band the
+    // list leaves at the bottom of the panel now.
+    function test_lyrics_toggle_clears_the_lyric_lines_data() { return sizeRows() }
+
+    function test_lyrics_toggle_clears_the_lyric_lines(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        var box    = findChild(page, "nowPlayingCoverBox")
+        var view   = findChild(page, "nowPlayingLyricsView")
+        var toggle = findChild(page, "nowPlayingLyricsToggle")
+        verify(view && toggle, "the list or the toggle was not found")
+        verify(toggle.visible, "the toggle has to stay reachable with lyrics open")
+
+        var viewBottom   = view.mapToItem(box, 0, view.height).y
+        var toggleTop    = toggle.mapToItem(box, 0, 0).y
+        verify(toggleTop >= viewBottom - 0.5,
+               row.tag + ": the toggle starts at " + toggleTop.toFixed(1)
+               + " and the lyric list only ends at " + viewBottom.toFixed(1)
+               + ", so the button is drawn over the words")
+
+        // So does Resync, which floats over the same list.
+        page.userScrolled = true
+        wait(0)
+        var resync = findChild(page, "nowPlayingLyricsResync")
+        verify(resync && resync.visible, "the Resync chip did not appear")
+        verify(resync.mapToItem(box, 0, 0).y >= viewBottom - 0.5,
+               row.tag + ": the Resync chip is drawn over the words")
+    }
+
+    // The user: "closing the lyrics tab skips to the line that the lyrics switch
+    // button is over." Both tap handlers were on the default DragThreshold
+    // policy, which takes no exclusive grab, so one tap was delivered to the
+    // chip and to the lyric line under it: the panel closed and playback jumped.
+    // Asserting only that the panel closed would pass with the bug present, so
+    // what this measures is that nothing seeked.
+    function test_lyrics_toggle_closes_without_seeking() {
+        var host = showHost(nowPlayingHost, 960, 1200)
+        var page = openLyrics(host)
+        var toggle = findChild(page, "nowPlayingLyricsToggle")
+        verify(toggle && toggle.visible, "the lyrics toggle was not found")
+
+        var wasAt = player.position
+        var wasLine = page.currentLyricLine
+        verify(wasAt > 0, "the fixture should be playing somewhere, not at zero")
+
+        mouseClick(toggle, Math.round(toggle.width / 2), Math.round(toggle.height / 2))
+        tryVerify(function () { return !page.showLyrics }, 2000,
+                  "the toggle did not close the lyrics")
+        compare(player.position, wasAt,
+                "closing the lyrics seeked to the line under the button")
+        compare(page.currentLyricLine, wasLine,
+                "closing the lyrics moved the active line")
+    }
+
+    // Resizing a ListView keeps its scroll offset, not its centred item, and the
+    // slot changes both axes when the lyrics open and again when the page
+    // restacks. The line being sung has to survive that.
+    function test_lyrics_active_line_stays_centred_across_a_mode_change() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = openLyrics(host, 40)
+        var view = findChild(page, "nowPlayingLyricsView")
+        verify(view, "the lyric list was not found")
+
+        // Far enough into the list that centring is not clamped at either end.
+        player.setPositionForTest(20 * 5000)
+        tryVerify(function () { return page.currentLyricLine === 20 }, 3000,
+                  "the sync timer never reached line 20")
+
+        function centred() {
+            var it = view.itemAtIndex(page.currentLyricLine)
+            if (!it) return 1e6
+            return Math.abs(it.mapToItem(view, 0, it.height / 2).y - view.height / 2)
+        }
+        tryVerify(function () { return centred() <= 8 }, 3000,
+                  "the active line never came to the middle: off by "
+                  + centred().toFixed(1) + "px")
+
+        // Across the stack breakpoint, which resizes the lyrics column.
+        host.width = 820
+        settlePage(page)
+        waitForRendering(host.contentItem)
+        tryVerify(function () { return centred() <= 8 }, 3000,
+                  "after the mode change the active line is off centre by "
+                  + centred().toFixed(1) + "px")
+        verify(view.width > 0 && view.height > 0, "the list lost its size")
+    }
+
+    function test_lyrics_resync_returns_to_the_active_line() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = openLyrics(host, 40)
+        var view = findChild(page, "nowPlayingLyricsView")
+        player.setPositionForTest(20 * 5000)
+        tryVerify(function () { return page.currentLyricLine === 20 }, 3000,
+                  "the sync timer never reached line 20")
+
+        // Stand in for a scroll: the flag is what the panel reads, and the
+        // offset is what the user would have left behind.
+        page.userScrolled = true
+        view.contentY = view.contentY + 400
+        wait(0)
+        var resync = findChild(page, "nowPlayingLyricsResync")
+        verify(resync && resync.visible, "Resync should be offered after a scroll")
+
+        mouseClick(resync, Math.round(resync.width / 2), Math.round(resync.height / 2))
+        tryVerify(function () { return !page.userScrolled }, 2000,
+                  "Resync did not clear the scrolled flag")
+        tryVerify(function () {
+            var it = view.itemAtIndex(page.currentLyricLine)
+            return it && Math.abs(it.mapToItem(view, 0, it.height / 2).y
+                                  - view.height / 2) <= 8
+        }, 3000, "Resync did not bring the active line back to the middle")
+        compare(page.currentLyricLine, 20, "Resync is not a seek")
+    }
+
+    // ── the sleep timer pill ─────────────────────────────────────────────
+    //
+    // The user: "the clock icon is weirdly spaced at the top and bottom in
+    // relation to how it's spaced on the left in a fully rounded pill." In a
+    // pill the content has to clear the curve, and the clearance at the
+    // content's own top corner equals the clearance straight up only when the
+    // horizontal padding equals the radius. It was 8 against a radius of 12.
+    //
+    // The relationship and not the number, so the next person to tighten it
+    // fails here rather than shipping it.
+    function test_sleep_timer_pill_clears_its_corners_data() {
+        return [
+            { tag: "idle",         active: false, atEnd: false, left: 0 },
+            { tag: "counting",     active: true,  atEnd: false, left: 600 },
+            { tag: "end of track", active: true,  atEnd: true,  left: 0 }
+        ]
+    }
+
+    function test_sleep_timer_pill_clears_its_corners(row) {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        host.sleepTimerActive      = row.active
+        host.sleepStopAtEndOfTrack = row.atEnd
+        host.sleepTimeLeft         = row.left
+        wait(0)
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        var content = findChild(host.page, "nowPlayingSleepTimerRow")
+        verify(pill && content, "the sleep timer pill was not found")
+        verify(pill.visible, "the sleep timer pill should be on screen")
+
+        // What the pill actually draws: Theme.radiusChip is a "fully round"
+        // sentinel and Qt clamps it to half the shorter side.
+        var r = Math.min(pill.radius, pill.height / 2, pill.width / 2)
+        var pad = (pill.width - content.width) / 2
+        verify(pad >= r - 0.5,
+               row.tag + ": the pill pads " + pad.toFixed(1)
+               + "px beside a " + r.toFixed(1) + "px corner, so the content "
+               + "clears the straight side but not the curve")
+        verify(content.height <= pill.height - 2,
+               row.tag + ": the content is " + content.height.toFixed(1)
+               + "px in a " + pill.height + "px pill, with nothing above or below it")
+        // And the padding is a padding, not a gulf: twice the radius would be a
+        // different shape again.
+        verify(pad <= 2 * r,
+               row.tag + ": " + pad.toFixed(1) + "px of padding on a "
+               + r.toFixed(1) + "px corner is no longer a pill")
+    }
+
+    // A pill that breathes in and out once a second is worse than one with odd
+    // padding: "10:00" and "9:59" are different widths and the pill is sized
+    // from that label.
+    function test_sleep_timer_pill_does_not_jitter_while_counting() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        host.sleepTimerActive      = true
+        host.sleepStopAtEndOfTrack = false
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        verify(pill, "the sleep timer pill was not found")
+
+        var seconds = [600, 599, 61, 60, 59, 10, 9, 1, 0]
+        var first = -1
+        var label = findChild(host.page, "nowPlayingSleepTimerLabel")
+        verify(label, "the countdown label was not found")
+        for (var i = 0; i < seconds.length; i++) {
+            host.sleepTimeLeft = seconds[i]
+            wait(0)
+            if (first < 0) first = pill.width
+            compare(pill.width, first,
+                    "the pill resized at \"" + label.text + "\": "
+                    + pill.width.toFixed(1) + " against " + first.toFixed(1))
+        }
     }
 
     // ── queue panel ──────────────────────────────────────────────────────

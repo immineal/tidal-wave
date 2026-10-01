@@ -373,6 +373,200 @@ TestCase {
         }
     }
 
+    // ── N2 in Now Playing as well ────────────────────────────────────────
+    //
+    // The user: "the singular artist link underline thing from the bar at the
+    // bottom obviously also have that in the now playing window." Same
+    // behaviour, same treatment -- textSec at rest, textPrimary and underlined
+    // under the pointer -- at the page's own 18px, and with the page's keyboard
+    // handling carried over per name rather than over the joined blob.
+
+    function test_now_playing_renders_one_target_per_artist() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 2, "each artist needs its own target")
+        compare(names[0].text, "Erika Mustermann")
+        compare(names[1].text, "Gastsängerin")
+        verify(names[0] !== names[1], "the two names must be separate items")
+        verify(rightEdgeIn(names[0], host.page) <= names[1].mapToItem(host.page, 0, 0).x + 0.5,
+               "the two artist names overlap")
+        // The joined one-link version is what it replaces, so it must be gone.
+        var joined = findChild(host.page, "nowPlayingArtists")
+        verify(joined, "the joined fallback line was not found")
+        verify(!joined.visible, "the joined line should stand down for the per-name row")
+    }
+
+    function test_now_playing_second_artist_opens_the_second_artist() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 2)
+        centerClick(names[1])
+        compare(host.navCalls.length, 1, "clicking an artist should navigate once")
+        compare(host.navCalls[0].page, "artist")
+        compare(host.navCalls[0].params.artistId, 22,
+                "the second name must open the second artist, not the lead")
+    }
+
+    function test_now_playing_first_artist_opens_the_first_artist() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        centerClick(names[0])
+        compare(host.navCalls.length, 1)
+        compare(host.navCalls[0].params.artistId, 11)
+    }
+
+    function test_now_playing_hover_underlines_only_that_name() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 2)
+        verify(!names[0].font.underline && !names[1].font.underline,
+               "nothing is underlined before the pointer arrives")
+
+        hover(names[1])
+        verify(names[1].font.underline, "the hovered name should be underlined")
+        verify(!names[0].font.underline, "only the hovered name should be underlined")
+
+        hover(names[0])
+        verify(names[0].font.underline, "the hovered name should be underlined")
+        verify(!names[1].font.underline, "the underline should follow the pointer")
+    }
+
+    // The colour is the bar's, not the page's old accent. Now Playing is being
+    // cleared of accent-coloured content so a cover-derived background can go
+    // behind it, and this line was the first of that.
+    function test_now_playing_artist_names_are_not_accent_coloured() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 2)
+        for (var i = 0; i < names.length; i++) {
+            compare(names[i].color.toString(), Theme.textSec.toString(),
+                    "\"" + names[i].text + "\" is not the bar's resting colour")
+            verify(names[i].color.toString() !== Theme.accent.toString(),
+                   "artist names must not be accent-coloured in Now Playing")
+        }
+        var seps = visibleNamed(host.page, "nowPlayingArtistSeparator")
+        compare(seps.length, 1)
+        compare(seps[0].color.toString(), Theme.textSec.toString(),
+                "the separator goes with the names")
+
+        hover(names[1])
+        compare(names[1].color.toString(), Theme.textPrimary.toString(),
+                "hover brightens the name")
+        compare(names[0].color.toString(), Theme.textSec.toString(), "and only that one")
+    }
+
+    // The page's keyboard handling came over per name: 18px and the focus ring
+    // are the page's, but there is one tab stop per artist now, not one blob.
+    function test_now_playing_each_artist_is_its_own_tab_stop() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 2)
+        for (var i = 0; i < names.length; i++)
+            verify(names[i].activeFocusOnTab,
+                   "\"" + names[i].text + "\" is not reachable by tab")
+
+        names[1].forceActiveFocus()
+        verify(names[1].activeFocus, "the second name did not take focus")
+        keyClick(Qt.Key_Return)
+        compare(host.navCalls.length, 1, "Return on a focused name should navigate")
+        compare(host.navCalls[0].params.artistId, 22)
+
+        names[0].forceActiveFocus()
+        keyClick(Qt.Key_Space)
+        compare(host.navCalls.length, 2, "Space should work the same way")
+        compare(host.navCalls[1].params.artistId, 11)
+    }
+
+    function test_now_playing_artist_without_id_is_not_a_target() {
+        player.setCurrentTrackForTest(trackWith([{ id: 0, name: "Unbekannt" }]))
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        compare(names.length, 1, "the name still shows, it just does not link")
+        verify(!names[0].activeFocusOnTab, "a dead credit is not a tab stop")
+        hover(names[0])
+        verify(!names[0].font.underline, "an artist with no id must not look clickable")
+        centerClick(names[0])
+        compare(host.navCalls.length, 0, "an artist with no id must not navigate")
+    }
+
+    // Tracks whose map predates `artistList` keep the one link they can have.
+    function test_now_playing_falls_back_to_the_joined_names() {
+        player.setCurrentTrackForTest({
+            id: 99, title: "Ohne Liste", artists: "Erika Mustermann, Gastsängerin",
+            artistId: 11, albumId: 7788, albumTitle: "Nachtfahrt", coverUrl: "",
+            duration: 100, durationStr: "1:40"
+        })
+        var host = showHost(nowPlayingHost, 1280, 900)
+        compare(visibleNamed(host.page, "nowPlayingArtistName").length, 0,
+                "no artist list means no per-artist targets")
+        var joined = findChild(host.page, "nowPlayingArtists")
+        verify(joined && joined.visible, "the joined artists line should stand in")
+        compare(joined.text, "Erika Mustermann, Gastsängerin")
+        compare(joined.color.toString(), Theme.textSec.toString(),
+                "the fallback takes the same colour")
+        // Near the left edge: the hit target follows the words, not the column.
+        mouseClick(joined, 6, Math.round(joined.height / 2))
+        compare(host.navCalls.length, 1, "the fallback still opens the lead artist")
+        compare(host.navCalls[0].params.artistId, 11)
+    }
+
+    // Long names must elide or drop out, never push past the line they sit in.
+    // 640 is the narrow end of the supported range, where the page is stacked
+    // and the text column is at its tightest.
+    function test_now_playing_long_names_stay_inside_the_line() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Rundfunk-Tanzorchester Ehrenfeld" },
+            { id: 22, name: "Mitteldeutscher Kammerchor" },
+            { id: 33, name: "Johanna von Hohenzollern-Sigmaringen" }
+        ]))
+        var host = showHost(nowPlayingHost, 640, 600)
+        // 640 is below the stack breakpoint and the host is born wide, so the
+        // page is still re-forming; the measurements below are about the layout
+        // it comes to rest in.
+        tryVerify(function () {
+            return host.page.stackness === (host.page.stackedLayout ? 1 : 0)
+        }, 2000, "the page never settled at 640")
+        var line = findChild(host.page, "nowPlayingArtistLine")
+        verify(line, "the artist line was not found")
+        var names = visibleNamed(host.page, "nowPlayingArtistName")
+        verify(names.length >= 1, "the first name must survive however tight it is")
+        verify(names.length < 3 || names[names.length - 1].truncated,
+               "three long names in a narrow column should have elided or dropped one")
+        for (var i = 0; i < names.length; i++) {
+            verify(rightEdgeIn(names[i], line) <= line.width + 0.5,
+                   "\"" + names[i].text + "\" runs "
+                   + (rightEdgeIn(names[i], line) - line.width).toFixed(1)
+                   + "px past the artist line")
+            verify(names[i].width >= 8,
+                   "\"" + names[i].text + "\" was squeezed to "
+                   + names[i].width.toFixed(1) + "px, which is not a hit target")
+        }
+    }
+
     // The links have to keep working once the bar sheds its volume slider.
     function test_player_bar_links_work_in_compact_mode() {
         player.setCurrentTrackForTest(trackWith([

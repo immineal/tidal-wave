@@ -53,9 +53,32 @@ Rectangle {
     // goes through the duration rather than through `enabled` so the move
     // still starts and still finishes, in the frame it started (see
     // Theme.dur).
-    property real stackness: stacked ? 1 : 0
+    // Lyrics are the stacked arrangement whatever the window is doing. A tall
+    // column of words beside a tall column of controls is two columns and
+    // neither gets a measure worth reading; the page has one wide slot to give
+    // and the lyrics want all of it. So opening them is a breakpoint crossing
+    // in its own right, and it goes down the same clock rather than switching.
+    readonly property bool stackedLayout: stacked || showLyrics
+    property real stackness: stackedLayout ? 1 : 0
 
     Behavior on stackness {
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+    }
+
+    // ─── Artwork or lyrics ─────────────────────────────
+    //
+    // How far the hero slot is from being an album cover and towards being a
+    // page of lyrics: 0 artwork, 1 lyrics. The second clock on this page, run
+    // the same way as `stackness` and at the same duration, so the two of them
+    // move as one when opening the lyrics is also what stacks the page.
+    //
+    // It exists because the two things wanted different shapes out of one
+    // slot. The lyrics used to be poured into the artwork's square -- 180px of
+    // it in a short window -- so a line like "We are losing the game" wrapped
+    // after four words with the whole width of the page empty beside it.
+    property real lyricsness: showLyrics ? 1 : 0
+
+    Behavior on lyricsness {
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
     }
 
@@ -65,6 +88,11 @@ Rectangle {
     // there is nothing to disagree about.
     function blend(side, stackedValue) {
         return side + (stackedValue - side) * root.stackness
+    }
+
+    // The same, between the artwork's shape and the lyrics'.
+    function lblend(art, lyrics) {
+        return art + (lyrics - art) * root.lyricsness
     }
 
     // Stacked, the cover takes the height the rest of the page leaves it,
@@ -77,6 +105,31 @@ Rectangle {
     readonly property real stackedCoverSize: Math.min(contentWidth, 420,
                                                       Math.max(180, stackedCoverRoom))
     readonly property real coverSize: blend(sideCoverSize, stackedCoverSize)
+
+    // ─── What the lyrics ask for instead ───────────────
+    //
+    // A measure, not a square. 640px is about 90 characters of the 14px the
+    // lines are set in, which is past the longest line anything the parser
+    // produces, so at that width a lyric is one line and the eye comes back to
+    // a known place. Wider is not more readable, so the slot stops there and
+    // centres in whatever is left.
+    readonly property int lyricsMeasure: 640
+    readonly property real lyricsWidth: Math.min(contentWidth, lyricsMeasure)
+
+    // And the height the page can spare, read off the same room the stacked
+    // cover takes: floored at 280 so there is always a column rather than a
+    // porthole, capped at 560 because past that the active line is too far from
+    // the middle of the screen to follow. Never shorter than the artwork it
+    // replaces, so opening the lyrics only ever makes the slot bigger -- which
+    // is what lets the crossfade below leave the cover at its own size while
+    // the slot grows around it.
+    readonly property real lyricsHeight:
+        Math.max(coverSize, 280, Math.min(560, stackedCoverRoom))
+
+    // The slot both of them live in. Square for the artwork, a column for the
+    // lyrics, and on its way between the two for 170ms.
+    readonly property real slotWidth:  lblend(coverSize, lyricsWidth)
+    readonly property real slotHeight: lblend(coverSize, lyricsHeight)
 
     // What is left once the margins, the header row, the two 32px gaps and the
     // text column have taken their height. The text column's own height does
@@ -105,13 +158,17 @@ Rectangle {
     // both held on there. Measured against this rather than against the
     // container's current height, which is itself one of the things being
     // animated.
-    readonly property real sideBodyHeight: Math.max(sideCoverSize, infoHeight)
+    // `lblend` and not `slotHeight`, because this is the *settled* side-by-side
+    // figure: the whole point of measuring against it is that it is not itself
+    // one of the things the stack animation is moving.
+    readonly property real sideBodyHeight:
+        Math.max(lblend(sideCoverSize, lyricsHeight), infoHeight)
 
-    readonly property real coverX: Math.round(blend(0, (contentWidth - coverSize) / 2))
-    readonly property real coverY: Math.round(blend((sideBodyHeight - coverSize) / 2, 0))
+    readonly property real coverX: Math.round(blend(0, (contentWidth - slotWidth) / 2))
+    readonly property real coverY: Math.round(blend((sideBodyHeight - slotHeight) / 2, 0))
     readonly property real infoX:  Math.round(blend(contentWidth - sideInfoWidth, 0))
     readonly property real infoY:  Math.round(blend((sideBodyHeight - infoHeight) / 2,
-                                                    coverSize + stackGap))
+                                                    slotHeight + stackGap))
 
     // What the two of them actually reach, which is what the page reserves for
     // them and therefore what it can be scrolled by.
@@ -124,7 +181,7 @@ Rectangle {
     // length of the move, which is the same mistake as the sidebar reserving
     // its full width before the panel had got there.
     readonly property real bodyHeight:
-        Math.max(coverY + coverSize, infoY + infoHeight)
+        Math.max(coverY + slotHeight, infoY + infoHeight)
 
     // 248px of buttons and six gaps. Where 344 will not fit, which is any
     // window at or below 640, the gaps tighten to 8 and the row comes down to
@@ -174,6 +231,28 @@ Rectangle {
     property int    currentLyricLine: -1
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
+
+    // The band at the bottom of the lyrics panel that belongs to the two chips
+    // and not to the words. Resync is 28 tall on a 10px bottom margin, so it
+    // reaches 38px up from the panel floor, and the Lyrics toggle 36; 48 leaves
+    // ten pixels of air between the taller of them and the last line. Nothing
+    // scrolls through it, which is what stops a tap on a chip also landing on a
+    // lyric.
+    readonly property int lyricsFooterRoom: 48
+
+    // Puts the line being sung back in the middle. Called on every resize of
+    // the list as well as from the sync timer, because the slot changes shape
+    // when the lyrics open and again whenever the page restacks, and a
+    // ListView keeps its scroll offset rather than its centred item.
+    function recentreLyrics() {
+        if (!root.showLyrics || root.userScrolled) return
+        if (root.currentLyricLine < 0 || root.lyricsData.length === 0) return
+        lyricsView.positionViewAtIndex(root.currentLyricLine, ListView.Center)
+    }
+
+    // Opening the panel is the one resize that happens before there is a list
+    // to position, so it asks again once there is.
+    onShowLyricsChanged: if (showLyrics) Qt.callLater(root.recentreLyrics)
 
     Timer {
         id: ignoreSyncTimer
@@ -383,8 +462,8 @@ Rectangle {
                     objectName: "nowPlayingCoverBox"
                     x: root.coverX
                     y: root.coverY
-                    width:  root.coverSize
-                    height: root.coverSize
+                    width:  root.slotWidth
+                    height: root.slotHeight
                     // Mid-move the two blocks pass through each other, and the
                     // artwork is the one that goes over the top.
                     //
@@ -417,11 +496,20 @@ Rectangle {
                     // tests/qml/tst_layout_player.qml holds both halves of that.
                     z: 1
 
-                    // Album art
+                    // Album art. A square of its own size centred in the slot
+                    // rather than filling it: the slot stops being square when
+                    // the lyrics open, and an artwork stretched across that for
+                    // the length of the crossfade is the one frame of this that
+                    // would look broken. It is exactly anchors.fill while the
+                    // slot is a cover, which is whenever it can be seen at all.
                     Rectangle {
-                        anchors.fill: parent
+                        objectName: "nowPlayingArt"
+                        anchors.centerIn: parent
+                        width:  root.coverSize
+                        height: root.coverSize
                         radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
-                        visible: !root.showLyrics
+                        opacity: 1 - root.lyricsness
+                        visible: opacity > 0.01
                         Image {
                             anchors.fill: parent
                             source: hasTrack ? "image://tidal/" + track.coverUrl : ""
@@ -429,26 +517,47 @@ Rectangle {
                         }
                     }
 
-                    // Lyrics panel
+                    // Lyrics panel. This one does take the whole slot, which is
+                    // the point: the measure and the height it gets are the
+                    // slot's, worked out above.
                     Rectangle {
+                        id: lyricsPanel
+                        objectName: "nowPlayingLyricsPanel"
                         anchors.fill: parent
                         // Takes the cover's slot, so it takes the cover's corner too
                         radius: Theme.radiusArt
                         color: Theme.surface
                         border.color: Theme.border
-                        visible: root.showLyrics
+                        opacity: root.lyricsness
+                        visible: opacity > 0.01
                         clip: true
 
                         ListView {
                             id: lyricsView
+                            objectName: "nowPlayingLyricsView"
                             anchors.fill: parent
                             anchors.margins: 16
+                            // The two chips live in the bottom of this panel, so
+                            // the list stops above them rather than running
+                            // under them. The toggle used to be drawn over a
+                            // lyric line, and a tap on it both closed the panel
+                            // and seeked to whichever line it was covering.
+                            anchors.bottomMargin: root.lyricsFooterRoom
                             clip: true
                             model: root.lyricsData
                             spacing: 8
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
+
+                            // Every resize is a re-wrap, and a re-wrap moves the
+                            // line that was centred. Deferred, so it runs after
+                            // the delegates have been laid out at the new width
+                            // and not against last frame's heights; coalesced by
+                            // Qt.callLater, so an animated resize re-centres once
+                            // a frame rather than once a binding.
+                            onWidthChanged:  Qt.callLater(root.recentreLyrics)
+                            onHeightChanged: Qt.callLater(root.recentreLyrics)
 
                             delegate: Text {
                                 id: lyricText
@@ -503,6 +612,7 @@ Rectangle {
 
                         // Resync button
                         Rectangle {
+                            objectName: "nowPlayingLyricsResync"
                             visible: root.userScrolled && root.lyricsIsTimed && root.currentLyricLine >= 0
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -522,7 +632,13 @@ Rectangle {
                                 color: Theme.artInk; font.pixelSize: 12
                             }
                             HoverHandler { cursorShape: Qt.PointingHandCursor }
+                            // ReleaseWithinBounds, not the default: this chip
+                            // floats over the lyric list, and a DragThreshold
+                            // TapHandler takes only a passive grab, so the line
+                            // underneath answered the same tap and the chip
+                            // resynced to a line the tap had just seeked to.
                             TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     root.userScrolled = false
                                     if (root.currentLyricLine >= 0)
@@ -534,6 +650,7 @@ Rectangle {
 
                     // Lyrics toggle button — hidden when lyrics confirmed unavailable
                     Rectangle {
+                        objectName: "nowPlayingLyricsToggle"
                         visible: root.lyricsState !== "unavailable"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right
@@ -549,7 +666,17 @@ Rectangle {
                             color: root.showLyrics ? Theme.accentInk : Theme.artInk; font.pixelSize: 11; font.bold: true
                         }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        // ReleaseWithinBounds, not the default: the user found
+                        // that "closing the lyrics tab skips to the line that
+                        // the lyrics switch button is over". A DragThreshold
+                        // TapHandler takes only a passive grab, so the lyric
+                        // line under this chip answered the same tap and seeked.
+                        // The band the list now leaves at the bottom of the
+                        // panel means nothing is under the chip any more; this
+                        // is what makes that a layout choice rather than the
+                        // only thing holding the bug shut.
                         TapHandler {
+                            gesturePolicy: TapHandler.ReleaseWithinBounds
                             onTapped: {
                                 root.showLyrics = !root.showLyrics
                                 if (root.showLyrics && root.lyricsState === "none") root.loadLyrics()
@@ -578,7 +705,7 @@ Rectangle {
                             Text {
                                 id: sourceLink
                                 visible: hasTrack && player.sourceName.length > 0
-                                text: qsTr("Playing from %1").arg(player.sourceName)
+                                text: qsTr("Playing from: %1").arg(player.sourceName)
                                 color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: 12
                                 font.letterSpacing: 0.5
@@ -621,37 +748,163 @@ Rectangle {
                                     onClicked: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
                                 }
                             }
-                            Text {
-                                id: artistLink
-                                text: hasTrack ? track.artists : ""; color: Theme.accent; font.pixelSize: 18
-                                // Fills and elides, like the title above it. Without
-                                // this the Text's own 453px of artist names was the
-                                // column's minimum width and dragged the whole page
-                                // out past the window edge.
+                            // One focus stop and one hover target per artist,
+                            // so a featured credit opens the guest rather than
+                            // the lead — the behaviour the bottom bar already
+                            // has (components/PlayerBar.qml), at this page's
+                            // size and in this page's accent. Unlike the bar
+                            // there is nothing for the gaps between the names
+                            // to fall through to: the page they would open is
+                            // this one, so they are simply not targets.
+                            Item {
+                                id: artistLine
+                                objectName: "nowPlayingArtistLine"
+                                // Fills and elides, like the title above it.
+                                // Without this the names' own 453px was the
+                                // column's minimum width and dragged the whole
+                                // page out past the window edge.
                                 Layout.fillWidth: true
-                                elide: Text.ElideRight
-                                font.underline: artistHit.containsMouse && hasTrack && Number(track.artistId) > 0
-                                activeFocusOnTab: hasTrack && Number(track.artistId) > 0
-                                Keys.onReturnPressed: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
-                                Keys.onSpacePressed:  if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
-                                Rectangle {
-                                    // Tracks the words, not the column the Text now
-                                    // fills, so the ring and the hit target do not
-                                    // float out to the right of a short name.
-                                    x: -4; y: -4
-                                    width:  Math.min(parent.width, parent.contentWidth) + 8
-                                    height: parent.height + 8
-                                    radius: Theme.radiusButton; color: "transparent"
-                                    border.width: artistLink.activeFocus ? 2 : 0
-                                    border.color: Theme.accent
+                                implicitHeight: Math.max(artistLink.implicitHeight,
+                                                         artistRow.implicitHeight)
+
+                                // The fallback for a track with no artistList:
+                                // the joined string, linking to the one
+                                // artistId such a track carries. It is the lead
+                                // artist or nothing, which is all the map says.
+                                Text {
+                                    id: artistLink
+                                    objectName: "nowPlayingArtists"
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    visible: root.artistList.length === 0
+                                    text: hasTrack ? track.artists : ""
+                                    // The bar's treatment, not an accent link:
+                                    // textSec at rest, textPrimary and
+                                    // underlined under the pointer. Now Playing
+                                    // is being cleared of accent-coloured
+                                    // content so a cover-derived background can
+                                    // go behind it, and this line was the first
+                                    // of it.
+                                    color: artistHit.containsMouse && hasTrack && Number(track.artistId) > 0
+                                           ? Theme.textPrimary : Theme.textSec
+                                    font.pixelSize: 18
+                                    elide: Text.ElideRight
+                                    font.underline: artistHit.containsMouse && hasTrack && Number(track.artistId) > 0
+                                    activeFocusOnTab: visible && hasTrack && Number(track.artistId) > 0
+                                    Keys.onReturnPressed: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
+                                    Keys.onSpacePressed:  if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
+                                    Rectangle {
+                                        // Tracks the words, not the column the Text now
+                                        // fills, so the ring and the hit target do not
+                                        // float out to the right of a short name.
+                                        x: -4; y: -4
+                                        width:  Math.min(parent.width, parent.contentWidth) + 8
+                                        height: parent.height + 8
+                                        radius: Theme.radiusButton; color: "transparent"
+                                        border.width: artistLink.activeFocus ? 2 : 0
+                                        border.color: Theme.accent
+                                    }
+                                    MouseArea {
+                                        id: artistHit
+                                        width:  Math.min(parent.width, parent.contentWidth)
+                                        height: parent.height
+                                        hoverEnabled: true
+                                        cursorShape: hasTrack && Number(track.artistId) > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onClicked: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
+                                    }
                                 }
-                                MouseArea {
-                                    id: artistHit
-                                    width:  Math.min(parent.width, parent.contentWidth)
-                                    height: parent.height
-                                    hoverEnabled: true
-                                    cursorShape: hasTrack && Number(track.artistId) > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                    onClicked: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
+
+                                Row {
+                                    id: artistRow
+                                    width: parent.width
+                                    visible: root.artistList.length > 0
+                                    spacing: 0
+
+                                    Repeater {
+                                        model: root.artistList
+                                        delegate: Row {
+                                            id: artistItem
+                                            required property var modelData
+                                            required property int index
+
+                                            readonly property bool linkable: Number(modelData.id) > 0
+                                            readonly property real sepWidth: index > 0 ? npSep.implicitWidth : 0
+                                            // What the line has left once the
+                                            // names in front of this one have
+                                            // taken theirs. The pixel of slack
+                                            // absorbs the difference between
+                                            // the measured string and the
+                                            // rendered one.
+                                            readonly property real room:
+                                                Math.max(0, artistRow.width - root.artistStartX(index) - sepWidth - 1)
+                                            // Too tight to read is too tight to
+                                            // aim at, so the name goes rather
+                                            // than leaving a clickable sliver
+                                            // or an unreachable tab stop behind.
+                                            visible: room >= 8
+                                            spacing: 0
+
+                                            Text {
+                                                id: npSep
+                                                objectName: "nowPlayingArtistSeparator"
+                                                visible: artistItem.index > 0
+                                                text: root.artistSeparator
+                                                color: Theme.textSec
+                                                font.pixelSize: 18
+                                            }
+
+                                            Text {
+                                                id: npName
+                                                objectName: "nowPlayingArtistName"
+                                                text: artistItem.modelData.name
+                                                // Only the name that runs out
+                                                // of line elides; the ones
+                                                // before it keep their full
+                                                // width.
+                                                width: Math.min(implicitWidth, artistItem.room)
+                                                elide: Text.ElideRight
+                                                color: npNameHit.containsMouse
+                                                       ? Theme.textPrimary : Theme.textSec
+                                                font.pixelSize: 18
+                                                font.underline: npNameHit.containsMouse
+                                                // Tab reaches each artist in
+                                                // turn rather than one blob,
+                                                // and skips a credit with no id
+                                                // because there is nowhere for
+                                                // it to go.
+                                                activeFocusOnTab: artistItem.linkable
+                                                Keys.onReturnPressed: root.openArtist(Number(artistItem.modelData.id))
+                                                Keys.onSpacePressed:  root.openArtist(Number(artistItem.modelData.id))
+
+                                                Rectangle {
+                                                    x: -4; y: -4
+                                                    width:  parent.width + 8
+                                                    height: parent.height + 8
+                                                    radius: Theme.radiusButton; color: "transparent"
+                                                    border.width: npName.activeFocus ? 2 : 0
+                                                    border.color: Theme.accent
+                                                }
+
+                                                // A MouseArea rather than a
+                                                // Tap/Hover handler pair, for
+                                                // the same reason the bar uses
+                                                // one: a TapHandler only takes
+                                                // a passive grab, so anything
+                                                // under the names answers the
+                                                // same click. Disabled when the
+                                                // artist has no id, so that
+                                                // name is not a dead target.
+                                                MouseArea {
+                                                    id: npNameHit
+                                                    anchors.fill: parent
+                                                    enabled: artistItem.linkable
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: root.openArtist(Number(artistItem.modelData.id))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Text {
@@ -778,38 +1031,106 @@ Rectangle {
 
                         Item { Layout.fillWidth: true } // Pusher
 
-                        // Sleep Timer button
+                        // Sleep Timer button.
+                        //
+                        // A fully round pill, and that shape has a rule the old
+                        // one broke: the content has to clear the curve, not
+                        // just the straight part of the side. The user put it as
+                        // "the clock icon is weirdly spaced at the top and
+                        // bottom in relation to how it's spaced on the left in a
+                        // fully rounded pill", and the arithmetic agrees. With
+                        // the pill r tall-halves and the content h tall and
+                        // centred, the content's own top corner sits at
+                        // (pad, h/2) from the circle's centre, so its distance
+                        // to the edge is r - sqrt((pad - r)^2 + (h/2)^2) against
+                        // r - h/2 of clearance straight up. Those two are equal
+                        // exactly when pad == r, and at the old 8px against a
+                        // radius of 12 the corner had 4.8px where the top had 6
+                        // -- loose along the side, tight in the corners, which
+                        // is what the eye was reporting.
+                        //
+                        // So the padding is the radius, derived rather than
+                        // typed, and it holds at whatever height this pill is
+                        // given. The height went 24 -> 28 in the same pass: 6px
+                        // around a 12px glyph is not room, and the pill is a
+                        // control rather than a label.
+                        //
+                        // It is not made to match the quality badge beside it,
+                        // which keeps its near-square 4px corners: that badge
+                        // states what the stream is and cannot be pressed, this
+                        // one opens a popup. The two are at opposite ends of the
+                        // row with the pusher between them, and the shapes are
+                        // the difference between a mark and a button.
                         Rectangle {
                             id: sleepTimerBtn
-                            height: 24
-                            width: sleepTimerRow.implicitWidth + 16
-                            radius: Theme.radiusChip
+                            objectName: "nowPlayingSleepTimerButton"
+                            height: 28
+                            // What the pill actually draws: Theme.radiusChip is
+                            // a "round it all the way" sentinel, and Qt clamps
+                            // it to half the shorter side.
+                            readonly property real cornerRadius:
+                                Math.min(Theme.radiusChip, height / 2)
+                            readonly property real hPad: cornerRadius
+
+                            width: sleepTimerRow.implicitWidth + 2 * hPad
+                            radius: cornerRadius
                             color: root.sleepTimerActive ? Theme.accentTint : Theme.surfaceHigh
                             border.color: root.sleepTimerActive ? Theme.accent : Theme.border
                             border.width: 1
-                        
+
+                            // Measures the widest clock the countdown can show,
+                            // in the font it shows it in.
+                            FontMetrics { id: sleepFm; font.pixelSize: 11; font.bold: true }
+
                             RowLayout {
                                 id: sleepTimerRow
+                                objectName: "nowPlayingSleepTimerRow"
                                 anchors.centerIn: parent
                                 spacing: 6
-                            
+
                                 VectorIcon {
                                     name: "clock"
                                     color: root.sleepTimerActive ? Theme.accent : Theme.textSec
                                     width: 12
                                     height: 12
                                 }
-                            
+
                                 Text {
-                                    text: root.sleepTimerActive ? 
-                                          (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) : 
+                                    objectName: "nowPlayingSleepTimerLabel"
+                                    text: root.sleepTimerActive ?
+                                          (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) :
                                           qsTr("Sleep Timer")
+                                    // The whole pill is sized from this label,
+                                    // and "10:00" and "9:59" are not the same
+                                    // width: left alone the pill would have
+                                    // breathed in and out once a second, which
+                                    // is worse than odd padding. While it is
+                                    // counting the label holds the widest clock
+                                    // it can show and centres the digits in it,
+                                    // so only the digits change. "End of Track"
+                                    // does not tick and takes its own width, and
+                                    // nothing here is a fixed number of pixels,
+                                    // so a longer German label still fits.
+                                    // The widest clock of the shape this one
+                                    // is: "mm:ss" below the hour and "h:mm:ss"
+                                    // above it. Reserving the hour shape the
+                                    // whole time would sit a fifteen-minute
+                                    // timer in a pill built for ninety.
+                                    readonly property string widestClock:
+                                        text.indexOf(":") !== text.lastIndexOf(":")
+                                            ? "0:00:00" : "00:00"
+                                    Layout.preferredWidth:
+                                        (root.sleepTimerActive && !root.sleepStopAtEndOfTrack)
+                                            ? Math.max(implicitWidth,
+                                                       sleepFm.advanceWidth(widestClock))
+                                            : implicitWidth
+                                    horizontalAlignment: Text.AlignHCenter
                                     color: root.sleepTimerActive ? Theme.accent : Theme.textSec
                                     font.pixelSize: 11
                                     font.bold: root.sleepTimerActive
                                 }
                             }
-                        
+
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -1357,6 +1678,43 @@ Rectangle {
         }
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: parent.clicked() }
+    }
+
+    // ─── Artist links (SPEC N2, here as well as in the bar) ──────────────
+    // The same arithmetic as components/PlayerBar.qml's artist line, at this
+    // page's 18px rather than the bar's 12px. Kept here rather than extracted
+    // into a shared component because a new qml/ file has to be added to
+    // QML_FILES in CMakeLists.txt, which another change owns this session; if
+    // the two ever disagree, this is the pair to reconcile.
+    //
+    // TidalBridge::trackToMap() carries the whole artist list as [{id, name}].
+    // Tracks whose map predates it — the recently-played entries saved to
+    // disk, anything a caller builds by hand — only have the joined `artists`
+    // string and a single `artistId`, and artistLink below stands in for them.
+    readonly property var artistList:
+        (hasTrack && track.artistList && track.artistList.length > 0) ? track.artistList : []
+
+    // Sits between two names and belongs to neither, so it is not a link.
+    readonly property string artistSeparator: qsTr(", ", "between two artist names")
+
+    FontMetrics { id: artistFm; font.pixelSize: 18 }
+
+    // Where the i-th name begins, measured on the names in front of it rather
+    // than on the laid-out items: a delegate cannot see its siblings' widths,
+    // and binding a width to the x a Row just assigned is how binding loops
+    // start.
+    function artistStartX(i) {
+        if (i <= 0) return 0
+        var before = []
+        for (var k = 0; k < i && k < root.artistList.length; k++)
+            before.push(root.artistList[k].name)
+        return artistFm.advanceWidth(before.join(root.artistSeparator))
+    }
+
+    // Guarded here rather than at each of the three call sites, so a credit
+    // with no id is a no-op wherever it is activated from.
+    function openArtist(artistId) {
+        if (artistId > 0) root.navigateTo("artist", { artistId: artistId })
     }
 
     function navigateTo(page, params) {

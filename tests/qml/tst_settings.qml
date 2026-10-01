@@ -52,6 +52,27 @@ TestCase {
         color: Theme.bg
     }
 
+    // A second one, on the step above the page. The pure-black switch takes bg
+    // to #000000 whichever grey ramp is underneath it, so the probe above
+    // cannot tell the two ramps apart once that switch is on - and the order
+    // the two were flipped in is exactly what has to be invisible. surface is
+    // where it would show.
+    Rectangle {
+        id: surfaceProbe
+        width: 1; height: 1
+        color: Theme.surface
+    }
+
+    // And one on the accent, which is what picking a theme moves. In the
+    // neutral state - the default - the three dark palettes share a grey ramp
+    // and the three light ones share another, so choosing Pine while on Sea is
+    // a change of accent and nothing else: the page does not move, by design.
+    Rectangle {
+        id: accentProbe
+        width: 1; height: 1
+        color: Theme.accent
+    }
+
     // ── the doubles ──────────────────────────────────────────────────────
 
     // I18n::availableLanguages(): System translated, the other two endonyms.
@@ -106,6 +127,9 @@ TestCase {
     function init() {
         prefs.theme = "sea"
         prefs.oledBlack = false
+        // The state a fresh install is in: one neutral grey ramp per mode, six
+        // accents. Every test that cares about the tinted grounds asks for them.
+        prefs.tintedGreys = false
         prefs.language = "system"
         prefs.audioDevice = ""
         prefs.softwareRendering = false
@@ -125,6 +149,8 @@ TestCase {
     function cleanupTestCase() {
         prefs.theme = "sea"
         prefs.oledBlack = false
+        prefs.tintedGreys = false
+        app.setReducedMotionForTest(true)
     }
 
     Component {
@@ -278,6 +304,25 @@ TestCase {
         settle(panel.contentItem)
     }
 
+    // Every swatch in the grid, keyed by the theme it belongs to. Re-read
+    // rather than cached: flipping the colour switch rebuilds the Repeater, so
+    // tiles collected before a flip are destroyed objects afterwards.
+    function swatchesByTheme(panel) {
+        var tiles = collectByName(panel.contentItem, "settingsThemeOption", [])
+        var out = {}
+        for (var i = 0; i < tiles.length; i++)
+            out[tiles[i].themeName] = findByName(tiles[i], "settingsThemeSwatch")
+        return out
+    }
+
+    function accentDotsByTheme(panel) {
+        var tiles = collectByName(panel.contentItem, "settingsThemeOption", [])
+        var out = {}
+        for (var i = 0; i < tiles.length; i++)
+            out[tiles[i].themeName] = findByName(tiles[i], "settingsThemeSwatchAccent")
+        return out
+    }
+
     function valuesOf(options) {
         var out = []
         for (var i = 0; i < options.length; i++) out.push(options[i].value)
@@ -382,7 +427,19 @@ TestCase {
     // C++ one, and it drifted two accent revisions behind before anyone
     // looked. Picking a theme and reading the live palette back is the only
     // check that can catch that.
-    function test_every_swatch_matches_the_palette_it_claims() {
+    //
+    // Both grey ramps, because available() answers for whichever one is in
+    // force: a swatch that is right in the tinted state and wrong in the
+    // neutral one is the same class of bug with a switch in front of it.
+    function test_every_swatch_matches_the_palette_it_claims_data() {
+        return [
+            { tag: "neutral", tinted: false },
+            { tag: "tinted",  tinted: true  }
+        ]
+    }
+
+    function test_every_swatch_matches_the_palette_it_claims(row) {
+        prefs.tintedGreys = row.tinted
         var h = openPanel(1280, 1200)
         var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
         verify(tiles.length > 0)
@@ -409,11 +466,60 @@ TestCase {
     }
 
     // Picking writes prefs.theme, and the live binding on the palette repaints.
+    //
+    // The accent is what is measured, not the page. This used to watch bg, and
+    // it had to change the day the greys went neutral by default: within a mode
+    // the six now share their grounds and differ only by accent, so picking
+    // Pine while on Sea repaints the accent and leaves bg exactly where it was.
+    // That is the design rather than a regression - so the probe moved to the
+    // token the choice is actually about, and the page is only asserted to move
+    // where it genuinely has to, which is a pick that crosses between the dark
+    // palettes and the light ones.
     function test_picking_a_theme(row) {
         // Start somewhere else, or picking the current theme is a no-op and
-        // the repaint cannot be seen.
+        // the repaint cannot be seen. Crossing modes for half the rows, staying
+        // inside one for the other half.
+        var from = (row.name === "sea") ? "pine" : "sea"
+        prefs.theme = from
+        prefs.oledBlack = false
+
+        var h = openPanel(1280, 1200)
+        var fromDark = ThemePalette.isDark
+        var beforeBg = probe.color.toString()
+        var beforeAccent = accentProbe.color.toString()
+
+        var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
+        var target = null
+        for (var i = 0; i < tiles.length; i++)
+            if (tiles[i].themeName === row.name) target = tiles[i]
+        verify(target, "no tile for " + row.name)
+
+        clickItem(h.panel, target)
+
+        compare(prefs.theme, row.name, "picking " + row.name + " did not write prefs.theme")
+        compare(ThemePalette.isDark, row.dark, row.name + " landed on the wrong palette")
+        verify(accentProbe.color.toString() !== beforeAccent,
+               "picking " + row.name + " wrote the setting but nothing repainted")
+        if (row.dark !== fromDark)
+            verify(probe.color.toString() !== beforeBg,
+                   "picking " + row.name + " crossed from " + from
+                   + " to the other side and the page did not follow")
+        verify(target.selected, "the picked tile does not read as selected")
+
+        h.panel.close()
+    }
+
+    // ...and in the tinted state it does move the page, on every pick, because
+    // there each palette carries its own grounds. The other half of the pair
+    // above: together they say the grid means something in both states.
+    function test_picking_a_theme_in_the_tinted_state_repaints_the_page_data() {
+        return test_picking_a_theme_data()
+    }
+
+    function test_picking_a_theme_in_the_tinted_state_repaints_the_page(row) {
         prefs.theme = (row.name === "sea") ? "pine" : "sea"
         prefs.oledBlack = false
+        prefs.tintedGreys = true
 
         var h = openPanel(1280, 1200)
         var before = probe.color.toString()
@@ -426,11 +532,9 @@ TestCase {
 
         clickItem(h.panel, target)
 
-        compare(prefs.theme, row.name, "picking " + row.name + " did not write prefs.theme")
-        compare(ThemePalette.isDark, row.dark, row.name + " landed on the wrong palette")
+        compare(prefs.theme, row.name)
         verify(probe.color.toString() !== before,
-               "picking " + row.name + " wrote the setting but nothing repainted")
-        verify(target.selected, "the picked tile does not read as selected")
+               "picking " + row.name + " with the tinted grounds on left the page alone")
 
         h.panel.close()
     }
@@ -529,6 +633,287 @@ TestCase {
 
         verify(!prefs.oledBlack)
         compare(probe.color.toString(), before, "turning it off did not come back")
+
+        h.panel.close()
+    }
+
+    // ── 1c. the colour switch ────────────────────────────────────────────
+
+    // Unlike the pure-black one it is offered on every theme, because there is
+    // no theme where it does nothing: all six share a grey ramp with the other
+    // two on their side until it is turned on.
+    function test_the_colour_switch_is_offered_on_every_theme_data() {
+        var rows = []
+        var avail = ThemePalette.available()
+        for (var i = 0; i < avail.length; i++)
+            rows.push({ tag: avail[i].name, name: avail[i].name })
+        return rows
+    }
+
+    function test_the_colour_switch_is_offered_on_every_theme(row) {
+        prefs.theme = row.name
+        var h = openPanel(1280, 1200)
+
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.visible, row.name + " hides the colour switch")
+        var note = findByName(h.panel.contentItem, "settingsTintedNote")
+        verify(note && note.visible && note.text.length > 0,
+               "the switch is offered with no explanation of what it does")
+        var label = findByName(h.panel.contentItem, "settingsTintedLabel")
+        verify(label && label.visible && label.text.length > 0, "the switch has no label")
+
+        // init() leaves the greys neutral, which is what a fresh install gets,
+        // so the switch has to read as off.
+        verify(!toggle.checked, "the switch does not follow prefs.tintedGreys")
+
+        h.panel.close()
+    }
+
+    // Under the grid rather than beside it, and across the whole card: it
+    // changes what every swatch above it shows, so it belongs to both columns.
+    function test_the_colour_switch_sits_under_the_whole_grid() {
+        var h = openPanel(1280, 1200)
+
+        var block = findByName(h.panel.contentItem, "settingsTintedBlock")
+        verify(block && block.visible, "the colour block is not there")
+
+        var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
+        var lowest = 0
+        for (var i = 0; i < tiles.length; i++)
+            lowest = Math.max(lowest, tiles[i].mapToItem(h.panel.contentItem, 0, 0).y)
+        verify(block.mapToItem(h.panel.contentItem, 0, 0).y > lowest,
+               "the switch is not below the palettes it applies to")
+
+        var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
+        for (i = 0; i < groups.length; i++)
+            verify(block.width > groups[i].width + 1,
+                   "the switch is no wider than one palette column")
+
+        // Centred against both lines of its label, as the pure-black row is.
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        var tMid = toggle.mapToItem(block, 0, 0).y + toggle.height / 2
+        verify(Math.abs(tMid - block.height / 2) <= 1.5,
+               "the switch sits at " + tMid.toFixed(1) + " in a block "
+               + block.height.toFixed(1) + " tall, so it is not centred on both lines")
+
+        h.panel.close()
+    }
+
+    // Flipping it writes the setting and the live palette follows, the same way
+    // picking a theme does. The probe is the proof: a switch that stores a bool
+    // and repaints nothing is the bug this whole file exists for.
+    function test_flipping_the_colour_switch_repaints() {
+        prefs.theme = "pine"
+        prefs.oledBlack = false
+        prefs.tintedGreys = false
+
+        var h = openPanel(1280, 1200)
+        var before = probe.color.toString()
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.visible)
+        verify(!toggle.checked)
+
+        clickItem(h.panel, toggle)
+
+        verify(prefs.tintedGreys, "the switch did not write prefs.tintedGreys")
+        verify(toggle.checked, "the switch did not follow the setting it just wrote")
+        verify(probe.color.toString() !== before,
+               "the greys were tinted and nothing repainted")
+
+        clickItem(h.panel, toggle)
+
+        verify(!prefs.tintedGreys)
+        compare(probe.color.toString(), before, "turning it off did not come back")
+
+        h.panel.close()
+    }
+
+    // The grid has to show the truth about what it is offering. In the neutral
+    // state the three darks are one ground and three accents, and so are the
+    // three lights; after a flip all six grounds differ. A grid that still
+    // showed the tinted grounds after the flip would be the panel describing a
+    // palette the app is not painting.
+    function test_the_colour_switch_flips_the_grid() {
+        prefs.theme = "sea"
+        prefs.tintedGreys = false
+        var h = openPanel(1280, 1200)
+
+        var sw = swatchesByTheme(h.panel)
+        var dots = accentDotsByTheme(h.panel)
+        var darks = ["sea", "pine", "rust"]
+        var lights = ["sky", "sand", "clay"]
+        var i
+
+        for (i = 1; i < darks.length; i++)
+            compare(String(sw[darks[i]].color), String(sw[darks[0]].color),
+                    darks[i] + " and " + darks[0]
+                    + " show different grounds in the neutral state")
+        for (i = 1; i < lights.length; i++)
+            compare(String(sw[lights[i]].color), String(sw[lights[0]].color),
+                    lights[i] + " and " + lights[0]
+                    + " show different grounds in the neutral state")
+        verify(String(sw.sea.color) !== String(sw.sky.color),
+               "the dark and light ramps are the same colour")
+
+        // ...and the accent is then what the choice is actually between, so the
+        // six dots have to differ.
+        var seen = {}
+        var all = darks.concat(lights)
+        for (i = 0; i < all.length; i++) {
+            var c = String(dots[all[i]].color)
+            verify(seen[c] === undefined,
+                   all[i] + " and " + seen[c] + " show the same accent, so in the "
+                   + "neutral state they are the same swatch")
+            seen[c] = all[i]
+        }
+
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        clickItem(h.panel, toggle)
+
+        // The Repeater was rebuilt, so these are new objects.
+        sw = swatchesByTheme(h.panel)
+        for (i = 1; i < darks.length; i++)
+            verify(String(sw[darks[i]].color) !== String(sw[darks[0]].color),
+                   "the grid did not follow the switch: " + darks[i] + " and "
+                   + darks[0] + " still show the same ground")
+        for (i = 1; i < lights.length; i++)
+            verify(String(sw[lights[i]].color) !== String(sw[lights[0]].color),
+                   "the grid did not follow the switch: " + lights[i] + " and "
+                   + lights[0] + " still show the same ground")
+
+        h.panel.close()
+    }
+
+    // Reopened, the switch shows what was stored rather than its own default.
+    function test_the_colour_switch_shows_the_stored_setting() {
+        prefs.tintedGreys = true
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.checked, "a stored on came back off")
+        var rainbow = findByName(toggle, "toggleRainbow")
+        verify(rainbow && rainbow.visible,
+               "the switch is on and its track is not a rainbow")
+        h.panel.close()
+
+        prefs.tintedGreys = false
+        var h2 = openPanel(1280, 1200)
+        var toggle2 = findByName(h2.panel.contentItem, "settingsTintedToggle")
+        verify(toggle2 && !toggle2.checked, "a stored off came back on")
+        var rainbow2 = findByName(toggle2, "toggleRainbow")
+        verify(rainbow2 && !rainbow2.visible,
+               "the switch is off and still painted as a rainbow")
+        h2.panel.close()
+    }
+
+    // The whimsy, and the cheap half of it: the rainbow turns only while the
+    // switch is on, so a panel left open with it off costs nothing.
+    function test_the_rainbow_turns_only_while_the_switch_is_on() {
+        app.setReducedMotionForTest(false)
+        prefs.tintedGreys = true
+
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.checked)
+        var rainbow = findByName(toggle, "toggleRainbow")
+        verify(rainbow && rainbow.visible)
+        verify(toggle.rainbowRunning, "the rainbow is not turning")
+
+        // Actually a rainbow, and not an accent fill with an animation behind
+        // it: seven stops round the wheel, the first and the last on the same
+        // hue so one turn joins up, which leaves six distinct colours.
+        verify(rainbow.gradient, "the rainbow track carries no gradient")
+        compare(rainbow.gradient.stops.length, 7, "the rainbow has the wrong number of stops")
+        var distinct = {}
+        for (var k = 0; k < 7; k++)
+            distinct[String(rainbow.gradient.stops[k].color)] = true
+        compare(Object.keys(distinct).length, 6,
+                "the rainbow is " + Object.keys(distinct).length + " colours")
+
+        var was = toggle.rainbowPhase
+        wait(300)
+        verify(toggle.rainbowPhase !== was,
+               "rainbowRunning is true and the phase is not moving")
+
+        clickItem(h.panel, toggle)
+        verify(!rainbow.visible, "the switch is off and still a rainbow")
+        verify(!toggle.rainbowRunning, "the switch is off and still animating")
+
+        // ...and no other switch in the panel grew one.
+        prefs.theme = "sea"
+        var black = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(black && black.visible)
+        var strayRainbow = findByName(black, "toggleRainbow")
+        verify(strayRainbow && !strayRainbow.visible,
+               "the pure-black switch is painted as a rainbow")
+        verify(!black.rainbowRunning, "the pure-black switch is animating")
+
+        h.panel.close()
+    }
+
+    // X6: reduced motion stops the rainbow without deleting it. The colour is
+    // what the switch is saying; the turning is only how it says it.
+    function test_the_rainbow_does_not_turn_under_reduced_motion() {
+        app.setReducedMotionForTest(true)
+        prefs.tintedGreys = true
+
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.checked)
+        var rainbow = findByName(toggle, "toggleRainbow")
+        verify(rainbow && rainbow.visible,
+               "reduced motion removed the rainbow instead of stopping it")
+        verify(!toggle.rainbowRunning,
+               "the rainbow is still turning under reduced motion")
+
+        var was = toggle.rainbowPhase
+        wait(300)
+        compare(toggle.rainbowPhase, was, "the rainbow moved under reduced motion")
+
+        h.panel.close()
+    }
+
+    // Both switches move the grounds, so the page you land on must not depend
+    // on which one you reached for first. Driven through the two controls,
+    // because this is the version of it a user can actually perform; the
+    // palette-level proof is theTwoSwitchesComposeInEitherOrder() in
+    // tests/tst_theme.cpp.
+    function test_the_two_switches_land_on_the_same_page_in_either_order() {
+        prefs.theme = "pine"
+        prefs.oledBlack = false
+        prefs.tintedGreys = false
+
+        var h = openPanel(1280, 1200)
+        var black  = findByName(h.panel.contentItem, "settingsOledToggle")
+        var colour = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(black && black.visible && colour && colour.visible)
+
+        clickItem(h.panel, black)
+        clickItem(h.panel, colour)
+        verify(prefs.oledBlack && prefs.tintedGreys)
+        var blackFirstBg = probe.color.toString()
+        var blackFirstSurface = surfaceProbe.color.toString()
+        compare(blackFirstBg, "#000000", "the page is not black with the switch on")
+
+        // All the way back out, then the other way round.
+        clickItem(h.panel, colour)
+        clickItem(h.panel, black)
+        verify(!prefs.oledBlack && !prefs.tintedGreys)
+
+        clickItem(h.panel, colour)
+        clickItem(h.panel, black)
+        verify(prefs.oledBlack && prefs.tintedGreys)
+        compare(probe.color.toString(), blackFirstBg,
+                "the page depends on which switch was flipped first")
+        compare(surfaceProbe.color.toString(), blackFirstSurface,
+                "the step above the page depends on which switch was flipped first")
+
+        // ...and the pure-black switch still reaches black over the neutral
+        // ramp, which is the state it would quietly stop working in if the two
+        // transforms were applied the other way round.
+        clickItem(h.panel, colour)
+        verify(prefs.oledBlack && !prefs.tintedGreys)
+        compare(probe.color.toString(), "#000000",
+                "the pure-black switch stopped working on the neutral greys")
 
         h.panel.close()
     }

@@ -40,6 +40,10 @@ private slots:
         // lighter app than the user signed off on.
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
+        // Off: the six themes share one neutral grey ramp per mode until
+        // somebody asks for the tinted grounds, which is the state the user
+        // settled on as the default.
+        QCOMPARE(p.tintedGreys(), false);
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
@@ -95,6 +99,7 @@ private slots:
             Prefs p;
             p.setTheme(QStringLiteral("sand"));
             p.setOledBlack(false);
+            p.setTintedGreys(true);
             p.setLanguage(QStringLiteral("de"));
             p.setSidebarWidth(310);
             p.setAudioDevice(QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -107,6 +112,9 @@ private slots:
         // setter that only ever wrote the non-default value would still pass
         // a round trip in the other direction.
         QCOMPARE(p2.oledBlack(), false);
+        // This one defaults off, so on is the direction a setter that never
+        // wrote anything would get wrong.
+        QCOMPARE(p2.tintedGreys(), true);
         QCOMPARE(p2.language(), QStringLiteral("de"));
         QCOMPARE(p2.sidebarWidth(), 310);
         QCOMPARE(p2.audioDevice(), QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -141,6 +149,70 @@ private slots:
         QVERIFY(!p3.quitOnClose());
     }
 
+    // The key is written out rather than taken from Prefs.cpp, the same way
+    // quitOnClose' is: rename it and everyone who had asked for the tinted
+    // grounds silently goes back to the neutral ones.
+    void tintedGreysIsStoredUnderItsOwnKey() {
+        { Prefs p; p.setTintedGreys(true); }
+        {
+            QSettings s;
+            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), true);
+        }
+        Prefs p2;
+        QVERIFY(p2.tintedGreys());
+        p2.setTintedGreys(false);
+        Prefs p3;
+        QVERIFY(!p3.tintedGreys());
+    }
+
+    // The migration story for the colour switch, which is the whole of it: a
+    // settings file written before it existed carries no key, and the default
+    // behind that key is the neutral state. The file below is one a 0.4.0 beta
+    // actually wrote - a theme, the pure-black switch, a language, a width -
+    // and it has to come back as the app it was, with greys that are neutral
+    // rather than with whatever a missing key coerces to.
+    void aSettingsFileFromBeforeTheColourSwitchLandsOnNeutral() {
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("ui/theme"), "rust");
+            s.setValue(QStringLiteral("ui/oledBlack"), true);
+            s.setValue(QStringLiteral("ui/language"), "de");
+            s.setValue(QStringLiteral("ui/sidebarWidth"), 260);
+            QVERIFY(!s.contains(QStringLiteral("ui/tintedGreys")));
+        }
+        Prefs p;
+        QCOMPARE(p.theme(), QStringLiteral("rust"));
+        QCOMPARE(p.oledBlack(), true);
+        QCOMPARE(p.tintedGreys(), false);
+        QCOMPARE(p.language(), QStringLiteral("de"));
+        QCOMPARE(p.sidebarWidth(), 260);
+        QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys()),
+                 theme::palette(QStringLiteral("rust"), true, false));
+    }
+
+    // ...and a key holding something that is not a bool reads exactly the way
+    // the pure-black key does, because it is declared and stored the same way.
+    // The INI backend hands bools back as text, so "true" comes back true -
+    // and so does any other non-empty word, because that is
+    // QVariant::toBool()'s rule and not a decision made in Prefs. Pinned
+    // rather than papered over: a damaged file has to resolve both switches
+    // the same way, and either answer is a real palette rather than garbage.
+    // The case that actually happens to people - no key at all - is the one
+    // above, and that one lands on neutral.
+    void aDamagedColourKeyReadsLikeTheBlackOne() {
+        for (const char *stored : {"true", "false", "1", "0", "banana", ""}) {
+            {
+                QSettings s;
+                s.setValue(QStringLiteral("ui/tintedGreys"), QString::fromLatin1(stored));
+                s.setValue(QStringLiteral("ui/oledBlack"),   QString::fromLatin1(stored));
+            }
+            Prefs p;
+            QCOMPARE(p.tintedGreys(), p.oledBlack());
+            QVERIFY(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys())
+                        .contains(QStringLiteral("bg")));
+        }
+    }
+
     void signalsFireOnceOnChange() {
         Prefs p;
         QSignalSpy theme(&p, &Prefs::themeChanged);
@@ -163,6 +235,11 @@ private slots:
         p.setQuitOnClose(true);
         p.setQuitOnClose(true);
         QCOMPARE(closeQuits.count(), 1);
+
+        QSignalSpy greys(&p, &Prefs::tintedGreysChanged);
+        p.setTintedGreys(true);
+        p.setTintedGreys(true);
+        QCOMPARE(greys.count(), 1);
     }
 
     // ── guarding against a bad settings file ─────────────────────────────
@@ -209,7 +286,14 @@ private slots:
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
-        QCOMPARE(theme::palette(p.theme(), p.oledBlack()).value("bg").value<QColor>(),
+        // Deep was Sea's old grounds pulled to black, and Sea's old grounds are
+        // the neutral ramp, so the state that reproduces it is the neutral one
+        // with the switch on. A file this old has no colour key, so that is
+        // where it lands - but it is written back below rather than left to a
+        // default, because the pixels are the promise, not the default.
+        QCOMPARE(p.tintedGreys(), false);
+        QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys())
+                     .value("bg").value<QColor>(),
                  QColor(Qt::black));
     }
 
@@ -222,6 +306,10 @@ private slots:
         {
             QSettings s;
             QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("sea"));
+            // The state the migration landed on is written down as well, so a
+            // later change to what a fresh install defaults to cannot move an
+            // old user's palette out from under them.
+            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), false);
         }
         Prefs p2;
         QCOMPARE(p2.theme(), QStringLiteral("sea"));
@@ -246,10 +334,14 @@ private slots:
             QSettings s;
             s.setValue(QStringLiteral("ui/theme"), "ember");
             s.setValue(QStringLiteral("ui/oledBlack"), false);
+            s.setValue(QStringLiteral("ui/tintedGreys"), true);
         }
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("rust"));
         QCOMPARE(p.oledBlack(), false);
+        // Nor the colour switch: a rename moves no pixels, so somebody who had
+        // asked for the tinted grounds keeps them.
+        QCOMPARE(p.tintedGreys(), true);
     }
 
     // A theme name is free-form on the way in, because the palette table is

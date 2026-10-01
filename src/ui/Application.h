@@ -12,6 +12,7 @@
 #include <QIcon>
 
 class QQmlApplicationEngine;
+class QQmlEngine;
 class QLocalServer;
 class CastManager;
 class Prefs;
@@ -64,6 +65,118 @@ public:
     // Whether a log line is one of the audio-server connect errors a machine
     // with no sound server prints on every single launch.
     static bool isAudioServerStartupNoise(const QString &msg);
+    // Whether a log line is the FFmpeg media backend announcing itself. Unlike
+    // the audio-server lines this appears on every machine, because it is
+    // unconditional in the plugin rather than a symptom of anything.
+    static bool isMediaBackendStartupNoise(const QString &msg);
+
+    // ── High-DPI scaling ─────────────────────────────────────────────────
+    // Qt 6 derives its scale factor from the screen's *logical* DPI. Where the
+    // display system advertises one, Qt is already right. Where it advertises
+    // nothing the logical DPI is the 96 default, Qt computes 96/96 = 1, and the
+    // app draws one logical pixel per device pixel: on the 3840x2400 / 344x215 mm
+    // panel this was reported from - 283.5 ppi - the login button's 48 logical px
+    // comes out 4.3 mm tall.
+    //
+    // Nothing below asks which desktop or windowing system it is running on, and
+    // nothing should. "Does the platform advertise a scale factor" is a question
+    // with a direct answer - QScreen::devicePixelRatio() - and that answer is
+    // what gets deferred to. Testing for a platform *name* would both miss a
+    // dense panel under a compositor that happens to report 1 and wrongly skip
+    // one under a compositor that does not, which is the same bug in two
+    // directions.
+    //
+    // These are pure functions of the numbers so they can be tested without a
+    // screen; applyScaleFactor() is the one that touches the process.
+
+    // What one screen looks like, as much of it as the decision needs.
+    struct ScreenMetrics {
+        double physicalDpi = 0;  // QScreen::physicalDotsPerInch()
+        double logicalDpi  = 0;  // QScreen::logicalDotsPerInch()
+        double platformDpr = 1;  // QScreen::devicePixelRatio(), what Qt already has
+        int    widthPx     = 0;  // QScreen::geometry(), device pixels
+        int    heightPx    = 0;
+    };
+
+    // The lowest and highest factor the app will ever choose or offer, and the
+    // granularity both the automatic rule and the Settings slider snap to.
+    static constexpr double kMinScaleFactor  = 1.0;
+    static constexpr double kMaxScaleFactor  = 3.0;
+    static constexpr double kScaleFactorStep = 0.25;
+
+    // The automatic rule, and the only place the rule lives.
+    //
+    // It aims at a comfortable *logical* resolution rather than at preserving
+    // the design's millimetre sizes: scaling is about how much fits on the
+    // screen at a normal viewing distance, which is why reproducing 48 px at
+    // 96 dpi exactly (factor 2.95 here) was judged too large by eye on the real
+    // panel. kAutoTargetDpi is that judgement, as a number: factor =
+    // physicalDpi / kAutoTargetDpi, snapped to kScaleFactorStep and clamped.
+    // Changing the preferred density is a one-line change to this constant.
+    static constexpr double kAutoTargetDpi = 113.0;
+
+    // Below this the screen is not dense enough to be worth scaling and the
+    // small fractional factors are worse than none - they only blur hairlines.
+    static constexpr double kAutoEngageAt = 1.25;
+
+    // How much of the screen the default window is allowed to want. At 3.0 on
+    // the reported panel the window came out 3840 px wide against a 3840 px
+    // screen and the window manager clamped it, which is a window the user
+    // cannot get hold of to undo the setting.
+    static constexpr double kWindowFitFraction = 0.9;
+
+    // Main.qml's initial window size, in logical pixels. Mirrored rather than
+    // read because the factor has to be chosen before any QML is loaded;
+    // tests/tst_startup.cpp checks the two against the file so they cannot
+    // drift apart silently.
+    static constexpr int kDefaultWindowWidth  = 1280;
+    static constexpr int kDefaultWindowHeight = 800;
+
+    // Snap to kScaleFactorStep and clamp into [kMin, kMax].
+    static double snapScaleFactor(double factor);
+    // The largest step that leaves the default window inside kWindowFitFraction
+    // of this screen, never below kMinScaleFactor.
+    static double scaleFactorCeilingFor(const ScreenMetrics &screen);
+    // The automatic choice for this screen, or 1.0 for "do not scale". Returns
+    // 1.0 for a screen whose physical size is missing or absurd: Qt synthesises
+    // a physical size from the logical DPI when the platform reports none, so
+    // that case arrives here as physicalDpi == logicalDpi and falls out as 1.0.
+    static double autoScaleFactor(const ScreenMetrics &screen);
+    // The whole order of authority, highest first:
+    //   1. an explicit factor in the environment - handled by the caller, since
+    //      it is a property of the process rather than of the screen;
+    //   2. `userFactor`, the Settings slider, when it is not Auto (0). It applies
+    //      on every platform: the user's eye is the only thing that can overrule
+    //      a physical size we have no reliable way to learn;
+    //   3. Auto, which defers to a platform that has actually told us something
+    //      (devicePixelRatio other than 1) and otherwise derives one.
+    // Returns 0 for "change nothing".
+    static double resolveScaleFactor(const ScreenMetrics &screen, double userFactor);
+
+    // Whether the environment already carries an explicit scale decision, in
+    // which case the app keeps its hands off entirely.
+    static bool scaleFactorSetInEnvironment();
+
+    // Measures the primary screen, resolves a factor and puts it in the
+    // environment. Call it from main() *before* the QApplication exists; Qt
+    // reads the scale factor once, while the QApplication is being built, and
+    // never looks again.
+    static void applyScaleFactor();
+
+    // Pins the Qt Quick Controls style, where this platform needs it pinned.
+    // The app calls it before the engine runs and every test harness calls it on
+    // its own engine, so the two can never be looking at different styles -
+    // which they were, and which made the macOS suite fail on style warnings
+    // while the app itself was silent. Whatever the decision below becomes, it
+    // becomes it for both at once.
+    static void applyQuickControlsStyle();
+
+    // Puts the resource root that holds the embedded TidalWave module on
+    // `engine`'s import path, where Qt 6.4 does not put it itself. Every engine
+    // that is going to load any of the app's QML has to call this first - the
+    // app's in run(), and the tests' in installTestStubs() - which is why it
+    // lives here rather than being written out at each call site.
+    static void addEmbeddedQmlImportPath(QQmlEngine *engine);
 
 signals:
     void reallyQuitChanged();

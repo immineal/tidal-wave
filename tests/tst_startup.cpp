@@ -31,10 +31,16 @@
 #include <QTemporaryDir>
 
 #include "ui/Application.h"
+#include <cmath>
+#include <QRegularExpression>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>
 #endif
+
+// Shorthand for the high-DPI tests below; moc will not take a using-declaration
+// inside a slots section.
+using Screen = Application::ScreenMetrics;
 
 class TestStartup : public QObject {
     Q_OBJECT
@@ -286,6 +292,158 @@ private slots:
         // Close to the pipewire line but about a stream, not the connection.
         QVERIFY(!Application::isAudioServerStartupNoise(
             QStringLiteral("pipewire: failed to create stream")));
+    }
+
+    // ── high-DPI scale factor ────────────────────────────────────────────
+    //
+    // The rule is a pure function of four numbers, so it is checked here against
+    // real panels rather than by looking at a screen. The reported case is the
+    // 3840x2400 / 344x215 mm laptop panel: 283.5 ppi, which the desktop advertises
+    // nothing about, so Qt sees logical 96 and draws 1:1.
+
+    void mediaBackendNoiseIsTheOneLineAndNotTheRest() {
+        QVERIFY(Application::isMediaBackendStartupNoise(
+            QStringLiteral(">>>> listing codecs")));
+        QVERIFY(!Application::isMediaBackendStartupNoise(QString()));
+        // Anything that merely mentions codecs is a real message.
+        QVERIFY(!Application::isMediaBackendStartupNoise(
+            QStringLiteral("QMediaPlayer: no decoder for this codec")));
+    }
+
+    void scaleFactorSnapsToTheStepAndClamps() {
+        QCOMPARE(Application::snapScaleFactor(2.4),  2.5);
+        QCOMPARE(Application::snapScaleFactor(2.6),  2.5);
+        QCOMPARE(Application::snapScaleFactor(2.13), 2.25);
+        // Outside the offered range in both directions.
+        QCOMPARE(Application::snapScaleFactor(0.2),  Application::kMinScaleFactor);
+        QCOMPARE(Application::snapScaleFactor(99.0), Application::kMaxScaleFactor);
+        // Garbage in: a factor is never NaN or negative.
+        QCOMPARE(Application::snapScaleFactor(-1.0), Application::kMinScaleFactor);
+        QCOMPARE(Application::snapScaleFactor(std::nan("")), Application::kMinScaleFactor);
+    }
+
+    void theWindowHasToFitTheScreen() {
+        // 3840 px wide, default window 1280 logical: 3.0 would ask for exactly the
+        // screen width, which is what the window manager had to clamp. 2400/800
+        // is the tighter axis here and gives the same answer.
+        const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
+        QCOMPARE(Application::scaleFactorCeilingFor(panel), 2.5);
+        // A 1920x1080 screen cannot take any scaling at all with this default
+        // window: 1080 * 0.9 / 800 is below one step above 1.
+        const Screen small{ 141.0, 96.0, 1.0, 1920, 1080 };
+        QCOMPARE(Application::scaleFactorCeilingFor(small), Application::kMinScaleFactor);
+        // No geometry: do not let the ceiling be the thing that refuses.
+        QCOMPARE(Application::scaleFactorCeilingFor(Screen{}), Application::kMaxScaleFactor);
+    }
+
+    void autoScaleFactorDerivesFromTheReportedPanel() {
+        const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
+        // physicalDpi / kAutoTargetDpi, snapped, then held under the fit ceiling.
+        QCOMPARE(Application::autoScaleFactor(panel), 2.5);
+    }
+
+    void autoScaleFactorLeavesOrdinaryScreensAlone() {
+        // A 24in 1920x1080 desk monitor, about 92 ppi.
+        QCOMPARE(Application::autoScaleFactor(Screen{ 92.0, 96.0, 1.0, 1920, 1080 }),
+                 Application::kMinScaleFactor);
+        // A 1440p 27in, about 109 ppi: under kAutoEngageAt, so not worth a
+        // fractional factor that only blurs hairlines.
+        QCOMPARE(Application::autoScaleFactor(Screen{ 109.0, 96.0, 1.0, 2560, 1440 }),
+                 Application::kMinScaleFactor);
+    }
+
+    void autoScaleFactorRefusesANonsensePhysicalSize() {
+        // Qt synthesises a physical size from the logical DPI when the platform
+        // reports none, which arrives here as the two being equal. Measured on
+        // Xvfb, where the RandR output reports 0 mm.
+        QCOMPARE(Application::autoScaleFactor(Screen{ 96.0, 96.0, 1.0, 3840, 2400 }),
+                 Application::kMinScaleFactor);
+        // A projector or KVM claiming a postage-stamp screen.
+        QCOMPARE(Application::autoScaleFactor(Screen{ 4877.0, 96.0, 1.0, 3840, 2400 }),
+                 Application::kMinScaleFactor);
+        QCOMPARE(Application::autoScaleFactor(Screen{ 0.0, 96.0, 1.0, 3840, 2400 }),
+                 Application::kMinScaleFactor);
+    }
+
+    void anExplicitSettingOutranksTheAutomaticRule() {
+        const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
+        // The user asked for 2.0 on a panel whose automatic answer is 2.5.
+        QCOMPARE(Application::resolveScaleFactor(panel, 2.0), 2.0);
+        // 0 is Auto, and Auto is a value rather than the absence of one.
+        QCOMPARE(Application::resolveScaleFactor(panel, 0.0), 2.5);
+        // ...but not even an explicit setting may put the window out of reach.
+        QCOMPARE(Application::resolveScaleFactor(panel, 3.0), 2.5);
+    }
+
+    void aFactorOfOneChangesNothingAtAll() {
+        // 0 out means "touch no environment variable": pinning QT_SCALE_FACTOR=1
+        // would stop Qt following a screen change it would otherwise have
+        // followed.
+        QCOMPARE(Application::resolveScaleFactor(Screen{ 92.0, 96.0, 1.0, 1920, 1080 }, 0.0), 0.0);
+        QCOMPARE(Application::resolveScaleFactor(Screen{ 283.5, 96.0, 1.0, 3840, 2400 }, 1.0), 0.0);
+    }
+
+    void anExplicitEnvironmentVariableOutranksBothOfThem() {
+        // Every one of these means somebody already decided, so the app must not
+        // touch the scale at all.
+        for (const char *var : { "QT_SCALE_FACTOR", "QT_SCREEN_SCALE_FACTORS",
+                                 "QT_ENABLE_HIGHDPI_SCALING", "QT_FONT_DPI",
+                                 "QT_USE_PHYSICAL_DPI",
+                                 "QT_SCALE_FACTOR_ROUNDING_POLICY" }) {
+            const QString saved = qEnvironmentVariable(var);
+            qputenv(var, QByteArrayLiteral("1"));
+            QVERIFY2(Application::scaleFactorSetInEnvironment(), var);
+            restore(var, saved);
+        }
+    }
+
+    // The decision must not ask what desktop or windowing system this is, so
+    // there is nothing to test per platform - only the one question that stands
+    // in for all of them: has the platform told us a ratio of its own?
+    void aPlatformThatReportsARatioIsTrusted() {
+        // The dense panel, but with a compositor that already scales it. Whatever
+        // that compositor decided, it is better informed than this rule.
+        Screen scaled{ 283.5, 96.0, 1.0, 3840, 2400 };
+        scaled.platformDpr = 2.0;
+        QCOMPARE(Application::autoScaleFactor(scaled), Application::kMinScaleFactor);
+        QCOMPARE(Application::resolveScaleFactor(scaled, 0.0), 0.0);
+        // The same panel with the platform reporting nothing is the case we fix.
+        Screen unscaled{ 283.5, 96.0, 1.0, 3840, 2400 };
+        unscaled.platformDpr = 1.0;
+        QCOMPARE(Application::autoScaleFactor(unscaled), 2.5);
+    }
+
+    void theUsersSettingAppliesEvenWhenThePlatformScales() {
+        // The point of the slider: the user's eye wins everywhere, because no
+        // platform can be trusted about the panel's true physical size.
+        Screen scaled{ 283.5, 96.0, 1.0, 3840, 2400 };
+        scaled.platformDpr = 2.0;
+        QCOMPARE(Application::resolveScaleFactor(scaled, 1.5), 1.5);
+    }
+
+    void aStaleSettingCannotStrandTheWindowOffScreen() {
+        // 3.0 chosen on the 4K panel, then launched on a projector.
+        const Screen projector{ 96.0, 96.0, 1.0, 1366, 768 };
+        QCOMPARE(Application::resolveScaleFactor(projector, 3.0), 0.0);
+    }
+
+    // The automatic rule has to be chosen before any QML is loaded, so the
+    // default window size it reasons about is written down in C++ as well as in
+    // Main.qml. This is the guard that the two cannot drift apart.
+    void theDefaultWindowSizeMatchesMainQml() {
+        QFile main(QStringLiteral(TIDALWAVE_QML_DIR "/Main.qml"));
+        QVERIFY2(main.open(QIODevice::ReadOnly), qPrintable(main.fileName()));
+        const QString text = QString::fromUtf8(main.readAll());
+        QRegularExpression width(QStringLiteral("^\\s*width:\\s*(\\d+)\\s*$"),
+                                 QRegularExpression::MultilineOption);
+        QRegularExpression height(QStringLiteral("^\\s*height:\\s*(\\d+)\\s*$"),
+                                  QRegularExpression::MultilineOption);
+        const auto w = width.match(text);
+        const auto h = height.match(text);
+        QVERIFY2(w.hasMatch(), "no window width in Main.qml");
+        QVERIFY2(h.hasMatch(), "no window height in Main.qml");
+        QCOMPARE(w.captured(1).toInt(), Application::kDefaultWindowWidth);
+        QCOMPARE(h.captured(1).toInt(), Application::kDefaultWindowHeight);
     }
 
 private:

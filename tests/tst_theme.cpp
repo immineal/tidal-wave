@@ -14,9 +14,24 @@
 // a transform that gains contrast in one place by losing it in another cannot
 // land. That is the half most likely to break: the transform moves the
 // grounds and leaves the type and the accents where they were.
+//
+// There are two such switches now, and themeRows() crosses them. The default
+// state is neutral: all three dark palettes share one grey ramp, all three
+// light ones share another, and the accent is the only thing telling the six
+// apart. The colour switch turns the tinted grounds written down in kSpecs
+// back on. Every threshold below is therefore measured four times on a dark
+// theme - each ramp, as written and in black - so a palette that is legible
+// tinted and illegible neutral fails here rather than on the user's screen.
+//
+// Both switches move the grounds, so what each is allowed to touch is pinned
+// on its own (oledTouchesNothingButTheGrounds,
+// tintingTouchesNothingButTheGroundsAndTheType), and the palette you land on
+// must not depend on which of the two you flipped first
+// (theTwoSwitchesComposeInEitherOrder).
 
 #include <QTest>
 #include <QColor>
+#include <QHash>
 #include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -194,6 +209,10 @@ private slots:
         // retired "Deep" palette was, which is what the user settled on.
         QCOMPARE(theme::defaultTheme(), QStringLiteral("sea"));
         QCOMPARE(theme::defaultOledBlack(), true);
+        // ...and the greys start neutral, which is the state the user asked
+        // for as the default and the one a settings file written before the
+        // switch existed has to land on.
+        QCOMPARE(theme::defaultTintedGreys(), false);
         // ...and the switch does nothing on a light theme, so a light default
         // with it on would be a default that quietly lies about itself.
         for (const auto &t : theme::themes())
@@ -210,6 +229,14 @@ private slots:
         QCOMPARE(name, QStringLiteral("sea"));
         QCOMPARE(oled, true);
         QVERIFY(!theme::isKnown(QStringLiteral("deep")));
+
+        // And "the same pixels" is now a claim about the neutral ramp, which
+        // is Sea's old grounds: Deep was those pulled to black. A settings
+        // file from before the colour switch carries no key for it and so
+        // lands neutral, which is exactly the state that reproduces Deep.
+        const QVariantMap deep = theme::palette(name, oled, false);
+        QCOMPARE(deep.value("bg").value<QColor>(), QColor(Qt::black));
+        QCOMPARE(deep.value("surface").value<QColor>(), QColor(0x0c, 0x0c, 0x0c));
 
         // ...and nothing else is rewritten behind the user's back.
         for (const auto &t : theme::themes())
@@ -265,7 +292,8 @@ private slots:
             Prefs prefs;
             ThemePalette palette(&prefs);
             QCOMPARE(prefs.theme(), renamed);
-            QCOMPARE(palette.current(), theme::palette(renamed, false));
+            QCOMPARE(palette.current(),
+                     theme::palette(renamed, false, prefs.tintedGreys()));
         }
         // Scoped, and cleared only once Prefs is gone: its own QSettings holds
         // the values it wrote and would put them back on the way out.
@@ -284,7 +312,8 @@ private slots:
             ThemePalette palette(&prefs);
             QCOMPARE(prefs.theme(), QStringLiteral("graphite"));
             QCOMPARE(palette.current(),
-                     theme::palette(theme::defaultTheme(), prefs.oledBlack()));
+                     theme::palette(theme::defaultTheme(), prefs.oledBlack(),
+                                    prefs.tintedGreys()));
         }
         { QSettings s; s.clear(); s.sync(); }
     }
@@ -303,7 +332,8 @@ private slots:
     void everyPaletteHasEveryToken() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
 
         for (const QString &key : kColourTokens) {
             QVERIFY2(p.contains(key), qPrintable(name + " is missing " + key));
@@ -340,7 +370,8 @@ private slots:
         QFETCH(QString, name);
         QFETCH(bool, dark);
         QFETCH(bool, oled);
-        const QColor bg = theme::palette(name, oled).value("bg").value<QColor>();
+        QFETCH(bool, tinted);
+        const QColor bg = theme::palette(name, oled, tinted).value("bg").value<QColor>();
         QCOMPARE(luminance(bg) < 0.5, dark);
     }
 
@@ -350,7 +381,8 @@ private slots:
     void textIsLegible() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         // Text is drawn on bg, on surface and on surfaceHigh (cards), so all
@@ -416,7 +448,8 @@ private slots:
     void inkOnAFillIsWhite() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         for (const char *k : {"accentInk", "redInk"}) {
             const QColor ink = p.value(QLatin1String(k)).value<QColor>();
             QVERIFY2(contrast(ink, QColor(Qt::white)) <= 1.1,
@@ -429,7 +462,8 @@ private slots:
     void structureIsVisible() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         // A border that matches its surface is not a border.
@@ -478,7 +512,8 @@ private slots:
     void hoverIsVisibleButNotASelection() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
 
         const QColor hover = col("hoverFill");
@@ -517,7 +552,8 @@ private slots:
     void translucentTokensAreTranslucent() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         for (const char *k : {"hoverFill", "accentSoft", "accentTint", "accentWash",
                               "redSoft", "greenWash", "scrim", "artScrim",
                               "artScrimStrong", "artBorder"}) {
@@ -548,7 +584,8 @@ private slots:
     void heroGradientStillReads() {
         QFETCH(QString, name);
         QFETCH(bool, oled);
-        const QVariantMap p = theme::palette(name, oled);
+        QFETCH(bool, tinted);
+        const QVariantMap p = theme::palette(name, oled, tinted);
         const QColor bg  = p.value("bg").value<QColor>();
         const QColor top = composite(p.value("accentTint").value<QColor>(), bg);
         QVERIFY2(contrast(top, bg) >= 1.15,
@@ -561,33 +598,44 @@ private slots:
     void artTokensAreThemeIndependent() {
         const QVariantMap first = theme::palette(theme::themes().first().name);
         for (const auto &t : theme::themes()) {
-            const QVariantMap p = theme::palette(t.name);
-            for (const char *k : {"artScrim", "artScrimStrong", "artInk", "artBorder"}) {
-                QCOMPARE(p.value(QLatin1String(k)).value<QColor>(),
-                         first.value(QLatin1String(k)).value<QColor>());
+            // Neither switch may move them either: a scrim over album art has
+            // no business knowing which ramp the page is painted in.
+            for (const bool tinted : {false, true}) {
+                for (const bool oled : {false, true}) {
+                    if (oled && !t.dark) continue;
+                    const QVariantMap p = theme::palette(t.name, oled, tinted);
+                    for (const char *k : {"artScrim", "artScrimStrong", "artInk", "artBorder"}) {
+                        QCOMPARE(p.value(QLatin1String(k)).value<QColor>(),
+                                 first.value(QLatin1String(k)).value<QColor>());
+                    }
+                }
             }
         }
     }
 
-    // Including the black variants: nine distinct palettes, so the switch is
-    // never a no-op on a theme that is supposed to have one, and no theme is
-    // secretly another theme's black variant.
+    // Every state a user can reach: six themes over two ramps, plus the
+    // pure-black variant of each dark one over both - eighteen distinct
+    // palettes. So neither switch is ever a no-op where it is offered, and no
+    // theme is secretly another theme's variant.
     void noTwoThemesAreTheSame() {
         QList<QVariantMap> seen;
         QStringList tags;
         for (const auto &t : theme::themes()) {
-            for (bool oled : {false, true}) {
-                if (oled && !t.dark) continue;
-                const QVariantMap p = theme::palette(t.name, oled);
-                const QString tag = t.name + (oled ? " in black" : "");
-                for (int i = 0; i < seen.size(); ++i)
-                    QVERIFY2(p != seen.at(i),
-                             qPrintable(tag + " is identical to " + tags.at(i)));
-                seen.append(p);
-                tags.append(tag);
+            for (bool tinted : {false, true}) {
+                for (bool oled : {false, true}) {
+                    if (oled && !t.dark) continue;
+                    const QVariantMap p = theme::palette(t.name, oled, tinted);
+                    const QString tag = t.name + (tinted ? " tinted" : " neutral")
+                                      + (oled ? " in black" : "");
+                    for (int i = 0; i < seen.size(); ++i)
+                        QVERIFY2(p != seen.at(i),
+                                 qPrintable(tag + " is identical to " + tags.at(i)));
+                    seen.append(p);
+                    tags.append(tag);
+                }
             }
         }
-        QCOMPARE(seen.size(), 9);
+        QCOMPARE(seen.size(), 18);
     }
 
     // The companion to noTwoThemesAreTheSame(), which compares byte for byte
@@ -599,6 +647,11 @@ private slots:
     // The three grounds carry nearly all the page area, so they are what a
     // theme reads as. The light floor is 8.0: comfortably past JND, and the
     // separation the three light palettes now actually hold.
+    //
+    // The tinted state, explicitly: in the neutral one the three lights are
+    // one ramp by design, which neutralIsOneRampPerMode() below is what pins.
+    // These two measure the state the colour switch turns on, which is the
+    // only state where "are these two the same theme" is a question at all.
     void lightGroundsAreTellableApart() {
         const QStringList grounds = { "bg", "surface", "surfaceHigh" };
         QStringList lights;
@@ -609,8 +662,8 @@ private slots:
         for (int i = 0; i < lights.size(); ++i)
             for (int j = i + 1; j < lights.size(); ++j)
                 for (const QString &g : grounds) {
-                    const QColor a = theme::palette(lights.at(i)).value(g).value<QColor>();
-                    const QColor b = theme::palette(lights.at(j)).value(g).value<QColor>();
+                    const QColor a = theme::palette(lights.at(i), false, true).value(g).value<QColor>();
+                    const QColor b = theme::palette(lights.at(j), false, true).value(g).value<QColor>();
                     const double d = deltaE(a, b);
                     QVERIFY2(d >= 8.0, qPrintable(QStringLiteral(
                         "%1 and %2 are only dE %3 apart at %4 (%5 vs %6); "
@@ -626,6 +679,7 @@ private slots:
     // at the background - below JND, so literally not a visible difference.
     // They now lean toward their own accent hue like the lights do, and the
     // background is included here because it is no longer the weak step.
+    // The tinted state, for the same reason as the light half above.
     void darkGroundsAreTellableApart() {
         const QStringList grounds = { "bg", "surface", "surfaceHigh" };
         QStringList darks;
@@ -636,8 +690,8 @@ private slots:
         for (int i = 0; i < darks.size(); ++i)
             for (int j = i + 1; j < darks.size(); ++j)
                 for (const QString &g : grounds) {
-                    const QColor a = theme::palette(darks.at(i)).value(g).value<QColor>();
-                    const QColor b = theme::palette(darks.at(j)).value(g).value<QColor>();
+                    const QColor a = theme::palette(darks.at(i), false, true).value(g).value<QColor>();
+                    const QColor b = theme::palette(darks.at(j), false, true).value(g).value<QColor>();
                     const double d = deltaE(a, b);
                     QVERIFY2(d >= 8.0, qPrintable(QStringLiteral(
                         "%1 and %2 are only dE %3 apart at %4 (%5 vs %6)")
@@ -655,8 +709,9 @@ private slots:
     void oledPullsEveryGroundDown_data() { darkThemeRows(); }
     void oledPullsEveryGroundDown() {
         QFETCH(QString, name);
-        const QVariantMap plain = theme::palette(name, false);
-        const QVariantMap black = theme::palette(name, true);
+        QFETCH(bool, tinted);
+        const QVariantMap plain = theme::palette(name, false, tinted);
+        const QVariantMap black = theme::palette(name, true, tinted);
         auto col = [](const QVariantMap &p, const char *k) {
             return p.value(QLatin1String(k)).value<QColor>();
         };
@@ -678,7 +733,9 @@ private slots:
         // subtracting a constant is what stops Pine going grey down there.
         for (const char *k : {"surface", "surfaceHigh", "surfaceHov", "border"}) {
             const QColor a = col(plain, k), b = col(black, k);
-            if (a.saturation() < 12) continue;   // Sea is grey on purpose
+            // Nothing to keep in the neutral state, where the ramp is grey on
+            // purpose; a grey scaled by a constant is still that grey.
+            if (a.saturation() < 12) continue;
             QVERIFY2(qAbs(a.hue() - b.hue()) <= 12, qPrintable(
                 name + "." + QLatin1String(k) + " changed hue, " + a.name()
                 + " -> " + b.name()));
@@ -691,8 +748,9 @@ private slots:
     void oledTouchesNothingButTheGrounds_data() { darkThemeRows(); }
     void oledTouchesNothingButTheGrounds() {
         QFETCH(QString, name);
-        const QVariantMap plain = theme::palette(name, false);
-        const QVariantMap black = theme::palette(name, true);
+        QFETCH(bool, tinted);
+        const QVariantMap plain = theme::palette(name, false, tinted);
+        const QVariantMap black = theme::palette(name, true, tinted);
 
         const QSet<QString> mayMove = {
             "bg", "surface", "surfaceHigh", "surfaceHov", "border", "hoverFill"
@@ -717,23 +775,300 @@ private slots:
     void oledIsANoOpOnALightTheme_data() { lightThemeRows(); }
     void oledIsANoOpOnALightTheme() {
         QFETCH(QString, name);
-        QCOMPARE(theme::palette(name, true), theme::palette(name, false));
+        QFETCH(bool, tinted);
+        QCOMPARE(theme::palette(name, true, tinted),
+                 theme::palette(name, false, tinted));
     }
 
     // An unknown stored name still has to paint, with the switch either way.
     void oledSurvivesAnUnknownName() {
-        const QVariantMap fallback = theme::palette(theme::defaultTheme(), true);
-        QCOMPARE(theme::palette(QStringLiteral("no-such-theme"), true), fallback);
-        QCOMPARE(theme::palette(QString(), true), fallback);
-        QVERIFY(fallback.value("bg").value<QColor>() == QColor(Qt::black));
+        for (const bool tinted : {false, true}) {
+            const QVariantMap fallback = theme::palette(theme::defaultTheme(), true, tinted);
+            QCOMPARE(theme::palette(QStringLiteral("no-such-theme"), true, tinted), fallback);
+            QCOMPARE(theme::palette(QString(), true, tinted), fallback);
+            QVERIFY(fallback.value("bg").value<QColor>() == QColor(Qt::black));
+        }
+    }
+
+    // ── the neutral grey ramp ────────────────────────────────────────────
+    //
+    // The default state, and the whole of the design: six palettes that share
+    // one grey ramp per mode and differ only by their accent, with a switch
+    // that turns the tinted grounds in kSpecs back on. The shape of that is
+    // pinned here rather than left to whoever next edits the table, because
+    // every assertion above would still pass if one theme quietly kept a tint.
+
+    void theNeutralRampsAreActuallyNeutral() {
+        for (const auto &t : theme::themes()) {
+            for (const bool oled : {false, true}) {
+                if (oled && !t.dark) continue;
+                const QVariantMap p = theme::palette(t.name, oled, false);
+                // "Almost neutral, consistent grays" was the request. Every
+                // ground and every type colour is a true grey, in black as
+                // well, because scaling a grey by a constant leaves a grey -
+                // which is also why oledPullsEveryGroundDown()'s hue check has
+                // nothing to measure in this state.
+                for (const char *k : {"bg", "surface", "surfaceHigh", "surfaceHov", "border",
+                                      "textPrimary", "textSec", "textDim"}) {
+                    const QColor c = p.value(QLatin1String(k)).value<QColor>();
+                    QVERIFY2(c.red() == c.green() && c.green() == c.blue(), qPrintable(
+                        t.name + (oled ? " in black." : ".") + QLatin1String(k) + " is "
+                        + c.name() + ", which is not a grey"));
+                }
+            }
+        }
+    }
+
+    // Where the two ramps come from, written down because both are design
+    // decisions and neither is recoverable from the result.
+    void theNeutralRampsAreTheOnesSignedOff() {
+        const QVariantMap dark = theme::palette(QStringLiteral("sea"), false, false);
+        const QStringList grounds = {"bg", "surface", "surfaceHigh", "surfaceHov", "border"};
+        const QStringList type    = {"textPrimary", "textSec", "textDim"};
+
+        // The dark ramp is not new: it is what Sea carried before the tinted
+        // grounds landed, and it was already perfectly neutral. Keeping it
+        // means the pure-black switch over the neutral state is byte for byte
+        // the retired "Deep" palette, so deepMigratesToSeaInBlack() above
+        // still means what it says.
+        const QStringList darkRamp = {"#0a0a0a", "#141414", "#1e1e1e", "#383838", "#2a2a2a"};
+        const QStringList darkType = {"#ffffff", "#a0a0a0", "#6b6b6b"};
+        for (int i = 0; i < grounds.size(); ++i)
+            QCOMPARE(dark.value(grounds.at(i)).value<QColor>().name(), darkRamp.at(i));
+        for (int i = 0; i < type.size(); ++i)
+            QCOMPARE(dark.value(type.at(i)).value<QColor>().name(), darkType.at(i));
+
+        // The light ramp is derived rather than chosen: true greys at the same
+        // L* as Sky's tinted ramp. Sky's own values are faintly blue, which is
+        // what "almost neutral" rules out, but its lightness is what the light
+        // palettes' contrast was tuned on - so taking the blue out and leaving
+        // the L* where it was carries every threshold above over instead of
+        // guessing at a replacement and hoping.
+        const QVariantMap light  = theme::palette(QStringLiteral("sky"), false, false);
+        const QVariantMap tinted = theme::palette(QStringLiteral("sky"), false, true);
+        for (const QString &k : grounds + type) {
+            const double was = toLab(tinted.value(k).value<QColor>()).l;
+            const double now = toLab(light.value(k).value<QColor>()).l;
+            QVERIFY2(qAbs(was - now) <= 0.5, qPrintable(QStringLiteral(
+                "the neutral light %1 sits at L* %2 where Sky's is %3; that ramp "
+                "is meant to be Sky's lightness with the blue taken out")
+                .arg(k, QString::number(now, 'f', 2), QString::number(was, 'f', 2))));
+        }
+    }
+
+    // Within a mode the six are one palette with six accents. A ground or a
+    // type colour that differed would be the switch doing half its job.
+    void neutralIsOneRampPerMode_data() {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("dark")  << true;
+        QTest::newRow("light") << false;
+    }
+
+    void neutralIsOneRampPerMode() {
+        QFETCH(bool, dark);
+        QStringList names;
+        for (const auto &t : theme::themes())
+            if (t.dark == dark) names << t.name;
+        QCOMPARE(names.size(), 3);
+
+        const QVariantMap first = theme::palette(names.first(), false, false);
+        for (const QString &n : names) {
+            const QVariantMap p = theme::palette(n, false, false);
+            for (const char *k : {"bg", "surface", "surfaceHigh", "surfaceHov", "border",
+                                  "textPrimary", "textSec", "textDim", "hoverFill"}) {
+                const QString key = QLatin1String(k);
+                QVERIFY2(p.value(key) == first.value(key), qPrintable(
+                    n + "." + key + " is " + p.value(key).value<QColor>().name()
+                    + " where " + names.first() + " has "
+                    + first.value(key).value<QColor>().name()
+                    + "; in the neutral state the ramp is shared"));
+            }
+        }
+    }
+
+    // ...and the accent is then the only thing left to choose between, so it
+    // has to actually differ. Six rows in the picker and four palettes behind
+    // them would be the worst of both designs.
+    void neutralDiffersOnlyByTheAccent_data() { neutralIsOneRampPerMode_data(); }
+    void neutralDiffersOnlyByTheAccent() {
+        QFETCH(bool, dark);
+        QStringList names;
+        for (const auto &t : theme::themes())
+            if (t.dark == dark) names << t.name;
+
+        // Everything a palette carries that is neither a ground nor type.
+        const QSet<QString> mayDiffer = {
+            "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
+            "red", "redSoft", "redInk", "green", "greenWash"
+        };
+        for (int i = 0; i < names.size(); ++i) {
+            for (int j = i + 1; j < names.size(); ++j) {
+                const QVariantMap a = theme::palette(names.at(i), false, false);
+                const QVariantMap b = theme::palette(names.at(j), false, false);
+                QCOMPARE(a.keys(), b.keys());
+                QVERIFY2(a.value("accent") != b.value("accent"), qPrintable(
+                    names.at(i) + " and " + names.at(j)
+                    + " are the same palette in the neutral state"));
+                for (auto it = a.cbegin(); it != a.cend(); ++it) {
+                    if (it.value() == b.value(it.key())) continue;
+                    QVERIFY2(mayDiffer.contains(it.key()), qPrintable(
+                        names.at(i) + " and " + names.at(j) + " differ at " + it.key()
+                        + ", which is neither an accent nor a semantic colour"));
+                }
+            }
+        }
+    }
+
+    // ── the colour switch ────────────────────────────────────────────────
+    //
+    // What flipping it is allowed to move. Every threshold above already runs
+    // over both ramps, so legibility is covered on both sides of it; these are
+    // about the transform behaving like one.
+
+    void tintingTouchesNothingButTheGroundsAndTheType_data() {
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("oled");
+        for (const auto &t : theme::themes()) {
+            QTest::newRow(qPrintable(t.name)) << t.name << false;
+            if (t.dark) QTest::newRow(qPrintable(t.name + " in black")) << t.name << true;
+        }
+    }
+
+    void tintingTouchesNothingButTheGroundsAndTheType() {
+        QFETCH(QString, name);
+        QFETCH(bool, oled);
+        const QVariantMap neutral = theme::palette(name, oled, false);
+        const QVariantMap tinted  = theme::palette(name, oled, true);
+
+        // The accent is the one thing that distinguishes the six in the
+        // neutral state, so the switch must not touch it, nor the semantic
+        // colours, nor the hover wash, nor the tokens drawn over cover art -
+        // those cannot follow a ground, because the artwork underneath is
+        // whatever it is.
+        const QSet<QString> mayMove = {
+            "bg", "surface", "surfaceHigh", "surfaceHov", "border",
+            "textPrimary", "textSec", "textDim"
+        };
+        QCOMPARE(neutral.keys(), tinted.keys());
+        for (auto it = neutral.cbegin(); it != neutral.cend(); ++it) {
+            if (mayMove.contains(it.key())) continue;
+            QVERIFY2(tinted.value(it.key()) == it.value(),
+                     qPrintable(name + ": the colour switch moved " + it.key()));
+        }
+
+        // ...and it is never a no-op. Not measured at bg: with the pure-black
+        // switch on, both ramps are black there, which is the point of that
+        // switch and would make this read as a dead toggle.
+        bool moved = false;
+        for (const QString &k : mayMove)
+            if (neutral.value(k) != tinted.value(k)) moved = true;
+        QVERIFY2(moved, qPrintable(name + ": the colour switch paints nothing"));
+    }
+
+    // Both switches move the grounds, and the pure-black one scales whatever
+    // ramp the colour one chose, so the order matters to the implementation
+    // even though it must not matter to the user. Applying them the other way
+    // round - pulling a ground down and then swapping the ramp out from under
+    // it - would leave the page at #0A0A0A with the OLED switch on, which is
+    // that switch quietly not working for everybody on the default state.
+    //
+    // So what is pinned is that the palette is a function of the two settings
+    // and not of the order they were flipped in, driven through Prefs, which
+    // is where a missing notify connection or a transform applied to a cached
+    // map would actually show up.
+    void theTwoSwitchesComposeInEitherOrder_data() { darkNameRows(); }
+    void theTwoSwitchesComposeInEitherOrder() {
+        QFETCH(QString, name);
+
+        auto flip = [&](bool blackFirst, QVariantMap *out) {
+            Prefs prefs;
+            prefs.setTheme(name);
+            prefs.setOledBlack(false);
+            prefs.setTintedGreys(false);
+            ThemePalette palette(&prefs);
+            QCOMPARE(palette.current(), theme::palette(name, false, false));
+
+            if (blackFirst) { prefs.setOledBlack(true);   prefs.setTintedGreys(true); }
+            else            { prefs.setTintedGreys(true); prefs.setOledBlack(true);   }
+            *out = palette.current();
+
+            // ...and all the way back out again, the other way round each time.
+            if (blackFirst) { prefs.setTintedGreys(false); prefs.setOledBlack(false);  }
+            else            { prefs.setOledBlack(false);   prefs.setTintedGreys(false); }
+            QCOMPARE(palette.current(), theme::palette(name, false, false));
+        };
+
+        QVariantMap blackFirst, tintFirst;
+        flip(true,  &blackFirst);
+        flip(false, &tintFirst);
+        QCOMPARE(blackFirst, tintFirst);
+        QCOMPARE(blackFirst, theme::palette(name, true, true));
+
+        // The state the pure-black switch exists for, over either ramp.
+        QCOMPARE(blackFirst.value("bg").value<QColor>(), QColor(Qt::black));
+        QCOMPARE(theme::palette(name, true, false).value("bg").value<QColor>(),
+                 QColor(Qt::black));
+
+        { QSettings s; s.clear(); s.sync(); }
+    }
+
+    // The picker draws its swatches from available(), so available() has to
+    // answer for the state the app is in: in the neutral state all six show
+    // the same two grounds and six different accents, which is exactly what
+    // the user is choosing between there. A grid still showing tinted grounds
+    // after the switch flipped is the panel lying about what it will paint.
+    void availableFollowsTheColourSwitch() {
+        Prefs prefs;
+        prefs.setTheme(QStringLiteral("sea"));
+        prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
+        ThemePalette palette(&prefs);
+
+        auto swatches = [&] {
+            QHash<QString, QVariantMap> out;
+            const QVariantList rows = palette.available();
+            for (const QVariant &v : rows)
+                out.insert(v.toMap().value("name").toString(), v.toMap());
+            return out;
+        };
+
+        for (const bool tinted : {false, true}) {
+            prefs.setTintedGreys(tinted);
+            const auto rows = swatches();
+            QCOMPARE(rows.size(), theme::themes().size());
+            for (const auto &t : theme::themes()) {
+                const QVariantMap p = theme::palette(t.name, false, tinted);
+                for (const char *k : {"bg", "border", "accent"}) {
+                    QVERIFY2(rows.value(t.name).value(QLatin1String(k))
+                                 .value<QColor>() == p.value(QLatin1String(k)).value<QColor>(),
+                             qPrintable(t.name + "'s swatch " + QLatin1String(k)
+                                        + " is not the one the palette has"));
+                }
+            }
+        }
+
+        // Spelled out, because this is the half that reads as a bug when it is
+        // wrong: neutral is one ground for the three darks, tinted is three.
+        prefs.setTintedGreys(false);
+        auto rows = swatches();
+        QCOMPARE(rows.value("sea").value("bg"), rows.value("pine").value("bg"));
+        QVERIFY(rows.value("sea").value("accent") != rows.value("pine").value("accent"));
+        prefs.setTintedGreys(true);
+        rows = swatches();
+        QVERIFY2(rows.value("sea").value("bg") != rows.value("pine").value("bg"),
+                 "the grid did not follow the colour switch");
+
+        { QSettings s; s.clear(); s.sync(); }
     }
 
     // ── lookup behaviour ─────────────────────────────────────────────────
 
     void unknownNameFallsBackToTheDefault() {
-        const QVariantMap fallback = theme::palette(theme::defaultTheme());
-        QCOMPARE(theme::palette(QStringLiteral("no-such-theme")), fallback);
-        QCOMPARE(theme::palette(QString()), fallback);
+        for (const bool tinted : {false, true}) {
+            const QVariantMap fallback = theme::palette(theme::defaultTheme(), false, tinted);
+            QCOMPARE(theme::palette(QStringLiteral("no-such-theme"), false, tinted), fallback);
+            QCOMPARE(theme::palette(QString(), false, tinted), fallback);
+        }
         QVERIFY(!theme::isKnown(QStringLiteral("no-such-theme")));
     }
 
@@ -777,6 +1112,7 @@ private slots:
         Prefs prefs;
         prefs.setTheme(QStringLiteral("rust"));
         prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
         ThemePalette::instance()->setPrefs(&prefs);
 
         ThemePalette *fromQml = ThemePalette::create(nullptr, nullptr);
@@ -793,6 +1129,7 @@ private slots:
         Prefs prefs;
         prefs.setTheme(QStringLiteral("sea"));
         prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
         ThemePalette palette(&prefs);
 
         QCOMPARE(palette.current(), theme::palette(QStringLiteral("sea")));
@@ -813,6 +1150,7 @@ private slots:
         Prefs prefs;
         prefs.setTheme(QStringLiteral("pine"));
         prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
         ThemePalette palette(&prefs);
         QCOMPARE(palette.current(), theme::palette(QStringLiteral("pine"), false));
 
@@ -831,7 +1169,39 @@ private slots:
         QCOMPARE(palette.current(), theme::palette(QStringLiteral("sand")));
     }
 
-    // Settings needs {name, label, dark} to build the picker.
+    // The colour switch has to arrive through that same pipe, for the same
+    // reason: nothing under qml/ should have to know it exists, and on a light
+    // theme it is the one of the two that still does something.
+    void currentFollowsTintedGreys() {
+        Prefs prefs;
+        prefs.setTheme(QStringLiteral("sand"));
+        prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
+        ThemePalette palette(&prefs);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sand"), false, false));
+
+        QSignalSpy spy(&palette, &ThemePalette::currentChanged);
+        prefs.setTintedGreys(true);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sand"), false, true));
+        QVERIFY(!palette.isDark());
+
+        // Idempotent, like the others: a flip to the value it already has must
+        // not churn every binding in the app.
+        spy.clear();
+        prefs.setTintedGreys(true);
+        QCOMPARE(spy.count(), 0);
+
+        prefs.setTintedGreys(false);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sand"), false, false));
+
+        { QSettings s; s.clear(); s.sync(); }
+    }
+
+    // Settings needs {name, label, dark} to build the picker, and the three
+    // colours a swatch draws, which used to be a hand copy of kSpecs in the
+    // QML and drifted two accent revisions behind it.
     void availableIsPickerReady() {
         Prefs prefs;
         ThemePalette palette(&prefs);
@@ -839,10 +1209,13 @@ private slots:
         QCOMPARE(list.size(), theme::themes().size());
         for (const QVariant &v : list) {
             const QVariantMap m = v.toMap();
-            QVERIFY(m.contains("name"));
-            QVERIFY(m.contains("label"));
-            QVERIFY(m.contains("dark"));
+            for (const char *k : {"name", "label", "dark", "bg", "border", "accent"})
+                QVERIFY2(m.contains(QLatin1String(k)),
+                         qPrintable(m.value("name").toString() + " has no "
+                                    + QLatin1String(k)));
             QVERIFY(theme::isKnown(m.value("name").toString()));
+            for (const char *k : {"bg", "border", "accent"})
+                QVERIFY(m.value(QLatin1String(k)).value<QColor>().isValid());
         }
     }
 
@@ -852,6 +1225,7 @@ private slots:
         Prefs prefs;
         prefs.setTheme(QStringLiteral("graphite"));   // the drafted violet one
         prefs.setOledBlack(false);
+        prefs.setTintedGreys(false);
         ThemePalette palette(&prefs);
         QCOMPARE(palette.current(), theme::palette(theme::defaultTheme()));
         QVERIFY(palette.current().contains("bg"));
@@ -859,32 +1233,61 @@ private slots:
 
 private:
     // Shared _data() body: one row per palette a user can actually be looking
-    // at. That is every theme as written, plus the pure-black variant of each
-    // dark one - the light themes have no second variant, because the switch
-    // is a no-op there and a duplicate row would only make the output longer.
+    // at. That is every theme over both grey ramps, plus the pure-black
+    // variant of each dark one - the light themes have no second variant,
+    // because that switch is a no-op there and a duplicate row would only make
+    // the output longer. Twelve rows, where there were nine.
+    //
     // The dark half and the light half on their own, for the tests that only
-    // make sense on one of the two.
+    // make sense on one of the two; those carry the ramp as well, so the
+    // pure-black transform is measured over the neutral ramp and the tinted
+    // one rather than only over whichever one happens to be the default.
     static void darkThemeRows() {
         QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("tinted");
         for (const auto &t : theme::themes())
-            if (t.dark) QTest::newRow(qPrintable(t.name)) << t.name;
+            if (t.dark) rampRows(t.name);
     }
 
     static void lightThemeRows() {
         QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("tinted");
         for (const auto &t : theme::themes())
-            if (!t.dark) QTest::newRow(qPrintable(t.name)) << t.name;
+            if (!t.dark) rampRows(t.name);
+    }
+
+    // The dark themes by name alone, for the one test that drives the two
+    // switches itself and so cannot be handed a ramp.
+    static void darkNameRows() {
+        QTest::addColumn<QString>("name");
+        for (const auto &t : theme::themes())
+            if (t.dark) QTest::newRow(qPrintable(t.name)) << t.name;
     }
 
     static void themeRows() {
         QTest::addColumn<QString>("name");
         QTest::addColumn<bool>("dark");
         QTest::addColumn<bool>("oled");
+        QTest::addColumn<bool>("tinted");
         for (const auto &t : theme::themes()) {
-            QTest::newRow(qPrintable(t.name)) << t.name << t.dark << false;
-            if (t.dark)
-                QTest::newRow(qPrintable(t.name + " in black")) << t.name << t.dark << true;
+            for (const bool tinted : {false, true}) {
+                const QString ramp = tinted ? QStringLiteral(" tinted")
+                                            : QStringLiteral(" neutral");
+                QTest::newRow(qPrintable(t.name + ramp))
+                    << t.name << t.dark << false << tinted;
+                if (t.dark)
+                    QTest::newRow(qPrintable(t.name + " in black" + ramp))
+                        << t.name << t.dark << true << tinted;
+            }
         }
+    }
+
+    // One theme, both ramps. Assumes the two columns above.
+    static void rampRows(const QString &name) {
+        for (const bool tinted : {false, true})
+            QTest::newRow(qPrintable(name + (tinted ? QStringLiteral(" tinted")
+                                                    : QStringLiteral(" neutral"))))
+                << name << tinted;
     }
 
     QTemporaryDir m_dir;

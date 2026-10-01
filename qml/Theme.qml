@@ -11,9 +11,15 @@ import TidalWave
 // The C++ side is where the palettes are written down and where the contrast
 // tests can reach them.
 //
-// prefs.oledBlack, which pulls a dark theme's grounds to true black, is a
-// transform applied over there for the same reason: it arrives as a different
-// `current` map, so there is no token for it and nothing below has to branch.
+// The two switches in Settings are transforms applied over there for the same
+// reason: prefs.oledBlack pulls a dark theme's grounds to true black, and
+// prefs.tintedGreys swaps the neutral grey ramp each mode shares for the
+// palette's own tinted grounds. Both arrive as a different `current` map, so
+// there is no token for either and nothing below has to branch.
+//
+// Which is also why the default state is not a poorer palette: with the greys
+// neutral, p.accent is the only token that differs between the three themes on
+// a side, and every binding in the app that reads an accent already repaints.
 QtObject {
     readonly property var p: ThemePalette.current
     readonly property var r: ThemePalette.radius

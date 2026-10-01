@@ -28,10 +28,21 @@ TestCase {
         // accent-coloured ground with its label in accentInk. Read back as a
         // binding, because a binding is what the app draws with.
         Rectangle {
+            id: chip
             anchors.bottom: parent.bottom
             width: 60; height: 20
             color: Theme.accent
             Text { id: chipLabel; anchors.centerIn: parent; text: "(7)"; color: Theme.accentInk }
+        }
+
+        // The step above the page. Sky's tinted bg is #FFFFFF and so is the
+        // neutral light ramp's, so bg alone cannot see the colour switch move
+        // on that one theme - surface can, on all six.
+        Rectangle {
+            id: surfaceProbe
+            anchors.centerIn: parent
+            width: 10; height: 10
+            color: Theme.surface
         }
 
         // ...and the same for a filled danger button.
@@ -45,13 +56,15 @@ TestCase {
 
     function init() {
         prefs.theme = "sea"
-        // Explicit, because half the file is about what flipping it does.
+        // Explicit, because half the file is about what flipping them does.
         prefs.oledBlack = false
+        prefs.tintedGreys = false
     }
 
     function cleanupTestCase() {
         prefs.theme = "sea"
         prefs.oledBlack = false
+        prefs.tintedGreys = false
     }
 
     function test_singleton_sees_prefs() {
@@ -62,25 +75,58 @@ TestCase {
     }
 
     function test_switching_theme_repaints_data() {
-        return [
-            { tag: "pine", name: "pine", dark: true  },
-            { tag: "rust", name: "rust", dark: true  },
-            { tag: "sky",  name: "sky",  dark: false },
-            { tag: "sand", name: "sand", dark: false },
-            { tag: "clay", name: "clay", dark: false },
+        const themes = [
+            { name: "pine", dark: true  },
+            { name: "rust", dark: true  },
+            { name: "sky",  dark: false },
+            { name: "sand", dark: false },
+            { name: "clay", dark: false },
         ]
+        var rows = []
+        for (var i = 0; i < themes.length; i++) {
+            for (var t = 0; t < 2; t++) {
+                rows.push({ tag: themes[i].name + (t === 1 ? " tinted" : " neutral"),
+                            name: themes[i].name, dark: themes[i].dark,
+                            tinted: t === 1 })
+            }
+        }
+        return rows
     }
 
     function test_switching_theme_repaints(data) {
+        prefs.tintedGreys = data.tinted
+
         // toString() because a QML colour read into a var is a value type
         // whose identity is not stable to compare against later; the hex is.
         const before = probe.color.toString()
+        const beforeAccent = chip.color.toString()
 
         prefs.theme = data.name
 
         compare(ThemePalette.isDark, data.dark)
-        verify(probe.color.toString() !== before,
-               data.name + " did not change the background away from sea")
+
+        // The accent is what always moves, and this assertion used to be about
+        // the page. With the greys neutral - which is the default - the three
+        // dark palettes share one ramp and the three light ones share another,
+        // so switching from Sea to Pine is a change of accent and the page
+        // genuinely stays where it was. Watching bg here would have made the
+        // design read as a dead picker.
+        verify(chip.color.toString() !== beforeAccent,
+               data.name + " did not change the accent away from sea's")
+
+        // The page moves when it has somewhere to move to: always with the
+        // tinted grounds on, and otherwise only when the pick crosses from the
+        // dark ramp to the light one. The negative branch is the design stated
+        // as an assertion rather than left implied.
+        if (data.tinted || !data.dark) {
+            verify(probe.color.toString() !== before,
+                   data.name + " did not change the background away from sea")
+        } else {
+            compare(probe.color.toString(), before,
+                    data.name + " moved the page, which it shares with sea "
+                    + "while the greys are neutral")
+        }
+
         // Not "the text colour changed": Sea and Sky are not the
         // only pair that can share an ink, so only the ground legitimately
         // differs. What must hold is that the binding tracks the palette.
@@ -107,15 +153,20 @@ TestCase {
         return [
             { tag: "sea",  name: "sea" },
             { tag: "sea in black", name: "sea", oled: true },
+            { tag: "sea tinted", name: "sea", tinted: true },
+            { tag: "sea tinted in black", name: "sea", oled: true, tinted: true },
             { tag: "sky",  name: "sky" },
+            { tag: "sky tinted", name: "sky", tinted: true },
             { tag: "sand", name: "sand" },
             { tag: "clay", name: "clay" },
+            { tag: "clay tinted", name: "clay", tinted: true },
         ]
     }
 
     function test_every_token_reaches_qml(data) {
         prefs.theme = data.name
         prefs.oledBlack = data.oled === true
+        prefs.tintedGreys = data.tinted === true
         const palette = ThemePalette.current
         for (const key in palette) {
             if (key === "dark") continue
@@ -215,6 +266,77 @@ TestCase {
                 data.name + ": the switch darkened a light theme")
         compare(label.color.toString(), ink)
         verify(!ThemePalette.isDark, data.name + " stopped being a light theme")
+    }
+
+    // ── the colour switch ────────────────────────────────────────────────
+    //
+    // Same argument as the pure-black block above: the C++ table can be
+    // perfectly right about both ramps and the app can still never show one of
+    // them, so these read the colour back off Rectangles bound the way the
+    // app's are.
+
+    function test_the_colour_switch_repaints_data() {
+        return [
+            { tag: "sea",  name: "sea" },
+            { tag: "pine", name: "pine" },
+            { tag: "rust", name: "rust" },
+            { tag: "sky",  name: "sky" },
+            { tag: "sand", name: "sand" },
+            { tag: "clay", name: "clay" },
+        ]
+    }
+
+    function test_the_colour_switch_repaints(data) {
+        prefs.theme = data.name
+        prefs.tintedGreys = false
+        const before = probe.color.toString()
+        const beforeSurface = surfaceProbe.color.toString()
+        const accent = chip.color.toString()
+
+        prefs.tintedGreys = true
+
+        verify(surfaceProbe.color.toString() !== beforeSurface,
+               data.name + ": the switch wrote the setting and nothing repainted")
+        compare(surfaceProbe.color.toString(), ThemePalette.current.surface.toString())
+        compare(probe.color.toString(), ThemePalette.current.bg.toString())
+        // The accent is the one thing the switch must not touch: it is what
+        // distinguishes the six while the greys are shared.
+        compare(chip.color.toString(), accent,
+                data.name + ": the colour switch moved the accent")
+        compare(label.color.toString(), ThemePalette.current.textPrimary.toString())
+
+        // ...and it goes back.
+        prefs.tintedGreys = false
+        compare(surfaceProbe.color.toString(), beforeSurface,
+                data.name + ": turning the switch off did not come back")
+        compare(probe.color.toString(), before)
+    }
+
+    // The state the app actually starts in, read off the window: one ground per
+    // mode, six accents. This is the design the whole switch hangs off, so it
+    // is asserted against what QML paints and not only against the table.
+    function test_the_neutral_state_shares_one_ground_per_mode() {
+        prefs.tintedGreys = false
+        var accents = {}
+        for (const group of [["sea", "pine", "rust"], ["sky", "sand", "clay"]]) {
+            var ground = null
+            for (const name of group) {
+                prefs.theme = name
+                if (ground === null) ground = probe.color.toString()
+                else compare(probe.color.toString(), ground,
+                             name + " does not share its mode's grey ramp")
+                const accent = chip.color.toString()
+                verify(accents[accent] === undefined,
+                       name + " and " + accents[accent] + " paint the same accent, "
+                       + "so with the greys shared they are the same theme")
+                accents[accent] = name
+            }
+        }
+        // ...and the two ramps are not each other.
+        prefs.theme = "sea"
+        const dark = probe.color.toString()
+        prefs.theme = "sky"
+        verify(probe.color.toString() !== dark, "the dark and light ramps are one ramp")
     }
 
     // An unknown name must still paint something rather than leaving the

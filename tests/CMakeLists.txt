@@ -48,10 +48,15 @@ endforeach()
 # QML binding still goes through the table - rather than back to a literal - is
 # to look at the file. Reaching them through the module's resources would work
 # too, but a real path is what makes a failure message say where to go.
-if(TARGET tst_shortcuts)
-    target_compile_definitions(tst_shortcuts PRIVATE
-        TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
-endif()
+# tst_startup needs it for the same kind of guard: the high-DPI rule has to know
+# Main.qml's default window size before any QML is loaded, so the number is
+# written down in C++ too, and the test reads the file to prove they still agree.
+foreach(reads_qml_as_text tst_shortcuts tst_startup)
+    if(TARGET ${reads_qml_as_text})
+        target_compile_definitions(${reads_qml_as_text} PRIVATE
+            TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
+    endif()
+endforeach()
 
 # ── tst_qml: QtQuickTest runner over tests/qml/tst_*.qml ─────────────────────
 qt_add_executable(tst_qml

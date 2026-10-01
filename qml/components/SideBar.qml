@@ -63,7 +63,23 @@ Item {
     // would have flinched inwards and back on every un-hover. Below the
     // breakpoint the slot is the rail, always; the panel overflowing it is the
     // overlay, in both directions.
-    readonly property int reservedWidth: compact ? railWidth : panelWidth
+    //
+    // It reads `expandedWidth` and animates, rather than reading `panelWidth`
+    // and inheriting its animation, because that version was smooth in one
+    // direction only (QA: "when the sidebar collapses because of window
+    // resizing, the main content just teleports, but when it expands back out
+    // again it animates smoothly"). Expanding, `compact` went false while
+    // panelWidth was still the rail, so the slot picked up the rail width and
+    // rode the panel out. Collapsing, `compact` went true and the slot fell
+    // straight to railWidth from a panel that still had 170ms to travel - the
+    // page jumped in one frame and the sidebar caught up with it afterwards.
+    //
+    // Both ends now animate on the same duration and easing, flipped by the
+    // same `compact` in the same frame, so the two stay locked together during
+    // a breakpoint crossing. They come apart only when they should: hovering
+    // the rail re-targets the panel to full width while `compact` holds the
+    // slot at the rail, which is exactly what makes the hover an overlay.
+    property int reservedWidth: compact ? railWidth : expandedWidth
     readonly property int targetWidth:   expanded ? expandedWidth : railWidth
     property int panelWidth: targetWidth
 
@@ -91,6 +107,34 @@ Item {
     // finishes; it just finishes in the frame it started.
     Behavior on panelWidth {
         enabled: !dragHandle.dragging
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+    }
+
+    // The slot does not animate until the window has said how wide it is.
+    // `hostWidth` comes from Window.width, which the platform delivers on its
+    // own schedule, so the first evaluation runs at 0 - and `compact` reads a
+    // zero width as "not compact". The correction that lands a frame later is a
+    // real binding change, not an initialisation, so without this gate every
+    // narrow window would open by sliding the whole page across from the full
+    // panel width down to the rail. It also broke two sidebar tests, which
+    // measured the geometry before that phantom slide had finished.
+    //
+    // Qt.callLater rather than setting it inline: it runs after the bindings
+    // this same change is about to re-evaluate, so the first, corrective jump
+    // is still instant and only the moves after it travel.
+    property bool slotSettled: false
+    onHostWidthChanged: {
+        if (hostWidth > 0 && !slotSettled)
+            Qt.callLater(function () { root.slotSettled = true })
+    }
+
+    // Same curve and same duration as the panel's, deliberately: a breakpoint
+    // crossing moves both, and two animations that differ by a frame or an
+    // easing would show as the page ground tearing away from the sidebar's
+    // edge. Dragging bypasses it for the reason above - a drag is a stream of
+    // widths, and animating each one makes the page lag the pointer.
+    Behavior on reservedWidth {
+        enabled: root.slotSettled && !dragHandle.dragging
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
     }
 

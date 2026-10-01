@@ -4,12 +4,19 @@
 #include <QHash>
 #include <QMetaProperty>
 
+#include <array>
+
 namespace theme {
 namespace {
 
 // A palette as written down. Tints and washes are derived from the accent
 // rather than spelled out, so they can't drift off-hue and there are eighteen
 // fewer hex codes to get wrong.
+//
+// The grounds and the type below are the *tinted* half of the design: what the
+// colour switch turns on. By default they are not what paints - kNeutralDark
+// and kNeutralLight are, one shared ramp per mode - and the accent is then the
+// only thing that tells the six palettes apart. See rampFor().
 struct Spec {
     const char *name;
     const char *label;   // a product name, shown as written in every language
@@ -125,6 +132,58 @@ const Spec kSpecs[] = {
       "#B3302A", "#FFFFFF", "#3F7A3A" },
 };
 
+// ── the neutral ramps ────────────────────────────────────────────────────
+//
+// The default state: one grey ramp per mode, shared by all three palettes on
+// that side, with each theme keeping its own accent. The user asked for "the 6
+// themes with the three accents we have at the moment but with almost neutral,
+// consistent grays", and for the tinted grounds above to be a switch over the
+// top of that, which is Prefs::tintedGreys.
+//
+// The dark ramp is not a new invention. It is what Sea carried before the
+// tinted grounds landed, and it was already perfectly neutral - every step is
+// R == G == B. Reusing it rather than inventing one means the pure-black switch
+// over the neutral state is byte for byte the retired "Deep" palette, so the
+// migration in migrated() below still reproduces what Deep painted.
+//
+// The light ramp is derived rather than chosen: the true grey at the same CIE
+// L* as each step of Sky's tinted ramp, to within a fifth of a unit. Sky's own
+// values are faintly blue, which is what "almost neutral" rules out, but its
+// *lightness* is what the light palettes' contrast was tuned against - about
+// forty places in the QML were written assuming a dark ground - so carrying the
+// L* over carries every threshold in tests/tst_theme.cpp over with it instead
+// of guessing at a replacement ramp and hoping it measured the same.
+struct Ramp {
+    const char *bg;
+    const char *surface;
+    const char *surfaceHigh;
+    const char *surfaceHov;
+    const char *border;
+    const char *textPrimary;
+    const char *textSec;
+    const char *textDim;
+};
+
+constexpr Ramp kNeutralDark{
+    "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A",
+    "#FFFFFF", "#A0A0A0", "#6B6B6B",
+};
+
+constexpr Ramp kNeutralLight{
+    "#FFFFFF", "#F5F5F5", "#EAEAEA", "#C7C7C7", "#D8D8D8",
+    "#101010", "#585858", "#838383",
+};
+
+// Which greys a palette is painted in. This is the whole of the colour switch:
+// it chooses a ramp, and everything else about the palette - the accent, the
+// washes derived from it, the semantic colours, the tokens drawn over cover
+// art - is the same either way.
+Ramp rampFor(const Spec &s, bool tintedGreys) {
+    if (!tintedGreys) return s.dark ? kNeutralDark : kNeutralLight;
+    return { s.bg, s.surface, s.surfaceHigh, s.surfaceHov, s.border,
+             s.textPrimary, s.textSec, s.textDim };
+}
+
 QColor withAlpha(const QColor &c, double a) {
     QColor out = c;
     out.setAlphaF(static_cast<float>(a));
@@ -159,6 +218,11 @@ constexpr double kOledSurfaceHov  = 0.96;
 // a hovered row and a selected one.
 constexpr int kOledHoverAlpha = 30;
 
+// Which of palette()'s four tables a pair of switch positions lands in.
+constexpr int slot(bool oled, bool tintedGreys) {
+    return (oled ? 2 : 0) + (tintedGreys ? 1 : 0);
+}
+
 QColor pulledToBlack(const QColor &c, double factor) {
     return QColor::fromRgb(qRound(c.red()   * factor),
                            qRound(c.green() * factor),
@@ -174,8 +238,19 @@ constexpr double kArtBorder      = 0.22;
 // `oled` is only ever honoured on a dark theme; palette() already refuses to
 // pass it for a light one, and the assert here is what keeps that true if a
 // second caller appears.
-QVariantMap build(const Spec &s, bool oled) {
+//
+// The two switches are applied in this order and only this order: the ramp is
+// chosen first, then its grounds are pulled down. The other way round - pull a
+// ground down, then swap the ramp out from under it - would hand the page the
+// un-pulled neutral ramp and leave bg at #0A0A0A with the pure-black switch on,
+// which is that switch silently not working for everybody on the default
+// state. tests/tst_theme.cpp pins both halves: oledPullsEveryGroundDown() runs
+// over both ramps, and theTwoSwitchesComposeInEitherOrder() holds the palette
+// to being a function of the two settings rather than of the order they were
+// flipped in.
+QVariantMap build(const Spec &s, bool oled, bool tintedGreys) {
     Q_ASSERT(!oled || s.dark);
+    const Ramp ramp = rampFor(s, tintedGreys);
     const QColor accent(QString::fromLatin1(s.accent));
     const QColor red(QString::fromLatin1(s.red));
 
@@ -200,15 +275,15 @@ QVariantMap build(const Spec &s, bool oled) {
     QVariantMap m;
     m.insert(QStringLiteral("dark"), s.dark);
 
-    m.insert(QStringLiteral("bg"),          ground(s.bg, 0.0));
-    m.insert(QStringLiteral("surface"),     ground(s.surface,     kOledSurface));
-    m.insert(QStringLiteral("surfaceHigh"), ground(s.surfaceHigh, kOledSurfaceHigh));
-    m.insert(QStringLiteral("surfaceHov"),  ground(s.surfaceHov,  kOledSurfaceHov));
-    m.insert(QStringLiteral("border"),      ground(s.border,      kOledBorder));
+    m.insert(QStringLiteral("bg"),          ground(ramp.bg, 0.0));
+    m.insert(QStringLiteral("surface"),     ground(ramp.surface,     kOledSurface));
+    m.insert(QStringLiteral("surfaceHigh"), ground(ramp.surfaceHigh, kOledSurfaceHigh));
+    m.insert(QStringLiteral("surfaceHov"),  ground(ramp.surfaceHov,  kOledSurfaceHov));
+    m.insert(QStringLiteral("border"),      ground(ramp.border,      kOledBorder));
 
-    m.insert(QStringLiteral("textPrimary"), QColor(QString::fromLatin1(s.textPrimary)));
-    m.insert(QStringLiteral("textSec"),     QColor(QString::fromLatin1(s.textSec)));
-    m.insert(QStringLiteral("textDim"),     QColor(QString::fromLatin1(s.textDim)));
+    m.insert(QStringLiteral("textPrimary"), QColor(QString::fromLatin1(ramp.textPrimary)));
+    m.insert(QStringLiteral("textSec"),     QColor(QString::fromLatin1(ramp.textSec)));
+    m.insert(QStringLiteral("textDim"),     QColor(QString::fromLatin1(ramp.textDim)));
 
     m.insert(QStringLiteral("accent"),      accent);
     m.insert(QStringLiteral("accentDim"),   QColor(QString::fromLatin1(s.accentDim)));
@@ -267,11 +342,20 @@ bool isKnown(const QString &name) {
     return false;
 }
 
-// Sea with the pure-black switch on, which is byte for byte what the user was
-// running when Deep was still a palette of its own.
-QString defaultTheme()   { return QStringLiteral("sea"); }
+// Sea with the pure-black switch on and the greys neutral, which is byte for
+// byte what the user was running when Deep was still a palette of its own: the
+// neutral dark ramp is Sea's old one, and Deep was that pulled to black.
+QString defaultTheme()     { return QStringLiteral("sea"); }
 bool    defaultOledBlack() { return true; }
+bool    defaultTintedGreys() { return false; }
 
+// The colour switch has no entry here and needs none: no theme name implies
+// it. What a settings file written before it existed says about the greys is
+// nothing, and nothing resolves to defaultTintedGreys() - the neutral state,
+// which is also the state those files were painting, because the grounds in
+// kSpecs only gained their tint in this release. Prefs writes the resolved
+// value back alongside the renamed theme, so the palette an old install comes
+// back to cannot move later if the default ever does.
 bool migrated(const QString &stored, QString *theme, bool *oledBlack) {
     // The rename, kept in this file rather than in Prefs because kSpecs above
     // is what these old names are being migrated *to*: rename a palette up
@@ -302,27 +386,30 @@ bool migrated(const QString &stored, QString *theme, bool *oledBlack) {
     return true;
 }
 
-QVariantMap palette(const QString &name, bool oledBlack) {
-    // Two tables, built once each: the plain palettes and the pulled-down
-    // ones. Building on demand instead would re-run the transform on every
-    // repaint, and ThemePalette compares the whole map to decide whether to
-    // emit currentChanged().
-    static const QHash<QString, QVariantMap> plain = [] {
-        QHash<QString, QVariantMap> out;
-        for (const Spec &s : kSpecs) out.insert(QString::fromLatin1(s.name), build(s, false));
-        return out;
-    }();
-    static const QHash<QString, QVariantMap> black = [] {
-        QHash<QString, QVariantMap> out;
-        // Light themes have no black variant, so they are absent here and the
-        // lookup below falls back to the plain one. That is the whole of
-        // "the switch does nothing on Sky".
-        for (const Spec &s : kSpecs)
-            if (s.dark) out.insert(QString::fromLatin1(s.name), build(s, true));
+QVariantMap palette(const QString &name, bool oledBlack, bool tintedGreys) {
+    // Four tables, built once each: the two ramps, each as written and with the
+    // grounds pulled down. Building on demand instead would re-run both
+    // transforms on every repaint, and ThemePalette compares the whole map to
+    // decide whether to emit currentChanged().
+    static const std::array<QHash<QString, QVariantMap>, 4> tables = [] {
+        std::array<QHash<QString, QVariantMap>, 4> out;
+        for (const Spec &s : kSpecs) {
+            const QString key = QString::fromLatin1(s.name);
+            for (const bool tinted : {false, true}) {
+                out[slot(false, tinted)].insert(key, build(s, false, tinted));
+                // Light themes have no black variant, so they are absent from
+                // the two black tables and the lookup below falls back to the
+                // plain one. That is the whole of "the switch does nothing on
+                // Sky". The colour switch, by contrast, is offered on all six.
+                if (s.dark) out[slot(true, tinted)].insert(key, build(s, true, tinted));
+            }
+        }
         return out;
     }();
 
+    const QHash<QString, QVariantMap> &plain = tables[slot(false, tintedGreys)];
     if (oledBlack) {
+        const QHash<QString, QVariantMap> &black = tables[slot(true, tintedGreys)];
         const auto it = black.constFind(name);
         if (it != black.cend()) return *it;
         // An unknown name falls back to the default palette, and the default
@@ -384,7 +471,7 @@ void ThemePalette::setThemeSource(QObject *source) {
         // double works here without the palette knowing the concrete type.
         const QMetaObject *mo = m_source->metaObject();
         const int slot = metaObject()->indexOfSlot("refresh()");
-        for (const char *name : {"theme", "oledBlack"}) {
+        for (const char *name : {"theme", "oledBlack", "tintedGreys"}) {
             const int index = mo->indexOfProperty(name);
             if (index < 0) {
                 qWarning("ThemePalette: theme source has no \"%s\" property", name);
@@ -401,14 +488,24 @@ void ThemePalette::setThemeSource(QObject *source) {
 void ThemePalette::refresh() {
     const QVariantMap next =
         m_source ? theme::palette(m_source->property("theme").toString(),
-                                  m_source->property("oledBlack").toBool())
-                 : theme::palette(theme::defaultTheme(), theme::defaultOledBlack());
+                                  m_source->property("oledBlack").toBool(),
+                                  m_source->property("tintedGreys").toBool())
+                 : theme::palette(theme::defaultTheme(), theme::defaultOledBlack(),
+                                  theme::defaultTintedGreys());
     if (next == m_current) return;
     m_current = next;
     emit currentChanged();
 }
 
 QVariantList ThemePalette::available() const {
+    // Read live, not cached: in the neutral state every swatch shows the same
+    // two grounds and six different accents, and that is what the user is
+    // choosing between there, so a grid still drawn in the tinted grounds after
+    // the colour switch flipped would be the picker lying about what it is
+    // about to paint. SettingsPanel.qml keeps a dependency on prefs.tintedGreys
+    // in the binding that calls this, so the call happens again on a flip.
+    const bool tinted = m_source ? m_source->property("tintedGreys").toBool()
+                                 : theme::defaultTintedGreys();
     QVariantList out;
     for (const auto &t : theme::themes()) {
         // The three a swatch draws come from here rather than from a table in
@@ -418,7 +515,10 @@ QVariantList ThemePalette::available() const {
         // separated Sand from Clay drifted them again the same day. A hand
         // copy of a table that changes is a bug with a delay on it, so there
         // is no longer a copy to drift.
-        const QVariantMap p = theme::palette(t.name);
+        // The pure-black switch is deliberately not applied here: it has its
+        // own row in the panel, and a swatch strip where three of the six were
+        // the same black rectangle would say less than this one does.
+        const QVariantMap p = theme::palette(t.name, false, tinted);
         out.append(QVariantMap{{QStringLiteral("name"),   t.name},
                                {QStringLiteral("label"),  t.label},
                                {QStringLiteral("dark"),   t.dark},

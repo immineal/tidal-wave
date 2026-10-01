@@ -36,6 +36,12 @@ Popup {
 
     readonly property var themes: {
         var retranslate = root.currentLanguage   // dependency, see above
+        // ...and again when the colour switch moves: available() answers for
+        // whichever grey ramp is in force, and it is an invokable rather than a
+        // bound property, so without this line the six swatches would keep
+        // showing the ramp the panel was opened in. A stale grid is the obvious
+        // bug here, and it looks like the switch not working.
+        var recolour = prefs.tintedGreys
         return ThemePalette.available()
     }
 
@@ -312,6 +318,47 @@ Popup {
                     spacing: 12
                     ThemeGroup { dark: true;  title: qsTr("Dark", "heading over the dark themes") }
                     ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
+                }
+
+                // The colour switch. By default the three dark palettes share
+                // one neutral grey ramp and the three light ones share another,
+                // so the accent is all that tells the six apart; this turns
+                // each palette's own tinted grounds on. It sits directly under
+                // the grid because it changes what the grid shows.
+                //
+                // Always there, unlike the pure-black row below: there is no
+                // theme where it does nothing. And its track is a rainbow,
+                // because it is the one row in a panel of hardware preferences
+                // that is just for fun, and it should look like it.
+                RowLayout {
+                    objectName: "settingsTintedBlock"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            objectName: "settingsTintedLabel"
+                            text: qsTr("Let the colour in")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsTintedNote"
+                            text: qsTr("Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsTintedToggle"
+                        rainbow: true
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: prefs.tintedGreys
+                        onToggled: prefs.tintedGreys = !prefs.tintedGreys
+                    }
                 }
 
                 // The pure-black switch. Gone rather than greyed out on a
@@ -821,10 +868,25 @@ Popup {
 
     // An on/off switch. Qt Quick Controls' Switch brings its own style with
     // it, which is not this one.
+    //
+    // `rainbow` is for the colour switch above, the one row here that is not a
+    // preference about hardware: with it set, a checked track is a turning
+    // rainbow instead of a flat accent fill. Deliberately cheap - one animated
+    // number feeding seven gradient stops on a 38x22 rectangle, with no shader,
+    // no layer and no ShaderEffect - because this is a widget in a panel people
+    // leave open, not a one-off flourish. Off, and on every other Toggle, there
+    // is nothing animated and nothing extra painted.
     component Toggle : Item {
         id: tg
         property bool checked: false
+        property bool rainbow: false
         signal toggled()
+
+        // How far round the wheel the track has turned, 0 to 1. Properties
+        // rather than locals so tests/qml/tst_settings.qml can read whether the
+        // thing is moving instead of having to time it.
+        property real rainbowPhase: 0
+        readonly property bool rainbowRunning: rainbowTurn.running
 
         implicitWidth: 38
         implicitHeight: 22
@@ -832,13 +894,57 @@ Popup {
         Keys.onReturnPressed: tg.toggled()
         Keys.onSpacePressed:  tg.toggled()
 
+        // Seven stops, a sixth of the wheel apart, so the first and the last
+        // land on the same hue and one turn joins up with no seam. Lightness
+        // 0.55 rather than 0.5 because the knob riding on top is accentInk,
+        // which is white in all six palettes, and a darker yellow read as a
+        // smudge under it.
+        function rainbowStop(i) {
+            return Qt.hsla((tg.rainbowPhase + i / 6) % 1, 0.9, 0.55, 1)
+        }
+
+        NumberAnimation on rainbowPhase {
+            id: rainbowTurn
+            from: 0; to: 1
+            duration: Theme.dur(6000)
+            // X6. A zero duration against Animation.Infinite is a spin loop, so
+            // reduced motion takes one instant turn and leaves the rainbow
+            // sitting still: the colour is what the switch is saying, the
+            // motion is only how it says it, so the colour has to stay.
+            loops: Theme.reduceMotion ? 1 : Animation.Infinite
+            // Nothing turns while the panel is shut - a Popup's contents report
+            // visible false - and nothing turns on a plain Toggle.
+            running: tg.rainbow && tg.checked && tg.visible
+        }
+
         Rectangle {
+            id: track
             anchors.fill: parent
             radius: Theme.radiusChip
             color: tg.checked ? Theme.accent : Theme.surface
             border.width: tg.activeFocus ? 2 : 1
             border.color: tg.activeFocus ? Theme.accent
                         : tg.checked     ? Theme.accent : Theme.border
+
+            // Inside the border rather than over it, so the focus ring is still
+            // a ring and not a rainbow with a gap in it.
+            Rectangle {
+                objectName: "toggleRainbow"
+                visible: tg.rainbow && tg.checked
+                anchors.fill: parent
+                anchors.margins: track.border.width
+                radius: Theme.radiusChip
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0;       color: tg.rainbowStop(0) }
+                    GradientStop { position: 1 / 6;   color: tg.rainbowStop(1) }
+                    GradientStop { position: 2 / 6;   color: tg.rainbowStop(2) }
+                    GradientStop { position: 3 / 6;   color: tg.rainbowStop(3) }
+                    GradientStop { position: 4 / 6;   color: tg.rainbowStop(4) }
+                    GradientStop { position: 5 / 6;   color: tg.rainbowStop(5) }
+                    GradientStop { position: 1;       color: tg.rainbowStop(6) }
+                }
+            }
 
             Rectangle {
                 width: parent.height - 6
@@ -942,6 +1048,10 @@ Popup {
                 border.color: tile.swatch.border
 
                 Rectangle {
+                    // Named because in the neutral state it is the only thing
+                    // telling the six swatches apart, so a test has to be able
+                    // to see that it differs while the grounds match.
+                    objectName: "settingsThemeSwatchAccent"
                     width: 10; height: 10
                     radius: Theme.radiusChip
                     anchors.verticalCenter: parent.verticalCenter
