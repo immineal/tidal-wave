@@ -99,24 +99,53 @@ TestCase {
     // It draws nothing, the list clips it, and the user never sees it, but a
     // naive bounds check calls it an overflow every time. Found the hard way:
     // it was the only thing this test reported on PlaylistPage.
+    // What a failure has to say to be worth anything. "a child" names nothing a
+    // reader can go and look at, so every message carries the objectName where
+    // there is one and the QML type where there is not, and the x and width
+    // separately: an item that is too wide and one that is pushed too far right
+    // are different bugs with the same end coordinate.
+    function describe(item) {
+        if (!item) return "(null)"
+        var name = item.objectName !== undefined && item.objectName.length > 0
+                 ? "\"" + item.objectName + "\"" : ""
+        var type = String(item).split("(")[0].split("_QML")[0]
+        return name.length > 0 ? name + " (" + type + ")" : type
+    }
+
     function audit(item, label, skip) {
         if (item.contentWidth !== undefined && item.contentX !== undefined
             && item.contentWidth > item.width + 1)
             return                                    // a horizontal scroller
         if (item.highlightItem !== undefined && item.highlightItem)
             skip = item.highlightItem
+        // A Flickable's own contentItem is exempt from the bounds check, though
+        // still walked into. It is positioned at -contentX, and a row that
+        // starts its content inset - HorizontalSection sets `contentX =
+        // -leftMargin` so the first card lines up with the page's 24px gutter -
+        // therefore has its contentItem's right edge exactly leftMargin past
+        // the view. The Flickable clips it and the user never sees it. The
+        // guard above only catches the case where the content is *wider* than
+        // the view, so a row whose cards happen to fit was still audited and
+        // reported this every time. Same class of false positive as the
+        // highlightItem above, found the same way.
+        var flickContent = (item.contentX !== undefined && item.contentY !== undefined
+                            && item.contentItem !== undefined) ? item.contentItem : null
+
         var kids = item.children
         for (var i = 0; i < kids.length; ++i) {
             var c = kids[i]
             if (!c || c === skip) continue
             if (!c.visible || c.width === undefined || c.width <= 0) continue
+            if (c === flickContent) { audit(c, label, skip); continue }
             verify(!isNaN(c.x) && !isNaN(c.width),
                    label + ": a child has NaN geometry (x=" + c.x + " w=" + c.width + ")")
             verify(c.width >= 0 && c.height >= 0,
                    label + ": a child went negative (" + c.width + "x" + c.height + ")")
             verify(c.x + c.width <= item.width + overflowSlack,
-                   label + ": a child ends at " + (c.x + c.width).toFixed(1)
-                   + " inside a parent " + item.width.toFixed(1) + " wide")
+                   label + ": " + describe(c) + " ends at "
+                   + (c.x + c.width).toFixed(1) + " (x " + c.x.toFixed(1)
+                   + " + w " + c.width.toFixed(1) + ") inside "
+                   + describe(item) + ", " + item.width.toFixed(1) + " wide")
             audit(c, label, skip)
         }
     }

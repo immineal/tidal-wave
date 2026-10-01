@@ -18,7 +18,7 @@ Tidal Wave is a native, lightweight desktop client for the Tidal music streaming
 *   **Chromecast Output** (Linux): Cast audio to Chromecast / Google Home devices. Native mDNS discovery (Avahi) and CASTV2 control, with a built-in HTTP server that streams the current track (FLAC up to 96 kHz, or AAC) directly to the device. Downloads/downsamples on the fly so every quality tier casts.
 *   **Library Sidebar**: One flat list of your playlists, albums, artists and mixes, ordered pinned first, then recently played, then A-Z. A search field above it also matches saved songs, with type filter chips next to it. Below 820px of window width the sidebar collapses to a 68px icon rail that hover-expands back over the content; its border is a drag handle (`qml/components/SideBar.qml`, `qml/components/LibraryFinder.qml`).
 *   **Pinning**: Pin albums, playlists, artists and mixes to a block above the library list, reorder them by dragging. Stored per Tidal user id (`src/ui/PinStore.cpp`).
-*   **Six Themes**: Three dark (Midnight, Forest, Ember) and three light (Daylight, Paper, Dawn), paired by hue. A pure-black switch pulls any dark theme down to true black for OLED screens. Switching repaints the running app (`src/ui/ThemePalette.cpp`).
+*   **Six Themes**: Three dark (Sea, Pine, Rust) and three light (Sky, Sand, Clay), paired by hue. A pure-black switch pulls any dark theme down to true black for OLED screens. Switching repaints the running app (`src/ui/ThemePalette.cpp`).
 *   **German Translation**: A complete German catalogue. The language follows your system locale by default and can be switched without restarting (`src/ui/I18n.cpp`, `i18n/tidal-wave_de.ts`).
 *   **Responsive Down to 640px**: The window minimum is 640x600. Narrow windows stack the Now Playing transport, drop the player bar's volume and cast controls, and trim the track list's columns.
 *   **Persistent Navigation State**: Separate loaders retain individual page states when jumping between Home, Search, and My Collection views.
@@ -70,8 +70,14 @@ Download **`tidal-wave-linux-x86_64.deb`**, then:
 sudo apt install ./tidal-wave-linux-x86_64.deb
 ```
 
-That's it. `apt` pulls in the Qt 6 runtime, the QML modules and everything else automatically,
-so there is nothing to chase. Launch it from your app menu or run `tidal-wave`.
+`apt` pulls in the Qt 6 runtime, the QML modules and everything else. Launch it from your app
+menu or run `tidal-wave`.
+
+**It needs a recent distribution.** The package declares the Qt version it was built against,
+so on anything older `apt` refuses the install and names what is missing rather than letting you
+install something that will not start. Debian 12 "bookworm" ships Qt 6.4 and is too old; so is
+Ubuntu 22.04. Debian 13, Ubuntu 24.04 and later are fine. If apt refuses, build from source
+below - the source is far more forgiving than the binary.
 </details>
 
 <details>
