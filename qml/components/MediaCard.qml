@@ -55,7 +55,7 @@ Item {
                 smooth: true
                 mipmap: true
                 opacity: status === Image.Ready ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
             }
 
             VectorIcon {
@@ -74,7 +74,7 @@ Item {
                 // Dims the art so the play button reads; a wash over cover art
                 // cannot follow the ground, so it is the same in every theme.
                 color: hov.hovered ? Theme.artScrim : "transparent"
-                Behavior on color { ColorAnimation { duration: 150 } }
+                Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
 
                 Rectangle {
                     visible: hov.hovered
@@ -95,7 +95,7 @@ Item {
                     }
 
                     scale: playHov.hovered ? 1.05 : 1
-                    Behavior on scale { NumberAnimation { duration: 100 } }
+                    Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
                     HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: root.playClicked() }
                 }

@@ -563,8 +563,7 @@ Popup {
                 x: tg.checked ? parent.width - width - 3 : 3
                 color: tg.checked ? Theme.onAccent : Theme.textSec
                 Behavior on x {
-                    enabled: app.reducedMotion !== true
-                    NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.dur(120); easing.type: Easing.OutCubic }
                 }
             }
         }

@@ -56,6 +56,22 @@ TestCase {
 
     Component { id: holderC;     Item { } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
+    Component { id: loginC;      LoginPage      { anchors.fill: parent } }
+
+    function findByName(item, name) {
+        if (item.objectName === name) return item
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var hit = findByName(kids[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+    // A real animated component for the reduced-motion probe. The login
+    // card's height is the one animation in the app that can be driven
+    // without a pointer: the auth state alone decides it. The sidebar's
+    // slide would do as well, but it carries an asynchronous Loader that is
+    // still incubating when the engine tears down.
 
     function window() {
         return testCase.Window.window
@@ -183,8 +199,26 @@ TestCase {
         page.destroy()
     }
 
-    // X6's second half. There is nothing to assert against yet, so this
-    // records what the platform offers and what the app does with it.
+    // X6's second half, measured rather than guessed at.
+    //
+    // This used to read `prefs.reduceMotion`, which has never existed on
+    // Prefs, so the probe reported "the app has no reduced-motion control"
+    // whatever the app actually did — it could not have told the two apart.
+    // The real property is Application::reducedMotion, reaching QML as
+    // `app.reducedMotion`, and Theme.reduceMotion is where the QML side asks.
+    // So the probe now drives the preference and watches a real animation.
+
+    // Move the login card between its two heights and report how it got
+    // there: instantly, or over the usual 200ms.
+    function resizeCard(card, state, target) {
+        auth.setStateForTest(state)
+        wait(1)
+        var afterOneFrame = card.height
+        tryVerify(function () { return card.height === target },
+                  5000, "the login card never reached " + target)
+        return { afterOneFrame: afterOneFrame, settled: card.height }
+    }
+
     function test_reduced_motion_preference() {
         var hints = Application.styleHints
         verify(hints, "QStyleHints is not reachable from QML")
@@ -200,22 +234,67 @@ TestCase {
                 motionHints.push(names[i])
         }
 
-        var appSetting = (typeof prefs !== "undefined" && prefs !== null
-                          && prefs.reduceMotion !== undefined)
+        var hasControl = (typeof app !== "undefined" && app !== null
+                          && app.reducedMotion !== undefined)
 
         console.log("[stress] motion: QStyleHints exposes " + names.length
                     + " hints; motion related: "
                     + (motionHints.length ? motionHints.join(", ") : "none"))
-        console.log("[stress] motion: prefs.reduceMotion "
-                    + (appSetting ? "exists" : "does not exist")
-                    + ", so the app has "
-                    + (appSetting ? "its own" : "no") + " reduced-motion control")
+        console.log("[stress] motion: app.reducedMotion "
+                    + (hasControl ? "exists, currently " + app.reducedMotion
+                                  : "does not exist")
+                    + "; Theme.reduceMotion reads " + Theme.reduceMotion)
 
-        // Not a failure: Qt 6.12 has no cross-platform reduced-motion hint, so
-        // there is nothing for the app to read on Linux. Recorded here so the
-        // day Qt grows one, this line starts naming it and the gap is visible.
-        if (motionHints.length === 0 && !appSetting)
-            console.log("[stress] motion: FINDING - neither the platform nor the app offers "
-                        + "a reduced-motion preference, so X6's second half is unimplemented")
+        if (!hasControl) {
+            console.log("[stress] motion: FINDING - the app exposes no reduced-motion "
+                        + "control, so X6's second half is unimplemented")
+            return
+        }
+
+        // 0 is LoggedOut, where the card is 220 high; 1 is PendingDevice, 400.
+        // The stub starts with saved credentials, which is the 140px
+        // "Restoring session" card instead.
+        auth.setHasSavedCredentialsForTest(false)
+        auth.setStateForTest(0)
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var page = createTemporaryObject(loginC, holder)
+        verify(page, "LoginPage was not created")
+        waitForRendering(holder, 10000)
+
+        var card = findByName(page, "loginAuthCard")
+        verify(card, "LoginPage has no auth card to measure")
+        tryVerify(function () { return card.height === 220 },
+                  5000, "the card never settled at its signed-out height")
+
+        // Baseline: motion allowed, so the resize should take time.
+        app.setReducedMotionForTest(false)
+        var animated = resizeCard(card, 1, 400)
+        var animatedTravelled = animated.afterOneFrame !== animated.settled
+        resizeCard(card, 0, 220)
+
+        // Now with the preference on. This half is deterministic: a
+        // zero-length animation has written its target before the first frame.
+        app.setReducedMotionForTest(true)
+        compare(Theme.reduceMotion, true, "Theme ignored the preference")
+        var reduced = resizeCard(card, 1, 400)
+        app.setReducedMotionForTest(false)
+        auth.setStateForTest(2)
+
+        console.log("[stress] motion: the login card with motion allowed reached "
+                    + animated.afterOneFrame + " after one frame and settled at "
+                    + animated.settled + "; with reduced motion, "
+                    + reduced.afterOneFrame + " then " + reduced.settled)
+
+        compare(reduced.afterOneFrame, reduced.settled,
+                "reduced motion is set and the login card still animated its height")
+
+        // Not a hard failure: on a software rasteriser under load one turn of
+        // the event loop can outlast a 170ms slide, which would make this
+        // look instant when it is not. Worth saying out loud, not worth
+        // failing a stress run over.
+        if (!animatedTravelled)
+            console.log("[stress] motion: NOTE - the resize looked instant even with "
+                        + "motion allowed, so this box cannot tell the two apart; "
+                        + "the reduced-motion half above is still meaningful")
     }
 }

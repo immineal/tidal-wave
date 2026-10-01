@@ -60,13 +60,17 @@ Item {
 
     // X6. Qt exposes no cross-platform reduced-motion hint, so Application
     // reads what the desktop does expose; see Application::reducedMotion().
-    readonly property bool reduceMotion: app.reducedMotion === true
+    // Theme.reduceMotion is where the rest of the app asks the same question;
+    // this stays as the name the sidebar's own tests reach for.
+    readonly property bool reduceMotion: Theme.reduceMotion
 
     // A drag is a continuous stream of new widths, so animating it would make
-    // the border lag behind the pointer.
+    // the border lag behind the pointer. Reduced motion goes through the
+    // duration instead of through `enabled`, so the slide still runs and still
+    // finishes — it just finishes in the frame it started.
     Behavior on panelWidth {
-        enabled: !root.reduceMotion && !dragHandle.dragging
-        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
+        enabled: !dragHandle.dragging
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
     }
 
     function openSettings() { settingsPopup.open() }
