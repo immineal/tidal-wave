@@ -146,10 +146,43 @@ Menu {
                         root.confirmMs)
     }
 
-    // Drawn inside the window rather than as a native or a separate-window
-    // popup: the menu is fully custom-styled below, and a native menu would
-    // ignore every bit of that.
-    popupType: Popup.Item
+    // Insets reset, not inherited. A Menu's insets exist for a style's drop
+    // shadow, and the native macOS style sets all four to -32; this menu
+    // replaces the background with its own Rectangle and never drew that
+    // shadow, so the panel was laid out 32px past the popup on every side and
+    // real entries were clipped at the window edge (a 207x56 popup drawing a
+    // 271x120 background). Pinning the Basic style fixes it today, because
+    // Basic's insets are 0; stating it here is what survives the next style
+    // change, and it is a no-op wherever they already are 0.
+    leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
+
+    // Set here rather than declaratively, and only where it exists.
+    //
+    // `popupType` and `Popup.Item` are both Qt 6.8. A declarative
+    // `popupType: Popup.Item` is resolved when the file loads, so on
+    // older Qt it does not merely warn - it makes this whole type
+    // unavailable, and every type that uses it, all the way up. A real
+    // Debian 12 build failed exactly that way: "Cannot assign to
+    // non-existent property popupType", then "Type ContextMenu
+    // unavailable", then "Type SideBar unavailable", and the app exited
+    // with no window.
+    //
+    // Nothing is lost by leaving it unset on older Qt, because before
+    // 6.8 an in-scene item was a menu's only form - the property was
+    // added to allow native and separate-window popups, which arrived
+    // with it. So this asks whether the property exists and sets it when
+    // it does, which is the behaviour we want on both.
+    //
+    // `this.` is load-bearing. A *bare* identifier that names no property is
+    // not undefined in QML's JS scope, it is a ReferenceError - and the error
+    // aborts the whole handler rather than warning, at every instantiation,
+    // which for a per-row menu is a stream of them. Qualifying the access
+    // makes the miss a plain undefined. Worth knowing that this is invisible
+    // on a current Qt, where the property exists and the bare form resolves
+    // fine.
+    Component.onCompleted: {
+        if (this.popupType !== undefined) this.popupType = Popup.Item
+    }
 
     // Sized to its longest item; see Theme.menuWidth for why a styled Menu
     // does not do that by itself.

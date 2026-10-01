@@ -175,16 +175,38 @@ private slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
 
         // LibraryIndex also caches album tracklists under AppDataLocation, so
-        // the platform data roots have to move into the temporary directory
-        // too. A test run must not read or overwrite the real install's cache.
-        qputenv("HOME",         m_dir.path().toUtf8());
-        qputenv("XDG_DATA_HOME", (m_dir.path() + QStringLiteral("/share")).toUtf8());
-        qputenv("XDG_CACHE_HOME", (m_dir.path() + QStringLiteral("/cache")).toUtf8());
-        qputenv("APPDATA",      m_dir.path().toUtf8());        // Windows
-        qputenv("LOCALAPPDATA", m_dir.path().toUtf8());
-        QVERIFY2(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-                     .startsWith(m_dir.path()),
-                 "the tracklist cache would land outside the temporary directory");
+        // that has to move somewhere disposable: a test run must not read or
+        // overwrite the real install's cache.
+        //
+        // This was done by pointing HOME, XDG_DATA_HOME, XDG_CACHE_HOME and the
+        // two Windows variables at the temporary directory, which only ever
+        // worked on Linux. On the first macOS run it aborted this whole binary in
+        // initTestCase: QStandardPaths there does not read XDG_DATA_HOME at all,
+        // AppDataLocation stayed in the real ~/Library/Application Support, and
+        // the assertion below failed before a single test ran.
+        //
+        // setTestModeEnabled() is the mechanism Qt provides for exactly this and
+        // it is honoured on every platform. It roots the standard locations at
+        // QDir::homePath() + "/.qttest", which is why HOME is still set: on both
+        // Linux and macOS that is what QDir::homePath() reads, so it is what
+        // keeps the cache inside the temporary directory instead of in the
+        // developer's home. The XDG_* and Windows variables are gone rather than
+        // kept alongside, because test mode ignores them and leaving them here
+        // would go on suggesting they were the thing doing the isolating.
+        QStandardPaths::setTestModeEnabled(true);
+        qputenv("HOME", m_dir.path().toUtf8());
+        const QString appData =
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        QVERIFY2(appData.contains(QLatin1String("qttest")),
+                 qPrintable(QStringLiteral("standard paths are not in test mode: %1")
+                                .arg(appData)));
+#if defined(Q_OS_UNIX)
+        // Wherever HOME governs QDir::homePath(), which is Linux and macOS both,
+        // the cache is inside the temporary directory and is thrown away with it.
+        QVERIFY2(appData.startsWith(m_dir.path()),
+                 qPrintable(QStringLiteral("the tracklist cache would land outside %1: %2")
+                                .arg(m_dir.path(), appData)));
+#endif
 
         // A-Z ordering goes through QCollator, which follows the default
         // locale. Pin it so the expectations below mean the same thing on

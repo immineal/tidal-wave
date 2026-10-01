@@ -217,9 +217,12 @@ QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure
 - `/usr/bin/ctest` in full: `~/bin/ctest` is a broken Python shim.
 - **Never** build into `./build` or `./build_custom`. Both are stale.
 - **Never** `pkill` a `tidal-wave` process; the user's real instance is running.
-  A second launch hits the `TidalWaveSingleInstanceSocket` lock, sends `show` and
-  exits 0, which proves nothing. Isolate a test run with
-  `TMPDIR=… HOME=… QT_QPA_PLATFORM=offscreen`.
+  A second launch hits the `TidalWave-<uid>` lock, sends `show` and exits 0,
+  which proves nothing. The lock is an absolute path: `$XDG_RUNTIME_DIR` first,
+  then `$TMPDIR`, then `/tmp`, so isolate a test run with
+  `XDG_RUNTIME_DIR=… TMPDIR=… HOME=… QT_QPA_PLATFORM=offscreen` - `TMPDIR` alone
+  no longer moves it. `tests/lib/socket-name.sh` is the one place that derives
+  the address, and the three `run.sh` harnesses source it.
 - Tests glob `tests/tst_*.cpp`, one binary per file. Adding a test needs no
   CMake edit. QML tests live in `tests/qml/tst_*.qml`.
 - `tests/TestStubs.h` fakes `auth`/`bridge`/`player`/`cast`/`app`/`downloader`

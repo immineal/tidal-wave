@@ -45,6 +45,14 @@ public:
 
     // Where the single-instance rendezvous socket lives for this user.
     static QString singleInstanceSocketName();
+    // The longest socket path QLocalServer will bind on this platform, in bytes,
+    // or 0 where a socket address is not a path at all. It is derived from
+    // sizeof(sockaddr_un::sun_path), which is 108 on Linux and 104 on Apple's
+    // platforms, less the two bytes the comment at kUnixSocketPathMax explains.
+    // tst_startup.cpp asks for the number rather than writing one of those down
+    // a second time, which is how the old hard-coded 107 came to be wrong in the
+    // code and in its own test at once.
+    static int unixSocketPathMax();
     // Binds `server` to that socket, clearing one left behind by a crash but
     // never one a live instance still answers on. False means the lock could
     // not be taken, which run() treats as non-fatal.
@@ -61,7 +69,21 @@ signals:
     void reallyQuitChanged();
     void reducedMotionChanged();
 
+protected:
+#ifdef Q_OS_MACOS
+    // Watches the QApplication for the activation macOS sends when the Dock
+    // icon of an app with no visible window is clicked, and brings the window
+    // back the same way the tray's "Show" does. Apple-only: no other platform
+    // hides the window behind a Dock icon like this, and on Linux the tray is
+    // the way back.
+    bool eventFilter(QObject *watched, QEvent *event) override;
+#endif
+
 private:
+#ifdef Q_OS_MACOS
+    bool hasVisibleWindow() const;
+#endif
+
     // Builds the tray icon and its menu. Called at startup when a tray is
     // already there, and again from the D-Bus watcher if one turns up later.
     void createTrayIcon(const QIcon &icon);

@@ -68,29 +68,16 @@ Popup {
 
     readonly property bool updatesOn: check ? check.enabled === true : false
 
-    // ThemePalette::available() hands over {name, label, dark} and no colours,
-    // and theme::palette() is not reachable from QML, so the three each swatch
-    // draws are repeated from the kSpecs table in src/ui/ThemePalette.cpp:
-    // ground, border, accent. These are the palettes as written, never the
-    // pure-black variant: the swatch is what the theme *is*, and the switch
-    // below the column says what happens to it.
-    //
-    // tst_settings.qml asserts this table covers the same six names as
-    // ThemePalette.available() and that each row matches the palette it
-    // claims to show, which is the drift that can actually happen - these
-    // three columns sat two accent revisions behind the C++ for a while and
-    // nothing noticed.
-    readonly property var swatches: ({
-        "sea":  { bg: "#0A0A0A", edge: "#2A2A2A", accent: "#0079A8" },
-        "pine": { bg: "#0B0F0C", edge: "#29332B", accent: "#18814E" },
-        "rust": { bg: "#100D0C", edge: "#332C28", accent: "#C14A18" },
-        "sky":  { bg: "#FFFFFF", edge: "#CFD9E2", accent: "#0A6FC4" },
-        "sand": { bg: "#FAF7F0", edge: "#CBC0A6", accent: "#2F6F4E" },
-        "clay": { bg: "#FFF7F1", edge: "#E8D0BE", accent: "#B4481C" }
-    })
-
+    // ThemePalette::available() now hands over the ground, border and accent
+    // alongside {name, label, dark}, so there is nothing to copy. What stood
+    // here was a six-row table repeated from kSpecs in ThemePalette.cpp, and
+    // its own comment conceded the columns had drifted two accent revisions
+    // behind without anyone noticing. tst_settings.qml caught the next drift
+    // the day the light palettes were re-separated; this removes the class.
     function swatchFor(name) {
-        return swatches[name] || { bg: Theme.bg, edge: Theme.border, accent: Theme.accent }
+        for (var i = 0; i < themes.length; i++)
+            if (themes[i].name === name) return themes[i]
+        return { bg: Theme.bg, border: Theme.border, accent: Theme.accent }
     }
 
     function themesWhere(dark) {
@@ -551,21 +538,37 @@ Popup {
                 key: "shortcuts"
                 spacing: 6
 
+                // The keys are named by id, never spelled out here. The
+                // sequences live in the Shortcuts table in
+                // src/ui/Shortcuts.cpp, which is also where Main.qml binds
+                // them from, and the text in the badge is whatever
+                // QKeySequence says this platform calls that sequence. Written
+                // out as literals - which is what this was - the rows drifted
+                // from the bindings with nothing to notice, and they were
+                // simply wrong on macOS, where Qt maps Ctrl onto Command and a
+                // row reading "Ctrl+Q" was telling the user to press the wrong
+                // key. One row may name several ids; they are joined with the
+                // same " / " the descriptions use.
+                //
+                // Only the descriptions are translated now. The key names are
+                // not, because QKeySequence::toString already returns them in
+                // Qt's own translation of the key, which is better than this
+                // app carrying a catalogue entry for every key on the keyboard.
                 Repeater {
                     model: [
-                        { k: qsTr("Space", "keyboard key"),      d: qsTr("Play / Pause") },
-                        { k: qsTr("Ctrl+Right / Left"),          d: qsTr("Next / Previous track") },
-                        { k: qsTr("Right / Left", "arrow keys"), d: qsTr("Seek forward / back 10s") },
-                        { k: qsTr("Up / Down", "arrow keys"),    d: qsTr("Volume up / down") },
-                        { k: qsTr("Ctrl+M"),                     d: qsTr("Mute") },
-                        { k: qsTr("Ctrl+S"),                     d: qsTr("Toggle shuffle") },
-                        { k: qsTr("Ctrl+R"),                     d: qsTr("Cycle repeat mode") },
-                        { k: qsTr("Ctrl+1 / 2 / 3"),             d: qsTr("Home / Search / Collection") },
-                        { k: qsTr("Ctrl+N"),                     d: qsTr("Now Playing") },
-                        { k: qsTr("F11", "keyboard key"),        d: qsTr("Fullscreen Now Playing") },
-                        { k: qsTr("Ctrl+Q"),                     d: qsTr("Toggle queue") },
-                        { k: qsTr("Alt+Left / Esc"),             d: qsTr("Go back") },
-                        { k: qsTr("Ctrl+,"),                     d: qsTr("Settings") }
+                        { ids: ["playPause"],                       d: qsTr("Play / Pause") },
+                        { ids: ["next", "previous"],                d: qsTr("Next / Previous track") },
+                        { ids: ["seekForward", "seekBack"],         d: qsTr("Seek forward / back 10s") },
+                        { ids: ["volumeUp", "volumeDown"],          d: qsTr("Volume up / down") },
+                        { ids: ["mute"],                            d: qsTr("Mute") },
+                        { ids: ["shuffle"],                         d: qsTr("Toggle shuffle") },
+                        { ids: ["repeat"],                          d: qsTr("Cycle repeat mode") },
+                        { ids: ["home", "search", "collection"],    d: qsTr("Home / Search / Collection") },
+                        { ids: ["nowPlaying"],                      d: qsTr("Now Playing") },
+                        { ids: ["fullScreen"],                      d: qsTr("Fullscreen Now Playing") },
+                        { ids: ["queue"],                           d: qsTr("Toggle queue") },
+                        { ids: ["back", "escape"],                  d: qsTr("Go back") },
+                        { ids: ["settings"],                        d: qsTr("Settings") }
                     ]
                     delegate: RowLayout {
                         required property var modelData
@@ -578,7 +581,10 @@ Popup {
                             implicitHeight: 22
                             Text {
                                 id: shortcutLabel; anchors.centerIn: parent
-                                text: modelData.k; color: Theme.textPrimary
+                                text: modelData.ids.map(function (id) {
+                                          return Shortcuts.display(id)
+                                      }).join(" / ")
+                                color: Theme.textPrimary
                                 font.pixelSize: 11; font.family: "monospace"
                             }
                         }
@@ -933,7 +939,7 @@ Popup {
                 radius: Theme.radiusArt
                 color: tile.swatch.bg
                 border.width: 1
-                border.color: tile.swatch.edge
+                border.color: tile.swatch.border
 
                 Rectangle {
                     width: 10; height: 10
@@ -949,7 +955,7 @@ Popup {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: 4
-                    color: tile.swatch.edge
+                    color: tile.swatch.border
                 }
             }
 

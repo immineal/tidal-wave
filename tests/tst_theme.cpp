@@ -50,6 +50,37 @@ QColor composite(const QColor &wash, const QColor &ground) {
                             wash.blueF()  * a + ground.blueF()  * (1.0 - a));
 }
 
+// CIE L*a*b*, and the plain Euclidean distance in it (dE76). Contrast answers
+// "can this be read"; it cannot answer "are these two the same colour", because
+// two palettes can sit at identical luminance and differ only in hue. That gap
+// is how Sand and Clay shipped as the same cream: noTwoThemesAreTheSame() below
+// compares byte for byte, they differed in every byte, and on screen the user
+// could not tell them apart. Lab is the cheapest space where distance tracks
+// what an eye reports, and ~2.3 is the smallest difference anyone can see.
+struct Lab { double l, a, b; };
+
+Lab toLab(const QColor &c) {
+    auto lin = [](double v) {
+        return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    const double r = lin(c.redF()), g = lin(c.greenF()), b = lin(c.blueF());
+    // sRGB -> XYZ (D65), then normalised by the D65 white point.
+    const double x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+    const double y =  r * 0.2126 + g * 0.7152 + b * 0.0722;
+    const double z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    auto f = [](double t) {
+        return t > 0.008856 ? std::cbrt(t) : 7.787 * t + 16.0 / 116.0;
+    };
+    const double fx = f(x), fy = f(y), fz = f(z);
+    return { 116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz) };
+}
+
+double deltaE(const QColor &a, const QColor &b) {
+    const Lab p = toLab(a), q = toLab(b);
+    return std::sqrt((p.l - q.l) * (p.l - q.l) + (p.a - q.a) * (p.a - q.a)
+                   + (p.b - q.b) * (p.b - q.b));
+}
+
 // Every key a palette must carry. Theme.qml surfaces exactly these, so a token
 // added to one theme and forgotten in another is a failure, not a silent
 // "undefined" in a QML binding.
@@ -557,6 +588,62 @@ private slots:
             }
         }
         QCOMPARE(seen.size(), 9);
+    }
+
+    // The companion to noTwoThemesAreTheSame(), which compares byte for byte
+    // and so passes on two palettes nobody can tell apart. Sand and Clay did
+    // exactly that: every token differed, and their backgrounds were dE 1.90
+    // apart - under the ~2.3 just-noticeable threshold. Reported from a real
+    // screen as "paper and dawn are almost the same theme", not caught here.
+    //
+    // The three grounds carry nearly all the page area, so they are what a
+    // theme reads as. The light floor is 8.0: comfortably past JND, and the
+    // separation the three light palettes now actually hold.
+    void lightGroundsAreTellableApart() {
+        const QStringList grounds = { "bg", "surface", "surfaceHigh" };
+        QStringList lights;
+        for (const auto &t : theme::themes())
+            if (!t.dark) lights << t.name;
+        QCOMPARE(lights.size(), 3);
+
+        for (int i = 0; i < lights.size(); ++i)
+            for (int j = i + 1; j < lights.size(); ++j)
+                for (const QString &g : grounds) {
+                    const QColor a = theme::palette(lights.at(i)).value(g).value<QColor>();
+                    const QColor b = theme::palette(lights.at(j)).value(g).value<QColor>();
+                    const double d = deltaE(a, b);
+                    QVERIFY2(d >= 8.0, qPrintable(QStringLiteral(
+                        "%1 and %2 are only dE %3 apart at %4 (%5 vs %6); "
+                        "under 8 they start reading as the same theme, and "
+                        "under 2.3 nobody can see any difference at all")
+                        .arg(lights.at(i), lights.at(j), QString::number(d, 'f', 2),
+                             g, a.name().toUpper(), b.name().toUpper())));
+                }
+    }
+
+    // The darks had the same bug further along: Sea's grounds were pure
+    // neutral grey despite a blue accent, and Sea against Rust measured 1.59
+    // at the background - below JND, so literally not a visible difference.
+    // They now lean toward their own accent hue like the lights do, and the
+    // background is included here because it is no longer the weak step.
+    void darkGroundsAreTellableApart() {
+        const QStringList grounds = { "bg", "surface", "surfaceHigh" };
+        QStringList darks;
+        for (const auto &t : theme::themes())
+            if (t.dark) darks << t.name;
+        QCOMPARE(darks.size(), 3);
+
+        for (int i = 0; i < darks.size(); ++i)
+            for (int j = i + 1; j < darks.size(); ++j)
+                for (const QString &g : grounds) {
+                    const QColor a = theme::palette(darks.at(i)).value(g).value<QColor>();
+                    const QColor b = theme::palette(darks.at(j)).value(g).value<QColor>();
+                    const double d = deltaE(a, b);
+                    QVERIFY2(d >= 8.0, qPrintable(QStringLiteral(
+                        "%1 and %2 are only dE %3 apart at %4 (%5 vs %6)")
+                        .arg(darks.at(i), darks.at(j), QString::number(d, 'f', 2),
+                             g, a.name().toUpper(), b.name().toUpper())));
+                }
     }
 
     // ── the pure-black transform ─────────────────────────────────────────

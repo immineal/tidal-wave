@@ -412,7 +412,12 @@ TestCase {
         var host = showHost(playerBarHost, 640, 200)
         var bar = host.bar
         verify(bar.compactRight, "640 should be a compact bar")
-        verify(!bar.volumeSlider.visible, "the narrow bar kept its inline slider")
+        // Settled, not one frame after the resize: the slider shrinks out of the
+        // bar over 150ms now rather than vanishing between two frames. What has
+        // to be true is that it is gone once the bar has stopped moving, because
+        // the flyout below is the only way to the volume from then on.
+        tryVerify(function () { return !bar.volumeSlider.visible }, 2000,
+                  "the narrow bar still had its inline slider once it had settled")
         verify(!bar.hoverVolumePopup.visible, "the flyout is up before anyone pointed at it")
 
         hover(host, bar.volumeButton)

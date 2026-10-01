@@ -21,8 +21,12 @@ some of this is by design rather than broken:
   the picker degrades correctly rather than showing an empty heading or a
   permanent "Searching…" is worth checking, because `cast: null` is unreachable
   on Linux and so is only ever exercised here.
-- **No `.desktop` file, no icon install, no RPATH fixup, no packaging.** There is
-  no macOS bundle target at all. `cmake --install` will not produce a `.app`.
+- **No `.desktop` file, no icon install, no RPATH fixup, no CPack packaging.**
+  The target *is* `MACOSX_BUNDLE TRUE`, so the build does produce a `.app` - but
+  nothing signs it, notarises it or wraps it in a disk image, and its bundle
+  metadata is wrong (the app menu says `tidal-wave`). Note that `open` cannot be
+  used for the two-launch test in item 2: it coalesces onto the running instance
+  before the app ever sees it, so run the binary inside the bundle directly.
 
 ## 1. Does it build
 
@@ -35,10 +39,8 @@ this branch, but has never been *run*. Homebrew's `qt` is fine to try — report
 which version you got, because that is part of the answer. If CMake cannot find
 Qt, pass `-DCMAKE_PREFIX_PATH=$(brew --prefix qt)`.
 
-Two places to watch:
+One place to watch:
 
-- `silenceLogsAndAlsa()` in `src/ui/Application.cpp` dlopens ALSA, which does not
-  exist here. It should fail softly and carry on. If it does not, that is a bug.
 - `tests/` are behind an option: add `-DTIDALWAVE_BUILD_TESTS=ON` and run
   `ctest --test-dir build --output-on-failure`. 17 tests pass on Linux. Any that
   fail here are findings, and the GUI ones need no display trickery on macOS the
@@ -136,10 +138,43 @@ whether the device list matches the system's, and switch between devices. Watch
 for the window going **unresponsive** rather than crashing — that was the
 symptom. Plugging and unplugging headphones mid-session is the interesting case.
 
-## 10. Do not log in
+## 10. Do not log in, and most of this needs a workaround because of it
 
 Stop at the login screen. Do not attempt to sign in to anyone's Tidal account.
-Everything above can be checked signed out.
+
+**An earlier draft of this file claimed the whole checklist works signed out.
+That was wrong**, and a real run proved it: every `Shortcut` in `Main.qml` is
+`enabled: auth.state === 2`, `PlayerBar` is `visible: auth.state === 2`, and
+`loginLoader` covers the content until then. So items 5b, 6, 7 beyond the login
+screen, 8 and 9 are all unreachable by launching the app.
+
+The login-free route is already in the repository. `tests/visual/` is a
+standalone CMake project whose `tst_shots` runner instantiates SideBar,
+PlayerBar, SettingsPanel, TrackRow, the album page and Now Playing against
+`tests/TestStubs.h` and grabs each with `grabToImage`. `tests/visual/run.sh` is
+Linux-only - Xvfb, ImageMagick `import`, `/proc/net/unix` - but the binary itself
+runs under cocoa, so build that project and drive the binary directly. That
+covers the shortcut strings, reduced motion, every Retina glyph and the German
+walk.
+
+One thing it cannot cover: `TestStubs.h` always installs a `StubCast`, so the
+no-cast-backend path is unreachable even there, and that path is reachable
+*only* on macOS. Answering it needs a small runner of your own, outside the
+repository, that binds `cast` to null.
+
+**Also be aware that `HOME` does not isolate anything on macOS.** `QSettings`
+goes through CFPreferences and writes
+`~/Library/Preferences/com.tidalwave.Tidal Wave.plist` whatever `HOME` says, so
+a settings change in a test run lands in the real user's preferences. Back that
+file up before you change any setting, and put it back afterwards. The same root
+cause makes `QStandardPaths::AppDataLocation` ignore `HOME` and `XDG_DATA_HOME`,
+which is why `tst_library` aborts in `initTestCase` here.
+
+A first run on this machine also came up **already signed in**, from a
+`credentials.json` left by an install months earlier, and refreshed the token.
+If that happens, quit without touching anything and re-run with a scratch
+`HOME`; do not log out, because that may revoke the token on the owner's other
+devices.
 
 ## What to send back
 

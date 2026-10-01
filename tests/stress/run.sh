@@ -28,10 +28,14 @@
 #   * Every run gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME under
 #     a private scratch directory, through `env -i`, so nothing from the
 #     caller's session leaks in.
-#   * The single-instance lock is a QLocalServer at QDir::tempPath(), so TMPDIR
-#     is what isolates it. A unix socket path caps at 107 bytes, so the scratch
-#     root is deliberately short and the script refuses to run if it is not:
-#     a path too long makes listen() fail silently and the isolation would be a
+#   * The single-instance lock is a QLocalServer at an absolute path the app
+#     builds itself: $XDG_RUNTIME_DIR, else $TMPDIR, else /tmp, plus
+#     TidalWave-<uid>. XDG_RUNTIME_DIR is therefore what isolates a run, with
+#     TMPDIR behind it, and the sandbox sets both. tests/lib/socket-name.sh
+#     derives the address the way Application.cpp does rather than guessing at
+#     it. A unix socket path caps a couple of bytes under sun_path, so the
+#     scratch root is deliberately short and the script refuses to run if it is
+#     not: a path too long makes listen() fail and the isolation would be a
 #     false pass.
 #   * The developer's real ~/.config/TidalWave is fingerprinted up front and
 #     re-checked after every scenario.
@@ -44,6 +48,9 @@ set -u
 
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
+# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
+# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+. "$REPO_ROOT/tests/lib/socket-name.sh"
 
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
 BUILD_DIR=${STRESS_BUILD:-/tmp/tw-stress-build}
@@ -96,12 +103,15 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 # ── scratch root, kept short on purpose ─────────────────────────────────────
 
-REAL_TMPDIR=${TMPDIR:-/tmp}
 SCRATCH=$(mktemp -d /tmp/twst.XXXXXX) || die "cannot create a scratch directory"
 
-SOCKET_NAME=TidalWaveSingleInstanceSocket
-probe_len=$(( ${#SCRATCH} + ${#SOCKET_NAME} + 20 ))
-[ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
+# The longest address a run of ours can bind is $SCRATCH/<scenario>/run/<leaf>;
+# 24 bytes is ample for the scenario directory and 5 covers "/run/". A lock that
+# cannot bind does not fail the run, it silently stops isolating it, so this is
+# checked up front rather than discovered later.
+probe_len=$(( ${#SCRATCH} + 24 + 5 + ${#TW_SOCKET_LEAF} ))
+[ "$probe_len" -le "$TW_SOCKET_PATH_MAX" ] \
+    || die "scratch path $SCRATCH is too long for a unix socket"
 
 HELPER_PIDS=()
 track() { HELPER_PIDS+=("$1"); }
@@ -135,10 +145,18 @@ trap cleanup EXIT INT TERM
 
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
 REAL_CREDS=$HOME/.config/tidal-wave
-REAL_LOCK=$REAL_TMPDIR/$SOCKET_NAME
+# The developer's own lock, worked out the way the app works it out. On a normal
+# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
+# not the temp dir this script used to fingerprint instead.
+REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
+# Passive liveness probe. This grepped for "TidalWaveSingleInstanceSocket", a
+# name nothing has bound since the uid went into the leaf, so it never once
+# matched: the harness believed nothing was running while the developer's window
+# was open, and the tolerance below was never granted. Anything under $SCRATCH is
+# excluded so a run never mistakes its own sandbox for the real instance.
 LIVE_INSTANCE=0
-grep -aqs "$SOCKET_NAME" /proc/net/unix && LIVE_INSTANCE=1
+tw_socket_live "$SCRATCH" && LIVE_INSTANCE=1
 
 guard_structure() {
     { [ -e "$REAL_LOCK" ] && stat -c 'lock %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
@@ -269,7 +287,7 @@ info "input:   $SELF_DIR/qml"
 info "scale:   STRESS_SCALE=$SCALE, per-scenario timeout ${RUN_TIMEOUT}s"
 info "scratch: $SCRATCH (short on purpose: a unix socket path caps at 107 bytes)"
 if [ "$LIVE_INSTANCE" -eq 1 ]; then
-    info "another instance is listening on $SOCKET_NAME; it is left strictly alone"
+    info "another instance is listening on $REAL_LOCK; it is left strictly alone"
 fi
 
 # ── patterns that mean the app is broken, not that the box is odd ───────────
