@@ -425,6 +425,33 @@
     </message>
 </context>
 <context>
+    <name>LibraryFinder</name>
+    <message>
+        <source>Find in library</source>
+        <translation>Mediathek…</translation>
+    </message>
+    <message>
+        <source>Songs</source>
+        <translation>Titel</translation>
+    </message>
+    <message>
+        <source>Albums</source>
+        <translation>Alben</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Playlists</source>
+        <translation>Playlists</translation>
+    </message>
+    <message>
+        <source>Mixes</source>
+        <translation>Mixe</translation>
+    </message>
+</context>
+<context>
     <name>LoginPage</name>
     <message>
         <source>Native Linux Tidal Client</source>
@@ -579,6 +606,18 @@
         <translation>%1 %</translation>
     </message>
     <message>
+        <source>Cast to</source>
+        <translation>Übertragen auf</translation>
+    </message>
+    <message>
+        <source>This computer</source>
+        <translation>Dieser Computer</translation>
+    </message>
+    <message>
+        <source>Searching for devices…</source>
+        <translation>Geräte werden gesucht…</translation>
+    </message>
+    <message>
         <source>Up Next</source>
         <translation>Als Nächstes</translation>
     </message>
@@ -637,6 +676,11 @@
 </context>
 <context>
     <name>PlayerBar</name>
+    <message>
+        <source>, </source>
+        <comment>between two artist names</comment>
+        <translation>, </translation>
+    </message>
     <message>
         <source>No track playing</source>
         <translation>Es läuft kein Titel</translation>
@@ -846,8 +890,12 @@
         <translation>Sammlung</translation>
     </message>
     <message>
-        <source>Playlists</source>
-        <translation>Playlists</translation>
+        <source>No matches</source>
+        <translation>Keine Treffer</translation>
+    </message>
+    <message>
+        <source>Nothing saved yet</source>
+        <translation>Noch nichts gespeichert</translation>
     </message>
     <message>
         <source>My Account</source>

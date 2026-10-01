@@ -36,8 +36,6 @@ public:
     static constexpr int railBreakpoint  = 820;
     // Width of that rail.
     static constexpr int railWidth       = 68;
-    // At or above this sidebar width the filter chips can afford text labels.
-    static constexpr int chipLabelWidth  = 268;
 
     QString theme() const        { return m_theme; }
     QString language() const     { return m_language; }
@@ -56,7 +54,6 @@ public:
     Q_INVOKABLE int maxSidebar() const   { return maxSidebarWidth; }
     Q_INVOKABLE int railBreak() const    { return railBreakpoint; }
     Q_INVOKABLE int rail() const         { return railWidth; }
-    Q_INVOKABLE int chipLabelMin() const { return chipLabelWidth; }
 
     // PROJECT_VERSION, so the Settings panel stops claiming v0.1-alpha.
     Q_INVOKABLE QString appVersion() const;
