@@ -1,11 +1,24 @@
-# Tidal Wave 0.4.0 — consolidated spec
+# Tidal Wave 0.4.0: consolidated spec
 
 Everything the user asked for in this session, in one place. Branch `beta-0.4.0`,
 merged to `main` only when complete and approved. Commit regularly.
 Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 (`XDG_SESSION_TYPE=wayland`), X11 also supported. Half-screen = **960x1200**.
 
+The requirements below are the record of what was asked for and are left as
+written, including the ones the user later changed their mind about. Each
+section carries a **Status** line saying what actually landed, checked against
+the code on `beta-0.4.0` on 2026-10-01. `HANDOFF.md` is the working list; where
+the two could drift, the Status lines here are the shorter summary of the same
+findings.
+
 ## Global rules (apply to every change)
+
+**Status: G1, G2, G4, G5, G6 held. G3 landed** as the radius scale in
+`ThemePalette.cpp` (`chip` 999, `field` 14, `row` 7, `button` 8, `art` 5,
+`card` 11, popups 14), surfaced in QML as `Theme.radius*`. G1's caps were
+removed in `4d7600b`. G2 still needs a grep before any release: it is a rule
+about displayed strings and nothing enforces it in a test.
 
 - **G1** No fully capitalised user-facing strings anywhere. No `.toUpperCase()`
   on displayed text. Caps-maxxing is both an AI tell and bad UI.
@@ -24,6 +37,11 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 
 ## 1. Responsive layout
 
+**Status: landed** in `8671b09`, with L2, L3, L4 landing in `e2e326d`.
+`Main.qml` is at `minimumWidth: 640` / `minimumHeight: 600`. L10's clamp is in
+the Settings `Popup` in `SideBar.qml`. Covered by `tests/qml/tst_layout_pages.qml`
+and `tst_layout_player.qml`, which instantiate pages at 640 / 820 / 960 / 1280.
+
 - **L1** Full layout correct at **960px** wide. Usable down to **640px**.
   `minimumWidth` drops from 900 to 640; `minimumHeight` stays 600 but the
   Settings popup must fit inside it.
@@ -35,7 +53,7 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
   over it, and slides back on leave, the way compact mode works in Zen Browser
   and Firefox. It is the **same sidebar**, not a separately designed panel: it
   **overlays** the content rather than pushing it, with a soft drop shadow.
-  Smooth, quick, satisfying. There is **no manual toggle button** — drop the
+  Smooth, quick, satisfying. There is **no manual toggle button**. Drop the
   `panel-left` icon; compact mode is entered purely by window width.
 - **L5** `NowPlayingPage`: below ~1000px, stack cover above title and transport
   in one centred column. Currently overflows its transport row by 54px, which
@@ -59,6 +77,14 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
   partial-card peek instead of clipping at an arbitrary point.
 
 ## 2. Sidebar rebuild
+
+**Status: landed** in `25221c4` (data layer, `src/api/LibraryIndex.cpp`) and
+`e2e326d` (the rebuild itself). `qml/components/LibraryFinder.qml` is the
+search field and chip strip. **S8 was changed by the user after this was
+written:** the chips are icons only at every width, never labelled, and they
+sit inside the field's rounded container rather than as pills under it. The
+`Prefs::chipLabelWidth` constant that the labelled variant needed is gone.
+S10 landed in `dacc5f5`.
 
 - **S1** One **flat library list** holding playlists, albums, artists and mixes,
   each row carrying a small type icon.
@@ -89,6 +115,13 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 
 ## 3. Pinning
 
+**Status: landed** in `0f39a77`. `src/ui/PinStore.cpp` persists per user id
+(P6); the sidebar holds the pinned block, the drag reorder and the Pin menu.
+Tests: `tests/tst_pins.cpp`, `tests/qml/tst_pinning.qml`. **One gap on P2:**
+the album and artist delegates in `CollectionPage.qml` still have their own
+right-click `Menu` (around lines 270 and 335) which shadows the new Pin menu on
+those two grids.
+
 - **P1** Pin albums, playlists, artists and mixes.
 - **P2** Right-click context menu (sidebar rows, cards, page headers) with
   Pin / Unpin.
@@ -100,6 +133,10 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 
 ## 4. Navigation
 
+**Status: landed** in `e2e326d`. N1 is in `NowPlayingPage.qml`; N2 is in
+`PlayerBar.qml`, where each artist is its own hover target. Covered by
+`tests/qml/tst_navigation.qml`.
+
 - **N1** Clicking the **track title in Now Playing** opens that track's album.
 - **N2** Clicking an **artist name in the bottom player bar** opens that artist.
   Each artist of a multi-artist track is its **own hover target**, underlined on
@@ -107,6 +144,16 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
   Now Playing.
 
 ## 5. German translation
+
+**Status: landed.** The C++ half in `1b09cde` and `4d7600b`, the QML strings in
+`55fb39d` and `19819ca`, the catalogue in `bd1f91b`, the plurals fix in
+`6407582`, and the strings the sidebar rebuild added in `2dbd1c9`.
+`i18n/tidal-wave_de.ts` is at **zero** `type="unfinished"` across 252 messages.
+T6 is honoured: durations, counts and percentages go through
+`toLocaleString(Qt.locale(), ...)`. `qttools` is in the CI Qt modules in both
+`.github/workflows/ci.yml` and `release.yml`, so `lrelease` runs there.
+**Not done:** the language picker (T2's setting) is not in the Settings panel
+yet, so the only way to choose a language is the `ui/language` key.
 
 - **T1** Qt i18n: `qsTr()` in QML, `tr()` in C++, `.ts` catalogues, `QTranslator`.
 - **T2** Setting with **System / English / Deutsch**, defaulting to the system
@@ -127,17 +174,31 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 
 ## 6. Themes
 
+**Status: landed** in `aab01a8` and `2100153`, with a real bug fixed in
+`58811d6` where switching repainted nothing. **TH1 reads differently than it
+shipped:** six themes, but **four dark** (Midnight, Forest, Ember, Deep) and
+two light (Daylight, Paper), and "Graphite" became the green "Forest" at the
+user's request. `tests/tst_theme.cpp` checks WCAG contrast per token per
+palette. **Not done:** the theme picker in Settings.
+
 - **TH1** Six prebuilt themes: **three dark, two light**, plus one more.
   Chosen in Settings.
 - **TH2** `Theme.qml` becomes a palette lookup driven by a persisted name, so
   every existing binding updates automatically. The accent is currently hardcoded
-  blue (`#00B2F8`) in many places outside Theme.qml — all of those must move to
-  tokens.
+  blue (`#00B2F8`) in many places outside Theme.qml, and all of those must move
+  to tokens.
 - **TH3** The light themes must be genuinely legible: every place that assumes
   a dark ground (white-on-surface text, overlay gradients, the `Qt.rgba(1,1,1,…)`
   hover fills, the player-bar quality badges) needs a token.
 
 ## 7. Audio output
+
+**Status: A1, A2 landed** in `16c0e18`. `Player` holds a `QMediaDevices`,
+re-resolves the preference on `audioOutputsChanged`, and rebinds while keeping
+position and play state (`Player::rebindAudioOutput`). Tested in
+`tests/tst_audio.cpp`. **A3 not done:** no audio output picker in Settings yet.
+**A4 unverified:** the backend matrix and hot-plug of the active device have not
+been exercised on real hardware.
 
 - **A1** Follow the **system default output device live**. Today `Player.cpp:28`
   constructs `QAudioOutput` once and never rebinds, so a system output change
@@ -149,6 +210,13 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
   hot-plug and removal of the active device.
 
 ## 8. Identity and chrome
+
+**Status: landed** in `e15d5c0` and `9a63b37`. **I1 was changed by the user:**
+there is deliberately **no** `assets/icon-small.svg` and no separate tray asset,
+one mark serves every size. I2's count is 15 new glyphs, not 14, and `user` was
+dropped rather than kept beside `artist`. I3's `setDesktopFileName("tidal-wave")`
+is in `Application.cpp`; the hicolor icons are installed from `CMakeLists.txt`.
+I4 is done: the Settings panel reads `prefs.appVersion()`.
 
 - **I1** New logo: three identical parallel wave **bands**, filled rather than
   stroked, running past the tile edge so no line ends are visible, with the blue
@@ -167,6 +235,18 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
 
 ## 9. Tests
 
+**Status: X1, X2, X3 landed.** `TIDALWAVE_BUILD_TESTS=ON` builds `tests/`, one
+binary per `tst_*.cpp`, QML cases under `tests/qml/`. X3 is
+`tst_layout_pages.qml` and `tst_layout_player.qml`.
+**X4, X5: a harness landed** in `0f39a77` at `tests/stress/` (resize, page
+flipping, 5000-track lists, API errors, theme and language switching, plus an
+idle-RSS run of the real binary) across offscreen, software, xcb and wayland.
+It has not been run to a clean result and its findings are not fixed.
+**X6 half done:** `Application::reducedMotion` exists and is detected at
+startup, but only one animation in the whole of `qml/` gates on it. Qt 6.12
+exposes no cross-platform reduced-motion hint, which
+`tests/stress/qml/tst_stress_motion.qml` records rather than asserts.
+
 - **X1** `tests/` target: Qt Test for C++ and QtQuickTest for QML, run in CI.
 - **X2** Unit tests written before implementation (G4).
 - **X3** Layout tests instantiate pages at 640 / 820 / 960 / 1280 and assert no
@@ -181,6 +261,11 @@ Target environment: two 1920x1200 monitors, KDE Plasma, **Wayland** session
   reduced-motion preference where the platform exposes one.
 
 ## 10. Release
+
+**Status: R1, R3 done. R2 open.** `PROJECT_VERSION` is 0.4.0 and
+`Prefs::appVersion()` reads it through the `TIDALWAVE_VERSION` compile
+definition. The branch is pushed; **`main` is untouched and the merge needs the
+user's approval.** Nothing is tagged.
 
 - **R1** Version **0.4.0**, set from `PROJECT_VERSION` rather than hardcoded.
 - **R2** Branch `beta-0.4.0`, regular commits, merge to `main` on approval.

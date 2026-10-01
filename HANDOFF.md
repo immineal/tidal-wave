@@ -1,18 +1,25 @@
-# Tidal Wave 0.4.0 — handoff
+# Tidal Wave 0.4.0 handoff
 
 Everything the user asked for across one long session, what is already done, and
 what is left. Delete this file before merging `beta-0.4.0` into `main`.
 
-**Branch:** `beta-0.4.0`. Commit regularly; merge to `main` only when the whole
-list is done and the user has approved it.
+**Branch:** `beta-0.4.0`, pushed, tracking `origin/beta-0.4.0`. Commit
+regularly; merge to `main` only when the whole list is done and the user has
+approved it. `main` is untouched.
 **Environment:** KDE Plasma, **Wayland** (`XDG_SESSION_TYPE=wayland`), X11 also
-supported. Two 1920x1200 monitors, so half-screen is **960x1200** — that is the
-width everything must look right at.
+supported. Two 1920x1200 monitors, so half-screen is **960x1200**, and that is
+the width everything must look right at.
+
+**Last verified against the code:** 2026-10-01, at `0f39a77`.
 
 **Design review page (the user reviews design here, keep it current):**
 https://claude.ai/artifact/AkdWsw9NekmW8py6eBZtU3
 Source: `docs/design-review.html`. Edit it and republish to that same URL with the
 Artifact tool (pass the URL as `url`, after reading it first).
+
+**The spec:** `docs/SPEC-0.4.0.md` is the record of what was asked for. Its
+requirements are deliberately frozen; each section there carries a Status line
+that should agree with this file.
 
 ## Build and test
 
@@ -26,7 +33,7 @@ QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure
 - `CMAKE_PREFIX_PATH` is required: system Qt 6.11 ships `libQt6QuickTest.so` but
   no `Qt6QuickTest` CMake package. Use the 6.12.0 install, which is what CI uses.
 - `/usr/bin/ctest` in full: `~/bin/ctest` is a broken Python shim.
-- **Never** build into `./build` or `./build_custom` — both stale.
+- **Never** build into `./build` or `./build_custom`. Both are stale.
 - **Never** `pkill` a `tidal-wave` process; the user's real instance is running.
   A second launch hits the `TidalWaveSingleInstanceSocket` lock, sends `show` and
   exits 0, which proves nothing. Isolate a test run with
@@ -37,6 +44,13 @@ QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure
   so pages instantiate with no Tidal session. Known gap: `NowPlayingPage`
   reaches for sleep-timer state on `Window.window`, so it needs `Main` or a
   `Window` wrapper. Worth fixing by moving that state out of `Main.qml`.
+- **`tests/stress/` is not part of `ctest` and not part of the main build.** It
+  is a standalone CMake project that pulls the app in with `add_subdirectory`,
+  built and driven by `tests/stress/run.sh`, which says so at the top of
+  `tests/stress/CMakeLists.txt`. That is deliberate: the suite is long on
+  purpose and must not slow the normal cycle down.
+- `tests/firstrun/run.sh` is likewise a shell harness, not a ctest target.
+  `tests/tst_firstrun.cpp` is in `ctest` and is a different, narrower thing.
 
 ## Ground rules the user set
 
@@ -46,350 +60,331 @@ QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure
 3. **No em dashes** in displayed strings. Use an **en dash** where a separator
    is genuinely wanted; rewrite asides instead.
 4. **Corner radii**: the uniform `radius: 8` is the default AI look. Use a scale
-   where the radius means something (proposed table is in the review page).
+   where the radius means something (the table is in the review page, and the
+   scale now lives in `ThemePalette.cpp`).
 5. **Ask via user prompts**, short questions, as many rounds as needed. Keep
-   chat replies short — the user does not read long ones.
+   chat replies short, because the user does not read long ones.
 6. Everything must work on **X11 and Wayland**, and still build on Windows and
    macOS (CI matrix).
 7. **Use subagents** for work that can be isolated, to save context. Give each
-   one a disjoint file set; never let two agents edit `CMakeLists.txt` at once
-   (all current sources are already wired, so they should not need to).
+   one a disjoint file set; never let two agents edit `CMakeLists.txt` at once.
+8. **At most three concurrent subagents.** Six at once is what exhausted the
+   budget earlier in this session. Dispatch three, wait, commit that batch, then
+   dispatch the next three.
 
 ## Done
 
-- `beta-0.4.0` branched; the user's prior offline-startup/auth fix and the Qt
-  6.12 CI change are committed on it.
+Scaffolding and infrastructure:
+
+- `beta-0.4.0` branched and pushed; the user's prior offline-startup/auth fix
+  (`47017b8`) and the Qt 6.12 CI change ship with this release.
 - Test infrastructure: `tidalwave_qml` static library holds the QML module and
-  all C++ except `main.cpp`, so tests can link it. `TIDALWAVE_BUILD_TESTS=ON`
-  builds `tests/`; CI runs `ctest` on Linux under offscreen. Two placeholder
-  tests pass.
-- Version bumped to 0.4.0 in `CMakeLists.txt`; `Prefs::appVersion()` reads it.
-- `src/ui/Prefs.{h,cpp}` **complete**: theme, language, sidebar width, audio
-  device, all persisted, plus the layout constants (`railBreakpoint` 820,
-  `railWidth` 68, `minSidebarWidth` 180, `maxSidebarWidth` 420,
-  `chipLabelWidth` 268).
-- Contract stubs, bodies still to write: `src/ui/I18n.{h,cpp}`,
-  `src/ui/PinStore.{h,cpp}`, `src/api/LibraryIndex.{h,cpp}`.
-- CMake: translation catalogues wired (`i18n/tidal-wave_{en,de}.ts`, guarded on
-  LinguistTools), `TIDALWAVE_VERSION` compile definition, per-file test targets.
-- New app mark: `assets/icon.svg` + `assets/icon.png`. Three identical parallel
-  wave bands, filled not stroked so no round line ends show. `7W + 2A = 64`
-  makes band thickness, gaps and margins equal; half period 32 keeps the slope
-  gentle enough that the bands look evenly thick. **One mark at every size** —
-  there is deliberately no separate tray asset.
-- Icon set in `qml/components/VectorIcon.qml`: 15 new glyphs, and `VectorIcon`
-  now supports a filled-accent and a stroked-overlay path so one glyph can mix
-  fills and strokes. Fixed per the user's review: `queue` (was a hamburger, and
-  must stay distinct from `playlist`), `mix` (broadcast hub), `cast` (bigger
-  arcs, equal gaps, shortened screen edges), `artist` (now the better of the two
-  near-identical person glyphs; `user` removed), `pin-filled` (needle survives the fill).
+  all C++ except `main.cpp`, so tests link it. `TIDALWAVE_BUILD_TESTS=ON`
+  builds `tests/`; CI runs `ctest` on Linux under offscreen.
+- Version 0.4.0 in `CMakeLists.txt`, reaching QML through the
+  `TIDALWAVE_VERSION` compile definition and `Prefs::appVersion()`. The
+  Settings panel shows it (`SideBar.qml`, `objectName: "settingsVersion"`).
+- `src/ui/Prefs.{h,cpp}`: theme, language, sidebar width, audio device,
+  software rendering, all persisted, plus the layout constants
+  (`railBreakpoint` 820, `railWidth` 68, `minSidebarWidth` 180,
+  `maxSidebarWidth` 420). `chipLabelWidth` is gone, dropped in `2dbd1c9` when
+  the user settled on icon-only chips.
+- New app mark: `assets/icon.svg` + `assets/icon.png`, one mark at every size,
+  no separate tray asset. Icon set in `qml/components/VectorIcon.qml`: 15 new
+  glyphs, `VectorIcon` supports a filled-accent and a stroked-overlay path,
+  `user` was folded into `artist`.
+- `qttools` is in the CI Qt modules in both `.github/workflows/ci.yml` and
+  `release.yml`, so `lrelease` exists there and CI builds the catalogues.
 
-## To do
+**A. Themes.** Landed. `aab01a8` added `src/ui/ThemePalette.{h,cpp}` with the
+palette table and the radius scale, and made `qml/Theme.qml` a binding layer
+over `ThemePalette.current`. `2100153` moved every hardcoded colour in `qml/`
+onto a token. `58811d6` fixed a real bug where switching the theme repainted
+nothing. Six palettes, **four dark** (Midnight, Forest, Ember, Deep) and two
+light (Daylight, Paper); "Forest" replaced the drafted violet "Graphite" at the
+user's request. `tests/tst_theme.cpp` checks WCAG contrast for every token
+against bg/surface/surfaceHigh; `tests/qml/tst_theme_live.qml` covers the live
+swap. Two findings kept: white on the accent fails contrast on all four dark
+themes, so `onAccent` is near-black there, and `hoverFill` had to become
+per-palette because `Qt.rgba(1,1,1,0.04)` is invisible on light.
+**Still owed: the theme picker in Settings.**
 
-### A. Themes  (nothing started beyond `Prefs::theme`)
-- Rewrite `qml/Theme.qml` as a palette lookup keyed on `prefs.theme`, so every
-  existing binding updates on change. Add the radius scale as tokens.
-- **Six themes: four dark, two light.** Draft palettes are in the review page.
-  **The user asked that the two light themes be made clearly more different
-  from each other** than that draft — they are too alike.
-- Migrate every hardcoded colour in QML to a token. The accent `#00B2F8` and
-  the `Qt.rgba(1,1,1,0.04)` hover fills appear in many files.
-- The light themes are the real work: roughly forty places assume a dark ground
-  (white-on-cover text, hero overlay gradients, player-bar quality badges).
-- Theme picker in Settings.
+**B. German translation.** Landed. `1b09cde` and `4d7600b` did the C++ side and
+installed the translator; `55fb39d` and `19819ca` made the component and page
+strings translatable; `bd1f91b` added the catalogue; `6407582` fixed English
+rendering "14 track(s)"; `2dbd1c9` covered the strings the sidebar rebuild
+added. `i18n/tidal-wave_de.ts` is at **zero** `type="unfinished"` across 252
+messages, checked with `grep -c 'type="unfinished"' i18n/tidal-wave_de.ts`.
+`src/ui/I18n.cpp` resolves the system locale (de_AT and de_CH find German,
+untranslated locales fall back to English, `LANGUAGE=de:en` is consulted) and
+retranslates live. Concatenated strings were restructured into `%1` forms and
+counts go through `qsTr("%n …", "", n)`. Numbers, durations and percentages use
+`toLocaleString(Qt.locale(), …)`.
+**Still owed: the language picker in Settings.** Today the only way to pick one
+is the `ui/language` key in the settings file.
 
-### B. German translation
-- `qsTr()` in QML, `tr()` in C++, `.ts` catalogues, `QTranslator`.
-- Settings picker **System / English / Deutsch**, default system locale,
-  applying **live** via `QQmlEngine::retranslate()` — implement `src/ui/I18n.cpp`.
-- ~175 distinct static strings. A full per-file inventory was produced in
-  session; regenerate it with a search agent if needed.
-- ~30 strings are built by concatenation and break under German word order —
-  `"Playing from " + name` (`NowPlayingPage.qml:346`), `"Search saved " + type`
-  (`CollectionPage.qml:147`), `"No results for \"" + q + "\""`
-  (`SearchPage.qml:158`), the Album/Playlist summary lines
-  (`AlbumPage.qml:147-158`, `PlaylistPage.qml:143-152`). Restructure into one
-  `qsTr` with `%1`, do not merely wrap.
-- Plurals via `qsTr("%n track(s)", "", n)`. Today `QueuePanel.qml:31`,
-  `HomePage.qml:82` and `SearchPage.qml:202` can render "1 tracks".
-- C++ strings: tray menu, the "Save track" dialog title,
-  `Player::qualityLabel`, Downloader/Player/Cast errors.
-- Add `qttools` to the CI Qt modules so `lrelease` exists there.
+**C. Responsive layout.** Landed in `8671b09`. `qml/Main.qml` is now
+`minimumWidth: 640`, `minimumHeight: 600`. Every finding from the audit was
+addressed: the Now Playing transport stacks, `CollectionPage`'s search moved to
+its own row, `TrackRow` drops columns and reserves the hover buttons' space,
+`PlayerBar`'s right group is fixed, `QueuePanel` got a scrim and a width clamp,
+the Settings popup clamps to `min(480, w-64) x min(640, h-64)`, the hero headers
+flow, and the grids derive their cell size. `tests/qml/tst_layout_pages.qml` and
+`tst_layout_player.qml` instantiate pages at 640 / 820 / 960 / 1280.
 
-### C. Responsive layout  (nothing started)
-Full audit was done in session; the findings:
-- **`NowPlayingPage.qml:824`** — transport row needs 344px, gets 290 at 960.
-  Overflows by 54px; **already broken at today's 900 minimum.** Decision:
-  below ~1000px **stack the cover above the title and transport** in one
-  centred column.
-- **`CollectionPage.qml:77`** — header row needs ~1083px against a 740px pane.
-  Decision: **move the search field to its own row below the tabs.**
-- **`TrackRow.qml`** (six pages) — 260-472px of fixed columns. Decision: hide
-  the 160px album column below ~640px of row width, hide popularity below
-  ~560px, and **always reserve the hover buttons' space** so titles stop
-  jittering on mouseover.
-- **`PlayerBar.qml:167`** — right group declares `minimumWidth: 160`, content
-  is 218px; the queue button clips off-window below ~731. Fix the minimum, drop
-  the volume slider and cast below ~720.
-- **`QueuePanel`** — needs a scrim and a `MouseArea` (clicks currently fall
-  through to the page beneath) and `width: Math.min(340, parent.width * 0.85)`.
-- **Settings popup** — 640px tall against a 600px `minimumHeight`; clamp to
-  `min(480, w-64) x min(640, h-64)`.
-- Hero headers (Album/Playlist/Mix/Artist): pill `Row` becomes a `Flow`, fixed
-  hero `height` becomes `implicitHeight`, add elide/wrap to artist and meta
-  text, drop `PillButton`'s fixed `width: 120`.
-- `CollectionPage` grids: derive `cellWidth` and card size from the width.
-- `HorizontalSection`: derive card size so the row peeks deliberately.
-- `Main.qml`: `minimumWidth` 900 → 640.
+**D and E. Sidebar rebuild, sizing and the compact rail.** Landed in `25221c4`
+(the data layer, `src/api/LibraryIndex.cpp`, including the missing-playlists bug:
+playlists are now paged rather than capped at 30) and `e2e326d` (the rebuild).
+`qml/components/SideBar.qml` holds the flat library list, the pinned block, the
+drag handle on the border and the rail; `qml/components/LibraryFinder.qml` holds
+the search field and the type filter chips. The rail collapses below
+`Prefs::railBreakpoint`, hover-expands as the same sidebar overlaying the
+content, and has no manual toggle. Chips are **icons only at every width** and
+sit inside the field's rounded container, which is the user's later decision and
+differs from SPEC S8 as written. The footer shows the username with no avatar
+(`dacc5f5`). Tests: `tests/qml/tst_sidebar.qml`, `tests/tst_library.cpp`.
 
-### D. Sidebar rebuild  (nothing started)
-- One **flat library list**: playlists, albums, artists and mixes together, each
-  row with a small type icon.
-- Order: **pinned, then recently played, then A-Z.**
-- **Fetch all playlists by paging.** Today `SideBar.loadPlaylists` asks for 30,
-  which is the reported "new playlists don't show up" bug.
-- Track recently-played **locally for all four kinds** — today only playlists
-  get `markPlaylistPlayed`. **Cross-device history is not available:**
-  `users/{id}/history` returns 404 and `users/{id}/activity` only reports
-  favourites added, not plays. Phone plays cannot be pulled in; this was checked
-  against the live API and the user has been told.
-- **Search field** above the library list, below the divider. Performant, simple.
-- Search also matches **songs**: liked songs are already fully cached, so those
-  are instant; saved albums' tracklists get indexed lazily in the background and
-  cached to disk. **No artist top tracks.**
-- Result expansion: an **artist** match also shows that artist's saved albums
-  and saved songs; a **song** match also shows the saved album containing it.
-- **Type filter chips** between the field and the list: songs / albums /
-  artists / playlists / mixes. **Icons only, always** — the user saw the
-  text-label variant and said the pills were too big. They must read as one unit
-  with the search field, not as loose pills; the field wants generous rounding.
-- Footer shows the **username, not the email address**, and **no avatar icon**.
-  The `user` glyph sat there alone and read as a missing profile picture; drop
-  it and give the username the space. The gear stays. The `user` glyph itself
-  is gone from `VectorIcon.qml`: its drawing is now the `artist` glyph, since
-  the two were near-identical at 18px and only one person icon is needed.
-- Implement in `src/api/LibraryIndex.cpp`.
+**F. Pinning.** Landed in `0f39a77`. `src/ui/PinStore.cpp` persists per Tidal
+user id; the pinned block sits above the library list with drag-to-reorder
+(`SideBar.qml`, the `pinDrag*` properties); `qml/components/ContextMenu.qml`
+carries the Pin menu, wired into `MediaCard` and the Album, Artist, Mix and
+Playlist page headers. A pinned item appears only in the pinned block. Tests:
+`tests/tst_pins.cpp`, `tests/qml/tst_pinning.qml`.
+**One gap, listed under Still open: `CollectionPage`'s own right-click menus.**
 
-### E. Sidebar sizing and compact mode
-- The sidebar border is a **drag handle**: `Qt.SplitHCursor` on hover,
-  user-adjustable, persisted through `prefs.sidebarWidth`.
-- Below `Prefs::railBreakpoint` (820px window width) it collapses to the
-  `railWidth` (68px) rail showing **only the logo, the nav icons and the pinned
-  covers**. Finder and library hide. At the bottom of the rail, **only the
-  settings gear** — no user icon.
-- The rail **hover-expands** into the ordinary full sidebar, the way compact
-  mode works in Zen Browser and Firefox: the **same sidebar**, **overlaying**
-  the content rather than pushing it, with a soft drop shadow. Slides back on
-  leave.
-- **No manual toggle button.** The `panel-left` glyph was dropped on purpose.
-- Animations quick, smooth and satisfying, and verified in every graphics
-  environment.
+**G. Navigation.** Landed in `e2e326d`. The Now Playing track title opens that
+track's album; each artist in the player bar is its own hover target that opens
+that artist (`PlayerBar.qml:64`). `tests/qml/tst_navigation.qml` covers it.
 
-### F. Pinning  (`src/ui/PinStore.cpp` is a stub)
-- Pin albums, playlists, artists and mixes.
-- Right-click context menu on sidebar rows, cards and page headers.
-- Pinned block above the library list; drag to reorder.
-- A pinned item shows **only** in the pinned block, never duplicated below.
-- Persisted per Tidal user id.
+**H. Audio output.** Landed in `16c0e18`, with the `Player::setPrefs` wiring in
+`Application::run()`. `Player` holds a `QMediaDevices`, re-resolves on
+`audioOutputsChanged` and on `Prefs::audioDeviceChanged`, and rebinds through
+`Player::rebindAudioOutput` while keeping position and play state. An empty
+`prefs.audioDevice` means follow the system default. `tests/tst_audio.cpp`
+covers it.
+**Still owed: the audio output picker in Settings**, and a real-hardware pass
+across PipeWire, PulseAudio and ALSA with hot-plug of the active device. Nothing
+here has been exercised on real audio hardware.
 
-### G. Navigation
-- Clicking the **track title in Now Playing** opens that track's album.
-  `player.currentTrack` already carries `albumId`.
-- Clicking an **artist name in the player bar** opens that artist. Each artist
-  of a multi-artist track is its **own hover target**, underlined on hover.
-  Cover and gaps still open Now Playing. `trackToMap` carries only the first
-  `artistId`, so the map needs the full artist list.
+**K. Update check and privacy notice.** Landed. The backend is
+`src/ui/UpdateCheck.cpp` (`16c0e18`), the prompt is
+`qml/components/UpdatePrompt.qml` (`0f39a77`), and the privacy notice is the
+Privacy section at the bottom of `README.md`. It polls
+`https://api.github.com/repos/immineal/tidal-wave/releases/latest` at most once
+per 24 hours, caches to disk, and `Main.qml` calls
+`updatePrompt.showIfAvailable()` once in `Component.onCompleted`, so the offer
+lands at the next launch and never mid-session. The prompt lives on the window,
+not on a page, so navigating cannot rebuild it. Buttons are Open release, Later
+and Skip this version; **Escape behaves as Later, never Skip**, which was a
+deliberate decision so a stray keypress cannot throw a release away
+(`UpdatePrompt.qml:30`). The app never downloads or installs anything.
 
-### H. Audio output
-- `Player.cpp:28` builds `QAudioOutput` once and never rebinds, which is why a
-  system output change needs an app restart.
-- Follow `QMediaDevices::defaultAudioOutput` live when `prefs.audioDevice` is
-  empty, else use the chosen device. **Preserve position and play state** across
-  the switch.
-- Settings picker: "System default" plus the available devices.
-- Hold up across PipeWire, PulseAudio and ALSA, and across hot-plug and removal
-  of the active device.
+> **The QML name is `updateCheck`, not `update`.** Earlier drafts of this file
+> said `update.enabled` and `update.checkNow()`. That name does not work, and it
+> fails silently rather than loudly. `QQuickItem` and `QQuickWindow` both have
+> an `update()` slot, and QML's unqualified lookup reaches the enclosing objects
+> before it reaches the context properties, so under the `ApplicationWindow`,
+> which is everywhere, a bare `update` resolves to that slot. No error is
+> raised: `update.updateAvailable` simply reads `undefined`, so code written
+> against the old name looks right and does nothing. `Application.cpp` registers
+> the context property as `updateCheck`, and `Main.qml` and `UpdatePrompt.qml`
+> already use that name.
 
-### I. Stress and environment tests
-- Continuous resize while navigating; rapid page flipping for leaks;
-  5000-track lists; simulated API errors and timeouts; language switching under
-  load; theme switching under load.
-- Verify under X11, Wayland and `QT_QUICK_BACKEND=software`, plus offscreen in
-  CI. Windows and macOS via the CI build matrix.
-- Animations must stay smooth in all of the above.
+The QML API is `updateCheck.updateAvailable` and `updateCheck.latestVersion`;
+the three buttons are `app.openUrl(updateCheck.releaseUrl)`,
+`updateCheck.remindLater()` and `updateCheck.skipThisVersion()`. The Settings
+switch binds `updateCheck.enabled`, and a "check now" button calls
+`updateCheck.checkNow()`, which skips the 24h throttle but still respects the
+switch.
+**Still owed, and in flight right now with another agent: the update switch in
+the Settings panel, and the privacy block in Settings.** The notice is supposed
+to live in two places and only the README half exists. Until the switch lands,
+the only way to turn the check off is the `update/enabled` key, which is what
+the README now says.
 
-### L. Hardware acceleration toggle
-- A Settings switch that turns the GPU path off, for people who noticed the
-  app using a slice of their GPU while idle.
-- Qt decides the scene-graph backend **before the first window exists**, so
-  this is read in `Application::run()` ahead of the engine and the toggle has
-  to say it needs a restart. `QQuickWindow::setSceneGraphBackend("software")`,
-  persisted as `Prefs::softwareRendering`.
-- Turn off the 4x multisampling in the same breath when it is on; that is GPU
-  work too.
-- Must not strand anyone: if software rendering is what makes the app usable
-  on their machine, the setting has to survive and apply on every launch.
+Both repo pointers are correct, checked: `kRepoSlug` is `"immineal/tidal-wave"`
+at `src/ui/UpdateCheck.cpp:17`, and `CPACK_PACKAGE_HOMEPAGE_URL` is
+`https://github.com/immineal/tidal-wave` in `CMakeLists.txt` (fixed in
+`4fbebd2`).
 
-### M. First-run simulation
-- Actually run the app as a brand new install would see it and look for the
-  stupid stuff: **empty `HOME`, no settings file, no saved session, no cache**.
-- Cover the environments the app claims to support: X11, Wayland,
-  `QT_QUICK_BACKEND=software`, offscreen, and a session where the tray is
-  missing. Windows and macOS stay on the CI matrix.
-- Check: does it start, does it land on the login page, does it survive with no
-  network, are there console errors or QML warnings, does the window icon
-  resolve, is the default sidebar width sane, does the default theme apply.
-- Isolate every run with `TMPDIR=… HOME=… XDG_*=…`. **Never** `pkill
-  tidal-wave` and never let a run touch the user's real instance or settings.
+**L. Hardware acceleration toggle.** The engine half landed in `15ef6e6`.
+`Prefs::softwareRendering` is persisted as `ui/softwareRendering` and read in
+`Application::run()` at lines 197 to 206, ahead of the engine, because Qt picks
+the scene-graph backend before the first window exists. It skips the 4x
+multisampling in the same breath, and an explicit `QT_QUICK_BACKEND` or
+`QSG_RHI_BACKEND` wins over it. `tests/tst_prefs.cpp` covers the fresh-install
+defaults.
+**Still owed: the Settings toggle itself**, with the wording that it needs a
+restart.
 
-### J. Release
-- Merge `beta-0.4.0` into `main` once complete **and approved**. Do not tag or
-  push without asking.
+**M. First-run simulation.** The harness landed: `tests/firstrun/run.sh` runs
+eleven scenarios (offscreen, software, xcb under a private Xvfb, nested
+`kwin_wayland`, offline under `unshare -rn`, no-tray, corrupt settings, missing
+QML, the single-instance handoff, the desktop file, and a dependency check), and
+`tests/tst_firstrun.cpp` is in `ctest`. Fixed from its findings: the missing
+`qml6-module-qtquick-shapes` dependency, `qt6-wayland`, the two unlisted Qt libs,
+the em dash in the window title, and the dangling `Prefs*` in
+`ThemePalette::setPrefs`. **Five findings are still open; they are listed below.**
+
+**I. Stress and environment tests.** A harness landed in `0f39a77` at
+`tests/stress/`: `run.sh` plus six QtQuickTest scenarios covering continuous
+resize while navigating, rapid page flipping with RSS sampling, 5000-track
+lists, simulated API errors and malformed payloads, theme and language switching
+under load, and frame timing, across offscreen, software, xcb and wayland, plus
+an idle run of the real binary in two themes. It is not wired into `ctest` on
+purpose. **It has not been run to a clean result and nothing it found has been
+fixed, so this section is not done.** See below.
+
+## Still open
+
+### J. Release. Not started, and must not start without approval.
+- Merge `beta-0.4.0` into `main` only when complete **and** approved. Do not tag
+  and do not push a tag without asking.
 - Delete this file in that merge.
 
-### K. Update check and privacy notice
-- Poll the GitHub releases API for a tag newer than `PROJECT_VERSION`.
-  **Once per 24h**, cached to disk, so a launch does not always hit the network.
-- **Prompt at the next launch**, never mid-session: no idle timer, no popup
-  over playback. Decided with the user.
-- Buttons: **Open release / Later / Skip this version.** Skip and Later both
-  persist. The popup links out to the GitHub release page; the app never
-  downloads or self-installs. Keeping that complexity out is the point.
-- Privacy notice lives in **two places**, per the user: a block in the
-  **Settings** panel and a section at the **bottom of `README.md`**. No
-  separate PRIVACY.md. It covers every outbound request: the Tidal API, cover
-  art fetches, Chromecast mDNS on the LAN, and the new GitHub version check.
-- The check must be switchable off, and the notice has to say so.
+### The Settings panel is most of what is left
+`qml/components/SideBar.qml`'s Settings `Popup` currently has three sections:
+Account, Playback (streaming quality) and Keyboard shortcuts. Everything else
+that 0.4.0 added is reachable only by editing the settings file. Owed, in one
+place:
+- theme picker (A), language picker (B), audio output picker (H),
+- hardware acceleration toggle with its restart notice (L),
+- the update check switch and a "check now" button (K),
+- the privacy block (K).
 
-## Answered since the handoff
+The update switch and the privacy block are being built right now by another
+agent. Check what is on disk before starting any of the others.
 
-- **Themes:** keep the six palettes from the review page, but **"Graphite" is
-  replaced by a green dark theme** ("Forest"). The user called the violet
-  sloppy. The light pair stays **Daylight** (crisp white, blue) and **Paper**
-  (warm, green accent) - the user likes Paper as drawn.
-- **Radius scale:** the review page table, with **popups/dialogs at 14**, not
-  18. Everything else as drafted.
-- **Update check:** once per 24h, prompt at next launch only (section K).
-- **Privacy notice:** Settings panel plus the bottom of README.md (section K).
+### Stress harness findings, not yet fixed
+Source: `tests/stress/`, read in full.
+- **The suite has not been run to a clean result.** Run
+  `tests/stress/run.sh --list` first, then `STRESS_SCALE=0.25
+  tests/stress/run.sh` for a quick pass before the full one. Treat every
+  number it prints as unverified until you have watched it run. Its safety
+  rules match `tests/firstrun/run.sh`: private `HOME`/`TMPDIR`/`XDG_*` through
+  `env -i`, no process-name matching, no synthetic input, everything under
+  `timeout`.
+- **`tst_stress_motion.qml` probes the wrong object.** Near its end it tests
+  `prefs.reduceMotion` and concludes "the app has no reduced-motion control".
+  There is no `reduceMotion` on `Prefs`. The real property is
+  `Application::reducedMotion`, exposed to QML as `app.reducedMotion`, which is
+  what `SideBar.qml:63` reads. The probe therefore always reports the gap,
+  whether or not one exists. Fix the probe before trusting that line.
+- The scenario the harness cannot answer is frame pacing. It says so itself:
+  offscreen does not present, Xvfb rasterises through llvmpipe, a nested
+  compositor adds a copy. It only catches an animation producing no frames, one
+  far behind its neighbours, and a collapse under a big scene. Anything beyond
+  that needs a real display.
 
-## Session of 2026-10-01 (00:45 to ~01:20)
+### First-run findings, not yet fixed
+Source: `tests/firstrun/run.sh`, all five re-checked against the code today.
+- **`QLocalServer::listen()` failure is swallowed.** `src/ui/Application.cpp:231`
+  is `if (server->listen(socketName)) { … }` with no `else`. The lock is
+  `$TMPDIR/TidalWaveSingleInstanceSocket`; a `TMPDIR` long enough to breach the
+  107-byte `sockaddr_un` limit makes `listen()` fail silently, and then *every*
+  launch starts a full second instance. Same on a multi-user box, because the
+  name has no uid in it. Log it at minimum; better, put the uid in the name.
+- **Proxy settings are ignored entirely.** There is still no
+  `QNetworkProxyFactory` anywhere in `src/`, so anyone behind a corporate proxy
+  gets silence with no explanation.
+- **No tray plus close equals a vanished app.** `Application.cpp:215` sets
+  `setQuitOnLastWindowClosed(false)` and `Main.qml:25` hides the window on
+  close unless `app.reallyQuit`. The tray is only created when
+  `QSystemTrayIcon::isSystemTrayAvailable()` (`Application.cpp:291`), so with no
+  tray there is no way back. Quit on close when the tray is unavailable.
+- **PipeWire and PulseAudio connect errors print on every run** with no audio
+  server. `silenceLogsAndAlsa()` (`Application.cpp:72`) covers the Qt logging
+  categories and ALSA's own stderr, and misses these because they are neither.
+- **A real `.deb` install has never been tested.** This box is openSUSE, no
+  dpkg. The dependency findings came from `ldd`, the QML imports and a
+  mount-namespace reproduction. Verify the package on an actual Debian box
+  before release.
 
-Branch is **pushed**: https://github.com/immineal/tidal-wave/tree/beta-0.4.0
-(`origin/beta-0.4.0`, tracking set). main untouched, still awaiting approval.
+### Reduced motion is detected but almost nothing honours it
+`Application::reducedMotion` exists and is detected once at startup
+(`Application.cpp:147`, `detectReducedMotion()`), and it reaches QML as
+`app.reducedMotion`. **Exactly one animation gates on it:** the sidebar's width
+`Behavior`, through `SideBar.qml:63` and `:68`. Counting `Behavior`,
+`NumberAnimation`, `PropertyAnimation`, `ColorAnimation`, `SequentialAnimation`
+and `RotationAnimation`, there are about 25 animation sites across ten files
+(`LoginPage` 8, `NowPlayingPage` 4, `SeekBar` 3, `MediaCard` 3, `SideBar` 2, and
+one each in `PageHeader`, `BackButton`, `QueuePanel`, `MixPage`,
+`PlaylistPage`). SPEC X6's second half is therefore unimplemented. The cheap fix
+is a single `Theme`-level duration token that collapses to 0, so a `Behavior`
+does not have to know about `app`.
 
-### Landed and committed
-- `aab01a8` **Six themes.** `src/ui/ThemePalette.{h,cpp}` holds the palette
-  table and the radius scale; `qml/Theme.qml` is now a binding layer over
-  `ThemePalette.current`, so a theme swap repaints every existing binding.
-  `tests/tst_theme.cpp` (43 cases) checks WCAG contrast for every token against
-  bg/surface/surfaceHigh, the ramp direction, translucency, and pins the radius
-  scale. Two findings worth keeping: white on the accent fails contrast on all
-  four dark themes, so `onAccent` is near-black there; and `hoverFill` had to
-  become per-palette because `Qt.rgba(1,1,1,0.04)` is invisible on light.
-  Six palettes: Midnight, **Forest** (green, replaced the violet Graphite per
-  the user), Ember, Deep dark; Daylight and Paper light.
-- `2100153` **Token adoption across all of qml/.** Also fixed three live bugs:
-  `NowPlayingPage` passed 0-255 values to `Qt.rgba()` (which takes 0..1 and
-  clamps) in three places, so a "15% blue tint" was near-opaque cyan and a red
-  wash rendered pure white.
-- `15ef6e6` **I18n + software rendering.** `I18n` resolves system locale
-  (de_AT/de_CH find German, untranslated locales fall back to English,
-  `LANGUAGE=de:en` consulted), installs the catalogue, retranslates live.
-  20 tests. `Prefs::softwareRendering` added, read before the engine, skips 4x
-  MSAA too; an explicit `QT_QUICK_BACKEND`/`QSG_RHI_BACKEND` wins over it.
-  `tst_prefs` (14 cases) covers fresh-install defaults and layout-constant
-  coherence.
-- `4d7600b` **Translator wired into `Application`**, tray strings via `tr()`,
-  and the caps-maxxing removed ("TIDAL WAVE", "PLAYLISTS", "ACCOUNT",
-  "PLAYBACK", "KEYBOARD SHORTCUTS", `.toUpperCase()` on the quality badge).
+### `NowPlayingPage` is not independently testable
+It reaches into `Window.window` for all its sleep-timer state
+(`NowPlayingPage.qml:67` to `:81`: `sleepTimerActive`, `sleepStopAtEndOfTrack`,
+`sleepTimeLeft`, `sleepIsFading`, `sleepFadeOut`, plus `startSleepTimer`,
+`cancelSleepTimer` and `formatSleepTime`). The state itself lives in `Main.qml`.
+So the page cannot be instantiated in a test without `Main` or a `Window`
+wrapper that fakes all eight members. Moving that state out of `Main.qml`, into
+a small QML singleton or onto a C++ object, fixes the page and the test stub at
+once. Other pages use `Window.window` only for `navigate()` and `goBack()`,
+which the stub already handles.
 
-6 test binaries, all green:
-`QT_QPA_PLATFORM=offscreen /usr/bin/ctest --test-dir build-t --output-on-failure`
+### `CollectionPage`'s own context menus shadow the Pin menu
+`qml/pages/CollectionPage.qml` gives its album delegate (around line 270) and
+its artist delegate (around line 335) a local `Menu` on `Qt.RightButton`, each
+with two `MenuItem`s of its own. Those predate section F and they win over the
+shared Pin menu from `ContextMenu.qml`, so right-clicking an album or an artist
+in My Collection offers no Pin. Either fold Pin into those two menus or replace
+them with the shared one. The grids in the rest of the app are fine.
 
-### Resolved after that note was written
-Audio (H) and the update check (K) both landed in `16c0e18`, with the
-`Player::setPrefs` wiring done. All 8 test binaries pass. `tests/firstrun/`
-was committed too but its agent never reported, so **treat the first-run
-harness as unverified**: read it, run it, and trust nothing it claims until
-you have seen it run.
+### Dead SQL dependency
+Nothing in `src/` uses SQL. `grep -rni sql src/` returns nothing. Yet
+`CMakeLists.txt` still has `Sql` in `find_package(Qt6 … COMPONENTS)` and
+`Qt6::Sql` in `target_link_libraries`, and the `.deb` still declares
+`libqt6sql6` and `libqt6sql6-sqlite` in `CPACK_DEBIAN_PACKAGE_DEPENDS`. The
+README used to claim the session was cached in SQLite, which was never true: it
+is `~/.config/tidal-wave/credentials.json`, plain JSON, written owner-only by
+`Auth::saveCredentials`. The README is fixed and the sqlite dev packages are out
+of its toolchain table. Dropping the link and the two Depends is a `CMakeLists.txt`
+change and belongs to whoever owns that file.
 
-### The note as written at the time
-Three subagents were still running and their work is **uncommitted on disk**.
-Run `git status` and inspect before doing anything else; each may be complete,
-partial, or broken.
-1. **Audio output (section H).** Owns `src/player/Player.{h,cpp}` and
-   `tests/tst_audio.cpp`. `Player.h` is modified and `tst_audio.cpp` (14.8K)
-   exists. It was told to add `Player::setPrefs(Prefs*)` and NOT to touch
-   `Application.cpp`, so **the one-line wiring in `Application::run()` is still
-   owed** - add `m_player->setPrefs(m_prefs);` after the player is constructed.
-2. **Update check (section K).** Owns `src/ui/UpdateCheck.{h,cpp}`,
-   `tests/tst_update.cpp` and `CMakeLists.txt`. Only `UpdateCheck.h` exists so
-   far. It was sent the real repo id: **`immineal/tidal-wave`**. If the .cpp is
-   missing, the CMakeLists entry may be missing too - check both.
-3. **First-run simulation (section M).** Owns `tests/firstrun/`. Nothing on
-   disk yet; likely lost. Probably needs redoing from scratch.
+## Decisions the user already made
 
-### UpdateCheck still needs wiring into Application (4 lines)
-1. `#include "ui/UpdateCheck.h"` and an `UpdateCheck *m_update = nullptr;`
-   member in `Application.h`.
-2. `m_update = new UpdateCheck(this);` anywhere after the org/app names are
-   set (it only reads QSettings).
-3. `ctx->setContextProperty(QStringLiteral("update"), m_update);`
-4. `m_update->startupCheck();` **after** the engine loads, so the request is
-   never in front of the first frame. Async, self-throttling, silent on
-   failure, so it needs no guard.
+Do not reopen these.
 
-The QML popup reads `update.updateAvailable` / `update.latestVersion`; its
-three buttons are `app.openUrl(update.releaseUrl)`, `update.remindLater()`
-and `update.skipThisVersion()`. The Settings switch binds `update.enabled`,
-and a "check now" button calls `update.checkNow()` (skips the 24h throttle,
-still respects the switch).
+- **Themes:** six palettes, but **"Graphite" was replaced by a green dark theme
+  ("Forest")**. The user called the violet sloppy. The light pair stays
+  **Daylight** (crisp white, blue) and **Paper** (warm, green accent), and the
+  user likes Paper as drawn. Shipped as four dark and two light, not the three
+  and two the spec says.
+- **Radius scale:** the review page table, with **popups and dialogs at 14**,
+  not 18. Everything else as drafted.
+- **Filter chips:** **icons only, always.** The user saw the labelled variant
+  and said the pills were too big. They must read as one unit with the search
+  field, which is why they sit inside its container. This overrides SPEC S8.
+- **No manual sidebar toggle button.** The `panel-left` glyph was dropped on
+  purpose; compact mode is entered by window width alone.
+- **One app mark at every size.** No `icon-small.svg`, no separate tray asset.
+  This overrides SPEC I1.
+- **No `user` glyph.** Its drawing became the `artist` glyph, since the two were
+  near-identical at 18px. The sidebar footer shows the username with no avatar.
+- **Update check:** once per 24h, prompt at next launch only, Escape means
+  Later.
+- **Privacy notice:** the Settings panel plus the bottom of `README.md`. No
+  separate PRIVACY.md.
+- **Cross-device play history is not available.** `users/{id}/history` returns
+  404 and `users/{id}/activity` only reports favourites added, not plays. Phone
+  plays cannot be pulled in. This was checked against the live API and the user
+  has been told. Recently-played is tracked locally for all four kinds.
 
-Gotcha found while writing its tests: Qt 6.12 `moc` mis-lexes a `//` inside a
-raw string literal and silently emits an empty `.moc`, which shows up as
-`undefined reference to vtable`. See the comment at `tests/tst_update.cpp:150`.
+## Next up, in order
 
-### First-run audit findings, still open
-From `tests/firstrun/run.sh` (it passed offscreen, software, xcb under a
-private Xvfb, nested `kwin_wayland`, offline under `unshare -rn`, no-tray,
-corrupt settings and the single-instance handoff). Fixed already: the missing
-`qml6-module-qtquick-shapes` dependency, `qt6-wayland`, the two unlisted Qt
-libs, the em dash in the window title, and the dangling `Prefs*` in
-`ThemePalette::setPrefs`. Still open:
-
-- **`QLocalServer::listen()` failure is swallowed** (`Application.cpp:179`, no
-  `else`). The lock is `$TMPDIR/TidalWaveSingleInstanceSocket`; a TMPDIR long
-  enough to breach the 107-byte `sockaddr_un` limit makes listen() fail
-  silently and then *every* launch starts a full second instance. Same on a
-  multi-user box, since the path has no uid in it. Log it at minimum; better,
-  put the uid in the name.
-- **Proxy settings are ignored entirely.** No
-  `QNetworkProxyFactory::setUseSystemConfiguration` anywhere in `src/`, so
-  anyone behind a corporate proxy gets silence with no explanation.
-- **No tray plus close equals a vanished app.** `setQuitOnLastWindowClosed(false)`
-  with `onClosing -> root.hide()` unconditionally (`Main.qml:20-25`). With no
-  tray there is no way back. Quit on close when
-  `QSystemTrayIcon::isSystemTrayAvailable()` is false.
-- **PipeWire/PulseAudio connect errors print on every run** with no audio
-  server. `silenceLogsAndAlsa()` misses them because they are not Qt logging.
-- A real `.deb` install was never tested: this box is openSUSE, no dpkg. The
-  dependency findings come from `ldd`, the QML imports and a mount-namespace
-  reproduction, so **verify the package on an actual Debian box** before
-  release.
-
-### Next up, in order
-- Finish/verify the three above, then commit and push.
-- **B. German translation**: the C++ half is done; the ~175 QML strings, the
-  ~30 concatenated ones and the plurals are untouched. Also add `qttools` to
-  the CI Qt modules so `lrelease` exists there.
-- **C** responsive layout, then **D/E/F** sidebar rebuild, sizing and pinning,
-  then **G** navigation.
-- Settings UI still needs: the theme picker, the language picker, the audio
-  device picker, the hardware-acceleration toggle, the privacy block, and the
-  real app version.
-- Keep `docs/design-review.html` current and republish it to the artifact URL.
-
-### Note for whoever picks this up
-The user asked for **at most three concurrent subagents**. Six were running at
-once here and that is what exhausted the budget. Dispatch three, wait, commit
-that batch, then dispatch the next three.
+1. Build the Settings panel out. It is the single biggest gap between what the
+   code can do and what a user can reach. Coordinate with the agent already
+   working on the update switch and the privacy block.
+2. Run `tests/stress/run.sh` properly and fix what it finds, starting with the
+   `prefs.reduceMotion` probe.
+3. Fix the five first-run findings above.
+4. Gate the animations on `app.reducedMotion`, ideally through one duration
+   token rather than 25 edits.
+5. Move the sleep-timer state out of `Main.qml`, then add a `NowPlayingPage`
+   test that does not need a window.
+6. Fix `CollectionPage`'s two shadowing menus.
+7. Keep `docs/design-review.html` current and republish it to the artifact URL.
+8. Verify the `.deb` on a real Debian box.
+9. Only then section J, and only with the user's approval.
