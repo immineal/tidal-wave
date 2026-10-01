@@ -181,6 +181,21 @@ public:
     // never looks again.
     static void applyScaleFactor();
 
+    // The UI font stack, most specific first, with every family that is not
+    // actually installed removed.
+    //
+    // Naming a family that does not exist is not free. Qt answers the first
+    // missing family it meets by populating its font-family alias table, which
+    // the Mac measured at 37 ms on every single launch - about 8% of the 470 ms
+    // to first frame. The measurement also killed the obvious fix: dropping
+    // "Inter" on macOS changed nothing, because the very same 37 ms line came
+    // back naming "Monospace" instead. Whichever missing name comes first pays,
+    // so the rule has to be "name nothing that is missing", not "drop the one
+    // we know about".
+    //
+    // Needs a QGuiApplication, because it asks the font database.
+    static QStringList uiFontFamilies();
+
     // Pins the Qt Quick Controls style, where this platform needs it pinned.
     // The app calls it before the engine runs and every test harness calls it on
     // its own engine, so the two can never be looking at different styles -

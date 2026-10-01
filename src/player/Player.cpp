@@ -168,7 +168,12 @@ void Player::onAudioOutputsChanged() {
     // the top of this file exists for, reached by a different route, and it
     // only bites when a device actually changes, so it survived every test.
     // Letting the callback unwind first costs one turn and nothing else.
-    QTimer::singleShot(0, this, [this] { applyAudioDevice(); });
+    QTimer::singleShot(0, this, [this] {
+        applyAudioDevice();
+        // After the rebind, so a listener that asks which device is active
+        // gets the answer that is already true.
+        emit audioDevicesChanged();
+    });
 }
 
 void Player::applyAudioDevice() {

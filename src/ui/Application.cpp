@@ -572,6 +572,40 @@ void Application::applyScaleFactor() {
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 }
 
+QStringList Application::uiFontFamilies() {
+    QStringList wanted{ QStringLiteral("Inter") };
+#ifdef Q_OS_MACOS
+    // Asked for rather than written out: this is the family QPlatformTheme
+    // reports for the system UI font, which is what macOS actually wants text
+    // set in, and it survives Apple renaming it.
+    const QString systemUi = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    if (!systemUi.isEmpty())
+        wanted << systemUi;
+    // Shipped with every macOS there has ever been, for the case above
+    // returning something the database then cannot resolve.
+    wanted << QStringLiteral("Helvetica Neue");
+#else
+    wanted << QStringLiteral("DejaVu Sans");
+#endif
+
+    // The generic is deliberately NOT in this list. "sans-serif" is not a
+    // family on macOS, and a generic name is exactly the kind of thing the
+    // filter below would throw away anyway; it is expressed as a style hint by
+    // the caller instead, which is the one form that cannot be missing on any
+    // platform.
+    QStringList present;
+    for (const QString &f : std::as_const(wanted)) {
+        if (QFontDatabase::hasFamily(f))
+            present << f;
+    }
+    // A machine with none of them still has to be handed something, and the
+    // system UI font is the one name that is always real. Falling back to an
+    // empty list would reintroduce the very cost this function exists to avoid.
+    if (present.isEmpty())
+        present << QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    return present;
+}
+
 void Application::applyQuickControlsStyle() {
     // See the long note at the call site in run() for why Linux is left on
     // whatever Qt picks. The decision itself is here, in one place, because the
@@ -779,20 +813,7 @@ int Application::run(int argc, char **argv) {
     // of the generic, and the generic itself is expressed as a style hint
     // rather than as a family name, which is the one form that cannot be a
     // missing family on any platform.
-    QStringList families{ QStringLiteral("Inter") };
-#ifdef Q_OS_MACOS
-    // Asked for rather than written out: this is the family QPlatformTheme
-    // reports for the system UI font, which is what macOS actually wants text
-    // set in, and it survives Apple renaming it.
-    const QString systemUi = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
-    if (!systemUi.isEmpty())
-        families << systemUi;
-    // Shipped with every macOS there has ever been, for the case above
-    // returning something the database then cannot resolve.
-    families << QStringLiteral("Helvetica Neue");
-#else
-    families << QStringLiteral("DejaVu Sans") << QStringLiteral("sans-serif");
-#endif
+    const QStringList families = uiFontFamilies();
     QFont defaultFont(families.first());
     defaultFont.setFamilies(families);
     defaultFont.setStyleHint(QFont::SansSerif);
