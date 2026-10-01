@@ -330,10 +330,63 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
     set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "libqt6core6, libqt6gui6, libqt6widgets6, libqt6quick6, libqt6qml6, libqt6network6, libqt6dbus6, libqt6multimedia6, libqt6svg6, qml6-module-qtquick, qml6-module-qtquick-shapes, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-templates, qml6-module-qtqml-workerscript, libqt6concurrent6, libqt6opengl6, libasound2, libavahi-client3")
+    # Every Qt dependency carries a floor, and the floor is the Qt this package
+    # was actually built against rather than a number typed in by hand.
+    #
+    # This list used to be unversioned, with SHLIBDEPS below left to "refine it
+    # automatically where possible". It never did, and the reason is structural:
+    # dpkg-shlibdeps attaches a floor by asking dpkg which package owns each
+    # library it links, and the Qt here resolves to ~/Qt/6.12.0/gcc_64/lib,
+    # which no apt package owns. With no owning package it has nothing to
+    # version and silently contributes nothing - so on every build made outside
+    # a distro-Qt environment, which is every build anyone makes here, the pin
+    # existed only in the README.
+    #
+    # What that cost, measured on a real Debian 12 "bookworm" box: the package
+    # installed cleanly, 41 dependencies and no complaint, and then the binary
+    # died at load with `libQt6Core.so.6: version 'Qt_6.12' not found`. An
+    # install that works and then crashes is the worst of the three possible
+    # outcomes; a refusal from apt naming the unmet version is the good one.
+    set(TW_QT_DEB_FLOOR "${Qt6_VERSION_MAJOR}.${Qt6_VERSION_MINOR}")
+    set(TW_QT_DEB_PACKAGES
+        libqt6core6 libqt6gui6 libqt6widgets6 libqt6quick6 libqt6qml6
+        libqt6network6 libqt6dbus6 libqt6multimedia6 libqt6svg6
+        libqt6concurrent6 libqt6opengl6
+        qml6-module-qtquick qml6-module-qtquick-shapes
+        qml6-module-qtquick-controls qml6-module-qtquick-layouts
+        qml6-module-qtquick-window qml6-module-qtquick-templates
+        qml6-module-qtqml-workerscript)
+    set(TW_DEB_DEPENDS "")
+    foreach(pkg IN LISTS TW_QT_DEB_PACKAGES)
+        list(APPEND TW_DEB_DEPENDS "${pkg} (>= ${TW_QT_DEB_FLOOR})")
+    endforeach()
+    # The C++ runtime needs a floor of its own, and it is not a Qt one. The
+    # binary carries whatever CXXABI the compiler here emits; bookworm's GCC 12
+    # libstdc++ stops below CXXABI_1.3.15, which GCC 13 introduced, so the same
+    # box that could not find Qt_6.12 could not find that either. Deriving it
+    # from the compiler keeps the two honest together.
+    # The major alone: libstdc++6 is versioned 14.2.0-3 and friends, so a floor
+    # of 14.2.1 taken from the compiler's patch version would exclude the very
+    # package that carries the right ABI.
+    #
+    # This is an upper bound on what the binary needs, not a measurement of it:
+    # the compiler's major says which ABI it *may* emit, and the binary may
+    # reference nothing newer than several releases back. It is the safe
+    # direction to be wrong in - it refuses installs that would have worked,
+    # rather than allowing installs that crash - but it means a package built on
+    # a rolling distribution asks for a libstdc++ almost nobody has. The fix for
+    # an actual release is to build it against the oldest toolchain we mean to
+    # support, in a container, rather than to loosen this number.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        string(REGEX MATCH "^[0-9]+" TW_GXX_MAJOR "${CMAKE_CXX_COMPILER_VERSION}")
+        list(APPEND TW_DEB_DEPENDS "libstdc++6 (>= ${TW_GXX_MAJOR})")
+    endif()
+    # Not Qt, and versioned by the distro rather than by us.
+    list(APPEND TW_DEB_DEPENDS libasound2 libavahi-client3)
+    list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg, qt6-wayland")
-    # Let dpkg-shlibdeps refine the library deps automatically where possible.
+    # Left on so it can still add anything it *can* resolve on a machine where
+    # Qt does come from apt. It cannot weaken the floors above.
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
     # Installing the icon and the .desktop file is not enough on its own: the
