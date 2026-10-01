@@ -9,7 +9,11 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 800
-    minimumWidth: 900
+    // 640 is the narrow end the layout is built for (SPEC L1): the user runs
+    // two 1920x1200 monitors, so half-screen is 960x1200, and 640 leaves room
+    // to go narrower still. The old 900 was not even wide enough for the Now
+    // Playing transport row.
+    minimumWidth: 640
     minimumHeight: 600
     // Show the current track in the window/taskbar/dock title.
     title: (player.currentTrack && player.currentTrack.title)
@@ -432,13 +436,14 @@ ApplicationWindow {
                     source: "pages/LoginPage.qml"
                 }
 
+                // Fills the content area: the panel is pinned to the right
+                // inside it, and the rest is the scrim that stops clicks
+                // reaching the page behind.
                 QueuePanel {
                     id: queuePanel
-                    anchors.top:    parent.top
-                    anchors.bottom: parent.bottom
-                    anchors.right:  parent.right
-                    width:          340
-                    visible:        root.queueOpen
+                    anchors.fill: parent
+                    visible:     root.queueOpen
+                    onDismissed: root.queueOpen = false
                 }
             }
         }

@@ -3,10 +3,20 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import TidalWave
 
-Rectangle {
+// The queue overlay: a scrim across the page with the panel pinned to the right
+// of it. It covers the whole content area rather than being a bare 340px strip,
+// because without a scrim and a MouseArea of its own every click simply landed
+// on the page underneath it (SPEC L9).
+Item {
     id: root
-    color: Theme.surface
-    border.color: Theme.border
+
+    // Raised by a click on the scrim. The owner decides what dismissal means.
+    signal dismissed()
+
+    // 340 is the design width. The 85% cap keeps the panel from eating a narrow
+    // window whole: at the 640px minimum the content area is 420px, where a
+    // fixed 340 would leave 80px of page showing.
+    readonly property int panelWidth: Math.min(340, Math.round(width * 0.85))
 
     // The queue in true play order (respects shuffle). Rebound on queueChanged
     // (via player.queueTracks) and on shuffle toggle. In shuffle mode each entry
@@ -14,57 +24,88 @@ Rectangle {
     property var queueModel: (player.queueTracks, player.shuffle,
                               player.shuffle ? player.playbackOrderTracks() : player.queueTracks)
 
-    ColumnLayout {
+    Rectangle {
         anchors.fill: parent
-        spacing: 0
+        color: Theme.scrim
+    }
 
-        Rectangle {
-            Layout.fillWidth: true
-            height: 52
-            color: "transparent"
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
-                Item { Layout.fillWidth: true }
-                Text { text: qsTr("%n track(s)", "", player.queueCount); color: Theme.textSec; font.pixelSize: 12 }
-                Text {
-                    visible: player.shuffle
-                    text: qsTr("· Shuffled")
-                    color: Theme.accent; font.pixelSize: 12
-                }
-                Item { width: 8 }
-                Text {
-                    text: qsTr("Clear", "verb, empties the play queue")
-                    color: clearHov.hovered ? Theme.textPrimary : Theme.textSec
-                    font.pixelSize: 12
-                    visible: player.queueCount > 0
-                    HoverHandler { id: clearHov }
-                    TapHandler { onTapped: player.clearQueue() }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
-                }
-            }
+    // Swallows anything that misses the panel, so no click reaches the page.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        onClicked: root.dismissed()
+        onWheel: (wheel) => wheel.accepted = true
+    }
+
+    Rectangle {
+        id: panel
+        anchors.top:    parent.top
+        anchors.bottom: parent.bottom
+        anchors.right:  parent.right
+        width: root.panelWidth
+        color: Theme.surface
+        border.color: Theme.border
+
+        // Declared before the panel's content, so it only ever sees what the
+        // content did not take. The panel is not the scrim: a click that lands
+        // on it stays on it.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
         }
 
-        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
 
-        ListView {
-            id: queueListView
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            model: root.queueModel
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            Rectangle {
+                Layout.fillWidth: true
+                height: 52
+                color: "transparent"
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+                    Item { Layout.fillWidth: true }
+                    Text { text: qsTr("%n track(s)", "", player.queueCount); color: Theme.textSec; font.pixelSize: 12 }
+                    Text {
+                        visible: player.shuffle
+                        text: qsTr("· Shuffled")
+                        color: Theme.accent; font.pixelSize: 12
+                    }
+                    Item { width: 8 }
+                    Text {
+                        text: qsTr("Clear", "verb, empties the play queue")
+                        color: clearHov.hovered ? Theme.textPrimary : Theme.textSec
+                        font.pixelSize: 12
+                        visible: player.queueCount > 0
+                        HoverHandler { id: clearHov }
+                        TapHandler { onTapped: player.clearQueue() }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                    }
+                }
+            }
 
-            delegate: QueueDelegate {
-                required property int     index
-                required property var     modelData
-                // In shuffle mode the row's real queue index travels in the map.
-                trackIndex: (modelData && modelData._queueIndex !== undefined)
-                            ? modelData._queueIndex : index
-                track:      modelData
-                width: queueListView.width
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+
+            ListView {
+                id: queueListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: root.queueModel
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: QueueDelegate {
+                    required property int     index
+                    required property var     modelData
+                    // In shuffle mode the row's real queue index travels in the map.
+                    trackIndex: (modelData && modelData._queueIndex !== undefined)
+                                ? modelData._queueIndex : index
+                    track:      modelData
+                    width: queueListView.width
+                }
             }
         }
     }

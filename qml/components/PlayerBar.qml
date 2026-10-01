@@ -17,6 +17,21 @@ Rectangle {
     property bool hasTrack: track && track.id > 0
     property bool isLiked: false
 
+    // ─── Responsive sizing ─────────────────────────────
+    // Below this the right-hand group sheds the volume slider and the cast
+    // button, so the transport and the track info keep their space. 720 is
+    // where the full group (218px) plus the left group's 280px preferred and
+    // the transport's 204px stop fitting between the 16px margins. Now Playing
+    // carries its own volume slider and its own cast picker, so neither
+    // control is lost, only moved.
+    readonly property int  compactRightBreakpoint: 720
+    readonly property bool compactRight: root.width < compactRightBreakpoint
+
+    // Exposed for tests/qml/tst_layout_player.qml: it checks the queue button
+    // stays on screen and that the slider actually goes when the bar narrows.
+    readonly property alias queueButton:  queueBtn
+    readonly property alias volumeSlider: volSlider
+
     Connections {
         target: bridge
         function onFavoriteTracksChanged() { root.updateLikedState() }
@@ -113,6 +128,11 @@ Rectangle {
         // ── Central controls ───────────────────────────
         ColumnLayout {
             Layout.fillWidth: true; spacing: 4
+            // Never squeeze the transport: its five buttons measure 172px and
+            // its four gaps 32px, and none of that can shrink. Without this the
+            // row layout happily hands the column less than that and the
+            // buttons spill over each other.
+            Layout.minimumWidth: implicitWidth
 
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter; spacing: 8
@@ -165,7 +185,14 @@ Rectangle {
 
         // ── Right controls ─────────────────────────────
         RowLayout {
-            Layout.preferredWidth: 220; Layout.minimumWidth: 160
+            id: rightGroup
+            // Measured, this group is 218px wide: 32 for the volume icon, 90
+            // for the slider, 32 each for cast and queue, and four 8px gaps.
+            // It used to declare `minimumWidth: 160`, so the row layout
+            // squeezed it to 160 and the queue button clipped off the window
+            // below about 731px. Binding the minimum to the group's own
+            // implicit width keeps it honest as controls come and go.
+            Layout.minimumWidth: implicitWidth
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 8
 
             Item { Layout.fillWidth: true }
@@ -177,6 +204,8 @@ Rectangle {
             }
 
             VolumeSlider {
+                id: volSlider
+                visible: !root.compactRight
                 width: 90
                 value: player.muted ? 0 : player.volume
                 onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
@@ -189,10 +218,11 @@ Rectangle {
             }
 
             // Cast to a Chromecast / Google Home device. Linux only: `cast`
-            // is null elsewhere, which hides the button.
+            // is null elsewhere, which hides the button. Below the compact
+            // breakpoint it moves to Now Playing, which has the room for it.
             IconButton {
                 id: castBtn
-                visible: !!cast
+                visible: !!cast && !root.compactRight
                 icon: "cast"; size: 20
                 iconColor: (cast && cast.connected) ? Theme.accent : Theme.textSec
                 onClicked: { if (cast) cast.startScan(); castPopup.open() }
@@ -238,6 +268,7 @@ Rectangle {
             }
 
             IconButton {
+                id: queueBtn
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
                 onClicked: root.showQueue()

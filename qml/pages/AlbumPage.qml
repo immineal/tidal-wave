@@ -66,10 +66,12 @@ Rectangle {
         header: Column {
             width: tracksList.width
 
-            // Hero header
+            // Hero header. Grows with its content rather than sitting at a
+            // fixed 280: a wrapped title or a wrapped pill row used to be cut
+            // off at the bottom edge.
             Rectangle {
                 width: parent.width
-                height: 280
+                implicitHeight: Math.max(280, heroRow.implicitHeight + 48)
                 color: "transparent"
                 clip: true
 
@@ -92,9 +94,12 @@ Rectangle {
                 }
 
                 RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    anchors.leftMargin: 64
+                    id: heroRow
+                    anchors {
+                        left: parent.left; right: parent.right
+                        verticalCenter: parent.verticalCenter
+                        leftMargin: 64; rightMargin: 24
+                    }
                     spacing: 24
 
                     Rectangle {
@@ -136,9 +141,11 @@ Rectangle {
 
                         Text {
                             id: artistNameText
+                            Layout.fillWidth: true
                             text: albumData.artists || ""
                             color: root.effectiveArtistId > 0 ? Theme.accent : Theme.textSec
                             font.pixelSize: 14
+                            elide: Text.ElideRight
                             activeFocusOnTab: root.effectiveArtistId > 0
                             Keys.onReturnPressed: if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
                             Keys.onSpacePressed:  if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
@@ -167,9 +174,16 @@ Rectangle {
                             }
                             color: Theme.textSec
                             font.pixelSize: 13
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                         }
 
-                        Row {
+                        // A Flow, so the pills wrap onto a second line instead
+                        // of pushing the column past the hero's right edge.
+                        // Three pills are 384px at the old fixed width, more
+                        // than the 328px the column gets in a 640px pane.
+                        Flow {
+                            Layout.fillWidth: true
                             spacing: 12
 
                             PillButton {

@@ -89,10 +89,11 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            // Hero
+            // Hero. Grows with its content rather than sitting at a fixed
+            // 320, so a wrapped name or a wrapped pill row still fits.
             Rectangle {
                 Layout.fillWidth: true
-                height: 320
+                implicitHeight: Math.max(320, heroCol.implicitHeight + 56)
                 color: "transparent"
                 clip: true
 
@@ -115,21 +116,32 @@ Rectangle {
                 }
 
                 ColumnLayout {
+                    id: heroCol
+                    // Anchored right as well: without it the name had no width
+                    // to work with and a long one ran off the page.
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
+                    anchors.right: parent.right
                     anchors.margins: 28
                     spacing: 8
 
                     Text {
+                        Layout.fillWidth: true
                         text: artistData.name || ""
                         color: Theme.textPrimary
                         font.pixelSize: 36
                         font.bold: true
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
                         style: Text.Outline
                         styleColor: Theme.artScrimStrong
                     }
 
-                    Row {
+                    // A Flow, so the pills wrap instead of running off the
+                    // hero once a German label makes them wider.
+                    Flow {
+                        Layout.fillWidth: true
                         spacing: 12
                         PillButton {
                             text: qsTr("Play", "verb, button label")
