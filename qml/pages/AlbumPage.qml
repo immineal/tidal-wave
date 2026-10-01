@@ -218,14 +218,14 @@ Rectangle {
 
                             PillButton {
                                 text: qsTr("Play", "verb, button label")
-                                glyph: "▶"
+                                icon: "play"
                                 accent: true
                                 onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
                             }
 
                             PillButton {
                                 text: qsTr("Shuffle")
-                                glyph: "⇌"
+                                icon: "shuffle"
                                 accent: false
                                 onClicked: {
                                     if (root.tracks.length > 0) {
@@ -238,7 +238,7 @@ Rectangle {
                             PillButton {
                                 text: root.isSaved ? qsTr("Saved", "state, album is in the library")
                                                    : qsTr("Save", "verb, add album to the library")
-                                glyph: root.isSaved ? "♥" : "♡"
+                                icon: root.isSaved ? "heart-filled" : "heart"
                                 accent: root.isSaved
                                 onClicked: {
                                     if (root.isSaved) {

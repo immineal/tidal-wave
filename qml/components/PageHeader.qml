@@ -26,11 +26,15 @@ Rectangle {
             activeFocusOnTab: true
             Keys.onReturnPressed: root.backClicked()
             Keys.onSpacePressed:  root.backClicked()
-            Text {
+            // Drawn, not set in a font, for the reason BackButton gives: the
+            // arrow was a character that renders differently or not at all
+            // wherever the font behind it is missing.
+            VectorIcon {
                 anchors.centerIn: parent
-                text: "←"
+                name: "chevron-left"
                 color: Theme.textSec
-                font.pixelSize: 18
+                width: 16; height: 16
+                strokeWidth: 2
             }
             HoverHandler { id: backHov; cursorShape: Qt.PointingHandCursor }
             TapHandler   { onTapped: root.backClicked() }

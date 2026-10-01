@@ -341,10 +341,15 @@ Rectangle {
                         strokeWidth: 1.5
                         visible: !player.loading
                     }
-                    Text {
+                    // The "still loading" state of the play button. No label
+                    // can go in a 40px disc, so the mark is all there is; the
+                    // three dots are drawn now rather than being an ellipsis
+                    // borrowed from the font.
+                    VectorIcon {
                         anchors.centerIn: parent
-                        text: "…"
-                        color: Theme.bg; font.pixelSize: 14
+                        name: "more"
+                        color: Theme.bg
+                        width: 18; height: 18
                         visible: player.loading
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }

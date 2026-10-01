@@ -162,14 +162,14 @@ Rectangle {
                         spacing: 12
                         PillButton {
                             text: qsTr("Play", "verb, button label")
-                            glyph: "▶"
+                            icon: "play"
                             accent: true
                             onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
                         }
 
                         PillButton {
                             text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            glyph: root.isFollowing ? "♥" : "♡"
+                            icon: root.isFollowing ? "heart-filled" : "heart"
                             accent: root.isFollowing
                             onClicked: {
                                 if (root.isFollowing) {

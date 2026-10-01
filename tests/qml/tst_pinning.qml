@@ -25,7 +25,12 @@ TestCase {
     when: windowShown
 
     readonly property int railWidth: 68
-    readonly property int rowHeight: 34
+    // SideBar.libRowHeight, read off the sidebar rather than written down.
+    // The drag arithmetic below is in whole rows, and the row has already
+    // changed height once (34 -> 44, for a bigger cover): a copy of the
+    // number here makes every such change a failure in this file instead of
+    // a test of the thing it is actually about.
+    function rowHeightOf(sb) { return sb.libRowHeight }
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
@@ -468,6 +473,7 @@ TestCase {
         verify(grip, "a pinned row has no drag affordance")
         verify(grip.enabled, "the drag affordance is dead")
 
+        var rowHeight = rowHeightOf(sb)
         var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
         mousePress(host.contentItem, from.x, from.y)
         mouseMove(host.contentItem, from.x, from.y + rowHeight)
@@ -508,6 +514,7 @@ TestCase {
         settle(host.contentItem)
 
         var grip = findByName(rowFor(sb, "uuid-p1"), "pinDragArea")
+        var rowHeight = rowHeightOf(sb)
         var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
 
         mousePress(host.contentItem, from.x, from.y)

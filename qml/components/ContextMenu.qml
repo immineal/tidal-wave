@@ -1,18 +1,98 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import TidalWave
 
-// The one context menu in the app. It has two faces: the track menu it started
-// as, and the pin menu (P2) that sidebar rows, media cards and the four page
-// hero headers open on a right-click. One menu rather than two so a right-click
-// looks the same wherever it happens.
+// The one context menu in the app. It is the pin menu (P2) that sidebar rows,
+// media cards and the four page hero headers open on a right-click, with the
+// two queue actions above it, because a card, a hero and a track row are all
+// things a user queues, and only this file should know what the labels say or
+// which player call each one makes.
 //
-// The two queue actions sit above both faces, because a card, a hero and a
-// track row are all things a user queues, and only this file should know what
-// the labels say or which player call each one makes.
+// It also owns ContextMenu.Entry, the row every Menu in the app is built from
+// (TrackRow, QueuePanel and CollectionPage all declare their own Menu but
+// borrow the row), so there is exactly one answer to what a menu entry looks
+// like, how wide it is allowed to get and which entries carry a mark.
 Menu {
     id: root
-    property var trackData: null
+
+    // ── what a menu entry looks like, once ───────────────────────────────
+    //
+    // Which entries get an icon: only the ones that take something away.
+    //
+    // The audit question was whether a mark tells you anything the label does
+    // not. Next to "Play now", "Download", "Copy link" or "Go to artist" it
+    // does not -- it draws the word again -- and a column of five thin
+    // 16px marks turns into texture, which is exactly what stops people
+    // reading the labels. The destructive entry is the one row where a
+    // misclick costs you something, so it is the one row worth catching the
+    // eye before the eye reaches the word. It already turns red; the bin is
+    // the redundant encoding of that, for anyone the red does not reach.
+    //
+    // Entries that merely navigate do not qualify: "Go to album" says it, and
+    // the separator above it already groups them.
+    component Entry : MenuItem {
+        id: entry
+
+        // An icon *name* out of VectorIcon's set, not a character. Not called
+        // `icon`: AbstractButton already has an `icon` group property.
+        property string iconName: ""
+        // Destructive. Tints the label and the mark, and is the only thing
+        // that puts a mark on a row at all.
+        property bool danger: false
+
+        leftPadding: 12
+        rightPadding: 12
+
+        // The gutter is reserved on every row of a menu that has any mark in
+        // it, so its labels start on one pixel instead of stepping in and out
+        // around the marked row -- and on none of the rows of a menu that has
+        // no mark, so an all-text menu is not mysteriously indented. The menu
+        // answers that, not the row, which is why this walks its siblings.
+        readonly property bool showsGutter: {
+            var m = entry.menu
+            if (!m) return entry.iconName !== ""
+            for (var i = 0; i < m.count; ++i) {
+                var it = m.itemAt(i)
+                if (it && it.visible && it.iconName !== undefined && it.iconName !== "")
+                    return true
+            }
+            return false
+        }
+
+        readonly property color ink: !entry.enabled ? Theme.textDim
+                                   : entry.danger   ? Theme.red
+                                                    : Theme.textPrimary
+
+        contentItem: RowLayout {
+            spacing: entry.showsGutter ? 10 : 0
+            Item {
+                Layout.preferredWidth:  entry.showsGutter ? 16 : 0
+                Layout.preferredHeight: 16
+                Layout.alignment: Qt.AlignVCenter
+                VectorIcon {
+                    anchors.fill: parent
+                    visible: entry.iconName !== ""
+                    name: entry.iconName
+                    color: entry.ink
+                    strokeWidth: 1.6
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: entry.text
+                color: entry.ink
+                font.pixelSize: 13
+                verticalAlignment: Text.AlignVCenter
+                // The other half of Theme.menuWidth: past the maximum the
+                // label gives way instead of the menu growing off-screen.
+                // Its implicitWidth is still the full label, which is what
+                // the menu measures, so eliding here cannot feed back.
+                elide: Text.ElideRight
+            }
+        }
+        background: Rectangle { color: entry.highlighted ? Theme.surfaceHov : "transparent" }
+    }
 
     // ── queueing ───────────────────────────────────────────────────────
     //
@@ -71,6 +151,16 @@ Menu {
     // ignore every bit of that.
     popupType: Popup.Item
 
+    // Sized to its longest item; see Theme.menuWidth for why a styled Menu
+    // does not do that by itself.
+    implicitWidth: Theme.menuWidth(root)
+
+    // Qt keeps a menu inside its window by itself, but it is allowed to hang
+    // `overlap` pixels past the edge while doing it (the Basic style asks for
+    // 1, for submenus to sit on their parent). This menu has no submenus and
+    // would rather not stick out at all.
+    overlap: 0
+
     // ── the pin face (P1, P2) ────────────────────────────────────────────
 
     // What the menu is currently offering to pin, as PinStore wants it.
@@ -79,7 +169,6 @@ Menu {
     property string pinTitle: ""
     property string pinSubtitle: ""
     property string pinImageUrl: ""
-    property bool   pinMode: false
 
     // PinStore::isValidKind is the authority on what can be pinned; it is a
     // static rather than an invokable, so the four kinds are repeated here.
@@ -103,8 +192,6 @@ Menu {
 
     // Opens the menu on one pinnable thing. Nothing pinnable, nothing to show.
     function showPin(x, y, kind, id, title, subtitle, imageUrl) {
-        trackData   = null
-        pinMode     = true
         pinKind     = kind  ? "" + kind : ""
         pinId       = id    ? "" + id   : ""
         pinTitle    = title    || ""
@@ -115,118 +202,56 @@ Menu {
         popup(x, y)
     }
 
-    // The track face, unchanged.
-    function show(x, y, track) {
-        pinMode = false
-        trackData = track
-        popup(x, y)
-    }
-
     // So a right-click handler can skip the menu entirely, and so the tests
     // can read the label without walking a popup's contents.
     readonly property alias pinItem: pinEntry
 
     background: Rectangle {
-        implicitWidth: 200
         color: Theme.surfaceHigh
         border.color: Theme.border
         radius: Theme.radiusPopup
     }
 
     // A hidden MenuItem still contributes its height to the menu, so every
-    // item that switches between the two faces zeroes its height too.
+    // item that can be absent zeroes its height too.
 
-    // Both faces offer these, and they come first: queueing is what a
-    // right-click on a tile or a hero is most often for, and of the two,
-    // playing next is the commoner intent.
-    MenuItem {
+    // Queueing comes first: it is what a right-click on a tile or a hero is
+    // most often for, and of the two, playing next is the commoner intent.
+    Entry {
         id: playNextEntry
         objectName: "playNextMenuItem"
         visible: root.trackSource !== null
         height: visible ? implicitHeight : 0
         text: qsTr("Play next", "verb, play this right after the current track")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
         onTriggered: root.playNext()
     }
-    MenuItem {
+    Entry {
         id: addToQueueEntry
         objectName: "addToQueueMenuItem"
         visible: root.trackSource !== null
         height: visible ? implicitHeight : 0
         text: qsTr("Add to queue", "verb, put this at the end of the queue")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
         onTriggered: root.addToQueue()
     }
     MenuSeparator {
-        visible: root.trackSource !== null
+        visible: root.trackSource !== null && root.canPin
         height: visible ? implicitHeight : 0
         contentItem: Rectangle { height: 1; color: Theme.border }
     }
 
-    MenuItem {
+    Entry {
         id: pinEntry
         objectName: "pinMenuItem"
-        visible: root.pinMode && root.canPin
+        visible: root.canPin
         height: visible ? implicitHeight : 0
+        // No mark. The pin/pin-filled pair that used to sit here said the
+        // same thing as the label flipping between Pin and Unpin, and it was
+        // the only mark in an otherwise plain menu.
         text: root.pinned ? qsTr("Unpin", "verb, remove from the pinned block") : qsTr("Pin", "verb, pin to the sidebar")
-        contentItem: Row {
-            spacing: 8
-            leftPadding: 16
-            VectorIcon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: root.pinned ? "pin-filled" : "pin"
-                color: Theme.textPrimary
-                width: 14; height: 14
-                strokeWidth: 1.6
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: pinEntry.text
-                color: Theme.textPrimary
-                font.pixelSize: 14
-            }
-        }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
         onTriggered: {
             if (root.pinned) pins.unpin(root.pinKind, root.pinId)
             else             pins.pin(root.pinKind, root.pinId, root.pinTitle,
                                       root.pinSubtitle, root.pinImageUrl)
         }
-    }
-
-    MenuItem {
-        visible: !root.pinMode
-        height: visible ? implicitHeight : 0
-        text: qsTr("Play", "verb, menu item")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-    }
-    MenuSeparator {
-        visible: !root.pinMode
-        height: visible ? implicitHeight : 0
-        contentItem: Rectangle { height: 1; color: Theme.border }
-    }
-    MenuItem {
-        visible: !root.pinMode
-        height: visible ? implicitHeight : 0
-        text: qsTr("Like", "verb, add to favourites")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-    }
-    MenuItem {
-        visible: !root.pinMode
-        height: visible ? implicitHeight : 0
-        text: qsTr("Go to album")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
-    }
-    MenuItem {
-        visible: !root.pinMode
-        height: visible ? implicitHeight : 0
-        text: qsTr("Go to artist")
-        contentItem: Text { text: parent.text; color: Theme.textPrimary; leftPadding: 16; font.pixelSize: 14 }
-        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
     }
 }

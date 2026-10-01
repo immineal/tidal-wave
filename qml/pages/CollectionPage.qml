@@ -347,32 +347,29 @@ Rectangle {
                 // tracks and confirm in the same place.
                 Menu {
                     id: albumCtxMenu
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
-                    MenuItem {
+                    popupType: Popup.Item
+                    implicitWidth: Theme.menuWidth(this)
+                    overlap: 0
+                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+                    ContextMenu.Entry {
                         text: qsTr("Play next", "verb, play this right after the current track")
-                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: albumCard.playNext()
                     }
-                    MenuItem {
+                    ContextMenu.Entry {
                         text: qsTr("Add to queue", "verb, put this at the end of the queue")
-                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: albumCard.addToQueue()
                     }
                     MenuSeparator {
                         contentItem: Rectangle { height: 1; color: Theme.border }
                     }
-                    MenuItem {
+                    ContextMenu.Entry {
                         text: qsTr("Remove from library")
-                        contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                        danger: true
+                        iconName: "trash"
                         onTriggered: bridge.removeAlbumFavorite(albumDelegate.modelData.id, function(ok) {})
                     }
-                    MenuItem {
+                    ContextMenu.Entry {
                         text: qsTr("Go to album")
-                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: navigateTo("album", { albumId: albumDelegate.modelData.id })
                     }
                 }
@@ -434,17 +431,18 @@ Rectangle {
                 }
                 Menu {
                     id: artistCtxMenu
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
-                    MenuItem {
+                    popupType: Popup.Item
+                    implicitWidth: Theme.menuWidth(this)
+                    overlap: 0
+                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+                    ContextMenu.Entry {
                         text: qsTr("Unfollow artist")
-                        contentItem: Text { text: parent.text; color: Theme.red; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                        danger: true
+                        iconName: "trash"
                         onTriggered: bridge.removeArtistFavorite(artistDelegate.modelData.id, function(ok) {})
                     }
-                    MenuItem {
+                    ContextMenu.Entry {
                         text: qsTr("Go to artist")
-                        contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                         onTriggered: navigateTo("artist", { artistId: artistDelegate.modelData.id })
                     }
                 }

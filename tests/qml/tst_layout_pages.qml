@@ -437,7 +437,7 @@ TestCase {
     function test_pillbutton_fits_a_german_label() {
         var holder = createTemporaryObject(holderC, testCase, { width: 600, height: 80 })
         // 24 characters, about what German turns a two word button label into.
-        var pill = createTemporaryObject(pillC, holder, { text: "Zufallswiedergabe (lang)", glyph: "⇌" })
+        var pill = createTemporaryObject(pillC, holder, { text: "Zufallswiedergabe (lang)", icon: "shuffle" })
         verify(pill, "the pill was not created")
         settle(holder)
 

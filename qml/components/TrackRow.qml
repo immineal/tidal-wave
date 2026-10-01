@@ -7,7 +7,13 @@ import TidalWave
 Item {
     id: root
     height: 52
-    implicitWidth: 100
+    // What the row needs before anything in it has to give way: the fixed
+    // columns and gaps (12+24+12+36+12 ... +40+12+24+12+24+28) plus 120 for
+    // the title and artist line. It was 100, which is less than the fixed
+    // columns alone, so a host that sized a row by its implicit width got one
+    // whose contents overflowed it. Every list sets an explicit width, so
+    // this is the floor and not the usual case.
+    implicitWidth: 368
 
     // The five text inputs are `var`, not `string`, on purpose. Every page
     // feeds them straight off an API map (`title: modelData.title`), and a
@@ -172,12 +178,13 @@ Item {
                     height: 14
                     strokeWidth: 1.5
                 }
-                Text {
+                VectorIcon {
                     anchors.centerIn: parent
                     visible: hov.hovered
-                    text: isPlaying ? "⏸" : "▶"
+                    name: isPlaying ? "pause" : "play"
                     color: Theme.textPrimary
-                    font.pixelSize: 14
+                    width: 13
+                    height: 13
                 }
             }
 
@@ -396,78 +403,72 @@ Item {
         // sized item at the row's origin.
         sourceComponent: Menu {
             parent: root
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 200 }
+            // Styled, so never a native menu; and sized to its longest item
+            // rather than to a number, which is what cut the German labels.
+            popupType: Popup.Item
+            implicitWidth: Theme.menuWidth(this)
+            overlap: 0
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
             // So a test can read the two queue labels without walking a
             // popup's contents, the way ContextMenu exposes its pin item.
             readonly property alias playNextItem:   playNextEntry
             readonly property alias addToQueueItem: addToQueueEntry
 
-            MenuItem {
-                text: "▶  " + qsTr("Play now")
-                contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+            ContextMenu.Entry {
+                text: qsTr("Play now")
                 onTriggered: root.playRequested()
             }
             // Above Add to queue: of the two, playing the track next is what
             // a user reaches for more often.
-            MenuItem {
+            ContextMenu.Entry {
                 id: playNextEntry
                 objectName: "playNextMenuItem"
                 enabled: root.trackData !== null
-                text: "⏭  " + qsTr("Play next", "verb, play this right after the current track")
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                text: qsTr("Play next", "verb, play this right after the current track")
                 onTriggered: {
                     if (!root.trackData) return
                     player.playNext([root.trackData])
                     root.confirmQueued(true)
                 }
             }
-            MenuItem {
+            ContextMenu.Entry {
                 id: addToQueueEntry
                 objectName: "addToQueueMenuItem"
                 enabled: root.trackData !== null
-                text: "+  " + qsTr("Add to queue", "verb, put this at the end of the queue")
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                text: qsTr("Add to queue", "verb, put this at the end of the queue")
                 onTriggered: {
                     if (!root.trackData) return
                     player.addToQueue([root.trackData])
                     root.confirmQueued(false)
                 }
             }
-            MenuItem {
-                text: "⬇  " + qsTr("Download…")
+            ContextMenu.Entry {
+                text: qsTr("Download…")
                 enabled: root.trackId > 0 && root.dlState !== "busy"
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
             }
-            MenuItem {
-                text: "📋  " + qsTr("Add to playlist")
+            ContextMenu.Entry {
+                text: qsTr("Add to playlist")
                 enabled: root.trackId > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: root.openPicker()
             }
-            MenuItem {
-                text: "🗑  " + qsTr("Remove from playlist")
+            ContextMenu.Entry {
+                objectName: "removeFromPlaylistMenuItem"
+                text: qsTr("Remove from playlist")
+                danger: true
+                iconName: "trash"
                 visible: root.playlistUuid.length > 0
                 height: visible ? implicitHeight : 0
                 enabled: root.trackData !== null && root.playlistUuid.length > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.red : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
                         root.removeFromPlaylistRequested(root.trackItemIndex)
                 }
             }
-            MenuItem {
-                text: "📻  " + qsTr("Start radio")
+            ContextMenu.Entry {
+                text: qsTr("Start radio")
                 enabled: root.trackId > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackId <= 0) return
                     Window.window.navigate("radio", {
@@ -476,12 +477,10 @@ Item {
                     })
                 }
             }
-            MenuItem {
-                text: root.isLiked ? "♥  " + qsTr("Unlike", "verb, remove from favourites")
-                                   : "♡  " + qsTr("Like", "verb, add to favourites")
+            ContextMenu.Entry {
+                text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
+                                   : qsTr("Like", "verb, add to favourites")
                 enabled: root.trackId > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackId <= 0) return
                     if (root.isLiked) {
@@ -491,33 +490,27 @@ Item {
                     }
                 }
             }
-            MenuSeparator {}
-            MenuItem {
-                text: "💿  " + qsTr("Go to album")
+            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
+            ContextMenu.Entry {
+                text: qsTr("Go to album")
                 enabled: root.trackData && Number(root.trackData.albumId) > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackData && Number(root.trackData.albumId) > 0)
                         Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
                 }
             }
-            MenuItem {
-                text: "🎤  " + qsTr("Go to artist")
+            ContextMenu.Entry {
+                text: qsTr("Go to artist")
                 enabled: root.trackData && Number(root.trackData.artistId) > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackData && Number(root.trackData.artistId) > 0)
                         Window.window.navigate("artist", { artistId: Number(root.trackData.artistId) })
                 }
             }
-            MenuSeparator {}
-            MenuItem {
-                text: "🔗  " + qsTr("Copy link")
+            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
+            ContextMenu.Entry {
+                text: qsTr("Copy link")
                 enabled: root.trackId > 0
-                contentItem: Text { text: parent.text; color: parent.enabled ? Theme.textPrimary : Theme.textDim; font.pixelSize: 13; leftPadding: 12; horizontalAlignment: Text.AlignLeft; verticalAlignment: Text.AlignVCenter }
-                background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
                 onTriggered: {
                     if (root.trackId > 0)
                         bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackId)

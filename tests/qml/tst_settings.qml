@@ -478,19 +478,28 @@ TestCase {
         verify(note && note.visible && note.text.length > 0,
                "the switch is offered with no explanation of what it does")
 
-        // Under the dark column, not floating between the two.
+        // Below both palette columns and across the whole card, not tucked
+        // into the dark one: at half width it read as a seventh dark theme.
         var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
-        var darkGroup = groups[0].dark ? groups[0] : groups[1]
-        var tiles = collectByName(darkGroup, "settingsThemeOption", [])
+        var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
         var lowest = 0
         for (var i = 0; i < tiles.length; i++)
             lowest = Math.max(lowest, tiles[i].mapToItem(h.panel.contentItem, 0, 0).y)
-        var ty = toggle.mapToItem(h.panel.contentItem, 0, 0).y
-        verify(ty > lowest, "the switch is not below the dark palettes")
-        var tx = toggle.mapToItem(h.panel.contentItem, 0, 0).x
-        var dx = darkGroup.mapToItem(h.panel.contentItem, 0, 0).x
-        verify(tx >= dx - 1 && tx <= dx + darkGroup.width + 1,
-               "the switch is not inside the dark column")
+        var block = findByName(h.panel.contentItem, "settingsOledBlock")
+        verify(block && block.visible, "the pure-black block is not there")
+        verify(block.mapToItem(h.panel.contentItem, 0, 0).y > lowest,
+               "the switch is not below the palettes")
+        for (i = 0; i < groups.length; i++) {
+            verify(block.width > groups[i].width + 1,
+                   "the switch is no wider than one palette column")
+        }
+
+        // Centred against both lines of its label, not hung off the first.
+        var note = findByName(h.panel.contentItem, "settingsOledNote")
+        var tMid = toggle.mapToItem(block, 0, 0).y + toggle.height / 2
+        verify(Math.abs(tMid - block.height / 2) <= 1.5,
+               "the switch sits at " + tMid.toFixed(1) + " in a block "
+               + block.height.toFixed(1) + " tall, so it is not centred on both lines")
 
         h.panel.close()
     }

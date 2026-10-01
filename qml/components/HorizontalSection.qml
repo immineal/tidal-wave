@@ -65,16 +65,45 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            Text {
-                id: viewAllText
+            // The arrow used to live inside the translatable string. It is
+            // drawn beside it now: it is the only thing marking this grey
+            // line as a control rather than a caption, so it stays, but as
+            // part of the icon set rather than as a character the font may
+            // not have.
+            Item {
+                id: viewAll
                 visible: root.showViewAll
-                text: qsTr("View all →")
-                color: viewAllText.activeFocus ? Theme.accent : Theme.textSec
-                font.pixelSize: 12
-                font.underline: viewAllText.activeFocus
+                // A Row positions every child it has, so the hit area cannot
+                // be one of them; it is a sibling over this wrapper instead.
+                implicitWidth:  viewAllRow.implicitWidth
+                implicitHeight: viewAllRow.implicitHeight
                 activeFocusOnTab: root.showViewAll
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
+
+                readonly property color ink: viewAll.activeFocus ? Theme.accent : Theme.textSec
+
+                Row {
+                    id: viewAllRow
+                    anchors.fill: parent
+                    spacing: 4
+                    Text {
+                        id: viewAllText
+                        objectName: "viewAllLabel"
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("View all")
+                        color: viewAll.ink
+                        font.pixelSize: 12
+                        font.underline: viewAll.activeFocus
+                    }
+                    VectorIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "chevron-right"
+                        color: viewAll.ink
+                        width: 11; height: 11
+                        strokeWidth: 2
+                    }
+                }
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
