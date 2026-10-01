@@ -107,17 +107,31 @@ Item {
     // ── the pinned block, and dragging inside it (P3, P4) ────────────────
 
     // The height of one library row, which is also the height of one slot in
-    // the pinned block, so the drag can work in whole rows.
-    readonly property int libRowHeight: 34
+    // the pinned block, so the drag can work in whole rows. Everything the
+    // drag does -- which slot the pointer is over, how far down the block
+    // still counts, where the drop indicator sits -- is expressed as a
+    // multiple of this, so the three of them follow it rather than being
+    // retuned every time the row changes height.
+    readonly property int libRowHeight: 44
 
     // ── the cover, which is one cover in both shapes (S9, amended) ───────
     //
     // The rail used to draw its own 40px covers and the open sidebar its own
-    // type glyphs, and the two swapped. One size, one item, one list now: 26
-    // leaves 4px of air above and below inside a 34px row, which is the same
-    // rhythm the rail had at 40 inside 44, and it is small enough to sit
-    // beside a 13px title instead of dwarfing it.
-    readonly property int coverSize: 26
+    // type glyphs, and the two swapped. One size, one item, one list now.
+    //
+    // It was 26, which left the corner type badge too small to read: a 13px
+    // chip holding a 9px glyph, which is the whole reason the badge exists.
+    // At 36 the badge is 18 and its glyph 12, which is legible, and the cover
+    // still leaves 4px of air above and below inside the row -- the same
+    // rhythm 26-in-34 had -- and still centres in the 68px rail with 16
+    // either side.
+    readonly property int coverSize: 36
+    // Derived, so the next time the cover moves these move with it instead of
+    // being three more numbers to find.
+    readonly property int coverBadge:     Math.round(coverSize * 0.5)
+    readonly property int coverBadgeIcon: Math.round(coverSize / 3)
+    // The whole tile when there is no artwork to put a corner on.
+    readonly property int coverPlainIcon: Math.round(coverSize * 0.56)
     // The row's own inset inside the panel, and where a row's content starts
     // once the sidebar is open. 16 is the sidebar's left inset throughout.
     readonly property int rowInset:  8
@@ -439,7 +453,15 @@ Item {
             }
         }
 
-        // ── footer: the username and the gear, nothing else (S10) ────────
+        // ── footer: one row, which is the Settings button (S10) ────────
+        //
+        // The whole row opens Settings, with the account name as its second
+        // line. It used to be an inert username with a gear button beside it,
+        // which gave the row two meanings and only one of them a target.
+        //
+        // Deliberately no avatar. The person drawing is the `artist` glyph
+        // now, so a person down here would read as an artist row; the avatar
+        // was taken out once already and this keeps it out.
         Rectangle {
             id: footer
             anchors.bottom: parent.bottom
@@ -448,66 +470,91 @@ Item {
             height: 56
             color: Theme.surfaceHigh
 
-            Text {
-                id: acctNameText
-                objectName: "sidebarAccountName"
-                visible: root.showsWide
-                opacity: root.wideOpacity
-                anchors.left: parent.left
-                anchors.leftMargin: 16
-                anchors.right: gearItem.left
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                // Auth::displayNameFrom already picks the username over the
-                // email address; there is deliberately no avatar beside it.
-                text: auth.username.length > 0 ? auth.username : qsTr("My Account")
-                color: Theme.textPrimary
-                font.pixelSize: 13
-                elide: Text.ElideRight
-                ToolTip.visible: acctNameHov.hovered && acctNameText.truncated
-                ToolTip.text: acctNameText.text
-                ToolTip.delay: 600
-                HoverHandler { id: acctNameHov }
-            }
-
             Item {
-                id: gearItem
-                objectName: "sidebarSettingsGear"
-                width: 28
-                height: 28
-                // Right-aligned in the sidebar, centred in the rail, and it
-                // travels between the two with the slide.
-                readonly property real railX: Math.round((root.railWidth - width) / 2)
-                readonly property real wideX: Math.max(0, panel.width - width - 16)
-                x: Math.round(railX + (wideX - railX) * root.wideness)
-                anchors.verticalCenter: parent.verticalCenter
+                id: settingsRow
+                objectName: "sidebarSettingsRow"
+                anchors.fill: parent
+                anchors.margins: 6
 
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
 
+                // Treated as what it now is: a full-width row that does
+                // something, like the nav rows above it.
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: -2
-                    radius: Theme.radiusButton
-                    color: "transparent"
-                    border.width: gearItem.activeFocus ? 2 : 0
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
+                    radius: Theme.radiusRow
+                    color: settingsHover.hovered ? Theme.hoverFill : "transparent"
+                    border.width: settingsRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
-                }
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "settings"
-                    color: settingsHover.hovered ? Theme.textPrimary : Theme.textSec
-                    width: 18
-                    height: 18
-                    strokeWidth: 1.8
+
+                    VectorIcon {
+                        id: gearItem
+                        objectName: "sidebarSettingsGear"
+                        name: "settings"
+                        color: settingsHover.hovered ? Theme.textPrimary : Theme.textSec
+                        width: 18
+                        height: 18
+                        strokeWidth: 1.8
+                        anchors.verticalCenter: parent.verticalCenter
+                        // 16 from the panel edge once open, centred in the
+                        // rail, and travelling between the two on the same
+                        // `wideness` as every other icon in the sidebar. The
+                        // row's own 8px of inset comes off the open position.
+                        readonly property real railX:
+                            Math.round((root.railWidth - 16 - width) / 2)
+                        x: Math.round(railX + (8 - railX) * root.wideness)
+                    }
+
+                    Column {
+                        objectName: "sidebarSettingsLabels"
+                        visible: root.showsWide
+                        opacity: root.wideOpacity
+                        anchors.left: gearItem.right
+                        anchors.leftMargin: 12
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 1
+
+                        Text {
+                            objectName: "sidebarSettingsLabel"
+                            width: parent.width
+                            // qsTranslate rather than qsTr: this is the same
+                            // word the Settings panel heads itself with, and
+                            // a second entry in a finished catalogue would
+                            // only be the same translation typed twice.
+                            text: qsTranslate("SettingsPanel", "Settings")
+                            color: Theme.textPrimary
+                            font.pixelSize: 14
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            id: acctNameText
+                            objectName: "sidebarAccountName"
+                            width: parent.width
+                            // Auth::displayNameFrom already picks the
+                            // username over the email address.
+                            text: auth.username.length > 0 ? auth.username
+                                                           : qsTr("My Account")
+                            color: Theme.textSec
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    HoverHandler { id: settingsHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler   { onTapped: root.openSettings() }
+
+                    // In the rail the labels are not on screen, so this is
+                    // the only place the row says what it is; the shortcut
+                    // rides along, as it did on the gear.
                     ToolTip.visible: settingsHover.hovered
                     ToolTip.text: qsTr("Settings (Ctrl+,)")
-                    HoverHandler { id: settingsHover }
-                }
-                TapHandler {
-                    cursorShape: Qt.PointingHandCursor
-                    onTapped: root.openSettings()
+                    ToolTip.delay: 450
                 }
             }
         }
@@ -770,8 +817,8 @@ Item {
                     visible: rowItem.hasArt
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
-                    width: 13
-                    height: 13
+                    width:  root.coverBadge
+                    height: root.coverBadge
                     radius: Theme.radiusBadge
                     color: Theme.surface
                 }
@@ -779,13 +826,16 @@ Item {
                 VectorIcon {
                     objectName: "libraryRowIcon"
                     name: root.glyphFor(rowItem.kind)
-                    width:  rowItem.hasArt ? 9 : 15
+                    width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
-                    strokeWidth: rowItem.hasArt ? 1.4 : 1.5
+                    strokeWidth: rowItem.hasArt ? 1.5 : 1.6
                     color: rowItem.pinned ? Theme.accent : Theme.textDim
-                    x: rowItem.hasArt ? parent.width - width - 2
+                    // Centred in the badge, which is itself in the corner, so
+                    // the inset is whatever the badge has left over.
+                    readonly property int badgePad: Math.round((root.coverBadge - width) / 2)
+                    x: rowItem.hasArt ? parent.width - width - badgePad
                                       : Math.round((parent.width - width) / 2)
-                    y: rowItem.hasArt ? parent.height - height - 2
+                    y: rowItem.hasArt ? parent.height - height - badgePad
                                       : Math.round((parent.height - height) / 2)
                 }
             }
@@ -835,7 +885,7 @@ Item {
                     id: dragArea
                     objectName: "pinDragArea"
                     anchors.fill: parent
-                    anchors.margins: -5          // 16x34 is a small target
+                    anchors.margins: -5          // 16 wide is a small target
                     enabled: rowItem.draggable
                     cursorShape: rowItem.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     // Otherwise the list reads the vertical drag as a flick

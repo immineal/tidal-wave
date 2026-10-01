@@ -44,8 +44,12 @@ TestCase {
     readonly property int minSidebar: 190
     readonly property int maxSidebar: 420
     readonly property int defaultSidebar: 220
-    // SideBar.coverSize, repeated for the same reason as the widths above.
-    readonly property int coverSize: 26
+    // SideBar.coverSize, read off the sidebar rather than repeated: the
+    // widths above are contract numbers that must not drift silently, but the
+    // cover is a design decision that has already moved once (26 -> 36, so
+    // the type badge in its corner is legible), and a copy of it here only
+    // means this file has to be edited the next time it moves.
+    function coverSizeOf(sb) { return sb.coverSize }
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
@@ -505,12 +509,12 @@ TestCase {
         var panel = findByName(sb, "sidebarPanel")
         settle(host.contentItem)
 
-        var railX = Math.round((railWidth - coverSize) / 2)
+        var railX = Math.round((railWidth - coverSizeOf(sb)) / 2)
         for (var i = 0; i < fixtureIds.length; ++i) {
             var c = coverFor(sb, fixtureIds[i])
             verify(c, "the rail has no cover for " + fixtureIds[i])
-            compare(c.width, coverSize, "the rail cover of " + fixtureIds[i])
-            compare(c.height, coverSize, "the rail cover of " + fixtureIds[i])
+            compare(c.width, coverSizeOf(sb), "the rail cover of " + fixtureIds[i])
+            compare(c.height, coverSizeOf(sb), "the rail cover of " + fixtureIds[i])
             compare(Math.round(c.mapToItem(panel, 0, 0).x), railX,
                     "the rail cover of " + fixtureIds[i] + " is not centred in the rail")
         }
@@ -519,12 +523,19 @@ TestCase {
         for (i = 0; i < fixtureIds.length; ++i) {
             c = coverFor(sb, fixtureIds[i])
             verify(c, "the open sidebar lost the cover for " + fixtureIds[i])
-            compare(c.width, coverSize,
+            compare(c.width, coverSizeOf(sb),
                     "the cover of " + fixtureIds[i] + " resized when the sidebar opened")
-            compare(c.height, coverSize,
+            compare(c.height, coverSizeOf(sb),
                     "the cover of " + fixtureIds[i] + " resized when the sidebar opened")
-            verify(c.mapToItem(panel, 0, 0).x < railX,
-                   "the cover of " + fixtureIds[i] + " did not slide left out of the rail")
+            // It does not slide any more, and that is the point. A 36px
+            // cover centred in the 68px rail has its left edge on 16, which
+            // is the sidebar's content inset -- the same place the open list
+            // puts it. So the artwork holds still and the labels arrive
+            // beside it, instead of every cover in the list drifting
+            // sideways every time the rail opens.
+            compare(Math.round(c.mapToItem(panel, 0, 0).x), sb.coverLeft,
+                    "the cover of " + fixtureIds[i]
+                    + " is not on the sidebar's content inset once open")
         }
         collapseTheRail(host)
 
@@ -532,7 +543,7 @@ TestCase {
         // all, so the number is one number and not two that happen to agree.
         var wide = showHost(1280, 700)
         settle(wide.contentItem)
-        compare(coverFor(wide.sidebar, "p1").width, coverSize,
+        compare(coverFor(wide.sidebar, "p1").width, coverSizeOf(wide.sidebar),
                 "a sidebar that never saw the rail draws a different cover")
     }
 
@@ -564,7 +575,7 @@ TestCase {
             var mid = coverFor(sb, fixtureIds[i])
             verify(mid === before[fixtureIds[i]],
                    "the cover of " + fixtureIds[i] + " was rebuilt at " + midWidth + "px")
-            compare(mid.width, coverSize,
+            compare(mid.width, coverSizeOf(sb),
                     "the cover of " + fixtureIds[i] + " resized mid-slide")
             verify(mid.visible, "the cover of " + fixtureIds[i] + " blinked out mid-slide")
         }
@@ -577,8 +588,12 @@ TestCase {
             var id = fixtureIds[i]
             verify(after[id] === before[id],
                    "the cover of " + id + " is a different object once the sidebar is open")
-            verify(Math.abs(after[id].mapToItem(panel, 0, 0).x - beforeX[id]) > 0.5,
-                   "the cover of " + id + " never moved")
+            // No travel assertion: at the current cover size the rail centre
+            // and the open list's inset are the same x, so the cover holds
+            // still through the slide. Identity is what this test is for --
+            // one item in both shapes, never two sets swapping -- and that
+            // is what the line above checks at every step of the way.
+            verify(after[id].visible, "the cover of " + id + " did not survive the slide")
         }
 
         // And back: closing it is the same journey in reverse, not a second
@@ -618,7 +633,7 @@ TestCase {
 
             var cover = findByName(r, "railPinCover")
             verify(cover && cover.visible, where + " has no cover")
-            compare(cover.width, coverSize, where + " has the wrong cover size")
+            compare(cover.width, coverSizeOf(sb), where + " has the wrong cover size")
 
             var art   = findByName(r, "libraryRowArt")
             var glyph = findByName(r, "libraryRowIcon")
@@ -924,6 +939,54 @@ TestCase {
         compare(collectByName(sb, "sidebarAvatar", []).length, 0,
                 "the avatar icon was dropped on purpose")
         verify(findByName(sb, "sidebarSettingsGear").visible, "the gear stays")
+
+        // The row says what it is instead of leaving a gear to imply it, and
+        // the name is the second line rather than the subject of the row.
+        var label = findByName(sb, "sidebarSettingsLabel")
+        verify(label && label.visible, "the footer row has no Settings label")
+        compare(label.text, qsTranslate("SettingsPanel", "Settings"),
+                "the footer should reuse the panel's own word")
+        verify(label.mapToItem(sb, 0, 0).y < name.mapToItem(sb, 0, 0).y,
+               "the account name should sit under the Settings label")
+    }
+
+    // The whole row is the target now, not a 28px gear at the end of it.
+    function test_the_footer_row_opens_settings() {
+        var host = showHost(1280, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+        verify(!sb.settingsPanel.visible, "the panel was already open")
+
+        var row = findByName(sb, "sidebarSettingsRow")
+        verify(row && row.visible, "the footer has no row")
+        verify(row.width > 150, "the footer row is " + row.width.toFixed(0)
+               + " wide, so it is still a button and not a row")
+
+        // Well away from the gear, where the old layout had inert text.
+        var p = row.mapToItem(host.contentItem, row.width - 24, row.height / 2)
+        mouseClick(host.contentItem, p.x, p.y)
+        tryVerify(function () { return sb.settingsPanel.visible }, 2000,
+                  "clicking the row did not open Settings")
+        sb.settingsPanel.close()
+    }
+
+    // The sidebar can be dragged down to 190, and a long display name has to
+    // give way there rather than pushing the row wider or wrapping onto a
+    // third line.
+    function test_a_long_account_name_elides_at_the_narrowest_sidebar() {
+        auth.setUsernameForTest("Ein ziemlich langer Anzeigename fuer das Konto")
+        prefs.setSidebarWidthForTest(minSidebar)
+        var host = showHost(1280, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        var name = findByName(sb, "sidebarAccountName")
+        verify(name && name.visible, "the footer has no account name")
+        compare(name.elide, Text.ElideRight, "the account name does not elide")
+        compare(name.wrapMode, Text.NoWrap, "the account name wraps")
+        verify(name.mapToItem(sb, 0, 0).x + name.width <= sb.panelWidth + 0.5,
+               "the account name runs past the sidebar at " + minSidebar + "px")
+        prefs.setSidebarWidthForTest(defaultSidebar)
     }
 
     // I4: the Settings panel shows the real version, not v0.1-alpha.

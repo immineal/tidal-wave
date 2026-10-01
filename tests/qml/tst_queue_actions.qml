@@ -151,7 +151,10 @@ TestCase {
 
         verify(menu.playNextItem.visible,   "a row offers no Play next")
         verify(menu.addToQueueItem.visible, "a row offers no Add to queue")
-        // The row's items carry a leading glyph, as every item in that menu does.
+        // endsWith rather than compare, from when every item in this menu
+        // carried a leading glyph. The glyphs are gone and the labels are now
+        // exactly the translated string, but the looser check still holds and
+        // still catches the label being wrong.
         verify(endsWith(menu.playNextItem.text,
                         qsTr("Play next", "verb, play this right after the current track")),
                "wrong Play next label: " + menu.playNextItem.text)

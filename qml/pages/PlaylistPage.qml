@@ -217,7 +217,7 @@ Rectangle {
 
                         PillButton {
                             text: qsTr("Play", "verb, button label")
-                            glyph: "▶"
+                            icon: "play"
                             accent: true
                             onClicked: {
                                 if (root.tracks.length > 0) {
@@ -229,7 +229,7 @@ Rectangle {
 
                         PillButton {
                             text: qsTr("Shuffle")
-                            glyph: "⇌"
+                            icon: "shuffle"
                             accent: false
                             onClicked: {
                                 if (root.tracks.length > 0) {
@@ -243,7 +243,7 @@ Rectangle {
                         PillButton {
                             visible: root.isUserPlaylist
                             text: qsTr("Edit")
-                            glyph: "✎"
+                            icon: "edit"
                             accent: false
                             onClicked: {
                                 editTitleField.text   = root.playlistTitle

@@ -85,6 +85,46 @@ QtObject {
     readonly property int radiusBadge:  r.badge    // quality tag
     readonly property int radiusMark:   r.mark     // the app icon tile
 
+    // ── menus ────────────────────────────────────────────────────────────
+    // A Menu's width does not come from its items. Qt's Basic style gives the
+    // menu's contentItem (a ListView) no implicitWidth at all, so a styled
+    // Menu is exactly as wide as whatever its background declares -- which is
+    // how a hardcoded 200 came to cut "Zur Warteschlange hinzufügen" in half.
+    // menuWidth() puts the measurement back: every Menu in the app binds its
+    // implicitWidth to it and is then as wide as its longest *visible* item.
+    //
+    // The two bounds are what keep that honest at both ends. Below the
+    // minimum a two-word menu is a stub you have to aim at; above the maximum
+    // one long label would drag the whole menu off the screen, so past it the
+    // labels elide instead (every menu entry is an elide-capable Text).
+    readonly property int menuMinWidth: 180
+    readonly property int menuMaxWidth: 420
+    // Air left between a menu at full width and the window edge.
+    readonly property int menuWindowMargin: 12
+
+    function menuWidth(menu) {
+        if (!menu) return menuMinWidth
+        var w = 0
+        // `count` and each item's `implicitWidth`/`visible` are properties, so
+        // reading them here is what makes the caller's binding re-evaluate
+        // when an item is added, hidden, or relabelled by a language change.
+        for (var i = 0; i < menu.count; ++i) {
+            var it = menu.itemAt(i)
+            if (it && it.visible) w = Math.max(w, it.implicitWidth)
+        }
+        w += menu.leftPadding + menu.rightPadding
+
+        // A window narrower than menuMaxWidth is the real cap; without this a
+        // 420px menu in a 640px window is a quarter of the screen. `window` is
+        // null until the menu is first shown, which is why it is guarded
+        // rather than assumed.
+        var maxW = menuMaxWidth
+        if (menu.window && menu.window.width > 0)
+            maxW = Math.min(maxW, menu.window.width - 2 * menuWindowMargin)
+
+        return Math.max(Math.min(menuMinWidth, maxW), Math.min(maxW, w))
+    }
+
     // ── motion ───────────────────────────────────────────────────────────
     // X6. One switch for the whole app, so a new animation has one obvious
     // thing to call and the answer cannot drift from file to file. Where the

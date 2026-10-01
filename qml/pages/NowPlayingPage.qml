@@ -395,10 +395,15 @@ Rectangle {
                             width: rsText.implicitWidth + 20; height: 28; radius: Theme.radiusChip
                             color: Theme.artScrimStrong
                             border.color: Theme.artBorder
+                            // The chip said its own name with a rotation
+                            // arrow glued to the front of the translatable
+                            // string. The word carries it; the glyph was
+                            // decoration, and a character the font may not
+                            // have at that.
                             Text {
                                 id: rsText
                                 anchors.centerIn: parent
-                                text: qsTr("⟳ Resync")
+                                text: qsTr("Resync")
                                 color: Theme.artInk; font.pixelSize: 12
                             }
                             HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -639,11 +644,15 @@ Rectangle {
                             height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusBadge
                             color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
                                    player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
+                            // An atom and a diamond used to be pasted in
+                            // front of the label. Neither says anything about
+                            // audio that "Hi-Res Lossless" does not say in
+                            // words, and the badge is already colour-coded by
+                            // the same three cases, so the marks are gone
+                            // rather than redrawn.
                             Text {
                                 id: qlbl; anchors.centerIn: parent
-                                text: (player.audioQuality === "HI_RES_LOSSLESS" ? "⚛ " :
-                                       player.audioQuality === "LOSSLESS" ? "◆ " : "")
-                                      + player.qualityLabel(player.audioQuality)
+                                text: player.qualityLabel(player.audioQuality)
                                 color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
                             }
                         }

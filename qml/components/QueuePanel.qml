@@ -762,11 +762,14 @@ Item {
 
             Menu {
                 id: rowMenu
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup; implicitWidth: 180 }
-                MenuItem {
+                popupType: Popup.Item
+                implicitWidth: Theme.menuWidth(this)
+                overlap: 0
+                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+                ContextMenu.Entry {
                     text: qsTr("Remove from queue")
-                    contentItem: Text { text: parent.text; color: Theme.textPrimary; font.pixelSize: 13; leftPadding: 12; verticalAlignment: Text.AlignVCenter }
-                    background: Rectangle { color: parent.highlighted ? Theme.surfaceHov : "transparent" }
+                    danger: true
+                    iconName: "trash"
                     onTriggered: player.removeManual(entry.slot)
                 }
             }

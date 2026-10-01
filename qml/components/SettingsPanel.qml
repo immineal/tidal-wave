@@ -135,8 +135,11 @@ Popup {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
 
+    // The sheet the cards sit on, which has to be a step below them or a
+    // raised card is invisible. The panel was Theme.surfaceHigh when its
+    // sections were separated by rules instead.
     background: Rectangle {
-        color: Theme.surfaceHigh
+        color: Theme.surface
         border.color: Theme.border
         radius: Theme.radiusPopup
     }
@@ -148,7 +151,7 @@ Popup {
     // The panel's own ground at a given alpha. "transparent" is transparent
     // *black*, which greys a fade out on the two light themes.
     function fadeStop(a) {
-        return Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, a)
+        return Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, a)
     }
 
     // Roughly 1400px of content in a 640px panel, and the default AsNeeded
@@ -242,8 +245,6 @@ Popup {
                 }
             }
 
-            Separator {}
-
             // ── account ──────────────────────────────────────────────────
             Section {
                 heading: qsTr("Account")
@@ -251,11 +252,18 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    spacing: 12
                     Rectangle {
                         width: 36; height: 36; radius: Theme.radiusChip; color: Theme.accent
-                        Text {
-                            anchors.centerIn: parent; text: "♪"
-                            color: Theme.accentInk; font.pixelSize: 16
+                        // Stands in for an avatar, so there is no label
+                        // beside it to carry the meaning; drawn rather than
+                        // set in a font, like every other mark in the app.
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: "music"
+                            color: Theme.accentInk
+                            width: 18; height: 18
+                            strokeWidth: 1.6
                         }
                     }
                     ColumnLayout {
@@ -268,20 +276,19 @@ Popup {
                         }
                         Text {
                             objectName: "settingsVersion"
-                            text: qsTr("Version %1").arg(prefs.appVersion())
+                            // The "v" is written here and not in the
+                            // translatable string: it belongs to the version
+                            // number, not to the sentence, and prefs
+                            // .appVersion() is the bare "0.4.0".
+                            readonly property string ver: prefs.appVersion()
+                            text: qsTr("Version %1").arg(ver.length > 0 ? "v" + ver : ver)
                             color: Theme.textDim; font.pixelSize: 12
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                     }
-                    PanelButton {
-                        label: qsTr("Log out")
-                        danger: true
-                        onActivated: { root.close(); auth.logout() }
-                    }
                 }
             }
 
-            Separator { inset: true }
 
             // ── appearance ───────────────────────────────────────────────
             Section {
@@ -308,6 +315,45 @@ Popup {
                     ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
                 }
 
+                // The pure-black switch. Gone rather than greyed out on a
+                // light theme: a disabled control invites you to work out how
+                // to enable it, and there is nothing to work out here.
+                //
+                // Across the whole card rather than tucked under the dark
+                // column, which was half the width and made the switch look
+                // like a seventh dark palette. The toggle is centred against
+                // both lines of its label; aligned to the first line it sat
+                // visibly high of the block it belongs to.
+                RowLayout {
+                    objectName: "settingsOledBlock"
+                    visible: ThemePalette.isDark
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: qsTr("Pure black")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsOledNote"
+                            text: qsTr("Saves power on OLED screens.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsOledToggle"
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: prefs.oledBlack
+                        onToggled: prefs.oledBlack = !prefs.oledBlack
+                    }
+                }
+
                 Text {
                     text: qsTr("Language")
                     color: Theme.textSec; font.pixelSize: 13
@@ -322,7 +368,6 @@ Popup {
                 }
             }
 
-            Separator { inset: true }
 
             // ── playback ─────────────────────────────────────────────────
             Section {
@@ -377,7 +422,6 @@ Popup {
                 }
             }
 
-            Separator { inset: true }
 
             // ── performance ──────────────────────────────────────────────
             Section {
@@ -412,7 +456,6 @@ Popup {
                 }
             }
 
-            Separator { inset: true }
 
             // ── updates ──────────────────────────────────────────────────
             Section {
@@ -448,7 +491,6 @@ Popup {
                 }
             }
 
-            Separator { inset: true }
 
             // ── keyboard shortcuts ───────────────────────────────────────
             Section {
@@ -496,7 +538,6 @@ Popup {
                 }
             }
 
-            Separator { inset: true }
 
             // ── privacy ──────────────────────────────────────────────────
             // Last on purpose. This is a wall of prose and reads as the end of
@@ -510,7 +551,6 @@ Popup {
             Section {
                 heading: qsTr("Privacy")
                 key: "privacy"
-                Layout.bottomMargin: 20
 
                 PrivacyLine {
                     text: qsTr("Tidal Wave has no analytics and no telemetry.")
@@ -527,6 +567,28 @@ Popup {
                 PrivacyLine {
                     text: qsTr("The full version, with the source file behind every line, is at the bottom of the README.")
                 }
+            }
+
+            // ── signing out ────────────────────────────────────
+            //
+            // Not in the Account card, where it sat next to the version
+            // number: signing out has nothing to do with which build is
+            // installed, and a destructive action one line under a number
+            // people lean in to read is the wrong place for it. It has no
+            // heading and no card either, because it is not a setting; it is
+            // the end of the panel, which is where a sign-out lives in every
+            // other app. Full width and alone below the last section, so it
+            // cannot be hit by accident on the way past.
+            PanelButton {
+                objectName: "settingsLogOut"
+                label: qsTr("Log out")
+                danger: true
+                Layout.fillWidth: true
+                Layout.leftMargin: root.sideMargin
+                Layout.rightMargin: root.sideMargin
+                Layout.topMargin: 28
+                Layout.bottomMargin: 20
+                onActivated: { root.close(); auth.logout() }
             }
         }
     }
@@ -558,19 +620,18 @@ Popup {
 
     // ── inline components ────────────────────────────────────────────────
 
-    // One hairline between sections. `inset` keeps it off the popup's own
-    // edge, which only the one under the header wants to touch.
-    component Separator : Rectangle {
-        property bool inset: false
-        color: Theme.border
-        height: 1
-        Layout.fillWidth: true
-        Layout.leftMargin:  inset ? root.sideMargin : 0
-        Layout.rightMargin: inset ? root.sideMargin : 0
-    }
-
-    // A titled block. Children declared on an instance land in the column
-    // under the heading, because ColumnLayout's default property is its data.
+    // A heading over a card of controls.
+    //
+    // The sections used to be separated by hairlines, which read as leftover
+    // dividers rather than as structure and get lost in a 1400px scroll. The
+    // controls are on their own raised panel now and the heading sits outside
+    // it, so a section is a shape you can see at a glance from any scroll
+    // position, and the gap between two of them does the separating.
+    //
+    // Children declared on an instance land inside the card. That needs the
+    // default property redirected, which in turn is why the heading and the
+    // card itself are assigned to `data` by hand: anything declared the
+    // ordinary way here would go through the redirect and into its own card.
     component Section : ColumnLayout {
         id: sec
         objectName: "settingsSection"
@@ -578,20 +639,48 @@ Popup {
         // A name that is not the heading, so tst_settings can assert the order
         // of the panel without the assertion turning into a translation test.
         property string key: ""
+        default property alias cardData: body.data
+
+        // The card's own inset. Its children are already 20px in from the
+        // panel edge, so this is air inside the card and not a second margin.
+        readonly property int cardPad: 14
+
         Layout.fillWidth: true
         Layout.leftMargin: root.sideMargin
         Layout.rightMargin: root.sideMargin
-        Layout.topMargin: 14
-        Layout.bottomMargin: 4
-        spacing: 10
+        Layout.topMargin: 18
+        Layout.bottomMargin: 0
+        spacing: 8
 
-        Text {
-            text: sec.heading
-            color: Theme.textDim
-            font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-        }
+        data: [
+            Text {
+                text: sec.heading
+                color: Theme.textDim
+                font.pixelSize: 11; font.bold: true; font.letterSpacing: 1
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            },
+            Rectangle {
+                objectName: "settingsCard"
+                Layout.fillWidth: true
+                // A Layout gives an anchored child its own size, so the card
+                // has to be told how tall its contents are. The inner column
+                // measures its children without reference to its own height,
+                // so this cannot feed back.
+                Layout.preferredHeight: body.implicitHeight + 2 * sec.cardPad
+                color: Theme.surfaceHigh
+                radius: Theme.radiusCard
+                border.width: 1
+                border.color: Theme.border
+
+                ColumnLayout {
+                    id: body
+                    anchors.fill: parent
+                    anchors.margins: sec.cardPad
+                    spacing: 10
+                }
+            }
+        ]
     }
 
     // One paragraph of the privacy notice. Wraps, never elides: a privacy
@@ -686,7 +775,8 @@ Popup {
     // One column of the picker: the dark palettes or the light ones, in table
     // order, so the row a tile sits in is its hue family. Half the panel each,
     // because six swatches in one strip would be 50px apiece at 480px and the
-    // labels would have nowhere to go.
+    // labels would have nowhere to go. The pure-black switch used to live at
+    // the foot of this column; it is a full-width row under both of them now.
     component ThemeGroup : ColumnLayout {
         id: group
         objectName: "settingsThemeGroup"
@@ -717,38 +807,6 @@ Popup {
             delegate: ThemeTile { }
         }
 
-        // The pure-black switch. Under the dark column because that is what
-        // it acts on, and gone rather than greyed out on a light theme: a
-        // disabled control invites you to work out how to enable it, and
-        // there is nothing to work out here.
-        ColumnLayout {
-            objectName: "settingsOledBlock"
-            visible: group.dark && ThemePalette.isDark
-            Layout.fillWidth: true
-            Layout.topMargin: 4
-            spacing: 2
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    text: qsTr("Pure black")
-                    color: Theme.textPrimary; font.pixelSize: 13
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
-                }
-                Toggle {
-                    objectName: "settingsOledToggle"
-                    checked: prefs.oledBlack
-                    onToggled: prefs.oledBlack = !prefs.oledBlack
-                }
-            }
-            Text {
-                objectName: "settingsOledNote"
-                text: qsTr("Saves power on OLED screens.")
-                color: Theme.textDim; font.pixelSize: 11
-                wrapMode: Text.Wrap; Layout.fillWidth: true
-            }
-        }
     }
 
     // One palette, as a swatch plus its name. The swatch is the point: the

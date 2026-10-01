@@ -8,7 +8,11 @@ Item {
     id: root
 
     property string text: ""
-    property string glyph: ""
+    // A VectorIcon name, never a character. This used to take a glyph and map
+    // it back onto an icon name here, which meant every caller wrote a
+    // character it did not render and this file kept the only copy of the
+    // translation. Callers name the icon now.
+    property string icon: ""
     property bool   accent: true
 
     // Sized to its label instead of the old fixed 120. German runs long on
@@ -44,19 +48,14 @@ Item {
             anchors.centerIn: parent
             spacing: 8
             VectorIcon {
-                id: glyphIcon
-                name: root.glyph === "▶" ? "play"
-                    : root.glyph === "⇌" ? "shuffle"
-                    : root.glyph === "♥" ? "heart-filled"
-                    : root.glyph === "♡" ? "heart"
-                    : root.glyph === "✎" ? "edit"
-                    : root.glyph
+                id: pillIcon
+                name: root.icon
                 color: root.accent ? Theme.accentInk : Theme.textPrimary
                 width: 14
                 height: 14
                 strokeWidth: 1.8
                 anchors.verticalCenter: parent.verticalCenter
-                visible: root.glyph !== ""
+                visible: root.icon !== ""
             }
             Text { objectName: "pillLabel"; text: root.text;  color: root.accent ? Theme.accentInk : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
         }

@@ -39,11 +39,18 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 16
 
-            Text {
-                text: "←"
+            // Same drawn arrow as BackButton and PageHeader; see BackButton
+            // for why none of the three is a character any more.
+            VectorIcon {
+                name: "chevron-left"
                 color: Theme.textSec
-                font.pixelSize: 18
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
+                // In a RowLayout, so the size has to be asked for: a plain
+                // width/height is overwritten by the layout.
+                Layout.preferredWidth: 18
+                Layout.preferredHeight: 18
+                Layout.alignment: Qt.AlignVCenter
+                strokeWidth: 2
+                MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
             }
 
             ColumnLayout {
@@ -69,7 +76,7 @@ Rectangle {
             PillButton {
                 visible: root.tracks.length > 0
                 text: qsTr("Play all")
-                glyph: "▶"
+                icon: "play"
                 accent: true
                 onClicked: root.playFrom(root.tracks, 0)
             }

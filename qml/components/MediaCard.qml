@@ -182,12 +182,17 @@ Item {
                 anchors.margins:  root.roundArt ? 0 : 12
                 color: Theme.accent
 
-                Text {
+                VectorIcon {
                     anchors.centerIn: parent
-                    text: "▶"
+                    name: "play"
                     color: Theme.accentInk
-                    font.pixelSize: 16
-                    leftPadding: 2
+                    width: 18
+                    height: 18
+                    // The play triangle's own centre of area sits left of the
+                    // glyph box's centre, so a disc that centres the box looks
+                    // like the mark has slid backwards. Nudged, as the text
+                    // glyph it replaces was.
+                    anchors.horizontalCenterOffset: 1
                 }
 
                 scale: playHov.hovered ? 1.05 : 1

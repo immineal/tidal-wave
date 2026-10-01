@@ -182,6 +182,16 @@ Item {
         case "cast":
             return "M 3 10 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 11"
                  + " M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18"
+        // The only mark any menu in the app carries, so it has to be the one
+        // thing a bin can be and nothing else: lid, handle, tapered body, two
+        // ribs. The ribs are what stop it reading as a cup at 16px, and the
+        // 2-unit body corners are the same radius the home and settings
+        // glyphs are built on.
+        case "trash":
+            return "M 4 6.5 H 20"
+                 + " M 9.5 6.5 V 4.5 A 1.5 1.5 0 0 1 11 3 H 13 A 1.5 1.5 0 0 1 14.5 4.5 V 6.5"
+                 + " M 6.5 6.5 V 19.5 A 2 2 0 0 0 8.5 21.5 H 15.5 A 2 2 0 0 0 17.5 19.5 V 6.5"
+                 + " M 10 10.5 V 17.5 M 14 10.5 V 17.5"
         }
         return ""
     }
