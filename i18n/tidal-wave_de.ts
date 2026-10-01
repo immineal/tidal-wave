@@ -299,6 +299,15 @@
 <context>
     <name>ContextMenu</name>
     <message>
+        <source>Unpin</source>
+        <translation>Nicht mehr anheften</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <comment>verb, pin to the sidebar</comment>
+        <translation>Anheften</translation>
+    </message>
+    <message>
         <source>Play</source>
         <comment>verb, menu item</comment>
         <translation>Abspielen</translation>
@@ -431,7 +440,7 @@
         <translation>Mediathek…</translation>
     </message>
     <message>
-        <source>Songs</source>
+        <source>Tracks</source>
         <translation>Titel</translation>
     </message>
     <message>
@@ -604,18 +613,6 @@
     <message>
         <source>%1%</source>
         <translation>%1 %</translation>
-    </message>
-    <message>
-        <source>Cast to</source>
-        <translation>Übertragen auf</translation>
-    </message>
-    <message>
-        <source>This computer</source>
-        <translation>Dieser Computer</translation>
-    </message>
-    <message>
-        <source>Searching for devices…</source>
-        <translation>Geräte werden gesucht…</translation>
     </message>
     <message>
         <source>Up Next</source>
@@ -874,37 +871,7 @@
     </message>
 </context>
 <context>
-    <name>SideBar</name>
-    <message>
-        <source>Home</source>
-        <comment>noun, the home page</comment>
-        <translation>Startseite</translation>
-    </message>
-    <message>
-        <source>Search</source>
-        <comment>noun, the search page</comment>
-        <translation>Suche</translation>
-    </message>
-    <message>
-        <source>Collection</source>
-        <translation>Sammlung</translation>
-    </message>
-    <message>
-        <source>No matches</source>
-        <translation>Keine Treffer</translation>
-    </message>
-    <message>
-        <source>Nothing saved yet</source>
-        <translation>Noch nichts gespeichert</translation>
-    </message>
-    <message>
-        <source>My Account</source>
-        <translation>Mein Konto</translation>
-    </message>
-    <message>
-        <source>Settings (Ctrl+,)</source>
-        <translation>Einstellungen (Strg+,)</translation>
-    </message>
+    <name>SettingsPanel</name>
     <message>
         <source>Settings</source>
         <translation>Einstellungen</translation>
@@ -920,6 +887,26 @@
     <message>
         <source>Log out</source>
         <translation>Abmelden</translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation>Darstellung</translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation>Design</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Dunkel</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Hell</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Sprache</translation>
     </message>
     <message>
         <source>Playback</source>
@@ -944,6 +931,66 @@
     <message>
         <source>Hi-Res (24-bit)</source>
         <translation>Hi-Res (24 Bit)</translation>
+    </message>
+    <message>
+        <source>Audio output</source>
+        <translation>Audioausgabe</translation>
+    </message>
+    <message>
+        <source>System default currently uses %1</source>
+        <translation>Systemstandard verwendet derzeit %1</translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation>Leistung</translation>
+    </message>
+    <message>
+        <source>Hardware acceleration</source>
+        <translation>Hardwarebeschleunigung</translation>
+    </message>
+    <message>
+        <source>Takes effect after you restart Tidal Wave.</source>
+        <translation>Wird nach einem Neustart von Tidal Wave wirksam.</translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation>Updates</translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation>Automatisch nach Updates suchen</translation>
+    </message>
+    <message>
+        <source>At most once a day, against the GitHub releases page.</source>
+        <translation>Höchstens einmal täglich, bei der Releases-Seite auf GitHub.</translation>
+    </message>
+    <message>
+        <source>Check now</source>
+        <translation>Jetzt suchen</translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation>Datenschutz</translation>
+    </message>
+    <message>
+        <source>Tidal Wave has no analytics and no telemetry.</source>
+        <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login and every search, page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
+        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung und jede Suche, jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest.</translation>
+    </message>
+    <message>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>
+        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; und ein zwischengespeicherter Index deiner Mediathek.</translation>
+    </message>
+    <message>
+        <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>
+        <translation>Die Updateprüfung lässt sich oben abschalten. Tidal Wave lädt ein Update nie von selbst herunter und installiert auch keines. Es öffnet nur die Release-Seite in deinem Browser.</translation>
+    </message>
+    <message>
+        <source>The full version, with the source file behind every line, is at the bottom of the README.</source>
+        <translation>Die vollständige Fassung, mit der Quelldatei hinter jeder Zeile, steht am Ende der README.</translation>
     </message>
     <message>
         <source>Keyboard shortcuts</source>
@@ -1046,6 +1093,39 @@
     </message>
 </context>
 <context>
+    <name>SideBar</name>
+    <message>
+        <source>Home</source>
+        <comment>noun, the home page</comment>
+        <translation>Startseite</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <comment>noun, the search page</comment>
+        <translation>Suche</translation>
+    </message>
+    <message>
+        <source>Collection</source>
+        <translation>Sammlung</translation>
+    </message>
+    <message>
+        <source>No matches</source>
+        <translation>Keine Treffer</translation>
+    </message>
+    <message>
+        <source>Nothing saved yet</source>
+        <translation>Noch nichts gespeichert</translation>
+    </message>
+    <message>
+        <source>My Account</source>
+        <translation>Mein Konto</translation>
+    </message>
+    <message>
+        <source>Settings (Ctrl+,)</source>
+        <translation>Einstellungen (Strg+,)</translation>
+    </message>
+</context>
+<context>
     <name>Theme</name>
     <message>
         <source>Midnight</source>
@@ -1074,6 +1154,14 @@
 </context>
 <context>
     <name>TrackRow</name>
+    <message>
+        <source>Unknown track</source>
+        <translation>Unbekannter Titel</translation>
+    </message>
+    <message>
+        <source>Unknown artist</source>
+        <translation>Unbekannter Künstler</translation>
+    </message>
     <message>
         <source>%1%</source>
         <translation>%1 %</translation>
@@ -1134,6 +1222,33 @@
             <numerusform>%n Titel</numerusform>
             <numerusform>%n Titel</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>UpdatePrompt</name>
+    <message>
+        <source>Update available</source>
+        <translation>Update verfügbar</translation>
+    </message>
+    <message>
+        <source>Version %1 is available. You are running %2.</source>
+        <translation>Version %1 ist verfügbar. Du verwendest %2.</translation>
+    </message>
+    <message>
+        <source>This opens the release page in your browser. The app does not download or install anything.</source>
+        <translation>Dies öffnet die Release-Seite in deinem Browser. Die App lädt nichts herunter und installiert nichts.</translation>
+    </message>
+    <message>
+        <source>Open release</source>
+        <translation>Release öffnen</translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation>Später</translation>
+    </message>
+    <message>
+        <source>Skip this version</source>
+        <translation>Diese Version überspringen</translation>
     </message>
 </context>
 </TS>
