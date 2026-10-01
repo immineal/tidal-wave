@@ -50,7 +50,12 @@ through section 4.
 
     sudo apt install build-essential cmake ninja-build \
       qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-svg-dev \
+      qt6-tools-dev qt6-l10n-tools \
       libasound2-dev libavahi-client-dev
+
+The two qt6-tools packages are easy to leave out and the omission is quiet: without
+LinguistTools, CMake prints one warning and then builds a binary with no German
+catalogue in it, which looks like a translation bug rather than a missing dependency.
     cmake -S tidal-wave -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
     cmake --build build
 

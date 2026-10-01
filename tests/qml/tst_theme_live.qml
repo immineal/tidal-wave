@@ -44,13 +44,13 @@ TestCase {
     }
 
     function init() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
         // Explicit, because half the file is about what flipping it does.
         prefs.oledBlack = false
     }
 
     function cleanupTestCase() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
         prefs.oledBlack = false
     }
 
@@ -63,11 +63,11 @@ TestCase {
 
     function test_switching_theme_repaints_data() {
         return [
-            { tag: "forest",   name: "forest",   dark: true  },
-            { tag: "ember",    name: "ember",    dark: true  },
-            { tag: "daylight", name: "daylight", dark: false },
-            { tag: "paper",    name: "paper",    dark: false },
-            { tag: "dawn",     name: "dawn",     dark: false },
+            { tag: "pine", name: "pine", dark: true  },
+            { tag: "rust", name: "rust", dark: true  },
+            { tag: "sky",  name: "sky",  dark: false },
+            { tag: "sand", name: "sand", dark: false },
+            { tag: "clay", name: "clay", dark: false },
         ]
     }
 
@@ -80,8 +80,8 @@ TestCase {
 
         compare(ThemePalette.isDark, data.dark)
         verify(probe.color.toString() !== before,
-               data.name + " did not change the background away from midnight")
-        // Not "the text colour changed": Midnight and Daylight are not the
+               data.name + " did not change the background away from sea")
+        // Not "the text colour changed": Sea and Sky are not the
         // only pair that can share an ink, so only the ground legitimately
         // differs. What must hold is that the binding tracks the palette.
         compare(label.color.toString(), ThemePalette.current.textPrimary.toString())
@@ -92,12 +92,12 @@ TestCase {
     // Light themes are the reason the token layer exists, so prove a light
     // ground really produces dark text rather than white on white.
     function test_light_theme_inverts_text() {
-        prefs.theme = "daylight"
+        prefs.theme = "sky"
         verify(!ThemePalette.isDark)
         const bgLum = 0.2126 * probe.color.r + 0.7152 * probe.color.g + 0.0722 * probe.color.b
         const fgLum = 0.2126 * label.color.r + 0.7152 * label.color.g + 0.0722 * label.color.b
-        verify(bgLum > 0.5, "daylight background is not light")
-        verify(fgLum < 0.5, "daylight text is not dark")
+        verify(bgLum > 0.5, "the sky background is not light")
+        verify(fgLum < 0.5, "the sky text is not dark")
     }
 
     // The end-to-end version of the same guard: every colour token has to
@@ -105,11 +105,11 @@ TestCase {
     // never ran reads as black here, which is what onAccent and onRed did.
     function test_every_token_reaches_qml_data() {
         return [
-            { tag: "midnight", name: "midnight" },
-            { tag: "midnight in black", name: "midnight", oled: true },
-            { tag: "daylight", name: "daylight" },
-            { tag: "paper",    name: "paper" },
-            { tag: "dawn",     name: "dawn" },
+            { tag: "sea",  name: "sea" },
+            { tag: "sea in black", name: "sea", oled: true },
+            { tag: "sky",  name: "sky" },
+            { tag: "sand", name: "sand" },
+            { tag: "clay", name: "clay" },
         ]
     }
 
@@ -132,12 +132,12 @@ TestCase {
     // Rectangle's label is the only check that covers the whole path.
     function test_ink_on_a_fill_is_white_data() {
         return [
-            { tag: "midnight", name: "midnight" },
-            { tag: "forest",   name: "forest" },
-            { tag: "ember",    name: "ember" },
-            { tag: "daylight", name: "daylight" },
-            { tag: "paper",    name: "paper" },
-            { tag: "dawn",     name: "dawn" },
+            { tag: "sea",  name: "sea" },
+            { tag: "pine", name: "pine" },
+            { tag: "rust", name: "rust" },
+            { tag: "sky",  name: "sky" },
+            { tag: "sand", name: "sand" },
+            { tag: "clay", name: "clay" },
         ]
     }
 
@@ -165,9 +165,9 @@ TestCase {
 
     function test_pure_black_repaints_data() {
         return [
-            { tag: "midnight", name: "midnight" },
-            { tag: "forest",   name: "forest" },
-            { tag: "ember",    name: "ember" },
+            { tag: "sea",  name: "sea" },
+            { tag: "pine", name: "pine" },
+            { tag: "rust", name: "rust" },
         ]
     }
 
@@ -198,9 +198,9 @@ TestCase {
     // half that makes hiding it honest.
     function test_pure_black_does_nothing_on_a_light_theme_data() {
         return [
-            { tag: "daylight", name: "daylight" },
-            { tag: "paper",    name: "paper" },
-            { tag: "dawn",     name: "dawn" },
+            { tag: "sky",  name: "sky" },
+            { tag: "sand", name: "sand" },
+            { tag: "clay", name: "clay" },
         ]
     }
 

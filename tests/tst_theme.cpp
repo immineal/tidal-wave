@@ -96,10 +96,10 @@ private slots:
     }
 
     // Settings draws the two halves as columns side by side and relies on the
-    // table order to pair them up by hue: Midnight beside Daylight, Forest
-    // beside Paper, Ember beside Dawn. That is a layout contract, not a
-    // coincidence, so the shape it needs is asserted here rather than left to
-    // whoever next inserts a palette in the middle of the list.
+    // table order to pair them up by hue: Sea beside Sky, Pine beside Sand,
+    // Rust beside Clay. That is a layout contract, not a coincidence, so the
+    // shape it needs is asserted here rather than left to whoever next inserts
+    // a palette in the middle of the list.
     void darkThenLight_pairedByPosition() {
         const auto all = theme::themes();
         QCOMPARE(all.size(), 6);
@@ -108,7 +108,7 @@ private slots:
         for (int i = 3; i < 6; ++i)
             QVERIFY2(!all.at(i).dark, qPrintable(all.at(i).name + " is not in the light half"));
 
-        const QStringList expected{"midnight", "forest", "ember", "daylight", "paper", "dawn"};
+        const QStringList expected{"sea", "pine", "rust", "sky", "sand", "clay"};
         QStringList actual;
         for (const auto &t : all) actual << t.name;
         QCOMPARE(actual, expected);
@@ -121,9 +121,9 @@ private slots:
     void eachRowIsOneHue_data() {
         QTest::addColumn<QString>("darkName");
         QTest::addColumn<QString>("lightName");
-        QTest::newRow("blue")  << "midnight" << "daylight";
-        QTest::newRow("green") << "forest"   << "paper";
-        QTest::newRow("amber") << "ember"    << "dawn";
+        QTest::newRow("blue")  << "sea"  << "sky";
+        QTest::newRow("green") << "pine" << "sand";
+        QTest::newRow("amber") << "rust" << "clay";
     }
 
     void eachRowIsOneHue() {
@@ -159,9 +159,9 @@ private slots:
         for (const auto &t : theme::themes()) names.insert(t.name);
         QVERIFY(names.contains(theme::defaultTheme()));
         // Which one is a design decision, so it is written down here the way
-        // the radius scale is. Midnight with the pure-black switch on is what
-        // the retired "Deep" palette was, which is what the user settled on.
-        QCOMPARE(theme::defaultTheme(), QStringLiteral("midnight"));
+        // the radius scale is. Sea with the pure-black switch on is what the
+        // retired "Deep" palette was, which is what the user settled on.
+        QCOMPARE(theme::defaultTheme(), QStringLiteral("sea"));
         QCOMPARE(theme::defaultOledBlack(), true);
         // ...and the switch does nothing on a light theme, so a light default
         // with it on would be a default that quietly lies about itself.
@@ -172,11 +172,11 @@ private slots:
     // The one palette this build dropped. Someone on Deep has to come back to
     // the same pixels, not to a theme one shade lighter, or the removal reads
     // as a bug.
-    void deepMigratesToMidnightInBlack() {
+    void deepMigratesToSeaInBlack() {
         QString name;
         bool    oled = false;
         QVERIFY(theme::migrated(QStringLiteral("deep"), &name, &oled));
-        QCOMPARE(name, QStringLiteral("midnight"));
+        QCOMPARE(name, QStringLiteral("sea"));
         QCOMPARE(oled, true);
         QVERIFY(!theme::isKnown(QStringLiteral("deep")));
 
@@ -186,6 +186,76 @@ private slots:
                      qPrintable(t.name + " is being migrated away from"));
         QVERIFY(!theme::migrated(QStringLiteral("graphite"), nullptr, nullptr));
         QVERIFY(!theme::migrated(QString(), nullptr, nullptr));
+    }
+
+    // The rename: six plainer words over the same six palettes, so the only
+    // place an old name survives is a settings file written before it. Each one
+    // has to come out as its replacement rather than falling through to the
+    // default, which is what an unmigrated name would have done and would have
+    // looked like the app forgetting the theme.
+    void aStoredOldNameSelectsTheRenamedPalette_data() {
+        QTest::addColumn<QString>("stored");
+        QTest::addColumn<QString>("renamed");
+        QTest::newRow("midnight") << "midnight" << "sea";
+        QTest::newRow("forest")   << "forest"   << "pine";
+        QTest::newRow("ember")    << "ember"    << "rust";
+        QTest::newRow("daylight") << "daylight" << "sky";
+        QTest::newRow("paper")    << "paper"    << "sand";
+        QTest::newRow("dawn")     << "dawn"     << "clay";
+    }
+
+    void aStoredOldNameSelectsTheRenamedPalette() {
+        QFETCH(QString, stored);
+        QFETCH(QString, renamed);
+        QVERIFY(theme::isKnown(renamed));
+        QVERIFY2(!theme::isKnown(stored), "an old name is still in kSpecs");
+
+        // A rename moves no pixels, so the pure-black switch has to come back
+        // out exactly as it was stored. Both ways round: a migration that
+        // forces it on is as wrong as one that forces it off, and "deep" above
+        // is the only key allowed to touch it.
+        for (bool oled : {false, true}) {
+            QString name;
+            bool    got = oled;
+            QVERIFY(theme::migrated(stored, &name, &got));
+            QCOMPARE(name, renamed);
+            QCOMPARE(got, oled);
+        }
+
+        // ...and the same thing through a settings file, which is how it
+        // actually reaches a user: Prefs migrates on load, so the palette the
+        // QML binds to is the renamed one and not the fallback.
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("ui/theme"), stored);
+            s.setValue(QStringLiteral("ui/oledBlack"), false);
+        }
+        {
+            Prefs prefs;
+            ThemePalette palette(&prefs);
+            QCOMPARE(prefs.theme(), renamed);
+            QCOMPARE(palette.current(), theme::palette(renamed, false));
+        }
+        // Scoped, and cleared only once Prefs is gone: its own QSettings holds
+        // the values it wrote and would put them back on the way out.
+        { QSettings s; s.clear(); s.sync(); }
+    }
+
+    // The other half of the same contract: a name on neither list is not
+    // guessed at. It stays in the file as written - a settings file from a
+    // build newer than this one is the real case - and the lookup falls back
+    // to the default palette so the app still paints.
+    void aStoredUnknownNameIsLeftAloneAndFallsBack() {
+        QVERIFY(!theme::migrated(QStringLiteral("graphite"), nullptr, nullptr));
+        { QSettings s; s.setValue(QStringLiteral("ui/theme"), "graphite"); }
+        {
+            Prefs prefs;
+            ThemePalette palette(&prefs);
+            QCOMPARE(prefs.theme(), QStringLiteral("graphite"));
+            QCOMPARE(palette.current(),
+                     theme::palette(theme::defaultTheme(), prefs.oledBlack()));
+        }
+        { QSettings s; s.clear(); s.sync(); }
     }
 
     // Prefs takes its default from the table above rather than keeping its own
@@ -518,10 +588,10 @@ private slots:
         }
 
         // The tint survives the trip: scaling the channels rather than
-        // subtracting a constant is what stops Forest going grey down there.
+        // subtracting a constant is what stops Pine going grey down there.
         for (const char *k : {"surface", "surfaceHigh", "surfaceHov", "border"}) {
             const QColor a = col(plain, k), b = col(black, k);
-            if (a.saturation() < 12) continue;   // Midnight is grey on purpose
+            if (a.saturation() < 12) continue;   // Sea is grey on purpose
             QVERIFY2(qAbs(a.hue() - b.hue()) <= 12, qPrintable(
                 name + "." + QLatin1String(k) + " changed hue, " + a.name()
                 + " -> " + b.name()));
@@ -554,7 +624,7 @@ private slots:
                  qPrintable(name + ": the hover wash did not keep up with the ground"));
     }
 
-    // There is no such thing as a black Daylight, and the picker hides the
+    // There is no such thing as a black Sky, and the picker hides the
     // switch rather than greying it out, so asking for one has to be inert
     // rather than merely harmless.
     void oledIsANoOpOnALightTheme_data() { lightThemeRows(); }
@@ -618,34 +688,34 @@ private slots:
     // object Application wired Prefs into, not a fresh one.
     void createReturnsTheWiredInstance() {
         Prefs prefs;
-        prefs.setTheme(QStringLiteral("ember"));
+        prefs.setTheme(QStringLiteral("rust"));
         prefs.setOledBlack(false);
         ThemePalette::instance()->setPrefs(&prefs);
 
         ThemePalette *fromQml = ThemePalette::create(nullptr, nullptr);
         QCOMPARE(fromQml, ThemePalette::instance());
-        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("ember")));
+        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("rust")));
 
         // ...and it keeps following Prefs through that same pointer.
-        prefs.setTheme(QStringLiteral("daylight"));
-        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("daylight")));
+        prefs.setTheme(QStringLiteral("sky"));
+        QCOMPARE(fromQml->current(), theme::palette(QStringLiteral("sky")));
         QVERIFY(!fromQml->isDark());
     }
 
     void currentFollowsPrefs() {
         Prefs prefs;
-        prefs.setTheme(QStringLiteral("midnight"));
+        prefs.setTheme(QStringLiteral("sea"));
         prefs.setOledBlack(false);
         ThemePalette palette(&prefs);
 
-        QCOMPARE(palette.current(), theme::palette(QStringLiteral("midnight")));
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sea")));
         QVERIFY(palette.isDark());
 
         QSignalSpy spy(&palette, &ThemePalette::currentChanged);
-        prefs.setTheme(QStringLiteral("daylight"));
+        prefs.setTheme(QStringLiteral("sky"));
 
         QCOMPARE(spy.count(), 1);
-        QCOMPARE(palette.current(), theme::palette(QStringLiteral("daylight")));
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sky")));
         QVERIFY(!palette.isDark());
     }
 
@@ -654,24 +724,24 @@ private slots:
     // qml/Theme.qml is built to avoid.
     void currentFollowsOledBlack() {
         Prefs prefs;
-        prefs.setTheme(QStringLiteral("forest"));
+        prefs.setTheme(QStringLiteral("pine"));
         prefs.setOledBlack(false);
         ThemePalette palette(&prefs);
-        QCOMPARE(palette.current(), theme::palette(QStringLiteral("forest"), false));
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("pine"), false));
 
         QSignalSpy spy(&palette, &ThemePalette::currentChanged);
         prefs.setOledBlack(true);
         QCOMPARE(spy.count(), 1);
-        QCOMPARE(palette.current(), theme::palette(QStringLiteral("forest"), true));
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("pine"), true));
         QVERIFY(palette.isDark());
 
         // On a light theme the same flip paints nothing, so it must not even
         // claim to have changed anything.
-        prefs.setTheme(QStringLiteral("paper"));
+        prefs.setTheme(QStringLiteral("sand"));
         spy.clear();
         prefs.setOledBlack(false);
         QCOMPARE(spy.count(), 0);
-        QCOMPARE(palette.current(), theme::palette(QStringLiteral("paper")));
+        QCOMPARE(palette.current(), theme::palette(QStringLiteral("sand")));
     }
 
     // Settings needs {name, label, dark} to build the picker.
@@ -693,7 +763,7 @@ private slots:
     // leave the app unpainted.
     void staleSettingStillPaints() {
         Prefs prefs;
-        prefs.setTheme(QStringLiteral("graphite"));   // renamed to "forest"
+        prefs.setTheme(QStringLiteral("graphite"));   // the drafted violet one
         prefs.setOledBlack(false);
         ThemePalette palette(&prefs);
         QCOMPARE(palette.current(), theme::palette(theme::defaultTheme()));

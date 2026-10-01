@@ -80,7 +80,7 @@ TestCase {
     function cleanupTestCase() {
         // Leave the harness's own settings file on the default, so a re-run
         // starts where the last one did.
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
         console.log("shots written: " + testCase.written.length)
     }
 
@@ -572,13 +572,13 @@ TestCase {
         win.destroy()
     }
 
-    // The rail, and the rail with the pointer on it. Daylight only, which is
-    // where a 68px strip of surface against a white page is most likely to
-    // disappear.
+    // The rail, and the rail with the pointer on it. The light themes first,
+    // because that is where a 68px strip of surface against a white page is
+    // most likely to disappear.
     function test_11_rail_data() {
-        return [{ tag: "daylight", theme: "daylight" },
-                { tag: "paper",    theme: "paper" },
-                { tag: "midnight", theme: "midnight" }]
+        return [{ tag: "sky",  theme: "sky" },
+                { tag: "sand", theme: "sand" },
+                { tag: "sea",  theme: "sea" }]
     }
     function test_11_rail(row) {
         prefs.theme = row.theme

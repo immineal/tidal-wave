@@ -81,12 +81,12 @@ Popup {
     // three columns sat two accent revisions behind the C++ for a while and
     // nothing noticed.
     readonly property var swatches: ({
-        "midnight": { bg: "#0A0A0A", edge: "#2A2A2A", accent: "#0079A8" },
-        "forest":   { bg: "#0B0F0C", edge: "#29332B", accent: "#18814E" },
-        "ember":    { bg: "#100D0C", edge: "#332C28", accent: "#C14A18" },
-        "daylight": { bg: "#FFFFFF", edge: "#CFD9E2", accent: "#0A6FC4" },
-        "paper":    { bg: "#FAF7F0", edge: "#CBC0A6", accent: "#2F6F4E" },
-        "dawn":     { bg: "#FFF7F1", edge: "#E8D0BE", accent: "#B4481C" }
+        "sea":  { bg: "#0A0A0A", edge: "#2A2A2A", accent: "#0079A8" },
+        "pine": { bg: "#0B0F0C", edge: "#29332B", accent: "#18814E" },
+        "rust": { bg: "#100D0C", edge: "#332C28", accent: "#C14A18" },
+        "sky":  { bg: "#FFFFFF", edge: "#CFD9E2", accent: "#0A6FC4" },
+        "sand": { bg: "#FAF7F0", edge: "#CBC0A6", accent: "#2F6F4E" },
+        "clay": { bg: "#FFF7F1", edge: "#E8D0BE", accent: "#B4481C" }
     })
 
     function swatchFor(name) {
@@ -315,11 +315,11 @@ Popup {
 
                 // Side by side, not stacked. kSpecs lists the dark palettes
                 // and the light ones in the same hue order, so the two
-                // columns line up row by row - Midnight beside Daylight,
-                // Forest beside Paper, Ember beside Dawn - and the picker
-                // reads as a grid of three colour families rather than as
-                // one long list and one short one. The pure-black switch
-                // belongs to the left column and lives inside it.
+                // columns line up row by row - Sea beside Sky, Pine beside
+                // Sand, Rust beside Clay - and the picker reads as a grid of
+                // three colour families rather than as one long list and one
+                // short one. The pure-black switch belongs to the left column
+                // and lives inside it.
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
@@ -377,6 +377,43 @@ Popup {
                     options: root.languageOptions()
                     value: prefs.language
                     onPicked: function (value) { prefs.language = value }
+                }
+            }
+
+
+            // ── window ─────────────────────────────────────────────────────
+            Section {
+                heading: qsTr("Window", "settings section about the application window")
+                key: "window"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Text {
+                        text: qsTr("Closing the window quits Tidal Wave")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Toggle {
+                        objectName: "settingsQuitOnCloseToggle"
+                        checked: prefs.quitOnClose
+                        onToggled: prefs.quitOnClose = !prefs.quitOnClose
+                    }
+                }
+                Text {
+                    objectName: "settingsQuitOnCloseNote"
+                    // Left visible with no tray icon rather than hidden, which
+                    // is the opposite of what the pure-black switch does above.
+                    // That one is dead until the theme changes in this same
+                    // panel; this one is remembered and starts working the
+                    // moment a tray appears, and a StatusNotifier host can turn
+                    // up long after login with no signal for it - so a row that
+                    // came and went would be a row nobody could rely on
+                    // finding. The sentence below is what the hiding would
+                    // otherwise have had to explain.
+                    text: qsTr("While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.")
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
 
@@ -851,7 +888,7 @@ Popup {
     }
 
     // One palette, as a swatch plus its name. The swatch is the point: the
-    // names alone say nothing about what "Ember" looks like.
+    // names alone say nothing about what "Rust" looks like.
     component ThemeTile : Item {
         id: tile
         objectName: "settingsThemeOption"

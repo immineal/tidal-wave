@@ -33,10 +33,75 @@ Rectangle {
     readonly property int  compactRightBreakpoint: 720
     readonly property bool compactRight: root.width < compactRightBreakpoint
 
+    // ─── crossing that breakpoint ──────────────────────
+    //
+    // The slot the slider sits in, in pixels, and the one animated property in
+    // this file: everything that has to move while the group regroups is
+    // derived from it, the way components/SideBar.qml derives everything from
+    // `panelWidth`. The bar used to re-form in a single frame, which moved the
+    // speaker 98px sideways between two frames while nothing else on the bar
+    // moved at all.
+    //
+    // It is the slot and not the slider's own width because an invisible item
+    // is dropped from a RowLayout along with its margin: binding the slider's
+    // width to this directly would have reserved 98px one frame and 0 the
+    // next, which is the player bar's version of the bug QA reported against
+    // the sidebar ("it reserves its space and for a few milliseconds there's a
+    // black bar where it will expand to"). The slot stays visible until it has
+    // actually closed, so the space it gives back is always the space it is
+    // drawing.
+    readonly property int  volumeSliderWidth: 90
+    readonly property int  volumeTargetRoom: root.compactRight ? 0 : volumeSliderWidth
+    property real volumeRoom: volumeTargetRoom
+
+    // 150ms, OutCubic, at the quick end of the app's 100-200ms range: this is
+    // a 98px move and anything slower reads as the bar thinking about it.
+    // Reduced motion goes through the duration rather than through `enabled`,
+    // so the regroup still starts and still finishes -- in the frame it
+    // started (X6, and see Theme.dur).
+    Behavior on volumeRoom {
+        NumberAnimation { duration: Theme.dur(150); easing.type: Easing.OutCubic }
+    }
+
+    // How much of the slot this bar can afford to be holding, whatever the
+    // animation still has to give back. At the breakpoint the slider exactly
+    // fits, so every pixel the bar is narrower than that is a pixel the slot
+    // has to have let go of already: this is the arithmetic that chose 720,
+    // run backwards.
+    //
+    // It is here because a width change is not always a breakpoint crossing.
+    // Dropping from 960 to 640 in one step -- half a screen to the window
+    // minimum, which a tiling shortcut does in one frame -- asks the slot to
+    // hold 90px that a 640px bar has not got, and the queue button would have
+    // hung off the end of the window for the length of the animation. With the
+    // cap, a bar that lands far below the breakpoint has already given the
+    // space back and only closes the little that is left: 90px of travel at the
+    // breakpoint, where the move is what the eye is following, and none of it
+    // two hundred pixels below, where there was never room for it.
+    readonly property real volumeRoomCap:
+        Math.max(0, Math.min(volumeSliderWidth,
+                             root.width - compactRightBreakpoint + volumeSliderWidth))
+
+    // What the slot actually gets, and what every control's position below is
+    // measured against.
+    readonly property real volumeSlotRoom: Math.min(volumeRoom, volumeRoomCap)
+
+    // How open the slot is, 0 closed and 1 at the slider's full width.
+    readonly property real volumeOpenness:
+        Math.max(0, Math.min(1, volumeSlotRoom / Math.max(1, volumeSliderWidth)))
+    // Whether the inline slider has finished leaving. The hover flyout asks
+    // this rather than `compactRight`, which goes true the instant the bar
+    // crosses the breakpoint while the inline slider is still 90px wide and
+    // on its way out: both sliders would have been on screen at once, one of
+    // them drawn over the bar.
+    readonly property bool volumeInlineGone: volumeSlotRoom <= 0
+
     // Exposed for tests/qml/tst_layout_player.qml: it checks the queue button
-    // stays on screen and that the slider actually goes when the bar narrows.
+    // stays on screen and that the slider actually goes when the bar narrows,
+    // and that the slot it leaves behind closes rather than vanishing.
     readonly property alias queueButton:  queueBtn
     readonly property alias volumeSlider: volSlider
+    readonly property alias volumeSlot:   volSlot
     // The speaker, and the slider it reveals on hover once the inline one has
     // gone. tests/qml/tst_layout_player.qml drives both.
     readonly property alias volumeButton:      volBtn
@@ -370,30 +435,77 @@ Rectangle {
             // they now do: the up-arrow joined this group and the slider
             // leaves it below the breakpoint.
             Layout.minimumWidth: implicitWidth
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter; spacing: 8
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            // The 8px gaps are a margin on each control rather than one
+            // `spacing: 8` on the group, because the slider's slot has to be
+            // able to reach zero and a RowLayout's spacing cannot: it keeps
+            // the full 8px on both sides of every visible item, so a slot
+            // animating down to nothing would still have had 8px of spacing
+            // left to give back in the frame it finally went invisible, and
+            // the speaker would have hopped that far sideways at the end of an
+            // animation whose whole point is that nothing hops. As a margin
+            // the gap closes with the slot it belongs to. At rest the sums are
+            // the ones the group had before: five gaps of 8 open, four closed.
+            spacing: 0
 
             Item { Layout.fillWidth: true }
 
             IconButton {
                 id: volBtn
                 objectName: "playerBarVolumeButton"
+                Layout.leftMargin: 8
                 icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
                 size: 18; iconColor: Theme.textSec
                 onClicked: player.setMuted(!player.muted)
             }
 
-            VolumeSlider {
-                id: volSlider
-                visible: !root.compactRight
-                width: 90
-                value: player.muted ? 0 : player.volume
-                onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
-                ToolTip.visible: volTipHov.hovered
-                ToolTip.text: qsTr("%1%").arg(
-                    Math.round((player.muted ? 0 : player.volume) * 100)
-                        .toLocaleString(Qt.locale(), 'f', 0))
-                ToolTip.delay: 400
-                HoverHandler { id: volTipHov }
+            // The slot, which is what the layout measures, and the slider
+            // inside it, which is what the bar shows. Two items because the
+            // two have different lifetimes: the slot is on screen for as long
+            // as it is giving space back, and the slider only while the bar is
+            // wide enough to own one.
+            //
+            // The slider's own `visible` still follows the breakpoint and
+            // nothing else, which is the contract tst_output_picker.qml reads
+            // one frame after a resize: below the breakpoint the bar has no
+            // inline slider, full stop, and the hover flyout is the way to the
+            // volume. So widening is a wipe -- the slider grows inside the
+            // opening slot -- while narrowing drops the slider at once and
+            // leaves the slot to close. What closing looks like is the speaker
+            // gliding across a flat bar, which is all there was to see in that
+            // 90px anyway.
+            Item {
+                id: volSlot
+                objectName: "playerBarVolumeSlot"
+                visible: root.volumeSlotRoom > 0
+                Layout.leftMargin: 8 * root.volumeOpenness
+                Layout.preferredWidth: root.volumeSlotRoom
+                Layout.preferredHeight: 20
+                // The handle hangs 5px off the left end of the track, so a
+                // nearly-closed slot would otherwise paint it over the speaker.
+                clip: true
+
+                VolumeSlider {
+                    id: volSlider
+                    visible: !root.compactRight
+                    width: volSlot.width
+                    height: volSlot.height
+                    // The last fifth of the slot's travel takes the slider's
+                    // opacity with it, the mirror of the sidebar holding its
+                    // wide-only content back until the panel is a quarter
+                    // open: a 10px handle on an 8px track is a speck, not a
+                    // control, and fading it means the wipe-in has nothing
+                    // half-drawn in it.
+                    opacity: Math.min(1, root.volumeOpenness / 0.2)
+                    value: player.muted ? 0 : player.volume
+                    onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
+                    ToolTip.visible: volTipHov.hovered
+                    ToolTip.text: qsTr("%1%").arg(
+                        Math.round((player.muted ? 0 : player.volume) * 100)
+                            .toLocaleString(Qt.locale(), 'f', 0))
+                    ToolTip.delay: 400
+                    HoverHandler { id: volTipHov }
+                }
             }
 
             // Where the sound is going: this computer's outputs and any
@@ -403,6 +515,7 @@ Rectangle {
             OutputPicker {
                 id: outputBtn
                 objectName: "playerBarOutputButton"
+                Layout.leftMargin: 8
                 size: 20
             }
 
@@ -412,6 +525,7 @@ Rectangle {
                 id: nowPlayingBtn
                 objectName: "playerBarNowPlayingButton"
                 visible: root.hasTrack
+                Layout.leftMargin: 8
                 icon: "chevron-up"
                 size: 18
                 iconColor: Theme.textSec
@@ -424,6 +538,7 @@ Rectangle {
 
             IconButton {
                 id: queueBtn
+                Layout.leftMargin: 8
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
                 onClicked: root.showQueue()
@@ -447,8 +562,12 @@ Rectangle {
     // visibility and withdraws while it is open. Both draw upwards out of an
     // 82px bar, so without that last rule they would be drawn over each
     // other.
+    //
+    // `volumeInlineGone` and not `compactRight`: the breakpoint goes while the
+    // inline slider is still travelling, and a flyout that opened then would
+    // put two sliders on screen at once, one of them over the bar.
     readonly property bool wantVolumeFlyout:
-        root.compactRight
+        root.volumeInlineGone
         && !outputBtn.menuVisible
         && (volBtn.hovered || volFlyoutHov.hovered)
 

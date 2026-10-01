@@ -31,6 +31,11 @@ class Prefs : public QObject {
     // chooses the scene graph backend once at startup, so a change only takes
     // effect on the next launch.
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
+    // Let the window's close button end the process instead of hiding the
+    // window in the tray. Off by default, which is the behaviour the app has
+    // always had; with no tray icon a close quits whatever this says, because
+    // there would be nothing left to click.
+    Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -51,6 +56,7 @@ public:
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
+    bool    quitOnClose() const       { return m_quitOnClose; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -58,6 +64,7 @@ public:
     void setSidebarWidth(int v);
     void setAudioDevice(const QString &v);
     void setSoftwareRendering(bool v);
+    void setQuitOnClose(bool v);
 
     // Exposed so QML can lay out against the same numbers the C++ side uses.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -75,6 +82,7 @@ signals:
     void sidebarWidthChanged();
     void audioDeviceChanged();
     void softwareRenderingChanged();
+    void quitOnCloseChanged();
 
 private:
     QSettings m_settings;
@@ -84,4 +92,5 @@ private:
     int       m_sidebarWidth;
     QString   m_audioDevice;
     bool      m_softwareRendering;
+    bool      m_quitOnClose;
 };

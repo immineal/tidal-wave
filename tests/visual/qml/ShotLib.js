@@ -7,9 +7,11 @@
 // ── the themes a scene is shot in ───────────────────────────────────────────
 
 // All six, and the three the brief cares most about. The light pair is the
-// risk, so they are in both lists.
-var allThemes   = ["midnight", "forest", "ember", "deep", "daylight", "paper"]
-var coreThemes  = ["midnight", "daylight", "paper"]
+// risk, so they are in both lists. The full list used to carry "deep", which
+// stopped being a palette when the pure-black switch replaced it, and was
+// missing the light amber one; both are fixed here.
+var allThemes   = ["sea", "pine", "rust", "sky", "sand", "clay"]
+var coreThemes  = ["sea", "sky", "sand"]
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 

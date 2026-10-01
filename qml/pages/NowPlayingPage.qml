@@ -33,26 +33,98 @@ Rectangle {
     readonly property int  stackBreakpoint: 1000
     readonly property bool stacked: width < stackBreakpoint
 
+    // The vertical gap between the two blocks once they are stacked, which is
+    // also what stackedCoverRoom has to leave room for.
+    readonly property int stackGap: 32
+
+    // ─── Crossing the breakpoint ───────────────────────
+    //
+    // How stacked the page is: 0 with the cover beside the text, 1 with it
+    // above. The one animated property on this page, and everything that has
+    // to move during the rearrangement is lerped off it rather than switched
+    // on `stacked`, which is the same shape components/SideBar.qml uses for
+    // its slide: one clock, so nothing can arrive early or late.
+    //
+    // The page used to re-form in a single frame, which is what the user asked
+    // for an animation about ("at the moment it just snaps into the rearranged
+    // look. For instance, the now playing").
+    //
+    // 170ms and OutCubic, the same as the sidebar's slide, and reduced motion
+    // goes through the duration rather than through `enabled` so the move
+    // still starts and still finishes, in the frame it started (see
+    // Theme.dur).
+    property real stackness: stacked ? 1 : 0
+
+    Behavior on stackness {
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+    }
+
+    // Reads as "a quantity on its way from the side-by-side value to the
+    // stacked one". Every piece of geometry below is written this way so that
+    // at rest it is exactly the number the layout used before, and in between
+    // there is nothing to disagree about.
+    function blend(side, stackedValue) {
+        return side + (stackedValue - side) * root.stackness
+    }
+
     // Stacked, the cover takes the height the rest of the page leaves it,
     // capped at 420 and at the content width and floored at 180 so it stays a
     // cover. Deriving it rather than taking a fixed fraction of the height is
     // what keeps 960x1200, the user's half-screen size, off the scrollbar: a
     // flat 420 overshot it by twenty pixels. Side by side it keeps the 45% of
     // the content width it always had.
-    readonly property real coverSize: stacked
-        ? Math.min(contentWidth, 420, Math.max(180, stackedCoverRoom))
-        : Math.min(contentWidth * 0.45, 420)
+    readonly property real sideCoverSize:    Math.min(contentWidth * 0.45, 420)
+    readonly property real stackedCoverSize: Math.min(contentWidth, 420,
+                                                      Math.max(180, stackedCoverRoom))
+    readonly property real coverSize: blend(sideCoverSize, stackedCoverSize)
 
     // What is left once the margins, the header row, the two 32px gaps and the
     // text column have taken their height. The text column's own height does
-    // not depend on the cover's, so this cannot chase its own tail.
+    // not depend on the cover's, so this cannot chase its own tail. It is the
+    // *settled* stacked height on purpose: measuring the room against a cover
+    // that is still moving would feed the animation back into itself.
     readonly property real stackedCoverRoom:
-        height - 2 * pageMargin - headerRow.height - 32 - 32 - infoColumn.implicitHeight
+        height - 2 * pageMargin - headerRow.height - 32 - stackGap
+        - infoColumn.implicitHeight
 
-    // What the title and transport column actually gets.
-    readonly property real infoWidth: stacked
-        ? contentWidth
-        : Math.max(0, contentWidth - coverSize - columnGap)
+    // What the title and transport column actually gets. The pair below is
+    // written so that infoX + infoWidth is the content width at every value of
+    // stackness, not only at the two ends: the column's right edge is the page
+    // margin throughout the move, so it cannot briefly hang out of the page.
+    readonly property real sideInfoWidth:
+        Math.max(0, contentWidth - sideCoverSize - columnGap)
+    readonly property real infoWidth: blend(sideInfoWidth, contentWidth)
+
+    // ─── Where the two blocks are ──────────────────────
+    //
+    // The text column's height is set by its content and does not change with
+    // the layout, which is what lets the arithmetic below be closed-form
+    // rather than circular.
+    readonly property real infoHeight: infoColumn.implicitHeight
+    // The height the pair takes side by side, and the centre line they are
+    // both held on there. Measured against this rather than against the
+    // container's current height, which is itself one of the things being
+    // animated.
+    readonly property real sideBodyHeight: Math.max(sideCoverSize, infoHeight)
+
+    readonly property real coverX: Math.round(blend(0, (contentWidth - coverSize) / 2))
+    readonly property real coverY: Math.round(blend((sideBodyHeight - coverSize) / 2, 0))
+    readonly property real infoX:  Math.round(blend(contentWidth - sideInfoWidth, 0))
+    readonly property real infoY:  Math.round(blend((sideBodyHeight - infoHeight) / 2,
+                                                    coverSize + stackGap))
+
+    // What the two of them actually reach, which is what the page reserves for
+    // them and therefore what it can be scrolled by.
+    //
+    // Derived from the positions above rather than from the two end states,
+    // because the halfway point of the rearrangement is taller than halfway
+    // between the two heights: the text column has already started down the
+    // page while the page is still only partly as tall as it will be. Reserving
+    // the average instead left the bottom of the column unreachable for the
+    // length of the move, which is the same mistake as the sidebar reserving
+    // its full width before the panel had got there.
+    readonly property real bodyHeight:
+        Math.max(coverY + coverSize, infoY + infoHeight)
 
     // 248px of buttons and six gaps. Where 344 will not fit, which is any
     // window at or below 640, the gaps tighten to 8 and the row comes down to
@@ -230,6 +302,10 @@ Rectangle {
     // fits, so nothing moves at the sizes where it already fitted.
     Flickable {
         id: pageFlick
+        // Named so tests/qml/tst_layout_player.qml can check that the height it
+        // can be scrolled by follows the two blocks instead of jumping to where
+        // they are going.
+        objectName: "nowPlayingScroll"
         anchors.fill: parent
         contentWidth: width
         contentHeight: Math.max(height, pageColumn.implicitHeight + 2 * root.pageMargin)
@@ -281,22 +357,43 @@ Rectangle {
             }
 
             // Two columns side by side above the breakpoint, one stacked column
-            // below it. The same two items either way, so crossing the breakpoint
-            // reflows rather than rebuilding anything. No animation: a grid owns
-            // its children's positions, so animating the cover across the cell
-            // boundary would only fight it.
-            GridLayout {
-                Layout.fillWidth: true; Layout.fillHeight: true
-                columns: root.stacked ? 1 : 2
-                columnSpacing: root.columnGap
-                rowSpacing: 32
+            // below it. The same two items either way, so crossing the
+            // breakpoint moves them rather than rebuilding anything.
+            //
+            // This was a GridLayout with `columns: stacked ? 1 : 2`, and a grid
+            // owns its children's positions, so there was nothing an animation
+            // could get hold of: the page re-formed between two frames. The two
+            // blocks are placed by hand now, off the one `stackness` clock, and
+            // the gaps the grid used to keep (columnGap across, stackGap down)
+            // are in that arithmetic instead.
+            //
+            // Not Layout.fillHeight, deliberately: the grid asked for it but
+            // could never take it either -- a nested layout whose children
+            // neither fill reports its implicit height as its maximum -- so the
+            // pair has always been as tall as its content and no taller, with
+            // the slack left at the bottom of a tall window. Keeping that is
+            // what keeps the cover centred where it was.
+            Item {
+                id: body
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.bodyHeight
 
                 Item {
                     id: coverBox
-                    Layout.preferredWidth:  root.coverSize
-                    Layout.preferredHeight: root.coverSize
-                    Layout.alignment: root.stacked ? Qt.AlignHCenter | Qt.AlignTop
-                                                   : Qt.AlignVCenter
+                    objectName: "nowPlayingCoverBox"
+                    x: root.coverX
+                    y: root.coverY
+                    width:  root.coverSize
+                    height: root.coverSize
+                    // Mid-move the two blocks pass through each other: they are
+                    // swapping both axes at once, and each is most of the width
+                    // of the page. The cover is opaque, so with it on top the
+                    // text slides behind the artwork and comes out below it,
+                    // which reads as one thing moving over another. The other
+                    // way round the title is drawn on top of album art for a
+                    // tenth of a second and reads as a double exposure. At rest
+                    // the two never overlap, so this does nothing at either end.
+                    z: 1
 
                     // Album art
                     Rectangle {
@@ -441,8 +538,10 @@ Rectangle {
 
                 ColumnLayout {
                     id: infoColumn
-                    Layout.fillWidth: true
-                    Layout.alignment: root.stacked ? Qt.AlignTop : Qt.AlignVCenter
+                    objectName: "nowPlayingInfoColumn"
+                    x: root.infoX
+                    y: root.infoY
+                    width: root.infoWidth
                     spacing: 24
 
                     RowLayout {

@@ -54,6 +54,10 @@ TestCase {
     }
 
     function init() {
+        // Two cases below measure a transition rather than a resting layout, so
+        // motion has to be allowed. Another file in this suite turns the
+        // preference on, and the stub carries it across files.
+        app.setReducedMotionForTest(false)
         var q = []
         for (var i = 0; i < 6; i++) q.push(makeTrack(i))
         player.setQueueForTest(q, 0)
@@ -273,6 +277,189 @@ TestCase {
                + "px at " + row.tag + " but needs " + page.transportMinWidth)
     }
 
+    // ── crossing the stack breakpoint ────────────────────────────────────
+    //
+    // The page used to re-form between two frames; it travels now, off the one
+    // `stackness` clock. Both halves of that are worth a test, and only one of
+    // them is the end state: a case that measures the settled geometry alone
+    // passes just as well on the version that snapped.
+
+    // Everything one frame of the move has to agree about.
+    function samplePage(page) {
+        var cover = findChild(page, "nowPlayingCoverBox")
+        var info  = findChild(page, "nowPlayingInfoColumn")
+        var flick = findChild(page, "nowPlayingScroll")
+        verify(cover && info && flick, "the page's two blocks were not found")
+        return {
+            t:          page.stackness,
+            bodyWidth:  cover.parent.width,
+            coverX:     cover.x,
+            coverY:     cover.y,
+            coverSize:  cover.width,
+            infoX:      info.x,
+            infoY:      info.y,
+            infoWidth:  info.width,
+            infoHeight: info.height,
+            // Where the bottom of the text column is in the page's own
+            // coordinates, which is the figure the page has to be scrollable to.
+            infoBottom: info.mapToItem(page, 0, info.height).y,
+            reach:      Math.max(cover.y + cover.height, info.y + info.height),
+            // Read here and not in the checker: the samples are taken across
+            // the move and looked at once it is over, so anything the checker
+            // reads off the page itself would be the settled value measured
+            // against a mid-flight snapshot.
+            bodyReserve: page.bodyHeight,
+            contentWidth: page.contentWidth,
+            reserved:   cover.parent.height,
+            contentH:   flick.contentHeight
+        }
+    }
+
+    // `previous` is the sample before this one, or null for the first.
+    function checkSample(page, s, previous, where) {
+        var reach = Math.max(s.coverY + s.coverSize, s.infoY + s.infoHeight)
+        // What the page reserves for the pair is exactly what the pair reaches,
+        // on every frame: not the average of the two layouts, which is less
+        // than the taller block needs halfway through and leaves the bottom of
+        // the text column unreachable, and not the stacked height from the
+        // first frame, which is the sidebar's "black bar where it will expand
+        // to" again.
+        verify(Math.abs(s.bodyReserve - reach) <= 1,
+               where + ": the page reserves " + s.bodyReserve.toFixed(1)
+               + " for blocks that reach " + reach.toFixed(1) + " (t=" + s.t.toFixed(3) + ")")
+        // And the container that holds the reservation never runs ahead of
+        // them. It is allowed to be one polish behind, and only behind: a
+        // QQuickLayout answers at polish time, so the height it has realised is
+        // sometimes last frame's, which is the safe side of this -- it is never
+        // holding space the blocks have not got to yet.
+        var had = previous ? Math.max(reach, previous.reach) : reach
+        verify(s.reserved <= had + 1,
+               where + ": the container is " + s.reserved.toFixed(1)
+               + "px tall for blocks that have only reached " + had.toFixed(1)
+               + " (t=" + s.t.toFixed(3) + ")")
+        // Neither block hangs out of the page sideways at any point, and the
+        // text column's right edge is the page margin at every value of
+        // stackness -- which is why the two ends of that lerp are written as a
+        // pair rather than each on its own.
+        verify(s.coverX >= -0.5 && s.coverX + s.coverSize <= s.bodyWidth + 0.5,
+               where + ": the cover is at " + s.coverX.toFixed(1) + ".."
+               + (s.coverX + s.coverSize).toFixed(1) + " inside " + s.bodyWidth.toFixed(1))
+        verify(s.infoX >= -0.5 && s.infoX + s.infoWidth <= s.bodyWidth + 0.5,
+               where + ": the text column is at " + s.infoX.toFixed(1) + ".."
+               + (s.infoX + s.infoWidth).toFixed(1) + " inside " + s.bodyWidth.toFixed(1))
+        verify(Math.abs(s.infoX + s.infoWidth - s.contentWidth) <= 1.5,
+               where + ": the text column ends at "
+               + (s.infoX + s.infoWidth).toFixed(1) + " and the page's content is "
+               + s.contentWidth.toFixed(1) + " wide, so there is a gap at one margin")
+    }
+
+    // Takes the page across the breakpoint and samples it on the way.
+    function sweepPage(host, page, from, to) {
+        host.width = from
+        tryVerify(function () { return page.stackness === (page.stacked ? 1 : 0) },
+                  2000, "the page never settled before the sweep began")
+        var rows = []
+        host.width = to
+        // After the frame, not before it: the width is a binding and the layout
+        // under it answers at polish time, so sampling in the same turn as the
+        // write catches the old layout in the new window and says nothing about
+        // the animation either way.
+        for (var i = 0; i < 15; i++) {
+            wait(16)
+            rows.push(samplePage(page))
+        }
+        tryVerify(function () { return page.stackness === (page.stacked ? 1 : 0) },
+                  2000, "the page never settled after the sweep")
+        rows.push(samplePage(page))
+        return rows
+    }
+
+    function midFlightCount(rows) {
+        var n = 0
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].t > 0.001 && rows[i].t < 0.999) n++
+        return n
+    }
+
+    function test_now_playing_restacks_without_reserving_ahead_data() {
+        // Tall and short, because the short window is the one that scrolls and
+        // therefore the one where the reservation is something the user can
+        // run into.
+        return [
+            { tag: "to stacked, tall",       from: 1280, to: 1180, h: 1200, end: 1 },
+            { tag: "to side by side, tall",  from: 1180, to: 1280, h: 1200, end: 0 },
+            { tag: "to stacked, short",      from: 1280, to: 1180, h: 600,  end: 1 },
+            { tag: "to side by side, short", from: 1180, to: 1280, h: 600,  end: 0 }
+        ]
+    }
+
+    function test_now_playing_restacks_without_reserving_ahead(row) {
+        var host = showHost(nowPlayingHost, row.from, row.h)
+        var page = host.page
+        var rows = sweepPage(host, page, row.from, row.to)
+
+        verify(midFlightCount(rows) >= 3,
+               "the page re-formed without ever being between the two layouts: "
+               + "only " + midFlightCount(rows) + " of " + rows.length
+               + " samples were mid-move, so nothing is being animated")
+
+        for (var i = 0; i < rows.length; i++)
+            checkSample(page, rows[i], i > 0 ? rows[i - 1] : null,
+                        row.tag + " sample " + i)
+
+        // One direction, no wandering: the clock only ever runs towards the
+        // layout the width asked for.
+        for (i = 1; i < rows.length; i++) {
+            if (row.end === 1)
+                verify(rows[i].t >= rows[i - 1].t - 0.001,
+                       row.tag + ": stackness went backwards at sample " + i)
+            else
+                verify(rows[i].t <= rows[i - 1].t + 0.001,
+                       row.tag + ": stackness went backwards at sample " + i)
+        }
+
+        compare(rows[rows.length - 1].t, row.end,
+                "the move has to finish on the layout, not near it")
+        // Settled, the bottom of the text column is somewhere the page can
+        // actually be scrolled to.
+        var last = rows[rows.length - 1]
+        verify(last.infoBottom + page.pageMargin <= last.contentH + 1,
+               row.tag + ": the column ends at " + last.infoBottom.toFixed(1)
+               + " but the page only scrolls to " + last.contentH.toFixed(1))
+        compare(page.stacked, page.width < page.stackBreakpoint,
+                "stacking should follow the page width once the move is over")
+        verify(page.infoWidth >= page.transportMinWidth,
+               "the settled transport column is " + page.infoWidth.toFixed(1)
+               + "px but needs " + page.transportMinWidth)
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0,
+               reportFor("Now Playing overflows after " + row.tag, row, faults))
+    }
+
+    // The layout the suite already sweeps has to be the layout the move lands
+    // on, from either side, at every one of those widths.
+    function test_now_playing_lands_on_the_swept_layout_data() { return sizeRows() }
+
+    function test_now_playing_lands_on_the_swept_layout(row) {
+        // In from the other side of the breakpoint, so every width is reached
+        // by a transition rather than by being born at it.
+        var opposite = row.w < 1220 ? 1280 : 820
+        var host = showHost(nowPlayingHost, opposite, row.h)
+        var page = host.page
+        sweepPage(host, page, opposite, row.w)
+
+        compare(page.width, row.w - sidebarWidth, "page width")
+        compare(page.stacked, page.width < page.stackBreakpoint, "stacking")
+        compare(page.stackness, page.stacked ? 1 : 0,
+                "the page is still half way between its two layouts at " + row.tag)
+        verify(page.infoWidth >= page.transportMinWidth,
+               "transport column is " + page.infoWidth.toFixed(1) + "px at " + row.tag)
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0, reportFor("Now Playing overflows", row, faults))
+        faults = collectClipped(page, "NowPlayingPage", [])
+        verify(faults.length === 0, reportFor("Now Playing text clipped", row, faults))
+    }
+
     // ── player bar ───────────────────────────────────────────────────────
 
     function test_player_bar_fits_data() { return sizeRows() }
@@ -323,6 +510,200 @@ TestCase {
         verify(bar.outputButton.visible,
                "the output button must be on screen at " + row.tag)
         verify(bar.volumeButton.visible, "muting must stay reachable at " + row.tag)
+    }
+
+    // ── crossing the bar's breakpoint ────────────────────────────────────
+    //
+    // Shedding the slider used to move the speaker 98px sideways between two
+    // frames. The slot it leaves behind closes instead, and the invariant that
+    // matters is the one the sidebar got wrong: what the layout reserves for
+    // the slot is never more than the slot has actually reached.
+
+    function barSample(bar) {
+        var vol = bar.volumeButton
+        var out = bar.outputButton
+        var q   = bar.queueButton
+        var arrow = bar.nowPlayingButton
+        return {
+            room:      bar.volumeSlotRoom,
+            openness:  bar.volumeOpenness,
+            slotShown: bar.volumeSlot.visible,
+            slotWidth: bar.volumeSlot.width,
+            volLeft:   vol.mapToItem(bar, 0, 0).x,
+            volRight:  vol.mapToItem(bar, vol.width, 0).x,
+            // The group is right-aligned, so where a control sits relative to
+            // the bar's right edge is the figure that does not move when the
+            // window does: it is the regroup on its own, with the resize that
+            // caused it taken out.
+            volFromRight: bar.width - vol.mapToItem(bar, vol.width, 0).x,
+            outLeft:   out.mapToItem(bar, 0, 0).x,
+            arrowLeft: arrow.mapToItem(bar, 0, 0).x,
+            queueRight: q.mapToItem(bar, q.width, 0).x
+        }
+    }
+
+    // `previous` is the sample before this one, or null for the first.
+    function checkBarSample(bar, s, previous, where) {
+        // The gap between the speaker and the output picker is the output
+        // picker's own 8px plus whatever the slot is drawing, and nothing else.
+        // A slot that had gone invisible while the group still kept its spacing
+        // would show up here as 8px the bar is holding open with nothing in it,
+        // which is the thing being guarded against.
+        //
+        // Both figures are the ones the layout has realised -- the slot's width
+        // and the margin that travels with it come out of the same polish pass,
+        // so the margin is derived from the realised width rather than from the
+        // animation's current value, which may be a pass ahead.
+        var held = s.slotShown
+                 ? s.slotWidth + 8 * (s.slotWidth / bar.volumeSliderWidth)
+                 : 0
+        var gap  = s.outLeft - s.volRight
+        verify(Math.abs(gap - (8 + held)) <= 1.5,
+               where + ": the bar is holding " + gap.toFixed(1)
+               + "px open for a slot that is drawing " + held.toFixed(1)
+               + " (room=" + s.room.toFixed(1) + ")")
+        // And the slot is never wider than the animation has got to, allowing
+        // the one polish of latency a QQuickLayout answers with.
+        var reached = previous ? Math.max(s.room, previous.room) : s.room
+        verify(!s.slotShown || s.slotWidth <= reached + 1,
+               where + ": the slot is " + s.slotWidth.toFixed(1)
+               + "px wide for a bar that has only given it " + reached.toFixed(1))
+        // The two controls that open a view are the ones a squeezed bar drops
+        // off the end first, so they are checked at every sample and not only
+        // at rest.
+        verify(s.queueRight <= bar.width + 0.5,
+               where + ": the queue button ends at " + s.queueRight.toFixed(1)
+               + " in a " + bar.width + "px bar")
+        verify(s.arrowLeft >= 0 && s.volLeft >= 0,
+               where + ": a control slid off the left of the bar")
+    }
+
+    function sweepBar(host, bar, from, to) {
+        host.width = from
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
+                  2000, "the bar never settled before the sweep began")
+        var rows = []
+        host.width = to
+        for (var i = 0; i < 14; i++) {
+            rows.push(barSample(bar))
+            wait(16)
+        }
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
+                  2000, "the bar never settled after the sweep")
+        rows.push(barSample(bar))
+        return rows
+    }
+
+    function test_player_bar_regroups_without_leaving_a_gap_data() {
+        // Two pixels apart, so the only thing that really moves is the slot:
+        // the group's right edge stays where it is and the speaker travels the
+        // whole width of the slider.
+        return [
+            { tag: "sheds the slider", from: 721, to: 719, end: 0 },
+            { tag: "takes it back",    from: 719, to: 721, end: 90 }
+        ]
+    }
+
+    function test_player_bar_regroups_without_leaving_a_gap(row) {
+        var host = showHost(playerBarHost, row.from, 200)
+        var bar = host.bar
+        var rows = sweepBar(host, bar, row.from, row.to)
+
+        var mid = 0
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].room > 0.5 && rows[i].room < bar.volumeSliderWidth - 0.5) mid++
+        verify(mid >= 3,
+               "the bar regrouped without ever being between its two layouts: only "
+               + mid + " of " + rows.length + " samples were mid-move")
+
+        for (i = 0; i < rows.length; i++)
+            checkBarSample(bar, rows[i], i > 0 ? rows[i - 1] : null,
+                           row.tag + " sample " + i)
+
+        // The speaker travels one way only. It closes on the right-hand end of
+        // the bar as the slot shuts and backs away as it opens, and never
+        // overshoots and comes back.
+        for (i = 1; i < rows.length; i++) {
+            if (row.end === 0)
+                verify(rows[i].volFromRight <= rows[i - 1].volFromRight + 1,
+                       row.tag + ": the speaker went backwards at sample " + i
+                       + " (" + rows[i - 1].volFromRight.toFixed(1) + " then "
+                       + rows[i].volFromRight.toFixed(1) + " from the right edge)")
+            else
+                verify(rows[i].volFromRight >= rows[i - 1].volFromRight - 1,
+                       row.tag + ": the speaker went backwards at sample " + i
+                       + " (" + rows[i - 1].volFromRight.toFixed(1) + " then "
+                       + rows[i].volFromRight.toFixed(1) + " from the right edge)")
+        }
+        // And it really did travel: the whole point is that this 98px is not a
+        // jump any more.
+        var travelled = Math.abs(rows[0].volFromRight
+                                 - rows[rows.length - 1].volFromRight)
+        verify(travelled >= 80,
+               row.tag + ": the speaker only moved " + travelled.toFixed(1)
+               + "px, so the slider was not what came and went")
+
+        compare(rows[rows.length - 1].room, row.end,
+                "the slot has to finish open or closed, not part way")
+        compare(bar.volumeSlider.visible, !bar.compactRight,
+                "the settled bar disagrees with the breakpoint about its slider")
+        compare(bar.volumeInlineGone, bar.compactRight,
+                "the hover flyout is gated on an inline slider that is still there")
+        var faults = collectOverflow(bar, "PlayerBar", [])
+        verify(faults.length === 0,
+               reportFor("Player bar overflows after " + row.tag, row, faults))
+    }
+
+    // Not every width change is a step across the breakpoint. Half a screen to
+    // the 640px window minimum is 320px in one frame, which a tiling shortcut
+    // does, and the slot cannot spend 150ms holding 90px a 640px bar has not
+    // got: the queue button hung 38px off the end of the window for exactly
+    // that long the first time this was written. Sampled from the frame after
+    // the jump, which is where it showed.
+    function test_player_bar_jumping_to_the_minimum_holds_nothing_back() {
+        var host = showHost(playerBarHost, 960, 200)
+        var bar = host.bar
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
+                  2000, "the wide bar never settled with its slider")
+
+        host.width = 640
+        for (var i = 0; i < 14; i++) {
+            var q = bar.queueButton
+            var right = q.mapToItem(bar, q.width, 0).x
+            verify(right <= bar.width + 0.5,
+                   "sample " + i + ": the queue button is at " + right.toFixed(1)
+                   + " in a " + bar.width + "px bar while the slot is still "
+                   + bar.volumeSlotRoom.toFixed(1) + "px wide")
+            var faults = collectOverflow(bar, "PlayerBar", [])
+            verify(faults.length === 0,
+                   "sample " + i + " after the jump:\n  " + faults.join("\n  "))
+            wait(16)
+        }
+        tryVerify(function () { return bar.volumeSlotRoom === 0 }, 2000,
+                  "the slot never closed at the window minimum")
+        verify(!bar.volumeSlider.visible, "the 640px bar kept its inline slider")
+        verify(bar.outputButton.visible,
+               "the output button must survive the window minimum")
+    }
+
+    // The widths the suite already sweeps, reached by a transition rather than
+    // by being born at them.
+    function test_player_bar_lands_on_the_swept_layout_data() { return sizeRows() }
+
+    function test_player_bar_lands_on_the_swept_layout(row) {
+        var opposite = row.w < 720 ? 1280 : 640
+        var host = showHost(playerBarHost, opposite, row.h)
+        var bar = host.bar
+        sweepBar(host, bar, opposite, row.w)
+
+        compare(bar.compactRight, row.w < bar.compactRightBreakpoint, "compact right group")
+        compare(bar.volumeSlotRoom, bar.compactRight ? 0 : bar.volumeSliderWidth,
+                "the slot is still part way at " + row.tag)
+        compare(bar.volumeSlider.visible, !bar.compactRight, "volume slider visibility")
+        verify(bar.outputButton.visible && bar.volumeButton.visible,
+               "a control went missing at " + row.tag)
+        var faults = collectOverflow(bar, "PlayerBar", [])
+        verify(faults.length === 0, reportFor("Player bar overflows", row, faults))
     }
 
     // ── queue panel ──────────────────────────────────────────────────────

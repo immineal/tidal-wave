@@ -116,6 +116,49 @@ TestCase {
         }
     }
 
+    // X3's two breakpoint layouts. Now Playing delegates its sleep timer to
+    // Window.window, so it cannot be instantiated bare; this mirrors exactly
+    // the surface Main.qml provides, as tst_layout_player.qml's host does.
+    Component {
+        id: nowPlayingHostC
+        Window {
+            id: npWin
+            width: 1280; height: 900
+            property bool sleepTimerActive: false
+            property bool sleepStopAtEndOfTrack: false
+            property int  sleepTimeLeft: 0
+            property bool sleepIsFading: false
+            property bool sleepFadeOut: true
+            function startSleepTimer(minutes, stopAtEnd) { sleepTimerActive = true }
+            function cancelSleepTimer() { sleepTimerActive = false }
+            function formatSleepTime(seconds) { return "0:30" }
+            function navigate(page, params) {}
+            function goBack() {}
+            property alias page: np
+            NowPlayingPage { id: np; width: npWin.width; height: npWin.height }
+        }
+    }
+
+    Component {
+        id: playerBarHostC
+        Window {
+            id: pbWin
+            width: 960; height: 200
+            property alias bar: pb
+            PlayerBar { id: pb; width: pbWin.width; anchors.bottom: parent.bottom }
+        }
+    }
+
+    function showWindow(component, w, h) {
+        var host = createTemporaryObject(component, testCase)
+        verify(host, "the host window was not created")
+        host.width = w
+        host.height = h
+        host.visible = true
+        waitForRendering(host.contentItem, settleMs)
+        return host
+    }
+
     Component { id: backButtonC;     BackButton     { } }
     Component { id: loginC;          LoginPage      { anchors.fill: parent } }
     Component { id: loadingOverlayC; LoadingOverlay { } }
@@ -236,6 +279,108 @@ TestCase {
             tryVerify(function () { return sb.panelWidth === railWidth },
                       settleMs, "the collapse never finished")
         }
+    }
+
+    // ── X3: the two layouts that rearrange at a breakpoint ───────────────
+    //
+    // Now Playing stacks its cover above its text below 1000px and the player
+    // bar sheds its volume slider below 720. Both used to re-form between two
+    // frames; both travel now, off one property with one Behavior, the same
+    // shape as the sidebar's slide. So both have to answer the same question
+    // this file asks of everything else: with the preference on, the layout is
+    // the new layout in the frame the width changed -- not half way through the
+    // move, and not left behind at the old one.
+
+    function test_now_playing_restack_data() { return test_rail_expansion_data() }
+
+    function test_now_playing_restack(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var host = showWindow(nowPlayingHostC, 1280, 900)
+        var page = host.page
+        tryVerify(function () { return page.stackness === 0 }, settleMs,
+                  "the page never settled side by side before the test began")
+        verify(!page.stacked, "1280 should have put the cover beside the text")
+
+        host.width = 900                 // below the breakpoint: it stacks
+        oneFrame()
+
+        if (row.reduced) {
+            compare(page.stackness, 1,
+                    "reduced motion: the page must be stacked on the next frame, not travelling")
+            // The clock arriving is not the same as the layout arriving, so the
+            // geometry is checked too: stacked, the text column starts a cover
+            // and a gap down the page.
+            compare(page.infoY, Math.round(page.coverSize + page.stackGap),
+                    "reduced motion: the clock finished but the layout did not")
+        } else {
+            verify(page.stackness < 1,
+                   "without reduced motion the page snapped into the stacked layout")
+            tryVerify(function () { return page.stackness === 1 }, settleMs,
+                      "the restack never finished")
+        }
+        compare(page.infoY, Math.round(page.coverSize + page.stackGap),
+                "the settled page is not stacked")
+
+        // And back. A rearrangement that is instant one way and animated the
+        // other would be worse than either.
+        host.width = 1280
+        oneFrame()
+
+        if (row.reduced) {
+            compare(page.stackness, 0,
+                    "reduced motion: going back must be instant too")
+        } else {
+            verify(page.stackness > 0,
+                   "without reduced motion the page snapped back side by side")
+            tryVerify(function () { return page.stackness === 0 }, settleMs,
+                      "the page never came back side by side")
+        }
+        compare(page.infoY, Math.round((page.sideBodyHeight - page.infoHeight) / 2),
+                "the page did not settle back on its side-by-side layout")
+    }
+
+    function test_player_bar_sheds_its_slider_data() { return test_rail_expansion_data() }
+
+    function test_player_bar_sheds_its_slider(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var host = showWindow(playerBarHostC, 760, 200)
+        var bar = host.bar
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
+                  settleMs, "the wide bar never settled with its slider")
+
+        host.width = 700                 // below the breakpoint: the slider goes
+        oneFrame()
+
+        if (row.reduced) {
+            compare(bar.volumeSlotRoom, 0,
+                    "reduced motion: the slot must be closed on the next frame, not closing")
+            verify(!bar.volumeSlot.visible,
+                   "reduced motion left an empty slot on the bar")
+            verify(bar.volumeInlineGone,
+                   "reduced motion: the hover flyout is still waiting for the inline slider")
+        } else {
+            verify(bar.volumeSlotRoom > 0,
+                   "without reduced motion the slot shut between two frames")
+            tryVerify(function () { return bar.volumeSlotRoom === 0 }, settleMs,
+                      "the slot never finished closing")
+        }
+        verify(!bar.volumeSlider.visible, "the narrow bar kept its inline slider")
+
+        host.width = 760
+        oneFrame()
+
+        if (row.reduced) {
+            compare(bar.volumeSlotRoom, bar.volumeSliderWidth,
+                    "reduced motion: taking the slider back must be instant too")
+        } else {
+            verify(bar.volumeSlotRoom < bar.volumeSliderWidth,
+                   "without reduced motion the slot sprang open between two frames")
+            tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
+                      settleMs, "the slot never finished opening")
+        }
+        verify(bar.volumeSlider.visible, "the wide bar did not get its slider back")
     }
 
     // ── a hover fill ─────────────────────────────────────────────────────

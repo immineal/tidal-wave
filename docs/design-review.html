@@ -196,14 +196,14 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
 
   <section>
     <h2>Themes</h2>
-    <p class="note">Three dark and three light, in three pairs. Each pair is one colour family with a dark side and a light side: Midnight with Daylight in blue, Forest with Paper in green, Ember with Dawn in amber. Settings draws them as two columns in exactly this order, so a row of the picker is a row of this list. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette.</p>
+    <p class="note">Three dark and three light, in three pairs. Each pair is one colour family with a dark side and a light side: Sea with Sky in blue, Pine with Sand in green, Rust with Clay in amber. Settings draws them as two columns in exactly this order, so a row of the picker is a row of this list. Each name is one ordinary thing of roughly that colour, which is why none of them is a time of day any more: the picker already has a Dark column and a Light column, so a palette called Midnight was saying the same thing twice. They are product names, not translated, so the German build shows these six words. Every colour moves into a token, so a theme is one palette swap and nothing keeps a hardcoded blue. Each mock shows the sidebar, a page and the player bar in that palette.</p>
     <div class="themes" id="themes"></div>
 
     <h3 style="margin:22px 0 8px;font-family:var(--display);font-size:15px">Pure black</h3>
     <p class="note">Not a seventh palette. One persisted switch, on by default, that pulls the chosen dark theme's grounds down to true black and leaves its type and accents alone, so it composes with all three instead of competing with them. On a light theme it does nothing and Settings hides it rather than greying it out.</p>
     <div class="themes" id="oled"></div>
 
-    <div class="callout"><b>Deep is gone, and the teal with it.</b> It was Midnight with its grounds pulled to black, which is a treatment and not a palette, so it is a switch now: the same look, available on Forest and Ember too. Anyone whose setting says <span style="font-family:var(--mono)">deep</span> lands on Midnight with the switch on, which is byte for byte what they were already looking at. A fresh install gets the same thing. <b>Dawn is the one new palette</b>, the light half of the amber row, because three dark against two light read as a mistake rather than a choice. Paper already owns warm-and-quiet, so Dawn is warm-and-crisp: peach grounds rather than cream, a longer step between elevation levels, and Ember's burnt orange instead of a green. The contrast work still holds in all nine combinations: every threshold is checked against the pulled-down grounds as well as the written ones, because the transform moves the ground and leaves the text where it was.</div>
+    <div class="callout"><b>Deep is gone, and the teal with it.</b> It was the blue dark palette with its grounds pulled to black, which is a treatment and not a palette, so it is a switch now: the same look, available on Pine and Rust too. Anyone whose setting says <span style="font-family:var(--mono)">deep</span> lands on Sea with the switch on, which is byte for byte what they were already looking at. A fresh install gets the same thing. <b>Clay is the one new palette</b>, the light half of the amber row, because three dark against two light read as a mistake rather than a choice. Sand already owns warm-and-quiet, so Clay is warm-and-crisp: peach grounds rather than cream, a longer step between elevation levels, and Rust's burnt orange instead of a green. The contrast work still holds in all nine combinations: every threshold is checked against the pulled-down grounds as well as the written ones, because the transform moves the ground and leaves the text where it was.</div>
   </section>
 
   <section>
@@ -414,22 +414,22 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
   // These went two accent revisions stale once; tst_theme.cpp is the source
   // of truth and this list is the copy, so it is the one that has to move.
   var THEMES = [
-    { n: "Midnight", k: "dark", note: "azure on neutral grey",
+    { n: "Sea", k: "dark", note: "azure on neutral grey",
       bg:"#0A0A0A", sf:"#141414", hi:"#1E1E1E", hv:"#383838", ln:"#2A2A2A",
       ac:"#0079A8", tp:"#FFFFFF", ts:"#A0A0A0", td:"#6B6B6B" },
-    { n: "Forest", k: "dark", note: "green on green-grey neutrals",
+    { n: "Pine", k: "dark", note: "green on green-grey neutrals",
       bg:"#0B0F0C", sf:"#141A16", hi:"#1C241E", hv:"#323C34", ln:"#29332B",
       ac:"#18814E", tp:"#EEF5F0", ts:"#94A69B", td:"#637269" },
-    { n: "Ember", k: "dark", note: "burnt orange on warm neutrals",
+    { n: "Rust", k: "dark", note: "burnt orange on warm neutrals",
       bg:"#100D0C", sf:"#1A1614", hi:"#241F1C", hv:"#3E3836", ln:"#332C28",
       ac:"#C14A18", tp:"#F7F2EF", ts:"#A89C95", td:"#736B66" },
-    { n: "Daylight", k: "light", note: "crisp white, high contrast",
+    { n: "Sky", k: "light", note: "crisp white, high contrast",
       bg:"#FFFFFF", sf:"#F2F5F8", hi:"#E6EBF0", hv:"#C1C8D0", ln:"#CFD9E2",
       ac:"#0A6FC4", tp:"#08111A", ts:"#4C5A66", td:"#798591" },
-    { n: "Paper", k: "light", note: "cream, low contrast, green accent",
+    { n: "Sand", k: "light", note: "cream, low contrast, green accent",
       bg:"#FAF7F0", sf:"#F1EBDC", hi:"#E7DFCB", hv:"#CAC0AA", ln:"#CBC0A6",
       ac:"#2F6F4E", tp:"#1B1913", ts:"#5D564A", td:"#837B6C" },
-    { n: "Dawn", k: "light", note: "peach, crisp, burnt orange accent",
+    { n: "Clay", k: "light", note: "peach, crisp, burnt orange accent",
       bg:"#FFF7F1", sf:"#FAEBE1", hi:"#F3DDCE", hv:"#D7BAA6", ln:"#E8D0BE",
       ac:"#B4481C", tp:"#241510", ts:"#6E4F3E", td:"#96705D" }
   ];

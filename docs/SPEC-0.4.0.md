@@ -218,12 +218,14 @@ yet, so the only way to choose a language is the `ui/language` key.
 
 **Status: landed** in `aab01a8` and `2100153`, with a real bug fixed in
 `58811d6` where switching repainted nothing. **TH1 reads differently than it
-shipped:** six themes, but **three dark** (Midnight, Forest, Ember) and three
-light (Daylight, Paper, Dawn), paired by hue, with a pure-black switch standing
-in for what was a separate Deep theme. Originally shipped as four dark and
-two light (Daylight, Paper), and "Graphite" became the green "Forest" at the
-user's request. `tests/tst_theme.cpp` checks WCAG contrast per token per
-palette. **Not done:** the theme picker in Settings.
+shipped:** six themes, but **three dark** (Sea, Pine, Rust) and three light
+(Sky, Sand, Clay), paired by hue, with a pure-black switch standing in for what
+was a separate Deep theme. Originally shipped as four dark and two light, and
+"Graphite" became the green dark one at the user's request. The six were later
+renamed off the mood words they launched with (Midnight, Forest, Ember,
+Daylight, Paper, Dawn) and are no longer translated. `tests/tst_theme.cpp`
+checks WCAG contrast per token per palette. **Not done:** the theme picker in
+Settings.
 
 - **TH1** Six prebuilt themes: **three dark, two light**, plus one more.
   Chosen in Settings.

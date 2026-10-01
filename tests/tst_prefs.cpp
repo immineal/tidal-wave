@@ -35,14 +35,17 @@ private slots:
 
     void freshInstallDefaults() {
         Prefs p;
-        // Midnight with the pure-black switch on, which is what the retired
+        // Sea with the pure-black switch on, which is what the retired
         // "Deep" palette was. Both halves matter: the theme alone is a
         // lighter app than the user signed off on.
-        QCOMPARE(p.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
+        // Closing the window hides it in the tray, which is what the app has
+        // always done; the switch is there for the people who want otherwise.
+        QCOMPARE(p.quitOnClose(), false);
         // The default width has to be inside the range the drag handle allows,
         // or the sidebar jumps on the first drag.
         QVERIFY(p.sidebarWidth() >= Prefs::minSidebarWidth);
@@ -90,15 +93,16 @@ private slots:
     void valuesSurviveARestart() {
         {
             Prefs p;
-            p.setTheme(QStringLiteral("paper"));
+            p.setTheme(QStringLiteral("sand"));
             p.setOledBlack(false);
             p.setLanguage(QStringLiteral("de"));
             p.setSidebarWidth(310);
             p.setAudioDevice(QStringLiteral("alsa_output.pci-0000_00_1f.3"));
             p.setSoftwareRendering(true);
+            p.setQuitOnClose(true);
         }
         Prefs p2;
-        QCOMPARE(p2.theme(), QStringLiteral("paper"));
+        QCOMPARE(p2.theme(), QStringLiteral("sand"));
         // Off has to survive as well as on: this one defaults to true, so a
         // setter that only ever wrote the non-default value would still pass
         // a round trip in the other direction.
@@ -107,6 +111,7 @@ private slots:
         QCOMPARE(p2.sidebarWidth(), 310);
         QCOMPARE(p2.audioDevice(), QStringLiteral("alsa_output.pci-0000_00_1f.3"));
         QCOMPARE(p2.softwareRendering(), true);
+        QCOMPARE(p2.quitOnClose(), true);
     }
 
     // Someone who needs software rendering to see anything must not lose it,
@@ -118,13 +123,31 @@ private slots:
         QVERIFY(p.softwareRendering());
     }
 
+    // The key is written out here rather than taken from Prefs.cpp, so renaming
+    // it shows up as a failing test instead of quietly putting everyone who had
+    // asked for a quitting close button back on minimise-to-tray.
+    void quitOnCloseIsStoredUnderItsOwnKey() {
+        { Prefs p; p.setQuitOnClose(true); }
+        {
+            QSettings s;
+            QCOMPARE(s.value(QStringLiteral("ui/quitOnClose")).toBool(), true);
+        }
+        Prefs p2;
+        QVERIFY(p2.quitOnClose());
+        // ...and back off again, which a setter that only wrote the non-default
+        // value would get wrong in one direction only.
+        p2.setQuitOnClose(false);
+        Prefs p3;
+        QVERIFY(!p3.quitOnClose());
+    }
+
     void signalsFireOnceOnChange() {
         Prefs p;
         QSignalSpy theme(&p, &Prefs::themeChanged);
         QSignalSpy render(&p, &Prefs::softwareRenderingChanged);
 
-        p.setTheme(QStringLiteral("ember"));
-        p.setTheme(QStringLiteral("ember"));     // same value, no churn
+        p.setTheme(QStringLiteral("rust"));
+        p.setTheme(QStringLiteral("rust"));     // same value, no churn
         QCOMPARE(theme.count(), 1);
 
         p.setSoftwareRendering(true);
@@ -135,6 +158,11 @@ private slots:
         p.setOledBlack(false);
         p.setOledBlack(false);
         QCOMPARE(oled.count(), 1);
+
+        QSignalSpy closeQuits(&p, &Prefs::quitOnCloseChanged);
+        p.setQuitOnClose(true);
+        p.setQuitOnClose(true);
+        QCOMPARE(closeQuits.count(), 1);
     }
 
     // ── guarding against a bad settings file ─────────────────────────────
@@ -174,12 +202,12 @@ private slots:
     // pure-black switch over whichever dark theme is picked. Someone who was
     // on it has to come back to the same app, so the stored name is rewritten
     // on load rather than falling through to the default palette, which would
-    // have put them on Midnight with the switch off and no idea why the app
-    // got lighter.
-    void storedDeepBecomesMidnightInBlack() {
+    // have put them on the blue dark theme with the switch off and no idea why
+    // the app got lighter.
+    void storedDeepBecomesSeaInBlack() {
         { QSettings s; s.setValue(QStringLiteral("ui/theme"), "deep"); }
         Prefs p;
-        QCOMPARE(p.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
         QCOMPARE(theme::palette(p.theme(), p.oledBlack()).value("bg").value<QColor>(),
                  QColor(Qt::black));
@@ -193,11 +221,35 @@ private slots:
         { Prefs p; QCOMPARE(p.oledBlack(), true); p.setOledBlack(false); }
         {
             QSettings s;
-            QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("midnight"));
+            QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("sea"));
         }
         Prefs p2;
-        QCOMPARE(p2.theme(), QStringLiteral("midnight"));
+        QCOMPARE(p2.theme(), QStringLiteral("sea"));
         QCOMPARE(p2.oledBlack(), false);
+    }
+
+    // The six palettes were renamed, so the same write-back has to happen for
+    // a stored name that is only a word out of date. Without it the file keeps
+    // the old name and every launch migrates again, which is how the switch
+    // ends up back on after the user turns it off.
+    void aRenamedThemeIsWrittenBack() {
+        { QSettings s; s.setValue(QStringLiteral("ui/theme"), "forest"); }
+        { Prefs p; QCOMPARE(p.theme(), QStringLiteral("pine")); }
+        QSettings s;
+        QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("pine"));
+    }
+
+    // ...and the rename must not drag the pure-black switch with it: the
+    // palette is the one the user already had, so only the word changes.
+    void aRenamedThemeLeavesTheBlackSwitchAlone() {
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("ui/theme"), "ember");
+            s.setValue(QStringLiteral("ui/oledBlack"), false);
+        }
+        Prefs p;
+        QCOMPARE(p.theme(), QStringLiteral("rust"));
+        QCOMPARE(p.oledBlack(), false);
     }
 
     // A theme name is free-form on the way in, because the palette table is

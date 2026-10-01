@@ -35,7 +35,7 @@ noise), the dead `Qt6::Sql` dependency removed, and `tests/visual/`.
 ### Bugs found by testing rather than by reading
 - **Theme switching was entirely dead.** `ThemePalette` was default-
   constructible, so Qt never called `create()` and QML built its own instance
-  with a null `Prefs`. All six palettes painted as Midnight. See
+  with a null `Prefs`. All six palettes painted as Sea. See
   `tests/qml/tst_theme_live.qml`.
 - **Every label on an accent fill was black.** A QML property named
   `on<Name>` beside a property `<name>` parses as a signal handler, so
@@ -68,9 +68,11 @@ noise), the dead `Qt6::Sql` dependency removed, and `tests/visual/`.
 ### Open questions for the user
 - The two light themes have now been seen running (screenshots in
   `tests/visual/out/`), but nobody has used them for real work.
-- Theme names are translated: Midnight becomes Mitternacht, Forest becomes
-  Wald. Deep is gone, replaced by the pure-black switch. Say the word and all
-  stay in English.
+- ~~Theme names are translated: Midnight becomes Mitternacht, Forest becomes
+  Wald.~~ **Answered.** They are product names now and show as written in every
+  language, and the six were renamed to Sea, Pine, Rust, Sky, Sand and Clay.
+  Deep is still gone, replaced by the pure-black switch; a settings file that
+  names it, or any of the old six, migrates on load in `theme::migrated()`.
 
 
 ## Queued from QA, not yet started
@@ -284,9 +286,10 @@ Scaffolding and infrastructure:
 palette table and the radius scale, and made `qml/Theme.qml` a binding layer
 over `ThemePalette.current`. `2100153` moved every hardcoded colour in `qml/`
 onto a token. `58811d6` fixed a real bug where switching the theme repainted
-nothing. Six palettes, **three dark** (Midnight, Forest, Ember) and three
-light (Daylight, Paper); "Forest" replaced the drafted violet "Graphite" at the
-user's request. `tests/tst_theme.cpp` checks WCAG contrast for every token
+nothing. Six palettes, **three dark** (Sea, Pine, Rust) and three light (Sky,
+Sand, Clay); the green dark one replaced the drafted violet "Graphite" at the
+user's request, and all six were later renamed off their launch names.
+`tests/tst_theme.cpp` checks WCAG contrast for every token
 against bg/surface/surfaceHigh; `tests/qml/tst_theme_live.qml` covers the live
 swap. Two findings kept: white on the accent fails contrast on all three dark
 themes, so `onAccent` is near-black there, and `hoverFill` had to become
@@ -465,7 +468,15 @@ fixed, so this section is not done.** See below.
   and do not push a tag without asking.
 - Delete this file in that merge.
 
-### The Settings panel is most of what is left
+### The Settings panel. Done.
+Built out since this was written, and this section is kept only to record what
+was owed. The panel now carries Account, Appearance (theme picker, the pure-black
+switch, language), Window (whether closing quits), Playback (streaming quality,
+audio output), Performance (hardware acceleration), Updates (the automatic check
+and a "check now" button), Keyboard shortcuts and Privacy. Nothing on the list
+below is still only reachable by editing the settings file.
+
+### What it was missing, for the record
 `qml/components/SideBar.qml`'s Settings `Popup` currently has three sections:
 Account, Playback (streaming quality) and Keyboard shortcuts. Everything else
 that 0.4.0 added is reachable only by editing the settings file. Owed, in one
@@ -499,42 +510,70 @@ Source: `tests/stress/`, read in full.
   far behind its neighbours, and a collapse under a big scene. Anything beyond
   that needs a real display.
 
-### First-run findings, not yet fixed
-Source: `tests/firstrun/run.sh`, all five re-checked against the code today.
-- **`QLocalServer::listen()` failure is swallowed.** `src/ui/Application.cpp:231`
-  is `if (server->listen(socketName)) { … }` with no `else`. The lock is
-  `$TMPDIR/TidalWaveSingleInstanceSocket`; a `TMPDIR` long enough to breach the
-  107-byte `sockaddr_un` limit makes `listen()` fail silently, and then *every*
-  launch starts a full second instance. Same on a multi-user box, because the
-  name has no uid in it. Log it at minimum; better, put the uid in the name.
-- **Proxy settings are ignored entirely.** There is still no
-  `QNetworkProxyFactory` anywhere in `src/`, so anyone behind a corporate proxy
-  gets silence with no explanation.
-- **No tray plus close equals a vanished app.** `Application.cpp:215` sets
-  `setQuitOnLastWindowClosed(false)` and `Main.qml:25` hides the window on
-  close unless `app.reallyQuit`. The tray is only created when
-  `QSystemTrayIcon::isSystemTrayAvailable()` (`Application.cpp:291`), so with no
-  tray there is no way back. Quit on close when the tray is unavailable.
-- **PipeWire and PulseAudio connect errors print on every run** with no audio
-  server. `silenceLogsAndAlsa()` (`Application.cpp:72`) covers the Qt logging
-  categories and ALSA's own stderr, and misses these because they are neither.
-- **A real `.deb` install has never been tested.** This box is openSUSE, no
-  dpkg. The dependency findings came from `ldd`, the QML imports and a
-  mount-namespace reproduction. Verify the package on an actual Debian box
-  before release.
+### First-run findings
+Source: `tests/firstrun/run.sh`. Four of the five were fixed later in the
+same session that found them and this section went stale; each is marked with
+where the fix lives, so a future reader does not go looking for a bug that is
+not there. The fifth, the `.deb`, is below.
+- ~~**`QLocalServer::listen()` failure is swallowed.**~~ **Fixed.** The failure
+  is reported now, and `Application::singleInstanceSocketName()` picks the first
+  of `XDG_RUNTIME_DIR`, `QDir::tempPath()` and `/tmp` whose path actually fits
+  inside `sockaddr_un`'s 107 bytes, with the uid in the leaf name so a
+  multi-user box gets one lock per user rather than one in total.
+- ~~**Proxy settings are ignored entirely.**~~ **Fixed.**
+  `QNetworkProxyFactory::setUseSystemConfiguration(true)` in
+  `Application.cpp`. Note the caveat in the comment there: the Chromecast
+  backend does its own HTTP and never sees `QNetworkProxy`.
+- ~~**No tray plus close equals a vanished app.**~~ **Fixed.**
+  `Application::shouldQuitOnWindowClose()` makes close a quit when no tray is
+  available, and it is consulted from both `reallyQuit()` and the
+  `lastWindowClosed` handler. The user has since asked for the *other* half of
+  this to be a choice - close meaning quit even where a tray exists - which is
+  being built now as a `Prefs` toggle in a new Settings "Window" section,
+  defaulting to the current minimise-to-tray behaviour.
+- ~~**PipeWire and PulseAudio connect errors print on every run**~~ **Fixed.**
+  `Application::isAudioServerStartupNoise()` matches the stable half of both
+  lines, and `audioServerAbsent()` gates the suppression so that it only applies
+  where there is no audio server at all: someone running PipeWire who still
+  cannot reach it has a real fault, and that one line is their only clue.
+- **The `.deb` was tested on a real Debian box, and it is worse than predicted.**
+  Debian 12 bookworm, RT kernel, no Qt6 installed. The package **installed
+  cleanly** - 41 dependencies, no complaint - and then the binary died at load:
+  `libQt6Core.so.6: version 'Qt_6.12' not found`, plus
+  `libstdc++.so.6: version 'CXXABI_1.3.15' not found`.
+  The version pin the README promised never existed.
+  `CPACK_DEBIAN_PACKAGE_DEPENDS` was hand-written and unversioned, and
+  `SHLIBDEPS ON` could not refine it: dpkg-shlibdeps attaches a floor by asking
+  dpkg which package owns each linked library, and Qt here resolves to
+  `~/Qt/6.12.0/gcc_64/lib`, which no apt package owns. With no owning package it
+  silently contributes nothing, so the pin was absent on every build anyone
+  makes here. **Fixed**: the depends list is now generated with a floor taken
+  from `Qt6_VERSION`, plus a `libstdc++6` floor from the compiler major, and the
+  README no longer claims a clean refusal it was not delivering.
+  **Still open from that run**, and it is a release decision rather than a bug:
+  the libstdc++ floor is an upper bound on what the binary needs, so a package
+  built on this rolling distribution asks for a libstdc++ almost nobody has. A
+  real release has to be built against the oldest toolchain we mean to support,
+  in a container. Until that exists the `.deb` is only installable on a
+  distribution as new as this build machine.
+  Also outstanding: whether the declared `find_package(Qt6 6.4)` floor is real.
+  The box is set up to try a source build against bookworm's 6.4.2, which is the
+  only thing that can answer it.
+- **`cpack` on PATH is a broken shim**, exactly like `ctest`: `~/bin/cpack` dies
+  with `ModuleNotFoundError: No module named 'cmake'`. Use `/usr/bin/cpack`.
 
-### Reduced motion is detected but almost nothing honours it
-`Application::reducedMotion` exists and is detected once at startup
-(`Application.cpp:147`, `detectReducedMotion()`), and it reaches QML as
-`app.reducedMotion`. **Exactly one animation gates on it:** the sidebar's width
-`Behavior`, through `SideBar.qml:63` and `:68`. Counting `Behavior`,
-`NumberAnimation`, `PropertyAnimation`, `ColorAnimation`, `SequentialAnimation`
-and `RotationAnimation`, there are about 25 animation sites across ten files
-(`LoginPage` 8, `NowPlayingPage` 4, `SeekBar` 3, `MediaCard` 3, `SideBar` 2, and
-one each in `PageHeader`, `BackButton`, `QueuePanel`, `MixPage`,
-`PlaylistPage`). SPEC X6's second half is therefore unimplemented. The cheap fix
-is a single `Theme`-level duration token that collapses to 0, so a `Behavior`
-does not have to know about `app`.
+### Reduced motion. Done.
+`Application::reducedMotion` is detected once at startup
+(`detectReducedMotion()`), reaches QML as `app.reducedMotion`, and
+`Theme.reduceMotion` is where the QML side asks. The cheap fix this section
+proposed is the one that was built: a single `Theme.dur(ms)` token that collapses
+to 0, so no `Behavior` has to know about `app`. **42 animation sites go through
+it and there is not one raw duration left** - `grep -rn "duration: [0-9]" qml/`
+returns a single hit, and it is `SeekBar`'s track-length property rather than an
+animation. The animated now-playing indicator is the one that needed more than a
+zero duration: collapsing its durations would have made it vanish, so under
+reduced motion its sequence runs through in a frame and parks on each bar's
+resting height instead.
 
 ### `NowPlayingPage` is not independently testable
 It reaches into `Window.window` for all its sleep-timer state
@@ -555,27 +594,30 @@ shared Pin menu from `ContextMenu.qml`, so right-clicking an album or an artist
 in My Collection offers no Pin. Either fold Pin into those two menus or replace
 them with the shared one. The grids in the rest of the app are fine.
 
-### Dead SQL dependency
-Nothing in `src/` uses SQL. `grep -rni sql src/` returns nothing. Yet
-`CMakeLists.txt` still has `Sql` in `find_package(Qt6 … COMPONENTS)` and
-`Qt6::Sql` in `target_link_libraries`, and the `.deb` still declares
-`libqt6sql6` and `libqt6sql6-sqlite` in `CPACK_DEBIAN_PACKAGE_DEPENDS`. The
-README used to claim the session was cached in SQLite, which was never true: it
-is `~/.config/tidal-wave/credentials.json`, plain JSON, written owner-only by
-`Auth::saveCredentials`. The README is fixed and the sqlite dev packages are out
-of its toolchain table. Dropping the link and the two Depends is a `CMakeLists.txt`
-change and belongs to whoever owns that file.
+### Dead SQL dependency. Done.
+`Qt6::Sql` is out of `find_package` and `target_link_libraries`, and
+`libqt6sql6`/`libqt6sql6-sqlite` are out of the Debian depends. Only the comment
+above that depends list still mentions SQL, and it is there to say why it is
+absent. The README's old claim that the session was cached in SQLite was never
+true: it is `~/.config/tidal-wave/credentials.json`, plain JSON, written
+owner-only by `Auth::saveCredentials`.
 
 ## Decisions the user already made
 
 Do not reopen these.
 
 - **Themes:** six palettes, but **"Graphite" was replaced by a green dark theme
-  ("Forest")**. The user called the violet sloppy. The light pair stays
-  **Daylight** (crisp white, blue) and **Paper** (warm, green accent), and the
-  user likes Paper as drawn. Now three dark and three light, paired by hue,
-  with a pure-black switch in place of a separate Deep theme. Not the three
-  and two the spec says.
+  ("Pine")**. The user called the violet sloppy. The light pair stays **Sky**
+  (crisp white, blue) and **Sand** (warm, green accent), and the user likes
+  Sand as drawn. Now three dark and three light, paired by hue, with a
+  pure-black switch in place of a separate Deep theme. Not the three and two
+  the spec says.
+- **Theme names:** **Sea, Pine, Rust** dark and **Sky, Sand, Clay** light,
+  **not translated**. They replaced Midnight, Forest, Ember, Daylight, Paper
+  and Dawn: the picker is already a grid with a Dark column and a Light column,
+  so a name that also says "midnight" says the same thing twice, and a set of
+  times of day read as filler. Each name is one ordinary thing of roughly that
+  colour. Being product names, they are the same six words in German.
 - **Radius scale:** the review page table, with **popups and dialogs at 14**,
   not 18. Everything else as drafted.
 - **Filter chips:** **icons only, always.** The user saw the labelled variant
@@ -607,17 +649,33 @@ Do not reopen these.
 
 ## Next up, in order
 
-1. Build the Settings panel out. It is the single biggest gap between what the
-   code can do and what a user can reach. Coordinate with the agent already
-   working on the update switch and the privacy block.
-2. Run `tests/stress/run.sh` properly and fix what it finds, starting with the
-   `prefs.reduceMotion` probe.
-3. Fix the five first-run findings above.
-4. Gate the animations on `app.reducedMotion`, ideally through one duration
-   token rather than 25 edits.
-5. Move the sleep-timer state out of `Main.qml`, then add a `NowPlayingPage`
-   test that does not need a window.
-6. Fix `CollectionPage`'s two shadowing menus.
-7. Keep `docs/design-review.html` current and republish it to the artifact URL.
-8. Verify the `.deb` on a real Debian box.
-9. Only then section J, and only with the user's approval.
+Everything above this line that is not marked done is in this list; everything
+marked done was verified, not assumed.
+
+1. **Move the sleep-timer state out of `Main.qml`**, then add a `NowPlayingPage`
+   test that does not need a window. This is the last thing standing between
+   that page and the same test treatment every other page gets.
+2. **Run `tests/stress/run.sh` to a clean result on every backend.** The
+   offscreen scenario now passes at `STRESS_SCALE=0.25`; `software`, `xcb`,
+   `wayland` and `idle-rss` have still never been run. Expect more harness
+   false positives of the kind the Flickable `contentItem` turned out to be -
+   fix the audit rather than the app when the thing it reports is invisible to
+   the user, and say so in the comment.
+3. **Build the release `.deb` in a container**, against the oldest toolchain we
+   mean to support. The depends floors are honest now, which is what made the
+   problem visible: built here they read `libqt6core6 (>= 6.12)` and
+   `libstdc++6 (>= 16)`, so the package refuses cleanly and installs almost
+   nowhere. This is the one thing blocking a release that anyone can install.
+4. **Decide the declared Qt floor.** `find_package(Qt6 6.4)` is now true again
+   for the app - the one 6.5-only call, `loadFromModule`, is guarded in both
+   `Application.cpp` and `tst_firstrun.cpp` - but nobody has yet *run* a 6.4
+   build. The Debian box can, and that answer decides whether 6.4 stays a
+   supported floor or becomes 6.12 to match the binary.
+5. **First run and audio on the RT kernel.** Blocked until 3 or 4 gives that box
+   a runnable binary. The audio one is the most valuable: the PipeWire deadlock
+   fixed earlier this session was a timing bug, and an RT scheduler changes the
+   timing.
+6. **Keep `docs/design-review.html` current and republish it** to the artifact
+   URL. It is current as of the theme rename and the glyph pass.
+7. **Only then section J, and only with the user's approval.** Merging
+   `beta-0.4.0` to `main` has never been authorised.

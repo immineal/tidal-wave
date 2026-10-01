@@ -1045,6 +1045,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Window</source>
+        <comment>settings section about the application window</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Closing the window quits Tidal Wave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Lossless (16-bit)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1183,33 +1196,6 @@
     </message>
     <message>
         <source>Settings (Ctrl+,)</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>Theme</name>
-    <message>
-        <source>Midnight</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Forest</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Ember</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Daylight</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Paper</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Dawn</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

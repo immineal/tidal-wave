@@ -174,13 +174,27 @@ private slots:
         QVERIFY(!Application::claimSingleInstanceSocket(nullptr, QStringLiteral("whatever")));
     }
 
-    // ── the no-tray decision ─────────────────────────────────────────────
+    // ── what the close button does ───────────────────────────────────────
+
+    void quitOnCloseFollowsTrayAvailability_data() {
+        QTest::addColumn<bool>("trayAvailable");
+        QTest::addColumn<bool>("quitOnClose");
+        QTest::addColumn<bool>("quits");
+        // No tray: the window is the only way in, so closing it ends the app,
+        // and the preference has nothing left to decide.
+        QTest::newRow("no tray, default")        << false << false << true;
+        QTest::newRow("no tray, asked to quit")  << false << true  << true;
+        // Tray: closing hides, because the tray brings it back - unless the
+        // user asked for the close button to mean quit.
+        QTest::newRow("tray, default")           << true  << false << false;
+        QTest::newRow("tray, asked to quit")     << true  << true  << true;
+    }
 
     void quitOnCloseFollowsTrayAvailability() {
-        // No tray: the window is the only way in, so closing it ends the app.
-        QVERIFY(Application::shouldQuitOnWindowClose(false));
-        // Tray: closing hides, because the tray brings it back.
-        QVERIFY(!Application::shouldQuitOnWindowClose(true));
+        QFETCH(bool, trayAvailable);
+        QFETCH(bool, quitOnClose);
+        QFETCH(bool, quits);
+        QCOMPARE(Application::shouldQuitOnWindowClose(trayAvailable, quitOnClose), quits);
     }
 
     // ── the audio-server log filter ──────────────────────────────────────
