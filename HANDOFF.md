@@ -21,6 +21,58 @@ Artifact tool (pass the URL as `url`, after reading it first).
 requirements are deliberately frozen; each section there carries a Status line
 that should agree with this file.
 
+## Final state, end of the 2026-10-01 session
+
+22 commits past the handoff, pushed to `origin/beta-0.4.0`. 13 test binaries,
+all green. **Not merged to `main`: that still needs the user's approval.**
+
+Landed after the docs pass above, so the section list does not mention them:
+the Settings panel (theme, language, audio device, hardware acceleration,
+update switch, privacy block), reduced motion across all 24 animation sites,
+the startup fixes (single-instance socket, proxy, no-tray quit, audio-server
+noise), the dead `Qt6::Sql` dependency removed, and `tests/visual/`.
+
+### Bugs found by testing rather than by reading
+- **Theme switching was entirely dead.** `ThemePalette` was default-
+  constructible, so Qt never called `create()` and QML built its own instance
+  with a null `Prefs`. All six palettes painted as Midnight. See
+  `tests/qml/tst_theme_live.qml`.
+- **Every label on an accent fill was black.** A QML property named
+  `on<Name>` beside a property `<name>` parses as a signal handler, so
+  `Theme.onAccent` never bound. Tokens are `accentInk` / `redInk` / `artInk`
+  now. Found by screenshots; 13 green test binaries did not catch it.
+- **The `.deb` could not start at all**: `qml6-module-qtquick-shapes` was
+  never in the depends, and QML modules are dlopen'd so shlibdeps cannot
+  infer them.
+- The Settings popup was 156px wide (`anchors.centerIn: Overlay.overlay`
+  positions without reparenting). A 5000-track queue cost 326ms per advance.
+  `undefined === undefined` lit every row as playing. The single-instance
+  lock failed silently under a long `TMPDIR`.
+
+### Still open, and why
+- **The `.deb` has never been installed on a real Debian box.** This machine
+  is openSUSE with no dpkg. The dependency list is derived from `ldd`, the
+  QML imports and a mount-namespace reproduction. **Verify before release.**
+- **The audio backend matrix (A4) is unexercised**: PipeWire, PulseAudio and
+  ALSA, hot-plug and removal of the active device, all need real hardware.
+- `tests/stress/` and `tests/visual/` are standalone CMake projects run by
+  hand, deliberately not in ctest. Two stress cases are worth wiring in; the
+  note is in `tests/stress/`.
+- `NowPlayingPage` still reaches into `Window.window` for sleep-timer state,
+  so the page is not independently testable.
+- `CollectionPage`'s album and artist delegates have their own right-click
+  menu that shadows the shared Pin menu.
+- The hero eyebrow on Album, Playlist and Mix sits on `accentTint`; it was
+  moved to `textSec`, but check it by eye on the light themes.
+
+### Open questions for the user
+- The two light themes have now been seen running (screenshots in
+  `tests/visual/out/`), but nobody has used them for real work.
+- Theme names are translated: Midnight becomes Mitternacht, Forest becomes
+  Wald, Deep becomes Tiefe. "Tiefe" is the weak one. Say the word and all six
+  stay in English.
+
+
 ## Build and test
 
 ```bash
