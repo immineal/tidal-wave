@@ -647,6 +647,28 @@ Do not reopen these.
   plays cannot be pulled in. This was checked against the live API and the user
   has been told. Recently-played is tracked locally for all four kinds.
 
+### Unreproduced: the window would not grow again
+
+Reported once during QA - "I might have just found a weird rare bug where I
+can't make the window bigger again right now" - and not seen since. Recorded
+rather than dropped, with what has been ruled out:
+
+- `Main.qml` sets `minimumWidth: 640` and `minimumHeight: 600` and **no maximum
+  of any kind**, so nothing in the app caps the window's size. A capped maximum
+  is the usual cause of a window that will not grow, and it is not this.
+- An item wider than the window raises a layout's implicit size, which stops a
+  window *shrinking*, not growing - the opposite symptom.
+- The sidebar's reserved slot used to jump ahead of its panel during a
+  breakpoint crossing, which is fixed, but that produced a bar of bare page
+  rather than a size constraint.
+
+So the likely explanation is the compositor rather than the app: a KWin
+tiling/maximise state, or a client-side-decoration resize edge lost after a
+state change. If it happens again, the things worth capturing in the moment are
+`qdbus org.kde.KWin /KWin queryWindowInfo` for the window, whether it is in a
+tile or maximised state, and whether a fresh instance resizes normally while the
+stuck one does not.
+
 ## Next up, in order
 
 Everything above this line that is not marked done is in this list; everything
