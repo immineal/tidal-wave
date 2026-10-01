@@ -50,7 +50,7 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Native Linux Tidal Client"
+                text: qsTr("Native Linux Tidal Client")
                 color: Theme.textSec
                 font.pixelSize: 14
             }
@@ -81,7 +81,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Restoring session…"
+                        text: qsTr("Restoring session…")
                         color: Theme.textSec
                         font.pixelSize: 14
                     }
@@ -117,7 +117,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Sign in with your Tidal account"
+                        text: qsTr("Sign in with your Tidal account")
                         color: Theme.textSec
                         font.pixelSize: 14
                     }
@@ -139,7 +139,7 @@ Rectangle {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Log in with Tidal"
+                            text: qsTr("Log in with Tidal")
                             color: Theme.onAccent
                             font.pixelSize: 15
                             font.bold: true
@@ -150,7 +150,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Requires an active Tidal subscription"
+                        text: qsTr("Requires an active Tidal subscription")
                         color: Theme.textDim
                         font.pixelSize: 12
                     }
@@ -174,7 +174,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Open your browser and go to:"
+                        text: qsTr("Open your browser and go to:")
                         color: Theme.textSec
                         font.pixelSize: 14
                     }
@@ -206,7 +206,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Enter this code:"
+                        text: qsTr("Enter this code:")
                         color: Theme.textSec
                         font.pixelSize: 14
                     }
@@ -254,7 +254,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Waiting for you to log in…"
+                        text: qsTr("Waiting for you to log in…")
                         color: Theme.textDim
                         font.pixelSize: 13
                     }
@@ -262,7 +262,7 @@ Rectangle {
                     Text {
                         id: cancelText
                         Layout.alignment: Qt.AlignHCenter
-                        text: "Cancel"
+                        text: qsTr("Cancel")
                         color: cancelText.activeFocus ? Theme.accent : Theme.textSec
                         font.pixelSize: 13
                         font.underline: cancelText.activeFocus
@@ -284,7 +284,7 @@ Rectangle {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "Tidal Wave is not affiliated with TIDAL Music AS"
+            text: qsTr("Tidal Wave is not affiliated with TIDAL Music AS")
             color: Theme.textDim
             font.pixelSize: 11
         }

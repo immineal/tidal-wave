@@ -132,14 +132,14 @@ Rectangle {
                     Row {
                         spacing: 12
                         PillButton {
-                            text: "Play"
+                            text: qsTr("Play", "verb, button label")
                             glyph: "▶"
                             accent: true
                             onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
                         }
 
                         PillButton {
-                            text: root.isFollowing ? "Following" : "Follow"
+                            text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
                             glyph: root.isFollowing ? "♥" : "♡"
                             accent: root.isFollowing
                             onClicked: {
@@ -162,7 +162,7 @@ Rectangle {
                 Layout.leftMargin: 24
                 Layout.rightMargin: 24
                 Text {
-                    text: "Popular"
+                    text: qsTr("Popular")
                     color: Theme.textPrimary
                     font.pixelSize: 20
                     font.bold: true
@@ -170,7 +170,7 @@ Rectangle {
                 }
                 Text {
                     visible: root.topTracks.length > 5
-                    text: root.showAllTracks ? "Show less" : "Show all"
+                    text: root.showAllTracks ? qsTr("Show less") : qsTr("Show all")
                     color: showAllHov.hovered ? Theme.textPrimary : Theme.textSec
                     font.pixelSize: 13
                     HoverHandler { id: showAllHov }
@@ -211,7 +211,7 @@ Rectangle {
                     return (a.numTracks || 1) > 3
                 })
                 visible: mainAlbums.length > 0
-                title: singlesSection.singles.length > 0 ? "Albums" : "Discography"
+                title: singlesSection.singles.length > 0 ? qsTr("Albums") : qsTr("Discography")
                 showViewAll: false
                 mediaType: "album"
                 items: mainAlbums.map(function(a) {
@@ -235,7 +235,7 @@ Rectangle {
                     return (a.numTracks || 1) <= 3
                 })
                 visible: singles.length > 0
-                title: "Singles & EPs"
+                title: qsTr("Singles & EPs")
                 showViewAll: false
                 mediaType: "album"
                 items: singles.map(function(a) {
@@ -259,7 +259,7 @@ Rectangle {
                 Item { height: 8 }
 
                 Text {
-                    text: "About"
+                    text: qsTr("About")
                     color: Theme.textPrimary
                     font.pixelSize: 20
                     font.bold: true
@@ -291,11 +291,11 @@ Rectangle {
             HorizontalSection {
                 Layout.fillWidth: true
                 visible: (artistData.similarArtists || []).length > 0
-                title: "Related Artists"
+                title: qsTr("Related Artists")
                 mediaType: "artist"
                 showViewAll: false
                 items: (artistData.similarArtists || []).map(function(a) {
-                    return { id: a.id, title: a.name, subtitle: "Artist", coverUrl: a.coverUrl || "" }
+                    return { id: a.id, title: a.name, subtitle: qsTr("Artist"), coverUrl: a.coverUrl || "" }
                 })
                 onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }
             }

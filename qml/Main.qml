@@ -13,7 +13,8 @@ ApplicationWindow {
     minimumHeight: 600
     // Show the current track in the window/taskbar/dock title.
     title: (player.currentTrack && player.currentTrack.title)
-           ? player.currentTrack.title + " – " + player.currentTrack.artists + " · Tidal Wave"
+           ? qsTr("%1 – %2 · Tidal Wave").arg(player.currentTrack.title)
+                                         .arg(player.currentTrack.artists)
            : "Tidal Wave"
     color: Theme.bg
 

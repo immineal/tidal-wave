@@ -17,9 +17,9 @@ Rectangle {
     property string greeting: greetingFor(new Date().getHours())
 
     function greetingFor(h) {
-        if (h < 12) return "Good morning"
-        if (h < 18) return "Good afternoon"
-        return "Good evening"
+        if (h < 12) return qsTr("Good morning")
+        if (h < 18) return qsTr("Good afternoon")
+        return qsTr("Good evening")
     }
 
     Timer {
@@ -79,7 +79,7 @@ Rectangle {
             var items = []
             for (var i = 0; i < Math.min(lists.length, 12); i++) {
                 var p = lists[i]
-                items.push({ id: p.uuid, title: p.title, subtitle: p.numTracks + " tracks",
+                items.push({ id: p.uuid, title: p.title, subtitle: qsTr("%n track(s)", "", p.numTracks),
                              coverUrl: p.coverUrl, type: "playlist", playlistType: p.type || "" })
             }
             playlists = items
@@ -90,7 +90,7 @@ Rectangle {
             var items = []
             for (var i = 0; i < Math.min(artistList.length, 12); i++) {
                 var a = artistList[i]
-                items.push({ id: a.id, title: a.name, subtitle: "Artist",
+                items.push({ id: a.id, title: a.name, subtitle: qsTr("Artist"),
                              coverUrl: a.coverUrl || "", type: "artist" })
             }
             artists = items
@@ -122,7 +122,7 @@ Rectangle {
 
             HorizontalSection {
                 Layout.fillWidth: true
-                title: "My Mixes"
+                title: qsTr("My Mixes")
                 items: root.mixes
                 mediaType: "mix"
                 onItemClicked: (idx, item) => navigateTo("mix", {
@@ -142,7 +142,7 @@ Rectangle {
             HorizontalSection {
                 Layout.fillWidth: true
                 visible: recentlyPlayed.length > 0
-                title: "Recently Played"
+                title: qsTr("Recently Played")
                 items: root.recentlyPlayed
                 mediaType: "track"
                 showViewAll: false
@@ -164,7 +164,7 @@ Rectangle {
             HorizontalSection {
                 Layout.fillWidth: true
                 visible: recentAlbums.length > 0
-                title: "Saved Albums"
+                title: qsTr("Saved Albums")
                 items: root.recentAlbums
                 mediaType: "album"
                 onItemClicked: (idx, item) => navigateTo("album", { albumId: item.id })
@@ -181,7 +181,7 @@ Rectangle {
             HorizontalSection {
                 Layout.fillWidth: true
                 visible: playlists.length > 0
-                title: "Your Playlists"
+                title: qsTr("Your Playlists")
                 items: root.playlists
                 mediaType: "playlist"
                 onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
@@ -199,7 +199,7 @@ Rectangle {
             HorizontalSection {
                 Layout.fillWidth: true
                 visible: artists.length > 0
-                title: "Favorite Artists"
+                title: qsTr("Favorite Artists")
                 items: root.artists
                 mediaType: "artist"
                 onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })

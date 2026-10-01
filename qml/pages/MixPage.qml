@@ -89,7 +89,7 @@ Rectangle {
                     spacing: 8
 
                     Text {
-                        text: "Mix"
+                        text: qsTr("Mix", "noun, a Tidal mix")
                         color: Theme.textDim
                         font.pixelSize: 12
                         font.bold: true
@@ -118,14 +118,14 @@ Rectangle {
                         spacing: 12
 
                         PillButton {
-                            text: "Play"
+                            text: qsTr("Play", "verb, button label")
                             glyph: "▶"
                             accent: true
                             onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
                         }
 
                         PillButton {
-                            text: "Shuffle"
+                            text: qsTr("Shuffle")
                             glyph: "⇌"
                             accent: false
                             onClicked: {

@@ -24,6 +24,17 @@ Rectangle {
         player.playTracks(list, i)
     }
 
+    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
+    // translation can reorder or re-unit it instead of inheriting English order.
+    function durationText(seconds) {
+        var loc  = Qt.locale()
+        var hrs  = Math.floor(seconds / 3600)
+        var mins = Math.floor((seconds % 3600) / 60)
+        return hrs > 0
+            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
+            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    }
+
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
     function loadPlaylist() {
@@ -112,7 +123,7 @@ Rectangle {
                     spacing: 8
 
                     Text {
-                        text: "Playlist"
+                        text: qsTr("Playlist")
                         color: Theme.textDim
                         font.pixelSize: 12
                         font.bold: true
@@ -141,14 +152,12 @@ Rectangle {
 
                     Text {
                         text: {
-                            var parts = [root.tracks.length === 1 ? "1 track" : root.tracks.length + " tracks"]
+                            // One complete sentence per case rather than glued
+                            // fragments, so a translation can reorder it.
+                            var n = root.tracks.length
                             var d = root.playlistDuration
-                            if (d > 0) {
-                                var hrs = Math.floor(d / 3600)
-                                var mins = Math.floor((d % 3600) / 60)
-                                parts.push(hrs > 0 ? hrs + " hr " + mins + " min" : mins + " min")
-                            }
-                            return parts.join(" • ")
+                            return d > 0 ? qsTr("%n track(s) • %1", "", n).arg(root.durationText(d))
+                                         : qsTr("%n track(s)", "", n)
                         }
                         color: Theme.textSec
                         font.pixelSize: 14
@@ -158,7 +167,7 @@ Rectangle {
                         spacing: 12
 
                         PillButton {
-                            text: "Play"
+                            text: qsTr("Play", "verb, button label")
                             glyph: "▶"
                             accent: true
                             onClicked: {
@@ -170,7 +179,7 @@ Rectangle {
                         }
 
                         PillButton {
-                            text: "Shuffle"
+                            text: qsTr("Shuffle")
                             glyph: "⇌"
                             accent: false
                             onClicked: {
@@ -184,7 +193,7 @@ Rectangle {
 
                         PillButton {
                             visible: root.isUserPlaylist
-                            text: "Edit"
+                            text: qsTr("Edit")
                             glyph: "✎"
                             accent: false
                             onClicked: {
@@ -258,11 +267,11 @@ Rectangle {
             width: parent.width
             spacing: 14
 
-            Text { text: "Edit Playlist"; color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-            Text { text: "Title"; color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
                 width: parent.width; height: 36; radius: Theme.radiusField
                 color: Theme.surface; border.color: titleFocus.activeFocus ? Theme.accent : Theme.border
@@ -275,7 +284,7 @@ Rectangle {
                 }
             }
 
-            Text { text: "Description"; color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
                 width: parent.width; height: 72; radius: Theme.radiusField
                 color: Theme.surface; border.color: descFocus.activeFocus ? Theme.accent : Theme.border
@@ -292,11 +301,11 @@ Rectangle {
             Row {
                 spacing: 10; anchors.right: parent.right
                 PillButton {
-                    text: "Cancel"; accent: false
+                    text: qsTr("Cancel"); accent: false
                     onClicked: editPlaylistPopup.close()
                 }
                 PillButton {
-                    text: "Save"; accent: true
+                    text: qsTr("Save", "verb, confirm the edits in this dialog"); accent: true
                     onClicked: {
                         var newTitle = editTitleField.text.trim()
                         if (newTitle.length > 0) root.playlistTitle = newTitle
