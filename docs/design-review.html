@@ -152,7 +152,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
 
 <div class="wrap">
   <h1>Tidal Wave Design Review</h1>
-  <p class="lede">The mark, every glyph the app draws, the six themes and the corner-radius scale. Revised against your notes: the queue and playlist glyphs are no longer the same drawing, the filled pin kept its needle, the mix icon is a broadcast hub, the cast arcs grew and the mark is now continuous bands with no visible line ends.</p>
+  <p class="lede">The mark, every glyph the app draws, the six themes and the corner-radius scale. Revised against your notes: the queue and playlist glyphs are no longer the same drawing, the filled pin kept its needle, the mix icon is a broadcast hub, the cast arcs grew again to meet the top line, the beamed note is retired in favour of a waveform and an animated playing indicator, and the mark is now continuous bands with no visible line ends.</p>
   <p class="meta">grid <b>24&times;24</b> &nbsp;·&nbsp; stroke <b>1.8</b> round cap/join &nbsp;·&nbsp; drawn at <b>0.85&times;</b> the box, as <b>VectorIcon.qml</b> scales &nbsp;·&nbsp; <b>24</b> existing &nbsp;·&nbsp; <b id="newcount">15</b> new</p>
 
   <div class="controls">
@@ -271,7 +271,7 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
   };
   var OLD_FILLED = ["play","pause","more-vertical","more","heart-filled"];
   var OLD_USE = { home:"Home", search:"Search", heart:"Collection", "heart-filled":"liked track",
-    music:"Songs, empty states", settings:"Settings",
+    music:"retired: was four meanings", settings:"Settings",
     "volume-high":"player bar", "volume-mute":"muted", "volume-low":"player bar", "volume-mid":"player bar",
     play:"play button", pause:"play button", shuffle:"Shuffle", previous:"player bar", next:"player bar",
     repeat:"player bar", "repeat-one":"repeat one", clock:"Recently played", x:"close",
@@ -284,7 +284,9 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
     album:        { d:"M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 9.5 A 2.5 2.5 0 1 0 12 14.5 A 2.5 2.5 0 1 0 12 9.5", use:"Albums" },
     artist:       { d:"M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z", use:"Artists" },
     mix:          { d:"M 8.6 8.6 A 4.8 4.8 0 0 0 8.6 15.4 M 15.4 8.6 A 4.8 4.8 0 0 1 15.4 15.4 M 5.2 5.2 A 9.6 9.6 0 0 0 5.2 18.8 M 18.8 5.2 A 9.6 9.6 0 0 1 18.8 18.8", acc:"M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z", use:"Mixes" },
-    cast:         { d:"M 3 10 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 11 M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18", acc:"M 4.1 18 A 1.1 1.1 0 1 0 1.9 18 A 1.1 1.1 0 1 0 4.1 18 Z", use:"Cast to" },
+    cast:         { d:"M 2.5 7.5 V 5 A 1.5 1.5 0 0 1 4 3.5 H 20 A 1.5 1.5 0 0 1 21.5 5 V 18 A 1.5 1.5 0 0 1 20 19.5 H 14.5 M 2.5 14.7 A 4.8 4.8 0 0 1 7.3 19.5 M 2.5 11 A 8.5 8.5 0 0 1 11 19.5", acc:"M 3.7 19.5 A 1.2 1.2 0 1 0 1.3 19.5 A 1.2 1.2 0 1 0 3.7 19.5 Z", use:"Audio output, casting" },
+    track:        { d:"M 2.4 9 V 15 M 5.6 5.5 V 18.5 M 8.8 8 V 16 M 12 3 V 21 M 15.2 7 V 17 M 18.4 4.5 V 19.5 M 21.6 9.5 V 14.5", use:"a track, Songs filter" },
+    playing:      { d:"M 4.1 21 V 12.9 M 8.1 21 V 6.6 M 12 21 V 15.6 M 15.9 21 V 9.3 M 19.9 21 V 12", use:"the row playing" },
     pin:          { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 L 8 3 Z M 12 13 V 21", use:"Pin" },
     "pin-filled": { d:"M 8 3 H 16 L 14 9 L 17 13 H 7 L 10 9 Z", fill:true, ovl:"M 12 13 V 21", use:"pinned" },
     library:      { d:"M 4 4 V 20 M 8.5 8 V 20 M 13 6 V 20 M 17 7.5 L 20.5 20", use:"library" },
@@ -385,9 +387,13 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
       p: "Filling the whole path swallowed the needle. The head is now a closed silhouette that fills, and the needle is stroked on top of it." },
     { t: "mix", before: { d: "M 4 10 V 14 M 8 6 V 18 M 12 9 V 15 M 16 4 V 20 M 20 11 V 13" }, after: NEW.mix,
       p: "Was an equaliser. Now a broadcast hub: a solid centre with two arc pairs around it." },
-    { t: "cast", before: { d: "M 3 12 V 5 H 21 V 18 H 11 M 3 15 A 4 4 0 0 1 7 19 M 3 18 A 1 1 0 0 1 4 19" },
+    { t: "cast", before: { d: "M 3 10 V 6 A 1 1 0 0 1 4 5 H 20 A 1 1 0 0 1 21 6 V 17 A 1 1 0 0 1 20 18 H 11 M 3 13 A 5 5 0 0 1 8 18 M 3 15.8 A 2.2 2.2 0 0 1 5.2 18" },
       after: NEW.cast,
-      p: "Arcs grew from r4 to r5, and both screen edges were shortened so the gap from the outer arc is exactly 3 on the left and 3 along the bottom. It was 3 and 4, with longer edges." },
+      p: "Second pass. The arcs grew again, to r4.8 and r8.5, so the outer one rises to <em>meet</em> the top line rather than sitting under it. It cannot reach it literally - a quarter arc from the corner that tall would span the whole icon and leave no room for a screen - so the screen pays for it instead: all that is left of its left edge is a stub under the top left corner, and the box grew to 2.5..21.5 by 3.5..19.5 to keep the bottom edge long enough to read as one. The three ring gaps are now within a tenth of a unit of each other." },
+    { t: "track", before: OLD.music, after: NEW.track,
+      p: "A pair of beamed eighth notes is Western staff notation, not a universal sign for audio, and it was standing in for four unrelated meanings across eleven call sites: \u201ca track\u201d, \u201cnothing here yet\u201d, \u201cno artwork\u201d and an avatar. Each site now names what it meant - an empty state shows its own type, a placeholder shows the item\u2019s type - and this waveform is only the first of those, seven thin bars symmetric about a centre line, like a rendered audio file." },
+    { t: "playing", before: OLD.music, after: NEW.playing,
+      p: "The other half of the note\u2019s job. An album or playlist row that was playing replaced its track number with a note; the queue drew three static bars. Both are now one animated indicator: five bars rising and falling like an equaliser, <strong>standing on a baseline</strong> where the waveform above is symmetric about its centre. At 14px nobody counts five against seven, so that structural difference is what tells them apart - which matters under reduced motion, where the animation collapses to a single frame and parks on each bar\u2019s resting height. Shown here parked, which is the one shape it always comes to rest in." },
     { t: "artist", before: { d: "M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z M 4 21 A 8 8 0 0 1 20 21" },
       after: NEW.artist,
       p: "There were two near-identical person glyphs, <code>artist</code> and <code>user</code>, indistinguishable at 18px. One survives, the better-drawn one, and it is the artist glyph. <code>user</code> is gone with the sidebar avatar that was its only use." }
@@ -519,11 +525,11 @@ input[type=range] { width: 120px; accent-color: var(--accent); }
   var L = {
     en: { home:"Home", search:"Search", coll:"Collection", find:"Find in your library",
           pinned:"Pinned", library:"Library",
-          chips:[["music","Songs"],["album","Albums"],["artist","Artists"],["playlist","Playlists"],["mix","Mixes"]],
+          chips:[["track","Songs"],["album","Albums"],["artist","Artists"],["playlist","Playlists"],["mix","Mixes"]],
           items:["Late Night Drive","In Rainbows","Fred again..","My Daily Mix 1"] },
     de: { home:"Start", search:"Suche", coll:"Sammlung", find:"Bibliothek durchsuchen",
           pinned:"Angepinnt", library:"Bibliothek",
-          chips:[["music","Titel"],["album","Alben"],["artist","Künstler"],["playlist","Playlists"],["mix","Mixes"]],
+          chips:[["track","Titel"],["album","Alben"],["artist","Künstler"],["playlist","Playlists"],["mix","Mixes"]],
           items:["Late Night Drive","In Rainbows","Fred again..","My Daily Mix 1"] }
   };
   var ART = ["#2d4a63","#5a3d2b","#2f4636","#4a2f4f"];

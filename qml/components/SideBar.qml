@@ -40,9 +40,30 @@ Item {
     readonly property bool expanded:   !compact || hoverExpanded
     readonly property bool overlaying:  compact && hoverExpanded
 
-    // What the layout must reserve, which is *not* what the panel draws: that
-    // difference is the overlay.
-    readonly property int reservedWidth: compact ? railWidth : expandedWidth
+    // What the layout must reserve, which is *not* always what the panel draws:
+    // that difference is the overlay, and only the overlay.
+    //
+    // This used to be `compact ? railWidth : expandedWidth`, which jumped to
+    // the full width the instant `compact` went false while the panel spent
+    // 170ms animating into that slot. For those frames the slot was wider than
+    // the panel and the difference painted the page ground: a bar of empty page
+    // where the sidebar was about to be (QA: "it reserves its space and for a
+    // few milliseconds there's a black bar where it will expand to").
+    //
+    // Following `panelWidth` removes the gap by construction rather than by
+    // suppressing the animation, and it means the page's left edge travels with
+    // the sidebar instead of jumping ahead of it. The relayout that costs is
+    // only ever during a breakpoint crossing, which is a window resize that is
+    // relaying the page out anyway.
+    //
+    // The compact branch is the rail width and not `overlaying ? ...`, which
+    // was the first attempt: `overlaying` goes false the instant the pointer
+    // leaves the rail, while the panel still has 170ms of collapsing to do, so
+    // the slot would have jumped out to the panel's full width and the page
+    // would have flinched inwards and back on every un-hover. Below the
+    // breakpoint the slot is the rail, always; the panel overflowing it is the
+    // overlay, in both directions.
+    readonly property int reservedWidth: compact ? railWidth : panelWidth
     readonly property int targetWidth:   expanded ? expandedWidth : railWidth
     property int panelWidth: targetWidth
 
@@ -807,11 +828,6 @@ Item {
                 height: root.coverSize
                 radius: Theme.radiusArt
                 color: Theme.surfaceHigh
-                // A pinned cover keeps its ring wherever the break above has
-                // scrolled to, and in the rail it is the only thing left to
-                // tell it apart in a strip of bare artwork.
-                border.width: rowHov.hovered ? 2 : (rowItem.pinned ? 1 : 0)
-                border.color: Theme.accent
                 clip: true
 
                 Image {
@@ -865,6 +881,26 @@ Item {
                                       : Math.round((parent.width - width) / 2)
                     y: rowItem.hasArt ? parent.height - height - badgePad
                                       : Math.round((parent.height - height) / 2)
+                }
+
+                // A pinned cover keeps its ring wherever the break above has
+                // scrolled to, and in the rail it is the only thing left to
+                // tell it apart in a strip of bare artwork.
+                //
+                // Drawn here, as the cover's last child, rather than as the
+                // cover's own `border`: a Rectangle paints its border under
+                // its own children, and the artwork fills the whole box, so
+                // on every row that had a cover the ring was painted and then
+                // covered over. It was only ever visible on rows with no art.
+                Rectangle {
+                    objectName: "libraryRowRing"
+                    anchors.fill: parent
+                    visible: rowHov.hovered || rowItem.pinned
+                    color: "transparent"
+                    radius: parent.radius
+                    border.width: rowHov.hovered ? 2 : 1
+                    border.color: Theme.accent
+                    antialiasing: true
                 }
             }
 

@@ -32,13 +32,73 @@ Rectangle {
 
     Component.onCompleted: loadContent()
 
+    // How many tiles a row holds before "View all" is the only way to the rest.
+    readonly property int rowLimit: 12
+
+    // The three favourite rows change while this page is alive. The Loader that
+    // holds HomePage is never torn down, so a row built at login kept whatever
+    // it was built with: an album saved from its own page was missing from
+    // Saved Albums, and playing a playlist did not move it to the front, until
+    // the app was restarted.
+    //
+    // The bridge pages the whole favourites set into memory at login and keeps
+    // that copy current on every add and remove, so a refresh reads it instead
+    // of going back to the network. It is the same source Collection reads,
+    // which is what makes the two pages agree.
+    Connections {
+        target: bridge
+        function onFavoriteAlbumsChanged()    { refreshDebounce.restart() }
+        function onFavoriteArtistsChanged()   { refreshDebounce.restart() }
+        function onFavoritePlaylistsChanged() { refreshDebounce.restart() }
+    }
+
+    // Each kind emits once when its first page lands and again when its last
+    // one does, and saving a single album emits twice more, so the three
+    // handlers above coalesce into one pass instead of rebuilding three rows
+    // five times.
+    Timer {
+        id: refreshDebounce
+        interval: 120
+        onTriggered: root.refreshRows()
+    }
+
+    function albumItem(a) {
+        return { id: a.id, title: a.title, subtitle: a.artists,
+                 coverUrl: a.coverUrl, type: "album" }
+    }
+    function playlistItem(p) {
+        return { id: p.uuid, title: p.title,
+                 subtitle: qsTr("%n track(s)", "", p.numTracks),
+                 coverUrl: p.coverUrl, type: "playlist",
+                 playlistType: p.type || "" }
+    }
+    function artistItem(a) {
+        return { id: a.id, title: a.name, subtitle: qsTr("Artist"),
+                 coverUrl: a.coverUrl || "", type: "artist" }
+    }
+    function firstOf(list, map) {
+        var items = []
+        for (var i = 0; i < Math.min(list.length, root.rowLimit); i++)
+            items.push(map(list[i]))
+        return items
+    }
+
+    function refreshRows() {
+        recentAlbums = firstOf(bridge.searchFavoriteAlbums(""),  albumItem)
+        playlists    = firstOf(bridge.getUserPlaylists(),        playlistItem)
+        artists      = firstOf(bridge.searchFavoriteArtists(""), artistItem)
+    }
+
+    // The first fill goes to the network. The cache the refresh reads is still
+    // being paged in at this point - the page mounts the moment auth completes,
+    // which is also when that paging starts - so reading it here would race it.
     function loadContent() {
         loading = true
         bridge.fetchHomeMixes(function(mixList, err) {
             loading = false
             if (err.length > 0) return
             var items = []
-            for (var i = 0; i < Math.min(mixList.length, 12); i++) {
+            for (var i = 0; i < Math.min(mixList.length, root.rowLimit); i++) {
                 var m = mixList[i]
                 items.push({ id: m.id, title: m.title, subtitle: m.subtitle,
                              coverUrl: m.coverUrl, type: "mix" })
@@ -48,37 +108,18 @@ Rectangle {
 
         bridge.fetchFavoriteAlbums(function(albums, err) {
             if (err.length > 0) return
-            var items = []
-            for (var i = 0; i < Math.min(albums.length, 12); i++) {
-                var a = albums[i]
-                items.push({ id: a.id, title: a.title, subtitle: a.artists,
-                             coverUrl: a.coverUrl, type: "album" })
-            }
-            recentAlbums = items
-        }, 12, 0)
+            recentAlbums = firstOf(albums, albumItem)
+        }, root.rowLimit, 0)
 
         bridge.fetchUserPlaylists(function(lists, err) {
             if (err.length > 0) return
-            var items = []
-            for (var i = 0; i < Math.min(lists.length, 12); i++) {
-                var p = lists[i]
-                items.push({ id: p.uuid, title: p.title, subtitle: qsTr("%n track(s)", "", p.numTracks),
-                             coverUrl: p.coverUrl, type: "playlist", playlistType: p.type || "" })
-            }
-            playlists = items
-        }, 12, 0)
+            playlists = firstOf(lists, playlistItem)
+        }, root.rowLimit, 0)
 
         bridge.fetchFavoriteArtists(function(artistList, err) {
             if (err.length > 0) return
-            var items = []
-            for (var i = 0; i < Math.min(artistList.length, 12); i++) {
-                var a = artistList[i]
-                items.push({ id: a.id, title: a.name, subtitle: qsTr("Artist"),
-                             coverUrl: a.coverUrl || "", type: "artist" })
-            }
-            artists = items
-        }, 12, 0)
-
+            artists = firstOf(artistList, artistItem)
+        }, root.rowLimit, 0)
     }
 
     ScrollView {
@@ -90,7 +131,13 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            Item { height: 24 }
+            // A ColumnLayout takes a child's preferred height from
+            // Layout.preferredHeight, so a spacer with a plain height depends
+            // on the layout happening to cache its first measurement. Every
+            // gap on this page is one of these, and each one above a row that
+            // can be empty is hidden with it: otherwise a user with no
+            // playlists got that row's gap twice over.
+            Item { Layout.preferredHeight: 24 }
 
             Text {
                 Layout.leftMargin: 24
@@ -100,7 +147,7 @@ Rectangle {
                 font.bold: true
             }
 
-            Item { height: 24 }
+            Item { Layout.preferredHeight: 24 }
 
             HorizontalSection {
                 Layout.fillWidth: true
@@ -119,10 +166,10 @@ Rectangle {
                 onViewAllClicked: navigateTo("collection", { activeTab: 4 })
             }
 
-            Item { height: 32 }
-
-
-            Item { height: 32 }
+            Item {
+                Layout.preferredHeight: 32
+                visible: recentAlbums.length > 0
+            }
 
             HorizontalSection {
                 Layout.fillWidth: true
@@ -139,7 +186,10 @@ Rectangle {
                 onViewAllClicked: navigateTo("collection", { activeTab: 1 })
             }
 
-            Item { height: 32 }
+            Item {
+                Layout.preferredHeight: 32
+                visible: playlists.length > 0
+            }
 
             HorizontalSection {
                 Layout.fillWidth: true
@@ -157,7 +207,10 @@ Rectangle {
                 onViewAllClicked: navigateTo("collection", { activeTab: 3 })
             }
 
-            Item { height: 32 }
+            Item {
+                Layout.preferredHeight: 32
+                visible: artists.length > 0
+            }
 
             HorizontalSection {
                 Layout.fillWidth: true
@@ -169,7 +222,7 @@ Rectangle {
                 onViewAllClicked: navigateTo("collection", { activeTab: 2 })
             }
 
-            Item { height: 32 }
+            Item { Layout.preferredHeight: 32 }
         }
     }
 

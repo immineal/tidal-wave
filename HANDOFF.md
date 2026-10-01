@@ -131,6 +131,58 @@ Decided with the user, waiting on the in-flight icon sweep to land first.
      disappears anyway once the footer rework drops the avatar and the
      Settings restructure moves that row.
 
+### Home page, reported during manual QA, in flight
+
+9. **The home rows never refreshed.** `HomePage` lives in a `Loader` that is
+   never torn down and filled its rows once, in `Component.onCompleted`, so an
+   album saved from its own page was missing from Saved Albums until the app
+   was restarted. It now listens to the bridge's `favoriteAlbumsChanged` /
+   `favoriteArtistsChanged` / `favoritePlaylistsChanged` and rebuilds the three
+   favourite rows from the in-memory favourites copy the bridge already pages in
+   at login, debounced through a 120ms timer because each kind emits twice while
+   its pages land and saving one album emits twice more. Reading that copy rather
+   than re-fetching is also what makes home and Collection agree: Collection has
+   always read it. Done; `tests/qml/tst_home_rows.qml` covers it.
+10. **One gap on home was double every other.** Two leftover 32px spacers sat
+   where the dropped Recently Played row used to be, so Mixes to Saved Albums
+   was 64 where Saved Albums to Your Playlists was 32. All gaps are 32 now.
+   Every spacer on the page also declares `Layout.preferredHeight`, since a
+   `ColumnLayout` reads that and not a plain `height`, and each gap above a row
+   that can be empty is hidden with that row - otherwise a user with no
+   playlists got that row's gap twice. Done.
+11. **Playlists sort by recency of any interaction, not just plays.**
+   `sortPlaylists` ordered by a locally stored last-played time, descending,
+   stable, so a never-played playlist kept API order and a playlist the user had
+   just created landed behind everything they had ever played. The key is now
+   `max(localLastPlayed, addedAt)`: creating one and saving someone else's both
+   count, so a new playlist sorts to the front and playing an old one brings it
+   back. `addedAt` has to come from the favourites wrapper's `created` (when
+   *this* user added it) rather than the playlist's own, which for a saved
+   playlist is the original author's date. Done, and it turned up a second bug
+   on the way: `TidalClient::parsePlaylists` unwrapped each favourites row and
+   threw the row away, so the wrapper's date was never reachable at all.
+   `tests/tst_playlist_order.cpp`, 12 cases.
+12. **The library cover's hover and pin ring was invisible on any row that had
+   artwork.** It was the cover Rectangle's own `border`, and a Rectangle paints
+   its border under its own children while the `Image` fills the whole box, so
+   the ring was painted and then covered over. It is now a child drawn after the
+   art. `tst_sidebar.qml` asserts the paint order, not just the width, since a
+   width assertion is exactly what failed to catch this.
+13. **The black bar when the rail expands.** Reported as "it reserves its space
+   and for a few milliseconds there's a black bar where it will expand to". The
+   layout reserves the full expanded width the instant `compact` goes false,
+   while the panel spent 170ms animating into that slot, and the difference
+   painted the page ground. The slide is now held to the compact case: going
+   wide snaps, so the panel arrives with its slot, and going narrow still
+   animates because there the panel is *wider* than its slot and overflows over
+   the page the way the hover overlay does. This was the prerequisite the user
+   set for any further animation work.
+14. **German catalogue topped up** after the icon pass re-keyed four strings.
+   `Audio output` → Audioausgabe, `Lossless (16-bit)` → Lossless (16 Bit),
+   `View all` → Alle anzeigen, `Resync` → Sync. German is at 293 of 293
+   finished. The user decided to keep `Jetzt läuft` for Now Playing after all,
+   so the five shipped entries that use it stand.
+
 ## Animation, after measuring
 
 The user wants the sidebar's transition quality elsewhere, but only where it

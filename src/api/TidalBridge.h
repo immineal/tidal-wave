@@ -2,8 +2,27 @@
 #include <QObject>
 #include <QJSValue>
 #include <QQmlEngine>
+#include <QList>
 #include <QSet>
+#include <QVariantMap>
 #include "TidalClient.h"
+
+// Orders playlists by how recently the user last had anything to do with them:
+// the key is max(local last-played time, Playlist::addedAt), descending. One key
+// for every playlist, no tiers. Before this the key was the play time alone, so
+// a playlist the user had just created sorted behind every playlist they had
+// ever played; counting the date it entered their account puts a new or
+// newly-saved playlist at the front exactly as playing one does.
+//
+// `playtimes` maps playlist uuid to ms since epoch, the shape TidalBridge keeps
+// in QSettings under user_<id>/playlists/lastPlayed. The sort is stable, so
+// playlists with equal keys — typically the ones with no date at all, which sort
+// last — keep the order the API returned.
+//
+// Free function rather than a TidalBridge member because the member needs a
+// Tidal session and QSettings to find the playtimes; this takes them as an
+// argument and so can be tested on its own (tests/tst_playlist_order.cpp).
+void sortPlaylistsByRecency(QList<Playlist> &playlists, const QVariantMap &playtimes);
 
 // QML-facing wrapper around TidalClient.
 // All methods take QJSValue callbacks: function(data, errorString)
