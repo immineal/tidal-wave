@@ -249,25 +249,25 @@ TestCase {
         verify(btn, "the back button was not created")
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, Theme.artScrim) },
+        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
                   settleMs, "the button never settled on its resting fill")
 
         mouseMove(testCase, 58, 58)
         oneFrame()
 
         if (row.reduced) {
-            verify(sameColor(btn.color, Theme.artScrimStrong),
+            verify(sameColor(btn.color, btn.hoveredFill),
                    "reduced motion: the hover fill must be there on the next frame, got "
                    + btn.color)
         } else {
-            verify(!sameColor(btn.color, Theme.artScrimStrong),
+            verify(!sameColor(btn.color, btn.hoveredFill),
                    "without reduced motion the hover fill jumped instead of fading")
-            tryVerify(function () { return sameColor(btn.color, Theme.artScrimStrong) },
+            tryVerify(function () { return sameColor(btn.color, btn.hoveredFill) },
                       settleMs, "the hover fade never finished")
         }
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, Theme.artScrim) },
+        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
                   settleMs, "the fill never returned to rest")
     }
 

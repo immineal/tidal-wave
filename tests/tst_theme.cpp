@@ -34,6 +34,15 @@ double contrast(const QColor &a, const QColor &b) {
     return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
 }
 
+// What a translucent wash actually looks like once it is painted. Qt blends in
+// 8-bit sRGB, so this matches what a screenshot samples.
+QColor composite(const QColor &wash, const QColor &ground) {
+    const double a = wash.alphaF();
+    return QColor::fromRgbF(wash.redF()   * a + ground.redF()   * (1.0 - a),
+                            wash.greenF() * a + ground.greenF() * (1.0 - a),
+                            wash.blueF()  * a + ground.blueF()  * (1.0 - a));
+}
+
 // Every key a palette must carry. Theme.qml surfaces exactly these, so a token
 // added to one theme and forgotten in another is a failure, not a silent
 // "undefined" in a QML binding.
@@ -172,11 +181,21 @@ private slots:
             QVERIFY2(contrast(col("textSec"), g) >= 4.5,
                      qPrintable(where + ": textSec below AA ("
                                 + QString::number(contrast(col("textSec"), g), 'f', 2) + ")"));
-            // textDim is deliberately quiet (timestamps, placeholders); it only
-            // has to stay readable, not pass AA.
-            QVERIFY2(contrast(col("textDim"), g) >= 2.0,
-                     qPrintable(where + ": textDim illegible ("
+            // textDim is deliberately quiet, but it is not decoration: it
+            // carries the track number and duration columns, "Playing from",
+            // the login disclaimer and every Settings section heading. The
+            // threshold was 2.0 and every theme sat just under 3, which is
+            // where a screenshot audit found it. AA-large, no lower.
+            QVERIFY2(contrast(col("textDim"), g) >= 3.0,
+                     qPrintable(where + ": textDim below AA-large ("
                                 + QString::number(contrast(col("textDim"), g), 'f', 2) + ")"));
+            // ...and still clearly quieter than textSec, which is the whole
+            // point of having both. Raising textDim until the two matched
+            // would pass the line above and lose the distinction.
+            QVERIFY2(contrast(col("textSec"), g) >= 1.5 * contrast(col("textDim"), g),
+                     qPrintable(where + ": textDim is not quieter than textSec ("
+                                + QString::number(contrast(col("textDim"), g), 'f', 2) + " vs "
+                                + QString::number(contrast(col("textSec"), g), 'f', 2) + ")"));
             // The accent is used for icons and small bold labels.
             QVERIFY2(contrast(col("accent"), g) >= 3.0,
                      qPrintable(where + ": accent below AA-large ("
@@ -220,6 +239,51 @@ private slots:
             QVERIFY(luminance(col("surfaceHigh")) < luminance(col("surface")));
             QVERIFY(luminance(col("surfaceHov")) < luminance(col("surfaceHigh")));
         }
+    }
+
+    // A hover you cannot see is not feedback. Both hover treatments were
+    // measured off screenshots and both were too faint: hoverFill (sidebar nav
+    // rows, the finder's kind chips, the theme tiles in Settings) landed near
+    // 1.1:1 against its ground, and surfaceHov, which TrackRow and every menu
+    // use, near 1.3:1.
+    //
+    // 3:1 is the WCAG figure for a control's own boundary; a wash laid over a
+    // row cannot reach it without reading as a filled, selected row, so these
+    // thresholds are the honest ones: roughly double the step that was there,
+    // and far enough apart that the two treatments stay distinct.
+    void hoverIsVisibleButNotASelection_data() { themeRows(); }
+    void hoverIsVisibleButNotASelection() {
+        QFETCH(QString, name);
+        const QVariantMap p = theme::palette(name);
+        auto col = [&](const char *k) { return p.value(QLatin1String(k)).value<QColor>(); };
+
+        const QColor hover = col("hoverFill");
+        for (const char *ground : {"bg", "surface", "surfaceHigh"}) {
+            const QColor g = col(ground);
+            const QColor washed = composite(hover, g);
+            const QString where = name + " on " + QLatin1String(ground);
+
+            QVERIFY2(contrast(washed, g) >= 1.22,
+                     qPrintable(where + ": hoverFill is invisible ("
+                                + QString::number(contrast(washed, g), 'f', 3) + ")"));
+            // The stronger of the two, drawn opaque, has to be stronger still.
+            QVERIFY2(contrast(col("surfaceHov"), g) > contrast(washed, g),
+                     qPrintable(where + ": surfaceHov is no stronger than hoverFill"));
+        }
+
+        // A hovered track row against the page it sits on.
+        QVERIFY2(contrast(col("surfaceHov"), col("bg")) >= 1.5,
+                 qPrintable(name + ": a hovered row is invisible against the page ("
+                            + QString::number(contrast(col("surfaceHov"), col("bg")), 'f', 3) + ")"));
+
+        // The sidebar draws both on the same ground: hoverFill for the row
+        // under the pointer, surfaceHov for the page you are on. If those two
+        // converge, hovering looks like navigating.
+        const QColor sidebar = col("surface");
+        QVERIFY2(contrast(composite(hover, sidebar), col("surfaceHov")) >= 1.12,
+                 qPrintable(name + ": hover and the selected row are the same colour ("
+                            + QString::number(contrast(composite(hover, sidebar), col("surfaceHov")), 'f', 3)
+                            + ")"));
     }
 
     // The hover wash was Qt.rgba(1,1,1,0.04) everywhere, which disappears on a
