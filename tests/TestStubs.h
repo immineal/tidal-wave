@@ -970,6 +970,68 @@ private:
 // ─── installation ───────────────────────────────────────────────────────────
 
 // Handles to the installed stubs, so a C++ test can poke state directly.
+// ─── update check ───────────────────────────────────────────────────────────
+
+// Mirrors UpdateCheck (src/ui/UpdateCheck.h) with no network. Registered as
+// "updateCheck", not "update": QQuickItem and QQuickWindow both already have
+// an update() slot, so the shorter name is shadowed inside any Item.
+//
+// Defaults to "enabled, nothing available", which is what a launch with no
+// newer release looks like, so no test sees a prompt it did not ask for.
+class StubUpdateCheck : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateChanged)
+    Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY updateChanged)
+    Q_PROPERTY(QString releaseUrl READ releaseUrl NOTIFY updateChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
+public:
+    explicit StubUpdateCheck(QObject *parent = nullptr) : QObject(parent) {}
+
+    bool    updateAvailable() const { return m_available; }
+    QString latestVersion() const   { return m_latest; }
+    QString releaseUrl() const      { return m_url; }
+    bool    enabled() const         { return m_enabled; }
+
+    void setEnabled(bool v) {
+        if (v == m_enabled) return;
+        m_enabled = v;
+        emit enabledChanged();
+    }
+
+    Q_INVOKABLE void checkNow()         { ++checkNowCalls; }
+    Q_INVOKABLE void skipThisVersion()  { ++skipCalls;  clearForTest(); }
+    Q_INVOKABLE void remindLater()      { ++laterCalls; clearForTest(); }
+
+    // test hooks
+    Q_INVOKABLE void offerForTest(const QString &version, const QString &url) {
+        m_available = true;
+        m_latest = version;
+        m_url = url;
+        emit updateChanged();
+    }
+    Q_INVOKABLE void clearForTest() {
+        if (!m_available) return;
+        m_available = false;
+        m_latest.clear();
+        m_url.clear();
+        emit updateChanged();
+    }
+
+    int checkNowCalls = 0;
+    int skipCalls = 0;
+    int laterCalls = 0;
+
+signals:
+    void updateChanged();
+    void enabledChanged();
+
+private:
+    bool    m_available = false;
+    QString m_latest;
+    QString m_url;
+    bool    m_enabled = true;
+};
+
 struct TestStubs {
     StubAuth       *auth = nullptr;
     StubBridge     *bridge = nullptr;
@@ -980,9 +1042,10 @@ struct TestStubs {
     StubPrefs      *prefs = nullptr;
     StubPins       *pins = nullptr;
     StubLibrary    *library = nullptr;
+    StubUpdateCheck *updateCheck = nullptr;
 };
 
-// Registers the nine context properties under exactly the names
+// Registers the context properties under exactly the names
 // Application::run() uses, plus the offline "tidal" image provider. `owner` gets
 // ownership of the stubs (pass the test/setup object); defaults to the engine.
 inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) {
@@ -996,6 +1059,7 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     s.app        = new StubApp(parent);
     s.downloader = new StubDownloader(parent);
     s.prefs      = new StubPrefs(parent);
+    s.updateCheck = new StubUpdateCheck(parent);
     s.pins       = new StubPins(parent);
     s.library    = new StubLibrary(parent);
 
@@ -1010,6 +1074,7 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     ctx->setContextProperty(QStringLiteral("cast"), s.cast);
     ctx->setContextProperty(QStringLiteral("app"), s.app);
     ctx->setContextProperty(QStringLiteral("prefs"), s.prefs);
+    ctx->setContextProperty(QStringLiteral("updateCheck"), s.updateCheck);
     // Theme.qml binds to the ThemePalette singleton, which Application wires
     // to Prefs at startup. Without the same wiring here every QML test paints
     // in the default palette and a broken theme switch looks like a pass.

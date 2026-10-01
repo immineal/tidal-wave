@@ -115,6 +115,7 @@ private:
         QString title;
         QString subtitle;
         QString imageUrl;
+        QString playlistType;        // playlists: USER / EDITORIAL, see toRow
         qint64  albumId = 0;         // tracks: the saved album holding them
         int     trackCount = 0;      // albums and playlists; QML formats it,
                                      // so the count retranslates live

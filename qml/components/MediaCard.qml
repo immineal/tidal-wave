@@ -11,6 +11,17 @@ Item {
     property string mediaType: "album"
     property int    cardSize: 160
 
+    // What a right-click pins (P2). The tile's own type doubles as the pin
+    // kind; without an id there is nothing to pin and no menu is offered.
+    property string itemId: ""
+    property string pinKind: mediaType
+    // An artist tile's subtitle is the word "Artist", a type label rather than
+    // data, and a pin outlives the session it was made in, so the stored
+    // subtitle would be a translated word frozen at pin time.
+    readonly property string pinSubtitle: mediaType === "artist" ? "" : subtitle
+
+    readonly property alias pinMenu: cardMenu
+
     width: cardSize
     height: col.height + 8
 
@@ -117,5 +128,23 @@ Item {
                 wrapMode: Text.NoWrap
             }
         }
+    }
+
+    // P2. Right button only, so the cover's tap and hover handlers underneath
+    // keep every left-click they had.
+    MouseArea {
+        objectName: "cardMenuArea"
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        onClicked: function (mouse) {
+            var p = mapToItem(root, mouse.x, mouse.y)
+            cardMenu.showPin(p.x, p.y, root.pinKind, root.itemId,
+                             root.title, root.pinSubtitle, root.coverUrl)
+        }
+    }
+
+    ContextMenu {
+        id: cardMenu
+        objectName: "cardPinMenu"
     }
 }

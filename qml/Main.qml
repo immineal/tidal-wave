@@ -313,7 +313,10 @@ ApplicationWindow {
         Shortcut {
             sequence: "Escape"
             context: Qt.ApplicationShortcut
-            enabled: auth.state === 2
+            // An application shortcut outranks the key handling of an open
+            // Popup, so while the update dialog is up this one has to stand
+            // down or Escape would navigate back instead of dismissing it.
+            enabled: auth.state === 2 && !updatePrompt.visible
             onActivated: {
                 if (root.queueOpen) root.queueOpen = false
                 else if (root.detailPages.indexOf(root.currentPage) !== -1) root.goBack()
@@ -462,4 +465,20 @@ ApplicationWindow {
             onShowNowPlaying: root.navigate("nowplaying")
         }
     }
+
+    // Lives on the window, not on a page, so navigating cannot rebuild it and
+    // bring it back; showIfAvailable() only ever answers yes once per launch.
+    UpdatePrompt {
+        id: updatePrompt
+        // `updateCheck`, not `update`: see the comment where Application.cpp
+        // installs it. Guarded because tests/tst_firstrun.cpp loads Main.qml
+        // against the stub context, which has no update check in it, and that
+        // test fails on any QML warning at all.
+        check: (typeof updateCheck !== "undefined") ? updateCheck : null
+    }
+
+    // The cached answer is already in UpdateCheck by the time the engine runs,
+    // so this is the launch the user was promised the prompt on. Whatever the
+    // network says afterwards is for the next one.
+    Component.onCompleted: updatePrompt.showIfAvailable()
 }

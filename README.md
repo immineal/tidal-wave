@@ -147,6 +147,96 @@ cd build && cpack -G DEB && sudo apt install ./tidal-wave-*-Linux.deb
 `ffmpeg` is a `Recommends` (only needed for the download feature); everything else is a
 hard `Depends`, including the easy-to-miss `qml6-module-*` runtime modules.
 
+## Privacy
+
+Tidal Wave has no account, no server and no telemetry. There is no analytics, no crash
+reporting and no usage tracking of any kind. Everything below can be checked against the
+source in a few minutes; the file that does each thing is named.
+
+### What leaves your machine
+
+*   **Tidal, to log in.** `https://auth.tidal.com/v1/oauth2/...` (`src/api/Auth.cpp`,
+    `src/api/TidalApi.cpp`). The device login flow sends a client id and client secret that
+    are compiled into the app (`src/api/Auth.h`), then the device code, then your refresh
+    token. You never type your password into Tidal Wave. You enter it on Tidal's own site
+    in your browser, which the app opens with `xdg-open`.
+*   **Tidal, for everything you do in the app.** `https://api.tidal.com/v1/...`
+    (`src/api/TidalApi.cpp`, `src/api/TidalClient.cpp`). Every request carries your access
+    token and your account's country code. Tidal therefore sees what you search for, which
+    albums, artists, playlists and mixes you open, what you play, what you favourite, and
+    the playlists you create or edit. That is the streaming service working, not something
+    extra the client adds. One detail worth knowing: the app sends a desktop browser
+    User-Agent string rather than its own name (`TidalApi::makeRequest`).
+*   **Tidal, for audio and artwork.** Audio is fetched from the CDN URL that Tidal returns
+    in the playback manifest (`src/player/Player.cpp`, `src/player/Downloader.cpp`). Cover
+    art comes from `https://resources.tidal.com/images/...` (`src/ui/ImageProvider.cpp`).
+    The artwork requests carry no account token.
+*   **Your local network, only while you use Chromecast.** Discovery is mDNS: the app asks
+    Avahi to browse for `_googlecast._tcp` on every interface (`src/cast/CastDiscovery.cpp`),
+    which is multicast traffic visible to your whole LAN. When you pick a device, the app
+    opens a TLS connection to it and sends the track title, artist, album and a
+    `resources.tidal.com` cover URL (`src/cast/CastSession.cpp`, `src/cast/CastManager.cpp`).
+    Chromecast devices use self-signed certificates, so the app does not verify the
+    certificate. To feed the device, the app starts a small HTTP server bound to your
+    machine's LAN address on a random port (`src/cast/CastMediaServer.cpp`). It is plain
+    HTTP and it is not authenticated: while a track is casting, anything on your local
+    network that connects to that port is served that track. The server stops when casting
+    stops. None of this runs unless you open the cast menu.
+*   **GitHub, for the update check.** One `GET` to
+    `https://api.github.com/repos/immineal/tidal-wave/releases/latest`, at most once every
+    24 hours (`src/ui/UpdateCheck.cpp`). It sends no account data and no identifier. It
+    sends a `User-Agent` of `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`,
+    so GitHub sees your IP address and which version you are running. The reply is a
+    version number and a link.
+
+### What is stored on your machine
+
+*   **`~/.config/tidal-wave/credentials.json`** holds your Tidal OAuth access token and
+    refresh token, the token expiry, your Tidal user id, your country code and your display
+    name (`Auth::saveCredentials`). It is plain JSON. It is written readable and writable by
+    your user only, and it is not encrypted and not kept in a system keyring. Anything
+    running as you can read it, and the refresh token in it is enough to use your Tidal
+    account. Logging out deletes the file. Note the lowercase directory name: this is not
+    the same place as the settings below.
+*   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file (organisation
+    `TidalWave`, application `Tidal Wave`). It holds the theme, language, sidebar width,
+    audio output device and software rendering flag (`src/ui/Prefs.cpp`), the preferred
+    stream quality (`src/api/TidalBridge.cpp`), the last download folder
+    (`src/player/Downloader.cpp`), and, keyed by your Tidal user id, your pinned items
+    (`src/ui/PinStore.cpp`) and your recently played list (`src/player/Player.cpp`). It also
+    holds the update check's state: whether it is on, when it last ran, the newest version
+    it saw and any version you skipped (`src/ui/UpdateCheck.cpp`).
+*   **`QStandardPaths::AppDataLocation`**, which on Linux is
+    `~/.local/share/TidalWave/Tidal Wave/`, holds `library/albumtracks-<userId>.json`: a
+    cache of your library's album track listings, so searching your collection does not
+    re-fetch it (`src/api/LibraryIndex.cpp`).
+*   **`~/.local/share/icons/hicolor/*/apps/tidal-wave.png`** is the app icon, exported on
+    first launch so the tray and taskbar can resolve it by name (`Application::loadAppIcon`).
+*   **Downloads** go wherever you choose in the save dialog, defaulting to your Music
+    folder. **Cast transcodes** are temporary files named `tidal-wave-cast-*` in your temp
+    directory. Each one is deleted when the next track is prepared and when the app shuts
+    down (`CastMediaPrep::cancel`). A crash leaves the last one behind.
+*   On Linux the current track is published on your session bus over MPRIS2, which is how
+    media keys and the desktop's media widget work. Any program running as you can read it.
+
+Deleting those paths removes everything the app has kept about you.
+
+### The update check
+
+It runs at most once a day, at startup, and it is cached to disk so most launches make no
+request at all. If there is a newer release it is offered at the *next* launch, never in the
+middle of a session, with Open release, Later and Skip this version. Open release opens the
+GitHub page in your browser.
+
+**Tidal Wave never downloads, installs or applies an update by itself.** There is no
+updater, no background download and no self-replacing binary. Updating is something you do
+with your package manager or by downloading the release yourself.
+
+To turn it off, open Settings and switch the update check off. The choice is stored as
+`update/enabled` in the settings file above, so you can also set it before first launch.
+With it off, `UpdateCheck::startupCheck()` and `checkNow()` return immediately and no
+`QNetworkAccessManager` is ever created, so nothing is sent to GitHub at all.
+
 ## License
 
 This project is licensed under the GNU GPL v3 License. See the LICENSE file for details.
