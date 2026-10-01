@@ -157,6 +157,23 @@ TestCase {
         return null
     }
 
+    // Whether the list is showing that kind and nothing else, which is what a
+    // single chip means. Non-empty is part of it: an empty list trivially
+    // contains no other kind.
+    function onlyKind(sidebar, kind) {
+        if (sidebar.rows.length === 0) return false
+        for (var i = 0; i < sidebar.rows.length; ++i)
+            if (sidebar.rows[i].kind !== kind) return false
+        return true
+    }
+
+    function kindsShown(sidebar) {
+        var seen = []
+        for (var i = 0; i < sidebar.rows.length; ++i)
+            if (seen.indexOf(sidebar.rows[i].kind) < 0) seen.push(sidebar.rows[i].kind)
+        return seen.length === 0 ? "an empty list" : seen.join("+")
+    }
+
     // The rows the list is actually showing, by id, in order.
     function rowIds(sidebar) {
         var out = []
@@ -733,6 +750,62 @@ TestCase {
         // for it.
         compare(collectVisibleByName(sb, "libraryRowTitle", []).length,
                 data.wide ? 6 : 0, "row titles at " + data.tag)
+    }
+
+    // QA: "if I click any of the filter pills in the find in library search, it
+    // shows up stuff, but if I press the songs, it just says nothing saved yet."
+    //
+    // The library's `entries` property holds the four browsable kinds and leaves
+    // songs out on purpose - a library has thousands of them and they would bury
+    // everything else - so the no-query path, which used to filter `entries` in
+    // QML, could never answer the Tracks chip. The same chip worked the moment
+    // anything was typed, because search() visits the track entries too, which
+    // is why this looked like a filter bug rather than a missing list.
+    function test_the_tracks_chip_shows_songs_with_nothing_typed() {
+        var host = showHost(1280, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        // Every other chip first, so a failure here is about songs rather than
+        // about chips in general - those four were never broken.
+        var kinds = ["album", "artist", "playlist", "mix"]
+        for (var k = 0; k < kinds.length; ++k) {
+            var chip = chipFor(sb, kinds[k])
+            verify(chip, "there is no " + kinds[k] + " chip")
+            mouseClick(chip, chip.width / 2, chip.height / 2)
+            // Waiting on "the list is non-empty" would wait for nothing: the
+            // unfiltered list is already non-empty, so the condition is true
+            // before the chip has had any effect. The condition has to be the
+            // filtered shape itself.
+            tryVerify(function () { return onlyKind(sb, kinds[k]) }, 2000,
+                      "the " + kinds[k] + " chip did not filter the list down to "
+                      + kinds[k] + "; got " + kindsShown(sb))
+            mouseClick(chip, chip.width / 2, chip.height / 2)   // off again
+            settle(host.contentItem)
+        }
+
+        var tracks = chipFor(sb, "track")
+        verify(tracks, "there is no tracks chip")
+        mouseClick(tracks, tracks.width / 2, tracks.height / 2)
+        tryVerify(function () { return onlyKind(sb, "track") }, 2000,
+                  "the Tracks chip found no songs with no query typed; got "
+                  + kindsShown(sb))
+        compare(rowIds(sb).join(","), "t1",
+                "the Tracks chip showed something other than the fixture's song")
+        mouseClick(tracks, tracks.width / 2, tracks.height / 2)
+
+        // And no chip at all is still the whole browsable library, which must
+        // not have grown songs: keeping them out of it is the reason this needed
+        // a separate call in the first place. Waited for rather than asserted,
+        // because the chip going off is a click to be processed - asserting
+        // straight after the click tests whether the click has landed yet, which
+        // is not the question.
+        tryVerify(function () { return sb.rows.length === makeEntries().length },
+                  2000, "clearing the chips did not restore the whole library; got "
+                  + kindsShown(sb))
+        for (var m = 0; m < sb.rows.length; ++m)
+            verify(sb.rows[m].kind !== "track",
+                   "songs leaked into the unfiltered library list")
     }
 
     // QA: crossing the breakpoint outwards left "a black bar where it will

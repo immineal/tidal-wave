@@ -106,16 +106,13 @@ Item {
             root.rows = library.search(finder.query, finder.kinds)
             return
         }
-        var all = library.entries
-        var kinds = finder.kinds
-        if (!kinds || kinds.length === 0) {
-            root.rows = all
-            return
-        }
-        var out = []
-        for (var i = 0; i < all.length; i++)
-            if (kinds.indexOf(all[i].kind) >= 0) out.push(all[i])
-        root.rows = out
+        // Filtered by the index rather than here. The `entries` property holds
+        // the four browsable kinds and deliberately leaves songs out - there
+        // are thousands of them and they would bury everything else - so
+        // filtering it in QML could never answer the Tracks chip, which showed
+        // "Nothing saved yet" while the same chip worked as soon as anything
+        // was typed. entriesForKinds() knows about the track entries too.
+        root.rows = library.entriesForKinds(finder.kinds || [])
     }
 
     // One list in both shapes of the sidebar means one model, so a query or a

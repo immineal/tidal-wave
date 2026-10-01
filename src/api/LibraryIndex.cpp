@@ -732,6 +732,47 @@ void LibraryIndex::saveTrackCache() const {
 
 // ── search (S5, S6) ─────────────────────────────────────────────────────────
 
+QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
+    if (kinds.isEmpty()) return m_entries;
+
+    const bool wantsTracks = kinds.contains(QLatin1String(kKindTrack));
+
+    QList<const Entry *> picked;
+    for (const Entry &e : m_library)
+        if (kinds.contains(e.kind)) picked.append(&e);
+
+    // Track entries are built for search and carry neither a pin index nor a
+    // play time - nothing pins a song, and markPlayed() rejects the kind - so
+    // they all sit in the third tier and sort by title. That is the right place
+    // for them: a song is the one kind with no ordering of its own, and mixing
+    // thousands of them into the recently-played tier would push the albums and
+    // playlists that *do* have one out of sight.
+    if (wantsTracks)
+        for (const Entry &e : m_trackEntries) picked.append(&e);
+
+    const auto tierOf = [](const Entry &e) {
+        if (e.pinIndex >= 0) return 0;
+        return e.lastPlayed > 0 ? 1 : 2;
+    };
+
+    QCollator collator{QLocale()};
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::stable_sort(picked.begin(), picked.end(),
+                     [&](const Entry *a, const Entry *b) {
+        const int ta = tierOf(*a);
+        const int tb = tierOf(*b);
+        if (ta != tb) return ta < tb;
+        if (ta == 0)  return a->pinIndex < b->pinIndex;
+        if (ta == 1)  return a->lastPlayed > b->lastPlayed;
+        return collator.compare(a->sortKey, b->sortKey) < 0;
+    });
+
+    QVariantList out;
+    out.reserve(picked.size());
+    for (const Entry *e : picked) out.append(toRow(*e, 0));
+    return out;
+}
+
 QVariantList LibraryIndex::search(const QString &query, const QStringList &kinds) const {
     const QString needle = fold(query.trimmed());
     if (needle.isEmpty()) return {};

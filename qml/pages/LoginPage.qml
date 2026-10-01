@@ -41,7 +41,9 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Native Linux Tidal Client")
+                // Not "Native Linux Tidal Client", which is what this said on
+                // every platform, including the macOS first run that found it.
+                text: qsTr("Native Desktop Tidal Client")
                 color: Theme.textSec
                 font.pixelSize: 14
             }

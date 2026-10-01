@@ -438,7 +438,21 @@ public:
     QString      sourceId() const { return m_sourceId; }
     QString      sourceName() const { return m_sourceName; }
 
-    Q_INVOKABLE QString qualityLabel(const QString &code) const { Q_UNUSED(code); return {}; }
+    // Mirrors Player::qualityLabel exactly, rather than returning nothing.
+    //
+    // It used to return {} for every input, and that quietly blinded everything
+    // that looks at the quality badge: both badges are gated on
+    // `player.audioQuality.length > 0`, so with a quality set they were visible
+    // and *empty*, and every visual shot and every QML assertion about them was
+    // looking at a coloured box with no word in it. A stub that answers nothing
+    // is worse than no stub, because the test still passes.
+    Q_INVOKABLE QString qualityLabel(const QString &code) const {
+        if (code == QStringLiteral("HI_RES_LOSSLESS")) return QStringLiteral("Max");
+        if (code == QStringLiteral("LOSSLESS"))        return QStringLiteral("Lossless");
+        if (code == QStringLiteral("HIGH"))            return QStringLiteral("High");
+        if (code == QStringLiteral("LOW"))             return QStringLiteral("Low");
+        return code;   // Player echoes a code it does not know; so does this.
+    }
 
     Q_INVOKABLE void setPlaybackSource(const QString &type, const QString &id, const QString &name) {
         m_sourceType = type;
@@ -1147,6 +1161,28 @@ public:
         };
         scan(m_entries);
         scan(m_tracks);
+        return out;
+    }
+
+    // The browse-by-kind path, mirroring LibraryIndex::entriesForKinds: the
+    // `entries` property holds the browsable kinds and leaves songs out, so a
+    // caller that filters `entries` in QML can never find a track. That was a
+    // real bug - the finder's Tracks chip said "Nothing saved yet" with nothing
+    // typed, while the same chip worked as soon as anything was - so the stub
+    // has to have the same two sources as the real thing or a test could not
+    // tell the difference.
+    Q_INVOKABLE QVariantList entriesForKinds(const QStringList &kinds) const {
+        if (kinds.isEmpty()) return m_entries;
+        QVariantList out;
+        const auto take = [&](const QVariantList &src) {
+            for (const QVariant &v : src) {
+                const QVariantMap m = v.toMap();
+                if (kinds.contains(m.value(QStringLiteral("kind")).toString()))
+                    out.append(m);
+            }
+        };
+        take(m_entries);
+        take(m_tracks);
         return out;
     }
 

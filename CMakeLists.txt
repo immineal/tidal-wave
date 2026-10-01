@@ -22,6 +22,11 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     Multimedia
     Svg
     Concurrent
+    # QQuickStyle, which Application::run() uses to pin the Controls style to
+    # Basic. The call was commented out in the initial commit together with its
+    # include, and this component was never added - a missing link, not an
+    # objection to the style.
+    QuickControls2
 )
 
 qt_standard_project_setup()
@@ -61,6 +66,7 @@ set(SOURCES
     src/ui/ThemePalette.cpp
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
+    src/ui/Shortcuts.cpp
     src/api/LibraryIndex.cpp
 )
 
@@ -80,6 +86,7 @@ set(HEADERS
     src/ui/ThemePalette.h
     src/ui/I18n.h
     src/ui/PinStore.h
+    src/ui/Shortcuts.h
     src/api/LibraryIndex.h
 )
 
@@ -204,6 +211,7 @@ target_link_libraries(tidalwave_qml PUBLIC
     Qt6::Multimedia
     Qt6::Svg
     Qt6::Concurrent
+    Qt6::QuickControls2
 )
 
 # Avahi for Chromecast discovery (Linux only).
@@ -266,7 +274,21 @@ if(UNIX AND NOT APPLE)
 endif()
 
 set_target_properties(tidal-wave PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.tidalwave.client
+    # CFBundleName, which is what the macOS application menu and the About item
+    # are titled with. Unset, the bundle fell back to the target name and the
+    # menu read "tidal-wave" where every other app on the machine reads its
+    # proper name.
+    MACOSX_BUNDLE_BUNDLE_NAME "Tidal Wave"
+    # The organization half matches the preferences domain QSettings writes
+    # under on macOS, which Application::run() now pins with
+    # setOrganizationDomain("tidalwave.com") -> com.tidalwave. The leaf is the
+    # same machine-readable name as the Linux .desktop file and
+    # QGuiApplication::setDesktopFileName(), rather than the "client" that
+    # matched nothing. The leaf QSettings uses is still the display name
+    # ("Tidal Wave"), because that comes from applicationName(), and renaming
+    # that to make the two identical would orphan every existing Linux user's
+    # ~/.config/TidalWave/Tidal Wave.conf for a cosmetic win - see the report.
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.tidalwave.tidal-wave
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE

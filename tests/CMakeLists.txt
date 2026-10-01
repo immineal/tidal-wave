@@ -42,6 +42,17 @@ foreach(test_src IN LISTS TEST_SOURCES)
     list(APPEND CORE_TEST_TARGETS ${test_name})
 endforeach()
 
+# tst_shortcuts reads qml/Main.qml and qml/components/SettingsPanel.qml as text.
+# It is the test that the shortcut table, the bindings in Main.qml and the rows
+# the Settings panel prints cannot drift apart, and the only way to see whether a
+# QML binding still goes through the table - rather than back to a literal - is
+# to look at the file. Reaching them through the module's resources would work
+# too, but a real path is what makes a failure message say where to go.
+if(TARGET tst_shortcuts)
+    target_compile_definitions(tst_shortcuts PRIVATE
+        TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
+endif()
+
 # ── tst_qml: QtQuickTest runner over tests/qml/tst_*.qml ─────────────────────
 qt_add_executable(tst_qml
     tst_qml.cpp

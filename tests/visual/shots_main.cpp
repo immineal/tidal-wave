@@ -119,7 +119,12 @@ public:
 public slots:
     // Called by QtQuickTest once per QML scene file, before that file is loaded.
     void qmlEngineAvailable(QQmlEngine *engine) {
-        // Exactly what src/ui/Application.cpp sets before the engine runs.
+        // What src/ui/Application.cpp sets before the engine runs, on this
+        // platform. Two things there are deliberately not copied because both
+        // are compiled out on Linux, which is the only place this harness runs:
+        // the macOS arm of the font stack, and QQuickStyle::setStyle("Basic"),
+        // which is guarded to macOS and Windows precisely because forcing it
+        // here was measured to move 24 of these 51 shots.
         QFont appFont(QStringLiteral("Inter"));
         appFont.setFamilies({QStringLiteral("Inter"), QStringLiteral("DejaVu Sans"),
                              QStringLiteral("sans-serif")});

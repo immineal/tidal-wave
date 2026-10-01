@@ -35,6 +35,12 @@ TestCase {
     // only counts past that. The faults this guards against are 54px and 58px.
     readonly property real overflowSlack: 4.5
 
+    // How far apart the Now Playing page's two blocks have to be to count as
+    // clear of each other. Settled, they are: the column gap is 64 side by side
+    // and the stack gap 32 one above the other, so this is a floor under both
+    // and not a figure either layout is built to.
+    readonly property int blockClearance: 8
+
     // ── fixtures ─────────────────────────────────────────────────────────
 
     // Long strings on purpose: a layout that only holds for short titles is not
@@ -466,6 +472,12 @@ TestCase {
 
     function test_player_bar_fits(row) {
         var host = showHost(playerBarHost, row.w, row.h)
+        // The host is born wide and shown at row.w, so below the breakpoint the
+        // bar is still regrouping for 150ms. This case is about the layout it
+        // comes to rest in; the frames in between are
+        // test_player_bar_regroups_without_leaving_a_gap's business.
+        tryVerify(function () { return host.bar.volumeSlotRoom === host.bar.volumeTargetRoom },
+                  2000, "the bar never settled at " + row.tag)
         var faults = collectOverflow(host.bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar overflows", row, faults))
     }
@@ -474,6 +486,8 @@ TestCase {
 
     function test_player_bar_text_fits(row) {
         var host = showHost(playerBarHost, row.w, row.h)
+        tryVerify(function () { return host.bar.volumeSlotRoom === host.bar.volumeTargetRoom },
+                  2000, "the bar never settled at " + row.tag)
         var faults = collectClipped(host.bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar text clipped", row, faults))
     }
@@ -485,6 +499,8 @@ TestCase {
     function test_player_bar_queue_button_on_screen(row) {
         var host = showHost(playerBarHost, row.w, row.h)
         var bar = host.bar
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
+                  2000, "the bar never settled at " + row.tag)
         var btn = bar.queueButton
         verify(btn, "queue button not found")
         var right = btn.mapToItem(bar, btn.width, 0).x
@@ -506,10 +522,102 @@ TestCase {
         var bar = host.bar
         compare(bar.compactRight, row.w < bar.compactRightBreakpoint,
                 "compact right group should follow the bar width")
+        // The host is born wide and shown at row.w, so at the narrow widths this
+        // is a transition and the slider is on its way out rather than already
+        // gone. What the breakpoint decides is where it ends up.
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
+                  2000, "the bar never settled at " + row.tag)
         compare(bar.volumeSlider.visible, !bar.compactRight, "volume slider visibility")
         verify(bar.outputButton.visible,
                "the output button must be on screen at " + row.tag)
         verify(bar.volumeButton.visible, "muting must stay reachable at " + row.tag)
+    }
+
+    // The two blocks cross through each other halfway through the move: they
+    // swap both axes at once and each is most of the width of the page, so
+    // there is no path between the two layouts that keeps them apart. The
+    // clearance to spend is the 64px column gap across and the 32px stack gap
+    // down, against a cover of around 400px and 480px of travel; measured at
+    // every size below, the text column can be at most 8-19% of the way across
+    // while it is anywhere in the first 90% of its way down. What is arranged
+    // instead is which of them is on top, and that is what this pins: the
+    // artwork passes over the text, never the other way round, so the title is
+    // never drawn across album art.
+    //
+    // The other half of it is that the overlap belongs to the move and to
+    // nothing else -- settled, at every width and height, the two are clear by
+    // `blockClearance`. A layout change that quietly let them touch at rest
+    // would fail here even though both of them fit the page.
+    function rectsOf(s) {
+        return {
+            cover: { l: s.coverX, r: s.coverX + s.coverSize,
+                     t: s.coverY, b: s.coverY + s.coverSize },
+            info:  { l: s.infoX,  r: s.infoX + s.infoWidth,
+                     t: s.infoY,  b: s.infoY + s.infoHeight }
+        }
+    }
+
+    // Positive is clear by that many pixels, negative is overlapping.
+    function separationOf(s) {
+        var r = rectsOf(s)
+        return Math.max(r.info.l - r.cover.r, r.cover.l - r.info.r,
+                        r.info.t - r.cover.b, r.cover.t - r.info.b)
+    }
+
+    function test_now_playing_passes_the_artwork_over_the_text_data() {
+        var rows = []
+        var sizes = sizeRows()
+        for (var i = 0; i < sizes.length; i++) {
+            // In from the other side of the breakpoint, so every size is
+            // reached by a real transition, and out again.
+            var opposite = sizes[i].w < 1220 ? 1280 : 820
+            rows.push({ tag: sizes[i].tag + " in",  from: opposite, to: sizes[i].w, h: sizes[i].h })
+            rows.push({ tag: sizes[i].tag + " out", from: sizes[i].w, to: opposite, h: sizes[i].h })
+        }
+        return rows
+    }
+
+    function test_now_playing_passes_the_artwork_over_the_text(row) {
+        if (row.from === row.to) {
+            // 1280 sweeps against itself; there is nothing to cross.
+            skip("no breakpoint between " + row.from + " and " + row.to)
+            return
+        }
+        var host = showHost(nowPlayingHost, row.from, row.h)
+        var page = host.page
+        var cover = findChild(page, "nowPlayingCoverBox")
+        var info  = findChild(page, "nowPlayingInfoColumn")
+        verify(cover && info, "the page's two blocks were not found")
+
+        var rows = sweepPage(host, page, row.from, row.to)
+        var overlapped = 0
+        for (var i = 0; i < rows.length; i++) {
+            if (separationOf(rows[i]) >= blockClearance) continue
+            overlapped++
+            // Wherever they are not clear of each other, paint order has to be
+            // unambiguous and has to put the artwork on top. Siblings with
+            // equal z paint in declaration order, and the text column is
+            // declared second, so the z is what does this and not luck.
+            verify(cover.parent === info.parent,
+                   row.tag + ": the blocks are no longer siblings, so their paint "
+                   + "order is not a z comparison any more")
+            verify(cover.z > info.z,
+                   row.tag + " sample " + i + ": the blocks overlap by "
+                   + (-separationOf(rows[i])).toFixed(1) + "px with the text column "
+                   + "on top (cover z=" + cover.z + ", text z=" + info.z + ")")
+        }
+
+        // Settled, they are clear. Checked on the last sample, which sweepPage
+        // takes after the move has finished.
+        var last = rows[rows.length - 1]
+        verify(separationOf(last) >= blockClearance,
+               row.tag + ": settled, the two blocks are only "
+               + separationOf(last).toFixed(1) + "px apart, which is inside the "
+               + blockClearance + "px they are supposed to keep")
+        // And the overlap really is confined to the move, so this case is
+        // measuring the thing it claims to.
+        verify(overlapped < rows.length,
+               row.tag + ": every sample overlapped, including the settled one")
     }
 
     // ── crossing the bar's breakpoint ────────────────────────────────────
@@ -667,16 +775,26 @@ TestCase {
                   2000, "the wide bar never settled with its slider")
 
         host.width = 640
+        // The controls' own edges rather than collectOverflow: a closing slot
+        // clips a volume slider down to its last pixel, and the handle on that
+        // slider sits 5px off the left end of its own track by design, so the
+        // tree walker reports a child outside its parent that the slot is
+        // clipping and nobody can see. What this case is about is the bar's
+        // right-hand end, so it measures that.
+        var controls = [bar.volumeButton, bar.outputButton,
+                        bar.nowPlayingButton, bar.queueButton]
         for (var i = 0; i < 14; i++) {
-            var q = bar.queueButton
-            var right = q.mapToItem(bar, q.width, 0).x
-            verify(right <= bar.width + 0.5,
-                   "sample " + i + ": the queue button is at " + right.toFixed(1)
-                   + " in a " + bar.width + "px bar while the slot is still "
-                   + bar.volumeSlotRoom.toFixed(1) + "px wide")
-            var faults = collectOverflow(bar, "PlayerBar", [])
-            verify(faults.length === 0,
-                   "sample " + i + " after the jump:\n  " + faults.join("\n  "))
+            for (var c = 0; c < controls.length; c++) {
+                var item = controls[c]
+                if (!item.visible) continue
+                var left  = item.mapToItem(bar, 0, 0).x
+                var right = item.mapToItem(bar, item.width, 0).x
+                verify(left >= -0.5 && right <= bar.width + 0.5,
+                       "sample " + i + ": a control sits at " + left.toFixed(1) + ".."
+                       + right.toFixed(1) + " in a " + bar.width
+                       + "px bar while the slot is still "
+                       + bar.volumeSlotRoom.toFixed(1) + "px wide")
+            }
             wait(16)
         }
         tryVerify(function () { return bar.volumeSlotRoom === 0 }, 2000,

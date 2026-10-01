@@ -39,11 +39,17 @@
 #   * Every launch gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME
 #     under a private scratch directory, and goes through `env -i` so no
 #     variable from the caller's session leaks in.
-#   * The single-instance lock is a QLocalServer named
-#     "TidalWaveSingleInstanceSocket", which Qt puts at QDir::tempPath(). TMPDIR
-#     is therefore what isolates it, not XDG_RUNTIME_DIR. Without that, a second
-#     launch connects to the developer's own instance, tells it to show itself
-#     and exits 0 - which proves nothing and pops their window.
+#   * The single-instance lock is a QLocalServer bound to an absolute path,
+#     $XDG_RUNTIME_DIR/TidalWave-<uid>, falling back to $TMPDIR and then to
+#     /tmp. XDG_RUNTIME_DIR is therefore what isolates a launch, with TMPDIR
+#     behind it, and the sandbox sets both. tests/lib/socket-name.sh works the
+#     address out the same way Application::singleInstanceSocketName() does,
+#     rather than this script guessing a name again - the guess it used to make
+#     stopped matching anything the day the uid went into the name, and a lock
+#     path nobody can match is a probe that always says "all clear". Without
+#     the isolation a second launch connects to the developer's own instance,
+#     tells it to show itself and exits 0 - which proves nothing and pops their
+#     window.
 #   * A unix socket path caps at 107 bytes, so the scratch root has to be short
 #     or listen() fails and the lock silently never exists. Checked up front,
 #     because a disabled lock is a false pass.
@@ -63,6 +69,9 @@ set -u
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
+# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
+# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+. "$REPO_ROOT/tests/lib/socket-name.sh"
 OUT=$SELF_DIR/out
 # Short on purpose, and outside the repo: see the sun_path note above. Kept
 # between runs so a re-run is an incremental build rather than a four minute
@@ -122,8 +131,11 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 SCRATCH=$(mktemp -d /tmp/twvis.XXXXXX) || die "cannot create a scratch directory"
 
-SOCKET_NAME=TidalWaveSingleInstanceSocket
-probe_len=$(( ${#SCRATCH} + ${#SOCKET_NAME} + 20 ))
+# The longest address a launch of ours can bind is $SCRATCH/<sandbox>/run/<leaf>
+# - 24 bytes is ample for "/login-sea" and friends, 5 covers "/run/". The limit
+# is kept short of sun_path's 107 rather than at it, because a lock that never
+# binds does not fail the run, it silently stops isolating it.
+probe_len=$(( ${#SCRATCH} + 24 + 5 + ${#TW_SOCKET_LEAF} ))
 [ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
 
 HELPER_PIDS=()
@@ -157,16 +169,25 @@ trap cleanup EXIT INT TERM
 
 # ── guard: the developer's own config must not move ─────────────────────────
 
-REAL_TMPDIR=${TMPDIR:-/tmp}
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
-REAL_LOCK=$REAL_TMPDIR/$SOCKET_NAME
+# The developer's own lock, worked out the way the app works it out. On a normal
+# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
+# not the temp dir this script used to fingerprint instead.
+REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
-# Passive liveness probe: a listening unix socket shows up in /proc/net/unix, so
-# this never signals, connects to, or even names a process. A running instance
+# Passive liveness probe: a bound unix socket shows up in /proc/net/unix, so this
+# never signals, connects to, or even names a process. A running instance
 # rewrites its own settings whenever the volume or the last page changes, so
 # contents drifting under us is expected and is not our doing.
+#
+# This used to grep for the old flat socket name, which nothing has bound since
+# the uid went into it: it matched nothing, so the harness believed no instance
+# was running even while the developer's window was open, and the tolerance
+# below was never granted. Matching on the leaf also catches an instance that
+# landed in $TMPDIR rather than $XDG_RUNTIME_DIR, and $SCRATCH is excluded so
+# our own sandboxes can never be mistaken for it.
 LIVE_INSTANCE=0
-grep -aqs "$SOCKET_NAME" /proc/net/unix && LIVE_INSTANCE=1
+tw_socket_live "$SCRATCH" && LIVE_INSTANCE=1
 
 guard_structure() {
     { [ -e "$REAL_LOCK" ] && stat -c 'lock %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
@@ -214,7 +235,7 @@ head2 "sandbox"
 info "output:  $OUT"
 info "scratch: $SCRATCH (short on purpose: a unix socket path caps at 107 bytes)"
 if [ "$LIVE_INSTANCE" -eq 1 ]; then
-    info "another instance is listening on $SOCKET_NAME; it is left strictly alone."
+    info "another instance is listening on $REAL_LOCK; it is left strictly alone."
 else
     info "no other instance is listening; any write to the real settings is a hard failure."
 fi

@@ -34,6 +34,13 @@ TestCase {
         Item { Item { Text { text: "x" } } }
     }
 
+    // A row glyph, for the test that the fix to the mark was not applied to
+    // every one of these as well.
+    Component {
+        id: iconC
+        VectorIcon { name: "play" }
+    }
+
     // The sidebar rail draws it at 28, the login page at 64, and 16 is the
     // smallest the mark is ever asked for (the tray).
     function sizes() {
@@ -82,6 +89,50 @@ TestCase {
         verify(mark, "the mark would not instantiate at " + size)
         waitForRendering(mark)
         return mark
+    }
+
+    // ── the edge the curve renderer is here for ──────────────────────────
+
+    // `antialiasing: true` was the whole of the smoothing, and on a Retina
+    // screen that is not enough: the geometry renderer leaves the edge to the
+    // window's 4x multisampling, 4 samples is 4 coverage levels, and at 2x the
+    // shallow part of each band came out visibly stair-stepped. The curve
+    // renderer computes coverage analytically instead and needs no
+    // multisampling, no layer and no FBO.
+    //
+    // Guarded on the property rather than on a version, the same way AppMark
+    // itself is, because it arrived in Qt 6.6 and this project still builds
+    // against the 6.4 on Debian bookworm.
+    function test_mark_prefers_the_curve_renderer() {
+        var mark = makeMark(64)
+        var shape = findByName(mark, "appMarkBands")
+        verify(shape, "the mark has no band Shape")
+
+        if (!("preferredRendererType" in shape)) {
+            skip("Shape.preferredRendererType needs Qt 6.6; this Qt has no such property")
+            return
+        }
+        compare(shape.preferredRendererType, Shape.CurveRenderer,
+                "the mark is back on the renderer that stair-stepped at 2x")
+    }
+
+    // The other half of that decision, and the reason it is not set globally.
+    // A layer is an FBO per item and the curve renderer is per-item GPU work;
+    // VectorIcon is drawn once per row in virtualised lists hundreds of rows
+    // long, so neither belongs on it. The mark is large, few, and was the worst
+    // offender, so it carries the cost alone.
+    function test_row_glyphs_carry_no_layer() {
+        var icon = createTemporaryObject(iconC, testCase, { width: 24, height: 24 })
+        verify(icon, "VectorIcon would not instantiate")
+        waitForRendering(icon)
+
+        var walk = function (item) {
+            if (item.layer && item.layer.enabled)
+                fail("a VectorIcon child has layer.enabled; that is an FBO on every row glyph")
+            var kids = item.children
+            for (var i = 0; i < kids.length; ++i) walk(kids[i])
+        }
+        walk(icon)
     }
 
     // ── it draws, and it stays inside its box ────────────────────────────

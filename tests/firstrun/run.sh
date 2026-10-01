@@ -24,15 +24,20 @@
 #   * Every run gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME under a
 #     private scratch directory, and is launched through `env -i` so no variable
 #     from the caller's session leaks in.
-#   * The single-instance lock is a QLocalServer named
-#     "TidalWaveSingleInstanceSocket". Qt puts it at QDir::tempPath(), so TMPDIR
-#     is what isolates it - not XDG_RUNTIME_DIR. Without that isolation a second
-#     launch just connects to the developer's own instance, tells it to show
-#     itself and exits 0, which proves nothing and pops their window.
+#   * The single-instance lock is a QLocalServer bound to an absolute path:
+#     $XDG_RUNTIME_DIR/TidalWave-<uid>, falling back to $TMPDIR and then /tmp.
+#     XDG_RUNTIME_DIR is what isolates a run, with TMPDIR behind it, and the
+#     sandbox sets both. tests/lib/socket-name.sh derives the address the way
+#     Application::singleInstanceSocketName() does instead of this script
+#     naming it a second time: the name it used to hardcode stopped matching
+#     anything when the uid went into it, and nothing failed, it just stopped
+#     seeing locks. Without the isolation a second launch connects to the
+#     developer's own instance, tells it to show itself and exits 0, which
+#     proves nothing and pops their window.
 #   * A unix socket path is capped at 107 bytes, so the scratch root has to be
 #     short or listen() fails and the lock silently never exists. The script
 #     checks this and refuses to run rather than report a false pass.
-#   * The developer's real ~/.config/TidalWave and the real temp-dir lock are
+#   * The developer's real ~/.config/TidalWave and their real lock are
 #     fingerprinted up front and re-checked after every scenario. Any change
 #     aborts the whole run.
 #   * No synthetic input. Observation only: exit codes, stdout, stderr, window
@@ -46,6 +51,9 @@ set -u
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
+# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
+# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+. "$REPO_ROOT/tests/lib/socket-name.sh"
 DWELL=${DWELL:-8}
 KEEP=0
 WANTED=()
@@ -58,7 +66,7 @@ for arg in "$@"; do
                           bad-settings missing-qml single-instance \
                           desktop-file deps
             exit 0 ;;
-        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,46p' "$0"; exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)  WANTED+=("$arg") ;;
     esac
@@ -94,13 +102,16 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 [ -x "$APP" ] || die "no binary at $APP (build with: cmake --build build-t --parallel 8)"
 
-REAL_TMPDIR=${TMPDIR:-/tmp}
 # Deliberately short: see the sun_path note at the top.
 SCRATCH=$(mktemp -d /tmp/twfr.XXXXXX) || die "cannot create a scratch directory"
 
-SOCKET_NAME=TidalWaveSingleInstanceSocket
+# The longest address a run of ours can bind is $SCRATCH/<scenario>/run/<leaf>.
+# 24 bytes is ample for the longest scenario name ("single-instance"), 5 covers
+# "/run/". The limit stays short of sun_path's 107 rather than sitting on it,
+# because a lock that never binds does not fail a run, it silently stops
+# isolating it.
 probe_len=${#SCRATCH}
-probe_len=$(( probe_len + ${#SOCKET_NAME} + 20 ))
+probe_len=$(( probe_len + 24 + 5 + ${#TW_SOCKET_LEAF} ))
 [ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
 
 HELPER_PIDS=()
@@ -135,14 +146,24 @@ trap cleanup EXIT INT TERM
 # ── guard: the developer's own config and lock must not move ────────────────
 
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
-REAL_LOCK=$REAL_TMPDIR/$SOCKET_NAME
+# The developer's own lock, worked out the way the app works it out. On a normal
+# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
+# not the temp dir this script used to fingerprint instead.
+REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
-# Passive liveness probe. A listening unix socket shows up in /proc/net/unix, so
-# this never signals, connects to, or even names a process. A developer's own
-# running instance rewrites its settings file whenever the volume or the last
-# page changes, so its contents drifting is expected and is not our doing.
+# Passive liveness probe. A bound unix socket shows up in /proc/net/unix, so this
+# never signals, connects to, or even names a process. A developer's own running
+# instance rewrites its settings file whenever the volume or the last page
+# changes, so its contents drifting is expected and is not our doing.
+#
+# This used to grep for the old flat socket name, which nothing has bound since
+# the uid went into it: it matched nothing, so the run believed no instance was
+# live even with the developer's window open, and the tolerance below was never
+# granted. Matching on the leaf also catches an instance that landed in $TMPDIR
+# rather than $XDG_RUNTIME_DIR, and $SCRATCH is excluded so our own sandboxes
+# can never be mistaken for it.
 LIVE_INSTANCE=0
-if grep -aqs "$SOCKET_NAME" /proc/net/unix; then
+if tw_socket_live "$SCRATCH"; then
     LIVE_INSTANCE=1
 fi
 
@@ -186,7 +207,7 @@ head2 "sandbox"
 info "binary:  $APP"
 info "scratch: $SCRATCH (short on purpose: a unix socket path caps at 107 bytes)"
 if [ "$LIVE_INSTANCE" -eq 1 ]; then
-    info "another instance is already listening on $SOCKET_NAME; it is left strictly alone."
+    info "another instance is already listening on $REAL_LOCK; it is left strictly alone."
     info "its settings file may change under us, which the guard tolerates but never causes."
 else
     info "no other instance is listening; any write to the real settings would be a hard failure."
@@ -609,6 +630,12 @@ fi
 if wanted single-instance; then
     head2 "single-instance lock"
     sandbox single-instance
+    # Where this launch will bind, given the sandbox's own environment. The
+    # sandbox sets XDG_RUNTIME_DIR as well as TMPDIR, and XDG_RUNTIME_DIR is the
+    # app's first choice, so the lock appears in $BOX/run. $BOX/tmp is where this
+    # check used to look, which no build has used since the directory became
+    # explicit, and a missing lock here reads as a hard failure.
+    BOX_LOCK=$(tw_socket_path "$BOX/run" "$BOX/tmp")
     RUN_WRAPPER=()
     ( env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
         timeout -s TERM "$DWELL" "$APP" \
@@ -616,13 +643,13 @@ if wanted single-instance; then
     FIRST=$!
     sock_ok=0
     for _ in $(seq 1 40); do
-        [ -S "$BOX/tmp/$SOCKET_NAME" ] && { sock_ok=1; break; }
+        [ -S "$BOX_LOCK" ] && { sock_ok=1; break; }
         sleep 0.25
     done
     if [ "$sock_ok" -eq 1 ]; then
-        info "lock created at \$TMPDIR/$SOCKET_NAME (inside the sandbox, not in /tmp)"
+        info "lock created at \$XDG_RUNTIME_DIR/$TW_SOCKET_LEAF (inside the sandbox, not in the real /run/user)"
     else
-        fail single-instance "the first instance never created \$TMPDIR/$SOCKET_NAME; listen() failed and the app said nothing"
+        fail single-instance "the first instance never created $BOX_LOCK; listen() failed and the app said nothing"
     fi
     env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
         timeout -s TERM "$DWELL" "$APP" \

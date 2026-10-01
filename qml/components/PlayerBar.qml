@@ -320,6 +320,7 @@ Rectangle {
                     }
                 }
                 Rectangle {
+                    objectName: "qualityBadge"
                     visible: hasTrack && player.audioQuality.length > 0
                     height: 16; width: ql.implicitWidth + 8; radius: Theme.radiusBadge
                     color: {
@@ -329,7 +330,8 @@ Rectangle {
                         return Theme.surfaceHigh
                     }
                     Text {
-                        id: ql; anchors.centerIn: parent
+                        id: ql; objectName: "qualityBadgeText"
+                        anchors.centerIn: parent
                         text: player.qualityLabel(player.audioQuality)
                         color: Theme.textPrimary; font.pixelSize: 9; font.bold: true
                     }
@@ -460,20 +462,16 @@ Rectangle {
             }
 
             // The slot, which is what the layout measures, and the slider
-            // inside it, which is what the bar shows. Two items because the
-            // two have different lifetimes: the slot is on screen for as long
-            // as it is giving space back, and the slider only while the bar is
-            // wide enough to own one.
+            // inside it, which is what the bar shows. Two items, because the
+            // slot has one job the slider cannot do: a slider is 20px tall and
+            // its handle hangs 5px off the left end of its own track, so a
+            // nearly-closed slider would paint that handle over the speaker.
+            // The slot clips it.
             //
-            // The slider's own `visible` still follows the breakpoint and
-            // nothing else, which is the contract tst_output_picker.qml reads
-            // one frame after a resize: below the breakpoint the bar has no
-            // inline slider, full stop, and the hover flyout is the way to the
-            // volume. So widening is a wipe -- the slider grows inside the
-            // opening slot -- while narrowing drops the slider at once and
-            // leaves the slot to close. What closing looks like is the speaker
-            // gliding across a flat bar, which is all there was to see in that
-            // 90px anyway.
+            // Both directions are the same move in reverse. The slider shrinks
+            // and fades as the slot closes, and grows and fades in as it opens;
+            // it is gone, out of the layout and out of the tab order, only once
+            // the slot has actually reached zero.
             Item {
                 id: volSlot
                 objectName: "playerBarVolumeSlot"
@@ -481,21 +479,25 @@ Rectangle {
                 Layout.leftMargin: 8 * root.volumeOpenness
                 Layout.preferredWidth: root.volumeSlotRoom
                 Layout.preferredHeight: 20
-                // The handle hangs 5px off the left end of the track, so a
-                // nearly-closed slot would otherwise paint it over the speaker.
                 clip: true
 
                 VolumeSlider {
                     id: volSlider
-                    visible: !root.compactRight
+                    // On the slot and not on the breakpoint: the breakpoint goes
+                    // in one frame and this has 150ms of travel to do. At rest
+                    // the two say the same thing, which is the contract
+                    // tst_output_picker.qml checks -- a settled narrow bar has no
+                    // inline slider, and the hover flyout is the way to the
+                    // volume there.
+                    visible: root.volumeSlotRoom > 0
                     width: volSlot.width
                     height: volSlot.height
                     // The last fifth of the slot's travel takes the slider's
-                    // opacity with it, the mirror of the sidebar holding its
-                    // wide-only content back until the panel is a quarter
-                    // open: a 10px handle on an 8px track is a speck, not a
-                    // control, and fading it means the wipe-in has nothing
-                    // half-drawn in it.
+                    // opacity with it, in both directions, the mirror of the
+                    // sidebar holding its wide-only content back until the panel
+                    // is a quarter open: a 10px handle on an 8px track is a
+                    // speck, not a control, and fading it means neither end of
+                    // the move has anything half-drawn in it.
                     opacity: Math.min(1, root.volumeOpenness / 0.2)
                     value: player.muted ? 0 : player.volume
                     onMoved: (v) => { player.setMuted(false); player.setVolume(v) }

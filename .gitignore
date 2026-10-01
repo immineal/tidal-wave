@@ -67,6 +67,9 @@ Thumbs.db
 # Project-specific / Anthropic / Claude temp files
 .claude/
 
+# Release artifacts: where packaging/build-deb.sh drops the .deb it builds.
+/dist/
+
 # Temporary / testing files and outputs
 /build_test/
 /CMakeLists_icon.txt

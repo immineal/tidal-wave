@@ -86,8 +86,13 @@ private slots:
         qputenv("XDG_RUNTIME_DIR", longDir.toLocal8Bit());
 
         const QString name = Application::singleInstanceSocketName();
-        // 107 = sizeof(sockaddr_un::sun_path) - 1, measured in bytes.
-        QVERIFY2(QFile::encodeName(name).size() <= 107, qPrintable(name));
+        // The limit is asked for rather than written down, because it is not the
+        // same number everywhere: sizeof(sun_path) is 108 on Linux and 104 on
+        // Apple's platforms. A literal 107 here agreed with the literal 107 the
+        // code used to carry, so the pair of them would have been wrong together
+        // on macOS and this test would have said nothing.
+        QVERIFY2(QFile::encodeName(name).size() <= Application::unixSocketPathMax(),
+                 qPrintable(name));
         QVERIFY2(name.contains(QString::number(static_cast<uint>(::getuid()))), qPrintable(name));
         // Still long enough to be a usable address, not an empty string.
         QVERIFY(name.startsWith(QLatin1Char('/')));
@@ -114,6 +119,72 @@ private slots:
         QVERIFY2(name.startsWith(runtime.path()), qPrintable(name));
 #else
         QSKIP("XDG_RUNTIME_DIR is a Unix thing");
+#endif
+    }
+
+    // The exact edge of sun_path, from both sides.
+    //
+    // socketDirFits() is the only thing standing between a too-long address and
+    // a bind() that fails with nothing said, and the number it compares against
+    // used to be a hard-coded 107 - Linux's limit - on every platform. Apple's
+    // sun_path is 104 bytes, so an address of 104 to 107 bytes passed the check
+    // and then failed to bind, silently, which is the precise failure the check
+    // exists to prevent. Nothing on the Mac happened to produce a path that
+    // long, so the bug was unreachable rather than absent.
+    //
+    // Asserted here by building a directory that puts the finished address
+    // exactly on the limit, and then one byte over it, rather than by trusting
+    // either number.
+    void socketDirIsAcceptedUpToTheLimitAndNotPastIt() {
+#if defined(Q_OS_UNIX)
+        const int limit = Application::unixSocketPathMax();
+        QVERIFY(limit > 0);
+
+        // The leaf the implementation appends, which the address has to leave
+        // room for: "/" + "TidalWave-<uid>".
+        const QString leaf = QStringLiteral("/TidalWave-%1")
+                                 .arg(static_cast<uint>(::getuid()));
+        const int leafBytes = QFile::encodeName(leaf).size();
+
+        QTemporaryDir base;
+        QVERIFY(base.isValid());
+        // Somewhere short to grow from, so the padding below is what decides the
+        // length. ASCII throughout, so one character is one byte.
+        QString exact = base.path();
+        QVERIFY(QFile::encodeName(exact).size() + leafBytes < limit);
+        exact += QLatin1Char('/');
+        while (QFile::encodeName(exact).size() + leafBytes < limit)
+            exact += QLatin1Char('a');
+        QCOMPARE(QFile::encodeName(exact).size() + leafBytes, limit);
+        QVERIFY(QDir().mkpath(exact));
+
+        // A real directory one byte longer, so length is the only thing wrong
+        // with it.
+        const QString tooLong = exact + QLatin1Char('a');
+        QVERIFY(QDir().mkpath(tooLong));
+
+        // Exactly on the limit: taken, and the address is the one it was given.
+        qputenv("XDG_RUNTIME_DIR", exact.toLocal8Bit());
+        const QString fits = Application::singleInstanceSocketName();
+        QCOMPARE(fits, exact + leaf);
+        QCOMPARE(QFile::encodeName(fits).size(), limit);
+
+        // And it is an address a server can really bind, which is the claim the
+        // limit is making.
+        QLocalServer server;
+        QLocalServer::removeServer(fits);
+        QVERIFY2(Application::claimSingleInstanceSocket(&server, fits),
+                 qPrintable(server.errorString()));
+        server.close();
+        QLocalServer::removeServer(fits);
+
+        // One byte over: refused, and the fall-through picks somewhere else.
+        qputenv("XDG_RUNTIME_DIR", tooLong.toLocal8Bit());
+        const QString overflows = Application::singleInstanceSocketName();
+        QVERIFY2(!overflows.startsWith(tooLong), qPrintable(overflows));
+        QVERIFY2(QFile::encodeName(overflows).size() <= limit, qPrintable(overflows));
+#else
+        QSKIP("sun_path is a Unix limit");
 #endif
     }
 

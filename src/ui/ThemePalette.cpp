@@ -76,19 +76,19 @@ struct Spec {
 //              hovered row from its neighbours; it is ~1.69:1 now.
 const Spec kSpecs[] = {
     { "sea",  "Sea",  true,
-      "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A", 26,
+      "#000C14", "#07161E", "#0F202B", "#233B4A", "#192C39", 26,
       "#FFFFFF", "#A0A0A0", "#6B6B6B",
       "#0079A8", "#005A7D", "#FFFFFF",
       "#D82C2C", "#FFFFFF", "#1DB954" },
 
     { "pine", "Pine", true,
-      "#0B0F0C", "#141A16", "#1C241E", "#323C34", "#29332B", 26,
+      "#031108", "#0F1B14", "#16251C", "#293E31", "#233429", 26,
       "#EEF5F0", "#94A69B", "#637269",
       "#18814E", "#105F39", "#FFFFFF",
       "#D23535", "#FFFFFF", "#4ADE80" },
 
     { "rust", "Rust", true,
-      "#100D0C", "#1A1614", "#241F1C", "#3E3836", "#332C28", 26,
+      "#180A03", "#21140D", "#2C1C16", "#4B342B", "#3B2922", 26,
       "#F7F2EF", "#A89C95", "#736B66",
       "#C14A18", "#93340C", "#FFFFFF",
       "#CF3939", "#FFFFFF", "#5FBF7A" },
@@ -100,20 +100,26 @@ const Spec kSpecs[] = {
       "#C0392B", "#FFFFFF", "#1B7F4B" },
 
     { "sand", "Sand", false,
-      "#FAF7F0", "#F1EBDC", "#E7DFCB", "#CAC0AA", "#CBC0A6", 26,
+      "#F6F6E0", "#EBEACC", "#DFDFB9", "#C1C18F", "#C1C193", 26,
       "#1B1913", "#5D564A", "#837B6C",
       "#2F6F4E", "#22543A", "#FFFFFF",
       "#A8342A", "#FFFFFF", "#4F7A35" },
 
-    // Rust's light partner, and the one palette on this list that is new.
-    // Sand already owns warm-and-quiet, so Clay is warm-and-crisp instead:
-    // the grounds are peach rather than cream (R leads G by 8-29 and G leads
-    // B by only 6-20, where Sand has that the other way round and reads
-    // yellow), the ramp steps further per level, and the accent is Rust's
-    // burnt orange rather than Sand's green. Side by side the two never read
-    // as the same idea even though both are warm.
+    // Rust's light partner. The paragraph that used to sit here claimed these
+    // grounds were "peach rather than cream" and that the two "never read as
+    // the same idea". On screen they did: the user reported Sand and Clay as
+    // almost the same theme, and measuring agreed - their backgrounds were
+    // 1.90 apart in CIE Lab, below the ~2.3 that is the smallest difference an
+    // eye can resolve. The hue separation the comment described was real only
+    // deep in the ramp, where the least page area is.
+    //
+    // So both warm palettes now carry a deliberate hue, strong enough to
+    // survive being a near-white: Sand sits at Lab hue 108 deg (R=G with green
+    // leading blue - a cream that leans olive) and Clay at 44 deg (red leading
+    // green by 18-46 - a blush). That is dE 9.36 at the background and more
+    // further down. groundsAreTellableApart() in tests/tst_theme.cpp holds it.
     { "clay", "Clay", false,
-      "#FFF7F1", "#FAEBE1", "#F3DDCE", "#D7BAA6", "#E8D0BE", 26,
+      "#FFEDE4", "#FFE0D4", "#FFD1C2", "#E7AC99", "#FAC2B0", 26,
       "#241510", "#6E4F3E", "#96705D",
       "#B4481C", "#8A3310", "#FFFFFF",
       "#B3302A", "#FFFFFF", "#3F7A3A" },
@@ -405,9 +411,20 @@ void ThemePalette::refresh() {
 QVariantList ThemePalette::available() const {
     QVariantList out;
     for (const auto &t : theme::themes()) {
-        out.append(QVariantMap{{QStringLiteral("name"),  t.name},
-                               {QStringLiteral("label"), t.label},
-                               {QStringLiteral("dark"),  t.dark}});
+        // The three a swatch draws come from here rather than from a table in
+        // the QML. SettingsPanel.qml used to repeat them by hand and its own
+        // comment admitted the columns had "sat two accent revisions behind
+        // the C++ for a while and nothing noticed"; the palette edit that
+        // separated Sand from Clay drifted them again the same day. A hand
+        // copy of a table that changes is a bug with a delay on it, so there
+        // is no longer a copy to drift.
+        const QVariantMap p = theme::palette(t.name);
+        out.append(QVariantMap{{QStringLiteral("name"),   t.name},
+                               {QStringLiteral("label"),  t.label},
+                               {QStringLiteral("dark"),   t.dark},
+                               {QStringLiteral("bg"),     p.value("bg")},
+                               {QStringLiteral("border"), p.value("border")},
+                               {QStringLiteral("accent"), p.value("accent")}});
     }
     return out;
 }

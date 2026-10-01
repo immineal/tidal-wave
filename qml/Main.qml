@@ -330,24 +330,31 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
+        // Every sequence below comes out of the Shortcuts table in
+        // src/ui/Shortcuts.cpp rather than being written here, because the
+        // Settings panel prints the same list and the two used to be
+        // independent literals that could drift - and did, silently, off Linux.
+        // A new Shortcut belongs in that table first; tst_shortcuts.cpp fails on
+        // one bound to a literal, and on a table entry with no row in Settings.
+
         // Playback Shortcuts
-        Shortcut { sequence: "Space";      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.playPause() }
-        Shortcut { sequence: "Ctrl+Right"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.next() }
-        Shortcut { sequence: "Ctrl+Left";  context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.previous() }
-        Shortcut { sequence: "Right";      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.min(player.duration, player.position + 10000)) }
-        Shortcut { sequence: "Left";       context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.max(0, player.position - 10000)) }
-        Shortcut { sequence: "Up";         context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.setVolume(Math.min(1, player.volume + 0.05)) }
-        Shortcut { sequence: "Down";       context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.setVolume(Math.max(0, player.volume - 0.05)) }
-        Shortcut { sequence: "Ctrl+M";     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setMuted(!player.muted) }
-        Shortcut { sequence: "Ctrl+S";     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setShuffle(!player.shuffle) }
-        Shortcut { sequence: "Ctrl+R";     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setRepeatMode((player.repeatMode + 1) % 3) }
+        Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.playPause() }
+        Shortcut { sequence: Shortcuts.sequence("next"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.next() }
+        Shortcut { sequence: Shortcuts.sequence("previous");  context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.previous() }
+        Shortcut { sequence: Shortcuts.sequence("seekForward");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.min(player.duration, player.position + 10000)) }
+        Shortcut { sequence: Shortcuts.sequence("seekBack");       context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.max(0, player.position - 10000)) }
+        Shortcut { sequence: Shortcuts.sequence("volumeUp");         context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.setVolume(Math.min(1, player.volume + 0.05)) }
+        Shortcut { sequence: Shortcuts.sequence("volumeDown");       context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.setVolume(Math.max(0, player.volume - 0.05)) }
+        Shortcut { sequence: Shortcuts.sequence("mute");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setMuted(!player.muted) }
+        Shortcut { sequence: Shortcuts.sequence("shuffle");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setShuffle(!player.shuffle) }
+        Shortcut { sequence: Shortcuts.sequence("repeat");     context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.setRepeatMode((player.repeatMode + 1) % 3) }
 
         // Navigation Shortcuts
-        Shortcut { sequence: "Ctrl+1"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("home") }
-        Shortcut { sequence: "Ctrl+2"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("search") }
-        Shortcut { sequence: "Ctrl+3"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("collection") }
+        Shortcut { sequence: Shortcuts.sequence("home"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("home") }
+        Shortcut { sequence: Shortcuts.sequence("search"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("search") }
+        Shortcut { sequence: Shortcuts.sequence("collection"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.navigate("collection") }
         Shortcut {
-            sequence: "Ctrl+N"
+            sequence: Shortcuts.sequence("nowPlaying")
             context: Qt.ApplicationShortcut
             enabled: auth.state === 2
             onActivated: {
@@ -358,11 +365,11 @@ ApplicationWindow {
                 }
             }
         }
-        Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
-        Shortcut { sequence: "Ctrl+Q"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }
-        Shortcut { sequence: "Ctrl+,"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: sideBar.openSettings() }
+        Shortcut { sequence: Shortcuts.sequence("fullScreen"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
+        Shortcut { sequence: Shortcuts.sequence("queue"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }
+        Shortcut { sequence: Shortcuts.sequence("settings"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: sideBar.openSettings() }
         Shortcut {
-            sequence: "Escape"
+            sequence: Shortcuts.sequence("escape")
             context: Qt.ApplicationShortcut
             // An application shortcut outranks the key handling of an open
             // Popup, so while the update dialog is up this one has to stand
@@ -380,7 +387,7 @@ ApplicationWindow {
             }
         }
         Shortcut {
-            sequence: "Alt+Left"
+            sequence: Shortcuts.sequence("back")
             context: Qt.ApplicationShortcut
             enabled: auth.state === 2 && root.detailPages.indexOf(root.currentPage) !== -1
             onActivated: root.goBack()

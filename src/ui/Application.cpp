@@ -13,11 +13,13 @@
 #include <QQmlContext>
 #include <QDateTime>
 #include <QFont>
+#include <QFontDatabase>
 #include <QIcon>
 #include <QFile>
 #include <QDir>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QSurfaceFormat>
 #include <QFileInfo>
 #include <QNetworkProxyFactory>
@@ -33,11 +35,13 @@
 #include <QAction>
 #include <QProcess>
 #include <QDesktopServices>
+#include <QEvent>
 #include <QUrl>
-// #include <QQuickStyle>
+#include <QQuickStyle>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>   // getuid(), for the per-user socket name
+#include <sys/un.h>   // sockaddr_un::sun_path, whose size is the real limit
 #endif
 #ifdef Q_OS_LINUX
 #include <QDBusConnection>
@@ -145,8 +149,15 @@ static QString appIconResourcePath(const QString &fileName) {
     return candidates.first();
 }
 
+#ifdef Q_OS_LINUX
 // Copies the bundled icon into the user's hicolor theme, so an app started
 // straight out of a build tree still has a named icon to hand the tray.
+//
+// Linux only, and not because of the paths. QIcon::hasThemeIcon() is false on
+// macOS whatever is installed, since there is no XDG icon theme to look in, so
+// the guard below could never be satisfied there and every single launch wrote a
+// fresh hicolor tree into ~/Library/Application Support/icons that nothing on
+// the system would ever read.
 //
 // This only ever runs when the theme has no "tidal-wave" in it, which is the
 // important part. It used to run on every single launch and rescale the
@@ -194,6 +205,7 @@ static void exportIconToUserTheme(const QString &iconName) {
     if (wrote && !QIcon::themeName().isEmpty())
         QIcon::setThemeName(QIcon::themeName());
 }
+#endif // Q_OS_LINUX
 
 // Returns the application icon as a *named* theme icon ("tidal-wave").
 //
@@ -208,8 +220,10 @@ static void exportIconToUserTheme(const QString &iconName) {
 // fallback for when nobody has.
 static QIcon loadAppIcon() {
     const QString iconName = QStringLiteral("tidal-wave");
+#ifdef Q_OS_LINUX
     if (!QIcon::hasThemeIcon(iconName))
         exportIconToUserTheme(iconName);
+#endif
     // Named themed icon (so SNI sends IconName), with the embedded pixmap as a
     // fallback for non-KDE trays / if theme lookup fails.
     return QIcon::fromTheme(iconName,
@@ -253,9 +267,25 @@ static bool detectReducedMotion() {
 }
 
 #if defined(Q_OS_UNIX)
-// A Unix socket address is a path in a fixed-size field: sockaddr_un::sun_path
-// is 108 bytes including the terminator, and bind() refuses anything longer.
-static constexpr int kUnixSocketPathMax = 107;
+// A Unix socket address is a path in a fixed-size field, and bind() refuses
+// anything that does not fit in it with its terminator.
+//
+// The size of that field is not the same everywhere, which is what this used to
+// get wrong: it was written out as a literal 107, which is Linux's
+// sizeof(sun_path) - 1. Apple's sun_path is 104 bytes, so on macOS the real
+// limit is two shorter than the number here and a path in between passed
+// socketDirFits() and then failed to bind - which is exactly the failure this
+// check exists to prevent. Taken from the header instead of written out, so it
+// cannot be wrong on a platform nobody has compiled for yet either.
+//
+// Two rather than one, because the question is not what the kernel will take but
+// what QLocalServer will, and those turn out to differ by a byte. Measured on
+// Qt 6.12 and Linux, where sizeof(sun_path) is 108: a raw bind() succeeds at 107
+// bytes and fails at 108, while QLocalServer::listen() succeeds at 106 and fails
+// at 107 with "Name error". QLocalServer is what binds this address, so its
+// answer is the one that matters, and a byte of headroom costs nothing - the
+// addresses this picks in practice are around 62 bytes.
+static constexpr int kUnixSocketPathMax = int(sizeof(sockaddr_un::sun_path)) - 2;
 
 // Candidate directory for the socket: it has to exist and the finished path
 // has to fit sun_path, measured in bytes, not characters.
@@ -268,6 +298,14 @@ static bool socketDirFits(const QString &dir, const QString &leaf) {
     return QFileInfo(dir).isDir();
 }
 #endif
+
+int Application::unixSocketPathMax() {
+#if defined(Q_OS_UNIX)
+    return kUnixSocketPathMax;
+#else
+    return 0;
+#endif
+}
 
 // Where the single-instance rendezvous socket lives for this user.
 //
@@ -384,6 +422,16 @@ int Application::run(int argc, char **argv) {
     // R1: the real version, so Settings and the About line cannot drift.
     QApplication::setApplicationVersion(QStringLiteral(TIDALWAVE_VERSION));
     QApplication::setOrganizationName("TidalWave");
+    // Only macOS reads this, and it is what QSettings builds the preferences
+    // domain from there. Unset, QSettings derived the same domain from the
+    // organization name anyway - it lowercases it and prepends "com.", giving
+    // the com.tidalwave that was already in ~/Library/Preferences - so saying it
+    // out loud moves no file and orphans nobody's settings. It is here so the
+    // domain is a decision rather than a side effect of how the organization
+    // happens to be spelled, and so it visibly matches the bundle identifier in
+    // CMakeLists.txt. QSettings on Linux keys off the organization *name*, so
+    // this does not touch ~/.config/TidalWave.
+    QApplication::setOrganizationDomain("tidalwave.com");
     QApplication::setDesktopFileName("tidal-wave");
 
     // Behind a corporate proxy every request used to hang with nothing said,
@@ -476,10 +524,65 @@ int Application::run(int argc, char **argv) {
         server->deleteLater();
     }
 
-    QFont defaultFont("Inter");
-    defaultFont.setFamilies({"Inter", "DejaVu Sans", "sans-serif"});
+    // The font stack, most specific first. Inter is what the design is drawn
+    // in; the rest is what a machine without it falls back to.
+    //
+    // The list had no macOS member at all, and none of Inter, DejaVu Sans or
+    // the generic "sans-serif" resolves there. Qt reacted by going looking for
+    // a family literally called "Sans Serif", not finding one, and spending
+    // about 55 ms populating its font-family alias table before warning about
+    // it - on every single launch. So the platform's own UI font goes in ahead
+    // of the generic, and the generic itself is expressed as a style hint
+    // rather than as a family name, which is the one form that cannot be a
+    // missing family on any platform.
+    QStringList families{ QStringLiteral("Inter") };
+#ifdef Q_OS_MACOS
+    // Asked for rather than written out: this is the family QPlatformTheme
+    // reports for the system UI font, which is what macOS actually wants text
+    // set in, and it survives Apple renaming it.
+    const QString systemUi = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
+    if (!systemUi.isEmpty())
+        families << systemUi;
+    // Shipped with every macOS there has ever been, for the case above
+    // returning something the database then cannot resolve.
+    families << QStringLiteral("Helvetica Neue");
+#else
+    families << QStringLiteral("DejaVu Sans") << QStringLiteral("sans-serif");
+#endif
+    QFont defaultFont(families.first());
+    defaultFont.setFamilies(families);
+    defaultFont.setStyleHint(QFont::SansSerif);
     QApplication::setFont(defaultFont);
-    // QQuickStyle::setStyle("Basic");
+
+    // Qt Quick Controls' customisation only works under a style that defers to
+    // it, and the native styles do not. On macOS the default style silently
+    // threw away the indicator, contentItem and background this app gives its
+    // ComboBox - three QML warnings and a Settings panel that genuinely rendered
+    // wrong - and there is no per-control way to opt out. Setting a
+    // non-native style is the only fix. It has to happen before the first
+    // Controls type is loaded.
+    //
+    // This line and its include spent the project commented out, and the reason
+    // was mechanical rather than a judgement about the style: QQuickStyle lives
+    // in Qt6::QuickControls2, which CMakeLists.txt had never linked, so the
+    // include did not resolve and the call could not compile. The component is
+    // in the find_package() list now.
+    //
+    // Not on Linux, though, which is the part that is easy to get wrong. The
+    // assumption this was nearly restored under - that Basic is what Qt picks on
+    // Linux anyway, so naming it costs nothing - is false on Qt 6.12, where the
+    // default here resolves to Fusion. Forcing Basic was measured through
+    // tests/visual: 24 of 51 screenshots moved, the Settings panel changed on
+    // 845006 of its 1152000 pixels, and what changed was contrast - anything
+    // taking its colour from the style's palette rather than from a Theme token
+    // came out grey where it is near-white today, across the sidebar and the
+    // panel. Against a noise floor of 6490 changed pixels over all 51 shots,
+    // that is a regression, not a rounding error. Linux ships; Linux is left on
+    // whatever Qt chooses, and both Fusion and Basic honour customisation, so
+    // nothing there needs this.
+#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+#endif
 
     m_api    = new TidalApi(this);
     m_auth   = new Auth(m_api, this);
@@ -525,6 +628,12 @@ int Application::run(int argc, char **argv) {
 
     if (QSystemTrayIcon::isSystemTrayAvailable())
         createTrayIcon(appIcon);
+
+#ifdef Q_OS_MACOS
+    // The way back from a hidden window on macOS: a Dock click. See
+    // eventFilter() for why it has to be a filter on the application object.
+    qApp->installEventFilter(this);
+#endif
 
 #ifdef Q_OS_LINUX
     // A tray that is not there yet. On Plasma, or any session whose bar starts
@@ -643,7 +752,19 @@ void Application::createTrayIcon(const QIcon &icon) {
     if (m_trayIcon)
         return;
 
-    m_trayIcon = new QSystemTrayIcon(icon, this);
+    QIcon trayArt = icon;
+#ifdef Q_OS_MACOS
+    // The macOS menu bar is a row of monochrome glyphs that follow the bar's
+    // own appearance. A full-colour icon sits in it as a blue tile among them
+    // and does not invert when the bar does. Marking the icon as a mask is what
+    // makes Qt hand AppKit a template image, so the system draws the shape in
+    // the current menu-bar colour rather than our pixels. Apple-only: on Linux
+    // a mask would throw the brand colour away and hand the StatusNotifier host
+    // a silhouette, which is not what any of those trays expect.
+    trayArt.setIsMask(true);
+#endif
+
+    m_trayIcon = new QSystemTrayIcon(trayArt, this);
     m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
     QMenu *trayMenu = new QMenu();
@@ -668,6 +789,53 @@ void Application::createTrayIcon(const QIcon &icon) {
 
     m_trayIcon->show();
 }
+
+#ifdef Q_OS_MACOS
+bool Application::hasVisibleWindow() const {
+    if (!m_engine)
+        return false;
+    const auto rootObjs = m_engine->rootObjects();
+    for (QObject *obj : rootObjs) {
+        if (auto *window = qobject_cast<QWindow *>(obj)) {
+            if (window->isVisible())
+                return true;
+        }
+    }
+    return false;
+}
+
+// Clicking the Dock icon of an app whose windows are all hidden, which on macOS
+// is the only way back to one.
+//
+// Closing the window hides it there rather than quitting, because
+// QSystemTrayIcon::isSystemTrayAvailable() is true on macOS and that is the
+// branch a tray takes. With nothing handling the reopen, the menu bar item was
+// then the only route back and a Dock click did nothing at all.
+//
+// AppKit asks applicationShouldHandleReopen:, which Qt turns into an application
+// state change to Qt::ApplicationActive. That reaches us as these two events,
+// and both are listened for: ApplicationActivate is the one documented for this,
+// ApplicationStateChange is the one that is not deprecated. Qt sends either of
+// them to the QApplication object and to nothing else, which is why this is an
+// event filter installed on qApp and not an override of Application::event() -
+// Application is a plain QObject living beside the QApplication, not the
+// application itself, so it is never sent these on its own.
+bool Application::eventFilter(QObject *watched, QEvent *event) {
+    const bool becameActive =
+        event->type() == QEvent::ApplicationActivate
+        || (event->type() == QEvent::ApplicationStateChange
+            && QGuiApplication::applicationState() == Qt::ApplicationActive);
+
+    // Only when there is nothing on screen to come back to. An ordinary
+    // activation - Command-Tab, or clicking a window that is already up - is
+    // also an activate, and raising and re-focusing a window the user is
+    // already looking at would be the app fighting them for it.
+    if (watched == qApp && becameActive && !hasVisibleWindow())
+        showWindow();
+
+    return QObject::eventFilter(watched, event);
+}
+#endif // Q_OS_MACOS
 
 void Application::showWindow() {
     if (m_engine) {

@@ -70,6 +70,18 @@ public:
     // Records a play so the entry floats to the top of the library list.
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id);
 
+    // The library list filtered by kind, with nothing typed. `kinds` empty gives
+    // the same thing the `entries` property does.
+    //
+    // This exists because `entries` holds the four *browsable* kinds and songs
+    // are kept out of it on purpose - a library has thousands of them and they
+    // would bury everything else. The finder's Tracks chip was therefore
+    // filtering a list that has no tracks in it and showing "Nothing saved yet",
+    // while the same chip worked the moment anything was typed, because search()
+    // does visit the track entries. Asking for a kind explicitly is a different
+    // request from browsing, so this answers it and the property stays as it is.
+    Q_INVOKABLE QVariantList entriesForKinds(const QStringList &kinds) const;
+
     // Filters the library by title. `kinds` is an empty list for everything,
     // otherwise a subset of album/playlist/artist/mix/track. Rows come back
     // best match first; the ranking is described above `matchScore` in the

@@ -385,14 +385,36 @@ Rectangle {
                     y: root.coverY
                     width:  root.coverSize
                     height: root.coverSize
-                    // Mid-move the two blocks pass through each other: they are
-                    // swapping both axes at once, and each is most of the width
-                    // of the page. The cover is opaque, so with it on top the
-                    // text slides behind the artwork and comes out below it,
-                    // which reads as one thing moving over another. The other
-                    // way round the title is drawn on top of album art for a
-                    // tenth of a second and reads as a double exposure. At rest
-                    // the two never overlap, so this does nothing at either end.
+                    // Mid-move the two blocks pass through each other, and the
+                    // artwork is the one that goes over the top.
+                    //
+                    // They are swapping both axes at once and each is most of
+                    // the page, so a path that kept them apart was looked for
+                    // and does not exist. All the clearance there is to spend is
+                    // the 64px column gap across and the 32px stack gap down,
+                    // against a cover around 400px tall and 480px of travel: in
+                    // the unit square of (vertical done, horizontal done), the
+                    // region where the two rects miss each other is a thin L.
+                    // Measured at every width and height the suite sweeps, the
+                    // text column may be at most 8-19% of the way across while
+                    // it is anywhere in the first 90% of its way down, and the
+                    // rest of the crossing only opens up in the last 4% of the
+                    // drop. That holds with the clearance set to zero as well,
+                    // so it is the size of the blocks and not the buffer. Any
+                    // path obeying it is therefore the sequenced L -- all the
+                    // way down, then all the way across -- with a corner that
+                    // can be rounded by about 20px out of 900px of travel,
+                    // inside 170ms, which is a flick in one direction and then
+                    // another rather than a move.
+                    //
+                    // So the overlap is arranged instead of avoided. The cover
+                    // is opaque, so with it on top the text slides behind the
+                    // artwork and comes out below it, which reads as one thing
+                    // passing another. The other way round the title is drawn
+                    // over album art for a tenth of a second and reads as a
+                    // double exposure. At rest the two are clear of each other,
+                    // so this does nothing at either end;
+                    // tests/qml/tst_layout_player.qml holds both halves of that.
                     z: 1
 
                     // Album art
@@ -735,6 +757,7 @@ Rectangle {
 
                         // Quality badge
                         Rectangle {
+                            objectName: "qualityBadge"
                             visible: player.audioQuality.length > 0
                             height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusBadge
                             color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
@@ -746,7 +769,8 @@ Rectangle {
                             // the same three cases, so the marks are gone
                             // rather than redrawn.
                             Text {
-                                id: qlbl; anchors.centerIn: parent
+                                id: qlbl; objectName: "qualityBadgeText"
+                                anchors.centerIn: parent
                                 text: player.qualityLabel(player.audioQuality)
                                 color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
                             }
