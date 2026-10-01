@@ -500,6 +500,20 @@ bool Application::scaleFactorSetInEnvironment() {
     return false;
 }
 
+double Application::maxUsableScaleFactor() const {
+    const QScreen *s = QGuiApplication::primaryScreen();
+    if (!s)
+        return kMaxScaleFactor;
+    // The screen's size in *device* pixels. geometry() is already divided by
+    // whatever factor is in force, so multiply it back out - otherwise the cap
+    // would shrink every time the user raised the slider.
+    const double dpr = s->devicePixelRatio() > 0 ? s->devicePixelRatio() : 1.0;
+    ScreenMetrics m;
+    m.widthPx  = int(s->geometry().width()  * dpr);
+    m.heightPx = int(s->geometry().height() * dpr);
+    return scaleFactorCeilingFor(m);
+}
+
 void Application::applyScaleFactor() {
     if (scaleFactorSetInEnvironment())
         return;
