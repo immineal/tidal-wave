@@ -81,7 +81,7 @@ Rectangle {
                 clip: true
                 selectByMouse: true
                 selectionColor: Theme.accent
-                selectedTextColor: Theme.onAccent
+                selectedTextColor: Theme.accentInk
                 verticalAlignment: TextInput.AlignVCenter
                 Keys.onEscapePressed: {
                     if (text.length > 0) text = ""

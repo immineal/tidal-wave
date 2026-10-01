@@ -113,7 +113,7 @@ Popup {
             id: btnLabel
             anchors.centerIn: parent
             text: btn.label
-            color: btn.primary ? Theme.onAccent : Theme.textPrimary
+            color: btn.primary ? Theme.accentInk : Theme.textPrimary
             font.pixelSize: 13
             font.bold: btn.primary
         }

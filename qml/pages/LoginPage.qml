@@ -33,7 +33,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: "≋"
-                    color: Theme.onAccent
+                    color: Theme.accentInk
                     font.pixelSize: 32
                     font.bold: true
                 }
@@ -149,7 +149,7 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text: qsTr("Log in with Tidal")
-                            color: Theme.onAccent
+                            color: Theme.accentInk
                             font.pixelSize: 15
                             font.bold: true
                         }

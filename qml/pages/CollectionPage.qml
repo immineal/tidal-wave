@@ -126,7 +126,7 @@ Rectangle {
                                 return qsTr("%1 (%2)").arg(modelData)
                                                       .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                             }
-                            color: root.activeTab === index ? Theme.onAccent : Theme.textSec
+                            color: root.activeTab === index ? Theme.accentInk : Theme.textSec
                             font.pixelSize: 14; font.bold: root.activeTab === index
                         }
                         MouseArea {
@@ -152,7 +152,7 @@ Rectangle {
                         Text {
                             id: sortLbl; anchors.centerIn: parent
                             text: modelData
-                            color: root.sortMode === index ? Theme.onAccent : Theme.textSec
+                            color: root.sortMode === index ? Theme.accentInk : Theme.textSec
                             font.pixelSize: 13
                         }
                         MouseArea {

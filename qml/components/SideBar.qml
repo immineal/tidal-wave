@@ -249,7 +249,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: "≋"
-                        color: Theme.onAccent
+                        color: Theme.accentInk
                         font.pixelSize: 16
                         font.bold: true
                     }

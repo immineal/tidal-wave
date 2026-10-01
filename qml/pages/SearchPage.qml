@@ -67,7 +67,7 @@ Rectangle {
                     Text {
                         id: tabLabel; anchors.centerIn: parent
                         text: modelData
-                        color: root.activeTab === index ? Theme.onAccent : Theme.textSec
+                        color: root.activeTab === index ? Theme.accentInk : Theme.textSec
                         font.pixelSize: 13
                     }
                     MouseArea {

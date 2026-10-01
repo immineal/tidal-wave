@@ -79,6 +79,29 @@ TestCase {
         verify(fgLum < 0.5, "daylight text is not dark")
     }
 
+    // The end-to-end version of the same guard: every colour token has to
+    // arrive in QML as the palette's value. A token whose binding silently
+    // never ran reads as black here, which is what onAccent and onRed did.
+    function test_every_token_reaches_qml_data() {
+        return [
+            { tag: "midnight", name: "midnight" },
+            { tag: "daylight", name: "daylight" },
+            { tag: "paper",    name: "paper" },
+        ]
+    }
+
+    function test_every_token_reaches_qml(data) {
+        prefs.theme = data.name
+        const palette = ThemePalette.current
+        for (const key in palette) {
+            if (key === "dark") continue
+            verify(Theme[key] !== undefined,
+                   data.name + ": Theme." + key + " is undefined")
+            compare(Theme[key].toString(), palette[key].toString(),
+                    data.name + ": Theme." + key + " does not match the palette")
+        }
+    }
+
     // An unknown name must still paint something rather than leaving the
     // window unstyled.
     function test_unknown_theme_still_paints() {

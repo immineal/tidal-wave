@@ -369,7 +369,7 @@ Rectangle {
                                 id: rsText
                                 anchors.centerIn: parent
                                 text: qsTr("⟳ Resync")
-                                color: Theme.onArt; font.pixelSize: 12
+                                color: Theme.artInk; font.pixelSize: 12
                             }
                             HoverHandler { cursorShape: Qt.PointingHandCursor }
                             TapHandler {
@@ -396,7 +396,7 @@ Rectangle {
                             id: lyricsToggleText
                             anchors.centerIn: parent
                             text: root.lyricsState === "loading" ? qsTr("Loading…") : qsTr("Lyrics")
-                            color: root.showLyrics ? Theme.onAccent : Theme.onArt; font.pixelSize: 11; font.bold: true
+                            color: root.showLyrics ? Theme.accentInk : Theme.artInk; font.pixelSize: 11; font.bold: true
                         }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         TapHandler {
@@ -935,7 +935,7 @@ Rectangle {
                                         width: 16
                                         height: 16
                                         radius: 8
-                                        color: root.sleepFadeOut ? Theme.onAccent : Theme.textPrimary
+                                        color: root.sleepFadeOut ? Theme.accentInk : Theme.textPrimary
                                         Behavior on x { NumberAnimation { duration: Theme.dur(150) } }
                                     }
                                 }
