@@ -190,7 +190,28 @@ Menu {
         function onChanged() { root.refreshPinned() }
     }
 
-    // Opens the menu on one pinnable thing. Nothing pinnable, nothing to show.
+    // ── taking it away ───────────────────────────────────────────────────
+    //
+    // The destructive entry, and the only one in the menu that carries a
+    // mark. The host supplies the wording, because only it knows what
+    // removing means: an album leaves the library, an artist is unfollowed.
+    // Empty means the host offers no such action and the row is not there.
+    //
+    // Collection's album and artist grids are why this exists. Each used to
+    // declare a Menu of its own over the top of the tile's, which covered the
+    // tile's Pin entry: there was no way to pin an album or an artist from
+    // Collection at all, only from its page or from the sidebar. Both of
+    // those menus repeated Play next and Add to queue to work around it, and
+    // the three copies were free to drift. There is one menu now.
+    property string removeLabel: ""
+    signal removeRequested()
+
+    // Opens the menu on one thing. Nothing to offer, nothing to show.
+    //
+    // It used to ask only whether the thing was pinnable, which was the same
+    // question while Pin was the only entry below the queue actions. It is
+    // not any more: an unpinnable tile with a Remove entry has a menu worth
+    // opening.
     function showPin(x, y, kind, id, title, subtitle, imageUrl) {
         pinKind     = kind  ? "" + kind : ""
         pinId       = id    ? "" + id   : ""
@@ -198,13 +219,14 @@ Menu {
         pinSubtitle = subtitle || ""
         pinImageUrl = imageUrl || ""
         refreshPinned()
-        if (!canPin) return
+        if (!canPin && trackSource === null && removeLabel.length === 0) return
         popup(x, y)
     }
 
     // So a right-click handler can skip the menu entirely, and so the tests
     // can read the label without walking a popup's contents.
-    readonly property alias pinItem: pinEntry
+    readonly property alias pinItem:    pinEntry
+    readonly property alias removeItem: removeEntry
 
     background: Rectangle {
         color: Theme.surfaceHigh
@@ -253,5 +275,24 @@ Menu {
             else             pins.pin(root.pinKind, root.pinId, root.pinTitle,
                                       root.pinSubtitle, root.pinImageUrl)
         }
+    }
+
+    // Last, under a rule of its own: the one row where a misclick costs you
+    // something should not sit against the row above it.
+    MenuSeparator {
+        visible: root.removeLabel.length > 0
+                 && (root.canPin || root.trackSource !== null)
+        height: visible ? implicitHeight : 0
+        contentItem: Rectangle { height: 1; color: Theme.border }
+    }
+    Entry {
+        id: removeEntry
+        objectName: "removeMenuItem"
+        visible: root.removeLabel.length > 0
+        height: visible ? implicitHeight : 0
+        text: root.removeLabel
+        danger: true
+        iconName: "trash"
+        onTriggered: root.removeRequested()
     }
 }

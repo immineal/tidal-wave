@@ -130,6 +130,25 @@ Item {
     // being three more numbers to find.
     readonly property int coverBadge:     Math.round(coverSize * 0.5)
     readonly property int coverBadgeIcon: Math.round(coverSize / 3)
+    // How far the badge is held off the cover's right and bottom edges.
+    //
+    // Flush, it left a speck. A cover's corner is round and a badge's corner
+    // is round by a different amount, so where the two met a crescent of the
+    // cover showed past the badge and read as a stray pixel rather than as an
+    // edge. Worse with artwork on it: an Image is clipped to its parent's
+    // bounding box and never to its rounded outline, so the art reaches the
+    // square corner the badge's arc has already curved away from.
+    //
+    // Holding the badge inside the corner sidesteps the whole question --
+    // there is no join to get wrong, only a margin, and the same margin on
+    // both sides reads as deliberate. Clipping the badge to the cover's shape
+    // would not have worked: QQuickShape ignores an ancestor's clip in Qt
+    // 6.12, which is the wall the finder's reveal hit, so the glyph inside
+    // the badge would have gone on painting into the corner anyway.
+    //
+    // Derived like the rest of this block, with a floor of 2: below that the
+    // margin stops being a margin and the speck comes back.
+    readonly property int coverBadgeInset: Math.max(2, Math.round(coverSize * 0.06))
     // The whole tile when there is no artwork to put a corner on.
     readonly property int coverPlainIcon: Math.round(coverSize * 0.56)
     // The row's own inset inside the panel, and where a row's content starts
@@ -626,8 +645,11 @@ Item {
     // ── navigation helpers ───────────────────────────────────────────────
 
     function glyphFor(kind) {
-        // VectorIcon has no "track" glyph; a song is a note.
-        return kind === "track" ? "music" : kind
+        // Identity, now that a song has a glyph of its own: every kind the
+        // library lists is also a name VectorIcon draws. It stays a function
+        // because it is the one place that says so, and because the badges
+        // are asserted against it in tests/qml/tst_sidebar.qml.
+        return kind
     }
 
     // Opens one library row. `data` is the row as LibraryIndex handed it over.
@@ -817,6 +839,8 @@ Item {
                     visible: rowItem.hasArt
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
+                    anchors.rightMargin:  root.coverBadgeInset
+                    anchors.bottomMargin: root.coverBadgeInset
                     width:  root.coverBadge
                     height: root.coverBadge
                     radius: Theme.radiusBadge
@@ -830,9 +854,13 @@ Item {
                     height: width
                     strokeWidth: rowItem.hasArt ? 1.5 : 1.6
                     color: rowItem.pinned ? Theme.accent : Theme.textDim
-                    // Centred in the badge, which is itself in the corner, so
-                    // the inset is whatever the badge has left over.
+                    // Centred in the badge, which is itself held off the
+                    // corner, so the glyph clears the cover's edge by the
+                    // badge's own padding plus that inset. One item drawn in
+                    // two places rather than two items, which is what keeps a
+                    // row costing one glyph however long the library is.
                     readonly property int badgePad: Math.round((root.coverBadge - width) / 2)
+                                                    + root.coverBadgeInset
                     x: rowItem.hasArt ? parent.width - width - badgePad
                                       : Math.round((parent.width - width) / 2)
                     y: rowItem.hasArt ? parent.height - height - badgePad

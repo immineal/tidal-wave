@@ -178,7 +178,7 @@ Rectangle {
 
                 Repeater {
                     model: [
-                        { kind: "track",    glyph: "music",    label: qsTr("Tracks") },
+                        { kind: "track",    glyph: "track",    label: qsTr("Tracks") },
                         { kind: "album",    glyph: "album",    label: qsTr("Albums") },
                         { kind: "artist",   glyph: "artist",   label: qsTr("Artists") },
                         { kind: "playlist", glyph: "playlist", label: qsTr("Playlists") },

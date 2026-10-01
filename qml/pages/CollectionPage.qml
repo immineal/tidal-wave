@@ -315,7 +315,6 @@ Rectangle {
                 required property int index
 
                 MediaCard {
-                    id: albumCard
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
@@ -323,6 +322,14 @@ Rectangle {
                     coverUrl: modelData.coverUrl
                     mediaType: "album"
                     itemId: "" + modelData.id
+                    // The tile's own menu does the whole job now: Pin, the
+                    // two queue actions and this. There used to be a Menu
+                    // declared under this card that covered the card's, which
+                    // is why an album could not be pinned from Collection at
+                    // all. "Go to album" went with it: that is what clicking
+                    // the tile does.
+                    removeLabel: qsTr("Remove from library")
+                    onRemoveRequested: bridge.removeAlbumFavorite(albumDelegate.modelData.id, function(ok) {})
                     onClicked: navigateTo("album", { albumId: modelData.id })
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
@@ -336,43 +343,6 @@ Rectangle {
                     }
                 }
 
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: albumCtxMenu.popup()
-                }
-                // This menu covers the tile's own, so it repeats the two queue
-                // actions rather than leaving them unreachable here. The work
-                // is the card's either way, so both routes queue the same
-                // tracks and confirm in the same place.
-                Menu {
-                    id: albumCtxMenu
-                    popupType: Popup.Item
-                    implicitWidth: Theme.menuWidth(this)
-                    overlap: 0
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
-                    ContextMenu.Entry {
-                        text: qsTr("Play next", "verb, play this right after the current track")
-                        onTriggered: albumCard.playNext()
-                    }
-                    ContextMenu.Entry {
-                        text: qsTr("Add to queue", "verb, put this at the end of the queue")
-                        onTriggered: albumCard.addToQueue()
-                    }
-                    MenuSeparator {
-                        contentItem: Rectangle { height: 1; color: Theme.border }
-                    }
-                    ContextMenu.Entry {
-                        text: qsTr("Remove from library")
-                        danger: true
-                        iconName: "trash"
-                        onTriggered: bridge.removeAlbumFavorite(albumDelegate.modelData.id, function(ok) {})
-                    }
-                    ContextMenu.Entry {
-                        text: qsTr("Go to album")
-                        onTriggered: navigateTo("album", { albumId: albumDelegate.modelData.id })
-                    }
-                }
             }
 
             ScrollBar.vertical: ScrollBar {
@@ -421,30 +391,12 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "artist"
                     itemId: "" + modelData.id
+                    // As on the album grid: one menu, the tile's own, so Pin
+                    // is reachable here too. An artist is not a tracklist, so
+                    // this one offers Pin and nothing else above the rule.
+                    removeLabel: qsTr("Unfollow artist")
+                    onRemoveRequested: bridge.removeArtistFavorite(artistDelegate.modelData.id, function(ok) {})
                     onClicked: navigateTo("artist", { artistId: modelData.id })
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: artistCtxMenu.popup()
-                }
-                Menu {
-                    id: artistCtxMenu
-                    popupType: Popup.Item
-                    implicitWidth: Theme.menuWidth(this)
-                    overlap: 0
-                    background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
-                    ContextMenu.Entry {
-                        text: qsTr("Unfollow artist")
-                        danger: true
-                        iconName: "trash"
-                        onTriggered: bridge.removeArtistFavorite(artistDelegate.modelData.id, function(ok) {})
-                    }
-                    ContextMenu.Entry {
-                        text: qsTr("Go to artist")
-                        onTriggered: navigateTo("artist", { artistId: artistDelegate.modelData.id })
-                    }
                 }
             }
 
@@ -523,7 +475,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "playlist"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
             }
@@ -590,7 +542,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "mix"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: 13 }
             }
@@ -618,7 +570,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "music"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "album"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }

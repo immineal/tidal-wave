@@ -110,7 +110,9 @@ Rectangle {
                     VectorIcon {
                         visible: mixCover.status !== Image.Ready
                         anchors.centerIn: parent
-                        name: "music"
+                        // The hero knows what page it is; a mix with no
+                        // artwork shows the mix glyph, not a note.
+                        name: "mix"
                         color: Theme.accent
                         width: 64
                         height: 64

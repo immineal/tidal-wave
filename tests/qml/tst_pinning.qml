@@ -199,6 +199,7 @@ TestCase {
         }
     }
 
+    Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: albumC;     AlbumPage    { anchors.fill: parent } }
     Component { id: playlistC;  PlaylistPage { anchors.fill: parent } }
     Component { id: mixC;       MixPage      { anchors.fill: parent } }
@@ -325,6 +326,103 @@ TestCase {
         compare(menu.pinItem.text, qsTr("Unpin"), "the card label must follow the pin state")
         menu.pinItem.triggered()
         verify(!pins.isPinned("album", "42"), "unpinning from a card did not reach PinStore")
+        menu.close()
+    }
+
+    // ── Collection's grids, which could not pin at all ───────────────────
+    //
+    // The album and the artist delegate each declared a right-click MouseArea
+    // *after* the MediaCard, so the tile's own menu never opened and its Pin
+    // entry was unreachable: an album or an artist could be pinned from its
+    // page or from the sidebar, and not from the library view that lists
+    // them. Both bespoke menus are gone and the tiles use the one shared
+    // ContextMenu, which is what these two cases hold in place.
+    //
+    // StubBridge's searchFavoriteAlbums/Artists return nothing, so the page's
+    // filtered lists are written straight onto it. The tab is set first:
+    // changing it is what calls updateFilteredContent(), which would wipe
+    // them.
+    function makeCollection(host, tab, items) {
+        var page = createTemporaryObject(collectionC, host.pane)
+        verify(page, "CollectionPage was not created")
+        page.activeTab = tab
+        if (tab === 1) page.filteredAlbums  = items
+        else           page.filteredArtists = items
+        settle(host.contentItem)
+        return page
+    }
+
+    // The tiles on the page, found through the right-click area every
+    // MediaCard declares; its parent is the card.
+    function cardsOn(page) {
+        var areas = collectVisibleByName(page, "cardMenuArea", [])
+        var out = []
+        for (var i = 0; i < areas.length; ++i) out.push(areas[i].parent)
+        return out
+    }
+
+    function test_collection_album_grid_can_pin() {
+        var host = showHost(1280)
+        var page = makeCollection(host, 1, [
+            { id: 42, title: "Fever Dream", artists: "The Band", coverUrl: "cdn/42.jpg" }
+        ])
+        var cards = cardsOn(page)
+        compare(cards.length, 1, "the albums grid drew no tile")
+
+        rightClickItem(host, cards[0])
+        var menu = cards[0].pinMenu
+        tryVerify(function () { return menu.visible }, 2000,
+                  "right-clicking an album in Collection opens no menu")
+        verify(menu.pinItem.visible, "the album tile offers no Pin entry")
+        compare(menu.pinItem.text, qsTr("Pin", "verb, pin to the sidebar"))
+
+        menu.pinItem.triggered()
+        verify(pins.isPinned("album", "42"),
+               "pinning an album from Collection did not reach PinStore")
+        compare(pins.items[0].title, "Fever Dream")
+        menu.close()
+
+        // And the rest of the one menu is here too, destructive entry last
+        // and the only row carrying a mark.
+        rightClickItem(host, cards[0])
+        tryVerify(function () { return menu.visible }, 2000, "the menu did not reopen")
+        compare(menu.pinItem.text, qsTr("Unpin"), "the label must follow the pin state")
+        verify(menu.playNextItem.visible, "an album tile must still offer Play next")
+        verify(menu.addToQueueItem.visible, "an album tile must still offer Add to queue")
+        compare(menu.removeItem.text, qsTr("Remove from library"))
+        verify(menu.removeItem.danger, "removing from the library is destructive")
+        compare(menu.removeItem.iconName, "trash")
+        verify(!menu.pinItem.danger && menu.pinItem.iconName === "",
+               "only the destructive entry carries a mark")
+        menu.close()
+    }
+
+    function test_collection_artist_grid_can_pin() {
+        var host = showHost(1280)
+        var page = makeCollection(host, 2, [
+            { id: 7, name: "Boards of Canada", coverUrl: "cdn/7.jpg" }
+        ])
+        var cards = cardsOn(page)
+        compare(cards.length, 1, "the artists grid drew no tile")
+
+        rightClickItem(host, cards[0])
+        var menu = cards[0].pinMenu
+        tryVerify(function () { return menu.visible }, 2000,
+                  "right-clicking an artist in Collection opens no menu")
+        verify(menu.pinItem.visible, "the artist tile offers no Pin entry")
+        menu.pinItem.triggered()
+        verify(pins.isPinned("artist", "7"),
+               "pinning an artist from Collection did not reach PinStore")
+        menu.close()
+
+        rightClickItem(host, cards[0])
+        tryVerify(function () { return menu.visible }, 2000, "the menu did not reopen")
+        compare(menu.removeItem.text, qsTr("Unfollow artist"))
+        verify(menu.removeItem.danger)
+        // An artist is not a tracklist: "queue this artist" has no honest
+        // meaning, so those two rows stay away.
+        verify(!menu.playNextItem.visible, "an artist tile should offer no Play next")
+        verify(!menu.addToQueueItem.visible, "an artist tile should offer no Add to queue")
         menu.close()
     }
 

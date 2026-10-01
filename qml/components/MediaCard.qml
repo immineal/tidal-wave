@@ -26,6 +26,22 @@ Item {
 
     readonly property alias pinMenu: cardMenu
 
+    // The destructive entry on the tile's own menu, if the host offers one.
+    // Empty on most pages: a tile in a search result or a home row is not
+    // something you remove. Collection's grids set it, which is how an album
+    // leaves the library and an artist is unfollowed without a second menu
+    // laid over this one. See ContextMenu.removeLabel.
+    property string removeLabel: ""
+    signal removeRequested()
+
+    // The mark where there is no cover. A tile always knows what it is
+    // standing for, so it falls back to that kind's own glyph: an album
+    // shows a record, a playlist a list, a mix its rings. It used to show a
+    // note on all four, which said "music" and nothing else.
+    readonly property string placeholderGlyph:
+        (mediaType === "album" || mediaType === "artist"
+         || mediaType === "playlist" || mediaType === "mix") ? mediaType : "track"
+
     // ── queueing ───────────────────────────────────────────────────────
     // The three kinds that ARE a tracklist. An artist is not one: "queue this
     // artist" has no honest meaning, and the only list available is their top
@@ -45,12 +61,6 @@ Item {
         else if (mediaType === "playlist") bridge.fetchPlaylistTracks(itemId, done)
         else if (mediaType === "mix")      bridge.fetchMixTracks(itemId, done)
     }
-
-    // Offered on the tile's own menu below, and callable from a host that
-    // covers the tile with a menu of its own (CollectionPage's album grid),
-    // so both routes queue the same thing and confirm the same way.
-    function playNext()   { cardMenu.playNext() }
-    function addToQueue() { cardMenu.addToQueue() }
 
     // What shows through where a round tile's artwork is cut away. It has to be
     // whatever the card is sitting on; every page that shows cards is a
@@ -147,7 +157,7 @@ Item {
         VectorIcon {
             visible: root.coverUrl.length === 0 || img.status === Image.Error
             anchors.centerIn: parent
-            name: mediaType === "artist" ? "artist" : "music"
+            name: root.placeholderGlyph
             color: Theme.textDim
             width: 48
             height: 48
@@ -266,5 +276,7 @@ Item {
         // The tile has room above it on every page that shows one, and the
         // confirmation belongs next to the thing it is about.
         confirmAnchor: root
+        removeLabel: root.removeLabel
+        onRemoveRequested: root.removeRequested()
     }
 }

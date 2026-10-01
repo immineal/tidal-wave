@@ -144,7 +144,9 @@ Rectangle {
                     VectorIcon {
                         visible: !playlistCover.visible && !collageGrid.visible
                         anchors.centerIn: parent
-                        name: "music"
+                        // As on MixPage: the type's own glyph where there is
+                        // neither a cover nor four tracks to collage.
+                        name: "playlist"
                         color: Theme.accent
                         width: 64
                         height: 64

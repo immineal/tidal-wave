@@ -307,8 +307,11 @@ TestCase {
         verify(btn.x >= 0, "queue button starts left of the bar")
     }
 
-    // Below the breakpoint the slider and the cast button go, so the transport
-    // and the track info keep their space.
+    // Below the breakpoint the slider goes, so the transport and the track
+    // info keep their space. The output button does not go with it: it is
+    // what says where the sound is, and hiding it on a narrow window is
+    // hiding exactly the thing that has to be true at a glance. Hover brings
+    // the slider back (tst_output_picker.qml), so nothing is unreachable.
     function test_player_bar_sheds_controls_when_narrow_data() { return sizeRows() }
 
     function test_player_bar_sheds_controls_when_narrow(row) {
@@ -317,6 +320,9 @@ TestCase {
         compare(bar.compactRight, row.w < bar.compactRightBreakpoint,
                 "compact right group should follow the bar width")
         compare(bar.volumeSlider.visible, !bar.compactRight, "volume slider visibility")
+        verify(bar.outputButton.visible,
+               "the output button must be on screen at " + row.tag)
+        verify(bar.volumeButton.visible, "muting must stay reachable at " + row.tag)
     }
 
     // ── queue panel ──────────────────────────────────────────────────────

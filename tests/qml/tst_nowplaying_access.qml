@@ -237,16 +237,45 @@ TestCase {
         verify(btn.width >= 24 && btn.height >= 24,
                "the button is " + btn.width + "x" + btn.height + ", too small to aim at")
 
-        // It has to be absorbed by the space the left group already had. The
-        // row layout shares what is left over between the three groups from
-        // their declared widths, so the moment the left group asks for more
-        // than its long-standing 280 the transport slides right.
+        // It is not in the track info group any more. It sat beside Like,
+        // which acts on the track, while this opens a view; it belongs with
+        // the queue button, which is the other control that opens one. The
+        // left group's declared widths have not moved, so the transport is
+        // still where it was.
         var group = bar.trackInfoGroup
         compare(group.Layout.preferredWidth, 280,
-                "the left group asked for more room to fit the button in")
+                "the left group's preferred width moved")
         compare(group.Layout.minimumWidth, 200, "the left group's floor moved")
-        verify(rightEdgeIn(btn, group) <= group.width + 0.5,
-               "the button hangs off the right of the left group at " + row.tag)
+        var p = btn.parent
+        while (p) {
+            verify(p !== group,
+                   "the Now Playing button is still inside the track info group at " + row.tag)
+            p = p.parent
+        }
+    }
+
+    // Where it is now: immediately left of the queue button, at every width.
+    function test_bar_button_sits_left_of_the_queue_button_data() { return widthRows() }
+
+    function test_bar_button_sits_left_of_the_queue_button(row) {
+        var host = showHost(playerBarHost, row.w, 200)
+        var bar = host.bar
+        var arrow = bar.nowPlayingButton
+        var queue = bar.queueButton
+        verify(arrow.visible && queue.visible, "both controls have to be on screen")
+
+        var arrowRight = rightEdgeIn(arrow, bar)
+        var queueLeft  = queue.mapToItem(bar, 0, 0).x
+        verify(arrowRight <= queueLeft + 0.5,
+               "the arrow ends at " + arrowRight.toFixed(1)
+               + " but the queue button starts at " + queueLeft.toFixed(1)
+               + " at " + row.tag)
+
+        // Grouped, not merely ordered: nothing of the bar's own may sit
+        // between them. The gap is the right group's 8px spacing.
+        verify(queueLeft - arrowRight <= 12,
+               "there are " + (queueLeft - arrowRight).toFixed(1)
+               + "px between the arrow and the queue button at " + row.tag)
     }
 
     function test_bar_button_opens_now_playing() {
