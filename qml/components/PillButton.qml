@@ -11,10 +11,17 @@ Item {
     property string glyph: ""
     property bool   accent: true
 
+    // Sized to its label instead of the old fixed 120. German runs long on
+    // exactly these words ("Shuffle" becomes "Zufallswiedergabe"), and at 120
+    // the label was simply cut. The minimum keeps a short label from
+    // collapsing to a stub, so a row of pills still reads as a row.
+    readonly property int hPadding: 18
+    readonly property int minWidth: 96
+
     signal clicked()
 
-    width: 120
-    height: 40
+    implicitWidth: Math.max(minWidth, content.implicitWidth + 2 * hPadding)
+    implicitHeight: 40
     activeFocusOnTab: true
 
     Rectangle {
@@ -25,6 +32,7 @@ Item {
         border.color: root.activeFocus ? Theme.accent : Theme.border
 
         Row {
+            id: content
             anchors.centerIn: parent
             spacing: 8
             VectorIcon {
@@ -42,7 +50,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.glyph !== ""
             }
-            Text { text: root.text;  color: root.accent ? Theme.onAccent : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
+            Text { objectName: "pillLabel"; text: root.text;  color: root.accent ? Theme.onAccent : Theme.textPrimary; font.pixelSize: 14; font.bold: root.accent; anchors.verticalCenter: parent.verticalCenter }
         }
 
         HoverHandler { cursorShape: Qt.PointingHandCursor }

@@ -238,11 +238,20 @@ Rectangle {
         }
     }
 
+    // The settings popup, exposed so tests/qml/tst_layout_player.qml can measure
+    // it. Nothing else reads it.
+    readonly property alias settingsPanel: settingsPopup
+
     Popup {
         id: settingsPopup
         anchors.centerIn: Overlay.overlay
-        width: 480
-        height: 640
+        // 480x640 fixed did not fit its own window: the window minimum is 600
+        // tall, so the popup was 40px taller than the smallest window it can
+        // appear in. Clamp to the overlay with 32px of breathing room on every
+        // side (SPEC L10); the ScrollView below already scrolls what is left
+        // over. `parent` here is Overlay.overlay, courtesy of anchors.centerIn.
+        width:  Math.min(480, (parent ? parent.width  : 480) - 64)
+        height: Math.min(640, (parent ? parent.height : 640) - 64)
         modal: true
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside

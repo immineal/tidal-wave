@@ -11,9 +11,28 @@ Item {
     property string  title: ""
     property string  subtitle: ""
     property var     items: []         // [{coverUrl, title, subtitle, id, type}]
-    property int     cardSize: 160
     property string  mediaType: "album"
     property bool    showViewAll: true
+
+    // Card size is derived from the row width so the row always ends on a
+    // deliberate sliver of the next card: that sliver is the only thing
+    // telling you the row scrolls, since the scrollbar is hidden until hover.
+    // A fixed 160 ended wherever it happened to end - sometimes on a whole
+    // card, which reads as "that is all there is", sometimes on a 3px edge.
+    readonly property int  cardTarget: 160    // the size the cards were drawn at
+    readonly property int  cardMin: 128
+    readonly property int  cardMax: 200
+    readonly property real peek: 0.4          // of a card, left showing at the right edge
+    readonly property int  listSpacing: 16
+    readonly property int  edgeInset: 24      // the leading inset, as list header/footer
+
+    readonly property real rowSpace: Math.max(0, width - edgeInset)
+    // Whole cards that fit once the peek has taken its share
+    readonly property int  cardsPerRow: Math.max(1, Math.round(
+        (rowSpace - peek * cardTarget) / (cardTarget + listSpacing)))
+    // n cards + n gaps + the peek fill the row exactly
+    property int cardSize: Math.max(cardMin, Math.min(cardMax, Math.round(
+        (rowSpace - listSpacing * cardsPerRow) / (cardsPerRow + peek))))
 
     signal itemClicked(int index, var item)
     signal itemPlayClicked(int index, var item)
@@ -74,18 +93,19 @@ Item {
 
             ListView {
                 id: hlist
+                objectName: "sectionList"
                 anchors { left: parent.left; right: parent.right; top: parent.top }
                 height: cardSize + 64
                 orientation: ListView.Horizontal
                 clip: true
-                spacing: 16
+                spacing: root.listSpacing
                 // Leading/trailing inset as real content (header/footer) rather than
                 // leftMargin/rightMargin: with margins the rest position is contentX
                 // = -leftMargin, which the wheel handler (clamped to >= 0) can't reach,
                 // so the inset was lost after scrolling right and back. As content the
                 // inset lives in [0, contentWidth-width] and is always preserved.
-                header: Item { width: 24; height: 1 }
-                footer: Item { width: 24; height: 1 }
+                header: Item { width: root.edgeInset; height: 1 }
+                footer: Item { width: root.edgeInset; height: 1 }
                 model: root.items
                 interactive: false  // let parent page handle wheel; users drag the scrollbar
 

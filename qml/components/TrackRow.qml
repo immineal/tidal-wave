@@ -28,6 +28,20 @@ Item {
     property string dlState: "idle"
     property string dlError: ""
 
+    // Column breakpoints, measured against the row's own width rather than the
+    // window's: the row is handed the list width less an inset, and the sidebar
+    // has already taken its share. The fixed columns add up to 472px with every
+    // one of them on, so at a 640px row the title and artist line are down to
+    // ~168px: the 160px album column is the first thing not worth its space.
+    // Dropping it leaves 312px of fixed columns, and popularity goes at 560,
+    // which keeps the title above 250px all the way down.
+    readonly property int albumBreakpoint: 640
+    readonly property int popularityBreakpoint: 560
+
+    // Reads the row's hover state from outside, e.g. so a layout test can
+    // check the title does not move when the pointer enters.
+    readonly property alias hovered: hov.hovered
+
     Connections {
         target: bridge
         function onFavoriteTracksChanged() {
@@ -149,6 +163,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 3
                 Text {
+                    objectName: "trackTitle"
                     Layout.fillWidth: true
                     text: root.title
                     color: isPlaying ? Theme.accent : Theme.textPrimary
@@ -164,9 +179,11 @@ Item {
                 }
             }
 
-            // Album
+            // Album, the widest fixed column and the first to go when the row
+            // gets narrow
             Text {
-                visible: showAlbum
+                objectName: "trackAlbumColumn"
+                visible: showAlbum && root.width >= root.albumBreakpoint
                 Layout.preferredWidth: 160
                 text: root.albumTitle
                 color: Theme.textSec
@@ -186,7 +203,9 @@ Item {
             // Popularity, shown only when showPopularity is true (Search page)
             Text {
                 id: popText
-                visible: root.showPopularity && root.trackData && root.trackData.popularity > 0
+                objectName: "trackPopularityColumn"
+                visible: root.showPopularity && root.width >= root.popularityBreakpoint
+                         && root.trackData && root.trackData.popularity > 0
                 text: root.trackData
                       ? qsTr("%1%").arg(Number(root.trackData.popularity).toLocaleString(Qt.locale(), 'f', 0))
                       : ""
@@ -200,10 +219,14 @@ Item {
                 HoverHandler { id: popHov }
             }
 
-            // Download button, revealed on hover; stays visible while busy/done/error
+            // Download button, revealed on hover; stays shown while busy/done/error.
+            // The slot itself is always laid out: taking it out of the row when
+            // the pointer left re-flowed the row and made the title jump under
+            // the cursor, so only the glyphs fade.
             Item {
                 id: dlButton
-                visible: hov.hovered || root.dlState !== "idle"
+                readonly property bool shown: hov.hovered || root.dlState !== "idle"
+                opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
                 Layout.fillHeight: true
                 Layout.alignment: Qt.AlignVCenter
@@ -254,7 +277,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
-                    enabled: root.dlState !== "busy"
+                    enabled: dlButton.shown && root.dlState !== "busy"
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (root.trackData && root.dlState !== "busy")
@@ -263,9 +286,11 @@ Item {
                 }
             }
 
-            // Context menu button
+            // Context menu button, same reserved slot as the download button
             Item {
-                visible: hov.hovered
+                id: menuButton
+                readonly property bool shown: hov.hovered
+                opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
                 Layout.fillHeight: true
                 Layout.alignment: Qt.AlignVCenter
@@ -279,6 +304,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
+                    enabled: menuButton.shown
                     cursorShape: Qt.PointingHandCursor
                     onClicked: (m) => {
                         root.menuRequested(m.x, m.y)

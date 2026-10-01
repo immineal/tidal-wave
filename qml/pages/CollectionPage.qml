@@ -18,6 +18,19 @@ Rectangle {
     property bool loading:  false
     property int  sortMode: 0  // 0=default, 1=A-Z, 2=Z-A
 
+    // Grid metrics. The cell was a fixed 184, which against the 740px pane this
+    // page gets at a 960px window left 3 cells and 140px of ragged gutter. The
+    // cells now split the pane evenly: pick the column count that lands nearest
+    // the 184 the cards were drawn at, then share the width out between them.
+    readonly property int gridTargetCell: 184
+    readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
+    readonly property int gridGutter: 24     // breathing room inside a cell
+    function gridColumns(avail) {
+        var n = Math.max(1, Math.round(avail / gridTargetCell))
+        while (n > 1 && avail / n < gridMinCell) n--
+        return n
+    }
+
     onActiveTabChanged: {
         updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
@@ -65,14 +78,16 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Item { height: 24 }
+        // A ColumnLayout reads Layout.preferredHeight, not a plain height, so
+        // these spacers have to declare it or they collapse to nothing.
+        Item { Layout.preferredHeight: 24 }
         Text {
             Layout.leftMargin: 24
             text: qsTr("My Collection")
             color: Theme.textPrimary
             font.pixelSize: 28; font.bold: true
         }
-        Item { height: 16 }
+        Item { Layout.preferredHeight: 16 }
 
         RowLayout {
             Layout.fillWidth: true
@@ -80,7 +95,15 @@ Rectangle {
             Layout.rightMargin: 24
             spacing: 16
 
-            Row {
+            // A Flow, not a Row: five tab labels plus their counts come to ~526px
+            // in English and more in German, which is already more than the
+            // pane has at 640. They wrap to a second line instead of running
+            // off the edge, and the sort pills stay on the right.
+            Flow {
+                id: tabsRow
+                objectName: "collectionTabsRow"
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
                 spacing: 4
                 Repeater {
                     model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
@@ -115,10 +138,9 @@ Rectangle {
                 }
             }
 
-            Item { Layout.fillWidth: true }
-
             Row {
                 visible: root.activeTab < 4
+                Layout.alignment: Qt.AlignVCenter
                 spacing: 4
                 Repeater {
                     model: [qsTr("Default"), qsTr("A→Z"), qsTr("Z→A")]
@@ -141,24 +163,31 @@ Rectangle {
                     }
                 }
             }
+        }
 
-            Item { width: 4 }
+        Item { Layout.preferredHeight: 10 }
 
-            SearchBar {
-                id: collectionSearch
-                // A whole phrase per tab: German cannot take "Search saved " + a noun
-                placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
-                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
-                             ][root.activeTab] || qsTr("Search saved items…")
-                Layout.preferredWidth: 220
-                Layout.preferredHeight: 36
-                onTextEdited: (txt) => {
-                    root.searchPattern = txt
-                    root.updateFilteredContent()
-                }
+        // The field gets its own row. On one row with the tabs and the sort
+        // pills the header needed ~1083px against a 740px pane, so it
+        // overflowed at every width the app actually runs at.
+        SearchBar {
+            id: collectionSearch
+            objectName: "collectionSearch"
+            // A whole phrase per tab: German cannot take "Search saved " + a noun
+            placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
+                          qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                         ][root.activeTab] || qsTr("Search saved items…")
+            Layout.fillWidth: true
+            Layout.leftMargin: 24
+            Layout.rightMargin: 24
+            Layout.preferredHeight: 36
+            onTextEdited: (txt) => {
+                root.searchPattern = txt
+                root.updateFilteredContent()
             }
         }
-        Item { height: 16 }
+
+        Item { Layout.preferredHeight: 16 }
 
         // Tracks Tab: virtualized ListView
         ListView {
@@ -197,14 +226,17 @@ Rectangle {
         // Tab 1: Albums Tab (virtualized GridView)
         GridView {
             id: albumsGrid
+            objectName: "collectionAlbumsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 1
             clip: true
             property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
             model: root.activeTab === 1 ? sortedAlbums : []
-            cellWidth: 184
-            cellHeight: 232
+            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
+            readonly property int columns: root.gridColumns(availWidth)
+            cellWidth: Math.floor(availWidth / columns)
+            cellHeight: cellWidth + 48
             leftMargin: 24
             rightMargin: 24
             topMargin: 16
@@ -212,13 +244,14 @@ Rectangle {
 
             delegate: Item {
                 id: albumDelegate
-                width: 184
-                height: 232
+                width: albumsGrid.cellWidth
+                height: albumsGrid.cellHeight
                 required property var modelData
                 required property int index
 
                 MediaCard {
                     anchors.centerIn: parent
+                    cardSize: albumsGrid.cellWidth - root.gridGutter
                     title: modelData.title
                     subtitle: modelData.artists
                     coverUrl: modelData.coverUrl
@@ -269,8 +302,10 @@ Rectangle {
             clip: true
             property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
             model: root.activeTab === 2 ? sortedArtists : []
-            cellWidth: 184
-            cellHeight: 232
+            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
+            readonly property int columns: root.gridColumns(availWidth)
+            cellWidth: Math.floor(availWidth / columns)
+            cellHeight: cellWidth + 48
             leftMargin: 24
             rightMargin: 24
             topMargin: 16
@@ -278,13 +313,14 @@ Rectangle {
 
             delegate: Item {
                 id: artistDelegate
-                width: 184
-                height: 232
+                width: artistsGrid.cellWidth
+                height: artistsGrid.cellHeight
                 required property var modelData
                 required property int index
 
                 MediaCard {
                     anchors.centerIn: parent
+                    cardSize: artistsGrid.cellWidth - root.gridGutter
                     title: modelData.name
                     subtitle: qsTr("Artist")
                     coverUrl: modelData.coverUrl || ""
@@ -329,18 +365,21 @@ Rectangle {
             visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
             clip: true
             model: root.activeTab === 3 ? root.filteredPlaylists : []
-            cellWidth: 184
-            cellHeight: 232
+            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
+            readonly property int columns: root.gridColumns(availWidth)
+            cellWidth: Math.floor(availWidth / columns)
+            cellHeight: cellWidth + 48
             leftMargin: 24
             rightMargin: 24
             topMargin: 16
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
-                width: 184
-                height: 232
+                width: playlistsGrid.cellWidth
+                height: playlistsGrid.cellHeight
                 MediaCard {
                     anchors.centerIn: parent
+                    cardSize: playlistsGrid.cellWidth - root.gridGutter
                     title: modelData.title
                     subtitle: qsTr("%n track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
@@ -390,18 +429,21 @@ Rectangle {
             visible: root.activeTab === 4 && root.mixes.length > 0
             clip: true
             model: root.activeTab === 4 ? root.mixes : []
-            cellWidth: 184
-            cellHeight: 232
+            readonly property int availWidth: Math.max(0, width - leftMargin - rightMargin)
+            readonly property int columns: root.gridColumns(availWidth)
+            cellWidth: Math.floor(availWidth / columns)
+            cellHeight: cellWidth + 48
             leftMargin: 24
             rightMargin: 24
             topMargin: 16
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
-                width: 184
-                height: 232
+                width: mixesGrid.cellWidth
+                height: mixesGrid.cellHeight
                 MediaCard {
                     anchors.centerIn: parent
+                    cardSize: mixesGrid.cellWidth - root.gridGutter
                     title: modelData.title
                     subtitle: modelData.subtitle || ""
                     coverUrl: modelData.coverUrl || ""

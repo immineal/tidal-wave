@@ -39,7 +39,10 @@ Rectangle {
 
         header: Rectangle {
             width: tracksList.width
-            height: 240
+            // Grows with its content rather than sitting at a fixed 240: a
+            // wrapped title or a wrapped pill row used to be cut off at the
+            // bottom edge.
+            implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
             color: "transparent"
 
             Rectangle {
@@ -51,9 +54,12 @@ Rectangle {
             }
 
             RowLayout {
-                anchors.fill: parent
-                anchors.margins: 24
-                anchors.leftMargin: 64
+                id: heroRow
+                anchors {
+                    left: parent.left; right: parent.right
+                    verticalCenter: parent.verticalCenter
+                    leftMargin: 64; rightMargin: 24
+                }
                 spacing: 24
 
                 Rectangle {
@@ -114,7 +120,11 @@ Rectangle {
                         wrapMode: Text.WordWrap
                     }
 
-                    Row {
+                    // A Flow, so the pills wrap instead of pushing the
+                    // column past the hero's right edge once a German label
+                    // makes them wider.
+                    Flow {
+                        Layout.fillWidth: true
                         spacing: 12
 
                         PillButton {
