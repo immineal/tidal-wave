@@ -1,7 +1,6 @@
 #include "ThemePalette.h"
 #include "Prefs.h"
 
-#include <QCoreApplication>
 #include <QHash>
 #include <QMetaProperty>
 
@@ -13,7 +12,7 @@ namespace {
 // fewer hex codes to get wrong.
 struct Spec {
     const char *name;
-    const char *label;   // translated through QT_TRANSLATE_NOOP below
+    const char *label;   // a product name, shown as written in every language
     bool        dark;
     const char *bg;
     const char *surface;
@@ -36,15 +35,22 @@ struct Spec {
     const char *green;
 };
 
-// Three dark, three light, paired by hue: Midnight with Daylight (blue),
-// Forest with Paper (green), Ember with Dawn (amber). Settings lays the two
-// lists out as columns and relies on that order, so a theme inserted here
-// moves a row in the picker.
+// Three dark, three light, paired by hue: Sea with Sky (blue), Pine with Sand
+// (green), Rust with Clay (amber). Settings lays the two lists out as columns
+// and relies on that order, so a theme inserted here moves a row in the picker.
 //
-// "Forest" stands where a violet "Graphite" was drafted; the user asked for a
+// Each name is one ordinary thing of roughly that colour, and nothing more.
+// The picker is already a grid with a Dark column and a Light column, so the
+// names these replaced - Midnight, Daylight, Forest, Paper, Ember, Dawn - were
+// either repeating the column heading or reading as a set of times of day. The
+// labels are also not translated: they are product names, so the German build
+// shows the same six words, which is why there is no QT_TRANSLATE_NOOP here
+// and no entry for them in i18n/tidal-wave_de.ts.
+//
+// "Pine" stands where a violet "Graphite" was drafted; the user asked for a
 // green one instead. A teal "Deep" stood where the OLED switch now is: it was
-// Midnight with its grounds pulled to black, which is a treatment rather than
-// a palette, so it became one - see kOled* below.
+// the blue dark theme with its grounds pulled to black, which is a treatment
+// rather than a palette, so it became one - see kOled* below.
 //
 // accentInk and redInk are white in all six. They were a near-black on the
 // dark themes, because white on those bright accents measured 1.8-2.6:1 and
@@ -54,9 +60,9 @@ struct Spec {
 // bg, surface and surfaceHigh at 3:1. Those two pull against each other and
 // leave a relative luminance band of roughly 0.15 to 0.18 on the dark themes,
 // which is why the dark accents are so much deeper than they were. The hue of
-// each is untouched, so Midnight is still azure, Forest green and Ember
-// orange, and the light themes did not have to move at all: their accents
-// were already deep enough.
+// each is untouched, so Sea is still azure, Pine green and Rust orange, and
+// the light themes did not have to move at all: their accents were already
+// deep enough.
 //
 // Two columns were moved after a screenshot audit, and both are load-bearing:
 //
@@ -69,44 +75,44 @@ struct Spec {
 //              item. At 1.27-1.42:1 against the page you could not tell a
 //              hovered row from its neighbours; it is ~1.69:1 now.
 const Spec kSpecs[] = {
-    { "midnight", QT_TRANSLATE_NOOP("Theme", "Midnight"), true,
+    { "sea",  "Sea",  true,
       "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A", 26,
       "#FFFFFF", "#A0A0A0", "#6B6B6B",
       "#0079A8", "#005A7D", "#FFFFFF",
       "#D82C2C", "#FFFFFF", "#1DB954" },
 
-    { "forest",   QT_TRANSLATE_NOOP("Theme", "Forest"),   true,
+    { "pine", "Pine", true,
       "#0B0F0C", "#141A16", "#1C241E", "#323C34", "#29332B", 26,
       "#EEF5F0", "#94A69B", "#637269",
       "#18814E", "#105F39", "#FFFFFF",
       "#D23535", "#FFFFFF", "#4ADE80" },
 
-    { "ember",    QT_TRANSLATE_NOOP("Theme", "Ember"),    true,
+    { "rust", "Rust", true,
       "#100D0C", "#1A1614", "#241F1C", "#3E3836", "#332C28", 26,
       "#F7F2EF", "#A89C95", "#736B66",
       "#C14A18", "#93340C", "#FFFFFF",
       "#CF3939", "#FFFFFF", "#5FBF7A" },
 
-    { "daylight", QT_TRANSLATE_NOOP("Theme", "Daylight"), false,
+    { "sky",  "Sky",  false,
       "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
       "#08111A", "#4C5A66", "#798591",
       "#0A6FC4", "#08528F", "#FFFFFF",
       "#C0392B", "#FFFFFF", "#1B7F4B" },
 
-    { "paper",    QT_TRANSLATE_NOOP("Theme", "Paper"),    false,
+    { "sand", "Sand", false,
       "#FAF7F0", "#F1EBDC", "#E7DFCB", "#CAC0AA", "#CBC0A6", 26,
       "#1B1913", "#5D564A", "#837B6C",
       "#2F6F4E", "#22543A", "#FFFFFF",
       "#A8342A", "#FFFFFF", "#4F7A35" },
 
-    // Ember's light partner, and the one palette on this list that is new.
-    // Paper already owns warm-and-quiet, so Dawn is warm-and-crisp instead:
+    // Rust's light partner, and the one palette on this list that is new.
+    // Sand already owns warm-and-quiet, so Clay is warm-and-crisp instead:
     // the grounds are peach rather than cream (R leads G by 8-29 and G leads
-    // B by only 6-20, where Paper has that the other way round and reads
-    // yellow), the ramp steps further per level, and the accent is Ember's
-    // burnt orange rather than Paper's green. Side by side the two never read
+    // B by only 6-20, where Sand has that the other way round and reads
+    // yellow), the ramp steps further per level, and the accent is Rust's
+    // burnt orange rather than Sand's green. Side by side the two never read
     // as the same idea even though both are warm.
-    { "dawn",     QT_TRANSLATE_NOOP("Theme", "Dawn"),     false,
+    { "clay", "Clay", false,
       "#FFF7F1", "#FAEBE1", "#F3DDCE", "#D7BAA6", "#E8D0BE", 26,
       "#241510", "#6E4F3E", "#96705D",
       "#B4481C", "#8A3310", "#FFFFFF",
@@ -122,11 +128,11 @@ QColor withAlpha(const QColor &c, double a) {
 // ── the pure-black transform ─────────────────────────────────────────────
 //
 // What the retired "Deep" palette was, as an operation any dark theme can
-// take. Deep was Midnight with its grounds pulled down, and these factors are
-// the ratios it sat at, rounded: 12/20, 22/30, 36/42 and 52/56. Scaling each
-// channel rather than subtracting a constant is what keeps the tint - Forest
-// stays green down there and Ember stays warm, which a flat subtraction would
-// have bleached out.
+// take. Deep was the blue dark theme with its grounds pulled down, and these
+// factors are the ratios it sat at, rounded: 12/20, 22/30, 36/42 and 52/56.
+// Scaling each channel rather than subtracting a constant is what keeps the
+// tint - Pine stays green down there and Rust stays warm, which a flat
+// subtraction would have bleached out.
 //
 // They are not one number because the ramp has to survive being compressed.
 // bg goes all the way to black, and if the rest followed it that far the
@@ -243,7 +249,7 @@ QList<ThemeInfo> themes() {
     out.reserve(int(std::size(kSpecs)));
     for (const Spec &s : kSpecs) {
         out.append({QString::fromLatin1(s.name),
-                    QCoreApplication::translate("Theme", s.label),
+                    QString::fromLatin1(s.label),
                     s.dark});
     }
     return out;
@@ -255,16 +261,37 @@ bool isKnown(const QString &name) {
     return false;
 }
 
-// Midnight with the pure-black switch on, which is byte for byte what the
-// user was running when Deep was still a palette of its own.
-QString defaultTheme()   { return QStringLiteral("midnight"); }
+// Sea with the pure-black switch on, which is byte for byte what the user was
+// running when Deep was still a palette of its own.
+QString defaultTheme()   { return QStringLiteral("sea"); }
 bool    defaultOledBlack() { return true; }
 
 bool migrated(const QString &stored, QString *theme, bool *oledBlack) {
-    // "deep" was Midnight pulled to black, so that is where it lands: anyone
-    // who was on it sees the same app after the update, not a lighter one.
+    // The rename, kept in this file rather than in Prefs because kSpecs above
+    // is what these old names are being migrated *to*: rename a palette up
+    // there and this is the table that has to gain a row, and nothing in the
+    // compiler will say so. A rename carries no change of look, so the
+    // pure-black switch is left exactly as the user had it.
+    static const QHash<QString, QString> renamed = {
+        {QStringLiteral("midnight"), QStringLiteral("sea")},
+        {QStringLiteral("forest"),   QStringLiteral("pine")},
+        {QStringLiteral("ember"),    QStringLiteral("rust")},
+        {QStringLiteral("daylight"), QStringLiteral("sky")},
+        {QStringLiteral("paper"),    QStringLiteral("sand")},
+        {QStringLiteral("dawn"),     QStringLiteral("clay")},
+    };
+    const auto it = renamed.constFind(stored);
+    if (it != renamed.cend()) {
+        if (theme) *theme = *it;
+        return true;
+    }
+
+    // "deep" is the one key that is not a rename: it was a palette in its own
+    // right, the blue dark one with its grounds already pulled to black,
+    // before that treatment became a switch. It lands on "sea" with the switch
+    // forced on, which is byte for byte what it painted.
     if (stored != QLatin1String("deep")) return false;
-    if (theme)     *theme     = QStringLiteral("midnight");
+    if (theme)     *theme     = QStringLiteral("sea");
     if (oledBlack) *oledBlack = true;
     return true;
 }
@@ -283,7 +310,7 @@ QVariantMap palette(const QString &name, bool oledBlack) {
         QHash<QString, QVariantMap> out;
         // Light themes have no black variant, so they are absent here and the
         // lookup below falls back to the plain one. That is the whole of
-        // "the switch does nothing on Daylight".
+        // "the switch does nothing on Sky".
         for (const Spec &s : kSpecs)
             if (s.dark) out.insert(QString::fromLatin1(s.name), build(s, true));
         return out;

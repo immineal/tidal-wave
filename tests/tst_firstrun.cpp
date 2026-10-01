@@ -68,6 +68,20 @@ QString describe(const QList<QQmlError> &errors) {
     return lines.join(QLatin1Char('\n'));
 }
 
+// The same version guard Application::run() carries, in one place so the two
+// cannot drift: QQmlApplicationEngine::loadFromModule() arrived in Qt 6.5, and
+// without this a tests build on Debian bookworm's Qt 6.4.2 fails here even
+// though the app itself now builds there. The URL is the module's root
+// component reached the long way round; the reasoning for the prefix and the
+// "qml/" segment is written out at the call site in Application.cpp.
+void loadMain(QQmlApplicationEngine &engine) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    engine.loadFromModule("TidalWave", "Main");
+#else
+    engine.load(QUrl(QStringLiteral("qrc:/TidalWave/qml/Main.qml")));
+#endif
+}
+
 } // namespace
 
 class TestFirstRun : public QObject {
@@ -104,7 +118,7 @@ private slots:
         // Application::run() does this before the first QML file binds Theme.*.
         ThemePalette::instance()->setPrefs(prefs);
 
-        engine.loadFromModule("TidalWave", "Main");
+        loadMain(engine);
         QVERIFY2(!engine.rootObjects().isEmpty(),
                  qPrintable(QStringLiteral("Main.qml produced no root object:\n%1")
                             .arg(describe(warnings))));
@@ -166,7 +180,7 @@ private slots:
         engine.rootContext()->setContextProperty(QStringLiteral("prefs"), prefs);
         ThemePalette::instance()->setPrefs(prefs);
 
-        engine.loadFromModule("TidalWave", "Main");
+        loadMain(engine);
         QVERIFY2(!engine.rootObjects().isEmpty(),
                  qPrintable(QStringLiteral("a corrupt settings file stopped Main.qml loading:\n%1")
                             .arg(describe(warnings))));

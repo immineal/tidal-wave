@@ -476,7 +476,7 @@ if wanted idle-rss; then
     if [ ! -x "$APP" ]; then
         skip idle-rss "no binary at $APP"
     else
-        for theme in midnight daylight; do
+        for theme in sea sky; do
             sandbox "idle-$theme"
             mkdir -p "$BOX/home/.config/TidalWave"
             cat > "$BOX/home/.config/TidalWave/Tidal Wave.conf" <<CONF

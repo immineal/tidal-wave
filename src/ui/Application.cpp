@@ -337,11 +337,16 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
     return server->listen(socketName);
 }
 
-bool Application::shouldQuitOnWindowClose(bool trayAvailable) {
+bool Application::shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose) {
     // With a tray icon, closing the window hides it and the tray brings it
     // back. With no tray there is nothing to click and no way to quit short of
     // killing the process, so the close has to be a quit.
-    return !trayAvailable;
+    //
+    // The preference is the other way into the same answer, for the people who
+    // read a close button on a Linux desktop as "quit" and were surprised to
+    // find the app still running. It cannot turn the no-tray rule off, which is
+    // why it is an or and not the whole condition.
+    return !trayAvailable || quitOnClose;
 }
 
 bool Application::isAudioServerStartupNoise(const QString &msg) {
@@ -360,8 +365,13 @@ bool Application::reallyQuit() const {
     // back, so with no tray a close counts as a quit. Asked here, at the
     // moment of the close, rather than cached at startup: a StatusNotifier
     // host can appear or vanish long after login and Qt has no signal for it.
+    // The preference is read at that same moment and for the same reason, so a
+    // close right after the switch was flipped does what the switch says. Null
+    // until run() builds it, and this is a property QML can reach, so the
+    // dereference is guarded rather than assumed.
     return m_reallyQuit
-        || shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable());
+        || shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable(),
+                                   m_prefs && m_prefs->quitOnClose());
 }
 
 Application::Application(QObject *parent) : QObject(parent) {
@@ -544,7 +554,8 @@ int Application::run(int argc, char **argv) {
     // answer. Qt emits this signal whatever quitOnLastWindowClosed is set to,
     // which is why that flag can stay off.
     connect(qApp, &QGuiApplication::lastWindowClosed, this, [this]() {
-        if (shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable()))
+        if (shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable(),
+                                    m_prefs->quitOnClose()))
             quit();
     });
 
@@ -580,7 +591,20 @@ int Application::run(int argc, char **argv) {
     // property would be shadowed everywhere and silently read as undefined.
     ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
 
+    // loadFromModule() is the right call - it asks the module for its root
+    // component instead of naming a resource path - but it only arrived in Qt
+    // 6.5, and a build on Debian bookworm's Qt 6.4.2 got to 143 of 149 objects
+    // before stopping on exactly this line. The URL below is the same component
+    // reached the long way round: CMakeLists.txt only sets QTP0001 NEW from 6.5
+    // on, so under the Qt that needs this branch the module's resources are
+    // still at ":/TidalWave/" rather than ":/qt/qml/TidalWave/", and the file
+    // keeps the "qml/" of its path in the source tree either way (the generated
+    // qmldir maps Main to qml/Main.qml).
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_engine->loadFromModule("TidalWave", "Main");
+#else
+    m_engine->load(QUrl(QStringLiteral("qrc:/TidalWave/qml/Main.qml")));
+#endif
     if (m_engine->rootObjects().isEmpty()) return -1;
 
     // After the engine, so the GitHub request is never in front of the first

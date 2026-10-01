@@ -940,6 +940,7 @@ class StubPrefs : public QObject {
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
+    Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -957,6 +958,7 @@ public:
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
+    bool    quitOnClose() const       { return m_quitOnClose; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -989,6 +991,11 @@ public:
         m_softwareRendering = v;
         emit softwareRenderingChanged();
     }
+    void setQuitOnClose(bool v) {
+        if (v == m_quitOnClose) return;
+        m_quitOnClose = v;
+        emit quitOnCloseChanged();
+    }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
@@ -1008,9 +1015,10 @@ signals:
     void sidebarWidthChanged();
     void audioDeviceChanged();
     void softwareRenderingChanged();
+    void quitOnCloseChanged();
 
 private:
-    QString m_theme    = QStringLiteral("midnight");
+    QString m_theme    = QStringLiteral("sea");
     // Off, unlike the real Prefs, so a QML test that says nothing about it
     // measures the palette as written in the table rather than the pulled
     // down one. The tests that care about the transform set it themselves.
@@ -1019,6 +1027,7 @@ private:
     int     m_sidebarWidth = 220;
     QString m_audioDevice;
     bool    m_softwareRendering = false;
+    bool    m_quitOnClose = false;
     QString m_version = QStringLiteral("0.4.0");
 };
 

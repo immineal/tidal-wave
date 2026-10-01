@@ -54,6 +54,10 @@ TestCase {
     }
 
     function init() {
+        // The two cases that cross a breakpoint measure a transition, so motion
+        // has to be allowed. Another file in this suite turns the preference on
+        // and the stub carries it across files.
+        app.setReducedMotionForTest(false)
         player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Erika Mustermann" }]))
         player.setAudioQualityForTest("LOSSLESS")
         player.setDurationForTest(215000)
@@ -295,6 +299,91 @@ TestCase {
         centerClick(host.bar.nowPlayingButton)
         compare(host.navCalls.length, 0)
         compare(host.nowPlayingOpens, 1)
+    }
+
+    // ── and while the chrome rearranges itself ───────────────────────────
+    //
+    // Both of these controls sit in a group that moves when the bar crosses
+    // 720px: the slider's slot closes and everything left of it travels. A way
+    // in that is only reachable once the bar has settled is not a way in, so
+    // the pair is measured on every frame of that move and clicked in the
+    // middle of it.
+
+    function test_the_way_in_stays_grouped_while_the_bar_regroups() {
+        var host = showHost(playerBarHost, 760, 200)
+        var bar = host.bar
+        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
+                  2000, "the wide bar never settled with its slider")
+
+        host.width = 700
+        var mid = 0
+        for (var i = 0; i < 14; i++) {
+            wait(16)
+            var arrow = bar.nowPlayingButton
+            var queue = bar.queueButton
+            verify(arrow.visible && queue.visible,
+                   "sample " + i + ": a control went missing mid-regroup")
+            var arrowLeft  = arrow.mapToItem(bar, 0, 0).x
+            var arrowRight = rightEdgeIn(arrow, bar)
+            var queueLeft  = queue.mapToItem(bar, 0, 0).x
+            verify(arrowLeft >= -0.5 && rightEdgeIn(queue, bar) <= bar.width + 0.5,
+                   "sample " + i + ": the pair left the bar while it regrouped ("
+                   + arrowLeft.toFixed(1) + ".." + rightEdgeIn(queue, bar).toFixed(1)
+                   + " in " + bar.width + "px)")
+            verify(arrowRight <= queueLeft + 0.5 && queueLeft - arrowRight <= 12,
+                   "sample " + i + ": the arrow and the queue button came apart ("
+                   + (queueLeft - arrowRight).toFixed(1) + "px) while the bar regrouped")
+            if (bar.volumeSlotRoom > 0.5 && bar.volumeSlotRoom < bar.volumeSliderWidth - 0.5) {
+                mid++
+                // Mid-move, with the group still travelling, the button still
+                // opens the page.
+                if (mid === 2) {
+                    centerClick(arrow)
+                    compare(host.nowPlayingOpens, 1,
+                            "the button did not open Now Playing while the bar was moving")
+                }
+            }
+        }
+        verify(mid >= 3, "the bar regrouped without ever being between its two layouts")
+        compare(host.nowPlayingOpens, 1, "exactly one way in was taken")
+        compare(host.navCalls.length, 0, "the button is not a navigation link")
+    }
+
+    // The same question of the page: it rearranges at 1000px, and the down
+    // arrow is the way back out of it.
+    function test_the_way_out_survives_the_page_restacking() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var page = host.page
+        tryVerify(function () { return page.stackness === 0 }, 2000,
+                  "the page never settled side by side")
+
+        var collapse = findChild(page, "nowPlayingCollapse")
+        var fs = findChild(page, "nowPlayingFullscreen")
+        verify(collapse && fs, "the page's own chrome was not found")
+
+        host.width = 900
+        var mid = 0
+        var clicked = false
+        for (var i = 0; i < 14; i++) {
+            wait(16)
+            verify(collapse.visible && fs.visible,
+                   "sample " + i + ": the page's chrome went missing mid-restack")
+            verify(collapse.mapToItem(page, 0, 0).x >= -0.5
+                   && rightEdgeIn(fs, page) <= page.width + 0.5,
+                   "sample " + i + ": the header left the page while it restacked")
+            if (page.stackness > 0.001 && page.stackness < 0.999) {
+                mid++
+                if (mid === 2 && !clicked) {
+                    clicked = true
+                    centerClick(collapse)
+                    compare(host.backCalls, 1,
+                            "the way out did not work while the page was restacking")
+                }
+            }
+        }
+        verify(mid >= 3, "the page restacked without ever being between its two layouts")
+        compare(host.backCalls, 1, "going back happened once and only once")
+        compare(host.navCalls.length, 0, "going back is not a navigation of its own")
     }
 
     // ── the left group is untouched ──────────────────────────────────────

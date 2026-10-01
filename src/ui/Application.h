@@ -50,8 +50,9 @@ public:
     // not be taken, which run() treats as non-fatal.
     static bool claimSingleInstanceSocket(QLocalServer *server, const QString &socketName);
     // Whether closing the last window should end the process. It should when
-    // there is no tray icon to bring it back from.
-    static bool shouldQuitOnWindowClose(bool trayAvailable);
+    // there is no tray icon to bring it back from, and whenever the user has
+    // asked for a close to be a quit (Prefs::quitOnClose).
+    static bool shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose);
     // Whether a log line is one of the audio-server connect errors a machine
     // with no sound server prints on every single launch.
     static bool isAudioServerStartupNoise(const QString &msg);

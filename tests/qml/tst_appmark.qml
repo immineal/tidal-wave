@@ -46,11 +46,11 @@ TestCase {
     }
 
     function init() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
     }
 
     function cleanupTestCase() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ TestCase {
         var mark = makeMark(64)
         var tile = findByName(mark, "appMarkTile")
         var bands = bandPaths(mark)
-        var names = ["midnight", "forest", "ember", "daylight", "paper", "dawn"]
+        var names = ["sea", "pine", "rust", "sky", "sand", "clay"]
 
         for (var t = 0; t < names.length; ++t) {
             prefs.theme = names[t]

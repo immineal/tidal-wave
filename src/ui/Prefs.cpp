@@ -10,6 +10,7 @@ constexpr auto kLanguage = "ui/language";
 constexpr auto kSidebar  = "ui/sidebarWidth";
 constexpr auto kAudioDev = "audio/outputDevice";
 constexpr auto kSoftRender = "ui/softwareRendering";
+constexpr auto kQuitOnClose = "ui/quitOnClose";
 }
 
 Prefs::Prefs(QObject *parent)
@@ -22,17 +23,19 @@ Prefs::Prefs(QObject *parent)
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
     , m_audioDevice(m_settings.value(kAudioDev).toString())
     , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
+    , m_quitOnClose(m_settings.value(kQuitOnClose, false).toBool())
 {
     // A width written by a future build, or a corrupted settings file, must not
     // leave the sidebar unusable.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
 
-    // A palette the last build had and this one does not. Only "deep" is on
-    // that list so far, and it maps onto the pure-black switch, so the app
-    // comes back looking exactly as it was left rather than a shade lighter.
-    // Written back immediately: leaving the old name in the file would make
-    // the migration run again every launch and quietly undo a later change of
-    // mind about the switch.
+    // A theme name the last build wrote and this one does not know: the six
+    // names from before the rename, and "deep", which was a palette of its own
+    // and maps onto the pure-black switch. Either way the app comes back
+    // looking exactly as it was left rather than falling through to the
+    // default. Written back immediately: leaving the old name in the file would
+    // make the migration run again every launch and quietly undo a later change
+    // of mind about the switch.
     if (theme::migrated(m_theme, &m_theme, &m_oledBlack)) {
         m_settings.setValue(kTheme, m_theme);
         m_settings.setValue(kOled, m_oledBlack);
@@ -81,6 +84,13 @@ void Prefs::setSoftwareRendering(bool v) {
     m_softwareRendering = v;
     m_settings.setValue(kSoftRender, v);
     emit softwareRenderingChanged();
+}
+
+void Prefs::setQuitOnClose(bool v) {
+    if (v == m_quitOnClose) return;
+    m_quitOnClose = v;
+    m_settings.setValue(kQuitOnClose, v);
+    emit quitOnCloseChanged();
 }
 
 QString Prefs::appVersion() const {

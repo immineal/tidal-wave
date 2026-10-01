@@ -1,6 +1,6 @@
 // The Settings panel: the interface for the 0.4.0 features that shipped with
-// no way to reach them - theme, language, audio output, hardware acceleration,
-// the update check, and the privacy block.
+// no way to reach them - theme, language, what the close button does, audio
+// output, hardware acceleration, the update check, and the privacy block.
 //
 // The panel lives in qml/components/SettingsPanel.qml and is reached through
 // SideBar.openSettings(), exposed as SideBar.settingsPanel. That is the same
@@ -104,11 +104,12 @@ TestCase {
     // ── fixtures ─────────────────────────────────────────────────────────
 
     function init() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
         prefs.oledBlack = false
         prefs.language = "system"
         prefs.audioDevice = ""
         prefs.softwareRendering = false
+        prefs.quitOnClose = false
         prefs.setSidebarWidthForTest(sidebarWidth)
         app.setReducedMotionForTest(true)
         auth.setUsernameForTest("linus")
@@ -122,7 +123,7 @@ TestCase {
     }
 
     function cleanupTestCase() {
-        prefs.theme = "midnight"
+        prefs.theme = "sea"
         prefs.oledBlack = false
     }
 
@@ -341,8 +342,8 @@ TestCase {
 
     // The two halves are columns side by side, and the nth tile of one sits
     // on the same line as the nth tile of the other, so each line reads as
-    // one colour family: Midnight with Daylight, Forest with Paper, Ember
-    // with Dawn. Stack the halves instead and the pairing is gone.
+    // one colour family: Sea with Sky, Pine with Sand, Rust with Clay.
+    // Stack the halves instead and the pairing is gone.
     function test_the_two_columns_read_as_hue_rows() {
         var h = openPanel(1280, 1200)
         var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
@@ -363,7 +364,7 @@ TestCase {
         verify(Math.abs(darkGroup.width - lightGroup.width) <= 2,
                "the columns are not the same width, so the rows cannot line up")
 
-        var expect = [["midnight", "daylight"], ["forest", "paper"], ["ember", "dawn"]]
+        var expect = [["sea", "sky"], ["pine", "sand"], ["rust", "clay"]]
         for (var i = 0; i < a.length; i++) {
             var ay = a[i].mapToItem(h.panel.contentItem, 0, 0).y
             var by = b[i].mapToItem(h.panel.contentItem, 0, 0).y
@@ -411,7 +412,7 @@ TestCase {
     function test_picking_a_theme(row) {
         // Start somewhere else, or picking the current theme is a no-op and
         // the repaint cannot be seen.
-        prefs.theme = (row.name === "midnight") ? "forest" : "midnight"
+        prefs.theme = (row.name === "sea") ? "pine" : "sea"
         prefs.oledBlack = false
 
         var h = openPanel(1280, 1200)
@@ -441,9 +442,9 @@ TestCase {
     // so there is nothing to invite the user to try.
     function test_the_pure_black_switch_is_hidden_on_a_light_theme_data() {
         return [
-            { tag: "daylight", name: "daylight" },
-            { tag: "paper",    name: "paper" },
-            { tag: "dawn",     name: "dawn" }
+            { tag: "sky",  name: "sky" },
+            { tag: "sand", name: "sand" },
+            { tag: "clay", name: "clay" }
         ]
     }
 
@@ -462,9 +463,9 @@ TestCase {
 
     function test_the_pure_black_switch_is_shown_on_a_dark_theme_data() {
         return [
-            { tag: "midnight", name: "midnight" },
-            { tag: "forest",   name: "forest" },
-            { tag: "ember",    name: "ember" }
+            { tag: "sea",  name: "sea" },
+            { tag: "pine", name: "pine" },
+            { tag: "rust", name: "rust" }
         ]
     }
 
@@ -508,7 +509,7 @@ TestCase {
     // way picking a theme does. The probe is the proof: a switch that stores
     // a bool and repaints nothing is the bug this whole file exists for.
     function test_flipping_the_pure_black_switch_repaints() {
-        prefs.theme = "forest"
+        prefs.theme = "pine"
         prefs.oledBlack = false
 
         var h = openPanel(1280, 1200)
@@ -572,7 +573,112 @@ TestCase {
         h.panel.close()
     }
 
-    // ── 3. the audio output picker ───────────────────────────────────────
+    // ── 3. the close button ──────────────────────────────────────────────
+
+    // Closing the window used to be minimise-to-tray and nothing else, which
+    // surprises everyone who reads a close button on a Linux desktop as "quit".
+    // The switch is the whole point of this section, so it has to read the
+    // setting and write it back, not just look like a switch.
+    function test_close_button_switch_writes_prefs() {
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
+        verify(toggle, "there is no switch for what the close button does")
+        verify(!toggle.checked,
+               "closing the window should minimise to the tray by default")
+
+        clickItem(h.panel, toggle)
+        compare(prefs.quitOnClose, true,
+                "switching it on must set prefs.quitOnClose")
+        verify(toggle.checked, "the switch did not follow the setting")
+
+        clickItem(h.panel, toggle)
+        compare(prefs.quitOnClose, false,
+                "switching it back off must clear prefs.quitOnClose")
+        verify(!toggle.checked)
+
+        h.panel.close()
+    }
+
+    // The other direction: a profile that already has it on has to come up with
+    // the switch on, or the panel is lying about what the close button will do.
+    function test_close_button_switch_shows_the_stored_setting() {
+        prefs.quitOnClose = true
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
+        verify(toggle.checked, "the switch does not show the stored setting")
+        h.panel.close()
+    }
+
+    // The switch lives in its own section, after Appearance, rather than in
+    // Performance, which is about the renderer.
+    function test_the_close_button_has_its_own_section() {
+        var h = openPanel(1280, 1200)
+        var sections = collectByName(h.panel.contentItem, "settingsSection", [])
+        var window = null
+        for (var i = 0; i < sections.length; ++i)
+            if (sections[i].key === "window") window = sections[i]
+        verify(window, "there is no window section")
+        verify(window.heading.length > 0, "the window section has no heading")
+
+        var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
+        verify(toggle, "there is no switch for what the close button does")
+        verify(findByName(window, "settingsQuitOnCloseToggle") === toggle,
+               "the close button switch is somewhere other than the window section")
+
+        h.panel.close()
+    }
+
+    // With no tray icon a close quits whatever the switch says, which is the one
+    // case the switch cannot change - so the note has to say so. Always there,
+    // and the row is never hidden: the setting is remembered and starts working
+    // the moment a tray turns up, which it can do long after login.
+    function test_the_close_button_note_covers_the_no_tray_case() {
+        var h = openPanel(1280, 1200)
+        var note = findByName(h.panel.contentItem, "settingsQuitOnCloseNote")
+        verify(note, "the close button switch has no explanatory line")
+        verify(note.visible, "the note is hidden until something is hovered")
+        var said = note.text.toLowerCase()
+        verify(said.indexOf("tray") !== -1,
+               "the note says \"" + note.text + "\", which never mentions the tray")
+        verify(said.indexOf("no tray") !== -1,
+               "the note says \"" + note.text
+               + "\", which does not say what happens with no tray at all")
+
+        var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
+        var flick = scrollerOf(h.panel)
+        verify(Math.abs(note.mapToItem(flick.contentItem, 0, 0).y
+                        - toggle.mapToItem(flick.contentItem, 0, 0).y) < 80,
+               "the note is nowhere near the switch it belongs to")
+        h.panel.close()
+    }
+
+    // An eighth section is more content in a panel that was already taller than
+    // any window it fits in, so the two things that save it - scrolling to the
+    // end, and the close button in the pinned header - are checked again with it
+    // in place rather than left to the sections above.
+    function test_the_panel_still_scrolls_and_closes_with_the_window_section() {
+        var h = openPanel(minWindowW, minWindowH)
+        var flick = scrollerOf(h.panel)
+        verify(flick.contentHeight > flick.height,
+               "the panel content is " + flick.contentHeight.toFixed(0)
+               + "px in a " + flick.height.toFixed(0) + "px viewport, so nothing scrolls")
+
+        var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
+        scrollTo(h.panel, toggle)
+        var y = toggle.mapToItem(flick, 0, 0).y
+        verify(y >= -1 && y + toggle.height <= flick.height + 1,
+               "the close button switch is still off the viewport at y=" + y.toFixed(0))
+
+        scrollToEnd(h.panel)
+        var close = findByName(h.panel.contentItem, "settingsClose")
+        var at = close.mapToItem(h.panel.contentItem, close.width / 2, close.height / 2)
+        mouseClick(h.panel.contentItem, at.x, at.y)
+        tryVerify(function () { return !h.panel.visible }, 2000,
+                  "the panel would not close once the window section was in it")
+    }
+
+
+    // ── 4. the audio output picker ───────────────────────────────────────
 
     // Devices come and go, so the list is read again every time the panel is
     // opened rather than once when it is built.
@@ -634,7 +740,7 @@ TestCase {
         h.panel.close()
     }
 
-    // ── 4. hardware acceleration ─────────────────────────────────────────
+    // ── 5. hardware acceleration ─────────────────────────────────────────
 
     // prefs.softwareRendering is inverted: true means draw on the CPU, so the
     // switch is on when the setting is off.
@@ -676,7 +782,7 @@ TestCase {
         h.panel.close()
     }
 
-    // ── 5. the update check ──────────────────────────────────────────────
+    // ── 6. the update check ──────────────────────────────────────────────
 
     function test_update_switch_writes_the_setting() {
         var h = openPanel(1280, 1200)
@@ -844,7 +950,7 @@ TestCase {
     // reference table buried under it is a reference table nobody finds.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,playback,performance,updates,shortcuts,privacy"
+        "account,appearance,window,playback,performance,updates,shortcuts,privacy"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -898,7 +1004,7 @@ TestCase {
         h.panel.close()
     }
 
-    // ── 6. the privacy block ─────────────────────────────────────────────
+    // ── 7. the privacy block ─────────────────────────────────────────────
 
     function test_privacy_text_is_present() {
         var h = openPanel(1280, 1200)
@@ -1008,7 +1114,7 @@ TestCase {
         h.panel.close()
     }
 
-    // ── 7. the filter chip ───────────────────────────────────────────────
+    // ── 8. the filter chip ───────────────────────────────────────────────
 
     // The chip filters kind: "track" and every other string in the app says
     // track, so the chip says track too.

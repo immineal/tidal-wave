@@ -29,7 +29,7 @@ namespace theme {
 
 struct ThemeInfo {
     QString name;   // settings key, lowercase
-    QString label;  // shown in Settings, translated
+    QString label;  // shown in Settings; a product name, never translated
     bool    dark;
 };
 
@@ -37,8 +37,11 @@ struct ThemeInfo {
 // light ones, each list in the same hue order, so the picker's two columns
 // line up row by row as blue / green / amber.
 //
-// By value, and rebuilt per call: the labels are translated, so a cached list
-// would keep the old language after a live switch.
+// By value: six small structs built on demand, which is cheap enough that the
+// picker can ask whenever it rebuilds. It used to be rebuilt because the
+// labels were translated and a cached list would have kept the old language
+// after a live switch; the labels are product names now, so that reason is
+// gone but the shape is still the simple one.
 QList<ThemeInfo> themes();
 
 bool    isKnown(const QString &name);
@@ -46,9 +49,12 @@ QString defaultTheme();
 // Whether a fresh install starts with the pure-black transform on.
 bool    defaultOledBlack();
 
-// What a theme name written by an older build becomes. Returns false when
-// `stored` is nothing special, so the caller leaves it alone; see Prefs, which
-// is the only thing that should be rewriting a settings file.
+// What a theme name written by an older build becomes: the six pre-rename
+// names, plus "deep", which was a palette and is now the pure-black switch.
+// Returns false when `stored` is nothing special, so the caller leaves it
+// alone; see Prefs, which is the only thing that should be rewriting a
+// settings file. `oledBlack` is only written for the keys that need it, so
+// pass the stored value in and it survives a plain rename untouched.
 bool migrated(const QString &stored, QString *theme, bool *oledBlack);
 
 // Every colour token plus "dark". An unknown or empty name gives the default
@@ -58,7 +64,7 @@ bool migrated(const QString &stored, QString *theme, bool *oledBlack);
 // `oledBlack` pulls the grounds down to true black. It is a transform rather
 // than a seventh palette so that it composes with whichever dark theme is
 // picked; on a light theme it is ignored, because there is no sense in which
-// Daylight has an OLED variant.
+// Sky has an OLED variant.
 QVariantMap palette(const QString &name, bool oledBlack = false);
 
 // The radius scale, keyed chip/field/row/button/art/card/popup/badge/mark.

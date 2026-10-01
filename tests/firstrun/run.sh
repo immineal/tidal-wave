@@ -402,11 +402,11 @@ if wanted xcb; then
                               | sort -rn | head -1)
                         info "screenshot at $SHOT"
                         info "dominant colour: $(echo "$TOP" | sed 's/^ *//')"
-                        # The default theme is "midnight": #0A0A0A page background.
+                        # The default theme is "sea": #0A0A0A page background.
                         if echo "$TOP" | grep -qi '#0A0A0A'; then
-                            info "default theme: midnight background painted (#0A0A0A)"
+                            info "default theme: sea background painted (#0A0A0A)"
                         else
-                            note "xcb: the dominant colour is not the midnight background #0A0A0A"
+                            note "xcb: the dominant colour is not the sea background #0A0A0A"
                         fi
                         NCOL=$(convert "$SHOT" -format %k info: 2>/dev/null)
                         if [ -n "$NCOL" ] && [ "$NCOL" -lt 8 ] 2>/dev/null; then

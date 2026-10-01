@@ -1045,6 +1045,19 @@
         <translation>Tastenkürzel</translation>
     </message>
     <message>
+        <source>Window</source>
+        <comment>settings section about the application window</comment>
+        <translation>Fenster</translation>
+    </message>
+    <message>
+        <source>Closing the window quits Tidal Wave</source>
+        <translation>Schließen des Fensters beendet Tidal Wave</translation>
+    </message>
+    <message>
+        <source>While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.</source>
+        <translation>Solange dies aus ist, wird das Fenster beim Schließen nur ausgeblendet und das Tray-Symbol holt es zurück. Ohne Tray-Symbol beendet Schließen immer das Programm.</translation>
+    </message>
+    <message>
         <source>Lossless (16-bit)</source>
         <translation>Lossless (16 Bit)</translation>
     </message>
@@ -1184,33 +1197,6 @@
     <message>
         <source>Settings (Ctrl+,)</source>
         <translation>Einstellungen (Strg+,)</translation>
-    </message>
-</context>
-<context>
-    <name>Theme</name>
-    <message>
-        <source>Midnight</source>
-        <translation>Mitternacht</translation>
-    </message>
-    <message>
-        <source>Forest</source>
-        <translation>Wald</translation>
-    </message>
-    <message>
-        <source>Ember</source>
-        <translation>Glut</translation>
-    </message>
-    <message>
-        <source>Daylight</source>
-        <translation>Tageslicht</translation>
-    </message>
-    <message>
-        <source>Paper</source>
-        <translation>Papier</translation>
-    </message>
-    <message>
-        <source>Dawn</source>
-        <translation>Morgenrot</translation>
     </message>
 </context>
 <context>
