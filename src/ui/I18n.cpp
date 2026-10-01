@@ -58,17 +58,22 @@ void I18n::apply() {
     }
     m_loaded = false;
 
-    if (next != kSource) {
-        // The catalogues are compiled into the binary by qt_add_translations()
-        // under RESOURCE_PREFIX "/i18n".
-        if (m_appTranslator.load(QStringLiteral(":/i18n/tidal-wave_%1.qm").arg(next))) {
-            m_loaded = true;
-            if (app) app->installTranslator(&m_appTranslator);
-        } else {
-            qWarning("I18n: no catalogue for \"%s\"; falling back to source strings",
-                     qPrintable(next));
-        }
+    // English gets a catalogue too, which is not the obvious choice. Plural
+    // sources are written as "%n track(s)", the shorthand lupdate expects a
+    // catalogue to resolve; with no English catalogue installed Qt falls back
+    // to the source text verbatim and the UI reads "14 track(s)". So en.ts
+    // carries the two numerus forms and nothing else, and every ordinary
+    // string still falls through to the source because lrelease drops the
+    // untranslated entries.
+    if (m_appTranslator.load(QStringLiteral(":/i18n/tidal-wave_%1.qm").arg(next))) {
+        m_loaded = true;
+        if (app) app->installTranslator(&m_appTranslator);
+    } else if (next != kSource) {
+        qWarning("I18n: no catalogue for \"%s\"; falling back to source strings",
+                 qPrintable(next));
+    }
 
+    if (next != kSource) {
         // Qt's own strings (the standard dialog buttons, QLineEdit's context
         // menu) ship separately and are absent on some installs, so a miss
         // here is not worth warning about.
