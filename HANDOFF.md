@@ -704,3 +704,30 @@ marked done was verified, not assumed.
    URL. It is current as of the theme rename and the glyph pass.
 7. **Only then section J, and only with the user's approval.** Merging
    `beta-0.4.0` to `main` has never been authorised.
+
+## READ FIRST on resuming: three decisions made after d6be58a
+
+Given by the user at the end of the 2026-10-01 session, after seeing the
+neutral themes and the rainbow switch running. None of it is implemented yet.
+
+1. **The rainbow switch must not animate.** The gradient itself is liked; the
+   motion is "visual noise". Keep the seven-stop gradient exactly as drawn and
+   make it static - drop the `rainbowPhase` animation entirely rather than
+   slowing it. The reduced-motion branch in `Toggle` then has nothing to
+   special-case, so simplify it rather than leaving a dead path.
+2. **Remove the thin solid-coloured border around that switch.** It reads as a
+   frame around the gradient. The gradient is the control.
+3. **The defaults change: Sea, colour ON, pure black ON.** So
+   `theme::defaultTintedGreys()` returns **true**, not false, and the
+   pure-black default goes on with it, with Sea as the theme. This inverts the
+   default that `tst_prefs` and `tst_theme` currently pin, and
+   `Prefs`'s migration has to keep an existing settings file on whatever it
+   already said rather than dragging old installs onto the new default - a
+   missing key is what takes the new default, a present one is the user's.
+
+Note the consequence for the picker, which was already recorded as a feature of
+the neutral default: with colour ON by default, picking a theme repaints the
+page again, so the "picking a theme moves only the accent" behaviour becomes the
+*switched-off* case rather than the one everybody sees first. The tests that
+were re-premised onto the accent still hold; check they are keyed on the switch
+state and not on "the default", or they will invert with this change.
