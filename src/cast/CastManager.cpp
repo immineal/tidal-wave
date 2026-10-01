@@ -34,7 +34,11 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     // When prep yields a servable file, serve it and LOAD it on the device.
     connect(m_prep, &CastMediaPrep::ready, this, [this](const QString &path, const QString &mime) {
         const QString url = m_server->setCurrentFile(path, mime);
-        if (url.isEmpty()) { emit error(QStringLiteral("No LAN address for casting")); return; }
+        if (url.isEmpty()) {
+            emit error(tr("Could not find a local network address for casting. "
+                          "Check that you are connected to a network."));
+            return;
+        }
         const QVariantMap t = m_player ? m_player->currentTrackMap() : QVariantMap();
         QString art;
         const QString cover = t.value(QStringLiteral("albumCover")).toString();
@@ -85,7 +89,7 @@ void CastManager::connectToDevice(const QString &id) {
     if (!m_devices.contains(id)) return;
     const Device d = m_devices.value(id);
     if (m_server->start().isEmpty()) {
-        emit error(QStringLiteral("Could not start the local media server"));
+        emit error(tr("Could not start casting. The local media server failed to start."));
         return;
     }
     m_deviceName = d.name;

@@ -593,7 +593,7 @@ void Player::loadAndPlay(int index) {
             }
             if (!err.isEmpty()) {
                 setLoading(false);
-                emit error("Stream error: " + err);
+                emit error(tr("Could not load this track for playback. %1").arg(err));
                 return;
             }
             m_streamedQuality = manifest.codec;
@@ -607,7 +607,9 @@ void Player::loadAndPlay(int index) {
                     }
                     if (!err.isEmpty() || data.isEmpty()) {
                         setLoading(false);
-                        emit error("Failed to download audio stream: " + err);
+                        emit error(err.isEmpty()
+                            ? tr("Could not download the audio for this track. No data came back.")
+                            : tr("Could not download the audio for this track. %1").arg(err));
                         return;
                     }
                     m_mpdTempFile = new QTemporaryFile(
@@ -624,7 +626,8 @@ void Player::loadAndPlay(int index) {
                         m_player->play();
                     } else {
                         setLoading(false);
-                        emit error("Failed to write temporary audio file");
+                        emit error(tr("Could not save the audio to a temporary file. "
+                                      "Check that there is free disk space."));
                     }
                 });
             } else {
@@ -642,7 +645,8 @@ void Player::loadAndPlay(int index) {
                     m_player->play();
                 } else {
                     setLoading(false);
-                    emit error("Failed to write MPD temp file");
+                    emit error(tr("Could not save the playback details to a temporary file. "
+                                  "Check that there is free disk space."));
                     return;
                 }
             }
@@ -663,7 +667,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         break;
     case QMediaPlayer::InvalidMedia:
         setLoading(false);
-        emit error("Invalid media");
+        emit error(tr("This track could not be played. The audio format may not be supported."));
         break;
     default: break;
     }
@@ -770,10 +774,10 @@ QString Player::audioQuality() const {
 QString Player::qualityLabel(const QString &code) const {
     // Tidal-consistent tier names (matches the labels Tidal's own apps show),
     // replacing the older "HI-FI"/"MASTER" branding.
-    if (code == QStringLiteral("HI_RES_LOSSLESS")) return QStringLiteral("Max");
-    if (code == QStringLiteral("LOSSLESS"))        return QStringLiteral("Lossless");
-    if (code == QStringLiteral("HIGH"))            return QStringLiteral("High");
-    if (code == QStringLiteral("LOW"))             return QStringLiteral("Low");
+    if (code == QStringLiteral("HI_RES_LOSSLESS")) return tr("Max");
+    if (code == QStringLiteral("LOSSLESS"))        return tr("Lossless");
+    if (code == QStringLiteral("HIGH"))            return tr("High");
+    if (code == QStringLiteral("LOW"))             return tr("Low");
     return code;
 }
 

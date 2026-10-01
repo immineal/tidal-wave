@@ -50,7 +50,7 @@ void Downloader::downloadTrack(const QVariantMap &track) {
     if (m_jobs.contains(id)) return;   // already downloading this track
 
     if (m_ffmpegPath.isEmpty()) {
-        emit downloadError(id, QStringLiteral("ffmpeg was not found on PATH — install ffmpeg to enable downloads."));
+        emit downloadError(id, tr("ffmpeg was not found on PATH. Install ffmpeg to enable downloads."));
         return;
     }
 
@@ -73,7 +73,7 @@ void Downloader::downloadTrack(const QVariantMap &track) {
         const QString suggested = dir + QStringLiteral("/") + base + QStringLiteral(".flac");
         QString selectedFilter;
         const QString filters = QStringLiteral("FLAC (*.flac);;MP3 (*.mp3);;WAV (*.wav)");
-        QString path = QFileDialog::getSaveFileName(nullptr, QStringLiteral("Save track"),
+        QString path = QFileDialog::getSaveFileName(nullptr, tr("Save track"),
                                                     suggested, filters, &selectedFilter);
         if (path.isEmpty()) return;   // cancelled
 
@@ -119,7 +119,7 @@ void Downloader::startManifest(DownloadJob *job) {
         [this, id](StreamManifest manifest, QString err) {
             DownloadJob *job = m_jobs.value(id, nullptr);
             if (!job) return;   // cancelled
-            if (!err.isEmpty()) { finish(job, QStringLiteral("Stream error: ") + err); return; }
+            if (!err.isEmpty()) { finish(job, tr("Could not start the download. %1").arg(err)); return; }
 
             job->srcTier    = manifest.codec;
             job->sampleRate = manifest.sampleRate;
@@ -142,12 +142,15 @@ void Downloader::handleBts(DownloadJob *job, const QString &url) {
         if (!job) return;
         job->reply = nullptr;
         if (!err.isEmpty() || data.isEmpty()) {
-            finish(job, QStringLiteral("Failed to download audio: ") + err);
+            finish(job, err.isEmpty()
+                ? tr("Could not download the audio for this track. No data came back.")
+                : tr("Could not download the audio for this track. %1").arg(err));
             return;
         }
         QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
         tmp.setAutoRemove(false);
-        if (!tmp.open()) { finish(job, QStringLiteral("Failed to write temp audio file")); return; }
+        if (!tmp.open()) { finish(job, tr("Could not save the audio to a temporary file. "
+                                        "Check that there is free disk space.")); return; }
         tmp.write(data); tmp.flush(); tmp.close();
         job->audioTempPath = tmp.fileName();
         fetchCoverThenConvert(job);
@@ -158,7 +161,8 @@ void Downloader::handleMpd(DownloadJob *job, const QString &mpdXml) {
     job->isMpd = true;
     QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
     tmp.setAutoRemove(false);
-    if (!tmp.open()) { finish(job, QStringLiteral("Failed to write temp manifest")); return; }
+    if (!tmp.open()) { finish(job, tr("Could not save the playback details to a temporary file. "
+                                    "Check that there is free disk space.")); return; }
     tmp.write(mpdXml.toUtf8()); tmp.flush(); tmp.close();
     job->audioTempPath = tmp.fileName();
     fetchCoverThenConvert(job);
@@ -259,7 +263,8 @@ void Downloader::runFfmpeg(DownloadJob *job, bool flacForceEncode) {
         if (e != QProcess::FailedToStart) return;
         DownloadJob *job = m_jobs.value(id, nullptr);
         if (!job || job->ffmpeg != proc) return;
-        finish(job, QStringLiteral("Failed to start ffmpeg"));
+        finish(job, tr("Could not start ffmpeg. Check that it is installed and that "
+                        "you have permission to run it."));
     });
 
     connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
@@ -282,7 +287,7 @@ void Downloader::runFfmpeg(DownloadJob *job, bool flacForceEncode) {
                 runFfmpeg(job, /*flacForceEncode=*/true);
             } else {
                 QFile::remove(job->targetPath);  // drop partial/empty output
-                finish(job, QStringLiteral("Conversion failed: ") + stderrTail.trimmed());
+                finish(job, tr("Could not convert the downloaded track. %1").arg(stderrTail.trimmed()));
             }
         });
 
@@ -310,5 +315,5 @@ void Downloader::cancelDownload(qlonglong id) {
     DownloadJob *job = m_jobs.value(id, nullptr);
     if (!job) return;
     QFile::remove(job->targetPath);
-    finish(job, QStringLiteral("Download cancelled"));
+    finish(job, tr("Download cancelled"));
 }

@@ -36,7 +36,9 @@ jobs:
           version: ${{ matrix.qt }}
           # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
           # ship in the base desktop install (aqt has no separate 'qtsvg' module).
-          modules: 'qtmultimedia'
+          # qttools supplies lrelease, without which CMake skips the .qm
+          # catalogues and the binary ships English-only.
+          modules: 'qtmultimedia qttools'
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
