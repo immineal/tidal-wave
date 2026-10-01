@@ -122,6 +122,9 @@ Item {
                     title:     modelData.title     || ""
                     subtitle:  modelData.subtitle  || ""
                     mediaType: root.mediaType
+                    // What a right-click pins (P2). Playlists are keyed by
+                    // uuid, everything else by id.
+                    itemId:    "" + (modelData.uuid || modelData.id || "")
                     cardSize:  root.cardSize
                     onClicked:      root.itemClicked(index, modelData)
                     onPlayClicked:  root.itemPlayClicked(index, modelData)

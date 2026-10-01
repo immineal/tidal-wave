@@ -218,6 +218,17 @@ Rectangle {
                     }
                 }
             }
+
+            // P2: a right-click on the hero pins what the page is showing.
+            MouseArea {
+                objectName: "heroPinArea"
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: function (mouse) {
+                    var p = mapToItem(root, mouse.x, mouse.y)
+                    root.showHeroPinMenu(p.x, p.y)
+                }
+            }
         }
 
         delegate: TrackRow {
@@ -264,6 +275,20 @@ Rectangle {
     }
 
     LoadingOverlay { loading: root.loading }
+
+    // P2. The pin carries the labels and the artwork the page is showing, so
+    // the sidebar row reads the same as the page it came from.
+    readonly property alias pinMenu: heroPinMenu
+
+    function showHeroPinMenu(x, y) {
+        heroPinMenu.showPin(x, y, "playlist", root.playlistUuid,
+                            root.playlistTitle, "", root.coverUrl)
+    }
+
+    ContextMenu {
+        id: heroPinMenu
+        objectName: "heroPinMenu"
+    }
 
     // Edit playlist popup
     Popup {

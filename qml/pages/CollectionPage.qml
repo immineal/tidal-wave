@@ -256,6 +256,7 @@ Rectangle {
                     subtitle: modelData.artists
                     coverUrl: modelData.coverUrl
                     mediaType: "album"
+                    itemId: "" + modelData.id
                     onClicked: navigateTo("album", { albumId: modelData.id })
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
@@ -325,6 +326,7 @@ Rectangle {
                     subtitle: qsTr("Artist")
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "artist"
+                    itemId: "" + modelData.id
                     onClicked: navigateTo("artist", { artistId: modelData.id })
                 }
 
@@ -384,6 +386,7 @@ Rectangle {
                     subtitle: qsTr("%n track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "playlist"
+                    itemId: modelData.uuid || ""
                     onClicked: navigateTo("playlist", {
                         playlistUuid: modelData.uuid,
                         playlistTitle: modelData.title,
@@ -448,6 +451,7 @@ Rectangle {
                     subtitle: modelData.subtitle || ""
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "mix"
+                    itemId: "" + modelData.id
                     onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl })
                     onPlayClicked: {
                         bridge.fetchMixTracks(modelData.id, function(tracks, err) {

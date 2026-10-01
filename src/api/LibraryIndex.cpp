@@ -298,11 +298,12 @@ void LibraryIndex::finishEntry(Entry &e) {
 
 LibraryIndex::Entry LibraryIndex::entryFor(const Playlist &p) {
     Entry e;
-    e.kind       = QLatin1String(kKindPlaylist);
-    e.id         = p.uuid;
-    e.title      = p.title;
-    e.imageUrl   = p.coverUrl(320);
-    e.trackCount = p.numTracks;
+    e.kind         = QLatin1String(kKindPlaylist);
+    e.id           = p.uuid;
+    e.title        = p.title;
+    e.imageUrl     = p.coverUrl(320);
+    e.trackCount   = p.numTracks;
+    e.playlistType = p.type;
     finishEntry(e);
     return e;
 }
@@ -409,6 +410,11 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score, bool expanded,
     m[QStringLiteral("pinned")]     = e.pinIndex >= 0;
     m[QStringLiteral("lastPlayed")] = e.lastPlayed;
     m[QStringLiteral("trackCount")] = e.trackCount;
+    // Playlists carry their Tidal type. PlaylistPage needs it to tell an
+    // editable user playlist from a read-only editorial one, and the row is
+    // the only place it can learn that without another round trip.
+    if (e.kind == QLatin1String(kKindPlaylist))
+        m[QStringLiteral("type")] = e.playlistType;
     if (e.albumId > 0) m[QStringLiteral("albumId")] = e.albumId;
     if (!e.artistIds.isEmpty()) m[QStringLiteral("artistId")] = e.artistIds.first();
     m[QStringLiteral("score")]        = score;

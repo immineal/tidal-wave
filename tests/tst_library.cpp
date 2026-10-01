@@ -700,6 +700,30 @@ private slots:
         QVERIFY(lib.entries().isEmpty());
     }
 
+    // PlaylistPage decides whether a playlist is editable from its Tidal
+    // type, and the sidebar row is where it reads that: without it the page
+    // had to guess from the bridge's cache and fell back to read-only.
+    void playlistRowsCarryTheirType() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        Playlist mine = mkPlaylist(QStringLiteral("p-mine"), QStringLiteral("Mine"));
+        mine.type = QStringLiteral("USER");
+        Playlist theirs = mkPlaylist(QStringLiteral("p-theirs"), QStringLiteral("Theirs"));
+        theirs.type = QStringLiteral("EDITORIAL");
+        lib.playlists = {mine, theirs};
+        lib.albums = {mkAlbum(10, QStringLiteral("Blue Train"), {mkArtist(99, QStringLiteral("Various"))})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-mine"))
+                     .value(QStringLiteral("type")).toString(), QStringLiteral("USER"));
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-theirs"))
+                     .value(QStringLiteral("type")).toString(), QStringLiteral("EDITORIAL"));
+        // Only playlists have one; nothing else should grow a stray key.
+        QVERIFY(!rowFor(lib.entries(), QStringLiteral("album:10"))
+                     .contains(QStringLiteral("type")));
+    }
+
     void loadingIsAnnouncedAroundARefresh() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);

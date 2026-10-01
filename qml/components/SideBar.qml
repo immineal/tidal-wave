@@ -93,6 +93,92 @@ Item {
         root.rows = out
     }
 
+    // ── the pinned block, and dragging inside it (P3, P4) ────────────────
+
+    // The height of one library row, which is also the height of one slot in
+    // the pinned block, so the drag can work in whole rows.
+    readonly property int libRowHeight: 34
+
+    // The pinned rows are the leading run of the library list: the data layer
+    // puts them first and flags each one, so counting the run is all there is
+    // to it. A search result has no pinned block to count.
+    readonly property int pinnedCount: {
+        if (searching) return 0
+        var n = 0
+        while (n < rows.length && rows[n].pinned === true) n++
+        return n
+    }
+
+    // Live drag state. It sits here rather than in the row because the drop
+    // indicator belongs to the list, not to the row being dragged.
+    property int  pinDragFrom:   -1
+    property int  pinDragTo:     -1
+    property real pinDragOffset: 0
+    // Whether the pointer is still inside the pinned block. A drag that ends
+    // anywhere else is abandoned rather than clamped: a pinned row must not
+    // land in the ordinary library list below, and letting a drop out there
+    // mean anything at all would turn a slip of the hand into an edit.
+    property bool pinDropValid:  false
+    readonly property bool pinDragging: pinDragFrom >= 0
+
+    // The slot a row dragged by `offset` is over, never outside the block.
+    function pinSlotAt(from, offset) {
+        return Math.max(0, Math.min(root.pinnedCount - 1,
+                                    from + Math.round(offset / root.libRowHeight)))
+    }
+
+    function beginPinDrag(index) {
+        root.pinDragFrom   = index
+        root.pinDragTo     = index
+        root.pinDragOffset = 0
+        root.pinDropValid  = true
+    }
+
+    function cancelPinDrag() {
+        root.pinDragFrom   = -1
+        root.pinDragTo     = -1
+        root.pinDragOffset = 0
+        root.pinDropValid  = false
+    }
+
+    function endPinDrag() {
+        var from = root.pinDragFrom
+        var to   = root.pinDragTo
+        var ok   = root.pinDropValid
+        cancelPinDrag()
+        if (!ok || from < 0 || to < 0 || from === to) return
+
+        var a = root.rows[from]
+        var b = root.rows[to]
+        if (!a || !b) return
+        // Row index and pin index line up today, but it is PinStore that is
+        // being reordered, so the move is expressed in its indices and not in
+        // the list's. PinStore persists it; LibraryIndex rebuilds off its
+        // `changed`, which is what reorders the rows on screen.
+        var fromPin = pins.indexOf(a.kind, a.id)
+        var toPin   = pins.indexOf(b.kind, b.id)
+        if (fromPin < 0 || toPin < 0 || fromPin === toPin) return
+        pins.move(fromPin, toPin)
+    }
+
+    // ── the pin menu (P2) ────────────────────────────────────────────────
+
+    readonly property alias pinMenu: pinContextMenu
+
+    // `data` is a library row or a pinned item from the rail; both carry
+    // kind, id, title, subtitle and imageUrl. x and y are in root's
+    // coordinates.
+    function showPinMenu(x, y, data) {
+        if (!data) return
+        pinContextMenu.showPin(x, y, data.kind, data.id, data.title || "",
+                               data.subtitle || "", data.imageUrl || "")
+    }
+
+    ContextMenu {
+        id: pinContextMenu
+        objectName: "sidebarPinMenu"
+    }
+
     // Coalesces a burst of keystrokes into one pass over the index. 120ms is
     // below the point where the list feels like it is lagging the typing.
     Timer {
@@ -250,6 +336,23 @@ Item {
 
                 delegate: LibraryRow { }
 
+                // P4: where the dragged row will land. Declared inside the
+                // list, which parents it to the content item, so it is
+                // positioned in content coordinates and points between the
+                // same two rows however far the list is scrolled.
+                Rectangle {
+                    objectName: "pinDropIndicator"
+                    visible: root.pinDragging && root.pinDropValid
+                    x: 8
+                    width: Math.max(0, libList.width - 16)
+                    height: 2
+                    radius: 1
+                    z: 3
+                    color: Theme.accent
+                    y: (root.pinDragTo > root.pinDragFrom ? root.pinDragTo + 1 : root.pinDragTo)
+                       * root.libRowHeight - 1
+                }
+
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 32
@@ -317,6 +420,21 @@ Item {
                                                 pinDelegate.modelData.id,
                                                 pinDelegate.modelData)
                         }
+
+                        // The rail carries the pinned covers and nothing else
+                        // of the library, so the one thing a right-click here
+                        // can mean is Unpin. Reordering stays in the full
+                        // sidebar, which a hover brings back anyway (L4).
+                        MouseArea {
+                            objectName: "railPinMenuArea"
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton
+                            onClicked: function (mouse) {
+                                var p = mapToItem(root, mouse.x, mouse.y)
+                                root.showPinMenu(p.x, p.y, pinDelegate.modelData)
+                            }
+                        }
+
                         ToolTip.visible: pinHov.hovered
                         ToolTip.text: pinDelegate.modelData.title || ""
                         ToolTip.delay: 450
@@ -474,15 +592,14 @@ Item {
         library.markPlayed(kind, id)
         switch (kind) {
         case "playlist":
-            // LibraryIndex does not carry the playlist type, and PlaylistPage
-            // needs it to decide whether the playlist is editable. The bridge's
-            // own cache of the user's playlists is the only hint available
-            // without a round trip; an unknown playlist opens read-only.
+            // The row carries the playlist's Tidal type, which is what
+            // PlaylistPage reads to decide whether the playlist is editable.
+            // Anything that is not "USER" opens read-only.
             root.navigate("playlist", {
                 playlistUuid:  id,
                 playlistTitle: data.title || "",
                 coverUrl:      data.imageUrl || "",
-                playlistType:  root.playlistTypeFor(id)
+                playlistType:  data.type || ""
             })
             break
         case "album":
@@ -505,13 +622,6 @@ Item {
             if (data.albumId) root.navigate("album", { albumId: parseInt(data.albumId) })
             break
         }
-    }
-
-    function playlistTypeFor(uuid) {
-        var mine = bridge.getUserPlaylists()
-        for (var i = 0; i < mine.length; i++)
-            if (mine[i].uuid === uuid) return mine[i].type || ""
-        return ""
     }
 
     // The settings popup, exposed so tests/qml/tst_layout_player.qml can measure
@@ -822,8 +932,16 @@ Item {
         readonly property bool blockBreak: !root.searching && index > 0 && !pinned
                                            && root.rows[index - 1].pinned === true
 
+        // P4. There is nothing to reorder in a block of one, and nothing
+        // outside the block is draggable at all, which is half of why a
+        // pinned row cannot end up in the list below.
+        readonly property bool draggable: pinned && !root.searching && root.pinnedCount > 1
+        readonly property bool dragging:  root.pinDragging && root.pinDragFrom === index
+
         width: ListView.view ? ListView.view.width : 0
-        height: 34 + (blockBreak ? 11 : 0)
+        height: root.libRowHeight + (blockBreak ? 11 : 0)
+        // The row being dragged travels over its neighbours, not under them.
+        z: dragging ? 2 : 0
 
         activeFocusOnTab: true
         Keys.onReturnPressed: root.open(kind, itemId, modelData)
@@ -849,14 +967,30 @@ Item {
             anchors.bottom: parent.bottom
             anchors.leftMargin: 8
             anchors.rightMargin: 8
-            height: 34
+            height: root.libRowHeight
             radius: Theme.radiusRow
-            color: rowHov.hovered ? Theme.surfaceHov : "transparent"
-            border.width: rowItem.activeFocus ? 2 : 0
+            color: rowItem.dragging || rowHov.hovered ? Theme.surfaceHov : "transparent"
+            border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
             border.color: Theme.accent
+            // The lift. A transform rather than a y offset, because the row's
+            // y belongs to the ListView.
+            transform: Translate { y: rowItem.dragging ? root.pinDragOffset : 0 }
 
             HoverHandler { id: rowHov; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
+
+            // P2. Right button only, so the tap handler above keeps every
+            // left-click; declared before the grip so a right-click over the
+            // grip still opens the menu.
+            MouseArea {
+                objectName: "libraryRowMenuArea"
+                anchors.fill: parent
+                acceptedButtons: Qt.RightButton
+                onClicked: function (mouse) {
+                    var p = mapToItem(root, mouse.x, mouse.y)
+                    root.showPinMenu(p.x, p.y, rowItem.modelData)
+                }
+            }
 
             VectorIcon {
                 id: rowIcon
@@ -877,7 +1011,9 @@ Item {
                 anchors.left: rowIcon.right
                 anchors.leftMargin: 10
                 anchors.right: parent.right
-                anchors.rightMargin: 10
+                // The grip's space is reserved whether or not it is showing,
+                // so the title does not jump when the pointer arrives.
+                anchors.rightMargin: rowItem.draggable ? 28 : 10
                 anchors.verticalCenter: parent.verticalCenter
                 text: rowItem.title
                 color: rowItem.derived ? Theme.textDim : Theme.textSec
@@ -885,7 +1021,69 @@ Item {
                 elide: Text.ElideRight
             }
 
-            ToolTip.visible: rowHov.hovered && (rowTitle.truncated || subtitleOf.length > 0)
+            // P4: the drag affordance. Drawn on every pinned row rather than
+            // on hover alone, so the block says it can be reordered before
+            // anyone goes looking.
+            Item {
+                id: grip
+                objectName: "pinDragGrip"
+                visible: rowItem.draggable
+                width: 16
+                height: parent.height
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+
+                VectorIcon {
+                    anchors.centerIn: parent
+                    name: "grip"
+                    width: 12
+                    height: 12
+                    strokeWidth: 1.5
+                    color: rowItem.dragging ? Theme.accent : Theme.textDim
+                    opacity: rowHov.hovered || rowItem.dragging ? 1 : 0.45
+                }
+
+                MouseArea {
+                    id: dragArea
+                    objectName: "pinDragArea"
+                    anchors.fill: parent
+                    anchors.margins: -5          // 16x34 is a small target
+                    enabled: rowItem.draggable
+                    cursorShape: rowItem.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                    // Otherwise the list reads the vertical drag as a flick
+                    // and takes the grab away mid-reorder.
+                    preventStealing: true
+
+                    // Where the press landed, in the list's content
+                    // coordinates, which do not move when the list scrolls.
+                    property real pressY: 0
+
+                    onPressed: function (mouse) {
+                        dragArea.pressY = mapToItem(libList.contentItem, mouse.x, mouse.y).y
+                        root.beginPinDrag(rowItem.index)
+                    }
+                    onPositionChanged: function (mouse) {
+                        if (!rowItem.dragging) return
+                        // The row travels with the pointer, but the event
+                        // arrives in the handle's own moving coordinates and
+                        // mapToItem puts it back, so this is the pointer
+                        // itself, in the list's content space.
+                        var p = mapToItem(libList.contentItem, mouse.x, mouse.y)
+                        root.pinDragOffset = p.y - dragArea.pressY
+                        root.pinDragTo     = root.pinSlotAt(rowItem.index, root.pinDragOffset)
+                        // Confined to the pinned block, in both directions:
+                        // the list below it and the page beside it.
+                        root.pinDropValid  = p.y >= 0
+                            && p.y < root.pinnedCount * root.libRowHeight
+                            && p.x >= 0 && p.x <= libList.width
+                    }
+                    onReleased: root.endPinDrag()
+                    onCanceled: root.cancelPinDrag()
+                }
+            }
+
+            ToolTip.visible: rowHov.hovered && !rowItem.dragging
+                             && (rowTitle.truncated || subtitleOf.length > 0)
             ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
                                                 : rowItem.title
             ToolTip.delay: 600

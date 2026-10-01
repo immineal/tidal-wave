@@ -3,6 +3,7 @@
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "ui/UpdateCheck.h"
 #include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
 #include "cast/CastManager.h"
@@ -187,6 +188,9 @@ int Application::run(int argc, char **argv) {
     // Before the engine, so the tray menu and any startup error are already
     // translated. The engine is handed over below for live retranslation.
     m_i18n = new I18n(m_prefs, this);
+    // Only reads QSettings here, so it needs nothing but the org/app names set
+    // above. The network request waits until the engine has loaded, below.
+    m_update = new UpdateCheck(this);
 
     // Someone debugging a graphics problem from the shell outranks the stored
     // setting, so an explicit backend in the environment is left alone.
@@ -336,9 +340,21 @@ int Application::run(int argc, char **argv) {
 #endif
     ctx->setContextProperty(QStringLiteral("cast"), castObj);
     ctx->setContextProperty(QStringLiteral("app"),    this);
+    // Not "update": QQuickItem and QQuickWindow both have an update() slot,
+    // and an unqualified name in QML finds the enclosing objects before it
+    // reaches the context. Under the ApplicationWindow - which is every
+    // object in the app - a bare `update` is that slot, so the context
+    // property would be shadowed everywhere and silently read as undefined.
+    ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
 
     m_engine->loadFromModule("TidalWave", "Main");
     if (m_engine->rootObjects().isEmpty()) return -1;
+
+    // After the engine, so the GitHub request is never in front of the first
+    // frame. It throttles itself to once a day, is asynchronous, and fails
+    // silently, so there is nothing here to guard. Whatever it learns is for
+    // the next launch: the prompt Main.qml just decided on read the cache.
+    m_update->startupCheck();
 
     return QApplication::exec();
 }
