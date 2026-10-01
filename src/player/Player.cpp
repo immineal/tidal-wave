@@ -239,6 +239,12 @@ void Player::setLoading(bool l) {
     emit loadingChanged(l);
 }
 
+void Player::setIndex(int i) {
+    if (m_index == i) return;
+    m_index = i;
+    emit currentIndexChanged(m_index);
+}
+
 // ─── QML-callable ──────────────────────────────────
 
 void Player::playTracks(const QVariantList &tracks, int startIndex) {
@@ -255,7 +261,7 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
     m_queue.clear();
     for (const auto &v : tracks)
         m_queue.append(v.toMap());
-    m_index = qBound(0, startIndex, m_queue.count() - 1);
+    setIndex(qBound(0, startIndex, m_queue.count() - 1));
     if (m_shuffle) buildShuffleOrder();
     emit queueChanged();
     loadAndPlay(m_index);
@@ -284,8 +290,7 @@ void Player::appendQueue(const QVariantList &tracks) {
 void Player::jumpToQueue(int index) {
     if (index < 0 || index >= m_queue.count()) return;
     cancelPreload();
-    m_index = index;
-    emit queueChanged();
+    setIndex(index);
     loadAndPlay(m_index);
 }
 
@@ -294,7 +299,7 @@ void Player::clearQueue() {
     if (m_player) m_player->stop();
     m_queue.clear();
     m_shuffleOrder.clear();
-    m_index = -1;
+    setIndex(-1);
     m_currentTrack = Track{};
     setLoading(false);
     emit currentTrackChanged();
@@ -305,16 +310,16 @@ void Player::removeFromQueue(int index) {
     if (index < 0 || index >= m_queue.count()) return;
     m_queue.removeAt(index);
     if (index < m_index) {
-        m_index--;
+        setIndex(m_index - 1);
     } else if (index == m_index) {
         if (m_queue.isEmpty()) {
             if (m_player) m_player->stop();
-            m_index = -1;
+            setIndex(-1);
             m_currentTrack = Track{};
             setLoading(false);
             emit currentTrackChanged();
         } else {
-            m_index = qMin(m_index, m_queue.count() - 1);
+            setIndex(qMin(m_index, m_queue.count() - 1));
             loadAndPlay(m_index);
         }
     }
@@ -326,9 +331,9 @@ void Player::moveQueueItem(int from, int to) {
     if (from < 0 || from >= m_queue.count() ||
         to   < 0 || to   >= m_queue.count() || from == to) return;
     m_queue.move(from, to);
-    if      (m_index == from)                          m_index = to;
-    else if (from < m_index && to >= m_index)          m_index--;
-    else if (from > m_index && to <= m_index)          m_index++;
+    if      (m_index == from)                          setIndex(to);
+    else if (from < m_index && to >= m_index)          setIndex(m_index - 1);
+    else if (from > m_index && to <= m_index)          setIndex(m_index + 1);
     if (m_shuffle) buildShuffleOrder();
     emit queueChanged();
 }
@@ -402,8 +407,7 @@ void Player::next() {
     if (!m_player) return;
     int n = nextIndex();
     if (n < 0) { m_player->stop(); return; }
-    m_index = n;
-    emit queueChanged();
+    setIndex(n);
     loadAndPlay(m_index);
 }
 
@@ -411,8 +415,7 @@ void Player::previous() {
     if (position() > 3000) { seek(0); return; }
     int p = previousIndex();
     if (p < 0) { seek(0); return; }
-    m_index = p;
-    emit queueChanged();
+    setIndex(p);
     loadAndPlay(m_index);
 }
 

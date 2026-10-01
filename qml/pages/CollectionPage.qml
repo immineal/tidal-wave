@@ -200,6 +200,10 @@ Rectangle {
             model: root.activeTab === 0 ? sortedTracks : []
             boundsBehavior: Flickable.StopAtBounds
 
+            // The fields are handed over as they came off the API. TrackRow
+            // takes them as `var` and decides what a missing or wrongly typed
+            // one shows, so a truncated response costs a fallback here and not
+            // a warning per field per row.
             delegate: TrackRow {
                 width: tracksList.width - 32
                 x: 16
@@ -209,10 +213,19 @@ Rectangle {
                 albumTitle:  modelData.albumTitle
                 durationStr: modelData.durationStr
                 coverUrl:    modelData.coverUrl80
-                isPlaying:   player.currentTrack.id === modelData.id && player.playing
+                // Both ids are undefined on a partial payload, and undefined
+                // matches undefined, which lit every row up as playing.
+                isPlaying:   Number(modelData.id) > 0
+                             && player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
                 onPlayRequested: {
                     player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
+                    // S4: "Liked Songs" is not one of the four kinds the
+                    // sidebar orders, and markPlayed() drops it, so the
+                    // track's own album stands in as the thing that played.
+                    // Recorded after the source so it is the newer of the two.
+                    if (Number(modelData.albumId) > 0)
+                        library.markPlayed("album", "" + modelData.albumId)
                     player.playTracks(tracksList.sortedTracks, index)
                 }
             }
@@ -260,7 +273,12 @@ Rectangle {
                     onClicked: navigateTo("album", { albumId: modelData.id })
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                            if (err || tracks.length === 0) return
+                            // Declaring the source both fills "Playing from"
+                            // and is what records the album as played (S4).
+                            player.setPlaybackSource("album", "" + modelData.id,
+                                                     modelData.title || "")
+                            player.playTracks(tracks, 0)
                         })
                     }
                 }
@@ -398,7 +416,10 @@ Rectangle {
                     onPlayClicked: {
                         bridge.markPlaylistPlayed(modelData.uuid)
                         bridge.fetchPlaylistTracks(modelData.uuid, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                            if (err || tracks.length === 0) return
+                            player.setPlaybackSource("playlist", modelData.uuid || "",
+                                                     modelData.title || "")
+                            player.playTracks(tracks, 0)
                         })
                     }
                 }
@@ -455,7 +476,10 @@ Rectangle {
                     onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl })
                     onPlayClicked: {
                         bridge.fetchMixTracks(modelData.id, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                            if (err || tracks.length === 0) return
+                            player.setPlaybackSource("mix", "" + modelData.id,
+                                                     modelData.title || "")
+                            player.playTracks(tracks, 0)
                         })
                     }
                 }

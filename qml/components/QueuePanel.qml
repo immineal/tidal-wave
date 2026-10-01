@@ -18,11 +18,43 @@ Item {
     // fixed 340 would leave 80px of page showing.
     readonly property int panelWidth: Math.min(340, Math.round(width * 0.85))
 
-    // The queue in true play order (respects shuffle). Rebound on queueChanged
-    // (via player.queueTracks) and on shuffle toggle. In shuffle mode each entry
-    // carries "_queueIndex" so rows still map back to the real queue index.
-    property var queueModel: (player.queueTracks, player.shuffle,
-                              player.shuffle ? player.playbackOrderTracks() : player.queueTracks)
+    // The queue in true play order (respects shuffle). In shuffle mode each
+    // entry carries "_queueIndex" so rows still map back to the real queue
+    // index.
+    //
+    // Two things keep this off the hot path. It is gated on visible, because a
+    // closed panel still evaluated its binding and held a copy of the whole
+    // queue in JS; and the shuffled branch subscribes to queueChanged by
+    // reading queueCount rather than queueTracks, so the queue is marshalled
+    // once per rebuild instead of twice. Advancing a track no longer raises
+    // queueChanged at all (Player::setIndex), so this does not run on a track
+    // change — only on a real add/remove/reorder/shuffle/clear/new context.
+    property var queueModel:
+        !visible ? []
+                 : player.shuffle ? (player.queueCount, player.playbackOrderTracks())
+                                  : player.queueTracks
+
+    // Which displayed row is playing. Reads player.queueIndex as a property, so
+    // it follows whichever signal the Player notifies it with.
+    readonly property int currentRow: {
+        var qi = player.queueIndex
+        if (qi < 0) return -1
+        if (!player.shuffle) return qi
+        var m = root.queueModel
+        for (var i = 0; i < m.length; i++)
+            if (m[i] && m[i]._queueIndex === qi) return i
+        return -1
+    }
+
+    // Keeps the playing row on screen as the queue advances. Contain only moves
+    // the view when the row has actually fallen outside it.
+    function revealCurrent() {
+        if (!visible || currentRow < 0 || currentRow >= queueListView.count) return
+        queueListView.positionViewAtIndex(currentRow, ListView.Contain)
+    }
+    onCurrentRowChanged: revealCurrent()
+    // On open the rows do not exist yet, so the scroll has to wait for them.
+    onVisibleChanged: if (visible) Qt.callLater(revealCurrent)
 
     Rectangle {
         anchors.fill: parent
@@ -120,6 +152,20 @@ Item {
         property var  track:      null
         readonly property bool userQueued: track && track["_userQueued"] === true
 
+        // Only a string is a title; a missing or wrongly typed field is not.
+        function fieldOf(key) {
+            var v = track ? track[key] : undefined
+            return (typeof v === "string") ? v : ""
+        }
+        // The two fallbacks come out of TrackRow's context rather than being
+        // declared again here: the same sentence in two contexts is the same
+        // sentence translated twice, and free to drift.
+        readonly property string titleText:
+            fieldOf("title")   || qsTranslate("TrackRow", "Unknown track")
+        readonly property string artistsText:
+            fieldOf("artists") || qsTranslate("TrackRow", "Unknown artist")
+        readonly property string coverText:   fieldOf("coverUrl80")
+
         activeFocusOnTab: true
         Keys.onReturnPressed: player.jumpToQueue(trackIndex)
         Keys.onSpacePressed:  player.jumpToQueue(trackIndex)
@@ -191,7 +237,7 @@ Item {
                     clip: true
                     Image {
                         anchors.fill: parent
-                        source: track && track.coverUrl80 ? "image://tidal/" + track.coverUrl80 : ""
+                        source: queueItem.coverText ? "image://tidal/" + queueItem.coverText : ""
                         fillMode: Image.PreserveAspectCrop
                         smooth: true
                         mipmap: true
@@ -201,16 +247,17 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
+                    // A truncated payload must still read as a row.
                     Text {
                         Layout.fillWidth: true
-                        text: track ? track.title : ""
+                        text: queueItem.titleText
                         color: isCurrent ? Theme.accent : Theme.textPrimary
                         font.pixelSize: 13
                         elide: Text.ElideRight
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: track ? track.artists : ""
+                        text: queueItem.artistsText
                         color: Theme.textSec
                         font.pixelSize: 11
                         elide: Text.ElideRight
