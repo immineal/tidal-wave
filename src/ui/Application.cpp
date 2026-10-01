@@ -20,6 +20,9 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSurfaceFormat>
+#include <QFileInfo>
+#include <QNetworkProxyFactory>
+#include <QDebug>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QLoggingCategory>
@@ -33,6 +36,14 @@
 #include <QDesktopServices>
 #include <QUrl>
 // #include <QQuickStyle>
+
+#if defined(Q_OS_UNIX)
+#include <unistd.h>   // getuid(), for the per-user socket name
+#endif
+#ifdef Q_OS_LINUX
+#include <QDBusConnection>
+#include <QDBusServiceWatcher>
+#endif
 
 typedef int (*snd_lib_error_handler_t)(const char *file, int line, const char *function, int err, const char *fmt, ...);
 typedef int (*snd_lib_error_set_handler_t)(snd_lib_error_handler_t handler);
@@ -56,10 +67,37 @@ static void silenceAlsa() {
 }
 
 static QtMessageHandler originalMessageHandler = nullptr;
+// Decided once in silenceLogsAndAlsa(); see audioServerAbsent() for the rule.
+static bool suppressAudioServerNoise = false;
+
+// Whether this machine is offering no audio server at all.
+//
+// The two connect errors below are only noise when there is nothing to connect
+// to. Someone who is running PipeWire or PulseAudio and still cannot reach it
+// has a real fault, and the one line saying so is the only clue they get, so
+// that case is left alone and only a machine with no server anywhere goes
+// quiet. Env first: being pointed at a server explicitly counts as having one.
+static bool audioServerAbsent() {
+#if defined(Q_OS_LINUX)
+    if (qEnvironmentVariableIsSet("PULSE_SERVER") || qEnvironmentVariableIsSet("PIPEWIRE_REMOTE"))
+        return false;
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (runtime.isEmpty())
+        return false;  // nothing to go on, so assume there is a server and keep the log
+    return !QFile::exists(runtime + QStringLiteral("/pipewire-0"))
+        && !QFile::exists(runtime + QStringLiteral("/pulse/native"));
+#else
+    // Neither server exists on Windows or macOS, so nothing to suppress.
+    return false;
+#endif
+}
 
 static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     if (msg.contains(QStringLiteral("spaVisitChoice"))) {
         return; // Ignore and silence this log message completely
+    }
+    if (suppressAudioServerNoise && Application::isAudioServerStartupNoise(msg)) {
+        return;
     }
     if (originalMessageHandler) {
         originalMessageHandler(type, context, msg);
@@ -72,6 +110,12 @@ static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, 
 static void silenceLogsAndAlsa() {
     // Silence Qt Multimedia / FFmpeg logs
     QLoggingCategory::setFilterRules(QStringLiteral("qt.multimedia*=false"));
+
+    // The PipeWire and PulseAudio connect errors escape that rule, so they get
+    // their own gate in the handler below. Sampled here, before anything has
+    // had a chance to start an audio server, which is also when the answer is
+    // cheapest to get.
+    suppressAudioServerNoise = audioServerAbsent();
 
     // Intercept and filter out "spaVisitChoice" log messages
     originalMessageHandler = qInstallMessageHandler(myMessageHandler);
@@ -170,6 +214,118 @@ static bool detectReducedMotion() {
     return false;
 }
 
+#if defined(Q_OS_UNIX)
+// A Unix socket address is a path in a fixed-size field: sockaddr_un::sun_path
+// is 108 bytes including the terminator, and bind() refuses anything longer.
+static constexpr int kUnixSocketPathMax = 107;
+
+// Candidate directory for the socket: it has to exist and the finished path
+// has to fit sun_path, measured in bytes, not characters.
+static bool socketDirFits(const QString &dir, const QString &leaf) {
+    if (dir.isEmpty())
+        return false;
+    const QString candidate = dir + QLatin1Char('/') + leaf;
+    if (QFile::encodeName(candidate).size() > kUnixSocketPathMax)
+        return false;
+    return QFileInfo(dir).isDir();
+}
+#endif
+
+// Where the single-instance rendezvous socket lives for this user.
+//
+// The old flat "TidalWaveSingleInstanceSocket" had two faults. It carried no
+// uid, so two people signed into one machine fought over one file in a shared
+// /tmp and the loser never got a window. And QLocalServer resolves a bare name
+// against $TMPDIR, so a long enough $TMPDIR pushes the address past sun_path,
+// bind() fails, and every launch from then on is a fresh instance.
+//
+// Hence the uid in the name, and on Unix an explicit directory: $XDG_RUNTIME_DIR
+// first, which is per-user, mode 0700, short, and where runtime sockets belong;
+// then the temp dir, honouring $TMPDIR the way the old code did; then /tmp,
+// which always fits. The result is an absolute path, which QLocalServer and
+// QLocalSocket both take as the address itself.
+QString Application::singleInstanceSocketName() {
+#if defined(Q_OS_UNIX)
+    const QString leaf = QStringLiteral("TidalWave-%1").arg(static_cast<uint>(::getuid()));
+    const QString candidates[] = {
+        qEnvironmentVariable("XDG_RUNTIME_DIR"),
+        QDir::cleanPath(QDir::tempPath()),
+        QStringLiteral("/tmp"),
+    };
+    for (const QString &dir : candidates) {
+        if (socketDirFits(dir, leaf))
+            return dir + QLatin1Char('/') + leaf;
+    }
+    // Only reachable if even /tmp is missing. Hand back the shortest address
+    // there is and let the caller report the failure.
+    return QStringLiteral("/tmp/") + leaf;
+#else
+    // Windows named pipes are a flat namespace under \\.\pipe\ with no path
+    // length worth guarding, but the namespace is machine-wide, so the name
+    // still has to say who it belongs to.
+    const QString name = qEnvironmentVariable("USERNAME");
+    QString user;
+    for (const QChar c : name) {
+        if (c.isLetterOrNumber())
+            user += c;
+    }
+    if (user.isEmpty())
+        user = QStringLiteral("user");
+    return QStringLiteral("TidalWave-") + user;
+#endif
+}
+
+bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString &socketName) {
+    if (!server)
+        return false;
+    if (server->listen(socketName))
+        return true;
+    if (server->serverError() != QAbstractSocket::AddressInUseError)
+        return false;
+
+    // The address is taken. A socket file outlives the process that made it,
+    // so after a crash or a kill -9 this fails on a machine where nothing is
+    // listening at all, and the old blind removeServer() before listen() cured
+    // that by being willing to evict a live instance too. Knock first instead:
+    // only an address that refuses a connection is stale.
+    QLocalSocket probe;
+    probe.connectToServer(socketName);
+    if (probe.waitForConnected(250)) {
+        probe.abort();
+        return false;
+    }
+    if (!QLocalServer::removeServer(socketName))
+        return false;
+    return server->listen(socketName);
+}
+
+bool Application::shouldQuitOnWindowClose(bool trayAvailable) {
+    // With a tray icon, closing the window hides it and the tray brings it
+    // back. With no tray there is nothing to click and no way to quit short of
+    // killing the process, so the close has to be a quit.
+    return !trayAvailable;
+}
+
+bool Application::isAudioServerStartupNoise(const QString &msg) {
+    // Both come out of libQt6Multimedia through qInfo()/qWarning() on the
+    // *default* logging category, which is exactly why the qt.multimedia*=false
+    // rule in silenceLogsAndAlsa() never touched them. Matched on the stable
+    // half of each line; the reason ("Host is down") is appended by Qt.
+    return msg.contains(QLatin1String("Failed to connect to pipewire instance"))
+        || msg.contains(QLatin1String("pa_context_connect() failed"));
+}
+
+bool Application::reallyQuit() const {
+    // Main.qml reads this in onClosing, imperatively, which is why the missing
+    // notify on the tray half of the answer costs nothing, and merely hides
+    // the window whenever it is false. That is right only while a tray icon can bring the window
+    // back, so with no tray a close counts as a quit. Asked here, at the
+    // moment of the close, rather than cached at startup: a StatusNotifier
+    // host can appear or vanish long after login and Qt has no signal for it.
+    return m_reallyQuit
+        || shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable());
+}
+
 Application::Application(QObject *parent) : QObject(parent) {
 }
 
@@ -181,6 +337,21 @@ int Application::run(int argc, char **argv) {
     QApplication::setApplicationVersion(QStringLiteral(TIDALWAVE_VERSION));
     QApplication::setOrganizationName("TidalWave");
     QApplication::setDesktopFileName("tidal-wave");
+
+    // Behind a corporate proxy every request used to hang with nothing said,
+    // because Qt ignores the system proxy unless asked. This only flips a
+    // switch; the configuration is read lazily, per query, so it costs nothing
+    // here and has to be set before the first request goes out.
+    //
+    // What it does not cover: on Unix, Qt reads http_proxy/https_proxy/
+    // all_proxy/no_proxy from the environment, and a PAC script or the
+    // GNOME/KDE proxy dialogs only reach it when Qt was built against
+    // libproxy. Windows and macOS read the real system settings, PAC included.
+    // Nowhere does it cover a proxy that wants credentials, since the app has
+    // no dialog to ask for them (credentials inside the proxy URL do work).
+    // Nor does it cover playback: QMediaPlayer streams through the FFmpeg
+    // backend, which does its own HTTP and never sees QNetworkProxy.
+    QNetworkProxyFactory::setUseSystemConfiguration(true);
 
     // Prefs first: QSettings needs the names above, and the scene graph backend
     // below is chosen once, before any window exists, and never revisited.
@@ -212,12 +383,16 @@ int Application::run(int argc, char **argv) {
     // that does not.
     m_reducedMotion = detectReducedMotion();
 
+    // Left off, always: Qt samples this flag when the last window goes and
+    // cannot be asked to reconsider, while whether a close should quit depends
+    // on a tray that may not exist yet. So the decision is made per close, in
+    // reallyQuit() and in the lastWindowClosed handler further down.
     QApplication::setQuitOnLastWindowClosed(false);
     const QIcon appIcon = loadAppIcon();
     QApplication::setWindowIcon(appIcon);
 
     // Single-instance check
-    QString socketName = QStringLiteral("TidalWaveSingleInstanceSocket");
+    const QString socketName = singleInstanceSocketName();
     QLocalSocket socket;
     socket.connectToServer(socketName);
     if (socket.waitForConnected(500)) {
@@ -227,8 +402,7 @@ int Application::run(int argc, char **argv) {
     }
 
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
-    QLocalServer::removeServer(socketName);
-    if (server->listen(socketName)) {
+    if (claimSingleInstanceSocket(server, socketName)) {
         connect(server, &QLocalServer::newConnection, this, [this, server]() {
             QLocalSocket *clientSocket = server->nextPendingConnection();
             connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
@@ -239,6 +413,19 @@ int Application::run(int argc, char **argv) {
                 clientSocket->disconnectFromServer();
             });
         });
+    } else {
+        // Carry on deliberately. Single instance is a convenience, not a
+        // requirement: without the lock the app still works, it just stops
+        // handing a second launch to the first window. Refusing to start over
+        // a socket would turn a cosmetic problem into "it does not launch".
+        // What is not acceptable is the silence the old code had, where it
+        // ignored listen()'s return value and an address too long for sun_path
+        // turned every launch into a new copy with nothing on stderr to say so.
+        qWarning().noquote()
+            << QStringLiteral("tidal-wave: no single-instance lock at %1 (%2). "
+                              "Another launch will open a second window.")
+                   .arg(socketName, server->errorString());
+        server->deleteLater();
     }
 
     QFont defaultFont("Inter");
@@ -288,32 +475,40 @@ int Application::run(int argc, char **argv) {
 
     m_auth->loadCredentials();
 
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
-        m_trayIcon = new QSystemTrayIcon(appIcon, this);
-        m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
+    if (QSystemTrayIcon::isSystemTrayAvailable())
+        createTrayIcon(appIcon);
 
-        QMenu *trayMenu = new QMenu();
-        QAction *showAction = trayMenu->addAction(tr("Show"));
-        connect(showAction, &QAction::triggered, this, &Application::showWindow);
+#ifdef Q_OS_LINUX
+    // A tray that is not there yet. On Plasma, or any session whose bar starts
+    // after the autostarted app, the StatusNotifier host registers seconds or
+    // minutes late, and the old code sampled availability once and gave up for
+    // the rest of the session. Qt has no signal for it, and it picks the tray
+    // backend when QSystemTrayIcon is constructed, so an icon built before the
+    // host exists stays inert for good and has to be built again afterwards.
+    // Watching the bus name is what is left. Constructing it unconditionally
+    // instead is not: on a platform with no native tray at all (Wayland with
+    // no host, offscreen) Qt falls back to its X11 implementation and warns
+    // about a signal the plugin does not have, on every launch.
+    auto *trayWatcher = new QDBusServiceWatcher(QStringLiteral("org.kde.StatusNotifierWatcher"),
+                                                QDBusConnection::sessionBus(),
+                                                QDBusServiceWatcher::WatchForRegistration, this);
+    connect(trayWatcher, &QDBusServiceWatcher::serviceRegistered, this, [this, appIcon]() {
+        if (!m_trayIcon && QSystemTrayIcon::isSystemTrayAvailable())
+            createTrayIcon(appIcon);
+    });
+#endif
 
-        QAction *hideAction = trayMenu->addAction(tr("Hide"));
-        connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
-
-        trayMenu->addSeparator();
-
-        QAction *quitAction = trayMenu->addAction(tr("Quit"));
-        connect(quitAction, &QAction::triggered, this, &Application::quit);
-
-        m_trayIcon->setContextMenu(trayMenu);
-
-        connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-            if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
-                this->toggleWindow();
-            }
-        });
-
-        m_trayIcon->show();
-    }
+    // The other half of the no-tray case, and what keeps the app from being
+    // stranded while the paragraph above is still waiting. reallyQuit() makes
+    // Main.qml accept the close instead of hiding it, and this ends the
+    // process once that window is gone. Both ask about the tray at that
+    // moment, so a host that turned up, or died, since startup gets the right
+    // answer. Qt emits this signal whatever quitOnLastWindowClosed is set to,
+    // which is why that flag can stay off.
+    connect(qApp, &QGuiApplication::lastWindowClosed, this, [this]() {
+        if (shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable()))
+            quit();
+    });
 
     m_engine = new QQmlApplicationEngine(this);
     m_i18n->setEngine(m_engine);
@@ -378,6 +573,36 @@ void Application::openUrl(const QString &url) {
     }
 #endif
     QDesktopServices::openUrl(QUrl(url));
+}
+
+void Application::createTrayIcon(const QIcon &icon) {
+    if (m_trayIcon)
+        return;
+
+    m_trayIcon = new QSystemTrayIcon(icon, this);
+    m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
+
+    QMenu *trayMenu = new QMenu();
+    QAction *showAction = trayMenu->addAction(tr("Show"));
+    connect(showAction, &QAction::triggered, this, &Application::showWindow);
+
+    QAction *hideAction = trayMenu->addAction(tr("Hide"));
+    connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
+
+    trayMenu->addSeparator();
+
+    QAction *quitAction = trayMenu->addAction(tr("Quit"));
+    connect(quitAction, &QAction::triggered, this, &Application::quit);
+
+    m_trayIcon->setContextMenu(trayMenu);
+
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            this->toggleWindow();
+        }
+    });
+
+    m_trayIcon->show();
 }
 
 void Application::showWindow() {
