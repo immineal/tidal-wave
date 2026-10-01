@@ -37,7 +37,7 @@ void CastSession::connectToDevice(const QString &host, int port) {
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
     connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        emit error(m_socket ? m_socket->errorString() : QStringLiteral("socket error"));
+        emit error(m_socket ? m_socket->errorString() : tr("The connection to the cast device failed."));
     });
     connect(m_socket, &QSslSocket::disconnected, this, [this]() {
         m_appConnected = false;

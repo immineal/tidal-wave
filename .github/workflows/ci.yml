@@ -35,7 +35,9 @@ jobs:
           version: ${{ matrix.qt }}
           # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
           # ship in the base desktop install (aqt has no separate 'qtsvg' module).
-          modules: 'qtmultimedia'
+          # qttools supplies lrelease, without which CMake skips the .qm
+          # catalogues and the binary ships English-only.
+          modules: 'qtmultimedia qttools'
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -63,9 +65,9 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.12.0'
-          # qtmultimedia as in the build job; Qt6::Test and Qt6::QuickTest ship
-          # with the base desktop install.
-          modules: 'qtmultimedia'
+          # qtmultimedia and qttools as in the build job; Qt6::Test and
+          # Qt6::QuickTest ship with the base desktop install.
+          modules: 'qtmultimedia qttools'
 
       - name: Install dependencies
         run: |

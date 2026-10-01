@@ -36,7 +36,10 @@ void CastMediaPrep::prepare(qlonglong trackId) {
     m_client->fetchStreamManifest(trackId, AudioQuality::HiResLossless,
         [this, gen](StreamManifest manifest, QString err) {
             if (gen != m_gen) return;   // superseded/cancelled
-            if (!err.isEmpty()) { emit failed(QStringLiteral("Stream error: ") + err); return; }
+            if (!err.isEmpty()) {
+                emit failed(tr("Could not load this track for casting. %1").arg(err));
+                return;
+            }
 
             const bool aac = (manifest.codec == QStringLiteral("LOW") ||
                               manifest.codec == QStringLiteral("HIGH"));
@@ -49,12 +52,18 @@ void CastMediaPrep::prepare(qlonglong trackId) {
                         if (gen != m_gen) return;
                         m_reply = nullptr;
                         if (!e2.isEmpty() || data.isEmpty()) {
-                            emit failed(QStringLiteral("Failed to fetch audio: ") + e2);
+                            emit failed(e2.isEmpty()
+                                ? tr("Could not download the audio for casting. No data came back.")
+                                : tr("Could not download the audio for casting. %1").arg(e2));
                             return;
                         }
                         QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/tidal-wave-cast-XXXXXX.mp4"));
                         tmp.setAutoRemove(false);
-                        if (!tmp.open()) { emit failed(QStringLiteral("Temp file error")); return; }
+                        if (!tmp.open()) {
+                            emit failed(tr("Could not save the audio to a temporary file. "
+                                           "Check that there is free disk space."));
+                            return;
+                        }
                         tmp.write(data); tmp.flush(); tmp.close();
                         m_inputPath = tmp.fileName();
                         if (aac) {
@@ -68,7 +77,11 @@ void CastMediaPrep::prepare(qlonglong trackId) {
                 // MPD: write the DASH XML to a temp file; ffmpeg pulls the segments.
                 QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/tidal-wave-cast-XXXXXX.mpd"));
                 tmp.setAutoRemove(false);
-                if (!tmp.open()) { emit failed(QStringLiteral("Temp file error")); return; }
+                if (!tmp.open()) {
+                    emit failed(tr("Could not save the playback details to a temporary file. "
+                                   "Check that there is free disk space."));
+                    return;
+                }
                 tmp.write(manifest.url.toUtf8()); tmp.flush(); tmp.close();
                 m_inputPath = tmp.fileName();
                 remuxFlac(/*isMpd=*/true, sr);
@@ -78,11 +91,18 @@ void CastMediaPrep::prepare(qlonglong trackId) {
 
 void CastMediaPrep::remuxFlac(bool isMpd, int sampleRate) {
     const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
-    if (ffmpeg.isEmpty()) { emit failed(QStringLiteral("ffmpeg not found")); return; }
+    if (ffmpeg.isEmpty()) {
+        emit failed(tr("ffmpeg was not found on PATH. Install ffmpeg to cast this track."));
+        return;
+    }
 
     QTemporaryFile out(QDir::tempPath() + QStringLiteral("/tidal-wave-cast-XXXXXX.flac"));
     out.setAutoRemove(false);
-    if (!out.open()) { emit failed(QStringLiteral("Temp file error")); return; }
+    if (!out.open()) {
+        emit failed(tr("Could not create a temporary file for the converted audio. "
+                       "Check that there is free disk space."));
+        return;
+    }
     m_outputPath = out.fileName();
     out.close();
 
@@ -110,7 +130,8 @@ void CastMediaPrep::remuxFlac(bool isMpd, int sampleRate) {
             if (m_ffmpeg) { m_ffmpeg->deleteLater(); m_ffmpeg = nullptr; }
             cleanupInput();
             if (code == 0) emit ready(m_outputPath, QStringLiteral("audio/flac"));
-            else           emit failed(QStringLiteral("ffmpeg failed (exit %1)").arg(code));
+            else           emit failed(tr("Could not convert the audio for casting. "
+                                          "ffmpeg exited with code %1.").arg(code));
         });
     m_ffmpeg->start(ffmpeg, a);
 }
