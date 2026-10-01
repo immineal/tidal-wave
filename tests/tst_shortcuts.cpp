@@ -22,6 +22,9 @@
 
 #include <QTest>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QDirIterator>
 #include <QKeySequence>
 #include <QRegularExpression>
 #include <QSet>
@@ -200,6 +203,64 @@ private slots:
         // own key would be wrong on macOS again the moment it was added.
         QVERIFY2(panel.contains(QStringLiteral("Shortcuts.display(")),
                  "the Settings rows no longer derive their key text from Shortcuts.display()");
+    }
+
+    // No QML file asks for a font family that is a generic name rather than a
+    // real one.
+    //
+    // The key badges used to say font.family: "monospace". On Linux that
+    // resolves and nothing looks wrong, which is exactly why it survived. On
+    // macOS it does not resolve, and Qt answers a missing family by populating
+    // its font-family alias table - 37 ms, measured on the Mac, on every single
+    // launch, against about 470 ms to first frame.
+    //
+    // The same measurement killed the narrower fix. Removing "Inter" from the
+    // macOS branch changed nothing at all, because the 37 ms line simply came
+    // back naming "Monospace" instead: the cost is paid once by whichever
+    // missing family comes first, so removing one just promotes the next. The
+    // rule has to be that no missing family is named anywhere, which is a thing
+    // about the whole tree rather than about one line, so it is checked over
+    // the whole tree.
+    void noQmlFileNamesAGenericFontFamily() {
+        static const QStringList generics{
+            QStringLiteral("monospace"), QStringLiteral("Monospace"),
+            QStringLiteral("sans-serif"), QStringLiteral("Sans Serif"),
+            QStringLiteral("sans"), QStringLiteral("serif"),
+            QStringLiteral("cursive"), QStringLiteral("fantasy"),
+        };
+        QStringList offenders;
+        QDirIterator it(QStringLiteral(TIDALWAVE_QML_DIR),
+                        QStringList{ QStringLiteral("*.qml") },
+                        QDir::Files, QDirIterator::Subdirectories);
+        int scanned = 0;
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            ++scanned;
+            const QStringList lines =
+                QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            for (int i = 0; i < lines.size(); ++i) {
+                QRegularExpression re(
+                    QStringLiteral("font\\.famil(?:y|ies)\\s*:\\s*\"([^\"]+)\""));
+                auto m = re.match(lines.at(i));
+                if (m.hasMatch() && generics.contains(m.captured(1))) {
+                    offenders << QStringLiteral("%1:%2 names \"%3\"")
+                                     .arg(QFileInfo(path).fileName())
+                                     .arg(i + 1)
+                                     .arg(m.captured(1));
+                }
+            }
+        }
+        QVERIFY2(scanned > 0, "no .qml files were scanned - TIDALWAVE_QML_DIR is wrong");
+        QVERIFY2(offenders.isEmpty(),
+                 qPrintable(QStringLiteral(
+                     "a QML file names a generic font family, which is not a family on "
+                     "every platform and costs ~37 ms of alias population on the ones "
+                     "where it is missing. Ask the font database for a real name "
+                     "instead (Shortcuts.monospaceFamily() does this).\n  %1")
+                                .arg(offenders.join(QStringLiteral("\n  ")))));
     }
 };
 

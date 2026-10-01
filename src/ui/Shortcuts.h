@@ -50,6 +50,15 @@ public:
     // carrying a translation for every key on the keyboard.
     Q_INVOKABLE QString display(const QString &id) const;
 
+    // A fixed-pitch family this machine actually has, for the key badges.
+    //
+    // The badges used to ask for "monospace", which Linux resolves and macOS
+    // does not. The cost of that was not a wrong font - Qt substitutes - it was
+    // 37 ms of font-family alias population on every launch, measured on the
+    // Mac. Asking the database which fixed font the system uses gets a name
+    // that is real on every platform, the same way the UI font stack does.
+    Q_INVOKABLE QString monospaceFamily() const;
+
     // The same conversion for a sequence that is not in the table, for a label
     // that has to print a key the app does not bind.
     Q_INVOKABLE QString nativeText(const QString &portableSequence) const;

@@ -40,10 +40,13 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <QFontDatabase>
 
 #include "TestStubs.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "ui/Application.h"
+#include "ui/Shortcuts.h"
 
 namespace {
 
@@ -211,6 +214,41 @@ private:
     }
 
     QTemporaryDir m_dir;
+
+    // Every family the UI font stack names is one this machine actually has.
+    //
+    // Naming a missing family is not a cosmetic mistake: Qt answers the first
+    // one it cannot resolve by populating its font-family alias table, which
+    // the Mac measured at 37 ms on every launch - roughly 8% of the time to
+    // first frame. This test needs a real font database, which is why it lives
+    // in a GUI test rather than next to the other startup decisions.
+    void uiFontFamiliesAreAllInstalled() {
+        const QStringList families = Application::uiFontFamilies();
+        QVERIFY2(!families.isEmpty(),
+                 "the UI font stack came back empty, so QFont would fall back to "
+                 "a default chosen by nobody");
+        for (const QString &f : families) {
+            QVERIFY2(QFontDatabase::hasFamily(f),
+                     qPrintable(QStringLiteral(
+                         "the UI font stack names \"%1\", which this machine does not "
+                         "have; that costs ~37 ms of alias population on every launch")
+                                    .arg(f)));
+        }
+    }
+
+    // The key badges ask for a fixed-pitch family by name, and the name has to
+    // be real. Empty is allowed - it means "use the default font", which is a
+    // deliberate answer for a machine with nothing fixed-pitch - but a name
+    // that is not installed is the exact bug this replaced.
+    void monospaceFamilyIsRealOrDeliberatelyEmpty() {
+        const QString fixed = Shortcuts().monospaceFamily();
+        if (fixed.isEmpty())
+            return;
+        QVERIFY2(QFontDatabase::hasFamily(fixed),
+                 qPrintable(QStringLiteral(
+                     "Shortcuts::monospaceFamily() returned \"%1\", which the font "
+                     "database does not have").arg(fixed)));
+    }
 };
 
 QTEST_MAIN(TestFirstRun)

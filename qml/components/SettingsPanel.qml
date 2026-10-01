@@ -672,7 +672,8 @@ Popup {
                                           return Shortcuts.display(id)
                                       }).join(" / ")
                                 color: Theme.textPrimary
-                                font.pixelSize: 11; font.family: "monospace"
+                                font.pixelSize: 11
+                                font.family: Shortcuts.monospaceFamily()
                             }
                         }
                         Text {

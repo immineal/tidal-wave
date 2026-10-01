@@ -228,6 +228,18 @@ signals:
     void recentlyPlayedChanged();
     void sourceChanged       ();
     void castTrackChanged    ();   // current track changed while casting
+    // The set of output devices changed - one appeared, one went away, or the
+    // system default moved. Anything showing a device list binds to this and
+    // re-reads availableAudioDevices(); without it an open picker shows the
+    // list as it was when it opened, which is what a hot-plug test on the
+    // Debian box caught: a sink added while the menu was up never appeared,
+    // and closing and reopening was the only way to see it.
+    //
+    // Raised from the deferred turn in onAudioOutputsChanged(), never straight
+    // from the backend callback, for exactly the reason written out there: a
+    // handler that re-reads the device list would do so while PipeWire still
+    // holds its thread loop lock.
+    void audioDevicesChanged ();
     void error               (const QString &msg);
 
 private slots:

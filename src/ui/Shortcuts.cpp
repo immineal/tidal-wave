@@ -1,3 +1,4 @@
+#include <QFontDatabase>
 #include "ui/Shortcuts.h"
 
 #include <QKeySequence>
@@ -91,4 +92,23 @@ QString Shortcuts::nativeText(const QString &portableSequence) const {
         return QString();
     return QKeySequence(portableSequence, QKeySequence::PortableText)
         .toString(QKeySequence::NativeText);
+}
+
+QString Shortcuts::monospaceFamily() const {
+    const QString fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    // Only trust it if the database agrees it exists: the point of asking was
+    // to avoid naming a family that is not there.
+    if (!fixed.isEmpty() && QFontDatabase::hasFamily(fixed))
+        return fixed;
+    for (const QString &f : { QStringLiteral("DejaVu Sans Mono"),
+                              QStringLiteral("Menlo"),
+                              QStringLiteral("Consolas"),
+                              QStringLiteral("Courier New") }) {
+        if (QFontDatabase::hasFamily(f))
+            return f;
+    }
+    // Nothing fixed-pitch on this machine. An empty family means "the default
+    // font", which is the right answer here: a badge in the UI font is a far
+    // smaller problem than a badge that costs 37 ms to fail to find.
+    return QString();
 }
