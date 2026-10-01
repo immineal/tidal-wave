@@ -38,9 +38,19 @@ struct Spec {
 // Four dark, two light.
 //
 // "Forest" stands where a violet "Graphite" was drafted; the user asked for a
-// green one instead. On the dark themes the accent is bright enough that white
-// text on it fails contrast, so accentInk is a near-black drawn from the same
-// hue; on the light themes the accent is deep and accentInk is white.
+// green one instead.
+//
+// accentInk and redInk are white in all six. They were a near-black on the
+// four dark themes, because white on those bright accents measured 1.8-2.6:1
+// and failed; the user wants the label on a filled chip white, so the fill
+// moved instead of the ink. Every accent and every red below is now dark
+// enough to carry white at 4.5:1 and still light enough to read as text and
+// icons on bg, surface and surfaceHigh at 3:1. Those two pull against each
+// other and leave a relative luminance band of roughly 0.15 to 0.18 on the
+// dark themes, which is why the dark accents are so much deeper than they
+// were. The hue of each is untouched, so Midnight is still azure, Deep cyan,
+// Forest green and Ember orange, and the two light themes did not have to
+// move at all: their accents were already deep enough.
 //
 // Two columns were moved after a screenshot audit, and both are load-bearing:
 //
@@ -56,26 +66,26 @@ const Spec kSpecs[] = {
     { "midnight", QT_TRANSLATE_NOOP("Theme", "Midnight"), true,
       "#0A0A0A", "#141414", "#1E1E1E", "#383838", "#2A2A2A", 26,
       "#FFFFFF", "#A0A0A0", "#6B6B6B",
-      "#00B2F8", "#0082B8", "#04161F",
-      "#FF4D4D", "#2A0A0A", "#1DB954" },
+      "#0079A8", "#005A7D", "#FFFFFF",
+      "#D82C2C", "#FFFFFF", "#1DB954" },
 
     { "forest",   QT_TRANSLATE_NOOP("Theme", "Forest"),   true,
       "#0B0F0C", "#141A16", "#1C241E", "#323C34", "#29332B", 26,
       "#EEF5F0", "#94A69B", "#637269",
-      "#3DD68C", "#2A9E66", "#04180F",
-      "#FF5A5A", "#2A0A0A", "#4ADE80" },
+      "#18814E", "#105F39", "#FFFFFF",
+      "#D23535", "#FFFFFF", "#4ADE80" },
 
     { "ember",    QT_TRANSLATE_NOOP("Theme", "Ember"),    true,
       "#100D0C", "#1A1614", "#241F1C", "#3E3836", "#332C28", 26,
       "#F7F2EF", "#A89C95", "#736B66",
-      "#FF7A45", "#C25A2E", "#1F0B04",
-      "#FF5F5F", "#2A0A0A", "#5FBF7A" },
+      "#C14A18", "#93340C", "#FFFFFF",
+      "#CF3939", "#FFFFFF", "#5FBF7A" },
 
     { "deep",     QT_TRANSLATE_NOOP("Theme", "Deep"),     true,
       "#000000", "#0C0C0E", "#16161A", "#343439", "#24242B", 32,
       "#FFFFFF", "#9BA1AB", "#61666F",
-      "#22D3EE", "#0E9BB3", "#03181C",
-      "#FF5C6E", "#2A0A0F", "#34D399" },
+      "#007C8F", "#005D6C", "#FFFFFF",
+      "#D03647", "#FFFFFF", "#34D399" },
 
     { "daylight", QT_TRANSLATE_NOOP("Theme", "Daylight"), false,
       "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
@@ -106,11 +116,18 @@ QVariantMap build(const Spec &s) {
     const QColor accent(QString::fromLatin1(s.accent));
     const QColor red(QString::fromLatin1(s.red));
 
-    // A wash over a light ground has to be heavier than the same wash over a
-    // dark one to read at all.
-    const double soft = s.dark ? 0.08 : 0.10;
-    const double tint = s.dark ? 0.15 : 0.18;
-    const double wash = s.dark ? 0.22 : 0.26;
+    // A wash reads by what it paints, not by its alpha. The dark accents lost
+    // about half their luminance when they were darkened to carry white text,
+    // so these went up to keep the painted result near where the user signed
+    // it off: the album hero and the playing row's tint land within a few
+    // hundredths of what they measured before. The wash stops at 0.26 and
+    // does not fully recover its old weight, because the accent is drawn on
+    // top of it too, on the mix cover placeholder, and a heavier wash closes
+    // the gap between the two. The dark themes now take more alpha than the
+    // light ones, which is the reverse of the old rule.
+    const double soft = s.dark ? 0.12 : 0.10;
+    const double tint = s.dark ? 0.22 : 0.18;
+    const double wash = 0.26;   // the same in both directions now
 
     QVariantMap m;
     m.insert(QStringLiteral("dark"), s.dark);
@@ -181,7 +198,8 @@ bool isKnown(const QString &name) {
     return false;
 }
 
-QString defaultTheme() { return QStringLiteral("midnight"); }
+// Deep rather than Midnight: the user's pick after living with all six.
+QString defaultTheme() { return QStringLiteral("deep"); }
 
 QVariantMap palette(const QString &name) {
     static const QHash<QString, QVariantMap> built = [] {

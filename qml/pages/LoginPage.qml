@@ -24,19 +24,10 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             spacing: 12
 
-            Rectangle {
+            AppMark {
                 Layout.alignment: Qt.AlignHCenter
                 width: 64
                 height: 64
-                radius: Theme.radiusMark
-                color: Theme.accent
-                Text {
-                    anchors.centerIn: parent
-                    text: "≋"
-                    color: Theme.accentInk
-                    font.pixelSize: 32
-                    font.bold: true
-                }
             }
 
             Text {

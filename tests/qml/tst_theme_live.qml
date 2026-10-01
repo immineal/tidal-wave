@@ -23,6 +23,24 @@ TestCase {
         // app uses.
         color: Theme.bg
         Text { id: label; text: "x"; color: Theme.textPrimary }
+
+        // A filled chip, the shape every accent fill in the app has: an
+        // accent-coloured ground with its label in accentInk. Read back as a
+        // binding, because a binding is what the app draws with.
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: 60; height: 20
+            color: Theme.accent
+            Text { id: chipLabel; anchors.centerIn: parent; text: "(7)"; color: Theme.accentInk }
+        }
+
+        // ...and the same for a filled danger button.
+        Rectangle {
+            anchors.top: parent.top
+            width: 60; height: 20
+            color: Theme.red
+            Text { id: dangerLabel; anchors.centerIn: parent; text: "x"; color: Theme.redInk }
+        }
     }
 
     function init() {
@@ -100,6 +118,36 @@ TestCase {
             compare(Theme[key].toString(), palette[key].toString(),
                     data.name + ": Theme." + key + " does not match the palette")
         }
+    }
+
+    // The ink on a filled chip is white in every theme now, and QML is where
+    // that has to be true: the C++ table was always right about onAccent too,
+    // and the binding still painted black. Reading it back off a real
+    // Rectangle's label is the only check that covers the whole path.
+    function test_ink_on_a_fill_is_white_data() {
+        return [
+            { tag: "midnight", name: "midnight" },
+            { tag: "forest",   name: "forest" },
+            { tag: "ember",    name: "ember" },
+            { tag: "deep",     name: "deep" },
+            { tag: "daylight", name: "daylight" },
+            { tag: "paper",    name: "paper" },
+        ]
+    }
+
+    function test_ink_on_a_fill_is_white(data) {
+        prefs.theme = data.name
+        for (const probe of [{ item: chipLabel, token: "accentInk" },
+                             { item: dangerLabel, token: "redInk" }]) {
+            const ink = probe.item.color
+            verify(ink.r > 0.9 && ink.g > 0.9 && ink.b > 0.9,
+                   data.name + ": Theme." + probe.token + " painted "
+                   + ink.toString() + ", which is not white")
+        }
+        // The fill itself has to stay dark enough to hold that white label.
+        const fill = chipLabel.parent.color
+        const fillLum = 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b
+        verify(fillLum < 0.5, data.name + ": the accent fill is too light for white ink")
     }
 
     // An unknown name must still paint something rather than leaving the

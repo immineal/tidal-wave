@@ -1,4 +1,5 @@
 #include "Prefs.h"
+#include "ThemePalette.h"
 #include <QCoreApplication>
 #include <algorithm>
 
@@ -12,7 +13,9 @@ constexpr auto kSoftRender = "ui/softwareRendering";
 
 Prefs::Prefs(QObject *parent)
     : QObject(parent)
-    , m_theme(m_settings.value(kTheme, QStringLiteral("midnight")).toString())
+    // The default comes from the palette table rather than a second copy of
+    // the name here, so the two cannot disagree about which theme ships.
+    , m_theme(m_settings.value(kTheme, theme::defaultTheme()).toString())
     , m_language(m_settings.value(kLanguage, QStringLiteral("system")).toString())
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
     , m_audioDevice(m_settings.value(kAudioDev).toString())
