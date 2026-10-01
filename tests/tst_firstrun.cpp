@@ -78,7 +78,7 @@ void loadMain(QQmlApplicationEngine &engine) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     engine.loadFromModule("TidalWave", "Main");
 #else
-    engine.load(QUrl(QStringLiteral("qrc:/TidalWave/qml/Main.qml")));
+    engine.load(QUrl(QStringLiteral("qrc:/qt/qml/TidalWave/qml/Main.qml")));
 #endif
 }
 

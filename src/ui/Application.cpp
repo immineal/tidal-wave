@@ -595,15 +595,17 @@ int Application::run(int argc, char **argv) {
     // component instead of naming a resource path - but it only arrived in Qt
     // 6.5, and a build on Debian bookworm's Qt 6.4.2 got to 143 of 149 objects
     // before stopping on exactly this line. The URL below is the same component
-    // reached the long way round: CMakeLists.txt only sets QTP0001 NEW from 6.5
-    // on, so under the Qt that needs this branch the module's resources are
-    // still at ":/TidalWave/" rather than ":/qt/qml/TidalWave/", and the file
-    // keeps the "qml/" of its path in the source tree either way (the generated
-    // qmldir maps Main to qml/Main.qml).
+    // reached the long way round. The prefix is the one CMakeLists.txt now pins
+    // with RESOURCE_PREFIX so that it is the same on every Qt - see the comment
+    // there, and note that getting this prefix wrong does not fail loudly: the
+    // import resolves nothing, every type reports "is not a type", and the line
+    // below this one returns -1 with no window and no message. The file keeps
+    // the "qml/" of its path in the source tree (the generated qmldir maps Main
+    // to qml/Main.qml).
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_engine->loadFromModule("TidalWave", "Main");
 #else
-    m_engine->load(QUrl(QStringLiteral("qrc:/TidalWave/qml/Main.qml")));
+    m_engine->load(QUrl(QStringLiteral("qrc:/qt/qml/TidalWave/qml/Main.qml")));
 #endif
     if (m_engine->rootObjects().isEmpty()) return -1;
 

@@ -118,6 +118,21 @@ set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 qt_add_qml_module(tidalwave_qml
     URI TidalWave
     VERSION 1.0
+    # Pinned, rather than left to QTP0001's default, because the policy only
+    # exists from Qt 6.5 and the two defaults are not interchangeable. Under the
+    # old default the module's resources land at ":/TidalWave/...", while a QML
+    # engine's default import path is "qrc:/qt/qml" - so on Qt 6.4 every
+    # `import TidalWave` resolved nothing, every type in the module came out
+    # "is not a type", and the engine returned no root object. Application::run()
+    # then exits -1 with no window and no message. A real Debian 12 build found
+    # this *after* the loadFromModule guard below made it compile: the declared
+    # 6.4 floor was false one layer deeper than the compile error.
+    #
+    # Setting it here puts the resources in the same place on every Qt, so the
+    # import works without a runtime addImportPath - which would have fixed the
+    # app and not the tests, since QuickTest builds its own engine and would have
+    # gone on failing all 35 of its module types.
+    RESOURCE_PREFIX "/qt/qml"
     # A library-hosted module gets its own directory in the build tree; without
     # this it lands in the build root, which doesn't match the TidalWave target
     # path and makes Qt warn that qmllint may misbehave. The app still loads the
