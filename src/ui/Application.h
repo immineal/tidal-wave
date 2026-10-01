@@ -157,6 +157,16 @@ public:
     // which case the app keeps its hands off entirely.
     static bool scaleFactorSetInEnvironment();
 
+    // The largest factor the Settings slider should offer on the screen the app
+    // is on right now, so the user cannot pick one that opens a window whose
+    // controls are off the edge. Needs a live QGuiApplication, unlike everything
+    // above it, which is why it is an instance method the panel can call.
+    Q_INVOKABLE double maxUsableScaleFactor() const;
+    // The step and the ends of the range, for the slider to lay itself out
+    // against the same numbers the resolution above uses.
+    Q_INVOKABLE double minScaleFactor() const  { return kMinScaleFactor; }
+    Q_INVOKABLE double scaleFactorStep() const { return kScaleFactorStep; }
+
     // Measures the primary screen, resolves a factor and puts it in the
     // environment. Call it from main() *before* the QApplication exists; Qt
     // reads the scale factor once, while the QApplication is being built, and
