@@ -1,0 +1,504 @@
+// Getting into Now Playing, and back out of it again.
+//
+// The complaint this covers: clicking the bottom bar opens Now Playing, but
+// nothing on the bar says so, and once the page is up there is no obvious way
+// back. So the bar grew one explicit control - an up-arrow that opens Now
+// Playing - and the page grew its mirror image, a down-arrow that closes it,
+// plus a fullscreen toggle.
+//
+// What is deliberately *not* changed is the left group's existing behaviour:
+// the cover still opens Now Playing, every artist name is still its own link,
+// and the gaps between the names still fall through to Now Playing. Those
+// assertions live in tst_navigation.qml; the few repeated here are the ones
+// the new button could plausibly have broken.
+//
+// Three hosts, because three different things are under test:
+//   * playerBarHost  - the bar on its own, recording where a click would go.
+//   * nowPlayingHost - the page on its own, with the window surface it reaches
+//                      through Window.window (goBack, the fullscreen pair).
+//   * appWindowHost  - the real Main.qml, because the window state and the
+//                      Escape precedence are its logic and nobody else's.
+
+import QtQuick
+import QtQuick.Window
+import QtQuick.Layouts
+import QtQuick.Controls
+import QtTest
+import TidalWave
+
+TestCase {
+    id: testCase
+    name: "NowPlayingAccess"
+    when: windowShown
+
+    // ── fixtures ─────────────────────────────────────────────────────────
+
+    // The shape TidalBridge::trackToMap() produces. German names on purpose:
+    // track metadata is never translated (SPEC T3) but it is what has to fit.
+    function trackWith(artists) {
+        var names = []
+        for (var i = 0; i < artists.length; i++) names.push(artists[i].name)
+        return {
+            id:          4242,
+            title:       "Weit hinter dem Horizont",
+            artists:     names.join(", "),
+            artistId:    artists.length > 0 ? artists[0].id : 0,
+            artistList:  artists,
+            albumTitle:  "Nachtfahrt",
+            albumId:     7788,
+            coverUrl:    "",
+            coverUrl80:  "",
+            duration:    215,
+            durationStr: "3:35"
+        }
+    }
+
+    function init() {
+        player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Erika Mustermann" }]))
+        player.setAudioQualityForTest("LOSSLESS")
+        player.setDurationForTest(215000)
+        player.setPositionForTest(42000)
+        auth.setStateForTest(2)   // LoggedIn: Main.qml gates its shortcuts on it
+    }
+
+    // The four widths from SPEC-0.4.0 X3. 640 is the narrow end, where the bar
+    // has already shed its volume slider and its cast button.
+    function widthRows() {
+        return [
+            { tag: "640",  w: 640  },
+            { tag: "820",  w: 820  },
+            { tag: "960",  w: 960  },
+            { tag: "1280", w: 1280 }
+        ]
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    function visibleNamed(item, objectName) {
+        return collectNamed(item, objectName, [])
+    }
+
+    function collectNamed(item, objectName, out) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i]
+            if (!c || c.visible === false || typeof c.width !== "number") continue
+            if (c.objectName === objectName) out.push(c)
+            collectNamed(c, objectName, out)
+        }
+        return out
+    }
+
+    // The QML type a visible item was built from, for finding something that
+    // carries no objectName of its own.
+    function typeName(obj) {
+        return obj.toString().split("(")[0].split("_QML")[0]
+    }
+
+    function findByType(item, wanted) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i]
+            if (!c || typeof c.width !== "number") continue
+            if (typeName(c) === wanted) return c
+            var found = findByType(c, wanted)
+            if (found) return found
+        }
+        return null
+    }
+
+    function centerClick(item) {
+        mouseClick(item, Math.round(item.width / 2), Math.round(item.height / 2))
+    }
+
+    function hover(item) {
+        mouseMove(item, Math.round(item.width / 2), Math.round(item.height / 2))
+        wait(0)
+    }
+
+    function rightEdgeIn(item, container) {
+        return item.mapToItem(container, item.width, 0).x
+    }
+
+    // ── hosts ────────────────────────────────────────────────────────────
+
+    Component {
+        id: playerBarHost
+        Window {
+            id: pbWin
+            width: 960; height: 200
+
+            // Main.qml's surface, as far as the bar is concerned.
+            property var navCalls: []
+            property int nowPlayingOpens: 0
+            property int queueOpens: 0
+            function navigate(page, params) {
+                navCalls = navCalls.concat([{ page: page, params: params }])
+            }
+            function goBack() {}
+
+            property alias bar: pb
+            PlayerBar {
+                id: pb
+                width: pbWin.width
+                anchors.bottom: parent.bottom
+                onShowNowPlaying: pbWin.nowPlayingOpens++
+                onShowQueue:      pbWin.queueOpens++
+            }
+        }
+    }
+
+    Component {
+        id: nowPlayingHost
+        Window {
+            id: npWin
+            width: 1280; height: 900
+
+            // The sleep timer lives on the application window so it survives
+            // navigation away from the page; the page reaches it through
+            // Window.window. Mirror that surface, plus the fullscreen pair.
+            property bool sleepTimerActive: false
+            property bool sleepStopAtEndOfTrack: false
+            property int  sleepTimeLeft: 0
+            property bool sleepIsFading: false
+            property bool sleepFadeOut: true
+            function startSleepTimer(minutes, stopAtEnd) { sleepTimerActive = true }
+            function cancelSleepTimer() { sleepTimerActive = false }
+            function formatSleepTime(seconds) { return "0:30" }
+
+            property var navCalls: []
+            property int backCalls: 0
+            function navigate(page, params) {
+                navCalls = navCalls.concat([{ page: page, params: params }])
+            }
+            function goBack() { backCalls++ }
+
+            // Stands in for the real window state, which Main.qml owns.
+            property bool fullScreen: false
+            property int  fullScreenToggles: 0
+            function toggleFullScreen() {
+                fullScreen = !fullScreen
+                fullScreenToggles++
+            }
+
+            property alias page: np
+            NowPlayingPage {
+                id: np
+                width: npWin.width
+                height: npWin.height
+            }
+        }
+    }
+
+    // The real application window. Nothing else can answer whether Escape
+    // leaves fullscreen before it navigates back.
+    Component {
+        id: appWindowHost
+        Main {}
+    }
+
+    function showHost(component, w, h) {
+        var host = createTemporaryObject(component, testCase)
+        verify(host, "host window was not created")
+        host.width = w
+        host.height = h
+        host.visible = true
+        waitForRendering(host.contentItem)
+        return host
+    }
+
+    function showApp() {
+        var win = createTemporaryObject(appWindowHost, testCase)
+        verify(win, "the application window was not created")
+        win.width = 1280
+        win.height = 800
+        win.visible = true
+        win.requestActivate()
+        waitForRendering(win.contentItem)
+        return win
+    }
+
+    // ── the way in: the player bar's Now Playing button ──────────────────
+
+    function test_bar_button_is_present_and_inside_the_bar_data() { return widthRows() }
+
+    function test_bar_button_is_present_and_inside_the_bar(row) {
+        var host = showHost(playerBarHost, row.w, 200)
+        var bar = host.bar
+        var btn = bar.nowPlayingButton
+        verify(btn, "the Now Playing button was not found")
+        verify(btn.visible, "the Now Playing button must not need a hover to appear")
+
+        var left  = btn.mapToItem(bar, 0, 0).x
+        var right = rightEdgeIn(btn, bar)
+        verify(left >= -0.5 && right <= bar.width + 0.5,
+               "the Now Playing button sits at " + left.toFixed(1) + ".."
+               + right.toFixed(1) + " in a " + bar.width + "px bar at " + row.tag)
+        verify(btn.width >= 24 && btn.height >= 24,
+               "the button is " + btn.width + "x" + btn.height + ", too small to aim at")
+
+        // It has to be absorbed by the space the left group already had. The
+        // row layout shares what is left over between the three groups from
+        // their declared widths, so the moment the left group asks for more
+        // than its long-standing 280 the transport slides right.
+        var group = bar.trackInfoGroup
+        compare(group.Layout.preferredWidth, 280,
+                "the left group asked for more room to fit the button in")
+        compare(group.Layout.minimumWidth, 200, "the left group's floor moved")
+        verify(rightEdgeIn(btn, group) <= group.width + 0.5,
+               "the button hangs off the right of the left group at " + row.tag)
+    }
+
+    function test_bar_button_opens_now_playing() {
+        var host = showHost(playerBarHost, 960, 200)
+        centerClick(host.bar.nowPlayingButton)
+        compare(host.nowPlayingOpens, 1, "the button should open Now Playing exactly once")
+        compare(host.navCalls.length, 0, "the button is not a navigation link")
+    }
+
+    // The button is a shortcut to the page, not to the track's artist.
+    function test_bar_button_is_not_an_artist_link() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(playerBarHost, 640, 200)
+        centerClick(host.bar.nowPlayingButton)
+        compare(host.navCalls.length, 0)
+        compare(host.nowPlayingOpens, 1)
+    }
+
+    // ── the left group is untouched ──────────────────────────────────────
+
+    function test_cover_still_opens_now_playing() {
+        var host = showHost(playerBarHost, 960, 200)
+        var cover = findChild(host.bar, "playerBarCover")
+        verify(cover, "the player bar cover was not found")
+        centerClick(cover)
+        compare(host.nowPlayingOpens, 1, "the cover opens Now Playing")
+        compare(host.navCalls.length, 0, "the cover is not an artist link")
+    }
+
+    function test_artist_name_opens_that_artist_and_not_now_playing() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(playerBarHost, 960, 200)
+        var names = visibleNamed(host.bar, "playerBarArtistName")
+        compare(names.length, 2, "each artist needs its own target")
+
+        centerClick(names[1])
+        compare(host.navCalls.length, 1, "clicking an artist should navigate once")
+        compare(host.navCalls[0].page, "artist")
+        compare(host.navCalls[0].params.artistId, 22,
+                "the second name must open the second artist")
+        compare(host.nowPlayingOpens, 0, "an artist click is not a Now Playing click")
+    }
+
+    // The space after the last name belongs to the group, not to the name.
+    function test_gap_after_the_names_opens_now_playing() {
+        player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Ada" }]))
+        var host = showHost(playerBarHost, 960, 200)
+        var line = findChild(host.bar, "playerBarArtistLine")
+        verify(line, "the artist line was not found")
+        var names = visibleNamed(host.bar, "playerBarArtistName")
+        compare(names.length, 1)
+        verify(line.width - rightEdgeIn(names[0], line) > 8, "fixture needs slack after the name")
+
+        mouseClick(line, Math.round(line.width - 4), Math.round(line.height / 2))
+        compare(host.navCalls.length, 0, "empty space is not an artist link")
+        compare(host.nowPlayingOpens, 1, "empty space opens Now Playing")
+    }
+
+    // The per-name hover is the behaviour the new button was kept away from.
+    function test_hover_underlines_only_the_name_under_the_pointer() {
+        player.setCurrentTrackForTest(trackWith([
+            { id: 11, name: "Erika Mustermann" },
+            { id: 22, name: "Gastsängerin" }
+        ]))
+        var host = showHost(playerBarHost, 960, 200)
+        var names = visibleNamed(host.bar, "playerBarArtistName")
+        compare(names.length, 2)
+        verify(!names[0].font.underline && !names[1].font.underline,
+               "nothing is underlined before the pointer arrives")
+
+        hover(names[1])
+        verify(names[1].font.underline, "the hovered name should be underlined")
+        verify(!names[0].font.underline, "only the hovered name should be underlined")
+
+        // The button is not part of the artist line, so pointing at it must
+        // not leave an underline behind.
+        hover(host.bar.nowPlayingButton)
+        verify(!names[0].font.underline && !names[1].font.underline,
+               "the underline should have followed the pointer off the names")
+    }
+
+    // Some endpoints hand back artists with no id. Nothing in the group may
+    // become a dead target because of it.
+    function test_track_without_artist_ids_still_works() {
+        player.setCurrentTrackForTest(trackWith([{ id: 0, name: "Unbekannt" }]))
+        var host = showHost(playerBarHost, 960, 200)
+        var names = visibleNamed(host.bar, "playerBarArtistName")
+        compare(names.length, 1, "the name still shows, it just does not link")
+
+        hover(names[0])
+        verify(!names[0].font.underline, "an artist with no id must not look clickable")
+        centerClick(names[0])
+        compare(host.navCalls.length, 0, "an artist with no id must not navigate")
+        compare(host.nowPlayingOpens, 1, "it falls through like the gaps do")
+
+        centerClick(host.bar.nowPlayingButton)
+        compare(host.nowPlayingOpens, 2, "the button works whatever the track carries")
+    }
+
+    // ── the way out: the page's own chrome ───────────────────────────────
+
+    function test_now_playing_collapse_returns_data() { return widthRows() }
+
+    function test_now_playing_collapse_returns(row) {
+        var host = showHost(nowPlayingHost, row.w, 800)
+        var collapse = findChild(host.page, "nowPlayingCollapse")
+        verify(collapse, "the Now Playing collapse button was not found at " + row.tag)
+        verify(collapse.visible, "the way out must be visible at " + row.tag)
+
+        var right = rightEdgeIn(collapse, host.page)
+        verify(collapse.mapToItem(host.page, 0, 0).x >= -0.5 && right <= host.page.width + 0.5,
+               "the collapse button is outside the page at " + row.tag)
+
+        centerClick(collapse)
+        compare(host.backCalls, 1, "the down-arrow should go back exactly once")
+        compare(host.navCalls.length, 0, "going back is not a navigation of its own")
+    }
+
+    function test_now_playing_fullscreen_button_asks_the_window() {
+        var host = showHost(nowPlayingHost, 1280, 800)
+        var fs = findChild(host.page, "nowPlayingFullscreen")
+        verify(fs, "the fullscreen toggle was not found")
+
+        centerClick(fs)
+        compare(host.fullScreenToggles, 1, "the toggle should ask the window exactly once")
+        compare(host.fullScreen, true)
+        compare(host.backCalls, 0, "the fullscreen toggle is not the way out")
+
+        // The same button comes back out, and says so.
+        centerClick(fs)
+        compare(host.fullScreenToggles, 2)
+        compare(host.fullScreen, false)
+    }
+
+    // ── the window state: Main.qml ───────────────────────────────────────
+
+    function test_fullscreen_toggle_sets_and_clears_window_visibility() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        compare(win.currentPage, "nowplaying")
+        verify(!win.fullScreen, "the window must not start fullscreen")
+        var before = win.visibility
+
+        win.toggleFullScreen()
+        tryVerify(function() { return win.visibility === Window.FullScreen }, 2000,
+                  "the toggle did not take the window fullscreen")
+        verify(win.fullScreen, "fullScreen should follow the window's visibility")
+
+        win.toggleFullScreen()
+        tryVerify(function() { return win.visibility === before }, 2000,
+                  "leaving fullscreen did not restore the visibility it found")
+        verify(!win.fullScreen)
+    }
+
+    // A maximised window has to come back maximised: restoring to a hardcoded
+    // Windowed would quietly un-maximise it.
+    function test_fullscreen_restores_a_maximised_window() {
+        var win = showApp()
+        win.visibility = Window.Maximized
+        tryVerify(function() { return win.visibility === Window.Maximized }, 2000,
+                  "the platform would not maximise the window")
+        win.navigate("nowplaying")
+
+        win.toggleFullScreen()
+        tryVerify(function() { return win.visibility === Window.FullScreen }, 2000)
+        win.toggleFullScreen()
+        tryVerify(function() { return win.visibility === Window.Maximized }, 2000,
+                  "the window came back from fullscreen un-maximised")
+    }
+
+    // Fullscreen is Now Playing's, so following a link out of the page brings
+    // the window back with it.
+    function test_navigating_away_leaves_fullscreen() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        win.toggleFullScreen()
+        tryVerify(function() { return win.fullScreen }, 2000)
+
+        win.navigate("home")
+        tryVerify(function() { return !win.fullScreen }, 2000,
+                  "navigating away from Now Playing should leave fullscreen")
+    }
+
+    function test_fullscreen_hides_the_sidebar() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        var sidebar = findByType(win.contentItem, "SideBar")
+        verify(sidebar, "the sidebar was not found in the application window")
+        verify(sidebar.visible, "the sidebar should be up before fullscreen")
+
+        win.toggleFullScreen()
+        tryVerify(function() { return !sidebar.visible }, 2000,
+                  "fullscreen should hide the sidebar")
+
+        win.toggleFullScreen()
+        tryVerify(function() { return sidebar.visible }, 2000,
+                  "leaving fullscreen should bring the sidebar back")
+    }
+
+    // Every way out of fullscreen is gated on being signed in, or on the page
+    // that signing out takes away, so signing out has to do it for the user.
+    function test_signing_out_leaves_fullscreen() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        win.toggleFullScreen()
+        tryVerify(function() { return win.fullScreen }, 2000)
+
+        auth.setStateForTest(0)   // LoggedOut
+        tryVerify(function() { return !win.fullScreen }, 2000,
+                  "signing out left a fullscreen window with no way back")
+        auth.setStateForTest(2)
+    }
+
+    // Escape already navigates back application-wide. Fullscreen has to come
+    // first, or the first Escape would both leave the page and leave the
+    // window in a state the user never asked to keep.
+    function test_escape_leaves_fullscreen_before_navigating_back() {
+        var win = showApp()
+        compare(win.currentPage, "home", "the app should start at home")
+        win.navigate("nowplaying")
+        win.toggleFullScreen()
+        tryVerify(function() { return win.fullScreen }, 2000)
+
+        keyClick(Qt.Key_Escape)
+        tryVerify(function() { return !win.fullScreen }, 2000,
+                  "the first Escape did not leave fullscreen")
+        compare(win.currentPage, "nowplaying",
+                "the first Escape navigated back as well as leaving fullscreen")
+
+        keyClick(Qt.Key_Escape)
+        tryVerify(function() { return win.currentPage === "home" }, 2000,
+                  "the second Escape should navigate back")
+    }
+
+    // The queue panel is an overlay on top of everything, so it is still the
+    // innermost thing Escape closes.
+    function test_escape_closes_the_queue_before_leaving_fullscreen() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        win.toggleFullScreen()
+        tryVerify(function() { return win.fullScreen }, 2000)
+        win.queueOpen = true
+
+        keyClick(Qt.Key_Escape)
+        tryVerify(function() { return !win.queueOpen }, 2000,
+                  "Escape did not close the queue panel")
+        verify(win.fullScreen, "Escape left fullscreen while the queue was still up")
+    }
+}

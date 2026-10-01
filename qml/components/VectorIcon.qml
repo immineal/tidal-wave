@@ -141,6 +141,28 @@ Item {
             return "M 15 5 L 8 12 L 15 19"
         case "chevron-right":
             return "M 9 5 L 16 12 L 9 19"
+        // The same chevron mirrored across the diagonal rather than rotated at
+        // runtime: a Scale/Rotation transform on the Shape would round the
+        // stroke onto a different pixel grid, and at 16px that is the
+        // difference between a crisp arrow and a soft one.
+        case "chevron-up":
+            return "M 5 15 L 12 8 L 19 15"
+        case "chevron-down":
+            return "M 5 9 L 12 16 L 19 9"
+        // Four corner brackets, arms pointing out of the frame; the exit
+        // state is the same four corners with the arms turned inwards. The
+        // corners take the 2-unit radius the home and settings glyphs use, so
+        // the frame belongs to the same set.
+        case "fullscreen":
+            return "M 9 3 H 5 A 2 2 0 0 0 3 5 V 9"
+                 + " M 15 3 H 19 A 2 2 0 0 1 21 5 V 9"
+                 + " M 15 21 H 19 A 2 2 0 0 0 21 19 V 15"
+                 + " M 9 21 H 5 A 2 2 0 0 1 3 19 V 15"
+        case "fullscreen-exit":
+            return "M 9 3 V 7 A 2 2 0 0 1 7 9 H 3"
+                 + " M 15 3 V 7 A 2 2 0 0 0 17 9 H 21"
+                 + " M 21 15 H 17 A 2 2 0 0 0 15 17 V 21"
+                 + " M 3 15 H 7 A 2 2 0 0 1 9 17 V 21"
         case "plus":
             return "M 12 5 V 19 M 5 12 H 19"
         case "info":

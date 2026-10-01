@@ -97,15 +97,31 @@ Item {
         root.rows = out
     }
 
-    // What the rail draws. The library as the data layer ordered it, with no
-    // finder applied, because the finder is not on screen in the rail.
-    readonly property var railRows: library.entries
+    // One list in both shapes of the sidebar means one model, so a query or a
+    // chip left behind would go on filtering a rail that has no finder on
+    // screen to explain itself. Clearing it as the panel closes is also what
+    // keeps the model still during the slide: a new model would throw the
+    // delegates away, and the covers are supposed to travel, not be rebuilt.
+    onExpandedChanged: if (!expanded) finder.reset()
 
     // ── the pinned block, and dragging inside it (P3, P4) ────────────────
 
     // The height of one library row, which is also the height of one slot in
     // the pinned block, so the drag can work in whole rows.
     readonly property int libRowHeight: 34
+
+    // ── the cover, which is one cover in both shapes (S9, amended) ───────
+    //
+    // The rail used to draw its own 40px covers and the open sidebar its own
+    // type glyphs, and the two swapped. One size, one item, one list now: 26
+    // leaves 4px of air above and below inside a 34px row, which is the same
+    // rhythm the rail had at 40 inside 44, and it is small enough to sit
+    // beside a 13px title instead of dwarfing it.
+    readonly property int coverSize: 26
+    // The row's own inset inside the panel, and where a row's content starts
+    // once the sidebar is open. 16 is the sidebar's left inset throughout.
+    readonly property int rowInset:  8
+    readonly property int coverLeft: 16
 
     // The pinned rows are the leading run of the library list: the data layer
     // puts them first and flags each one, so counting the run is all there is
@@ -293,40 +309,93 @@ Item {
                 color: Theme.border
                 height: 1
                 Layout.fillWidth: true
-                Layout.leftMargin: root.expanded ? 16 : 14
-                Layout.rightMargin: root.expanded ? 16 : 14
+                Layout.leftMargin: Math.round(14 + 2 * root.wideness)
+                Layout.rightMargin: Math.round(14 + 2 * root.wideness)
             }
             Item { Layout.fillWidth: true; Layout.preferredHeight: 14 }
 
             // ── the finder: search field plus type chips (S5, S8) ────────
-            LibraryFinder {
-                id: finder
-                objectName: "sidebarFinder"
-                visible: root.showsWide
-                opacity: root.wideOpacity
+            //
+            // The slot's *height* travels with the slide rather than switching
+            // on at a threshold. The list underneath is now the same list the
+            // rail shows, so a block that appeared above it at full height
+            // would shove those covers down a step in the middle of a move
+            // that is supposed to be smooth.
+            //
+            // The finder itself is laid out at the size it will settle at and
+            // *scaled* into that slot, which is not the obvious way round.
+            // Resizing it to the slot instead would leave its content hanging
+            // out of it, and that content cannot be cut off: a Shape ignores
+            // an ancestor's `clip`, and the magnifier and all five chips are
+            // VectorIcons, i.e. Shapes. They would spill over the library list
+            // below and past the panel's edge for the length of every slide.
+            // Five chips also want 166px of finder, which is the whole reason
+            // Prefs::minSidebarWidth is 190, and the panel passes through
+            // every width under that on its way open. Scaling has nothing to
+            // spill, and at rest both scales are 1, so the settled sidebar is
+            // laid out exactly as it was.
+            Item {
+                id: finderSlot
                 Layout.fillWidth: true
                 Layout.leftMargin: 12
                 Layout.rightMargin: 12
-                Layout.preferredHeight: implicitHeight
+                Layout.preferredHeight: Math.round(finder.implicitHeight * root.wideness)
+
+                LibraryFinder {
+                    id: finder
+                    objectName: "sidebarFinder"
+                    // False at the rail, which also keeps a search field that
+                    // is not on screen out of the tab order of a 68px strip.
+                    visible: root.wideness > 0
+                    opacity: root.wideOpacity
+                    width: Math.max(1, root.expandedWidth - 24)
+                    height: implicitHeight
+                    transform: Scale {
+                        origin.x: 0
+                        origin.y: 0
+                        xScale: finderSlot.width / finder.width
+                        yScale: root.wideness
+                    }
+                }
             }
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 10
-                visible: root.showsWide
+                // 4 at the rail, 10 open: the gap grows with the finder rather
+                // than appearing with it.
+                Layout.preferredHeight: Math.round(4 + 6 * root.wideness)
             }
 
-            // ── the flat library list (S1, S2) ───────────────────────────
+            // ── the library list (S1, S2, S9) ────────────────────────────
+            //
+            // One list, in both shapes of the sidebar. It used to be two: a
+            // strip of 40px covers for the rail and a list of type glyphs and
+            // titles for the open sidebar, swapped at a threshold partway
+            // through the slide. That swap is what the user saw - the covers
+            // blinked out and the text blinked in, in the middle of an
+            // animation whose whole point was continuity.
+            //
+            // Now the row reflows instead. The cover is the same item at the
+            // same size throughout and only its x travels; the title, the
+            // finder and the chips fade in around it. Nothing below switches
+            // on `expanded`: it all lerps off `wideness`, which the panel's
+            // own width animation drives, so there is one clock.
             ListView {
                 id: libList
                 objectName: "sidebarLibraryList"
-                visible: root.showsWide
-                opacity: root.wideOpacity
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
                 bottomMargin: 8
                 model: root.rows
+                // This list draws no selection, but a ListView builds a
+                // default highlight item regardless and then *smooth-resizes*
+                // it toward the current row: an empty Item that paints
+                // nothing, trails the panel's width by a few hundred
+                // milliseconds and hangs out of a 68px rail the whole time it
+                // is catching up. Left untracked it stays 0 wide and costs
+                // nothing, which is what a highlight nobody draws should cost.
+                highlightFollowsCurrentItem: false
                 // A library can run to thousands of rows, so nothing outside
                 // the viewport is kept alive.
                 cacheBuffer: 240
@@ -338,7 +407,9 @@ Item {
                 // P4: where the dragged row will land. Declared inside the
                 // list, which parents it to the content item, so it is
                 // positioned in content coordinates and points between the
-                // same two rows however far the list is scrolled.
+                // same two rows however far the list is scrolled. Only ever
+                // live while the sidebar is open, which is the only state a
+                // drag can start in.
                 Rectangle {
                     objectName: "pinDropIndicator"
                     visible: root.pinDragging && root.pinDropValid
@@ -355,136 +426,15 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 32
-                    visible: root.rows.length === 0
+                    // There is no room to say any of this in a 68px rail, and
+                    // an empty rail is self-explanatory.
+                    visible: root.rows.length === 0 && root.showsWide
+                    opacity: root.wideOpacity
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: root.searching ? qsTr("No matches") : qsTr("Nothing saved yet")
                     color: Theme.textDim
                     font.pixelSize: 12
-                }
-            }
-
-            // ── the rail's covers (S9, amended) ──────────────────────────
-            //
-            // The whole library, not just the pinned items. S9 as written had
-            // the rail carry "the pinned covers" and nothing else, which means
-            // an empty strip for anyone who has never pinned anything, which
-            // is most people and was what the user actually saw. The rail is
-            // the same sidebar, so it shows the same list in the same order:
-            // pinned first, then recently played, then A to Z (S2).
-            //
-            // `library.entries` rather than `root.rows`, because the finder is
-            // not on screen here. A chip or a half-typed query left behind
-            // before the window narrowed would otherwise silently empty a rail
-            // with no visible control to explain why.
-            ListView {
-                id: railCovers
-                objectName: "sidebarRailPins"
-                visible: !root.showsWide
-                opacity: 1 - root.wideness
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                topMargin: 4
-                bottomMargin: 8
-                spacing: 4
-                model: root.railRows
-                // As long as the library list, so the same reasoning applies:
-                // nothing outside the viewport stays alive.
-                cacheBuffer: 240
-                boundsBehavior: Flickable.StopAtBounds
-
-                delegate: Item {
-                    id: railDelegate
-                    required property int index
-                    required property var modelData
-
-                    readonly property bool pinned: modelData.pinned === true
-                    // The same break the wide list draws between the pinned
-                    // block and the rest (P3), so the two shapes of the
-                    // sidebar tell the same story.
-                    readonly property bool blockBreak: index > 0 && !pinned
-                                                       && root.railRows[index - 1].pinned === true
-
-                    width: ListView.view.width
-                    height: 44 + (blockBreak ? 9 : 0)
-
-                    Rectangle {
-                        objectName: "railPinnedBlockBreak"
-                        visible: railDelegate.blockBreak
-                        anchors.top: parent.top
-                        anchors.topMargin: 4
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: 28
-                        height: 1
-                        color: Theme.border
-                    }
-
-                    Rectangle {
-                        objectName: "railPinCover"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 2
-                        width: 40
-                        height: 40
-                        radius: Theme.radiusArt
-                        color: Theme.surfaceHigh
-                        // A pinned cover keeps its ring once the break above
-                        // has scrolled away, which is the only thing left to
-                        // tell it apart in a strip of bare artwork.
-                        border.width: coverHov.hovered ? 2 : (railDelegate.pinned ? 1 : 0)
-                        border.color: Theme.accent
-                        clip: true
-
-                        Image {
-                            anchors.fill: parent
-                            source: (railDelegate.modelData.imageUrl || "").length > 0
-                                    ? "image://tidal/" + railDelegate.modelData.imageUrl : ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            visible: status === Image.Ready
-                        }
-                        // No artwork, and no label either at this width, so
-                        // the type glyph is all there is to say what the tile
-                        // is. The tooltip carries the name.
-                        VectorIcon {
-                            objectName: "railCoverFallbackIcon"
-                            anchors.centerIn: parent
-                            width: 18
-                            height: 18
-                            visible: (railDelegate.modelData.imageUrl || "").length === 0
-                            name: root.glyphFor(railDelegate.modelData.kind)
-                            color: railDelegate.pinned ? Theme.accent : Theme.textDim
-                        }
-
-                        // Passive, so the panel's own hover handler still sees
-                        // the pointer and the rail keeps expanding (L4).
-                        HoverHandler { id: coverHov; cursorShape: Qt.PointingHandCursor }
-                        TapHandler {
-                            onTapped: root.open(railDelegate.modelData.kind,
-                                                railDelegate.modelData.id,
-                                                railDelegate.modelData)
-                        }
-
-                        // P2, the same menu the wide rows get: the rail is no
-                        // longer a pinned-only strip, so a right-click here
-                        // can mean Pin as well as Unpin.
-                        MouseArea {
-                            objectName: "railPinMenuArea"
-                            anchors.fill: parent
-                            acceptedButtons: Qt.RightButton
-                            onClicked: function (mouse) {
-                                var p = mapToItem(root, mouse.x, mouse.y)
-                                root.showPinMenu(p.x, p.y, railDelegate.modelData)
-                            }
-                        }
-
-                        // The rail has no labels, so without this the only
-                        // clue to what a tile is is the artwork.
-                        ToolTip.visible: coverHov.hovered
-                        ToolTip.text: railDelegate.modelData.title || ""
-                        ToolTip.delay: 450
-                    }
                 }
             }
         }
@@ -680,8 +630,11 @@ Item {
 
     // ── inline components ────────────────────────────────────────────────
 
-    // One row of the flat library list. The type icon is what tells a playlist
-    // from an album from an artist from a mix now that they share one list.
+    // One row of the library list, in both shapes of the sidebar. The cover is
+    // the whole of why this is one component and no longer two: it is the same
+    // item at the same size in the rail and beside a title, and only its x
+    // travels, so opening the sidebar moves it instead of destroying it and
+    // building something else in its place.
     component LibraryRow : Item {
         id: rowItem
         objectName: "libraryRow"
@@ -693,6 +646,7 @@ Item {
         readonly property string itemId: modelData.id
         readonly property string title:  modelData.title
         readonly property bool   pinned: modelData.pinned === true
+        readonly property bool   hasArt: (modelData.imageUrl || "").length > 0
 
         // The break between the pinned block and the rest (P3/P5). Search
         // results have no pinned block, so they have nothing to break.
@@ -701,8 +655,10 @@ Item {
 
         // P4. There is nothing to reorder in a block of one, and nothing
         // outside the block is draggable at all, which is half of why a
-        // pinned row cannot end up in the list below.
-        readonly property bool draggable: pinned && !root.searching && root.pinnedCount > 1
+        // pinned row cannot end up in the list below. A 68px rail has no room
+        // for a grip either, so the handle only exists once the labels do.
+        readonly property bool draggable: pinned && !root.searching
+                                          && root.pinnedCount > 1 && root.showsWide
         readonly property bool dragging:  root.pinDragging && root.pinDragFrom === index
 
         width: ListView.view ? ListView.view.width : 0
@@ -720,20 +676,24 @@ Item {
             visible: rowItem.blockBreak
             anchors.top: parent.top
             anchors.topMargin: 5
-            anchors.left: parent.left
-            anchors.leftMargin: 16
-            anchors.right: parent.right
-            anchors.rightMargin: 16
             height: 1
             color: Theme.border
+            // One rule doing what the rail's short dash and the open list's
+            // full-width line used to do separately: it hugs the covers at the
+            // rail and stretches across the row as the panel opens.
+            readonly property real railW: root.coverSize + 2
+            readonly property real railX: Math.round((root.railWidth - railW) / 2)
+            x: Math.round(railX + (root.coverLeft - railX) * root.wideness)
+            width: Math.max(1, Math.round(
+                       railW + (rowItem.width - 2 * root.coverLeft - railW) * root.wideness))
         }
 
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
+            anchors.leftMargin: root.rowInset
+            anchors.rightMargin: root.rowInset
             height: root.libRowHeight
             radius: Theme.radiusRow
             color: rowItem.dragging || rowHov.hovered ? Theme.surfaceHov : "transparent"
@@ -747,8 +707,9 @@ Item {
             TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
 
             // P2. Right button only, so the tap handler above keeps every
-            // left-click; declared before the grip so a right-click over the
-            // grip still opens the menu.
+            // left-click; declared before the cover and the grip so a
+            // right-click over either still opens the menu. Neither of those
+            // takes mouse events, so the clicks fall through to here.
             MouseArea {
                 objectName: "libraryRowMenuArea"
                 anchors.fill: parent
@@ -759,23 +720,82 @@ Item {
                 }
             }
 
-            VectorIcon {
-                id: rowIcon
-                objectName: "libraryRowIcon"
-                anchors.left: parent.left
-                anchors.leftMargin: 8
+            Rectangle {
+                id: cover
+                // Named for the rail it used to belong to, which is the name
+                // tests/qml/tst_pinning.qml still reaches for. It is every
+                // row's cover now, in both shapes of the sidebar.
+                objectName: "railPinCover"
+                // Centred in the rail, at the row's content inset once open.
+                // Both are measured from the panel, so the row's own inset
+                // comes back off again. Same item, same size, only the x.
+                readonly property real railX: Math.round((root.railWidth - root.coverSize) / 2)
+                                              - root.rowInset
+                readonly property real wideX: root.coverLeft - root.rowInset
+                x: Math.round(railX + (wideX - railX) * root.wideness)
                 anchors.verticalCenter: parent.verticalCenter
-                name: root.glyphFor(rowItem.kind)
-                width: 15
-                height: 15
-                strokeWidth: 1.5
-                color: rowItem.pinned ? Theme.accent : Theme.textDim
+                width: root.coverSize
+                height: root.coverSize
+                radius: Theme.radiusArt
+                color: Theme.surfaceHigh
+                // A pinned cover keeps its ring wherever the break above has
+                // scrolled to, and in the rail it is the only thing left to
+                // tell it apart in a strip of bare artwork.
+                border.width: rowHov.hovered ? 2 : (rowItem.pinned ? 1 : 0)
+                border.color: Theme.accent
+                clip: true
+
+                Image {
+                    objectName: "libraryRowArt"
+                    anchors.fill: parent
+                    // On whether the row *has* artwork, not on whether it has
+                    // arrived: a tile that only appears once the network
+                    // answers is another thing popping in.
+                    visible: rowItem.hasArt
+                    source: rowItem.hasArt ? "image://tidal/" + rowItem.modelData.imageUrl : ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    opacity: status === Image.Ready ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
+                }
+
+                // The type, which the row no longer spells out beside the
+                // title now that the cover has that place. One glyph either
+                // way - a corner mark over artwork, the whole tile without it
+                // - so a row costs exactly what it cost before. That matters:
+                // the list is virtualised over libraries of thousands and the
+                // spec stress-tests it.
+                Rectangle {
+                    objectName: "libraryRowTypeBadge"
+                    visible: rowItem.hasArt
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    width: 13
+                    height: 13
+                    radius: Theme.radiusBadge
+                    color: Theme.surface
+                }
+
+                VectorIcon {
+                    objectName: "libraryRowIcon"
+                    name: root.glyphFor(rowItem.kind)
+                    width:  rowItem.hasArt ? 9 : 15
+                    height: width
+                    strokeWidth: rowItem.hasArt ? 1.4 : 1.5
+                    color: rowItem.pinned ? Theme.accent : Theme.textDim
+                    x: rowItem.hasArt ? parent.width - width - 2
+                                      : Math.round((parent.width - width) / 2)
+                    y: rowItem.hasArt ? parent.height - height - 2
+                                      : Math.round((parent.height - height) / 2)
+                }
             }
 
             Text {
                 id: rowTitle
                 objectName: "libraryRowTitle"
-                anchors.left: rowIcon.right
+                visible: root.showsWide
+                opacity: root.wideOpacity
+                anchors.left: cover.right
                 anchors.leftMargin: 10
                 anchors.right: parent.right
                 // The grip's space is reserved whether or not it is showing,
@@ -795,6 +815,7 @@ Item {
                 id: grip
                 objectName: "pinDragGrip"
                 visible: rowItem.draggable
+                opacity: root.wideOpacity
                 width: 16
                 height: parent.height
                 anchors.right: parent.right
@@ -849,11 +870,13 @@ Item {
                 }
             }
 
+            // On every row, not only the truncated ones: in the rail the
+            // title is not on screen at all, so this is the only place the
+            // name is said.
             ToolTip.visible: rowHov.hovered && !rowItem.dragging
-                             && (rowTitle.truncated || subtitleOf.length > 0)
             ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
                                                 : rowItem.title
-            ToolTip.delay: 600
+            ToolTip.delay: 450
             readonly property string subtitleOf: rowItem.modelData.subtitle || ""
         }
     }

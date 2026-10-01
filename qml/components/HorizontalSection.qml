@@ -14,25 +14,23 @@ Item {
     property string  mediaType: "album"
     property bool    showViewAll: true
 
-    // Card size is derived from the row width so the row always ends on a
-    // deliberate sliver of the next card: that sliver is the only thing
-    // telling you the row scrolls, since the scrollbar is hidden until hover.
-    // A fixed 160 ended wherever it happened to end - sometimes on a whole
-    // card, which reads as "that is all there is", sometimes on a 3px edge.
-    readonly property int  cardTarget: 160    // the size the cards were drawn at
-    readonly property int  cardMin: 128
-    readonly property int  cardMax: 200
-    readonly property real peek: 0.4          // of a card, left showing at the right edge
+    // Cards are a FIXED size and the row simply clips. Deriving the size from
+    // the row width so it always ended on a deliberate sliver meant every
+    // card in every row resized continuously while the window was dragged,
+    // which is far noisier than a clean cut: the thing you are looking at
+    // should hold still while you resize the thing around it.
+    //
+    // What a row ends on is now whatever falls there. That costs the old
+    // "there is more to the right" cue, so the scrollbar is no longer hidden
+    // until hover when the row actually overflows; it is the honest signal and
+    // it does not move the artwork to deliver it.
+    readonly property int  cardSize: 160
     readonly property int  listSpacing: 16
     readonly property int  edgeInset: 24      // the leading inset, as list header/footer
 
     readonly property real rowSpace: Math.max(0, width - edgeInset)
-    // Whole cards that fit once the peek has taken its share
-    readonly property int  cardsPerRow: Math.max(1, Math.round(
-        (rowSpace - peek * cardTarget) / (cardTarget + listSpacing)))
-    // n cards + n gaps + the peek fill the row exactly
-    property int cardSize: Math.max(cardMin, Math.min(cardMax, Math.round(
-        (rowSpace - listSpacing * cardsPerRow) / (cardsPerRow + peek))))
+    // Only for callers that want to know whether the row overflows at all.
+    readonly property bool overflows: items.length * (cardSize + listSpacing) > rowSpace
 
     signal itemClicked(int index, var item)
     signal itemPlayClicked(int index, var item)
@@ -111,7 +109,10 @@ Item {
 
                 ScrollBar.horizontal: ScrollBar {
                     id: hbar
-                    policy: ScrollBar.AlwaysOff
+                    // Shown when the row overflows, because the cards no
+                    // longer resize to leave a sliver of the next one and
+                    // that sliver was the only cue that the row scrolled.
+                    policy: root.overflows ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                     minimumSize: 0.05
                 }
 

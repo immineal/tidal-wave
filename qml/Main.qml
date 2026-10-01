@@ -37,6 +37,43 @@ ApplicationWindow {
     property var    previousPageParams: ({})
     property var    _currentNavParams: ({})
 
+    // ─── Fullscreen ────────────────────────────────────
+    // Now Playing can take the whole screen: the window drops its chrome and
+    // the sidebar steps aside. Only the window can do either, so the page asks
+    // for it through Window.window instead of owning any of it.
+    //
+    // What to come back to is remembered rather than assumed. Restoring to a
+    // hardcoded Windowed would quietly un-maximise a window that was maximised
+    // when the user went fullscreen.
+    property int preFullScreenVisibility: Window.Windowed
+    readonly property bool fullScreen: visibility === Window.FullScreen
+
+    function enterFullScreen() {
+        if (root.fullScreen) return
+        // Hidden, Minimized and AutomaticVisibility are not states to come
+        // back to; anything but Maximized returns to a normal window.
+        root.preFullScreenVisibility =
+            (root.visibility === Window.Maximized) ? Window.Maximized : Window.Windowed
+        root.visibility = Window.FullScreen
+    }
+
+    function leaveFullScreen() {
+        if (!root.fullScreen) return
+        root.visibility = root.preFullScreenVisibility
+    }
+
+    // Also the F11 handler, which is why it navigates: F11 anywhere in the app
+    // means "give me the player, big", not "do nothing unless you are already
+    // looking at it".
+    function toggleFullScreen() {
+        if (root.fullScreen) {
+            root.leaveFullScreen()
+            return
+        }
+        if (root.currentPage !== "nowplaying") root.navigate("nowplaying")
+        root.enterFullScreen()
+    }
+
     // ─── Sleep Timer Core State & Logic ──────────────────
     property bool   sleepTimerActive: false
     property int    sleepTimeTotal: 0      // total seconds
@@ -204,6 +241,12 @@ ApplicationWindow {
     readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
     function navigate(page, params) {
+        // Fullscreen belongs to Now Playing. Following a link out of it - an
+        // artist name, the album, the source it is playing from - brings the
+        // window back first, so the user never lands on another page with no
+        // chrome and no sidebar.
+        if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
+
         var p = params || {}
         if (page !== currentPage) {
             previousPage = currentPage
@@ -252,6 +295,13 @@ ApplicationWindow {
         function onStateChanged(state) {
             if (state === 2) {
                 root.navigate("home")
+            } else {
+                // Signing out drops the window on the login page, and every
+                // way back out of fullscreen - Escape, F11, the page's own
+                // toggle - is either gated on being signed in or on the page
+                // that just went away. Leaving it here is what keeps that from
+                // being a window only the window manager can rescue.
+                root.leaveFullScreen()
             }
         }
     }
@@ -308,6 +358,7 @@ ApplicationWindow {
                 }
             }
         }
+        Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
         Shortcut { sequence: "Ctrl+Q"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }
         Shortcut { sequence: "Ctrl+,"; context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: sideBar.openSettings() }
         Shortcut {
@@ -317,8 +368,14 @@ ApplicationWindow {
             // Popup, so while the update dialog is up this one has to stand
             // down or Escape would navigate back instead of dismissing it.
             enabled: auth.state === 2 && !updatePrompt.visible
+            // Innermost first, so one Escape undoes one thing: the overlay on
+            // top of the page, then the window state, then the page itself.
+            // Leaving fullscreen before navigating matters because the two
+            // together would drop the user on the previous page with no
+            // chrome and no sidebar, which is not a state they asked for.
             onActivated: {
                 if (root.queueOpen) root.queueOpen = false
+                else if (root.fullScreen) root.leaveFullScreen()
                 else if (root.detailPages.indexOf(root.currentPage) !== -1) root.goBack()
             }
         }
@@ -336,7 +393,9 @@ ApplicationWindow {
 
             SideBar {
                 id: sideBar
-                visible: auth.state === 2
+                // Fullscreen means the page and nothing else; a Layout skips
+                // an invisible item entirely, so the page gets the width back.
+                visible: auth.state === 2 && !root.fullScreen
                 // Above the content pane, so when the rail hover-expands it
                 // covers the page instead of sliding under it (SPEC L4).
                 z: 2

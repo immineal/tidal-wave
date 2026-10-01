@@ -32,6 +32,11 @@ Rectangle {
     // stays on screen and that the slider actually goes when the bar narrows.
     readonly property alias queueButton:  queueBtn
     readonly property alias volumeSlider: volSlider
+    // Exposed for tests/qml/tst_nowplaying_access.qml: the button has to be on
+    // screen at every supported width, and the group it sits in has to stay
+    // the width it already was, or the transport shifts off centre.
+    readonly property alias nowPlayingButton: nowPlayingBtn
+    readonly property alias trackInfoGroup:   leftGroup
 
     // ─── Artist links (SPEC N2) ────────────────────────
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}].
@@ -107,6 +112,7 @@ Rectangle {
 
         // ── Track info (left) ──────────────────────────
         RowLayout {
+            id: leftGroup
             Layout.preferredWidth: 280
             Layout.minimumWidth: 200
             spacing: 12
@@ -252,23 +258,53 @@ Rectangle {
                 }
             }
 
-            IconButton {
-                id: likeBtn
-                visible: root.hasTrack
-                icon: root.isLiked ? "heart-filled" : "heart"
-                size: 16
-                iconColor: root.isLiked ? Theme.accent : Theme.textSec
-                ToolTip.visible: likeTipHov.hovered
-                ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
-                ToolTip.delay: 600
-                HoverHandler { id: likeTipHov }
-                onClicked: {
-                    var trackId = root.track.id
-                    if (root.isLiked) {
-                        bridge.removeTrackFavorite(trackId, function(success) {})
-                    } else {
-                        bridge.addTrackFavorite(trackId, function(success) {})
+            // The two buttons that act on the track sit together at the right
+            // edge of the group, with only enough air between them to read as
+            // two: each already carries 7px of padding inside its own 32px
+            // box, and the group's 12px gap on top of that bought nothing but
+            // width the title needs more.
+            RowLayout {
+                spacing: 4
+
+                IconButton {
+                    id: likeBtn
+                    visible: root.hasTrack
+                    icon: root.isLiked ? "heart-filled" : "heart"
+                    size: 16
+                    iconColor: root.isLiked ? Theme.accent : Theme.textSec
+                    ToolTip.visible: likeTipHov.hovered
+                    ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
+                    ToolTip.delay: 600
+                    HoverHandler { id: likeTipHov }
+                    onClicked: {
+                        var trackId = root.track.id
+                        if (root.isLiked) {
+                            bridge.removeTrackFavorite(trackId, function(success) {})
+                        } else {
+                            bridge.addTrackFavorite(trackId, function(success) {})
+                        }
                     }
+                }
+
+                // Clicking the cover or the empty parts of the line above
+                // opens Now Playing too, and always has, but nothing on the
+                // bar said so. This is the control that says it, which is why
+                // it is on screen rather than appearing on hover, and why it
+                // points up: the page comes up over the bar. It lives inside
+                // the left group's existing 280px, so the transport does not
+                // move to make room for it.
+                IconButton {
+                    id: nowPlayingBtn
+                    objectName: "playerBarNowPlayingButton"
+                    visible: root.hasTrack
+                    icon: "chevron-up"
+                    size: 18
+                    iconColor: Theme.textSec
+                    ToolTip.visible: nowPlayingTipHov.hovered
+                    ToolTip.text: qsTr("Open Now Playing", "player bar button, opens the full-page player")
+                    ToolTip.delay: 600
+                    HoverHandler { id: nowPlayingTipHov }
+                    onClicked: root.showNowPlaying()
                 }
             }
         }

@@ -467,6 +467,7 @@ Popup {
                         { k: qsTr("Ctrl+R"),                     d: qsTr("Cycle repeat mode") },
                         { k: qsTr("Ctrl+1 / 2 / 3"),             d: qsTr("Home / Search / Collection") },
                         { k: qsTr("Ctrl+N"),                     d: qsTr("Now Playing") },
+                        { k: qsTr("F11", "keyboard key"),        d: qsTr("Fullscreen Now Playing") },
                         { k: qsTr("Ctrl+Q"),                     d: qsTr("Toggle queue") },
                         { k: qsTr("Alt+Left / Esc"),             d: qsTr("Go back") },
                         { k: qsTr("Ctrl+,"),                     d: qsTr("Settings") }

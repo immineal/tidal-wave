@@ -1,11 +1,28 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 Rectangle {
     id: root
     color: Theme.bg
+
+    // How much of this pane's width is only on loan. Below Prefs::railBreakpoint
+    // the sidebar collapses to its 68px rail and hands the page back the ~150px
+    // it had been using, so the pane gets *wider* as the window gets narrower:
+    // the pane's width does not fall with the window's, it has a step in it.
+    // Any column that switches on the pane therefore un-hides itself halfway
+    // down a drag. The track rows' album column dropped out at an 892px window,
+    // came back at 819 when the rail took over, and went again at 740, which is
+    // the flicker the user saw. Subtracting the loan measures the breakpoint
+    // against a width that only ever shrinks with the window, and across the
+    // step it is the same number on both sides, so nothing jumps there either.
+    readonly property int sidebarReclaim: {
+        var w = Window.window ? Window.window.width : 0
+        return (w > 0 && w < prefs.railBreak())
+               ? Math.max(0, prefs.sidebarWidth - prefs.rail()) : 0
+    }
 
     property string playlistUuid: ""
     property string playlistTitle: ""
@@ -36,6 +53,17 @@ Rectangle {
     }
 
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
+
+    // What the hero's queue actions act on: every track on the playlist,
+    // not the page of it that happens to be drawn. The menu can be opened
+    // before fetchPlaylistTracks() has answered, so an empty page asks again.
+    function allTracks(cb) {
+        if (root.tracks.length > 0) { cb(root.tracks); return }
+        if (root.playlistUuid.length === 0) return
+        bridge.fetchPlaylistTracks(root.playlistUuid, function (t, err) {
+            if (!err && t.length > 0) cb(t)
+        })
+    }
 
     function loadPlaylist() {
         loading = true
@@ -78,6 +106,7 @@ Rectangle {
                 spacing: 24
 
                 Rectangle {
+                    objectName: "heroArt"
                     width: 180
                     height: 180
                     radius: Theme.radiusArt
@@ -176,8 +205,15 @@ Rectangle {
                     // pills are 384px at the old fixed width, more than the
                     // 328px the column gets in a 640px pane.
                     Flow {
+                        id: heroActions
                         Layout.fillWidth: true
                         spacing: 12
+                        // The queue confirmation is drawn just above the row
+                        // of actions it confirms. Assigned rather than bound:
+                        // the hero lives in the list's header, and an id
+                        // inside that component is out of reach from the page
+                        // root, where the menu is.
+                        Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
 
                         PillButton {
                             text: qsTr("Play", "verb, button label")
@@ -234,6 +270,10 @@ Rectangle {
         delegate: TrackRow {
             width: tracksList.width - 32
             x: 16
+            // Against the width this row would have with the sidebar out, so
+            // the column cannot reappear as the window narrows. See
+            // root.sidebarReclaim.
+            showAlbum:      width - root.sidebarReclaim >= albumBreakpoint
             trackNum:       index + 1
             title:          modelData.title
             artists:        modelData.artists
@@ -288,6 +328,7 @@ Rectangle {
     ContextMenu {
         id: heroPinMenu
         objectName: "heroPinMenu"
+        trackSource: root.allTracks
     }
 
     // Edit playlist popup

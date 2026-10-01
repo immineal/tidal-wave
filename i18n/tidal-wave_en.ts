@@ -229,6 +229,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Remove from library</source>
         <translation type="unfinished"></translation>
     </message>
@@ -298,6 +308,32 @@
 </context>
 <context>
     <name>ContextMenu</name>
+    <message numerus="yes">
+        <source>%n track(s) added to play next</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n track added to play next</numerusform>
+            <numerusform>%n tracks added to play next</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s) added to queue</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n track added to queue</numerusform>
+            <numerusform>%n tracks added to queue</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Pin</source>
         <comment>verb, pin to the sidebar</comment>
@@ -311,10 +347,6 @@
     <message>
         <source>Play</source>
         <comment>verb, menu item</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Add to queue</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -401,10 +433,6 @@
     </message>
     <message>
         <source>My Mixes</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Recently Played</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -531,7 +559,23 @@
 <context>
     <name>NowPlayingPage</name>
     <message>
-        <source>←  Now Playing</source>
+        <source>Close Now Playing</source>
+        <comment>returns to the page you came from</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <comment>page title</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Leave fullscreen</source>
+        <comment>button, restores the window</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fullscreen</source>
+        <comment>button, fills the screen with this page</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -692,6 +736,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open Now Playing</source>
+        <comment>player bar button, opens the full-page player</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1%</source>
         <translation type="unfinished"></translation>
     </message>
@@ -786,12 +835,40 @@
         </translation>
     </message>
     <message>
+        <source>Played</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next in queue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next from: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up Next</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>· Shuffled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Clear</source>
         <comment>verb, empties the play queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing queued yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Jump to current track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1083,6 +1160,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>F11</source>
+        <comment>keyboard key</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fullscreen Now Playing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Ctrl+Q</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1181,12 +1267,34 @@
         <source>Popularity</source>
         <translation type="unfinished"></translation>
     </message>
+    <message numerus="yes">
+        <source>%n track(s) added to play next</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n track added to play next</numerusform>
+            <numerusform>%n tracks added to play next</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s) added to queue</source>
+        <comment>queue confirmation</comment>
+        <translation>
+            <numerusform>%n track added to queue</numerusform>
+            <numerusform>%n tracks added to queue</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Play now</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Play next</source>
+        <comment>verb, play this right after the current track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Add to queue</source>
+        <comment>verb, put this at the end of the queue</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>

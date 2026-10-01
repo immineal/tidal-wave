@@ -12,6 +12,18 @@
 // contract and is covered by tst_library; what is asserted here is that the QML
 // draws what it is handed, draws the block break between the pinned rows and the
 // rest, and never duplicates a pinned row below.
+//
+// The library list is *one* list in both shapes of the sidebar. It used to be
+// two that swapped at a threshold, which is why expanding the rail made the
+// covers blink out and the rows blink in. Several tests below exist only to
+// pin that down: the cover is one size everywhere, it is the same object before
+// and after an expansion, and it only ever moves.
+//
+// The last test here is not about the sidebar at all. The sidebar hands the
+// page ~150px back when it collapses, so the content pane gets *wider* as the
+// window gets narrower, and anything on a page that switches on the pane's
+// width un-hides itself on the way down. That has to be swept a pixel at a
+// time: the bug lives between the round numbers.
 
 import QtQuick
 import QtQuick.Layouts
@@ -32,6 +44,8 @@ TestCase {
     readonly property int minSidebar: 190
     readonly property int maxSidebar: 420
     readonly property int defaultSidebar: 220
+    // SideBar.coverSize, repeated for the same reason as the widths above.
+    readonly property int coverSize: 26
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
@@ -42,7 +56,8 @@ TestCase {
             { kind: "playlist", id: "p1",  title: "Pinned Mix Tape",  subtitle: "",             imageUrl: "cdn/p1.jpg", pinned: true,  trackCount: 12 },
             { kind: "album",    id: "a1",  title: "Pinned Album",     subtitle: "Pin Artist",   imageUrl: "cdn/a1.jpg", pinned: true,  trackCount: 9  },
             { kind: "album",    id: "a2",  title: "Aquarium",         subtitle: "Aqua Artist",  imageUrl: "cdn/a2.jpg", pinned: false, trackCount: 11 },
-            { kind: "artist",   id: "ar1", title: "Boards of Canada", subtitle: "",             imageUrl: "cdn/ar1.jpg", pinned: false, trackCount: 0 },
+            // No artwork on purpose: a bare row still has to say what it is.
+            { kind: "artist",   id: "ar1", title: "Boards of Canada", subtitle: "",             imageUrl: "",           pinned: false, trackCount: 0 },
             { kind: "mix",      id: "m1",  title: "Daily Discovery",  subtitle: "Your mix",     imageUrl: "cdn/m1.jpg", pinned: false, trackCount: 0 },
             { kind: "playlist", id: "p2",  title: "Evening Drive",    subtitle: "",             imageUrl: "cdn/p2.jpg", pinned: false, trackCount: 31 }
         ]
@@ -145,6 +160,50 @@ TestCase {
         return out
     }
 
+    // The ids makeEntries() hands over, in order. Looked up by id rather than
+    // by position, because the identity tests have to be sure they are holding
+    // the same row's cover before and after an expansion, and the order the
+    // scene graph lists children in is not the model's.
+    readonly property var fixtureIds: ["p1", "a1", "a2", "ar1", "m1", "p2"]
+
+    function rowItemFor(sidebar, id) {
+        var rows = collectByName(sidebar, "libraryRow", [])
+        for (var i = 0; i < rows.length; ++i)
+            if (rows[i].itemId === id) return rows[i]
+        return null
+    }
+
+    // The cover tile of one library row. Still called railPinCover: it is the
+    // name tests/qml/tst_pinning.qml reaches for, from when the rail had a
+    // strip of covers of its own.
+    function coverFor(sidebar, id) {
+        var row = rowItemFor(sidebar, id)
+        return row ? findByName(row, "railPinCover") : null
+    }
+
+    // Every cover, keyed by row id, so two snapshots can be compared object
+    // by object.
+    function coverMap(sidebar) {
+        var out = ({})
+        for (var i = 0; i < fixtureIds.length; ++i)
+            out[fixtureIds[i]] = coverFor(sidebar, fixtureIds[i])
+        return out
+    }
+
+    function expandTheRail(host) {
+        mouseMove(host.contentItem, railWidth / 2, 300)
+        tryCompare(host.sidebar, "panelWidth", defaultSidebar, 2000,
+                   "the rail did not expand on hover")
+        settle(host.contentItem)
+    }
+
+    function collapseTheRail(host) {
+        mouseMove(host.contentItem, host.width - 8, host.height - 8)
+        tryCompare(host.sidebar, "panelWidth", railWidth, 2000,
+                   "the rail did not slide back")
+        settle(host.contentItem)
+    }
+
     Component {
         id: shellHost
         Window {
@@ -155,6 +214,7 @@ TestCase {
 
             property alias sidebar: sb
             property alias content: contentPane
+            property alias page: pageLoader
 
             RowLayout {
                 anchors.fill: parent
@@ -175,10 +235,19 @@ TestCase {
                     id: contentPane
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    // Empty unless a test puts a page in it. The hero sweep
+                    // needs a real page in a real pane beside a real sidebar:
+                    // the whole bug is in how the two share the window.
+                    Loader { id: pageLoader; anchors.fill: parent }
                 }
             }
         }
     }
+
+    Component { id: albumC;    AlbumPage    { anchors.fill: parent } }
+    Component { id: playlistC; PlaylistPage { anchors.fill: parent } }
+    Component { id: mixC;      MixPage      { anchors.fill: parent } }
+    Component { id: artistC;   ArtistPage   { anchors.fill: parent } }
 
     // ── L2: rail below 820, full sidebar above ───────────────────────────
 
@@ -205,7 +274,9 @@ TestCase {
         compare(host.content.width, row.w - sb.reservedWidth, "content pane width")
     }
 
-    // S9: logo, nav icons, pinned covers, settings gear. Nothing else.
+    // S9: logo, nav icons, covers, settings gear. Nothing else. The library
+    // list itself stays - it is the same list the open sidebar shows, with its
+    // labels faded out - but nothing textual in it may be on screen.
     function test_rail_shows_only_logo_nav_pins_and_gear() {
         var host = showHost(640, 700)
         var sb = host.sidebar
@@ -224,7 +295,10 @@ TestCase {
         compare(covers.length, 6, "every library row wants a cover in the rail")
 
         verify(!findByName(sb, "sidebarFinder").visible, "the finder must hide in the rail")
-        verify(!findByName(sb, "sidebarLibraryList").visible, "the library list must hide in the rail")
+        verify(findByName(sb, "sidebarLibraryList").visible,
+               "the rail's covers are the library list, so it may not be hidden")
+        compare(collectVisibleByName(sb, "libraryRowTitle", []).length, 0,
+                "the rail must not show row titles")
         // S10 again, from the other side: no user icon down there, and the
         // username has no room in a 68px rail either.
         verify(!findByName(sb, "sidebarAccountName").visible,
@@ -367,7 +441,8 @@ TestCase {
         for (var i = 0; i < rows.length; ++i) {
             var icon = findByName(rows[i], "libraryRowIcon")
             verify(icon, "a library row has no type icon")
-            compare(icon.name, rows[i].kind, "the row's type icon does not match its kind")
+            compare(icon.name, sb.glyphFor(rows[i].kind),
+                    "the row's type icon does not match its kind")
         }
     }
 
@@ -416,6 +491,205 @@ TestCase {
         settle(host.contentItem)
         compare(collectVisibleByName(host.sidebar, "pinnedBlockBreak", []).length, 0,
                 "a break was drawn with no pinned block above it")
+    }
+
+    // ── S9 amended: one set of covers that moves ─────────────────────────
+
+    // The user's complaint in one assertion: the cover is the same size in the
+    // rail as it is beside a title, so nothing has to resize when the panel
+    // slides. The rail used to draw them at 40, which is far too big to sit
+    // next to a label.
+    function test_the_covers_are_one_size_in_both_shapes() {
+        var host = showHost(640, 700)
+        var sb = host.sidebar
+        var panel = findByName(sb, "sidebarPanel")
+        settle(host.contentItem)
+
+        var railX = Math.round((railWidth - coverSize) / 2)
+        for (var i = 0; i < fixtureIds.length; ++i) {
+            var c = coverFor(sb, fixtureIds[i])
+            verify(c, "the rail has no cover for " + fixtureIds[i])
+            compare(c.width, coverSize, "the rail cover of " + fixtureIds[i])
+            compare(c.height, coverSize, "the rail cover of " + fixtureIds[i])
+            compare(Math.round(c.mapToItem(panel, 0, 0).x), railX,
+                    "the rail cover of " + fixtureIds[i] + " is not centred in the rail")
+        }
+
+        expandTheRail(host)
+        for (i = 0; i < fixtureIds.length; ++i) {
+            c = coverFor(sb, fixtureIds[i])
+            verify(c, "the open sidebar lost the cover for " + fixtureIds[i])
+            compare(c.width, coverSize,
+                    "the cover of " + fixtureIds[i] + " resized when the sidebar opened")
+            compare(c.height, coverSize,
+                    "the cover of " + fixtureIds[i] + " resized when the sidebar opened")
+            verify(c.mapToItem(panel, 0, 0).x < railX,
+                   "the cover of " + fixtureIds[i] + " did not slide left out of the rail")
+        }
+        collapseTheRail(host)
+
+        // And the same size again on a window that was never in the rail at
+        // all, so the number is one number and not two that happen to agree.
+        var wide = showHost(1280, 700)
+        settle(wide.contentItem)
+        compare(coverFor(wide.sidebar, "p1").width, coverSize,
+                "a sidebar that never saw the rail draws a different cover")
+    }
+
+    // The point of merging the two lists. Expanding must *move* the covers,
+    // not throw one set away and build another, so the same QML object has to
+    // come back out of the tree afterwards - including while the slide is
+    // still running, which is the frame the old build drew empty.
+    function test_expanding_moves_the_covers_rather_than_rebuilding_them() {
+        var host = showHost(640, 700)
+        var sb = host.sidebar
+        var panel = findByName(sb, "sidebarPanel")
+        settle(host.contentItem)
+
+        var before = coverMap(sb)
+        var beforeX = ({})
+        for (var i = 0; i < fixtureIds.length; ++i) {
+            verify(before[fixtureIds[i]], "no cover for " + fixtureIds[i] + " to start from")
+            beforeX[fixtureIds[i]] = before[fixtureIds[i]].mapToItem(panel, 0, 0).x
+        }
+
+        // Mid-slide. The panel is between the two widths here, which is where
+        // the swap used to happen.
+        mouseMove(host.contentItem, railWidth / 2, 300)
+        tryVerify(function () {
+            return sb.panelWidth > railWidth && sb.panelWidth < defaultSidebar
+        }, 2000, "the slide was never caught in flight")
+        var midWidth = sb.panelWidth
+        for (i = 0; i < fixtureIds.length; ++i) {
+            var mid = coverFor(sb, fixtureIds[i])
+            verify(mid === before[fixtureIds[i]],
+                   "the cover of " + fixtureIds[i] + " was rebuilt at " + midWidth + "px")
+            compare(mid.width, coverSize,
+                    "the cover of " + fixtureIds[i] + " resized mid-slide")
+            verify(mid.visible, "the cover of " + fixtureIds[i] + " blinked out mid-slide")
+        }
+
+        tryCompare(sb, "panelWidth", defaultSidebar, 2000, "the rail did not finish expanding")
+        settle(host.contentItem)
+
+        var after = coverMap(sb)
+        for (i = 0; i < fixtureIds.length; ++i) {
+            var id = fixtureIds[i]
+            verify(after[id] === before[id],
+                   "the cover of " + id + " is a different object once the sidebar is open")
+            verify(Math.abs(after[id].mapToItem(panel, 0, 0).x - beforeX[id]) > 0.5,
+                   "the cover of " + id + " never moved")
+        }
+
+        // And back: closing it is the same journey in reverse, not a second
+        // teardown.
+        collapseTheRail(host)
+        var home = coverMap(sb)
+        for (i = 0; i < fixtureIds.length; ++i) {
+            id = fixtureIds[i]
+            verify(home[id] === before[id],
+                   "the cover of " + id + " was rebuilt on the way back to the rail")
+            compare(Math.round(home[id].mapToItem(panel, 0, 0).x), Math.round(beforeX[id]),
+                    "the cover of " + id + " did not come home")
+        }
+    }
+
+    // Covers, not type glyphs, in the open sidebar too - which is the decision
+    // this reverses. The type stays readable: artwork carries a corner mark,
+    // and a row with no artwork is the glyph at full size.
+    function test_every_row_shows_artwork_and_still_says_what_it_is_data() {
+        return [
+            { tag: "rail", w: 640,  wide: false },
+            { tag: "open", w: 1280, wide: true  }
+        ]
+    }
+
+    function test_every_row_shows_artwork_and_still_says_what_it_is(data) {
+        var host = showHost(data.w, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        var rows = collectByName(sb, "libraryRow", [])
+        compare(rows.length, 6, "every fixture row wants a row item at " + data.tag)
+
+        for (var i = 0; i < rows.length; ++i) {
+            var r     = rows[i]
+            var where = "\"" + r.title + "\" at " + data.tag
+
+            var cover = findByName(r, "railPinCover")
+            verify(cover && cover.visible, where + " has no cover")
+            compare(cover.width, coverSize, where + " has the wrong cover size")
+
+            var art   = findByName(r, "libraryRowArt")
+            var glyph = findByName(r, "libraryRowIcon")
+            var badge = findByName(r, "libraryRowTypeBadge")
+            verify(art,   where + " has no artwork item")
+            verify(glyph, where + " has no type glyph")
+            verify(badge, where + " has no type badge")
+
+            var hasArt = (r.modelData.imageUrl || "").length > 0
+            compare(art.visible, hasArt, where + ": the artwork does not match the row")
+            compare(badge.visible, hasArt,
+                    where + ": the corner mark belongs on artwork and nowhere else")
+            // Either way the type is on screen, which is the whole point of
+            // keeping it after the glyph stopped being the row's leading item.
+            verify(glyph.visible, where + ": the type is not discoverable")
+            compare(glyph.name, sb.glyphFor(r.kind), where + ": the wrong type glyph")
+            // Inside the cover, in both arrangements.
+            var at = glyph.mapToItem(cover, 0, 0)
+            verify(at.x >= -0.5 && at.x + glyph.width <= cover.width + 0.5
+                   && at.y >= -0.5 && at.y + glyph.height <= cover.height + 0.5,
+                   where + ": the type glyph hangs off the cover")
+        }
+
+        // The title is the other half of the row, and only when there is room
+        // for it.
+        compare(collectVisibleByName(sb, "libraryRowTitle", []).length,
+                data.wide ? 6 : 0, "row titles at " + data.tag)
+    }
+
+    // P3/P4 through the merge: the pinned ring survives in both shapes, and
+    // the grip still reorders the block.
+    function test_the_pinned_block_survives_the_merged_list() {
+        var host = showHost(640, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        // A pinned cover is ringed in the rail, which is the only thing left
+        // telling it apart in a strip of bare artwork.
+        verify(coverFor(sb, "p1").border.width > 0, "a pinned rail cover lost its ring")
+        verify(coverFor(sb, "a1").border.width > 0, "a pinned rail cover lost its ring")
+        compare(coverFor(sb, "a2").border.width, 0, "an unpinned rail cover grew a ring")
+        compare(collectVisibleByName(sb, "pinnedBlockBreak", []).length, 1,
+                "the rail wants the same one break the open sidebar draws")
+        // Nothing is draggable in a 68px strip: there is no grip to aim at.
+        compare(collectVisibleByName(sb, "pinDragGrip", []).length, 0,
+                "the rail offered a drag grip")
+
+        expandTheRail(host)
+        verify(coverFor(sb, "p1").border.width > 0, "the ring was lost on the way out")
+        compare(collectVisibleByName(sb, "pinDragGrip", []).length, 2,
+                "both pinned rows want a grip once the sidebar is open")
+        collapseTheRail(host)
+
+        // And the drag itself, on a window wide enough to have no rail at all.
+        var wide = showHost(1280, 700)
+        var wsb  = wide.sidebar
+        settle(wide.contentItem)
+        compare(wsb.pinnedCount, 2, "both fixture pins belong above the break")
+
+        var grip = findByName(rowItemFor(wsb, "p1"), "pinDragArea")
+        verify(grip && grip.enabled, "the pinned row lost its drag handle")
+        var from = grip.mapToItem(wide.contentItem, grip.width / 2, grip.height / 2)
+        mousePress(wide.contentItem, from.x, from.y)
+        mouseMove(wide.contentItem, from.x, from.y + wsb.libRowHeight)
+        wait(1)
+        compare(wsb.pinDragTo, 1, "one row of travel is one slot")
+        verify(findByName(wsb, "pinDropIndicator").visible, "the drop indicator never showed")
+        mouseRelease(wide.contentItem, from.x, from.y + wsb.libRowHeight)
+        settle(wide.contentItem)
+        compare(pins.items[0].id, "a1", "the drop did not reorder PinStore")
+        compare(pins.items[1].id, "p1", "the drop did not reorder PinStore")
     }
 
     // ── S5: the search field ─────────────────────────────────────────────
@@ -701,6 +975,195 @@ TestCase {
         // than its slot on purpose while it overlays (L4), and that is the one
         // overflow in the app that is a feature.
         var faults = audit(findByName(host.sidebar, "sidebarPanel"), "SideBar@" + row.tag, [])
+        verify(faults.length === 0, faults.join("\n  "))
+    }
+
+    // ── the sidebar's collapse must not make the page flicker ────────────
+    //
+    // The pane's width is *not* a rising function of the window's. Above
+    // Prefs::railBreakpoint the pane is the window less the full sidebar;
+    // below it the sidebar collapses and hands ~150px back, so a 819px window
+    // gives the page a wider pane than an 821px one does. Anything on a page
+    // that switches on the pane's width therefore un-hides itself while the
+    // window is being dragged *narrower*, which is what the user saw: the
+    // track rows' album column dropped out, and then came back a moment later
+    // when the sidebar went away.
+    //
+    // Swept a pixel at a time, because every threshold involved is an odd
+    // number that no round-number sweep lands on.
+
+    readonly property int sweepFrom: 960
+    readonly property int sweepTo:   700
+
+    // Is anything of this kind on screen? Keyed by a path of names with no
+    // indices, and OR-ed across every item that shares a path, because a list
+    // shuffles its delegates around under a resize and keying on a delegate's
+    // position would read that shuffle as things appearing and disappearing.
+    // What is being asked is "does the page still show its album column", not
+    // "does row four still show it".
+    function visSnapshot(item, path, out) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var c  = kids[i]
+            var nm = (c.objectName && c.objectName.length > 0)
+                     ? c.objectName : ("" + c).split("(")[0].split("_QML")[0]
+            var here = path + "/" + nm
+            var vis  = (c.visible !== false) && c.width > 0.5 && c.height > 0.5
+            out[here] = (out[here] === true) || vis
+            if (c.visible !== false) visSnapshot(c, here, out)
+        }
+        return out
+    }
+
+    // Drags the window from `from` to `to` a pixel at a time and reports every
+    // element that changed visibility more than once on the way.
+    function sweepFaults(host, page, from, to) {
+        var step = from < to ? 1 : -1
+        var seen = ({})
+        var flips = ({})
+        var marks = ({})
+        for (var w = from; ; w += step) {
+            host.width = w
+            wait(1)
+            var now = visSnapshot(page, "", ({}))
+            for (var k in seen) if (!(k in now)) now[k] = false
+            for (var k2 in now) {
+                if (!(k2 in seen)) { seen[k2] = now[k2]; flips[k2] = 0; marks[k2] = []; continue }
+                if (seen[k2] !== now[k2]) {
+                    flips[k2] += 1
+                    marks[k2].push(w + (now[k2] ? " on" : " off"))
+                    seen[k2] = now[k2]
+                }
+            }
+            if (w === to) break
+        }
+        var faults = []
+        for (var key in flips)
+            if (flips[key] > 1)
+                faults.push(key + " flipped " + flips[key] + " times ("
+                            + marks[key].join(", ") + ")")
+        return faults
+    }
+
+    function makeSweepTracks(n) {
+        var out = []
+        for (var i = 0; i < n; ++i)
+            out.push({ id: 900 + i, title: "Ein Tracktitel Nummer " + (i + 1),
+                       artists: "Die Band", albumTitle: "Ein Albumtitel",
+                       durationStr: "3:20", duration: 200,
+                       coverUrl: "", coverUrl80: "", albumId: 42 })
+        return out
+    }
+
+    function loadSweepPage(host, which) {
+        var page
+        if (which === "album") {
+            host.page.sourceComponent = albumC
+            page = host.page.item
+            page.albumId   = 42
+            page.albumData = { title: "Fever Dream", artists: "Die Band",
+                               releaseDate: "2021-01-01", numTracks: 10, duration: 2400,
+                               quality: "HI_RES_LOSSLESS", artistId: 7,
+                               coverUrl: "", coverUrl640: "" }
+            page.tracks = makeSweepTracks(10)
+        } else if (which === "playlist") {
+            host.page.sourceComponent = playlistC
+            page = host.page.item
+            page.playlistUuid  = "uuid-1"
+            page.playlistTitle = "Eine Playlist"
+            page.coverUrl      = ""
+            page.tracks        = makeSweepTracks(10)
+        } else if (which === "mix") {
+            host.page.sourceComponent = mixC
+            page = host.page.item
+            page.mixId    = "m1"
+            page.title    = "Daily Discovery"
+            page.subtitle = "Mit vielen verschiedenen Interpreten"
+            page.coverUrl = ""
+            page.tracks   = makeSweepTracks(10)
+        } else {
+            host.page.sourceComponent = artistC
+            page = host.page.item
+            page.artistId   = 7
+            page.artistData = { name: "Ein Interpret", bio: "", coverUrl750: "",
+                                similarArtists: [] }
+            page.topTracks  = makeSweepTracks(10)
+        }
+        return page
+    }
+
+    function test_the_hero_pages_do_not_flicker_as_the_sidebar_collapses_data() {
+        return [
+            { tag: "album",    which: "album"    },
+            { tag: "playlist", which: "playlist" },
+            { tag: "mix",      which: "mix"      },
+            { tag: "artist",   which: "artist"   }
+        ]
+    }
+
+    function test_the_hero_pages_do_not_flicker_as_the_sidebar_collapses(data) {
+        // The slide would otherwise trail the window by up to its 170ms and
+        // every reading would be of a pane that had not caught up yet.
+        app.setReducedMotionForTest(true)
+
+        var host = showHost(sweepFrom, 760)
+        var page = loadSweepPage(host, data.which)
+        verify(page, "the " + data.tag + " page was never built")
+        waitForRendering(host.contentItem, 2000)
+        settle(host.contentItem)
+
+        // The hero artwork was where this was first reported ("it doesn't
+        // show the album"), so it is worth recording that it is not the thing
+        // that moves: the square cover is a fixed size in a RowLayout that
+        // never squeezes it, and it is the album column of the track rows
+        // below that comes and goes. ArtistPage has no square cover at all -
+        // its hero art is the full-bleed backdrop.
+        var art = findByName(page, "heroArt")
+        var artWidth = art ? art.width : 0
+        if (art) verify(art.visible, "the " + data.tag + " hero art started out hidden")
+
+        var down = sweepFaults(host, page, sweepFrom, sweepTo)
+        verify(down.length === 0,
+               "dragging the " + data.tag + " page from " + sweepFrom + " to " + sweepTo
+               + "px:\n  " + down.join("\n  "))
+
+        if (art) {
+            verify(art.visible, "the " + data.tag + " hero art was dropped on the way down")
+            compare(art.width, artWidth, "the " + data.tag + " hero art resized on the way down")
+        }
+
+        var up = sweepFaults(host, page, sweepTo, sweepFrom)
+        verify(up.length === 0,
+               "dragging the " + data.tag + " page from " + sweepTo + " to " + sweepFrom
+               + "px:\n  " + up.join("\n  "))
+    }
+
+    // The same audit, run on the frames *between* the two widths. Nothing may
+    // rely on the panel clipping it there: a Shape ignores an ancestor's clip,
+    // and the sidebar is full of them (every VectorIcon is one), so anything
+    // that overflows mid-slide really is drawn over the page.
+    function test_nothing_overflows_mid_slide_data() {
+        return [
+            { tag: "88",  w: 88  },
+            { tag: "106", w: 106 },
+            { tag: "144", w: 144 },
+            { tag: "182", w: 182 },
+            { tag: "210", w: 210 }
+        ]
+    }
+
+    function test_nothing_overflows_mid_slide(row) {
+        var host = showHost(640, 700)
+        var sb = host.sidebar
+        // Pinned straight to one frame of the slide. This drops the binding to
+        // targetWidth, which is the point: the panel holds still at a width it
+        // would otherwise only pass through.
+        sb.panelWidth = row.w
+        tryCompare(sb, "panelWidth", row.w, 2000,
+                   "the panel never settled at " + row.tag + "px")
+        settle(host.contentItem)
+
+        var faults = audit(findByName(sb, "sidebarPanel"), "SideBar mid-slide@" + row.tag, [])
         verify(faults.length === 0, faults.join("\n  "))
     }
 

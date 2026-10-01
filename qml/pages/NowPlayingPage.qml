@@ -43,11 +43,11 @@ Rectangle {
         ? Math.min(contentWidth, 420, Math.max(180, stackedCoverRoom))
         : Math.min(contentWidth * 0.45, 420)
 
-    // What is left once the margins, the back link, the two 32px gaps and the
+    // What is left once the margins, the header row, the two 32px gaps and the
     // text column have taken their height. The text column's own height does
     // not depend on the cover's, so this cannot chase its own tail.
     readonly property real stackedCoverRoom:
-        height - 2 * pageMargin - backLink.height - 32 - 32 - infoColumn.implicitHeight
+        height - 2 * pageMargin - headerRow.height - 32 - 32 - infoColumn.implicitHeight
 
     // What the title and transport column actually gets.
     readonly property real infoWidth: stacked
@@ -63,6 +63,20 @@ Rectangle {
         infoWidth >= transportFixedWidth + transportGaps * 16 ? 16 : 8
     readonly property int transportMinWidth:
         transportFixedWidth + transportGaps * transportSpacing
+
+    // ─── Fullscreen ────────────────────────────────────
+    // The window owns its own visibility, so this page can only ask. Both
+    // reads are written to survive a host that has neither - the layout and
+    // navigation test hosts stand in for Main.qml with only the surface they
+    // each need, and a missing property has to read as "not fullscreen"
+    // rather than as a warning.
+    readonly property bool fullScreen:
+        Window.window ? Window.window.fullScreen === true : false
+
+    function toggleFullScreen() {
+        if (Window.window && Window.window.toggleFullScreen)
+            Window.window.toggleFullScreen()
+    }
 
     // Sleep Timer Delegation (mapping properties to Window.window to persist in background)
     readonly property bool   sleepTimerActive:      Window.window ? Window.window.sleepTimerActive : false
@@ -234,23 +248,39 @@ Rectangle {
             height: Math.max(0, pageFlick.contentHeight - 2 * root.pageMargin)
             spacing: 32
 
-            Text {
-                id: backLink
-                text: qsTr("←  Now Playing"); color: Theme.textSec; font.pixelSize: 14
-                activeFocusOnTab: true
-                Keys.onReturnPressed: Window.window.goBack()
-                Keys.onSpacePressed:  Window.window.goBack()
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    radius: Theme.radiusButton
-                    color: "transparent"
-                    border.width: backLink.activeFocus ? 2 : 0
-                    border.color: Theme.accent
+            // The way out, and the way to make the page the whole screen.
+            //
+            // The down-arrow mirrors the player bar's up-arrow: the page came
+            // up over the bar, this puts it back down. It used to be the text
+            // "←  Now Playing", which named the page you were already looking
+            // at and pointed the wrong way.
+            RowLayout {
+                id: headerRow
+                Layout.fillWidth: true
+                spacing: 12
+
+                ChromeButton {
+                    objectName: "nowPlayingCollapse"
+                    icon: "chevron-down"
+                    tip: qsTr("Close Now Playing", "returns to the page you came from")
+                    onActivated: Window.window.goBack()
                 }
-                MouseArea {
-                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: Window.window.goBack()
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Now Playing", "page title")
+                    color: Theme.textSec
+                    font.pixelSize: 14
+                    elide: Text.ElideRight
+                }
+
+                ChromeButton {
+                    objectName: "nowPlayingFullscreen"
+                    icon: root.fullScreen ? "fullscreen-exit" : "fullscreen"
+                    tip: root.fullScreen
+                         ? qsTr("Leave fullscreen", "button, restores the window")
+                         : qsTr("Fullscreen", "button, fills the screen with this page")
+                    onActivated: root.toggleFullScreen()
                 }
             }
 
@@ -1143,6 +1173,55 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // A disc-backed icon button for the page's own chrome. The same treatment
+    // as components/BackButton.qml, and for the same reason: stacked, this row
+    // sits directly above the cover and on a short window the page scrolls it
+    // over the artwork, where a bare glyph loses its edge. The border carries
+    // the shape when the fill alone would not.
+    component ChromeButton : Rectangle {
+        id: cb
+        property string icon
+        property string tip
+        signal activated()
+
+        implicitWidth: 36
+        implicitHeight: 36
+        radius: width / 2
+        readonly property color restFill:
+            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.55)
+        readonly property color hoveredFill:
+            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.90)
+        color: cbHov.hovered ? cb.hoveredFill : cb.restFill
+
+        // The focus ring takes over the border entirely, so a focused button
+        // is never ambiguous against a merely hovered one.
+        border.width: cb.activeFocus ? 2 : 1
+        border.color: cb.activeFocus ? Theme.accent
+                    : (cbHov.hovered ? Theme.textSec : Theme.border)
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: cb.activated()
+        Keys.onSpacePressed:  cb.activated()
+
+        Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
+        Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
+
+        VectorIcon {
+            anchors.centerIn: parent
+            name: cb.icon
+            color: Theme.textPrimary
+            width: 18; height: 18
+            strokeWidth: 2
+        }
+
+        ToolTip.visible: cbHov.hovered && cb.tip.length > 0
+        ToolTip.text: cb.tip
+        ToolTip.delay: 600
+
+        HoverHandler { id: cbHov; cursorShape: Qt.PointingHandCursor }
+        TapHandler   { onTapped: cb.activated() }
     }
 
     component SleepOptionBtn : Rectangle {

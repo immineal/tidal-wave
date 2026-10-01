@@ -61,6 +61,7 @@ TestCase {
     Component { id: trackRowC;   TrackRow       { } }
     Component { id: pillC;       PillButton     { } }
     Component { id: mediaCardC;  MediaCard      { } }
+    Component { id: sectionC;    HorizontalSection { anchors.fill: parent } }
 
     function makeTracks(n) {
         var out = []
@@ -339,43 +340,30 @@ TestCase {
         }
     }
 
-    // ── L13: HorizontalSection peeks at the next card ───────────────────────
+    // ── L13 revised: the row holds still while the window moves ─────────────
+    //
+    // Cards used to be sized from the row width so the row always ended on a
+    // deliberate sliver of the next one. That made every card resize
+    // continuously while the window was dragged, which the user found far
+    // noisier than a clean cut. Cards are a fixed size now and the row clips;
+    // the scrollbar carries the "there is more" cue instead.
+    function test_horizontal_section_cards_do_not_resize_with_the_window() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1600, height: 320 })
+        var sec = createTemporaryObject(sectionC, holder, { items: makeAlbums(14) })
+        verify(sec, "the section was not created")
+        settle(holder)
 
-    function test_horizontal_section_peeks() {
-        for (var i = 0; i < widths.length; ++i) {
-            var w = widths[i]
-            var page = makePane(artistC, w)
-            page.artistId = 7
-            page.artistData = { name: "Interpret", bio: "", coverUrl750: "", similarArtists: [] }
-            page.topTracks = []
-            page.albums = makeAlbums(14)
-            settle(page)
-
-            var list = findByName(page, "sectionList")
-            verify(list, "the section's list was not found")
-            verify(list.contentWidth > list.width,
-                   "@" + w + ": 14 cards fit without scrolling, so there is nothing to peek at")
-
-            // The card straddling the right edge: it must show enough of itself
-            // to read as "there is more", and not so much that it looks like a
-            // card that simply got cut.
-            var edge = list.contentX + list.width
-            var peek = -1
-            var card = -1
-            for (var k = 0; k < 14; ++k) {
-                var d = list.itemAtIndex(k)
-                if (!d) continue
-                if (d.x < edge && d.x + d.width > edge) {
-                    peek = edge - d.x
-                    card = d.width
-                    break
-                }
-            }
-            verify(peek > 0, "@" + w + ": no card straddles the right edge")
-            verify(peek >= card * 0.2 && peek <= card * 0.8,
-                   "@" + w + ": the peek is " + peek.toFixed(1) + " of a " + card.toFixed(1)
-                   + "px card, which reads as an arbitrary clip rather than a hint")
+        var sizes = {}
+        // One pixel at a time: a size that only twitches between round numbers
+        // is exactly the thing being complained about.
+        for (var w = 640; w <= 1600; w += 1) {
+            holder.width = w
+            sizes[sec.cardSize] = true
         }
+        settle(holder)
+        compare(Object.keys(sizes).length, 1,
+                "the card size changed while the window was resized: "
+                + Object.keys(sizes).join(", "))
     }
 
     // ── L7: TrackRow columns and the hover jitter ───────────────────────────
