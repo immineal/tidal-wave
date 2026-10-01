@@ -113,7 +113,15 @@ public:
     // panel. kAutoTargetDpi is that judgement, as a number: factor =
     // physicalDpi / kAutoTargetDpi, snapped to kScaleFactorStep and clamped.
     // Changing the preferred density is a one-line change to this constant.
-    static constexpr double kAutoTargetDpi = 113.0;
+    //
+    // 142 is not arithmetic, it is the user's eye on a real 283.5 dpi panel.
+    // All three candidates were rendered at native pixels and compared: 3.0
+    // (95 dpi, 12.90 mm button) was called too big, and between the other two
+    // he chose 2.0 over 2.5. 142 is what puts that panel on 2.0. Two earlier
+    // rules, both derived rather than looked at, produced 2.95 and then 2.5;
+    // neither survived contact with the screen, which is why this is a
+    // measured constant and not a formula.
+    static constexpr double kAutoTargetDpi = 142.0;
 
     // Below this the screen is not dense enough to be worth scaling and the
     // small fractional factors are worse than none - they only blur hairlines.

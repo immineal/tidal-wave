@@ -839,6 +839,15 @@ public:
     bool reallyQuit() const { return m_reallyQuit; }
     bool reducedMotion() const { return m_reducedMotion; }
 
+    // The Settings "Interface size" slider takes its range from the real
+    // Application, which clamps the top end by what the screen can hold. The
+    // stub answers with the same constants and a fixed ceiling: a test has no
+    // screen, and a ceiling that moved with the test machine's monitor would
+    // make the slider's range untestable.
+    Q_INVOKABLE double minScaleFactor() const     { return 1.0; }
+    Q_INVOKABLE double maxUsableScaleFactor() const { return 3.0; }
+    Q_INVOKABLE double scaleFactorStep() const    { return 0.25; }
+
     Q_INVOKABLE void quit() {
         m_quitCount++;
         if (m_reallyQuit) return;
@@ -964,6 +973,8 @@ class StubPrefs : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
     Q_PROPERTY(bool tintedGreys READ tintedGreys WRITE setTintedGreys NOTIFY tintedGreysChanged)
+    // 0 is Auto, exactly as in the real Prefs - not "unset".
+    Q_PROPERTY(double uiScale READ uiScale WRITE setUiScale NOTIFY uiScaleChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
@@ -983,6 +994,12 @@ public:
     QString theme() const        { return m_theme; }
     bool    oledBlack() const    { return m_oledBlack; }
     bool    tintedGreys() const  { return m_tintedGreys; }
+    double  uiScale() const      { return m_uiScale; }
+    void    setUiScale(double v) {
+        if (qFuzzyCompare(v + 1.0, m_uiScale + 1.0)) return;
+        m_uiScale = v;
+        emit uiScaleChanged();
+    }
     QString language() const     { return m_language; }
     int     sidebarWidth() const { return m_sidebarWidth; }
     QString audioDevice() const  { return m_audioDevice; }
@@ -1046,6 +1063,7 @@ signals:
     void themeChanged();
     void oledBlackChanged();
     void tintedGreysChanged();
+    void uiScaleChanged();
     void languageChanged();
     void sidebarWidthChanged();
     void audioDeviceChanged();
@@ -1062,6 +1080,7 @@ private:
     // until a test asks for the tinted grounds. A QML test that says nothing
     // about it therefore measures the state a fresh install is in.
     bool    m_tintedGreys = false;
+    double  m_uiScale = 0.0;
     QString m_language = QStringLiteral("system");
     int     m_sidebarWidth = 220;
     QString m_audioDevice;

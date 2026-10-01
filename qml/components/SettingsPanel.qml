@@ -531,6 +531,46 @@ Popup {
                         onToggled: prefs.softwareRendering = !prefs.softwareRendering
                     }
                 }
+                // Interface size. Sits above the restart note deliberately,
+                // because the note applies to this row as well: Qt reads the
+                // scale factor before the application object exists, so neither
+                // of these two can take effect live.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Text {
+                        text: qsTr("Interface size")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    // The number, always. "A bit bigger" is not something a
+                    // person can report back, and working that out by eye
+                    // against a screen cost two wrong guesses already.
+                    Text {
+                        objectName: "settingsUiScaleValue"
+                        text: prefs.uiScale > 0
+                              ? prefs.uiScale.toFixed(2) + "x"
+                              : qsTr("Automatic", "interface size, the default")
+                        color: Theme.textSec; font.pixelSize: 13
+                    }
+                    Slider {
+                        objectName: "settingsUiScaleSlider"
+                        Layout.preferredWidth: 140
+                        // One step below the minimum is Automatic, so Auto is a
+                        // position on the slider rather than a missing value -
+                        // somebody who picks 2.00 can still get back to it.
+                        from: app.minScaleFactor() - app.scaleFactorStep()
+                        // Capped by what this screen can actually hold, so the
+                        // slider cannot be dragged somewhere that leaves the
+                        // window unreachable at next launch.
+                        to: app.maxUsableScaleFactor()
+                        stepSize: app.scaleFactorStep()
+                        snapMode: Slider.SnapAlways
+                        value: prefs.uiScale > 0 ? prefs.uiScale : from
+                        onMoved: prefs.uiScale =
+                            (value < app.minScaleFactor()) ? 0 : value
+                    }
+                }
                 Text {
                     objectName: "settingsRestartNote"
                     // Qt picks the scene graph backend once, at startup, so

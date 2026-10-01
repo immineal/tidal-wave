@@ -11,6 +11,7 @@ constexpr auto kLanguage = "ui/language";
 constexpr auto kSidebar  = "ui/sidebarWidth";
 constexpr auto kAudioDev = "audio/outputDevice";
 constexpr auto kSoftRender = "ui/softwareRendering";
+constexpr auto kUiScale    = "ui/scaleFactor";
 constexpr auto kQuitOnClose = "ui/quitOnClose";
 }
 
@@ -32,6 +33,7 @@ Prefs::Prefs(QObject *parent)
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
     , m_audioDevice(m_settings.value(kAudioDev).toString())
     , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
+    , m_uiScale(m_settings.value(kUiScale, 0.0).toDouble())
     , m_quitOnClose(m_settings.value(kQuitOnClose, false).toBool())
 {
     // A width written by a future build, or a corrupted settings file, must not
@@ -106,6 +108,16 @@ void Prefs::setSoftwareRendering(bool v) {
     m_softwareRendering = v;
     m_settings.setValue(kSoftRender, v);
     emit softwareRenderingChanged();
+}
+
+void Prefs::setUiScale(double v) {
+    // +1 on both sides: qFuzzyCompare is documented as unusable when either
+    // operand is zero, and zero is Auto - the value this property spends most
+    // of its life holding.
+    if (qFuzzyCompare(v + 1.0, m_uiScale + 1.0)) return;
+    m_uiScale = v;
+    m_settings.setValue(kUiScale, v);
+    emit uiScaleChanged();
 }
 
 void Prefs::setQuitOnClose(bool v) {
