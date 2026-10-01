@@ -159,7 +159,16 @@ void Player::onAudioOutputsChanged() {
     // Fires for any add or remove, most of which do not concern us.
     // applyAudioDevice() rebinds only if the device we should be on changed,
     // which covers both "the default moved" and "our device disappeared".
-    applyAudioDevice();
+    //
+    // Deferred to the next event loop turn, NOT called directly. This signal
+    // arrives from the multimedia backend while PipeWire still holds its
+    // thread loop lock, and rebinding tears down a QAudioOutput, which takes
+    // that same lock: the app deadlocks in pw_thread_loop_lock with the main
+    // thread parked in futex_do_wait. It is the same hazard the deferral at
+    // the top of this file exists for, reached by a different route, and it
+    // only bites when a device actually changes, so it survived every test.
+    // Letting the callback unwind first costs one turn and nothing else.
+    QTimer::singleShot(0, this, [this] { applyAudioDevice(); });
 }
 
 void Player::applyAudioDevice() {

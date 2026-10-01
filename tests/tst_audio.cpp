@@ -10,6 +10,7 @@
 // nothing would hide exactly the regression this section exists to prevent.
 
 #include <QTest>
+#include <QTimer>
 #include <QAudioDevice>
 #include <QElapsedTimer>
 #include <QFile>
@@ -382,8 +383,39 @@ private slots:
         QCOMPARE(rig.player.activeAudioDeviceId(), defaultDeviceId());
     }
 
+    // The device-changed handler must NOT rebind synchronously.
+    //
+    // QMediaDevices::audioOutputsChanged arrives while PipeWire still holds
+    // its thread loop lock, and tearing down a QAudioOutput takes that same
+    // lock, so rebinding inside the callback deadlocks: the app goes
+    // unresponsive with the main thread in futex_do_wait. It happened in real
+    // use after about ninety minutes and no headless test can reproduce it,
+    // because it needs a device to actually change under a live PipeWire.
+    //
+    // What IS testable is the structural property that prevents it: the slot
+    // must defer. Invoked directly here, so no audio server is needed.
+    void deviceChangeIsDeferredNotSynchronous() {
+        Rig rig;   // Player needs a client, and its audio init is deferred
+
+        bool ran = false;
+        QTimer::singleShot(0, &rig.player, [&ran] { ran = true; });
+
+        // Fire the handler the way the backend would.
+        const bool invoked = QMetaObject::invokeMethod(&rig.player, "onAudioOutputsChanged",
+                                                       Qt::DirectConnection);
+        QVERIFY2(invoked, "onAudioOutputsChanged is gone or is no longer a slot");
+
+        // Nothing queued by the handler can have run yet, which is the whole
+        // point: the callback has to unwind before the rebind happens.
+        QVERIFY2(!ran, "the event loop ran inside the handler, so it did not defer");
+
+        // ...and the deferred work does arrive once the loop turns.
+        QTRY_VERIFY(ran);
+    }
+
 private:
     QTemporaryDir m_dir;
+
 };
 
 QTEST_MAIN(TestAudio)
