@@ -299,6 +299,15 @@
 <context>
     <name>ContextMenu</name>
     <message>
+        <source>Unpin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <comment>verb, pin to the sidebar</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play</source>
         <comment>verb, menu item</comment>
         <translation type="unfinished"></translation>
@@ -431,7 +440,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Songs</source>
+        <source>Tracks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -603,18 +612,6 @@
     </message>
     <message>
         <source>%1%</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Cast to</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This computer</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Searching for devices…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -874,37 +871,7 @@
     </message>
 </context>
 <context>
-    <name>SideBar</name>
-    <message>
-        <source>Home</source>
-        <comment>noun, the home page</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Search</source>
-        <comment>noun, the search page</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Collection</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No matches</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Nothing saved yet</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>My Account</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Settings (Ctrl+,)</source>
-        <translation type="unfinished"></translation>
-    </message>
+    <name>SettingsPanel</name>
     <message>
         <source>Settings</source>
         <translation type="unfinished"></translation>
@@ -919,6 +886,26 @@
     </message>
     <message>
         <source>Log out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Appearance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Theme</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -943,6 +930,66 @@
     </message>
     <message>
         <source>Hi-Res (24-bit)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System default currently uses %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Performance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware acceleration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Takes effect after you restart Tidal Wave.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At most once a day, against the GitHub releases page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Privacy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal Wave has no analytics and no telemetry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login and every search, page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The full version, with the source file behind every line, is at the bottom of the README.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1046,6 +1093,39 @@
     </message>
 </context>
 <context>
+    <name>SideBar</name>
+    <message>
+        <source>Home</source>
+        <comment>noun, the home page</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <comment>noun, the search page</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Collection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No matches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing saved yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>My Account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings (Ctrl+,)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Theme</name>
     <message>
         <source>Midnight</source>
@@ -1074,6 +1154,14 @@
 </context>
 <context>
     <name>TrackRow</name>
+    <message>
+        <source>Unknown track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown artist</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>%1%</source>
         <translation type="unfinished"></translation>
@@ -1134,6 +1222,33 @@
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>UpdatePrompt</name>
+    <message>
+        <source>Update available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version %1 is available. You are running %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This opens the release page in your browser. The app does not download or install anything.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open release</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Skip this version</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>
