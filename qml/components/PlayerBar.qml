@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import TidalWave
 
 Rectangle {
@@ -32,6 +33,38 @@ Rectangle {
     readonly property alias queueButton:  queueBtn
     readonly property alias volumeSlider: volSlider
 
+    // ─── Artist links (SPEC N2) ────────────────────────
+    // TidalBridge::trackToMap() carries the whole artist list as [{id, name}].
+    // Tracks whose map predates it — the recently-played entries saved to
+    // disk, anything a caller builds by hand — only have the joined `artists`
+    // string, so the single line below stands in for them.
+    readonly property var artistList:
+        (hasTrack && track.artistList && track.artistList.length > 0) ? track.artistList : []
+
+    // Sits between two names and belongs to neither, so it is not a link.
+    readonly property string artistSeparator: qsTr(", ", "between two artist names")
+
+    FontMetrics { id: artistFm; font.pixelSize: 12 }
+
+    // Where the i-th name begins, measured on the names in front of it rather
+    // than on the laid-out items: a delegate cannot see its siblings' widths,
+    // and binding a width to the x a Row just assigned is how binding loops
+    // start.
+    function artistStartX(i) {
+        if (i <= 0) return 0
+        var before = []
+        for (var k = 0; k < i && k < root.artistList.length; k++)
+            before.push(root.artistList[k].name)
+        return artistFm.advanceWidth(before.join(root.artistSeparator))
+    }
+
+    // Routing lives on the application window, which is where TrackRow's
+    // context menu reaches for it too.
+    function openArtist(artistId) {
+        if (artistId > 0 && Window.window)
+            Window.window.navigate("artist", { artistId: artistId })
+    }
+
     Connections {
         target: bridge
         function onFavoriteTracksChanged() { root.updateLikedState() }
@@ -60,6 +93,7 @@ Rectangle {
             spacing: 12
 
             Rectangle {
+                objectName: "playerBarCover"
                 width: 56; height: 56; radius: Theme.radiusArt
                 color: Theme.surfaceHigh; clip: true
                 Image {
@@ -82,10 +116,105 @@ Rectangle {
                     color: Theme.textPrimary; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
                 }
-                Text {
+                // One hover target per artist, so a featured credit opens the
+                // guest rather than the lead. What is not a name — the
+                // separators, and the space after the last one — keeps the
+                // left group's own job of opening Now Playing.
+                Item {
+                    id: artistLine
+                    objectName: "playerBarArtistLine"
                     Layout.fillWidth: true
-                    text: hasTrack ? track.artists : ""
-                    color: Theme.textSec; font.pixelSize: 12; elide: Text.ElideRight
+                    implicitHeight: Math.max(joinedArtists.implicitHeight, artistRow.implicitHeight)
+
+                    // Declared first, so it sits under the names and they get
+                    // the click before it does.
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.showNowPlaying()
+                    }
+
+                    Text {
+                        id: joinedArtists
+                        objectName: "playerBarArtists"
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        visible: root.artistList.length === 0
+                        text: hasTrack ? track.artists : ""
+                        color: Theme.textSec; font.pixelSize: 12; elide: Text.ElideRight
+                    }
+
+                    Row {
+                        id: artistRow
+                        width: parent.width
+                        visible: root.artistList.length > 0
+                        spacing: 0
+
+                        Repeater {
+                            model: root.artistList
+                            delegate: Row {
+                                id: artistItem
+                                required property var modelData
+                                required property int index
+
+                                readonly property bool linkable: Number(modelData.id) > 0
+                                readonly property real sepWidth: index > 0 ? sep.implicitWidth : 0
+                                // What the line has left once the names in
+                                // front of this one have taken theirs. The
+                                // pixel of slack absorbs the difference
+                                // between the measured string and the
+                                // rendered one.
+                                readonly property real room:
+                                    Math.max(0, artistRow.width - root.artistStartX(index) - sepWidth - 1)
+                                // Too tight to read is too tight to aim at, so
+                                // the name goes rather than leaving a clickable
+                                // sliver behind.
+                                visible: room >= 8
+                                spacing: 0
+
+                                Text {
+                                    id: sep
+                                    objectName: "playerBarArtistSeparator"
+                                    visible: artistItem.index > 0
+                                    text: root.artistSeparator
+                                    color: Theme.textSec
+                                    font.pixelSize: 12
+                                }
+
+                                Text {
+                                    objectName: "playerBarArtistName"
+                                    text: artistItem.modelData.name
+                                    // Only the name that runs out of line
+                                    // elides; the ones before it keep their
+                                    // full width.
+                                    width: Math.min(implicitWidth, artistItem.room)
+                                    elide: Text.ElideRight
+                                    font.pixelSize: 12
+                                    font.underline: nameHit.containsMouse
+                                    color: nameHit.containsMouse ? Theme.textPrimary : Theme.textSec
+
+                                    // A MouseArea rather than a Tap/Hover
+                                    // handler pair: a TapHandler only takes a
+                                    // passive grab, so the Now Playing
+                                    // MouseArea under the names answered the
+                                    // same click and one press did both
+                                    // things. This one swallows the press.
+                                    // Disabled when the artist has no id, so
+                                    // that name is not a dead target: the
+                                    // click falls through and opens Now
+                                    // Playing like the gaps around it.
+                                    MouseArea {
+                                        id: nameHit
+                                        anchors.fill: parent
+                                        enabled: artistItem.linkable
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.openArtist(Number(artistItem.modelData.id))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Rectangle {
                     visible: hasTrack && player.audioQuality.length > 0

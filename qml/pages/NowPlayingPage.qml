@@ -438,9 +438,36 @@ Rectangle {
                                     onClicked: goToSource()
                                 }
                             }
+                            // The title opens the album the track is on
+                            // (SPEC N1), the same place the album line below
+                            // goes. Built like the two links under it: the hit
+                            // target and the focus ring follow the words, not
+                            // the column the Text fills.
                             Text {
+                                id: titleLink
+                                objectName: "nowPlayingTitle"
                                 text: hasTrack ? track.title : "–"; color: Theme.textPrimary
                                 font.pixelSize: 32; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
+                                font.underline: titleHit.containsMouse && hasTrack && Number(track.albumId) > 0
+                                activeFocusOnTab: hasTrack && Number(track.albumId) > 0
+                                Keys.onReturnPressed: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
+                                Keys.onSpacePressed:  if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
+                                Rectangle {
+                                    x: -4; y: -4
+                                    width:  Math.min(parent.width, parent.contentWidth) + 8
+                                    height: parent.height + 8
+                                    radius: Theme.radiusButton; color: "transparent"
+                                    border.width: titleLink.activeFocus ? 2 : 0
+                                    border.color: Theme.accent
+                                }
+                                MouseArea {
+                                    id: titleHit
+                                    width:  Math.min(parent.width, parent.contentWidth)
+                                    height: parent.height
+                                    hoverEnabled: true
+                                    cursorShape: hasTrack && Number(track.albumId) > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
+                                }
                             }
                             Text {
                                 id: artistLink

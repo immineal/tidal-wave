@@ -1,170 +1,351 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import TidalWave
 
-Rectangle {
+// The sidebar, in both of its shapes (SPEC sections 2 and L2-L4).
+//
+// Wide windows get the full sidebar; below Prefs::railBreakpoint it collapses to
+// a 68px rail of icons, and hovering that rail brings the *same* sidebar back as
+// an overlay on top of the page, the way compact mode works in Zen Browser and
+// Firefox. There is deliberately no manual toggle: window width is the only
+// thing that decides.
+//
+// The overlay is why this item is not the panel it draws. The root is the slot
+// the layout gives it — rail-wide while compact — and `panel` inside it is free
+// to grow past that slot and cover the page without the layout reflowing and
+// shoving the page sideways. Main.qml gives the root `z: 2` so it covers the
+// page rather than sliding under it.
+Item {
     id: root
-    color: Theme.surface
 
     property string currentPage: "home"
     signal navigate(string page, var params)
 
-    function openSettings() { settingsPopup.open() }
+    // The *window* width decides compact mode. The sidebar's own width is the
+    // thing that changes, so measuring itself would be circular. Main.qml binds
+    // this; the fallback keeps the component usable on its own.
+    property int hostWidth: Window.window ? Window.window.width : root.width
 
-    ColumnLayout {
-        anchors.top: parent.top
-        anchors.bottom: footer.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        spacing: 0
+    readonly property bool compact: hostWidth > 0 && hostWidth < prefs.railBreak()
+    readonly property int  railWidth: prefs.rail()
+    // prefs clamps this too, but a settings file written by another build has
+    // to not be able to hand the layout a nonsense width.
+    readonly property int  expandedWidth: Math.max(prefs.minSidebar(),
+                                          Math.min(prefs.maxSidebar(), prefs.sidebarWidth))
 
-        Item { height: 20 }
+    // Typing keeps the overlay open after the pointer has wandered off it.
+    readonly property bool hoverExpanded: compact && (panelHover.hovered || finder.focused)
+    readonly property bool expanded:   !compact || hoverExpanded
+    readonly property bool overlaying:  compact && hoverExpanded
 
-        Row {
-            Layout.leftMargin: 20
-            spacing: 8
-            Rectangle {
-                width: 28
-                height: 28
-                radius: Theme.radiusBadge
-                color: Theme.accent
-                Text { anchors.centerIn: parent; text: "≋"; color: Theme.onAccent; font.pixelSize: 16; font.bold: true }
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Tidal Wave"
-                color: Theme.textPrimary
-                font.pixelSize: 14
-                font.bold: true
-                font.letterSpacing: 1
-            }
-        }
+    // What the layout must reserve, which is *not* what the panel draws: that
+    // difference is the overlay.
+    readonly property int reservedWidth: compact ? railWidth : expandedWidth
+    readonly property int targetWidth:   expanded ? expandedWidth : railWidth
+    property int panelWidth: targetWidth
 
-        Item { height: 24 }
+    // How open the panel is, 0 at the rail and 1 at full width. Everything that
+    // has to move during the slide lerps off this rather than switching on
+    // `expanded`, which would snap the moment the animation started instead of
+    // travelling with it.
+    readonly property real wideness: Math.max(0, Math.min(1,
+        (panelWidth - railWidth) / Math.max(1, expandedWidth - railWidth)))
+    // Content that only fits the full sidebar. Held back until the panel is a
+    // quarter open so it fades in behind the leading edge rather than ahead
+    // of it.
+    readonly property bool showsWide: wideness > 0.25
+    readonly property real wideOpacity: Math.max(0, (wideness - 0.25) / 0.75)
 
-        SideNavItem {
-            icon: "home"
-            label: qsTr("Home", "noun, the home page")
-            page: "home"
-            currentPage: root.currentPage
-            onActivated: root.navigate("home", {})
-        }
-        SideNavItem {
-            icon: "search"
-            label: qsTr("Search", "noun, the search page")
-            page: "search"
-            currentPage: root.currentPage
-            onActivated: root.navigate("search", {})
-        }
-        SideNavItem {
-            icon: "heart"
-            label: qsTr("Collection")
-            page: "collection"
-            currentPage: root.currentPage
-            onActivated: root.navigate("collection", {})
-        }
+    // X6. Qt exposes no cross-platform reduced-motion hint, so Application
+    // reads what the desktop does expose; see Application::reducedMotion().
+    readonly property bool reduceMotion: app.reducedMotion === true
 
-        Item { height: 16 }
-        Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-        Item { height: 16 }
-
-        Text {
-            Layout.leftMargin: 20
-            text: qsTr("Playlists")
-            color: Theme.textDim
-            font.pixelSize: 10
-            font.bold: true
-            font.letterSpacing: 1.5
-        }
-
-        Item { height: 8 }
-
-        ListView {
-            id: playlistList
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            bottomMargin: 8
-            model: ListModel { id: playlistModel }
-
-            delegate: Item {
-                id: plDelegate
-                width: ListView.view.width
-                height: 36
-
-                function activate() {
-                    root.navigate("playlist", { playlistUuid: model.uuid, playlistTitle: model.title, coverUrl: model.coverUrl || "", playlistType: model.type || "" })
-                }
-
-                activeFocusOnTab: true
-                Keys.onReturnPressed: activate()
-                Keys.onSpacePressed:  activate()
-
-                Rectangle {
-                    id: plRect
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    radius: Theme.radiusRow
-                    color: plHov.hovered ? Theme.surfaceHov : "transparent"
-                    border.width: plDelegate.activeFocus ? 2 : 0
-                    border.color: Theme.accent
-                    HoverHandler { id: plHov }
-                    TapHandler {
-                        onTapped: plDelegate.activate()
-                    }
-                    Text {
-                        id: plText
-                        anchors.left: parent.left
-                        anchors.leftMargin: 16
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: model.title
-                        color: Theme.textSec
-                        font.pixelSize: 13
-                        elide: Text.ElideRight
-                        width: parent.width - 32
-                    }
-                    ToolTip {
-                        id: plToolTip
-                        delay: 600
-                        visible: plHov.hovered && plText.truncated
-                        text: model.title
-                        background: Rectangle {
-                            color: Theme.surfaceHigh
-                            border.color: Theme.border
-                            radius: Theme.radiusBadge
-                        }
-                        contentItem: Text {
-                            text: plToolTip.text
-                            color: Theme.textPrimary
-                            font.pixelSize: 12
-                        }
-                    }
-                }
-            }
-        }
-
+    // A drag is a continuous stream of new widths, so animating it would make
+    // the border lag behind the pointer.
+    Behavior on panelWidth {
+        enabled: !root.reduceMotion && !dragHandle.dragging
+        NumberAnimation { duration: 170; easing.type: Easing.OutCubic }
     }
 
-    Rectangle {
-        id: footer
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 56
-        color: Theme.surfaceHigh
+    function openSettings() { settingsPopup.open() }
 
-        RowLayout {
+    // ── the rows the library list shows ──────────────────────────────────
+
+    readonly property bool searching: finder.query.trim().length > 0
+    property var rows: []
+
+    function rebuildRows() {
+        if (searching) {
+            root.rows = library.search(finder.query, finder.kinds)
+            return
+        }
+        var all = library.entries
+        var kinds = finder.kinds
+        if (!kinds || kinds.length === 0) {
+            root.rows = all
+            return
+        }
+        var out = []
+        for (var i = 0; i < all.length; i++)
+            if (kinds.indexOf(all[i].kind) >= 0) out.push(all[i])
+        root.rows = out
+    }
+
+    // Coalesces a burst of keystrokes into one pass over the index. 120ms is
+    // below the point where the list feels like it is lagging the typing.
+    Timer {
+        id: filterTimer
+        interval: 120
+        onTriggered: root.rebuildRows()
+    }
+
+    Connections {
+        target: finder
+        function onQueryChanged() { filterTimer.restart() }
+        function onKindsChanged() { filterTimer.restart() }
+    }
+
+    Connections {
+        target: library
+        // The whole library arrived, or a play reordered it. No debounce: this
+        // is not keystroke-rate.
+        function onEntriesChanged() { root.rebuildRows() }
+    }
+
+    Component.onCompleted: rebuildRows()
+
+    // ── the panel ────────────────────────────────────────────────────────
+
+    Rectangle {
+        id: panel
+        objectName: "sidebarPanel"
+        width: root.panelWidth
+        height: root.height
+        color: Theme.surface
+        // While the panel is narrower than its content, the content must not
+        // spill out over the page.
+        clip: true
+
+        HoverHandler { id: panelHover }
+
+        ColumnLayout {
+            id: body
+            anchors.top: parent.top
+            anchors.bottom: footer.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 0
+
+            Item { Layout.fillWidth: true; Layout.preferredHeight: 20 }
+
+            // ── mark and wordmark ────────────────────────────────────────
+            Item {
+                id: logoItem
+                objectName: "sidebarLogo"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 28
+
+                Rectangle {
+                    id: mark
+                    // 20 centres the 28px mark in the 68px rail and is also the
+                    // sidebar's left inset, so it does not move between the two.
+                    x: 20
+                    width: 28
+                    height: 28
+                    radius: Theme.radiusBadge
+                    color: Theme.accent
+                    Text {
+                        anchors.centerIn: parent
+                        text: "≋"
+                        color: Theme.onAccent
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+                }
+                Text {
+                    anchors.left: mark.right
+                    anchors.leftMargin: 8
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: mark.verticalCenter
+                    visible: root.showsWide
+                    opacity: root.wideOpacity
+                    text: "Tidal Wave"
+                    color: Theme.textPrimary
+                    font.pixelSize: 14
+                    font.bold: true
+                    font.letterSpacing: 1
+                    elide: Text.ElideRight
+                }
+            }
+
+            Item { Layout.fillWidth: true; Layout.preferredHeight: 24 }
+
+            SideNavItem {
+                icon: "home"
+                label: qsTr("Home", "noun, the home page")
+                page: "home"
+                onActivated: root.navigate("home", {})
+            }
+            SideNavItem {
+                icon: "search"
+                label: qsTr("Search", "noun, the search page")
+                page: "search"
+                onActivated: root.navigate("search", {})
+            }
+            SideNavItem {
+                icon: "heart"
+                label: qsTr("Collection")
+                page: "collection"
+                onActivated: root.navigate("collection", {})
+            }
+
+            Item { Layout.fillWidth: true; Layout.preferredHeight: 16 }
+            Rectangle {
+                objectName: "sidebarNavDivider"
+                color: Theme.border
+                height: 1
+                Layout.fillWidth: true
+                Layout.leftMargin: root.expanded ? 16 : 14
+                Layout.rightMargin: root.expanded ? 16 : 14
+            }
+            Item { Layout.fillWidth: true; Layout.preferredHeight: 14 }
+
+            // ── the finder: search field plus type chips (S5, S8) ────────
+            LibraryFinder {
+                id: finder
+                objectName: "sidebarFinder"
+                visible: root.showsWide
+                opacity: root.wideOpacity
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                Layout.preferredHeight: implicitHeight
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 10
+                visible: root.showsWide
+            }
+
+            // ── the flat library list (S1, S2) ───────────────────────────
+            ListView {
+                id: libList
+                objectName: "sidebarLibraryList"
+                visible: root.showsWide
+                opacity: root.wideOpacity
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                bottomMargin: 8
+                model: root.rows
+                // A library can run to thousands of rows, so nothing outside
+                // the viewport is kept alive.
+                cacheBuffer: 240
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: LibraryRow { }
+
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width - 32
+                    visible: root.rows.length === 0
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: root.searching ? qsTr("No matches") : qsTr("Nothing saved yet")
+                    color: Theme.textDim
+                    font.pixelSize: 12
+                }
+            }
+
+            // ── the rail's pinned covers (S9) ────────────────────────────
+            ListView {
+                id: railPins
+                objectName: "sidebarRailPins"
+                visible: !root.showsWide
+                opacity: 1 - root.wideness
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                topMargin: 4
+                bottomMargin: 8
+                spacing: 4
+                model: pins.items
+                boundsBehavior: Flickable.StopAtBounds
+
+                delegate: Item {
+                    id: pinDelegate
+                    required property var modelData
+                    width: ListView.view.width
+                    height: 44
+
+                    Rectangle {
+                        objectName: "railPinCover"
+                        anchors.centerIn: parent
+                        width: 40
+                        height: 40
+                        radius: Theme.radiusArt
+                        color: Theme.surfaceHigh
+                        border.width: pinHov.hovered ? 1 : 0
+                        border.color: Theme.accent
+                        clip: true
+
+                        Image {
+                            anchors.fill: parent
+                            source: (pinDelegate.modelData.imageUrl || "").length > 0
+                                    ? "image://tidal/" + pinDelegate.modelData.imageUrl : ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            visible: status === Image.Ready
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            width: 18
+                            height: 18
+                            visible: (pinDelegate.modelData.imageUrl || "").length === 0
+                            name: root.glyphFor(pinDelegate.modelData.kind)
+                            color: Theme.textDim
+                        }
+
+                        HoverHandler { id: pinHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler {
+                            onTapped: root.open(pinDelegate.modelData.kind,
+                                                pinDelegate.modelData.id,
+                                                pinDelegate.modelData)
+                        }
+                        ToolTip.visible: pinHov.hovered
+                        ToolTip.text: pinDelegate.modelData.title || ""
+                        ToolTip.delay: 450
+                    }
+                }
+            }
+        }
+
+        // ── footer: the username and the gear, nothing else (S10) ────────
+        Rectangle {
+            id: footer
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             height: 56
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-            spacing: 10
+            color: Theme.surfaceHigh
+
             Text {
                 id: acctNameText
-                Layout.fillWidth: true
+                objectName: "sidebarAccountName"
+                visible: root.showsWide
+                opacity: root.wideOpacity
+                anchors.left: parent.left
+                anchors.leftMargin: 16
+                anchors.right: gearItem.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                // Auth::displayNameFrom already picks the username over the
+                // email address; there is deliberately no avatar beside it.
                 text: auth.username.length > 0 ? auth.username : qsTr("My Account")
                 color: Theme.textPrimary
                 font.pixelSize: 13
@@ -174,8 +355,19 @@ Rectangle {
                 ToolTip.delay: 600
                 HoverHandler { id: acctNameHov }
             }
+
             Item {
-                width: 28; height: 28
+                id: gearItem
+                objectName: "sidebarSettingsGear"
+                width: 28
+                height: 28
+                // Right-aligned in the sidebar, centred in the rail, and it
+                // travels between the two with the slide.
+                readonly property real railX: Math.round((root.railWidth - width) / 2)
+                readonly property real wideX: Math.max(0, panel.width - width - 16)
+                x: Math.round(railX + (wideX - railX) * root.wideness)
+                anchors.verticalCenter: parent.verticalCenter
+
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
@@ -185,11 +377,10 @@ Rectangle {
                     anchors.margins: -2
                     radius: Theme.radiusButton
                     color: "transparent"
-                    border.width: parent.activeFocus ? 2 : 0
+                    border.width: gearItem.activeFocus ? 2 : 0
                     border.color: Theme.accent
                 }
                 VectorIcon {
-                    id: settingsButton
                     anchors.centerIn: parent
                     name: "settings"
                     color: settingsHover.hovered ? Theme.textPrimary : Theme.textSec
@@ -208,34 +399,119 @@ Rectangle {
         }
     }
 
-    function loadPlaylists() {
-        bridge.fetchUserPlaylists(function(playlists, err) {
-            playlistModel.clear()
-            for (var i = 0; i < playlists.length; i++) {
-                playlistModel.append({
-                    title:   playlists[i].title,
-                    uuid:    playlists[i].uuid,
-                    coverUrl: playlists[i].coverUrl || "",
-                    type:    playlists[i].type || ""
-                })
-            }
-        }, 30, 0)
-    }
-
-    Component.onCompleted: { if (auth.state === 2) loadPlaylists() }
-
-    Connections {
-        target: auth
-        function onStateChanged(state) {
-            if (state === 2) loadPlaylists()
+    // A soft edge where the overlay meets the page, so the sidebar reads as
+    // floating above it. A gradient strip rather than MultiEffect: no extra QML
+    // module to package, and it costs nothing under software rendering.
+    Rectangle {
+        id: panelShadow
+        x: panel.width
+        width: 14
+        height: root.height
+        visible: root.overlaying || root.panelWidth > root.reservedWidth
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.rgba(Theme.scrim.r, Theme.scrim.g, Theme.scrim.b, Theme.scrim.a * 0.55) }
+            GradientStop { position: 1.0; color: Qt.rgba(Theme.scrim.r, Theme.scrim.g, Theme.scrim.b, 0) }
         }
     }
 
-    Connections {
-        target: bridge
-        function onFavoritePlaylistsChanged() {
-            loadPlaylists()
+    // ── L3: the border is the resize handle ──────────────────────────────
+
+    MouseArea {
+        id: dragHandle
+        objectName: "sidebarDragHandle"
+        // Straddles the border so there is grabbable width on both sides of it.
+        x: panel.width - 3
+        width: 6
+        height: root.height
+        // Nothing to resize in the rail, and in the overlay the width on screen
+        // is not the width being stored.
+        visible: !root.compact
+        enabled: !root.compact
+        hoverEnabled: true
+        cursorShape: Qt.SplitHCursor
+
+        property bool dragging: false
+        // Scene coordinates, because the handle itself travels with the edge it
+        // is dragging: measuring in local coordinates would chase its own tail.
+        property real originScene: 0
+        property int  originWidth: 0
+
+        onPressed: function (mouse) {
+            dragging = true
+            originScene = mapToItem(null, mouse.x, mouse.y).x
+            originWidth = root.expandedWidth
         }
+        onPositionChanged: function (mouse) {
+            if (!dragging) return
+            // Always measured from where the press started, so running past a
+            // clamp does not bank width that comes back on the way home.
+            prefs.sidebarWidth = Math.round(
+                originWidth + (mapToItem(null, mouse.x, mouse.y).x - originScene))
+        }
+        onReleased: dragging = false
+        onCanceled: dragging = false
+
+        // The border itself, drawn by the handle so the two cannot drift apart.
+        Rectangle {
+            anchors.right: parent.right
+            anchors.rightMargin: 3
+            width: 1
+            height: parent.height
+            color: dragHandle.containsMouse || dragHandle.dragging ? Theme.accent : Theme.border
+        }
+    }
+
+    // ── navigation helpers ───────────────────────────────────────────────
+
+    function glyphFor(kind) {
+        // VectorIcon has no "track" glyph; a song is a note.
+        return kind === "track" ? "music" : kind
+    }
+
+    // Opens one library row. `data` is the row as LibraryIndex handed it over.
+    function open(kind, id, data) {
+        library.markPlayed(kind, id)
+        switch (kind) {
+        case "playlist":
+            // LibraryIndex does not carry the playlist type, and PlaylistPage
+            // needs it to decide whether the playlist is editable. The bridge's
+            // own cache of the user's playlists is the only hint available
+            // without a round trip; an unknown playlist opens read-only.
+            root.navigate("playlist", {
+                playlistUuid:  id,
+                playlistTitle: data.title || "",
+                coverUrl:      data.imageUrl || "",
+                playlistType:  root.playlistTypeFor(id)
+            })
+            break
+        case "album":
+            root.navigate("album", { albumId: parseInt(id) })
+            break
+        case "artist":
+            root.navigate("artist", { artistId: parseInt(id) })
+            break
+        case "mix":
+            root.navigate("mix", {
+                mixId:    id,
+                title:    data.title || "",
+                subtitle: data.subtitle || "",
+                coverUrl: data.imageUrl || ""
+            })
+            break
+        case "track":
+            // A song opens the album it came from, which is the only page a
+            // single track has.
+            if (data.albumId) root.navigate("album", { albumId: parseInt(data.albumId) })
+            break
+        }
+    }
+
+    function playlistTypeFor(uuid) {
+        var mine = bridge.getUserPlaylists()
+        for (var i = 0; i < mine.length; i++)
+            if (mine[i].uuid === uuid) return mine[i].type || ""
+        return ""
     }
 
     // The settings popup, exposed so tests/qml/tst_layout_player.qml can measure
@@ -322,7 +598,11 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 1
                             Text { text: "Tidal Wave"; color: Theme.textPrimary; font.pixelSize: 14; font.bold: true }
-                            Text { text: qsTr("Version %1").arg(prefs.appVersion()); color: Theme.textDim; font.pixelSize: 12 }
+                            Text {
+                                objectName: "settingsVersion"
+                                text: qsTr("Version %1").arg(prefs.appVersion())
+                                color: Theme.textDim; font.pixelSize: 12
+                            }
                         }
                         Rectangle {
                             height: 30; width: logoutLabel.implicitWidth + 20; radius: Theme.radiusButton
@@ -518,17 +798,114 @@ Rectangle {
         }
     }
 
-    // Inline component for nav items. Properties on separate lines to avoid semicolon issues.
+    // ── inline components ────────────────────────────────────────────────
+
+    // One row of the flat library list. The type icon is what tells a playlist
+    // from an album from an artist from a mix now that they share one list.
+    component LibraryRow : Item {
+        id: rowItem
+        objectName: "libraryRow"
+
+        required property int index
+        required property var modelData
+
+        readonly property string kind:   modelData.kind
+        readonly property string itemId: modelData.id
+        readonly property string title:  modelData.title
+        readonly property bool   pinned: modelData.pinned === true
+        // S7: a row the search pulled in because of a neighbouring hit, rather
+        // than because the user typed its name.
+        readonly property bool   derived: modelData.expanded === true
+
+        // The break between the pinned block and the rest (P3/P5). Search
+        // results have no pinned block, so they have nothing to break.
+        readonly property bool blockBreak: !root.searching && index > 0 && !pinned
+                                           && root.rows[index - 1].pinned === true
+
+        width: ListView.view ? ListView.view.width : 0
+        height: 34 + (blockBreak ? 11 : 0)
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: root.open(kind, itemId, modelData)
+        Keys.onSpacePressed:  root.open(kind, itemId, modelData)
+
+        Rectangle {
+            objectName: "pinnedBlockBreak"
+            property int rowIndex: rowItem.index
+            visible: rowItem.blockBreak
+            anchors.top: parent.top
+            anchors.topMargin: 5
+            anchors.left: parent.left
+            anchors.leftMargin: 16
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            height: 1
+            color: Theme.border
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            height: 34
+            radius: Theme.radiusRow
+            color: rowHov.hovered ? Theme.surfaceHov : "transparent"
+            border.width: rowItem.activeFocus ? 2 : 0
+            border.color: Theme.accent
+
+            HoverHandler { id: rowHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
+
+            VectorIcon {
+                id: rowIcon
+                objectName: "libraryRowIcon"
+                anchors.left: parent.left
+                anchors.leftMargin: 8 + (rowItem.derived ? 12 : 0)
+                anchors.verticalCenter: parent.verticalCenter
+                name: root.glyphFor(rowItem.kind)
+                width: 15
+                height: 15
+                strokeWidth: 1.5
+                color: rowItem.pinned ? Theme.accent : Theme.textDim
+            }
+
+            Text {
+                id: rowTitle
+                objectName: "libraryRowTitle"
+                anchors.left: rowIcon.right
+                anchors.leftMargin: 10
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                text: rowItem.title
+                color: rowItem.derived ? Theme.textDim : Theme.textSec
+                font.pixelSize: 13
+                elide: Text.ElideRight
+            }
+
+            ToolTip.visible: rowHov.hovered && (rowTitle.truncated || subtitleOf.length > 0)
+            ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
+                                                : rowItem.title
+            ToolTip.delay: 600
+            readonly property string subtitleOf: rowItem.modelData.subtitle || ""
+        }
+    }
+
+    // A nav row. In the rail it is the icon alone, centred; expanded it gains
+    // its label. Same item either way, so the switch is a slide, not a swap.
     component SideNavItem : Item {
         id: navItem
         property string icon: ""
         property string label: ""
         property string page: ""
-        property string currentPage: ""
         signal activated()
 
+        readonly property bool current: root.currentPage === page
+
         Layout.fillWidth: true
-        height: 44
+        Layout.preferredHeight: 44
 
         activeFocusOnTab: true
         Keys.onReturnPressed: activated()
@@ -541,14 +918,14 @@ Rectangle {
             anchors.topMargin: 2
             anchors.bottomMargin: 2
             radius: Theme.radiusRow
-            color: root.currentPage === page
+            color: navItem.current
                    ? Theme.surfaceHov
                    : sideHov.hovered ? Theme.hoverFill : "transparent"
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 
             Rectangle {
-                visible: root.currentPage === page
+                visible: navItem.current
                 width: 3
                 height: parent.height * 0.5
                 anchors.left: parent.left
@@ -558,26 +935,41 @@ Rectangle {
                 color: Theme.accent
             }
 
-            Row {
-                anchors.left: parent.left
-                anchors.leftMargin: 16
+            NavIcon {
+                id: navGlyph
+                objectName: "navIcon"
+                name: navItem.icon
+                color: navItem.current ? Theme.accent : Theme.textSec
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 12
-                NavIcon {
-                    name: icon
-                    color: root.currentPage === page ? Theme.accent : Theme.textSec
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                Text {
-                    text: label
-                    color: root.currentPage === page ? Theme.textPrimary : Theme.textSec
-                    font.pixelSize: 14
-                    font.bold: root.currentPage === page
-                }
+                // 16 from the panel edge in the sidebar (8 here, inside the
+                // row's 8px inset), centred in the rail, and travelling
+                // between the two with the slide.
+                readonly property real railX: Math.round((root.railWidth - 16 - width) / 2)
+                x: Math.round(railX + (8 - railX) * root.wideness)
             }
 
-            HoverHandler { id: sideHov }
-            TapHandler   { onTapped: activated() }
+            Text {
+                objectName: "navLabel"
+                visible: root.showsWide
+                opacity: root.wideOpacity
+                anchors.left: navGlyph.right
+                anchors.leftMargin: 12
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                text: navItem.label
+                color: navItem.current ? Theme.textPrimary : Theme.textSec
+                font.pixelSize: 14
+                font.bold: navItem.current
+                elide: Text.ElideRight
+            }
+
+            HoverHandler { id: sideHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler   { onTapped: navItem.activated() }
+
+            ToolTip.visible: sideHov.hovered && !root.showsWide
+            ToolTip.text: navItem.label
+            ToolTip.delay: 450
         }
     }
 }
