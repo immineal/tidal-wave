@@ -9,8 +9,10 @@
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include <QSystemTrayIcon>
+#include <QIcon>
 
 class QQmlApplicationEngine;
+class QLocalServer;
 class CastManager;
 class Prefs;
 class I18n;
@@ -28,7 +30,7 @@ public:
     explicit Application(QObject *parent = nullptr);
     int run(int argc, char **argv);
 
-    bool reallyQuit() const { return m_reallyQuit; }
+    bool reallyQuit() const;
     bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
@@ -37,11 +39,32 @@ public:
     void hideWindow();
     void toggleWindow();
 
+    // ── Startup decisions, split out so tests can reach them ─────────────
+    // None of these touch a QApplication or any member, so tst_startup.cpp
+    // can call them straight, without bringing an application up first.
+
+    // Where the single-instance rendezvous socket lives for this user.
+    static QString singleInstanceSocketName();
+    // Binds `server` to that socket, clearing one left behind by a crash but
+    // never one a live instance still answers on. False means the lock could
+    // not be taken, which run() treats as non-fatal.
+    static bool claimSingleInstanceSocket(QLocalServer *server, const QString &socketName);
+    // Whether closing the last window should end the process. It should when
+    // there is no tray icon to bring it back from.
+    static bool shouldQuitOnWindowClose(bool trayAvailable);
+    // Whether a log line is one of the audio-server connect errors a machine
+    // with no sound server prints on every single launch.
+    static bool isAudioServerStartupNoise(const QString &msg);
+
 signals:
     void reallyQuitChanged();
     void reducedMotionChanged();
 
 private:
+    // Builds the tray icon and its menu. Called at startup when a tray is
+    // already there, and again from the D-Bus watcher if one turns up later.
+    void createTrayIcon(const QIcon &icon);
+
     Prefs       *m_prefs  = nullptr;
     I18n        *m_i18n   = nullptr;
     UpdateCheck *m_update = nullptr;
