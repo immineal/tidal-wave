@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE TS>
 <TS version="2.1" language="de">
 <context>
@@ -299,13 +299,14 @@
 <context>
     <name>ContextMenu</name>
     <message>
-        <source>Unpin</source>
-        <translation>Nicht mehr anheften</translation>
-    </message>
-    <message>
         <source>Pin</source>
         <comment>verb, pin to the sidebar</comment>
         <translation>Anheften</translation>
+    </message>
+    <message>
+        <source>Unpin</source>
+        <comment>verb, remove from the pinned block</comment>
+        <translation>Nicht mehr anheften</translation>
     </message>
     <message>
         <source>Play</source>
@@ -855,7 +856,7 @@
         <translation>Titel, Alben, Künstler und mehr finden</translation>
     </message>
     <message>
-        <source>No results for &quot;%1&quot;</source>
+        <source>No results for "%1"</source>
         <translation>Keine Ergebnisse für „%1“</translation>
     </message>
     <message>
@@ -897,14 +898,6 @@
         <translation>Design</translation>
     </message>
     <message>
-        <source>Dark</source>
-        <translation>Dunkel</translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation>Hell</translation>
-    </message>
-    <message>
         <source>Language</source>
         <translation>Sprache</translation>
     </message>
@@ -937,10 +930,6 @@
         <translation>Audioausgabe</translation>
     </message>
     <message>
-        <source>System default currently uses %1</source>
-        <translation>Systemstandard verwendet derzeit %1</translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>
@@ -961,10 +950,6 @@
         <translation>Automatisch nach Updates suchen</translation>
     </message>
     <message>
-        <source>At most once a day, against the GitHub releases page.</source>
-        <translation>Höchstens einmal täglich, bei der Releases-Seite auf GitHub.</translation>
-    </message>
-    <message>
         <source>Check now</source>
         <translation>Jetzt suchen</translation>
     </message>
@@ -977,8 +962,26 @@
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login and every search, page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
-        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung und jede Suche, jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest.</translation>
+        <source>Dark</source>
+        <comment>heading over the dark themes</comment>
+        <translation>Dunkel</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <comment>heading over the light themes</comment>
+        <translation>Hell</translation>
+    </message>
+    <message>
+        <source>The system default is currently %1.</source>
+        <translation>Der Systemstandard ist derzeit %1.</translation>
+    </message>
+    <message>
+        <source>At most once a day, using the GitHub releases page.</source>
+        <translation>Höchstens einmal täglich, über die Releases-Seite auf GitHub.</translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
+        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest.</translation>
     </message>
     <message>
         <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>

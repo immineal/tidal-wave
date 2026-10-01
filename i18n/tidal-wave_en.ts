@@ -299,12 +299,13 @@
 <context>
     <name>ContextMenu</name>
     <message>
-        <source>Unpin</source>
+        <source>Pin</source>
+        <comment>verb, pin to the sidebar</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Pin</source>
-        <comment>verb, pin to the sidebar</comment>
+        <source>Unpin</source>
+        <comment>verb, remove from the pinned block</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -897,14 +898,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Dark</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Light</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Language</source>
         <translation type="unfinished"></translation>
     </message>
@@ -937,10 +930,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>System default currently uses %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Performance</source>
         <translation type="unfinished"></translation>
     </message>
@@ -961,10 +950,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>At most once a day, against the GitHub releases page.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Check now</source>
         <translation type="unfinished"></translation>
     </message>
@@ -977,7 +962,25 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login and every search, page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
+        <source>Dark</source>
+        <comment>heading over the dark themes</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <comment>heading over the light themes</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The system default is currently %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At most once a day, using the GitHub releases page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

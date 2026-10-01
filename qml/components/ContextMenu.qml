@@ -84,7 +84,7 @@ Menu {
         objectName: "pinMenuItem"
         visible: root.pinMode && root.canPin
         height: visible ? implicitHeight : 0
-        text: root.pinned ? qsTr("Unpin") : qsTr("Pin", "verb, pin to the sidebar")
+        text: root.pinned ? qsTr("Unpin", "verb, remove from the pinned block") : qsTr("Pin", "verb, pin to the sidebar")
         contentItem: Row {
             spacing: 8
             leftPadding: 16
