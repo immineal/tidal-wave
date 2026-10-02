@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Window
 import TidalWave
 
 Item {
@@ -21,8 +22,12 @@ Item {
 
     readonly property bool isFilled: _filled.indexOf(name) !== -1
 
+    // "track" is not drawn as a path; see trackStrip below for why.
+    readonly property bool isSnappedBars: name === "track"
+
     Shape {
         id: shapeItem
+        visible: !root.isSnappedBars
         width: 24
         height: 24
         anchors.centerIn: parent
@@ -62,6 +67,72 @@ Item {
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
             PathSvg { path: root._overlayFor(root.name) }
+        }
+    }
+
+    // The seven-bar "track" strip, snapped to whole device pixels.
+    //
+    // It used to be seven stroked lines in the Shape above, and it looked
+    // wrong at the sizes it is actually used at. The Mac measured why, and it
+    // is not the geometry: Qt renders that Shape with NO antialiasing at all -
+    // every rendered column comes out coverage 0.00 or 1.00, on screen and
+    // through grabToImage alike - so each 1.8-unit round-capped stroke is a
+    // pixel-snapped rectangle whose width is 1, 2 or 3 device px depending
+    // purely on where its edges fall. `antialiasing: true` on the Shape does
+    // nothing here (default GeometryRenderer, no MSAA). It came out clean only
+    // where the device pitch landed within about 0.1 of an integer - W=18 at
+    // DPR 2, W=12 at DPR 3, both pitch 4.08 - and ragged everywhere else: at
+    // W=12 on a Retina panel bars 2, 3, 5 and 6 were 1px against the others'
+    // 2px, and at DPR 1 the 12-18px sizes could not hold seven bars at all.
+    //
+    // Turning antialiasing on was tried and is worse. With CurveRenderer at
+    // W=12 the gaps between bars never reach zero coverage, so the strip reads
+    // as grey mush: the ink evens out and the bars stop being separate, which
+    // is the opposite of the thing worth fixing.
+    //
+    // So the strip computes its geometry in device pixels and leaves the
+    // rasteriser nothing to decide. Pitch is the nearest whole number of
+    // device px to the ideal 3.2 units, never below 2 - two being a 1px bar
+    // and a 1px gap, the tightest seven can be drawn and still read as seven -
+    // and the bar is half the pitch rounded up. Every bar is then the same
+    // width and every gap the same width, at any size and any
+    // devicePixelRatio, which is the property the path version could not hold.
+    Item {
+        id: trackStrip
+        visible: root.isSnappedBars
+        anchors.centerIn: parent
+        height: root.height
+
+        readonly property real dpr: Math.max(1, Screen.devicePixelRatio)
+        readonly property real unit: (root.width * 0.85) / 24
+        readonly property int pitchDev: Math.max(2, Math.round(3.2 * trackStrip.unit * trackStrip.dpr))
+        readonly property int barDev:   Math.ceil(trackStrip.pitchDev / 2)
+        // Six whole pitches plus the last bar: the ink, not the trailing gap.
+        width: (6 * trackStrip.pitchDev + trackStrip.barDev) / trackStrip.dpr
+
+        // Half-heights in grid units, taken from the path this replaces, so
+        // the silhouette is unchanged: every bar centred on the middle line,
+        // which is what tells this apart from the now-playing bars that stand
+        // on a baseline.
+        readonly property var halfUnits: [3, 6.5, 4, 9, 5, 7.5, 2.5]
+
+        Repeater {
+            model: 7
+            Rectangle {
+                required property int index
+                objectName: "trackBar"
+                color: root.color
+                antialiasing: false
+                x: index * trackStrip.pitchDev / trackStrip.dpr
+                width: trackStrip.barDev / trackStrip.dpr
+                // Snapped the same way as the widths, so a bar cannot land on
+                // a half pixel and come out grey at one size and solid at the
+                // next.
+                height: Math.max(1, Math.round(2 * trackStrip.halfUnits[index]
+                                               * trackStrip.unit * trackStrip.dpr))
+                        / trackStrip.dpr
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
 
