@@ -152,6 +152,11 @@ TestCase {
     Component { id: holderC; Item { } }
 
     Component {
+        id: trackIconC
+        VectorIcon { name: "track" }
+    }
+
+    Component {
         id: trackRowC
         TrackRow { width: 700 }
     }
@@ -857,5 +862,62 @@ TestCase {
         compare(Object.keys(playBottoms).length, 1,
                 "the playing mark has no single baseline, so it reads as a waveform too")
         verify(Object.keys(playTops).length > 1, "the playing mark is a flat block")
+    }
+
+    // The "track" strip draws seven bars of one width, separated by gaps of
+    // one width, at every size it is used at.
+    //
+    // This is the property the stroked-path version could not hold, and the
+    // reason is worth keeping next to the test: Qt rasterises that Shape with
+    // no antialiasing, so each stroke snapped to whole pixels and its width
+    // became a function of where its edges happened to land. The Mac measured
+    // bars of 2,1,1,2,1,1,2 device px at W=12 on a Retina panel, and gaps that
+    // were never uniform except at one size. Averages and totals would both
+    // have passed that; only comparing every bar to every other catches it.
+    function test_the_track_strip_has_uniform_bars_and_gaps_data() {
+        return [
+            { tag: "12 - Now Playing button",  w: 12 },
+            { tag: "15 - LibraryFinder chip",  w: 15 },
+            { tag: "16 - player bar row",      w: 16 },
+            { tag: "18",                       w: 18 },
+            { tag: "24 - the design size",     w: 24 },
+        ]
+    }
+
+    function test_the_track_strip_has_uniform_bars_and_gaps(row) {
+        var icon = createTemporaryObject(trackIconC, testCase, { width: row.w, height: row.w })
+        verify(icon, "could not build the icon")
+        waitForRendering(icon)
+
+        var bars = []
+        collect(icon, "trackBar", bars)
+        compare(bars.length, 7, row.tag + ": the strip is not seven bars")
+
+        bars.sort(function (a, b) { return a.x - b.x })
+        for (var i = 1; i < bars.length; ++i) {
+            compare(bars[i].width, bars[0].width,
+                    row.tag + ": bar " + i + " is " + bars[i].width
+                    + " against bar 0 at " + bars[0].width)
+            verify(bars[i].height > 0, row.tag + ": bar " + i + " has no height")
+        }
+
+        var gap0 = bars[1].x - (bars[0].x + bars[0].width)
+        verify(gap0 >= 0, row.tag + ": the bars overlap")
+        for (var k = 2; k < bars.length; ++k) {
+            var gap = bars[k].x - (bars[k - 1].x + bars[k - 1].width)
+            compare(gap, gap0,
+                    row.tag + ": gap " + (k - 1) + " is " + gap
+                    + " against the first gap at " + gap0)
+        }
+    }
+
+    // Depth-first by objectName, because the bars are inside a Repeater.
+    function collect(item, objName, out) {
+        if (!item) return
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            if (kids[i].objectName === objName) out.push(kids[i])
+            collect(kids[i], objName, out)
+        }
     }
 }
