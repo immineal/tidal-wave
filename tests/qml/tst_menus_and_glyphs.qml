@@ -67,6 +67,35 @@ TestCase {
     // "View all →" still fails.
     readonly property var exemptStrings: ["A→Z", "Z→A"]
 
+    // What this platform calls the app's shortcuts, removed from a label
+    // before it is scanned.
+    //
+    // This is not a hole in the allowlist, it is the allowlist asking the
+    // right question. On macOS QKeySequence::NativeText renders the modifier
+    // keys as the symbols Apple puts on the keyboard - the Mac measured the
+    // chips as carrying U+2318 COMMAND, U+2325 OPTION, U+238B ESCAPE and the
+    // four arrows - and those are not decoration the app chose, they are the
+    // name of the key. Refusing them would mean printing "Cmd+," on a machine
+    // where every other application prints the symbol, which is the bug this
+    // panel's shortcut table was built to fix in the first place.
+    //
+    // Subtracted by exact string rather than by allowing the characters
+    // anywhere, so a stray arrow written into a label still fails, and so the
+    // set is whatever this platform actually produces rather than a list of
+    // code points that would rot the next time Apple adds one. The chips join
+    // several sequences with " / ", which is why this removes substrings
+    // instead of comparing whole labels.
+    function withoutKeyNames(s) {
+        var ids = Shortcuts.ids()
+        var out = s
+        for (var i = 0; i < ids.length; ++i) {
+            var d = Shortcuts.display(ids[i])
+            if (!d || d.length === 0) continue
+            while (out.indexOf(d) !== -1) out = out.replace(d, "")
+        }
+        return out
+    }
+
     function offendingChars(s) {
         var bad = ""
         for (var i = 0; i < s.length; ++i) {
@@ -106,7 +135,7 @@ TestCase {
         for (var i = 0; i < texts.length; ++i) {
             var t = texts[i].text
             if (testCase.exemptStrings.indexOf(t) !== -1) continue
-            var bad = offendingChars(t)
+            var bad = offendingChars(withoutKeyNames(t))
             if (bad.length > 0) hits.push('"' + t + '" carries ' + bad)
         }
         compare(hits.join("; "), "", where + " ships a character that is not Basic Latin")

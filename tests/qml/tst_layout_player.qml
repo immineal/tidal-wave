@@ -1278,16 +1278,32 @@ TestCase {
         // would look like, and it was not one. It passed alone and failed in a
         // full run, because tst_qml runs every QML file in one process and the
         // timing differs under load.
+        //
+        // Third attempt at this, so the reasoning is written down. The
+        // baseline and the samples must be taken THE SAME WAY, and twice they
+        // were not:
+        //   1. baseline after one wait(0), samples after wait(0)  -> baseline
+        //      pinned the idle width and every later sample disagreed.
+        //   2. baseline from a poll loop that stopped when two reads matched,
+        //      samples after waitForRendering -> the poll loop cannot tell a
+        //      settled width from a STALE one, because an unchanged value
+        //      reads as two equal polls either way. On macOS that latched 124
+        //      and the real 10:00 width was 94, deterministically, failing on
+        //      the very first sample - which is seconds[0], the same 600 the
+        //      baseline was taken at. Found by the Mac; on Linux the same bug
+        //      only showed up under full-suite load.
+        // So: one rendered frame for the baseline, exactly as for the samples.
         host.sleepTimeLeft = seconds[0]
-        var settled = -1
-        tryVerify(function () {
-            var w = pill.width
-            var same = (w === settled)
-            settled = w
-            return same
-        }, 2000, "the sleep timer pill never settled on a width")
-
+        waitForRendering(pill)
         var first = pill.width
+        // ...and prove the baseline itself is not stale, rather than assuming
+        // a rendered frame is enough. A width still on its way to somewhere
+        // else moves between two frames; a settled one does not. This is the
+        // assertion that would have caught both earlier attempts.
+        waitForRendering(pill)
+        compare(pill.width, first,
+                "the pill was still settling when the baseline was taken: "
+                + pill.width.toFixed(1) + " one frame after " + first.toFixed(1))
         // And it must be reserving, not merely stable: a pill that had stopped
         // reserving entirely would hold one width here too, by being wrong the
         // same way every time.
