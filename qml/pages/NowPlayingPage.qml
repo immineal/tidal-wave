@@ -1122,7 +1122,21 @@ Rectangle {
                                 Math.min(Theme.radiusChip, height / 2)
                             readonly property real hPad: cornerRadius
 
-                            width: sleepTimerRow.implicitWidth + 2 * hPad
+                            // implicitWidth, NOT width. This is a direct child
+                            // of a RowLayout, and a Layout owns its children's
+                            // width: with implicitWidth left at 0 the layout
+                            // keeps re-imposing the size it captured and fights
+                            // the binding, so the pill painted one frame at the
+                            // right width after every change and then snapped
+                            // back to the previous one. That is a visible flash
+                            // on every tick of the countdown, and it is what
+                            // tests/qml/tst_layout_player.qml had been reporting
+                            // as "jitter" all along - twice written off as a
+                            // test artefact before a per-frame trace on the Mac
+                            // showed the width really was wrong on screen.
+                            // Any Rectangle in a Layout that sets `width:` has
+                            // the same trap.
+                            implicitWidth: sleepTimerRow.implicitWidth + 2 * hPad
                             radius: cornerRadius
                             color: root.sleepTimerActive ? Theme.accentTint : Theme.surfaceHigh
                             border.color: root.sleepTimerActive ? Theme.accent : Theme.border
