@@ -119,9 +119,16 @@ Item {
         // arithmetic is done here instead of being left to the rasteriser.
         //
         // At W=12 on a DPR 1 screen seven bars do not fit: the tightest strip
-        // is 6*2+1 = 13 device px and the box is 12, so it overhangs by one.
-        // Nothing clips it, and five bars would be a different glyph, so the
-        // overhang is accepted and deterministic rather than hidden.
+        // is 6*2+1 = 13 device px and the box is 12. Measured consequence,
+        // rather than the one first written here: the box holds SIX bars and
+        // the seventh falls outside it. That is clipped rather than left to
+        // paint over whatever sits beside the icon, which is the one thing
+        // worse than losing the bar. Six is also a long way better than what
+        // the stroked path managed at that size, which was two.
+        //
+        // Only non-Retina screens reach this, and only at the 12px Now Playing
+        // button; everything else fits with room to spare.
+        clip: trackStrip.stripDev > Math.round(root.width * trackStrip.dpr)
         x: Math.round((root.width * trackStrip.dpr - trackStrip.stripDev) / 2)
            / trackStrip.dpr
         y: 0
