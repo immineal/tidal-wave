@@ -291,6 +291,9 @@ void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
                         m_favoriteTracks.append(t);
                         emit favoriteTracksChanged();
                     }
+                    // The sidebar's copy dedups for itself, so it is told
+                    // whether or not this list already had the track.
+                    emit favoriteTrackAdded(t);
                 }
             });
         }
@@ -309,6 +312,7 @@ void TidalBridge::removeTrackFavorite(qlonglong trackId, QJSValue cb) {
                 }
             }
             emit favoriteTracksChanged();
+            emit favoriteRemoved(QStringLiteral("track"), QString::number(trackId));
         }
         call(cb, { success });
     });
@@ -341,6 +345,10 @@ void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
                         m_favoriteAlbums.append(a);
                         emit favoriteAlbumsChanged();
                     }
+                    // And the sidebar, which keeps a copy of its own. Emitted
+                    // outside the guard above: the two lists dedup separately,
+                    // so one having the album says nothing about the other.
+                    emit favoriteAlbumAdded(a);
                 }
             });
             emit favoriteAlbumsChanged();
@@ -356,6 +364,7 @@ void TidalBridge::removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
                 if (m_favoriteAlbums[i].id == albumId) { m_favoriteAlbums.removeAt(i); break; }
             }
             emit favoriteAlbumsChanged();
+            emit favoriteRemoved(QStringLiteral("album"), QString::number(albumId));
         }
         call(cb, { success });
     });
@@ -379,14 +388,15 @@ void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
                     const bool exists = std::any_of(
                         m_favoriteArtists.cbegin(), m_favoriteArtists.cend(),
                         [&](const Artist &x) { return x.id == d.id; });
+                    Artist a;
+                    a.id      = d.id;
+                    a.name    = d.name;
+                    a.picture = d.picture;
                     if (!exists) {
-                        Artist a;
-                        a.id      = d.id;
-                        a.name    = d.name;
-                        a.picture = d.picture;
                         m_favoriteArtists.append(a);
                         emit favoriteArtistsChanged();
                     }
+                    emit favoriteArtistAdded(a);
                 }
             });
             emit favoriteArtistsChanged();
@@ -402,6 +412,7 @@ void TidalBridge::removeArtistFavorite(qlonglong artistId, QJSValue cb) {
                 if (m_favoriteArtists[i].id == artistId) { m_favoriteArtists.removeAt(i); break; }
             }
             emit favoriteArtistsChanged();
+            emit favoriteRemoved(QStringLiteral("artist"), QString::number(artistId));
         }
         call(cb, { success });
     });

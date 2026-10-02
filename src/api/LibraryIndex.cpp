@@ -481,6 +481,71 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     return m;
 }
 
+// ── one row the user just saved or unsaved (see the header) ─────────────────
+//
+// Each of these is "is it already here, if not put it in the list refresh()
+// would have put it in, then rebuild". rebuild() does the tiering, the
+// collation and the signal, so none of that is repeated here.
+
+void LibraryIndex::addAlbum(const Album &a) {
+    if (a.id <= 0) return;
+    for (const Album &x : m_albums)
+        if (x.id == a.id) return;        // already saved; re-liking adds no row
+    m_albums.append(a);
+    rebuild();
+}
+
+void LibraryIndex::addArtist(const Artist &a) {
+    if (a.id <= 0) return;
+    for (const Artist &x : m_artists)
+        if (x.id == a.id) return;
+    m_artists.append(a);
+    rebuild();
+}
+
+void LibraryIndex::addTrack(const Track &t) {
+    if (t.id <= 0) return;
+    for (const Track &x : m_favoriteTracks)
+        if (x.id == t.id) return;
+    m_favoriteTracks.append(t);
+    // A song is not a row of the library list, so rebuild() has nothing to do
+    // with it. The finder's Tracks chip and every search read m_trackEntries
+    // instead, and entriesChanged is what makes the sidebar ask again.
+    rebuildTrackEntries();
+    emit entriesChanged();
+}
+
+void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
+    if (id.isEmpty()) return;
+
+    if (kind == QLatin1String(kKindAlbum)) {
+        const qint64 albumId = id.toLongLong();
+        for (int i = 0; i < m_albums.size(); ++i) {
+            if (m_albums[i].id != albumId) continue;
+            m_albums.removeAt(i);
+            rebuild();
+            return;
+        }
+    } else if (kind == QLatin1String(kKindArtist)) {
+        const qint64 artistId = id.toLongLong();
+        for (int i = 0; i < m_artists.size(); ++i) {
+            if (m_artists[i].id != artistId) continue;
+            m_artists.removeAt(i);
+            rebuild();
+            return;
+        }
+    } else if (kind == QLatin1String(kKindTrack)) {
+        const qint64 trackId = id.toLongLong();
+        for (int i = 0; i < m_favoriteTracks.size(); ++i) {
+            if (m_favoriteTracks[i].id != trackId) continue;
+            m_favoriteTracks.removeAt(i);
+            rebuildTrackEntries();
+            emit entriesChanged();
+            return;
+        }
+    }
+}
+
 // ── recently played, kept locally (S4) ──────────────────────────────────────
 
 void LibraryIndex::markPlayed(const QString &kind, const QString &id) {

@@ -96,6 +96,22 @@ signals:
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
 
+    // One favourite the user deliberately added or removed, carrying the row
+    // itself. LibraryIndex - the sidebar's own, separate copy of the library -
+    // is connected to these in Application, so that liking an album puts it in
+    // the sidebar straight away instead of at the next sign-in.
+    //
+    // The four signals above cannot serve that purpose: they say only "the
+    // album list moved" and they also fire once per page while the whole
+    // account is being read in at startup, so the sidebar could not tell a
+    // deliberate like from the bulk load, nor which row it was about.
+    void favoriteAlbumAdded (const Album  &album);
+    void favoriteArtistAdded(const Artist &artist);
+    void favoriteTrackAdded (const Track  &track);
+    // `kind` is "album", "artist" or "track", spelled the way LibraryIndex
+    // spells it.
+    void favoriteRemoved(const QString &kind, const QString &id);
+
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     void sortPlaylists(QList<Playlist> &playlists) const;

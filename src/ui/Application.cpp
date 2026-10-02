@@ -897,6 +897,14 @@ int Application::run(int argc, char **argv) {
     // PinStore where each row belongs, so the store is built first.
     m_pins    = new PinStore(this);
     m_library = new LibraryIndex(m_client, m_pins, this);
+    // Liking an album from its page reached TidalBridge and stopped there: the
+    // Save button flipped to "Saved" while the sidebar went on showing the
+    // library it had paged in at sign-in. The sidebar has its own copy, so the
+    // one row has to be handed across as it is saved or unsaved.
+    connect(m_bridge, &TidalBridge::favoriteAlbumAdded,  m_library, &LibraryIndex::addAlbum);
+    connect(m_bridge, &TidalBridge::favoriteArtistAdded, m_library, &LibraryIndex::addArtist);
+    connect(m_bridge, &TidalBridge::favoriteTrackAdded,  m_library, &LibraryIndex::addTrack);
+    connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
     m_cast = new CastManager(m_client, m_player, this);
