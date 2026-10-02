@@ -807,3 +807,34 @@ it (Qt 6.11.1, macOS 26.4.1, Retina) and cannot be re-measured afterwards.
 - **~80 TypeErrors on quit** (context objects torn down before QML bindings;
   `PlayerBar.qml:379/335/327`, `QueuePanel.qml:324`, `Main.qml:19`). Cosmetic,
   shutdown only, zero at startup.
+
+## The Layout-owns-width trap (2026-10-02)
+
+`qml/pages/NowPlayingPage.qml:1125` set `width:` on a direct child of a
+`RowLayout`. A Layout owns its children's width, and with `implicitWidth` left
+at 0 it kept re-imposing the size it had captured, fighting the binding. The
+pill painted **one frame** at the correct width after every change and then
+snapped back to the previous one - a visible flash on every tick of the
+countdown.
+
+This is the bug `test_sleep_timer_pill_does_not_jitter_while_counting` had been
+reporting all along. It was written off as a test artefact **twice** before a
+per-frame trace on the Mac showed the width really was wrong on screen:
+
+    set 300 -> frame 1   w=94   (correct: row 66 + 2*14)
+               frames 2-4 w=124 (stale, the width from the "0:00" state)
+
+The fix is one word, `width:` -> `implicitWidth:`.
+
+**The general lesson is worth more than the fix.** Twice the test was believed
+to be wrong because it only failed under load, and "fails intermittently"
+was read as "is flaky" rather than "is racing a real defect". What finally
+caught it was making the test assert the *same thing twice over* - baseline
+from a rendered frame, then a second frame required to agree - rather than
+making it wait longer.
+
+A scan for other direct Layout children that set `width:` returns 27 sites, but
+most are constants and the scan mis-attributes delegate items, so the number is
+not trustworthy. Only a **changing** binding is at risk: a constant width that
+the layout re-imposes is re-imposed to the same value and nothing is visible.
+If another "it only jitters sometimes" report appears, look here first.

@@ -86,14 +86,30 @@ TestCase {
     // several sequences with " / ", which is why this removes substrings
     // instead of comparing whole labels.
     function withoutKeyNames(s) {
-        var ids = Shortcuts.ids()
-        var out = s
-        for (var i = 0; i < ids.length; ++i) {
-            var d = Shortcuts.display(ids[i])
-            if (!d || d.length === 0) continue
-            while (out.indexOf(d) !== -1) out = out.replace(d, "")
+        var ids = Shortcuts.ids(), names = []
+        for (var k = 0; k < ids.length; ++k) {
+            var d = Shortcuts.display(ids[k])
+            if (d && d.length > 0) names.push(d)
         }
-        return out
+        // Whole tokens, not substrings. Subtracting substrings looked right
+        // and was wrong twice over, both found by negative probes on the Mac:
+        //
+        //   * Order mattered. "←" (seekBack) is subtracted before "⌥←" (back),
+        //     so the arrow went first and the "⌥" was left stranded as an
+        //     offender - a real chip failing.
+        //   * Worse, it did not catch what it claimed to. "→", "←", "↑" and
+        //     "↓" are each a COMPLETE display() string on their own, so
+        //     substring subtraction deleted an arrow from anywhere, and a
+        //     label reading "Weiter →" passed. The guard's whole purpose is to
+        //     stop exactly that.
+        //
+        // A chip joins its sequences with " / ", so every part of a chip is
+        // one key name exactly. If any part is not, this is not a chip and the
+        // whole label is scanned as written.
+        var parts = s.split(" / ")
+        for (var i = 0; i < parts.length; ++i)
+            if (names.indexOf(parts[i]) === -1) return s
+        return ""
     }
 
     function offendingChars(s) {
@@ -919,5 +935,45 @@ TestCase {
             if (kids[i].objectName === objName) out.push(kids[i])
             collect(kids[i], objName, out)
         }
+    }
+
+    // The key-name subtraction must not become a hole in the guard.
+    //
+    // Every row here was run as a probe on a Mac, where display() actually
+    // produces symbols; on Linux it is ASCII and the first two rows cannot
+    // fail, which is precisely why the expectations are written down rather
+    // than inferred from a passing run. The substring version this replaced
+    // ACCEPTED "Weiter →" - it deleted an arrow from anywhere, because "→" is
+    // a complete shortcut string on its own - and REJECTED the real "⌥← / ⎋"
+    // chip, because it subtracted "←" first and stranded the "⌥".
+    function test_the_key_name_subtraction_is_not_a_hole_data() {
+        var ids = Shortcuts.ids()
+        var oneChip = ids.length > 0 ? Shortcuts.display(ids[0]) : ""
+        return [
+            { tag: "a real chip is allowed",
+              text: oneChip, offends: false },
+            { tag: "two real chips joined are allowed",
+              text: oneChip + " / " + oneChip, offends: false },
+            { tag: "a stray arrow in prose is NOT allowed",
+              text: "Weiter \u2192", offends: true },
+            { tag: "a bare modifier symbol in prose is NOT allowed",
+              text: "\u2318 Befehl", offends: true },
+            { tag: "a dingbat is NOT allowed",
+              text: "\u2605 Favorit", offends: true },
+            { tag: "a chip with something extra appended is NOT allowed",
+              text: oneChip + "\u2605", offends: true },
+        ]
+    }
+
+    function test_the_key_name_subtraction_is_not_a_hole(row) {
+        if (row.text.length === 0)
+            skip("no shortcuts in the table to build a chip from")
+        var bad = offendingChars(withoutKeyNames(row.text))
+        if (row.offends)
+            verify(bad.length > 0,
+                   row.tag + ': "' + row.text + '" was accepted and should not be')
+        else
+            compare(bad, "",
+                    row.tag + ': "' + row.text + '" was rejected, carrying ' + bad)
     }
 }
