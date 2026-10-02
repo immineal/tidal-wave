@@ -1296,7 +1296,20 @@ TestCase {
 
         for (var i = 0; i < seconds.length; i++) {
             host.sleepTimeLeft = seconds[i]
-            wait(0)
+            // waitForRendering, not wait(0). The claim being tested is about
+            // what the user sees, and what the user sees is frames. wait(0)
+            // returns in the middle of a turn, between the text changing and
+            // the width binding that depends on it re-evaluating, so it can
+            // read a width that no frame was ever painted with - which is
+            // exactly what it did: 87 against a settled 119, intermittently,
+            // only under full-suite load, and never once in isolation.
+            //
+            // That is the second time this case has reported a jitter that did
+            // not exist. The first was the baseline being taken before the pill
+            // came out of idle, fixed above. Sampling a rendered frame answers
+            // the real question, and still fails on a pill that genuinely
+            // breathes, because a real jitter survives into the frame.
+            waitForRendering(pill)
             compare(pill.width, first,
                     "the pill resized at \"" + label.text + "\": "
                     + pill.width.toFixed(1) + " against " + first.toFixed(1))

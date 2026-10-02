@@ -674,6 +674,105 @@ Rectangle {
                     ? deviceSource.availableAudioDevices() : []
         }
 
+        // ...and they are hot-pluggable *while this menu is up*, which is a
+        // second thing. Player raises audioDevicesChanged() from the deferred
+        // turn of its own backend callback; without this the list stays as it
+        // was when the menu opened, and closing and reopening was the only way
+        // to see a sink that had just appeared. Both call sites - the bar and
+        // Now Playing - get it, because it lives in the component.
+        //
+        // Only while the menu is showing: a refresh is not a reason to put a
+        // menu on screen, and openMenu() re-reads anyway.
+        Connections {
+            target: picker.deviceSource
+            // A host can hand in anything through deviceSource, and the stub
+            // player tests/TestStubs.h installs has no such signal.
+            ignoreUnknownSignals: true
+            function onAudioDevicesChanged() {
+                if (menu.visible) picker.reloadDevices()
+            }
+        }
+
+        // ── making four sinks on one card distinguishable ────────────────
+        //
+        // ALSA and PipeWire name a sink after the card first and the socket
+        // last: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1". Every
+        // sink on one card therefore reads identically for the first thirty-odd
+        // characters and differs only at the very end - and elide-right threw
+        // away exactly the end. On the Debian box all four physical sinks drew
+        // as "Tiger Lake-H HD Audio Contr..." and the user could not pick.
+        //
+        // Two things fix it, in this order:
+        //   * the prefix a device shares with another device is folded to a
+        //     leading ellipsis, so the rows read "... Speaker" and "... HDMI /
+        //     DisplayPort 1" and fit whole. The row keeps the full name for its
+        //     tooltip. A device that shares nothing is untouched;
+        //   * whatever is still too long elides in the middle, not on the
+        //     right, so the socket at the end survives regardless.
+        // Neither needs a wider popup, which matters: at scale factor 3.0 the
+        // window is only 1280 logical px across and there is no room to widen
+        // into.
+
+        // The shortest shared prefix worth hiding. Below this the shared part
+        // is not what is costing the row its name, and folding would read
+        // worse: "Speaker Left" must not become "... Left".
+        readonly property int sharedPrefixFloor: 16
+
+        // The rows as drawn: {id, label, fullLabel, isDefault}, where `label`
+        // may have been folded and `fullLabel` is always what the backend said.
+        readonly property var localRows: picker.foldSharedPrefixes(picker.localDevices)
+
+        // The longest prefix two labels share, cut back to the last whole word
+        // so a folded row never starts in the middle of one. Empty for two
+        // equal strings: there is nothing there to tell apart, and folding
+        // would leave two rows both reading "...".
+        function sharedPrefix(a, b) {
+            if (a === b) return ""
+            var n = Math.min(a.length, b.length)
+            var i = 0
+            while (i < n && a.charAt(i) === b.charAt(i)) ++i
+            var cut = a.substring(0, i).lastIndexOf(" ")
+            return cut > 0 ? a.substring(0, cut) : ""
+        }
+
+        function foldSharedPrefixes(devices) {
+            var rows = []
+            var i, j
+            for (i = 0; i < devices.length; ++i)
+                rows.push({ id:        devices[i].id,
+                            label:     devices[i].label,
+                            fullLabel: devices[i].label,
+                            isDefault: devices[i].isDefault === true })
+
+            for (i = 0; i < rows.length; ++i) {
+                // "System default" is a sentinel carrying an empty id, not a
+                // piece of hardware. It shares no card name with anything, and
+                // pairing it in could only ever shorten what the real sinks
+                // have in common.
+                if (!rows[i].id) continue
+                // The *shortest* prefix this device shares with a neighbour,
+                // not the longest. Three sinks on one card can share far more
+                // than the card name with each other - "HDMI / DisplayPort 1"
+                // and "... 2" agree right up to the digit - and folding to the
+                // longest match leaves a row reading "... 1". The shortest
+                // match that is still worth hiding is the card name, which is
+                // the part they all have in common and the part to lose.
+                var best = ""
+                for (j = 0; j < rows.length; ++j) {
+                    if (j === i || !rows[j].id) continue
+                    var p = picker.sharedPrefix(rows[i].fullLabel, rows[j].fullLabel)
+                    if (p.length < picker.sharedPrefixFloor) continue
+                    if (best.length === 0 || p.length < best.length) best = p
+                }
+                if (best.length === 0) continue
+                var rest = rows[i].fullLabel.substring(best.length)
+                                            .replace(/^[\s:,\-]+/, "")
+                if (rest.length === 0) continue
+                rows[i].label = "… " + rest
+            }
+            return rows
+        }
+
         function openMenu() {
             picker.reloadDevices()
             if (picker.castSource) picker.castSource.startScan()
@@ -751,12 +850,13 @@ Rectangle {
                     Layout.leftMargin: 8; Layout.topMargin: 4; Layout.bottomMargin: 2
                 }
                 Repeater {
-                    model: picker.localDevices
+                    model: picker.localRows
                     delegate: OutputRow {
                         required property var modelData
                         objectName: "outputLocalRow"
                         glyph: "speaker"
                         label: modelData.label
+                        fullLabel: modelData.fullLabel
                         // Only one row in the whole menu is ticked, so a
                         // local output stops being the answer the moment the
                         // sound is going somewhere else.
@@ -801,6 +901,11 @@ Rectangle {
     component OutputRow : Rectangle {
         id: orow
         property string label
+        // What the backend called this, before the picker folded away the part
+        // it shares with its neighbours. Same as `label` for a row that was
+        // left alone, which is why the tooltip below only appears when there
+        // is something more to read.
+        property string fullLabel: orow.label
         property string glyph: "speaker"
         property bool   active: false
         signal selected()
@@ -817,9 +922,14 @@ Rectangle {
                 color: orow.active ? Theme.accent : Theme.textSec
             }
             Text {
+                id: orowLabel
+                objectName: "outputRowLabel"
                 Layout.fillWidth: true; text: orow.label
                 color: orow.active ? Theme.accent : Theme.textPrimary
-                font.pixelSize: 13; elide: Text.ElideRight
+                // The middle, not the right. What tells two outputs on the
+                // same card apart is the socket at the end of the name, and
+                // elide-right is the one mode that is guaranteed to delete it.
+                font.pixelSize: 13; elide: Text.ElideMiddle
             }
             VectorIcon {
                 visible: orow.active; name: "check"
@@ -828,6 +938,14 @@ Rectangle {
         }
         HoverHandler { id: orowHov; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: orow.selected() }
+
+        // The whole name, for a row that is not showing all of it. Nothing
+        // folded and nothing elided means nothing to add, and a tooltip
+        // repeating the row underneath it would be noise.
+        ToolTip.visible: orowHov.hovered
+                         && (orow.label !== orow.fullLabel || orowLabel.truncated)
+        ToolTip.text: orow.fullLabel
+        ToolTip.delay: 600
     }
 
     component IconButton : Item {
