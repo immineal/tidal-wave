@@ -111,6 +111,17 @@ TestCase {
                 out.push(here + " x=" + c.x.toFixed(1) + " w=" + c.width.toFixed(1)
                          + " but parent is " + item.width.toFixed(1) + " wide")
             }
+            // A VectorIcon is checked, but not opened. Inside it the glyph is a
+            // fixed 24x24 Shape centred in the icon and brought down to size by
+            // a Scale transform, so below 24px its x and width read as a wild
+            // overflow and it paints nowhere near there: at a 14px icon the
+            // Shape is at x=-5 and 24 wide, and the ink lands between 1 and 13.
+            // This walker compares untransformed geometry, which is the right
+            // thing everywhere else and cannot answer that question here.
+            // tests/qml/tst_menus_and_glyphs.qml asks it properly, from a grab,
+            // for every glyph in the app:
+            // test_every_mark_draws_and_only_inside_its_box.
+            if (typeof c._pathFor === "function") continue
             collectOverflow(c, here, out)
         }
         return out
@@ -1093,34 +1104,47 @@ TestCase {
         verify(faults.length === 0, reportFor("Now Playing overflows with lyrics", row, faults))
     }
 
-    // The toggle used to be anchored over the list it toggles, which is both why
-    // it covered a line of text and why tapping it seeked. It sits in a band the
-    // list leaves at the bottom of the panel now.
-    function test_lyrics_toggle_clears_the_lyric_lines_data() { return sizeRows() }
+    // The list uses the WHOLE panel, and keeps room for the chips as content
+    // margins rather than as a hole in the viewport.
+    //
+    // This case used to assert the opposite - that the list stopped above the
+    // chips - and that is what shipped. It worked and it cost the thing it was
+    // protecting: the bottom of the panel stayed permanently empty, the last
+    // line of a song could never reach it, and the user reported the box as
+    // looking broken. "Nothing is drawn under the chip" was never the
+    // requirement; "a tap on the chip does not also seek" was, and that is held
+    // by the exclusive grab and measured by the case below.
+    function test_the_lyric_list_uses_the_whole_panel_data() { return sizeRows() }
 
-    function test_lyrics_toggle_clears_the_lyric_lines(row) {
+    function test_the_lyric_list_uses_the_whole_panel(row) {
         var host = showHost(nowPlayingHost, row.w, row.h)
         var page = openLyrics(host)
-        var box    = findChild(page, "nowPlayingCoverBox")
+        var panel  = findChild(page, "nowPlayingLyricsPanel")
         var view   = findChild(page, "nowPlayingLyricsView")
         var toggle = findChild(page, "nowPlayingLyricsToggle")
-        verify(view && toggle, "the list or the toggle was not found")
+        verify(panel && view && toggle, "the panel, list or toggle was not found")
         verify(toggle.visible, "the toggle has to stay reachable with lyrics open")
 
-        var viewBottom   = view.mapToItem(box, 0, view.height).y
-        var toggleTop    = toggle.mapToItem(box, 0, 0).y
-        verify(toggleTop >= viewBottom - 0.5,
-               row.tag + ": the toggle starts at " + toggleTop.toFixed(1)
-               + " and the lyric list only ends at " + viewBottom.toFixed(1)
-               + ", so the button is drawn over the words")
+        // The viewport reaches the bottom of the panel, bar the panel's own
+        // inset. If a band ever comes back, this is what fails.
+        var viewBottom  = view.mapToItem(panel, 0, view.height).y
+        verify(viewBottom >= panel.height - 20,
+               row.tag + ": the list ends at " + viewBottom.toFixed(1)
+               + " in a panel " + panel.height.toFixed(1)
+               + " tall, so the bottom of the box cannot show words")
 
-        // So does Resync, which floats over the same list.
-        page.userScrolled = true
-        wait(0)
-        var resync = findChild(page, "nowPlayingLyricsResync")
-        verify(resync && resync.visible, "the Resync chip did not appear")
-        verify(resync.mapToItem(box, 0, 0).y >= viewBottom - 0.5,
-               row.tag + ": the Resync chip is drawn over the words")
+        // ...and the room the chips need is content margin, so a line can still
+        // be scrolled clear of them instead of being stuck underneath.
+        verify(view.bottomMargin >= 30,
+               row.tag + ": the list reserves no content room at the bottom ("
+               + view.bottomMargin + "), so the last line cannot clear the chips")
+        verify(view.topMargin >= 30,
+               row.tag + ": the list reserves no content room at the top ("
+               + view.topMargin + "), so the first line cannot clear the "
+               + "fullscreen button")
+
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0, reportFor("Now Playing overflows with lyrics", row, faults))
     }
 
     // The user: "closing the lyrics tab skips to the line that the lyrics switch
@@ -1210,15 +1234,18 @@ TestCase {
 
     // ── the sleep timer pill ─────────────────────────────────────────────
     //
-    // The user: "the clock icon is weirdly spaced at the top and bottom in
-    // relation to how it's spaced on the left in a fully rounded pill." In a
-    // pill the content has to clear the curve, and the clearance at the
-    // content's own top corner equals the clearance straight up only when the
-    // horizontal padding equals the radius. It was 8 against a radius of 12.
+    // The two ends of this pill are padded differently on purpose, and this is
+    // the end that is NOT the clock's. The leading side lines the glyph up with
+    // the cap (see the concentricity case below); the trailing side ends in
+    // text, which has no round outline to line up with, so it keeps the corner
+    // radius and the pill is tighter at the icon than at the label.
     //
-    // The relationship and not the number, so the next person to tighten it
-    // fails here rather than shipping it.
-    function test_sleep_timer_pill_clears_its_corners_data() {
+    // This case used to assert the opposite - that BOTH ends pad by the corner
+    // radius - from an argument about the clearance at the content's own top
+    // corner. The user looked at the result and said the spacing was still
+    // wrong, so the rule was wrong, and asserting it here only made it harder
+    // to change.
+    function test_sleep_timer_pill_pads_its_text_end_data() {
         return [
             { tag: "idle",         active: false, atEnd: false, left: 0 },
             { tag: "counting",     active: true,  atEnd: false, left: 600 },
@@ -1226,7 +1253,7 @@ TestCase {
         ]
     }
 
-    function test_sleep_timer_pill_clears_its_corners(row) {
+    function test_sleep_timer_pill_pads_its_text_end(row) {
         var host = showHost(nowPlayingHost, 1280, 1200)
         host.sleepTimerActive      = row.active
         host.sleepStopAtEndOfTrack = row.atEnd
@@ -1240,19 +1267,20 @@ TestCase {
         // What the pill actually draws: Theme.radiusChip is a "fully round"
         // sentinel and Qt clamps it to half the shorter side.
         var r = Math.min(pill.radius, pill.height / 2, pill.width / 2)
-        var pad = (pill.width - content.width) / 2
-        verify(pad >= r - 0.5,
-               row.tag + ": the pill pads " + pad.toFixed(1)
-               + "px beside a " + r.toFixed(1) + "px corner, so the content "
-               + "clears the straight side but not the curve")
+        var lead  = content.mapToItem(pill, 0, 0).x
+        var trail = pill.width - (lead + content.width)
+
+        fuzzyCompare(trail, r, 0.5,
+                     row.tag + ": the label end pads " + trail.toFixed(1)
+                     + "px beside a " + r.toFixed(1) + "px corner")
+        verify(lead < trail - 0.5,
+               row.tag + ": the pill pads " + lead.toFixed(1)
+               + "px at the clock and " + trail.toFixed(1) + "px at the label, "
+               + "so the two ends are the same and the clock is not sitting in "
+               + "its cap")
         verify(content.height <= pill.height - 2,
                row.tag + ": the content is " + content.height.toFixed(1)
                + "px in a " + pill.height + "px pill, with nothing above or below it")
-        // And the padding is a padding, not a gulf: twice the radius would be a
-        // different shape again.
-        verify(pad <= 2 * r,
-               row.tag + ": " + pad.toFixed(1) + "px of padding on a "
-               + r.toFixed(1) + "px corner is no longer a pill")
     }
 
     // A pill that breathes in and out once a second is worse than one with odd
@@ -1330,6 +1358,194 @@ TestCase {
                     "the pill resized at \"" + label.text + "\": "
                     + pill.width.toFixed(1) + " against " + first.toFixed(1))
         }
+    }
+
+    // The clock and the pill's left cap are two circles, and the user drew the
+    // gap they wanted between them twice: first "the clock icon is weirdly
+    // spaced at the top and bottom in relation to how it's spaced on the left
+    // in a fully rounded pill", then, over a screenshot, "the spacing from the
+    // very left of the pill to the left border of the clock, and then the
+    // padding on the top and bottom of the clock icon, so that the circular
+    // outline of the pill aligns with the circular outline of the clock icon
+    // with some padding."
+    //
+    // That is concentricity: the glyph's centre on the centre of the cap's
+    // arc, which makes the ring of air around the clock the same width all the
+    // way round the left end. Measured off a render of the pill before this
+    // was fixed, the clock's painted rim sat 16px from the pill's left edge
+    // and 4px from its top - so the three gaps this checks were 14 / 2 / 2
+    // taken on the glyph's box.
+    //
+    // The box, not the paint: VectorIcon draws its glyph inside its own item
+    // at a fixed inset, so an equal box gap is an equal paint gap, and the box
+    // is what layout can be held to.
+    function test_sleep_timer_glyph_is_concentric_with_the_cap_data() {
+        return [
+            { tag: "idle",         active: false, atEnd: false, left: 0 },
+            { tag: "counting",     active: true,  atEnd: false, left: 600 },
+            { tag: "end of track", active: true,  atEnd: true,  left: 0 }
+        ]
+    }
+
+    function test_sleep_timer_glyph_is_concentric_with_the_cap(row) {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        host.sleepTimerActive      = row.active
+        host.sleepStopAtEndOfTrack = row.atEnd
+        host.sleepTimeLeft         = row.left
+        wait(0)
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        var icon = findChild(host.page, "nowPlayingSleepTimerIcon")
+        verify(pill && icon, "the sleep timer pill or its clock was not found")
+
+        var at    = icon.mapToItem(pill, 0, 0)
+        var left  = at.x
+        var top   = at.y
+        var bot   = pill.height - (at.y + icon.height)
+
+        // Square, or there is no circle to be concentric with.
+        fuzzyCompare(icon.width, icon.height, 0.5,
+                     row.tag + ": the clock's box is " + icon.width.toFixed(1)
+                     + "x" + icon.height.toFixed(1) + ", so it is not drawn round")
+        // Centred vertically, which is the easy half.
+        fuzzyCompare(top, bot, 0.5,
+                     row.tag + ": the clock sits " + top.toFixed(1)
+                     + "px below the top and " + bot.toFixed(1) + "px above the bottom")
+        // And the half that was wrong: the leading gap is the same ring.
+        fuzzyCompare(left, top, 0.5,
+                     row.tag + ": " + left.toFixed(1) + "px from the pill's left edge "
+                     + "against " + top.toFixed(1) + "px above the clock, so the cap's "
+                     + "arc and the clock's rim are not concentric")
+        // The gap is a gap: a clock that filled the pill would satisfy every
+        // line above with nothing around it at all.
+        verify(top >= 4,
+               row.tag + ": only " + top.toFixed(1)
+               + "px of air around a clock in a " + pill.height + "px pill")
+        // The glyph is drawn at the size it is declared at. In a RowLayout the
+        // layout imposes a child's implicit size over any plain width/height,
+        // and VectorIcon's implicit size is 24 - which is how a clock meant to
+        // be 12 came to be painted at 24 in a 28px pill, 2px clear of the top
+        // and 14px clear of the side. The same trap as the pill's own
+        // implicitWidth, one level down.
+        verify(icon.width <= pill.height - 8,
+               row.tag + ": the clock is " + icon.width.toFixed(1)
+               + "px in a " + pill.height + "px pill, which is the layout "
+               + "imposing VectorIcon's implicit 24 over the size asked for")
+    }
+
+    // What a colour actually lands on the screen as. The sleep timer pill's
+    // counting fill is the accent at an alpha, and its hover is the same accent
+    // at a higher one, so r/g/b are identical in both states and only the
+    // compositing tells them apart. Over Theme.bg because that is what the Now
+    // Playing page draws behind the pill - checked against a grab, where the
+    // counting fill came out (7,41,53) and this returns (7,41,53).
+    function colorOverBg(c) {
+        var g = Theme.bg
+        return Qt.rgba(g.r + (c.r - g.r) * c.a,
+                       g.g + (c.g - g.g) * c.a,
+                       g.b + (c.b - g.b) * c.a,
+                       1)
+    }
+
+    // Max channel difference between two colours once they are on the screen,
+    // 0..255. "Did it change" is a question about what a user can see, so the
+    // answer wants a scale with a threshold on it.
+    function colorDelta(a, b) {
+        var x = colorOverBg(a), y = colorOverBg(b)
+        return Math.round(255 * Math.max(Math.abs(x.r - y.r),
+                                         Math.abs(x.g - y.g),
+                                         Math.abs(x.b - y.b)))
+    }
+
+    // The pill opens a popup, and until now it was the only control in this row
+    // that gave no sign of being a control. The user: "this button still has
+    // the wrong spacing and should also have a hover."
+    //
+    // Both states, because the counting pill is already tinted and a hover that
+    // only shows up on the idle one is half a hover.
+    function test_sleep_timer_pill_answers_the_pointer_data() {
+        return [
+            { tag: "idle",     active: false, left: 0 },
+            { tag: "counting", active: true,  left: 600 }
+        ]
+    }
+
+    function test_sleep_timer_pill_answers_the_pointer(row) {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        host.sleepTimerActive      = row.active
+        host.sleepStopAtEndOfTrack = false
+        host.sleepTimeLeft         = row.left
+        wait(0)
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        verify(pill, "the sleep timer pill was not found")
+        waitForRendering(pill)
+
+        // The two colours the pill is built from, read off the pill rather than
+        // sampled while the pointer is somewhere - the same way the
+        // ChromeButton hover is checked in tst_reduced_motion.qml. Sampling was
+        // tried first and it is how this case nearly shipped vacuous: the
+        // pointer is wherever the last case left it, which is the middle of
+        // this very pill, so the "resting" sample came back as the hover colour
+        // and the test compared it against itself.
+        var restFill    = pill.restFill
+        var hoverFill   = pill.hoverFill
+        var restBorder  = pill.restBorder
+        var hoverBorder = pill.hoverBorder
+
+        // The design claim, before any pointer is involved: a hover nobody can
+        // see is not one. The floor is 12 of 255 on the ground the pill is
+        // drawn on, which this pill clears by a long way in both states - the
+        // idle fill steps 30 -> 56 and the counting fill 53 -> 73 in the blue,
+        // both off a grab. It is set where it is because the obvious token for
+        // the counting state, accentWash, steps 6, and a guard that let that
+        // through would be agreeing with a hover nobody can find. Written at 6
+        // first, which accentWash passed exactly.
+        verify(colorDelta(hoverFill, restFill) >= 12
+               || colorDelta(hoverBorder, restBorder) >= 12,
+               row.tag + ": the hover is " + hoverFill + " against a resting "
+               + restFill + " and " + hoverBorder + " against " + restBorder
+               + ", which is not a change anyone will find")
+
+        // How long a pointer move needs before the colour it causes can be
+        // read: the fade is Theme.dur(100), and the hover is only delivered
+        // when the scene next draws. tryVerify is no use for it - it polls a
+        // property without ever letting a frame out, and an unflushed hover
+        // looks exactly like a control that has none.
+        var settle = Theme.dur(100) + 240
+
+        // Park the pointer off the pill, in TWO moves. The first synthesized
+        // move into a freshly shown window does not land - the window takes it
+        // as the pointer arriving at a position it is already at - and a park
+        // that did not land leaves the pill hovered for the rest of the case.
+        mouseMove(pill, -40, -40)
+        wait(settle)
+        mouseMove(pill, -60, -60)
+        wait(settle)
+        compare(colorDelta(pill.color, restFill), 0,
+                row.tag + ": the pointer was parked off the pill and it is still "
+                + pill.color + " rather than its resting " + restFill)
+
+        // Addressed to the pill, which is how tst_layout_pages.qml hovers a
+        // track row. The same move addressed to the window's contentItem, at
+        // the point the pill maps to, reaches nothing.
+        mouseMove(pill, Math.round(pill.width / 2), Math.round(pill.height / 2))
+        wait(settle)
+        compare(colorDelta(pill.color, hoverFill), 0,
+                row.tag + ": under the pointer the pill is " + pill.color
+                + " rather than its hover fill " + hoverFill)
+        compare(colorDelta(pill.border.color, hoverBorder), 0,
+                row.tag + ": under the pointer the border is " + pill.border.color
+                + " rather than its hover border " + hoverBorder)
+
+        // And it lets go again, rather than latching the first time it is
+        // touched.
+        mouseMove(pill, -40, -40)
+        wait(settle)
+        compare(colorDelta(pill.color, restFill), 0,
+                row.tag + ": the pill kept " + pill.color
+                + " after the pointer left, against a resting " + restFill)
+        compare(colorDelta(pill.border.color, restBorder), 0,
+                row.tag + ": the border kept " + pill.border.color
+                + " after the pointer left, against a resting " + restBorder)
     }
 
     // ── queue panel ──────────────────────────────────────────────────────

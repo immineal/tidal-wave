@@ -253,6 +253,10 @@ Rectangle {
     // scrolls through it, which is what stops a tap on a chip also landing on a
     // lyric.
     readonly property int lyricsFooterRoom: 48
+    // The same at the top, for the fullscreen button in that corner: 36 tall on
+    // a 10px margin reaches 46, and this leaves a little air above the first
+    // line once it has been scrolled to the top.
+    readonly property int lyricsHeaderRoom: 56
 
     // Puts the line being sung back in the middle. Called on every resize of
     // the list as well as from the sync timer, because the slot changes shape
@@ -587,12 +591,25 @@ Rectangle {
                             objectName: "nowPlayingLyricsView"
                             anchors.fill: parent
                             anchors.margins: 16
-                            // The two chips live in the bottom of this panel, so
-                            // the list stops above them rather than running
-                            // under them. The toggle used to be drawn over a
-                            // lyric line, and a tap on it both closed the panel
-                            // and seeked to whichever line it was covering.
-                            anchors.bottomMargin: root.lyricsFooterRoom
+                            // Content margins, NOT a smaller viewport.
+                            //
+                            // This band used to be taken out of the viewport so
+                            // that nothing was ever drawn under the chips. It
+                            // worked, and it cost the thing it was protecting:
+                            // the bottom of the panel stayed permanently empty
+                            // and the last line of a song could never reach it,
+                            // which reads as the box being broken rather than
+                            // as considerate spacing.
+                            //
+                            // The list fills the panel again, and these are
+                            // margins on the CONTENT, so a line can be drawn
+                            // anywhere in the box and can still be scrolled
+                            // clear of either chip. The tap-through that
+                            // started all this is held shut where it belongs,
+                            // by the chips taking an exclusive grab, not by
+                            // leaving a hole for them to sit in.
+                            topMargin: root.lyricsHeaderRoom
+                            bottomMargin: root.lyricsFooterRoom
                             clip: true
                             model: root.lyricsData
                             spacing: 8
@@ -658,6 +675,25 @@ Rectangle {
                                 text: qsTr("No lyrics available")
                                 color: Theme.textDim; font.pixelSize: 14
                             }
+                        }
+
+                        // Fullscreen, in the lyrics panel's own top right.
+                        //
+                        // The same toggle as the one in the page chrome, not a
+                        // second notion of fullscreen: reading lyrics is the
+                        // case where the whole screen is most wanted, and
+                        // reaching back up to the chrome row to get it meant
+                        // leaving the thing you were reading.
+                        ChromeButton {
+                            objectName: "nowPlayingLyricsFullscreen"
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 10
+                            icon: root.fullScreen ? "fullscreen-exit" : "fullscreen"
+                            tip: root.fullScreen
+                                 ? qsTr("Leave fullscreen", "button, restores the window")
+                                 : qsTr("Fullscreen", "button, fills the screen with this page")
+                            onActivated: root.toggleFullScreen()
                         }
 
                         // Resync button
@@ -1083,27 +1119,45 @@ Rectangle {
 
                         // Sleep Timer button.
                         //
-                        // A fully round pill, and that shape has a rule the old
-                        // one broke: the content has to clear the curve, not
-                        // just the straight part of the side. The user put it as
-                        // "the clock icon is weirdly spaced at the top and
-                        // bottom in relation to how it's spaced on the left in a
-                        // fully rounded pill", and the arithmetic agrees. With
-                        // the pill r tall-halves and the content h tall and
-                        // centred, the content's own top corner sits at
-                        // (pad, h/2) from the circle's centre, so its distance
-                        // to the edge is r - sqrt((pad - r)^2 + (h/2)^2) against
-                        // r - h/2 of clearance straight up. Those two are equal
-                        // exactly when pad == r, and at the old 8px against a
-                        // radius of 12 the corner had 4.8px where the top had 6
-                        // -- loose along the side, tight in the corners, which
-                        // is what the eye was reporting.
+                        // Two circles, and the user had to draw the gap between
+                        // them twice. First: "the clock icon is weirdly spaced
+                        // at the top and bottom in relation to how it's spaced
+                        // on the left in a fully rounded pill." Then, over a
+                        // screenshot of the attempt that was meant to fix it:
+                        // "the spacing from the very left of the pill to the
+                        // left border of the clock, and then the padding on the
+                        // top and bottom of the clock icon, so that the circular
+                        // outline of the pill aligns with the circular outline
+                        // of the clock icon with some padding."
                         //
-                        // So the padding is the radius, derived rather than
-                        // typed, and it holds at whatever height this pill is
-                        // given. The height went 24 -> 28 in the same pass: 6px
-                        // around a 12px glyph is not room, and the pill is a
-                        // control rather than a label.
+                        // So: concentric. The glyph's centre goes on the centre
+                        // of the left cap's arc, and the ring of air around the
+                        // clock is then the same width the whole way round that
+                        // end of the pill.
+                        //
+                        // What the attempt in between got wrong, measured off a
+                        // render of it rather than argued from the source: the
+                        // clock's painted rim sat 16px from the pill's left edge
+                        // and 4px from its top, a ring four times thicker at the
+                        // side than above. Two things made it that, and only one
+                        // of them was the padding:
+                        //
+                        //   * the padding was set equal to the corner radius,
+                        //     from an argument about clearance at the content's
+                        //     own corner - which is not the gap the eye reads
+                        //     here, as the user saying it twice shows; and
+                        //   * the clock was painted at 24px, not the 12 it was
+                        //     written at. VectorIcon's implicit size is 24, this
+                        //     is a RowLayout child, and a layout imposes a
+                        //     child's implicit size over any plain width/height.
+                        //     Exactly the trap documented on implicitWidth
+                        //     below, one level down, and the reason a glyph
+                        //     meant to leave 8px above it left 2.
+                        //
+                        // The trailing side is a separate question and keeps the
+                        // corner radius. It ends in text, which has no round
+                        // outline to line up with, and an icon-and-label pill
+                        // wants its tighter end at the icon.
                         //
                         // It is not made to match the quality badge beside it,
                         // which keeps its near-square 4px corners: that badge
@@ -1120,7 +1174,29 @@ Rectangle {
                             // it to half the shorter side.
                             readonly property real cornerRadius:
                                 Math.min(Theme.radiusChip, height / 2)
-                            readonly property real hPad: cornerRadius
+                            // The clock's box. Everything below is derived from
+                            // it and the height, so this is the one number to
+                            // turn.
+                            //
+                            // 14, measured rather than picked: VectorIcon paints
+                            // its glyph at 85% of its box, so a 14px box puts a
+                            // 12px rim on screen, against a label that measures
+                            // 11px from the top of its "S" to the foot of its
+                            // "p". The 24px box this was painting at before put
+                            // a 20px rim in a 28px pill, which is what left 4px
+                            // of air above a clock with 16px beside it.
+                            readonly property real glyphSize: 14
+                            // Concentric with the left cap: the glyph's centre on
+                            // the centre of the cap's arc. Derived from the two
+                            // numbers above rather than typed, so it survives a
+                            // change of either - the leading gap is then
+                            // cornerRadius - glyphSize/2 and the gap above the
+                            // glyph is (height - glyphSize)/2, and those are the
+                            // same number for as long as the pill is fully round.
+                            readonly property real leadInset:
+                                cornerRadius - glyphSize / 2
+                            // The text end, which has no circle to align with.
+                            readonly property real trailPad: cornerRadius
 
                             // implicitWidth, NOT width. This is a direct child
                             // of a RowLayout, and a Layout owns its children's
@@ -1136,11 +1212,49 @@ Rectangle {
                             // showed the width really was wrong on screen.
                             // Any Rectangle in a Layout that sets `width:` has
                             // the same trap.
-                            implicitWidth: sleepTimerRow.implicitWidth + 2 * hPad
+                            implicitWidth: leadInset + sleepTimerRow.implicitWidth
+                                           + trailPad
                             radius: cornerRadius
-                            color: root.sleepTimerActive ? Theme.accentTint : Theme.surfaceHigh
-                            border.color: root.sleepTimerActive ? Theme.accent : Theme.border
+
+                            // Rest and hover as a pair, the way ChromeButton
+                            // further down this file does it, so the two states
+                            // are read off one line each.
+                            //
+                            // The user asked for the hover after looking at the
+                            // pill again: it opens a popup and was the only
+                            // control in this row that never answered the
+                            // pointer. The idle pair is the house ground step,
+                            // surfaceHigh -> surfaceHov.
+                            //
+                            // The counting pair is not, because the obvious
+                            // token does not work. accentTint is the accent at
+                            // 0.22 and accentWash at 0.26, and over this page's
+                            // ground that step is 6 of 255 - a change you can
+                            // only find if you already know to look. The accent
+                            // at 0.36 was grabbed instead: the fill goes
+                            // (7,41,53) -> (6,56,73), a step of 20, against the
+                            // idle pair's measured 30 -> 56. The two states now
+                            // answer the pointer by about the same amount.
+                            readonly property color restFill:
+                                root.sleepTimerActive ? Theme.accentTint : Theme.surfaceHigh
+                            readonly property color hoverFill:
+                                root.sleepTimerActive
+                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g,
+                                              Theme.accent.b, 0.36)
+                                    : Theme.surfaceHov
+                            readonly property color restBorder:
+                                root.sleepTimerActive ? Theme.accent : Theme.border
+                            // The counting pill's border is already the accent
+                            // at full strength; there is nowhere brighter for it
+                            // to go, and its fill is carrying the hover.
+                            readonly property color hoverBorder:
+                                root.sleepTimerActive ? Theme.accent : Theme.textSec
+
+                            color: sleepMa.containsMouse ? hoverFill : restFill
+                            border.color: sleepMa.containsMouse ? hoverBorder : restBorder
                             border.width: 1
+                            Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
+                            Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
 
                             // Measures the widest clock the countdown can show,
                             // in the font it shows it in.
@@ -1149,14 +1263,48 @@ Rectangle {
                             RowLayout {
                                 id: sleepTimerRow
                                 objectName: "nowPlayingSleepTimerRow"
-                                anchors.centerIn: parent
+                                // Anchored to the left edge, not centred in the
+                                // pill: the two ends are padded differently now
+                                // and a centred row can only ever pad them the
+                                // same.
+                                anchors.left: parent.left
+                                anchors.leftMargin: sleepTimerBtn.leadInset
+                                anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6
 
                                 VectorIcon {
+                                    objectName: "nowPlayingSleepTimerIcon"
                                     name: "clock"
                                     color: root.sleepTimerActive ? Theme.accent : Theme.textSec
-                                    width: 12
-                                    height: 12
+
+                                    // Heavier than VectorIcon's 1.8 default, to
+                                    // keep the weight the glyph had when it was
+                                    // being painted at 24. The stroke scales
+                                    // with the box, so at 14 the default draws a
+                                    // 0.89px line that antialiases to a grey
+                                    // ghost - visibly fainter than the label
+                                    // beside it in a grab of the two at 16x.
+                                    // 2.4 puts 1.19px on screen, which matches
+                                    // the type.
+                                    strokeWidth: 2.4
+
+                                    // Layout.preferredWidth/Height, NOT
+                                    // width/height. A layout imposes its child's
+                                    // implicit size over a plain width/height,
+                                    // so the `width: 12` that used to be here
+                                    // was simply ignored and VectorIcon's
+                                    // implicit 24 was what got painted. The same
+                                    // trap as the pill's own implicitWidth, one
+                                    // level down.
+                                    //
+                                    // Both dimensions, and the same number in
+                                    // each: the row around this is 15 tall and
+                                    // the glyph is 14, so a Layout.fillHeight
+                                    // anywhere near here would stretch the clock
+                                    // to 14 by 15 - round in the source and an
+                                    // oval on screen.
+                                    Layout.preferredWidth:  sleepTimerBtn.glyphSize
+                                    Layout.preferredHeight: sleepTimerBtn.glyphSize
                                 }
 
                                 Text {
@@ -1195,8 +1343,22 @@ Rectangle {
                                 }
                             }
 
+                            // One object for the pointer: hover, cursor and
+                            // click. A HoverHandler would be the idiom used by
+                            // ChromeButton and the lyrics chips, and it was
+                            // tried here first - it never reported a hover at
+                            // all, because setting cursorShape on a MouseArea
+                            // makes that MouseArea accept hover events, and it
+                            // is a child of this Rectangle and so sits in front
+                            // of the handler. Two things wanting the pointer,
+                            // one of them winning silently. Those chips have no
+                            // MouseArea; the controls in this file that do -
+                            // SleepOptionBtn below, among others - read
+                            // containsMouse, which is what this does.
                             MouseArea {
+                                id: sleepMa
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: sleepTimerPopup.open()
                             }
@@ -1683,7 +1845,12 @@ Rectangle {
         ToolTip.delay: 600
 
         HoverHandler { id: cbHov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: cb.activated() }
+        // ReleaseWithinBounds, not the default. A DragThreshold TapHandler
+        // takes only a passive grab, so anything underneath answers the same
+        // tap - which is the bug the lyrics toggle already had to fix once,
+        // and one of these now sits over the lyric list too.
+        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds
+                       onTapped: cb.activated() }
     }
 
     component SleepOptionBtn : Rectangle {
