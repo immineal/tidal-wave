@@ -726,4 +726,66 @@ TestCase {
         mouseMove(holder, -20, -20)
         settle(holder)
     }
+
+    // The collection grid's dead space, measured rather than reasoned about.
+    //
+    // A ~200px empty gutter was reported at "some very specific window
+    // widths". Two explanations have now died against numbers: an exact-fit
+    // rounding theory, and a sweep of the grid's own arithmetic
+    // (gridSpace/gridColumns/gridCell/gridLeft/gridRight) which showed the
+    // total margin cannot exceed 2*gridEdge plus a rounding remainder smaller
+    // than the column count - about 60px - at any pane width from 320 to 2400.
+    //
+    // So this stops arguing and measures the live GridView instead, which is
+    // the only thing that can see the difference between what the arithmetic
+    // says and what the item actually lays out. It asserts the bound the
+    // arithmetic promises; if the gutter is real, this is what will print the
+    // width it happens at and the four numbers that explain it.
+    //
+    // The grid is filled with enough albums to span several rows at every
+    // width tested, so empty space on the right cannot simply be "ran out of
+    // items" - that would be a short collection, not a layout defect.
+    function test_the_collection_grid_leaves_no_dead_gutter_data() {
+        var rows = []
+        for (var w = 640; w <= 2000; w += 8)
+            rows.push({ tag: "w=" + w, w: w })
+        return rows
+    }
+
+    function test_the_collection_grid_leaves_no_dead_gutter(row) {
+        var host = createTemporaryObject(holderC, testCase,
+                                         { width: row.w, height: 900 })
+        var page = createTemporaryObject(collectionC, host)
+        page.activeTab = 1
+        page.filteredAlbums = makeAlbums(60)
+        settle(page)
+
+        var grid = findByName(page, "collectionAlbumsGrid")
+        verify(grid, row.tag + ": the albums grid was not found")
+        if (grid.width <= 0) return          // tab not realised at this size
+
+        var dead = grid.leftMargin + grid.rightMargin
+        // What the arithmetic promises: two edge insets, plus a remainder that
+        // is split between them and is always smaller than the column count.
+        var bound = 2 * page.gridEdge + page.gridColumns(grid.width) + 1
+        verify(dead <= bound,
+               row.tag + ": " + dead.toFixed(0) + "px of dead margin, bound "
+               + bound.toFixed(0) + "  [grid.width=" + grid.width.toFixed(0)
+               + " left=" + grid.leftMargin.toFixed(0)
+               + " right=" + grid.rightMargin.toFixed(0)
+               + " cell=" + grid.cellWidth.toFixed(0)
+               + " cols=" + page.gridColumns(grid.width) + "]")
+
+        // ...and the cells must actually fill the space the margins leave,
+        // which is the half the margin arithmetic alone cannot see: a grid
+        // that lays out fewer columns than were budgeted for leaves the
+        // difference empty on the right without either margin growing.
+        var cols = page.gridColumns(grid.width)
+        var used = cols * grid.cellWidth
+        var avail = grid.width - grid.leftMargin - grid.rightMargin
+        compare(used, avail,
+                row.tag + ": the grid budgeted " + cols + " columns of "
+                + grid.cellWidth.toFixed(0) + " = " + used.toFixed(0)
+                + " but has " + avail.toFixed(0) + "px between its margins");
+    }
 }

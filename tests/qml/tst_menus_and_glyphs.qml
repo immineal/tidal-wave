@@ -917,6 +917,33 @@ TestCase {
             verify(bars[i].height > 0, row.tag + ": bar " + i + " has no height")
         }
 
+        // Every bar's edges land on whole device pixels.
+        //
+        // The obvious assertion here - that all seven share one centre line -
+        // is VACUOUS, and was written and discarded before this one. A bar's
+        // centre is y + h/2, and y is (box - h) / 2, so the centre is box / 2
+        // algebraically, whatever the parity. The QML properties are always
+        // exactly centred; the drift the Mac measured on a Retina panel (bar
+        // centres spread 1 to 1.5 device px, the strip reading as leaning at
+        // 14-16 px) happens one layer down, when the non-antialiased
+        // rasteriser snaps a FRACTIONAL y to the pixel grid.
+        //
+        // So what has to be true is that nothing is fractional in device
+        // space, which is exactly what the parity adjustment in VectorIcon
+        // buys and is a thing a test can actually see. Removing that
+        // adjustment fails this.
+        var dpr = Math.max(1, Screen.devicePixelRatio)
+        for (var c = 0; c < bars.length; ++c) {
+            var yDev = bars[c].y * dpr
+            var hDev = bars[c].height * dpr
+            compare(yDev, Math.round(yDev),
+                    row.tag + ": bar " + c + " starts at " + yDev.toFixed(2)
+                    + " device px, which is not a whole pixel")
+            compare(hDev, Math.round(hDev),
+                    row.tag + ": bar " + c + " is " + hDev.toFixed(2)
+                    + " device px tall, which is not a whole pixel")
+        }
+
         var gap0 = bars[1].x - (bars[0].x + bars[0].width)
         verify(gap0 >= 0, row.tag + ": the bars overlap")
         for (var k = 2; k < bars.length; ++k) {
