@@ -41,6 +41,11 @@ TestCase {
             reads++
             return devices
         }
+        // Player::audioDevicesChanged(), raised when a sink appears, goes
+        // away, or the system default moves. The real one is emitted from the
+        // deferred turn in Player::onAudioOutputsChanged(); here a test emits
+        // it by hand, which is the same thing as far as the picker can tell.
+        signal audioDevicesChanged()
     }
 
     function threeDevices() {
@@ -503,5 +508,223 @@ TestCase {
         wait(80)
         verify(!bar.hoverVolumePopup.visible,
                "the output button is not the volume control")
+    }
+
+    // ── 7. telling four sinks on one card apart ──────────────────
+
+    // What the Debian box actually reports: one synthetic default and four
+    // PipeWire sinks that all belong to the same controller. ALSA names a
+    // sink after the card first and the socket last, so the first thirty-odd
+    // characters are identical and the only part that says which socket this
+    // is sits at the very end - which is exactly what elide-right threw away.
+    // Every row read "Tiger Lake-H HD Audio Contr…" and the user could not
+    // pick. A short-named sink hot-plugged in beside them rendered in full,
+    // which is what proved it was width against length and nothing else.
+    function tigerLake() {
+        return [
+            { id: "",   label: "System default", isDefault: false },
+            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: true },
+            { id: "s2", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
+            { id: "s3", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 2", isDefault: false },
+            { id: "s4", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 3", isDefault: false }
+        ]
+    }
+
+    function labelTextOf(row) {
+        var t = findByName(row, "outputRowLabel")
+        verify(t, "an output row draws no label")
+        return t
+    }
+
+    function test_four_sinks_on_one_card_do_not_all_read_the_same() {
+        audioStub.devices = tigerLake()
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+        compare(rows.length, 5, "the menu lost a sink")
+
+        var seen = ({})
+        for (var i = 0; i < rows.length; ++i) {
+            var t = labelTextOf(rows[i])
+            verify(!t.truncated,
+                   "row " + i + " still does not fit: \"" + t.text
+                   + "\" is drawn for \"" + rows[i].fullLabel + "\"")
+            verify(seen[t.text] === undefined,
+                   "two rows both read \"" + t.text
+                   + "\"; nothing in the menu tells them apart")
+            seen[t.text] = true
+        }
+
+        // And what survived is the end of the name. The end is the part that
+        // says which socket the sound comes out of.
+        var tails = ["Speaker", "DisplayPort 1", "DisplayPort 2", "DisplayPort 3"]
+        for (var j = 0; j < tails.length; ++j) {
+            var drawn = labelTextOf(rows[j + 1]).text
+            verify(drawn.indexOf(tails[j]) !== -1,
+                   "row " + (j + 1) + " reads \"" + drawn + "\" and has lost \""
+                   + tails[j] + "\", which is the only part that named it")
+        }
+        picker.menu.close()
+    }
+
+    // Folding the card name away is only safe because the row still knows the
+    // whole string, which is what its tooltip shows.
+    function test_a_folded_row_still_knows_the_whole_name() {
+        audioStub.devices = tigerLake()
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+
+        verify(rows[1].label !== rows[1].fullLabel,
+               "nothing was folded here, so this case proves nothing")
+        compare(rows[1].fullLabel, "Tiger Lake-H HD Audio Controller Speaker",
+                "the row forgot the name it stands for")
+        compare(rows[0].label, "System default",
+                "the sentinel is not hardware and must never be folded")
+        picker.menu.close()
+    }
+
+    // The degenerate case the fold has to survive: a box with two cards, where
+    // no prefix is common to everything. The pair that does share one is
+    // folded; the odd one out keeps its whole name, and nothing truncates.
+    function test_a_device_that_shares_no_prefix_keeps_its_whole_name() {
+        audioStub.devices = [
+            { id: "",   label: "System default", isDefault: false },
+            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: false },
+            { id: "s2", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
+            { id: "u1", label: "Scarlett 2i2 USB", isDefault: true }
+        ]
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+        compare(rows.length, 4)
+
+        compare(rows[3].label, "Scarlett 2i2 USB",
+                "a device with nothing in common with the others lost part of its name")
+        verify(rows[1].label !== rows[1].fullLabel,
+               "the two sinks that do share a card name were not folded")
+        for (var i = 0; i < rows.length; ++i)
+            verify(!labelTextOf(rows[i]).truncated,
+                   "row " + i + " does not fit: \"" + labelTextOf(rows[i]).text + "\"")
+        picker.menu.close()
+    }
+
+    // A shared prefix that is short is not the problem, and folding it would
+    // read worse than leaving it: "Speaker Left" must not become "… Left".
+    function test_a_short_shared_prefix_is_left_alone() {
+        audioStub.devices = [
+            { id: "",  label: "System default", isDefault: false },
+            { id: "a", label: "Speaker Left",   isDefault: false },
+            { id: "b", label: "Speaker Right",  isDefault: false }
+        ]
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+        compare(labelsOf(rows).join(", "), "System default, Speaker Left, Speaker Right",
+                "a prefix this short should have been left where it was")
+        picker.menu.close()
+    }
+
+    // One long-named sink and nothing to fold it against. There is no prefix
+    // to hide, so the backstop has to carry it: the middle goes, not the end.
+    function test_a_lone_long_name_loses_its_middle_and_not_its_end() {
+        audioStub.devices = [
+            { id: "",   label: "System default", isDefault: false },
+            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: true }
+        ]
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        var rows = collectVisibleByName(body, "outputLocalRow", [])
+
+        compare(rows[1].label, rows[1].fullLabel,
+                "there was nothing to fold against, so the name should be whole")
+        compare(labelTextOf(rows[1]).elide, Text.ElideMiddle,
+                "with nothing to fold, only eliding the middle keeps the end of the "
+                + "name, and the end is the part that names the socket")
+        picker.menu.close()
+    }
+
+    // ── 8. hot-plug with the menu already open ───────────────────
+
+    // `pactl load-module` with the picker up: the menu did not change, and
+    // closing and reopening it was the only way to see the new sink.
+    function test_a_sink_added_while_the_menu_is_open_appears_in_it() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        compare(collectVisibleByName(body, "outputLocalRow", []).length, 3)
+
+        audioStub.devices = threeDevices().concat(
+            [{ id: "hp", label: "TwaveHotplugTest", isDefault: false }])
+        audioStub.audioDevicesChanged()
+
+        tryVerify(function () {
+            return collectVisibleByName(body, "outputLocalRow", []).length === 4
+        }, 2000, "a sink plugged in while the picker was open never showed up in it")
+        verify(picker.menu.visible, "the menu closed instead of refreshing")
+        compare(labelsOf(collectVisibleByName(body, "outputLocalRow", []))[3],
+                "TwaveHotplugTest", "the new sink is not the one that appeared")
+        picker.menu.close()
+    }
+
+    function test_a_sink_removed_while_the_menu_is_open_goes_away() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        var body = openPicker(host, picker)
+        compare(collectVisibleByName(body, "outputLocalRow", []).length, 3)
+
+        audioStub.devices = [{ id: "", label: "System default", isDefault: false }]
+        audioStub.audioDevicesChanged()
+
+        tryVerify(function () {
+            return collectVisibleByName(body, "outputLocalRow", []).length === 1
+        }, 2000, "the menu still offers a sink that has been unplugged")
+        picker.menu.close()
+    }
+
+    // The refresh is not an excuse to put a menu on screen. Nobody asked for
+    // one, and the next open still has to be fresh.
+    function test_a_hot_plug_does_not_open_a_menu_nobody_asked_for() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var picker = barPicker(host)
+        picker.deviceSource = audioStub
+        verify(!picker.menu.visible, "the menu is up before anything opened it")
+
+        audioStub.devices = threeDevices().concat(
+            [{ id: "hp", label: "TwaveHotplugTest", isDefault: false }])
+        audioStub.audioDevicesChanged()
+        wait(60)
+        verify(!picker.menu.visible, "a hot-plug opened the output menu on its own")
+
+        var body = openPicker(host, picker)
+        compare(collectVisibleByName(body, "outputLocalRow", []).length, 4,
+                "opening the menu after a hot-plug showed a stale list")
+        picker.menu.close()
+    }
+
+    // Now Playing instantiates the same component, so it has to get the same
+    // refresh - that is the whole reason this lives in the component and not
+    // at one of the two call sites.
+    function test_now_playings_picker_refreshes_on_a_hot_plug_too() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var picker = findByName(host.page, "nowPlayingOutputButton")
+        verify(picker, "Now Playing has no output picker")
+        var body = openPicker(host, picker)
+        compare(collectVisibleByName(body, "outputLocalRow", []).length, 3)
+
+        audioStub.devices = threeDevices().concat(
+            [{ id: "hp", label: "TwaveHotplugTest", isDefault: false }])
+        audioStub.audioDevicesChanged()
+
+        tryVerify(function () {
+            return collectVisibleByName(body, "outputLocalRow", []).length === 4
+        }, 2000, "Now Playing's picker did not notice the hot-plug")
+        picker.menu.close()
     }
 }

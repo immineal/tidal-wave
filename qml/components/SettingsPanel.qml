@@ -64,6 +64,22 @@ Popup {
 
     onAboutToShow: root.reloadAudioDevices()
 
+    // ...and again whenever the set of devices changes while the panel is
+    // already up. Re-reading only on open was the same bug the output picker
+    // in the player bar had: a sink plugged in with the panel open never
+    // appeared, and closing and reopening was the only way to see it. Caught
+    // on the Debian box by adding a sink with pactl while the menu was up.
+    //
+    // ignoreUnknownSignals because `deviceSource` is injected: the test double
+    // has no such signal, and a host may pass anything here.
+    Connections {
+        target: root.deviceSource
+        ignoreUnknownSignals: true
+        function onAudioDevicesChanged() {
+            if (root.visible) root.reloadAudioDevices()
+        }
+    }
+
     // The device "System default" currently resolves to, so the sentinel is
     // not an opaque choice. Empty when nothing is flagged.
     readonly property string defaultDeviceLabel: {
