@@ -342,20 +342,26 @@ bool isKnown(const QString &name) {
     return false;
 }
 
-// Sea with the pure-black switch on and the greys neutral, which is byte for
-// byte what the user was running when Deep was still a palette of its own: the
-// neutral dark ramp is Sea's old one, and Deep was that pulled to black.
+// Sea, pure black on, colour on.
+//
+// The neutral greys were built first and shipped as the default, and the
+// colour switch was the opt-in flourish on top. Seeing both running, the user
+// chose the other way round: "I think we can even have this be the default.
+// Have sea with color and pure black be the default." So the switch starts on
+// and turning it off is what gets you the strictly neutral six.
 QString defaultTheme()     { return QStringLiteral("sea"); }
 bool    defaultOledBlack() { return true; }
-bool    defaultTintedGreys() { return false; }
+bool    defaultTintedGreys() { return true; }
 
-// The colour switch has no entry here and needs none: no theme name implies
-// it. What a settings file written before it existed says about the greys is
-// nothing, and nothing resolves to defaultTintedGreys() - the neutral state,
-// which is also the state those files were painting, because the grounds in
-// kSpecs only gained their tint in this release. Prefs writes the resolved
-// value back alongside the renamed theme, so the palette an old install comes
-// back to cannot move later if the default ever does.
+// Note what flipping that default does to an old settings file, because it is
+// not nothing. A file written before the colour switch existed carries no
+// entry for it, so it resolves to the default and such an install now comes
+// back tinted rather than neutral - a missing key takes the new default, which
+// is the behaviour that was asked for. A file that *has* the key keeps
+// whatever it says, including an explicit false, and is never dragged onto the
+// default. Prefs writes the resolved value back alongside the renamed theme,
+// so an install that has once been through migration is pinned from then on
+// and cannot move again if this default ever does.
 bool migrated(const QString &stored, QString *theme, bool *oledBlack) {
     // The rename, kept in this file rather than in Prefs because kSpecs above
     // is what these old names are being migrated *to*: rename a palette up

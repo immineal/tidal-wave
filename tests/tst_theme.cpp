@@ -212,7 +212,7 @@ private slots:
         // ...and the greys start neutral, which is the state the user asked
         // for as the default and the one a settings file written before the
         // switch existed has to land on.
-        QCOMPARE(theme::defaultTintedGreys(), false);
+        QCOMPARE(theme::defaultTintedGreys(), true);
         // ...and the switch does nothing on a light theme, so a light default
         // with it on would be a default that quietly lies about itself.
         for (const auto &t : theme::themes())

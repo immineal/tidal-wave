@@ -40,10 +40,12 @@ private slots:
         // lighter app than the user signed off on.
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
-        // Off: the six themes share one neutral grey ramp per mode until
-        // somebody asks for the tinted grounds, which is the state the user
-        // settled on as the default.
-        QCOMPARE(p.tintedGreys(), false);
+        // On. The neutral ramp was built first and defaulted to, and the
+        // colour switch was the opt-in on top; after seeing both running the
+        // user inverted it - "have sea with color and pure black be the
+        // default" - so the strictly neutral six are now what you get by
+        // switching it off.
+        QCOMPARE(p.tintedGreys(), true);
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
@@ -99,7 +101,7 @@ private slots:
             Prefs p;
             p.setTheme(QStringLiteral("sand"));
             p.setOledBlack(false);
-            p.setTintedGreys(true);
+            p.setTintedGreys(false);
             p.setLanguage(QStringLiteral("de"));
             p.setSidebarWidth(310);
             p.setAudioDevice(QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -112,9 +114,9 @@ private slots:
         // setter that only ever wrote the non-default value would still pass
         // a round trip in the other direction.
         QCOMPARE(p2.oledBlack(), false);
-        // This one defaults off, so on is the direction a setter that never
-        // wrote anything would get wrong.
-        QCOMPARE(p2.tintedGreys(), true);
+        // This one defaults on, so off is the direction a setter that never
+        // wrote anything would get wrong - which is the direction written.
+        QCOMPARE(p2.tintedGreys(), false);
         QCOMPARE(p2.language(), QStringLiteral("de"));
         QCOMPARE(p2.sidebarWidth(), 310);
         QCOMPARE(p2.audioDevice(), QStringLiteral("alsa_output.pci-0000_00_1f.3"));
@@ -153,25 +155,29 @@ private slots:
     // quitOnClose' is: rename it and everyone who had asked for the tinted
     // grounds silently goes back to the neutral ones.
     void tintedGreysIsStoredUnderItsOwnKey() {
-        { Prefs p; p.setTintedGreys(true); }
+        // Written away from the default first, so a setter that never wrote
+        // anything cannot pass this by accident.
+        { Prefs p; p.setTintedGreys(false); }
         {
             QSettings s;
-            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), true);
+            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), false);
         }
         Prefs p2;
-        QVERIFY(p2.tintedGreys());
-        p2.setTintedGreys(false);
+        QVERIFY(!p2.tintedGreys());
+        p2.setTintedGreys(true);
         Prefs p3;
-        QVERIFY(!p3.tintedGreys());
+        QVERIFY(p3.tintedGreys());
     }
 
-    // The migration story for the colour switch, which is the whole of it: a
-    // settings file written before it existed carries no key, and the default
-    // behind that key is the neutral state. The file below is one a 0.4.0 beta
-    // actually wrote - a theme, the pure-black switch, a language, a width -
-    // and it has to come back as the app it was, with greys that are neutral
-    // rather than with whatever a missing key coerces to.
-    void aSettingsFileFromBeforeTheColourSwitchLandsOnNeutral() {
+    // The migration story for the colour switch. A settings file written
+    // before it existed carries no key, so it takes the default - and the
+    // default is now colour on, which means such an install deliberately comes
+    // back tinted rather than neutral. That is the behaviour that was asked
+    // for ("a missing key is what takes the new default"), and it is worth a
+    // test precisely because it is a visible change to an existing install
+    // rather than a no-op. A file that HAS the key is the opposite case and is
+    // covered just below: it keeps what it says, including an explicit false.
+    void aSettingsFileFromBeforeTheColourSwitchTakesTheNewDefault() {
         {
             QSettings s;
             s.setValue(QStringLiteral("ui/theme"), "rust");
@@ -183,11 +189,20 @@ private slots:
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("rust"));
         QCOMPARE(p.oledBlack(), true);
-        QCOMPARE(p.tintedGreys(), false);
+        QCOMPARE(p.tintedGreys(), true);
         QCOMPARE(p.language(), QStringLiteral("de"));
         QCOMPARE(p.sidebarWidth(), 260);
         QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys()),
-                 theme::palette(QStringLiteral("rust"), true, false));
+                 theme::palette(QStringLiteral("rust"), true, true));
+
+        // ...and the other half: an explicit false in the file is the user's
+        // and survives, so the new default never overrides a stated choice.
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("ui/tintedGreys"), false);
+        }
+        Prefs kept;
+        QCOMPARE(kept.tintedGreys(), false);
     }
 
     // ...and a key holding something that is not a bool reads exactly the way
@@ -236,9 +251,11 @@ private slots:
         p.setQuitOnClose(true);
         QCOMPARE(closeQuits.count(), 1);
 
+        // Away from the default, or the first set is a no-op and the spy
+        // never fires at all.
         QSignalSpy greys(&p, &Prefs::tintedGreysChanged);
-        p.setTintedGreys(true);
-        p.setTintedGreys(true);
+        p.setTintedGreys(false);
+        p.setTintedGreys(false);
         QCOMPARE(greys.count(), 1);
     }
 
@@ -286,12 +303,15 @@ private slots:
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
-        // Deep was Sea's old grounds pulled to black, and Sea's old grounds are
-        // the neutral ramp, so the state that reproduces it is the neutral one
-        // with the switch on. A file this old has no colour key, so that is
-        // where it lands - but it is written back below rather than left to a
-        // default, because the pixels are the promise, not the default.
-        QCOMPARE(p.tintedGreys(), false);
+        // The colour switch follows the general rule rather than getting a
+        // special case: a file this old has no colour key, so it takes the
+        // default, which is now on. That does mean a Deep install comes back
+        // with tinted surfaces rather than the neutral ones it painted - the
+        // ground it cared about, pure black, is identical either way, and
+        // carving out an exception here would contradict the rule every other
+        // old file follows. It is written back below so it is pinned from now
+        // on and cannot move again.
+        QCOMPARE(p.tintedGreys(), true);
         QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys())
                      .value("bg").value<QColor>(),
                  QColor(Qt::black));
@@ -308,8 +328,8 @@ private slots:
             QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("sea"));
             // The state the migration landed on is written down as well, so a
             // later change to what a fresh install defaults to cannot move an
-            // old user's palette out from under them.
-            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), false);
+            // old user's palette out from under them a second time.
+            QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), true);
         }
         Prefs p2;
         QCOMPARE(p2.theme(), QStringLiteral("sea"));
