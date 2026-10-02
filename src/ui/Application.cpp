@@ -514,9 +514,29 @@ double Application::maxUsableScaleFactor() const {
     return scaleFactorCeilingFor(m);
 }
 
+namespace {
+// Set once by applyScaleFactor(), read by the Settings panel. Not guarded:
+// written before any thread but the main one exists, and only read afterwards.
+Application::ScaleSource g_scaleSource = Application::ScaleSource::None;
+double                   g_scaleFactor = 1.0;
+}
+
+Application::ScaleSource Application::appliedScaleSource() { return g_scaleSource; }
+double Application::appliedScaleFactor() { return g_scaleFactor; }
+
+bool Application::scaleIsEnvironmentOverridden() const {
+    return g_scaleSource == ScaleSource::Environment;
+}
+bool Application::scaleWasChosenAutomatically() const {
+    return g_scaleSource == ScaleSource::Automatic;
+}
+double Application::activeScaleFactor() const { return g_scaleFactor; }
+
 void Application::applyScaleFactor() {
-    if (scaleFactorSetInEnvironment())
+    if (scaleFactorSetInEnvironment()) {
+        g_scaleSource = ScaleSource::Environment;
         return;
+    }
 
     // QSettings needs these to find the same file Prefs will later open. They
     // are statics, so they work before any QCoreApplication exists, and run()
@@ -562,6 +582,13 @@ void Application::applyScaleFactor() {
     const double factor = resolveScaleFactor(screen, userFactor);
     if (factor <= 0)
         return;
+
+    // Which of the two got us here. "Automatic" is specifically the case where
+    // the platform advertised nothing and the density was derived from the
+    // panel - that is the one worth telling the user about, because it is why
+    // this app is a different size from every other app on their screen.
+    g_scaleSource = (userFactor > 0) ? ScaleSource::User : ScaleSource::Automatic;
+    g_scaleFactor = factor;
 
     qputenv("QT_SCALE_FACTOR", QByteArray::number(factor));
     // PassThrough so the factor chosen above is the factor used: a rounding
@@ -624,12 +651,23 @@ void Application::applyQuickControlsStyle() {
     // panel alone changing on 845k of its 1.15M, because everything taking a
     // colour from the style palette rather than a Theme token went grey.
     //
-    // 6.4 is the exception for a reason we do not control: Fusion's own Popup
-    // calls polish() inside updatePolish() there, which hangs rather than
-    // misdraws, and the output picker is a real user path and not only a test.
-    // Basic has no such bug. A 6.4 system already renders differently in
-    // several ways it cannot avoid, so this is one more honest difference
-    // rather than a new one.
+    // 6.4 is the exception because Fusion's Popup calls polish() inside
+    // updatePolish() there, which hangs rather than misdraws.
+    //
+    // CORRECTION, measured on a Debian box running Qt 6.4.2: the sentence that
+    // used to stand here - "Basic has no such bug" - is FALSE. A full run on
+    // 6.4.2 produced 1992 warnings, every one of them naming
+    // Controls/Basic/Popup.qml, and the word Fusion appears in that log zero
+    // times. Basic was already the style and Basic looped too. The polish loop
+    // is a Popup/Layout interaction on 6.4, not a property of either style, and
+    // pinning Basic never avoided it.
+    //
+    // The pin stays, because the reason it is here is not only that bug: Fusion
+    // is what Qt already picks on Linux and what every visual baseline is drawn
+    // against, and on 6.4 it is the style whose Popup was seen to hang outright
+    // rather than merely warn. The actual loop is fixed where it belongs, at
+    // the one Popup that drove it - see the note on the output picker's
+    // menuHeight in qml/components/PlayerBar.qml.
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 #else

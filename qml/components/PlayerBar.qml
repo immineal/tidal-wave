@@ -828,14 +828,39 @@ Rectangle {
         Popup {
             id: menu
             objectName: "outputMenu"
-            y: -height - 10
             x: picker.width - width
             width: 260
             padding: 6
+
+            // Height and position both come from the CONTENT, not from the
+            // popup's own geometry.
+            //
+            // `y: -height - 10` is the ordinary idiom for "sit above the
+            // button", and on Qt 6.4 it feeds a loop: the positioner sets the
+            // popup's height during reposition, the Layout inside reacts to
+            // that geometry change by rearranging, which moves the implicit
+            // height, which repositions again. On a Debian box with Qt 6.4.2
+            // that printed 1992 "called polish() inside updatePolish()"
+            // warnings and eventually hung the test run outright.
+            //
+            // Note what it is NOT: the style. All 1992 warnings name
+            // Controls/Basic/Popup.qml and the log mentions Fusion zero times,
+            // so pinning Basic below 6.5 does not avoid this and never did -
+            // the loop is the Popup/Layout interaction, whichever style draws
+            // it.
+            //
+            // Binding both to the layout's own implicit height breaks the
+            // cycle: the width is fixed, so that number does not depend on
+            // anything the positioner touches.
+            readonly property real menuHeight:
+                menuContent.implicitHeight + topPadding + bottomPadding
+            height: menuHeight
+            y: -menuHeight - 10
             background: Rectangle {
                 color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup
             }
             contentItem: ColumnLayout {
+                id: menuContent
                 spacing: 2
 
                 // Same string the old picker put on its "play here" row. It

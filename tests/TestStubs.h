@@ -848,6 +848,22 @@ public:
     Q_INVOKABLE double maxUsableScaleFactor() const { return 3.0; }
     Q_INVOKABLE double scaleFactorStep() const    { return 0.25; }
 
+    // The three scale facts the Settings panel asks about. Settable, because
+    // what the panel does with them is the thing under test: an environment
+    // override has to disable the slider, and an automatically derived factor
+    // has to explain itself.
+    bool   m_scaleEnvOverride = false;
+    bool   m_scaleWasAutomatic = false;
+    double m_activeScale = 1.0;
+    Q_INVOKABLE bool   scaleIsEnvironmentOverridden() const { return m_scaleEnvOverride; }
+    Q_INVOKABLE bool   scaleWasChosenAutomatically() const  { return m_scaleWasAutomatic; }
+    Q_INVOKABLE double activeScaleFactor() const            { return m_activeScale; }
+    Q_INVOKABLE void setScaleFactsForTest(bool envOverride, bool automatic, double active) {
+        m_scaleEnvOverride = envOverride;
+        m_scaleWasAutomatic = automatic;
+        m_activeScale = active;
+    }
+
     Q_INVOKABLE void quit() {
         m_quitCount++;
         if (m_reallyQuit) return;

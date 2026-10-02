@@ -1021,6 +1021,14 @@
         <translation>Die kleinen Balken am laufenden Titel zeigen ein Spektrum dessen, was du hörst, statt sich von selbst zu bewegen. Beginnt mit dem nächsten Titel.</translation>
     </message>
     <message>
+        <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
+        <translation>Dein Bildschirm ist sehr fein aufgelöst und deine Arbeitsumgebung hat das nicht gemeldet, deshalb zeichnet Tidal Wave von sich aus mit %1x. Verschiebe den Regler, falls das nicht die gewünschte Größe ist.</translation>
+    </message>
+    <message>
+        <source>The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.</source>
+        <translation>Die Oberflächengröße wird außerhalb von Tidal Wave festgelegt (QT_SCALE_FACTOR), dieser Regler bewirkt daher nichts. Hebe die Einstellung auf, um die Größe hier zu wählen.</translation>
+    </message>
+    <message>
         <source>Interface size</source>
         <translation>Oberflächengröße</translation>
     </message>
