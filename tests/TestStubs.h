@@ -980,6 +980,17 @@ class StubPrefs : public QObject {
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    // The fullscreen Now Playing background pulled out of the cover art.
+    // Defaulted on here, as in the real Prefs: a QML test that says nothing
+    // about it measures the state a fresh install is in.
+    Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
+    // The now-playing bars show a spectrum of what is playing instead of
+    // their own animation. Off, like the real preference, and like it the
+    // property is read by name rather than by type - SpectrumAnalyzer
+    // connects to whatever notifying "spectrumBars" its source carries, so
+    // this stub is a complete substitute for Prefs as far as it is
+    // concerned.
+    Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -1005,6 +1016,8 @@ public:
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    coverGradient() const     { return m_coverGradient; }
+    bool    spectrumBars() const      { return m_spectrumBars; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -1047,6 +1060,16 @@ public:
         m_quitOnClose = v;
         emit quitOnCloseChanged();
     }
+    void setCoverGradient(bool v) {
+        if (v == m_coverGradient) return;
+        m_coverGradient = v;
+        emit coverGradientChanged();
+    }
+    void setSpectrumBars(bool v) {
+        if (v == m_spectrumBars) return;
+        m_spectrumBars = v;
+        emit spectrumBarsChanged();
+    }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
@@ -1069,6 +1092,8 @@ signals:
     void audioDeviceChanged();
     void softwareRenderingChanged();
     void quitOnCloseChanged();
+    void coverGradientChanged();
+    void spectrumBarsChanged();
 
 private:
     QString m_theme    = QStringLiteral("sea");
@@ -1086,6 +1111,8 @@ private:
     QString m_audioDevice;
     bool    m_softwareRendering = false;
     bool    m_quitOnClose = false;
+    bool    m_coverGradient = true;
+    bool    m_spectrumBars = false;
     QString m_version = QStringLiteral("0.4.0");
 };
 

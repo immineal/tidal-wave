@@ -416,6 +416,86 @@ Popup {
                     }
                 }
 
+                // The fullscreen Now Playing background. Shown whether or not
+                // the window is fullscreen right now, for the same reason the
+                // quit-on-close note stays visible with no tray: it is a
+                // preference about a mode you are not in yet, and a row that
+                // came and went with the window state would be a row nobody
+                // could find twice.
+                RowLayout {
+                    objectName: "settingsCoverGradientBlock"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            objectName: "settingsCoverGradientLabel"
+                            text: qsTr("Colour fullscreen Now Playing from the cover")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsCoverGradientNote"
+                            text: qsTr("The background takes its colour from the album art. Dimmed to keep the words on top of it readable.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsCoverGradientToggle"
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: prefs.coverGradient
+                        onToggled: prefs.coverGradient = !prefs.coverGradient
+                    }
+                }
+
+                // Below Qt 6.8 there is no QAudioBufferOutput, so the row is
+                // hidden rather than shown disabled: a disabled control invites
+                // you to work out how to enable it, and there is nothing to
+                // work out.
+                RowLayout {
+                    objectName: "settingsSpectrumBlock"
+                    visible: Spectrum.available
+                    Layout.fillWidth: true
+                    Layout.topMargin: 2
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            objectName: "settingsSpectrumLabel"
+                            text: qsTr("Bars follow the music")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsSpectrumNote"
+                            // The second sentence is not padding. Attaching the
+                            // audio tap to a QMediaPlayer that is already
+                            // playing delivers nothing for the track already
+                            // loaded, and the only way round it is to re-set the
+                            // source - which for a Tidal stream means re-fetching
+                            // it and a hole in the audio. Saying so is the
+                            // cheaper honest answer; switching back off is
+                            // immediate either way. tests/tst_spectrum.cpp pins
+                            // this, so do not drop the line without checking.
+                            text: qsTr("The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsSpectrumToggle"
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: prefs.spectrumBars
+                        onToggled: prefs.spectrumBars = !prefs.spectrumBars
+                    }
+                }
+
                 Text {
                     text: qsTr("Language")
                     color: Theme.textSec; font.pixelSize: 13
@@ -927,23 +1007,19 @@ Popup {
     // it, which is not this one.
     //
     // `rainbow` is for the colour switch above, the one row here that is not a
-    // preference about hardware: with it set, a checked track is a turning
-    // rainbow instead of a flat accent fill. Deliberately cheap - one animated
-    // number feeding seven gradient stops on a 38x22 rectangle, with no shader,
-    // no layer and no ShaderEffect - because this is a widget in a panel people
-    // leave open, not a one-off flourish. Off, and on every other Toggle, there
-    // is nothing animated and nothing extra painted.
+    // preference about hardware: with it set, a checked track is a rainbow
+    // instead of a flat accent fill.
+    //
+    // It used to turn. It does not any more - the gradient was liked, the
+    // motion was "visual noise" in a panel people leave open. The animation is
+    // gone rather than slowed, so there is no phase to drive, no reduced-motion
+    // branch to special-case, and nothing running behind an open Popup. Seven
+    // static stops on a 38x22 rectangle, no shader, no layer.
     component Toggle : Item {
         id: tg
         property bool checked: false
         property bool rainbow: false
         signal toggled()
-
-        // How far round the wheel the track has turned, 0 to 1. Properties
-        // rather than locals so tests/qml/tst_settings.qml can read whether the
-        // thing is moving instead of having to time it.
-        property real rainbowPhase: 0
-        readonly property bool rainbowRunning: rainbowTurn.running
 
         implicitWidth: 38
         implicitHeight: 22
@@ -952,26 +1028,12 @@ Popup {
         Keys.onSpacePressed:  tg.toggled()
 
         // Seven stops, a sixth of the wheel apart, so the first and the last
-        // land on the same hue and one turn joins up with no seam. Lightness
+        // land on the same hue and the strip joins up with no seam. Lightness
         // 0.55 rather than 0.5 because the knob riding on top is accentInk,
         // which is white in all six palettes, and a darker yellow read as a
         // smudge under it.
         function rainbowStop(i) {
-            return Qt.hsla((tg.rainbowPhase + i / 6) % 1, 0.9, 0.55, 1)
-        }
-
-        NumberAnimation on rainbowPhase {
-            id: rainbowTurn
-            from: 0; to: 1
-            duration: Theme.dur(6000)
-            // X6. A zero duration against Animation.Infinite is a spin loop, so
-            // reduced motion takes one instant turn and leaves the rainbow
-            // sitting still: the colour is what the switch is saying, the
-            // motion is only how it says it, so the colour has to stay.
-            loops: Theme.reduceMotion ? 1 : Animation.Infinite
-            // Nothing turns while the panel is shut - a Popup's contents report
-            // visible false - and nothing turns on a plain Toggle.
-            running: tg.rainbow && tg.checked && tg.visible
+            return Qt.hsla(i / 6, 0.9, 0.55, 1)
         }
 
         Rectangle {
@@ -979,7 +1041,12 @@ Popup {
             anchors.fill: parent
             radius: Theme.radiusChip
             color: tg.checked ? Theme.accent : Theme.surface
-            border.width: tg.activeFocus ? 2 : 1
+            // The rainbow carries no resting border: a thin solid ring around
+            // a gradient reads as a frame bolted onto it, and the gradient is
+            // the control. Focus still draws its ring, on this toggle as on
+            // every other, because that one is not decoration.
+            readonly property bool showingRainbow: tg.rainbow && tg.checked
+            border.width: tg.activeFocus ? 2 : (showingRainbow ? 0 : 1)
             border.color: tg.activeFocus ? Theme.accent
                         : tg.checked     ? Theme.accent : Theme.border
 

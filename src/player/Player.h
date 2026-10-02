@@ -9,12 +9,15 @@
 #include <QTemporaryFile>
 #include "api/TidalClient.h"
 #include "api/Models.h"
+// For TIDALWAVE_HAS_BUFFER_OUTPUT and the analyser type below.
+#include "player/SpectrumAnalyzer.h"
 
 class QNetworkReply;
 class QMediaDevices;
 class QTimer;
 class CastSession;
 class Prefs;
+class QAudioBufferOutput;
 
 class Player : public QObject {
     Q_OBJECT
@@ -108,6 +111,29 @@ public:
     // Re-resolves the preference against the current device list and rebinds
     // if the answer changed. Cheap and idempotent.
     Q_INVOKABLE void refreshAudioDevice();
+
+    // ── The spectrum tap ────────────────────────────────────────────────
+    // Off by default and free when off. Only with the preference on does a
+    // QAudioBufferOutput get attached to the QMediaPlayer at all, so with the
+    // switch untouched the audio path is byte for byte what it always was.
+    //
+    // The analyser is the process-wide QML singleton the now-playing bars
+    // bind to, and it is reached from here rather than wired in by
+    // Application for one reason: the Player is the only thing in the app
+    // that has decoded audio, so there is exactly one place this can come
+    // from and nothing is gained by routing it through a third party.
+    //
+    // Needs Qt 6.8 for QAudioBufferOutput. Below that the analyser reports
+    // itself unavailable, the preference cannot switch it on, and everything
+    // here compiles down to nothing.
+    void setSpectrumAnalyzer(SpectrumAnalyzer *analyzer);
+
+    // Whether a QAudioBufferOutput is hooked into the QMediaPlayer right now.
+    // Public because the claim this feature rests on - that with the
+    // preference off nothing at all is attached, so the audio path is the one
+    // the app has always had - is otherwise invisible from outside, and an
+    // invisible claim is one that quietly stops being true.
+    bool spectrumTapAttached() const;
 
     // What has to come through a device swap untouched.
     struct AudioState {
@@ -296,6 +322,11 @@ private:
     // Rebinds only when the resolved device differs from the bound one.
     void applyAudioDevice();
 
+    // Attaches or drops the QAudioBufferOutput to match the analyser's
+    // enabled state. Idempotent, and a no-op before initAudio() has made a
+    // QMediaPlayer to attach it to - initAudio() calls it again on the way up.
+    void applySpectrumTap();
+
     // Coalesces the writes: the state changes far more often than it is worth
     // writing, and the whole queue goes out in one value.
     void schedulePersist();
@@ -312,6 +343,14 @@ private:
     bool                 m_rebinding     = false;
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
+
+    // The spectrum tap. m_bufferOut exists only while the preference is on.
+    // A QPointer because the analyser is a singleton that outlives any one
+    // Player, and more than one Player exists across a test run.
+    QPointer<SpectrumAnalyzer> m_spectrum;
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    QAudioBufferOutput  *m_bufferOut = nullptr;
+#endif
 
     // The queue, in playback order. m_index is what plays; the m_manualCount
     // rows straight after it are the manual queue; everything past those is
