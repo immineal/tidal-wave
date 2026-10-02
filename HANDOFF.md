@@ -760,3 +760,50 @@ real numbers; the next step is numbers from the failing case, not reasoning.
 Open question worth settling first: whether this and the "for some very specific
 window widths, the layout breaks like this" screenshot are the same defect or
 two. They have been treated as one and that has never been checked.
+
+## macOS findings that outlive the machine (2026-10-02)
+
+The Mac goes back today and is factory reset. Everything below was measured on
+it (Qt 6.11.1, macOS 26.4.1, Retina) and cannot be re-measured afterwards.
+
+### Settled
+- **Fusion is correct on macOS.** Qt >= 6.5 now gets Fusion where it previously
+  got Basic. Verified by screenshot: ComboBox keeps its custom indicator,
+  background and contentItem, both dropdowns open correctly, toggles, theme
+  swatches and the Interface size slider all render. The Basic pin is needed
+  only below 6.5 (Fusion's Popup calls polish() inside updatePolish() and hangs
+  on Qt 6.4).
+- **The `track` glyph's uneven bars are a rasterisation artefact, not geometry.**
+  Qt renders that Shape with *no antialiasing at all* - every column is coverage
+  0.00 or 1.00 - so each 1.8-unit stroke is a pixel-snapped rectangle 1, 2 or 3
+  device px wide depending on phase. `antialiasing: true` does nothing there
+  (default GeometryRenderer, no MSAA). It is clean only where device pitch lands
+  within ~0.1 of an integer: W=18 at DPR 2 and W=12 at DPR 3, both pitch 4.08.
+  At DPR 1 the 12/14/15/16/18 sizes cannot hold seven bars at all.
+  **Fix shape, from the measurements:** snap in device px rather than enabling
+  AA - `p = max(2, round(3.2*s*dpr))`, `bar = ceil(p/2)`, start at
+  `round(centre - 3p)`, drawn as seven Rectangles. Enabling AA was tried in
+  scratch copies and is worse: CurveRenderer at W=12 gives gaps that never reach
+  zero, i.e. grey mush. **Not yet implemented.**
+  Full DPR 1/2/3 tables for sizes 12/14/15/16/18/24 are in the W1 report.
+
+### Open, and now unverifiable on real hardware
+- **`tst_library` has no isolation on any Mac.** `QStandardPaths::setTestModeEnabled(true)`
+  does not redirect `AppDataLocation` on macOS, so the test resolves the real
+  `~/Library/Application Support`. It aborts on its own QVERIFY before writing,
+  so it pollutes nothing - it is simply a broken test on that platform, and has
+  been for as long as it has existed.
+- **`tst_qml` writes into the real `~/Library/Caches/tst_qml/qmlcache`** (53
+  files, 1.9 MB). Suggested fix from the Mac: set `QML_DISK_CACHE_PATH` in that
+  test's ctest `ENVIRONMENT`.
+- **`applyQuickControlsStyle()` warns 16 times** - once per test engine -
+  "QQuickStyle::setStyle() must be called before loading QML". Harmless, but it
+  is the direct cost of the one-function design (app and harness can never
+  disagree). A call-once guard probably silences it; check it does not
+  reintroduce the mismatch, which is the whole reason the function exists.
+- **`MenusAndGlyphs::test_the_settings_panel_ships_no_text_glyph` fails on macOS**
+  over the Command/Option chips. The test encodes a Linux assumption about what
+  a shortcut chip may contain. Needs re-premising, not a platform skip.
+- **~80 TypeErrors on quit** (context objects torn down before QML bindings;
+  `PlayerBar.qml:379/335/327`, `QueuePanel.qml:324`, `Main.qml:19`). Cosmetic,
+  shutdown only, zero at startup.

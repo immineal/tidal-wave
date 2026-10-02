@@ -207,6 +207,20 @@ Rectangle {
             Window.window.toggleFullScreen()
     }
 
+    // ─── The cover-derived background ──────────────────
+    // On by default, and fullscreen only - which is why it hangs off the
+    // property above rather than being a thing the page always does.
+    //
+    // Read defensively, for the same reason Theme.reduceMotion reaches for
+    // `app` the way it does: a QML test host installs only the context
+    // properties it needs, and a settings file written by an older build has
+    // never heard of this key. Both of those read as the default, and the
+    // default is on.
+    readonly property bool coverGradient:
+        (typeof prefs === "undefined" || prefs === null
+         || prefs.coverGradient === undefined) ? true
+                                               : prefs.coverGradient === true
+
     // Sleep Timer Delegation (mapping properties to Window.window to persist in background)
     readonly property bool   sleepTimerActive:      Window.window ? Window.window.sleepTimerActive : false
     readonly property bool   sleepStopAtEndOfTrack: Window.window ? Window.window.sleepStopAtEndOfTrack : false
@@ -367,10 +381,46 @@ Rectangle {
         if (hasTrack && downloader.isDownloading(track.id)) dlState = "busy"
     }
 
+    // ─── The background ────────────────────────────────
+    //
+    // Docked, and with the preference off, this is exactly the gradient the
+    // page has always drawn: a soft accent wash at the top fading into the
+    // page ground. Nothing below changes a pixel of it.
+    //
+    // Fullscreen, with the preference on, the top stop comes out of the
+    // artwork instead. That is what clearing the accent out of this page was
+    // for - see the artist link further down - so that the one strong colour
+    // on a fullscreen Now Playing is the record's and not the theme's.
+    //
+    // The colour is extracted in C++ (src/ui/CoverColor.h): off the GUI
+    // thread, once per cover, and clamped to a lightness the page's own type
+    // is still legible against. Until it arrives - a cover still downloading,
+    // a track with no artwork - hasColor is false and the accent wash paints,
+    // so there is never a frame with no gradient at all.
+    CoverTint {
+        id: coverTint
+        objectName: "nowPlayingCoverTint"
+        active:  root.fullScreen && root.coverGradient
+        coverId: root.hasTrack && root.track.coverUrl ? root.track.coverUrl : ""
+        // The two grounds that bracket the band the tint is held inside. The
+        // clamp is the C++ side's business; which palette it is measured
+        // against is this page's.
+        bg:    Theme.bg
+        limit: Theme.surfaceHigh
+    }
+
+    // The gradient's top stop, as a property rather than an expression inside
+    // the Gradient, so that a change to it can be eased. A new track fades its
+    // colour in over Theme.dur(420) instead of the page changing between two
+    // frames; reduced motion collapses that to zero the usual way.
+    property color gradientTop: coverTint.hasColor ? coverTint.color
+                                                   : Theme.accentSoft
+    Behavior on gradientTop { ColorAnimation { duration: Theme.dur(420) } }
+
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0; color: Theme.accentSoft }
+            GradientStop { position: 0; color: root.gradientTop }
             GradientStop { position: 1; color: Theme.bg }
         }
     }

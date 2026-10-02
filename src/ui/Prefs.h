@@ -52,6 +52,23 @@ class Prefs : public QObject {
     // always had; with no tray icon a close quits whatever this says, because
     // there would be nothing left to click.
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    // The fullscreen Now Playing page pulls a colour out of the cover art and
+    // uses it as the top of its background gradient, instead of the accent
+    // wash it uses docked. On by default: the page was deliberately cleared of
+    // accent-coloured content so this could go behind it. Only fullscreen -
+    // docked, the page paints exactly what it always has, whatever this says.
+    //
+    // The colour is clamped into the lightness band the palette's own grounds
+    // already occupy before it is painted, so no cover can make the page
+    // illegible; see src/ui/CoverColor.h and tests/tst_covercolor.cpp.
+    Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
+    // The five "now playing" bars show a very coarse spectrogram of what is
+    // actually playing instead of their own animation. Off by default, and off
+    // is byte for byte the behaviour the app has always had: nothing is
+    // attached to the QMediaPlayer and the bars keep their fixed schedule.
+    // Needs Qt 6.8 for QAudioBufferOutput; below that Spectrum.available is
+    // false, the switch does nothing, and the Settings row hides itself.
+    Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -75,6 +92,8 @@ public:
     bool    softwareRendering() const { return m_softwareRendering; }
     double  uiScale() const { return m_uiScale; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    coverGradient() const     { return m_coverGradient; }
+    bool    spectrumBars() const      { return m_spectrumBars; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -85,6 +104,8 @@ public:
     void setSoftwareRendering(bool v);
     void setUiScale(double v);
     void setQuitOnClose(bool v);
+    void setCoverGradient(bool v);
+    void setSpectrumBars(bool v);
 
     // Exposed so QML can lay out against the same numbers the C++ side uses.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -105,6 +126,8 @@ signals:
     void softwareRenderingChanged();
     void uiScaleChanged();
     void quitOnCloseChanged();
+    void coverGradientChanged();
+    void spectrumBarsChanged();
 
 private:
     QSettings m_settings;
@@ -117,4 +140,6 @@ private:
     bool      m_softwareRendering;
     double    m_uiScale;
     bool      m_quitOnClose;
+    bool      m_coverGradient;
+    bool      m_spectrumBars;
 };

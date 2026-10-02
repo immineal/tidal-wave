@@ -57,10 +57,12 @@ set(SOURCES
     src/api/TidalClient.cpp
     src/api/TidalBridge.cpp
     src/player/Player.cpp
+    src/player/SpectrumAnalyzer.cpp
     src/player/Downloader.cpp
     src/mpris/MprisPlayer.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
+    src/ui/CoverColor.cpp
     src/ui/Prefs.cpp
     src/ui/UpdateCheck.cpp
     src/ui/ThemePalette.cpp
@@ -77,10 +79,12 @@ set(HEADERS
     src/api/TidalClient.h
     src/api/TidalBridge.h
     src/player/Player.h
+    src/player/SpectrumAnalyzer.h
     src/player/Downloader.h
     src/mpris/MprisPlayer.h
     src/ui/Application.h
     src/ui/ImageProvider.h
+    src/ui/CoverColor.h
     src/ui/Prefs.h
     src/ui/UpdateCheck.h
     src/ui/ThemePalette.h

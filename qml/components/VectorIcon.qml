@@ -255,6 +255,12 @@ Item {
     // 14px, so the structure has to carry it. A waveform is symmetric about
     // its centre line; this stands on the floor and only its tops move.
     //
+    // The heights can also come from the audio instead of from the schedule
+    // below. That is a preference, it is off by default, and when it is off
+    // not one line of this changes behaviour: `Spectrum.active` is false,
+    // the SequentialAnimation runs exactly as it always has, and the Behavior
+    // added for the live path is disabled. See src/player/SpectrumAnalyzer.h.
+    //
     // Under reduced motion the durations collapse to zero and `loops` to one,
     // so the sequence runs through in a single frame and parks on each bar's
     // resting height -- a still, uneven skyline rather than nothing at all,
@@ -280,6 +286,37 @@ Item {
         readonly property real barWidth: width / 8
         readonly property real gap: barWidth * 0.75
 
+        // ── live levels ──────────────────────────────────────────────────
+        //
+        // True only while the preference is on *and* audio is arriving, so a
+        // paused track, a gap between two tracks, and a build older than
+        // Qt 6.8 all fall back to the animation rather than to five dead
+        // bars. The singleton is reached the way Theme reaches ThemePalette;
+        // a context property would be undefined in the hosts that
+        // instantiate this indicator on its own.
+        //
+        // Reduced motion wins over the spectrum. A live spectrogram is
+        // continuous movement, which is the one thing that preference is
+        // asking for less of, so there the bars park on their resting
+        // skyline as before.
+        readonly property bool useSpectrum: Spectrum.active && !Theme.reduceMotion
+
+        // A band at zero still draws something. Five bars collapsed to
+        // nothing during a quiet passage would read as "stopped", which is
+        // the one thing this mark must never say while a track is playing --
+        // the same reason the bars park on a rest height instead of
+        // vanishing when paused.
+        readonly property real minFrac: 0.12
+
+        // Short-circuits before touching Spectrum.levels, so while the
+        // feature is off no binding in here depends on it and the levels
+        // changing could not cost anything even if they did.
+        function levelAt(i) {
+            if (!useSpectrum) return 0
+            var v = Spectrum.levels[i]
+            return v === undefined ? 0 : v
+        }
+
         opacity: animate ? 1 : 0.45
         Behavior on opacity { NumberAnimation { duration: Theme.dur(120) } }
 
@@ -304,10 +341,20 @@ Item {
                 delegate: Rectangle {
                     id: bar
                     required property var modelData
+                    // Which band this bar shows. Bass on the left, as every
+                    // equaliser has been drawn since they had sliders.
+                    required property int index
 
                     readonly property real restH:   ind.height * modelData.rest
                     readonly property real peakH:   ind.height * modelData.peak
                     readonly property real troughH: ind.height * modelData.trough
+
+                    // The live height, when there is one. Reads through
+                    // ind.levelAt(), which is what makes this a binding on
+                    // Spectrum.levels only while the feature is on.
+                    readonly property real specH:
+                        ind.height * (ind.minFrac
+                                      + (1 - ind.minFrac) * ind.levelAt(bar.index))
 
                     // A Row only places its children horizontally, so the
                     // floor is set here. Not an anchor: `parent` is null
@@ -322,11 +369,40 @@ Item {
                     // The animation below writes `height` directly, which
                     // drops the binding above; this puts the resting height
                     // back if the box is resized while the bars are still.
-                    onRestHChanged: if (!seq.running) bar.height = bar.restH
+                    onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.height = bar.restH
+
+                    // Spectrum mode drives the height by assignment, the same
+                    // way the animation does, rather than by a conditional
+                    // binding on `height` -- a binding there would be dropped
+                    // by the animation's first write and never come back.
+                    onSpecHChanged: if (ind.useSpectrum) bar.height = bar.specH
+
+                    // Leaving the live path: the animation restarts by itself
+                    // if it is allowed to, but a paused row has no animation
+                    // to put the bar back, so it is put back here.
+                    readonly property bool live: ind.useSpectrum
+                    onLiveChanged: {
+                        if (bar.live) bar.height = bar.specH
+                        else if (!seq.running) bar.height = bar.restH
+                    }
+
+                    // Only ever enabled on the live path, so the animated
+                    // path below is untouched. The analyser publishes at
+                    // 25 Hz and the screen draws at 60; without this the
+                    // bars step rather than move. Through Theme.dur() like
+                    // every other duration in the app, though reduced motion
+                    // has already switched the live path off above.
+                    Behavior on height {
+                        enabled: ind.useSpectrum
+                        NumberAnimation {
+                            duration: Theme.dur(70)
+                            easing.type: Easing.OutQuad
+                        }
+                    }
 
                     SequentialAnimation {
                         id: seq
-                        running: ind.animate && ind.visible
+                        running: ind.animate && ind.visible && !ind.useSpectrum
                         loops: Theme.reduceMotion ? 1 : Animation.Infinite
                         NumberAnimation {
                             target: bar; property: "height"; to: bar.peakH
@@ -343,7 +419,7 @@ Item {
                             duration: Theme.dur(Math.round(bar.modelData.ms * 0.6))
                             easing.type: Easing.InOutSine
                         }
-                        onStopped: bar.height = bar.restH
+                        onStopped: if (!ind.useSpectrum) bar.height = bar.restH
                     }
                 }
             }

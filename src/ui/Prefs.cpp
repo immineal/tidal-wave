@@ -13,6 +13,8 @@ constexpr auto kAudioDev = "audio/outputDevice";
 constexpr auto kSoftRender = "ui/softwareRendering";
 constexpr auto kUiScale    = "ui/scaleFactor";
 constexpr auto kQuitOnClose = "ui/quitOnClose";
+constexpr auto kCoverGradient = "ui/coverGradient";
+constexpr auto kSpectrumBars = "ui/spectrumBars";
 }
 
 Prefs::Prefs(QObject *parent)
@@ -35,6 +37,15 @@ Prefs::Prefs(QObject *parent)
     , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
     , m_uiScale(m_settings.value(kUiScale, 0.0).toDouble())
     , m_quitOnClose(m_settings.value(kQuitOnClose, false).toBool())
+    // True, not false: a settings file written before this key existed says
+    // nothing about it, and absence has to resolve to the state a fresh
+    // install is in - which is on. Same migration-by-absence as tintedGreys,
+    // in the other direction.
+    , m_coverGradient(m_settings.value(kCoverGradient, true).toBool())
+    // False, deliberately and permanently: the whole feature is opt in, and a
+    // missing key resolving to false is what every existing settings file does
+    // anyway.
+    , m_spectrumBars(m_settings.value(kSpectrumBars, false).toBool())
 {
     // A width written by a future build, or a corrupted settings file, must not
     // leave the sidebar unusable.
@@ -125,6 +136,20 @@ void Prefs::setQuitOnClose(bool v) {
     m_quitOnClose = v;
     m_settings.setValue(kQuitOnClose, v);
     emit quitOnCloseChanged();
+}
+
+void Prefs::setCoverGradient(bool v) {
+    if (v == m_coverGradient) return;
+    m_coverGradient = v;
+    m_settings.setValue(kCoverGradient, v);
+    emit coverGradientChanged();
+}
+
+void Prefs::setSpectrumBars(bool v) {
+    if (v == m_spectrumBars) return;
+    m_spectrumBars = v;
+    m_settings.setValue(kSpectrumBars, v);
+    emit spectrumBarsChanged();
 }
 
 QString Prefs::appVersion() const {

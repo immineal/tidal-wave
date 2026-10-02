@@ -10,6 +10,10 @@
 #include <QSet>
 #include "cast/CastSession.h"
 #include "ui/Prefs.h"
+#include "player/SpectrumAnalyzer.h"
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+#include <QAudioBufferOutput>
+#endif
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
@@ -21,6 +25,12 @@ Player::Player(TidalClient *client, QObject *parent)
     if (m_client->userId() > 0) {
         handleUserIdChanged(m_client->userId());
     }
+
+    // The now-playing bars' analyser. Taken here rather than handed in,
+    // because the Player is the only source of decoded audio there is; see
+    // setSpectrumAnalyzer() in the header. Nothing is attached to the
+    // QMediaPlayer until the preference is actually on.
+    setSpectrumAnalyzer(SpectrumAnalyzer::instance());
 
     // Defer audio device init until after the event loop starts to avoid
     // a PipeWire pw_thread_loop_lock deadlock under -O3 optimisation.
@@ -67,6 +77,10 @@ void Player::initAudio() {
         m_restorePending = false;
         loadAndPlay(m_index);
     }
+
+    // There is finally a QMediaPlayer to hang it off. Does nothing unless the
+    // preference was already on when the app started.
+    applySpectrumTap();
 }
 
 Player::~Player() {
@@ -81,6 +95,14 @@ Player::~Player() {
     if (m_player) m_player->setAudioOutput(nullptr);
     delete m_audioOut;
     m_audioOut = nullptr;
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    // Same ordering rule as the output above: unhook it from the player
+    // before destroying it, rather than leaving the two to be collected as
+    // children in whatever order QObject picks.
+    if (m_player) m_player->setAudioBufferOutput(nullptr);
+    delete m_bufferOut;
+    m_bufferOut = nullptr;
+#endif
 }
 
 // ─── Audio output routing ──────────────────────────────────
@@ -105,6 +127,10 @@ void Player::setPrefs(Prefs *prefs) {
         connect(m_prefs, &Prefs::audioDeviceChanged, this, [this] { applyAudioDevice(); });
     }
     applyAudioDevice();
+    // The analyser reads its own switch straight off the preferences object,
+    // by property name rather than by type, so it needs no Prefs header and
+    // this line does not have to change when the switch is added there.
+    if (m_spectrum) m_spectrum->setPrefsSource(m_prefs);
 }
 
 QAudioDevice Player::resolveAudioDevice() const {
@@ -181,6 +207,72 @@ void Player::applyAudioDevice() {
     const QAudioDevice target = resolveAudioDevice();
     if (m_audioOut->device() == target) return;
     rebindAudioOutput(target);
+}
+
+// ─── The spectrum tap ──────────────────────────────────────────────────────
+//
+// Nothing here is in the audio path while the preference is off: with no
+// QAudioBufferOutput attached, QMediaPlayer never produces the buffers in the
+// first place, so "off" costs a null pointer check when the switch moves and
+// nothing at all per frame.
+//
+// Switching it on mid-track does not light the bars until the next track, and
+// that is a backend limitation rather than an oversight here. A
+// QAudioBufferOutput attached to a QMediaPlayer that is already playing
+// delivers nothing for the media already loaded - measured against ffmpeg on
+// Qt 6.12, where seeking and a pause/play round trip both fail to shake it
+// loose and only re-setting the source works. Re-setting the source means
+// re-fetching the Tidal stream and a hole in the audio, which is far too much
+// to pay for a visualiser, so the tap is attached and waits. The Settings row
+// says so, and tests/tst_spectrum.cpp pins it.
+//
+// Switching it off is immediate: detaching mid-track is inaudible and the
+// bars go back to their own animation in the same frame.
+
+void Player::setSpectrumAnalyzer(SpectrumAnalyzer *analyzer) {
+    if (m_spectrum == analyzer) return;
+    if (m_spectrum) disconnect(m_spectrum, nullptr, this, nullptr);
+    m_spectrum = analyzer;
+    if (m_spectrum) {
+        connect(m_spectrum, &SpectrumAnalyzer::enabledChanged,
+                this, [this] { applySpectrumTap(); });
+        if (m_prefs) m_spectrum->setPrefsSource(m_prefs);
+    }
+    applySpectrumTap();
+}
+
+bool Player::spectrumTapAttached() const {
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    return m_bufferOut != nullptr;
+#else
+    return false;
+#endif
+}
+
+void Player::applySpectrumTap() {
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    if (!m_player) return;   // initAudio() calls this again on the way up
+    const bool want = m_spectrum && m_spectrum->enabled();
+    if (want == (m_bufferOut != nullptr)) return;
+
+    if (want) {
+        m_bufferOut = new QAudioBufferOutput(this);
+        // Queued, deliberately. The backend may emit this from its own
+        // decoding thread, and the analyser is not thread-safe - nor should
+        // it be, since what it feeds is QML bindings, which are the main
+        // thread's business. QAudioBuffer is implicitly shared, so the
+        // marshalling copies a refcount and not the audio.
+        connect(m_bufferOut, &QAudioBufferOutput::audioBufferReceived,
+                m_spectrum.data(), &SpectrumAnalyzer::processBuffer,
+                Qt::QueuedConnection);
+        m_player->setAudioBufferOutput(m_bufferOut);
+    } else {
+        m_player->setAudioBufferOutput(nullptr);
+        delete m_bufferOut;
+        m_bufferOut = nullptr;
+        if (m_spectrum) m_spectrum->reset();
+    }
+#endif
 }
 
 Player::AudioState Player::captureAudioState() const {

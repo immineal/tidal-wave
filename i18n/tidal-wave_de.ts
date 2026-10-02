@@ -1013,8 +1013,24 @@
         <translation>Farbe hereinlassen</translation>
     </message>
     <message>
+        <source>Bars follow the music</source>
+        <translation>Balken folgen der Musik</translation>
+    </message>
+    <message>
+        <source>The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.</source>
+        <translation>Die kleinen Balken am laufenden Titel zeigen ein Spektrum dessen, was du hörst, statt sich von selbst zu bewegen. Beginnt mit dem nächsten Titel.</translation>
+    </message>
+    <message>
         <source>Interface size</source>
         <translation>Oberflächengröße</translation>
+    </message>
+    <message>
+        <source>Colour fullscreen Now Playing from the cover</source>
+        <translation>Vollbild-Wiedergabe nach Cover einfärben</translation>
+    </message>
+    <message>
+        <source>The background takes its colour from the album art. Dimmed to keep the words on top of it readable.</source>
+        <translation>Der Hintergrund übernimmt die Farbe des Albumcovers. Abgedunkelt, damit der Text darüber lesbar bleibt.</translation>
     </message>
     <message>
         <source>Automatic</source>

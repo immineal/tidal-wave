@@ -805,9 +805,11 @@ TestCase {
         h2.panel.close()
     }
 
-    // The whimsy, and the cheap half of it: the rainbow turns only while the
-    // switch is on, so a panel left open with it off costs nothing.
-    function test_the_rainbow_turns_only_while_the_switch_is_on() {
+    // The whimsy, and the part of it that was taken back out: the track is a
+    // rainbow, and it holds still. The turning version was built, seen and
+    // rejected - "it just adds visual noise" - so this pins the gradient as
+    // static rather than slow. A reintroduced animation fails it.
+    function test_the_rainbow_is_static_and_has_no_frame_around_it() {
         app.setReducedMotionForTest(false)
         prefs.tintedGreys = true
 
@@ -816,11 +818,10 @@ TestCase {
         verify(toggle && toggle.checked)
         var rainbow = findByName(toggle, "toggleRainbow")
         verify(rainbow && rainbow.visible)
-        verify(toggle.rainbowRunning, "the rainbow is not turning")
 
-        // Actually a rainbow, and not an accent fill with an animation behind
-        // it: seven stops round the wheel, the first and the last on the same
-        // hue so one turn joins up, which leaves six distinct colours.
+        // Actually a rainbow, and not an accent fill: seven stops round the
+        // wheel, the first and the last on the same hue so the strip joins up,
+        // which leaves six distinct colours.
         verify(rainbow.gradient, "the rainbow track carries no gradient")
         compare(rainbow.gradient.stops.length, 7, "the rainbow has the wrong number of stops")
         var distinct = {}
@@ -829,14 +830,28 @@ TestCase {
         compare(Object.keys(distinct).length, 6,
                 "the rainbow is " + Object.keys(distinct).length + " colours")
 
-        var was = toggle.rainbowPhase
-        wait(300)
-        verify(toggle.rainbowPhase !== was,
-               "rainbowRunning is true and the phase is not moving")
+        // Still. Sampled across a span many times the old 6 s turn's per-frame
+        // step, so a slowed-down animation would be caught rather than passed.
+        var before = []
+        for (var b = 0; b < 7; b++) before.push(String(rainbow.gradient.stops[b].color))
+        wait(400)
+        for (var c = 0; c < 7; c++)
+            compare(String(rainbow.gradient.stops[c].color), before[c],
+                    "stop " + c + " moved: the rainbow is animating again")
+
+        // And no thin solid ring around it. The gradient is the control; a
+        // border read as a frame bolted onto it. Focus is the one exception
+        // and is checked separately below.
+        var track = rainbow.parent
+        verify(!toggle.activeFocus, "this half of the case assumes the toggle is not focused")
+        compare(track.border.width, 0,
+                "the rainbow switch has a " + track.border.width + "px frame around it")
 
         clickItem(h.panel, toggle)
         verify(!rainbow.visible, "the switch is off and still a rainbow")
-        verify(!toggle.rainbowRunning, "the switch is off and still animating")
+        // Off, it is an ordinary toggle again and gets its ordinary border back.
+        compare(track.border.width, 1,
+                "switched off, the toggle lost the border every other toggle has")
 
         // ...and no other switch in the panel grew one.
         prefs.theme = "sea"
@@ -845,29 +860,40 @@ TestCase {
         var strayRainbow = findByName(black, "toggleRainbow")
         verify(strayRainbow && !strayRainbow.visible,
                "the pure-black switch is painted as a rainbow")
-        verify(!black.rainbowRunning, "the pure-black switch is animating")
 
         h.panel.close()
     }
 
-    // X6: reduced motion stops the rainbow without deleting it. The colour is
-    // what the switch is saying; the turning is only how it says it.
-    function test_the_rainbow_does_not_turn_under_reduced_motion() {
-        app.setReducedMotionForTest(true)
+    // X6: the rainbow is identical under reduced motion, because there is no
+    // motion left to reduce.
+    //
+    // This case used to assert that reduced motion stopped the turning without
+    // deleting the colour. The turning is gone for everyone now, so what is
+    // worth pinning is that the reduced-motion path did not take the colour
+    // with it when the animation was removed - which is the way this would
+    // plausibly break.
+    function test_reduced_motion_keeps_the_rainbow_exactly_as_it_is() {
         prefs.tintedGreys = true
 
+        app.setReducedMotionForTest(false)
+        var normal = openPanel(1280, 1200)
+        var t1 = findByName(normal.panel.contentItem, "settingsTintedToggle")
+        var r1 = findByName(t1, "toggleRainbow")
+        verify(r1 && r1.visible)
+        var stops = []
+        for (var i = 0; i < 7; i++) stops.push(String(r1.gradient.stops[i].color))
+        normal.panel.close()
+
+        app.setReducedMotionForTest(true)
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
         verify(toggle && toggle.checked)
         var rainbow = findByName(toggle, "toggleRainbow")
         verify(rainbow && rainbow.visible,
-               "reduced motion removed the rainbow instead of stopping it")
-        verify(!toggle.rainbowRunning,
-               "the rainbow is still turning under reduced motion")
-
-        var was = toggle.rainbowPhase
-        wait(300)
-        compare(toggle.rainbowPhase, was, "the rainbow moved under reduced motion")
+               "reduced motion removed the rainbow instead of leaving it alone")
+        for (var j = 0; j < 7; j++)
+            compare(String(rainbow.gradient.stops[j].color), stops[j],
+                    "stop " + j + " differs under reduced motion")
 
         h.panel.close()
     }
