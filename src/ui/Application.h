@@ -161,6 +161,30 @@ public:
     // Returns 0 for "change nothing".
     static double resolveScaleFactor(const ScreenMetrics &screen, double userFactor);
 
+    // What applyScaleFactor() actually did, so the Settings panel can explain
+    // itself instead of presenting a control that may or may not be doing
+    // anything. Statics, because the decision is taken before any instance of
+    // this class exists.
+    enum class ScaleSource {
+        None,          // nothing was set; Qt is following the platform
+        Environment,   // QT_SCALE_FACTOR was already set; the app kept out
+        User,          // the Settings slider
+        Automatic,     // derived here, because the platform advertised nothing
+    };
+    static ScaleSource appliedScaleSource();
+    // The factor in force, or 1.0 when none was applied.
+    static double      appliedScaleFactor();
+
+    // The same three facts, for QML.
+    //
+    // The first one matters: when QT_SCALE_FACTOR is set outside the process the
+    // app deliberately keeps its hands off entirely, which leaves the slider
+    // doing nothing at all. A control that looks live and is not is worse than
+    // one that is visibly disabled, so the panel asks.
+    Q_INVOKABLE bool   scaleIsEnvironmentOverridden() const;
+    Q_INVOKABLE bool   scaleWasChosenAutomatically() const;
+    Q_INVOKABLE double activeScaleFactor() const;
+
     // Whether the environment already carries an explicit scale decision, in
     // which case the app keeps its hands off entirely.
     static bool scaleFactorSetInEnvironment();

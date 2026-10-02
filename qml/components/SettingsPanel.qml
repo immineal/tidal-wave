@@ -652,6 +652,14 @@ Popup {
                     Slider {
                         objectName: "settingsUiScaleSlider"
                         Layout.preferredWidth: 140
+                        // Dead when something outside the process already set
+                        // the factor: the app deliberately keeps its hands off
+                        // in that case, so a live-looking slider would be
+                        // lying. Visibly disabled, with the note below saying
+                        // why - a control that quietly does nothing is worse
+                        // than one that says it cannot.
+                        enabled: !app.scaleIsEnvironmentOverridden()
+                        opacity: enabled ? 1.0 : 0.45
                         // One step below the minimum is Automatic, so Auto is a
                         // position on the slider rather than a missing value -
                         // somebody who picks 2.00 can still get back to it.
@@ -667,6 +675,28 @@ Popup {
                             (value < app.minScaleFactor()) ? 0 : value
                     }
                 }
+                // Only when the scale was worked out here, rather than taken
+                // from the desktop or from the slider. That is the case that
+                // needs explaining: the app has sized itself differently from
+                // every other window on the screen, and without a word for it
+                // that reads as a bug rather than as a decision.
+                Text {
+                    objectName: "settingsUiScaleAutoNote"
+                    visible: app.scaleWasChosenAutomatically()
+                             && !app.scaleIsEnvironmentOverridden()
+                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toFixed(2))
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
+                Text {
+                    objectName: "settingsUiScaleEnvNote"
+                    visible: app.scaleIsEnvironmentOverridden()
+                    text: qsTr("The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.")
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
                 Text {
                     objectName: "settingsRestartNote"
                     // Qt picks the scene graph backend once, at startup, so
