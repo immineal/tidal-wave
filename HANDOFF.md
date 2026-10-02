@@ -855,3 +855,54 @@ most are constants and the scan mis-attributes delegate items, so the number is
 not trustworthy. Only a **changing** binding is at risk: a constant width that
 the layout re-imposes is re-imposed to the same value and nothing is visible.
 If another "it only jitters sometimes" report appears, look here first.
+
+## Release state at ed784c1 (2026-10-02, ~03:40)
+
+Branch `beta-0.4.0`, nothing merged to `main`. Installed to `~/.local` and
+running on this machine for the user's own verification.
+
+**Green:** full suite 20/20 here. macOS (Qt 6.11.1, Retina) signed off on
+`8f15d41`: 19/20 binaries, `tst_qml` 711 passed / 0 failed, the only failure
+being the known `tst_library` isolation bug below.
+
+**Everything the user asked for in this cycle is in:**
+both new features (spectrum bars opt-in, cover-art gradient on by default) with
+their Prefs, Settings rows and German strings; all three theme decisions (static
+rainbow, no frame, Sea + colour + pure black as defaults); both output-picker
+bugs plus the same bug found in Settings; the Escape regression test; three
+untranslated strings and a guard against more; the 37 ms font cost; the track
+glyph; the sleep-timer flash; `docs/design-review.html` brought up to date.
+
+**Verified on real hardware, not inferred:** the font alias line is gone (0
+stderr lines vs 1), the glyph is clean at DPR 2 at all five sizes, the pill
+traces one width on every frame, and the Basic Latin guard both accepts real
+macOS key chips and rejects a stray symbol.
+
+### Still open, none of it blocking
+- **The collection grid gutter.** Three explanations dead, the last against the
+  live GridView over 171 widths. Not in CollectionPage. See the section above;
+  do not offer a fourth theory.
+- **`tst_library` has no isolation on macOS** - `setTestModeEnabled()` does not
+  redirect `AppDataLocation` there. It aborts before writing, so it is a broken
+  test rather than one that pollutes.
+- **`tst_qml` writes `~/Library/Caches/tst_qml/qmlcache`** on macOS. Fix shape:
+  `QML_DISK_CACHE_PATH` in that test's ctest `ENVIRONMENT`.
+- **17x "QQuickStyle::setStyle() must be called before loading QML"** in the
+  macOS suite - the cost of every test engine calling
+  `applyQuickControlsStyle()`, which is the design that stops the app and the
+  harness disagreeing. A call-once guard probably silences it; check it does not
+  reintroduce the mismatch.
+- **~80 TypeErrors on quit** (context objects torn down before QML bindings).
+  Cosmetic, shutdown only, zero at startup.
+- **Glyph centring at DPR 2/3 is unverified** at the time of writing - the fix
+  is tested by arithmetic here and was sent to the Mac for a final measurement.
+  If no reply arrived, treat it as unverified rather than fine.
+
+### Remaining release steps, from the user's own plan
+1. User verifies this build personally on this machine.
+2. Debian box: its Claude session ended at the usage limit and needs restarting.
+   Its job file is `scratchpad/share/TO-DEBIAN.txt` - D1 build on Qt 6.4.2, D2
+   confirm auto scale lands on 2.0 on the 283.5 ppi panel, D3 the new slider.
+3. Mac: going back and being factory reset. Everything it can answer, it has.
+4. Then Windows on the same box, then openSUSE on the high-DPI panel.
+5. Merge to `main` only with explicit personal approval.
