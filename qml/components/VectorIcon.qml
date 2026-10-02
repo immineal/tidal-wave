@@ -100,7 +100,6 @@ Item {
     Item {
         id: trackStrip
         visible: root.isSnappedBars
-        anchors.centerIn: parent
         height: root.height
 
         readonly property real dpr: Math.max(1, Screen.devicePixelRatio)
@@ -108,7 +107,36 @@ Item {
         readonly property int pitchDev: Math.max(2, Math.round(3.2 * trackStrip.unit * trackStrip.dpr))
         readonly property int barDev:   Math.ceil(trackStrip.pitchDev / 2)
         // Six whole pitches plus the last bar: the ink, not the trailing gap.
-        width: (6 * trackStrip.pitchDev + trackStrip.barDev) / trackStrip.dpr
+        readonly property int stripDev: 6 * trackStrip.pitchDev + trackStrip.barDev
+        width: trackStrip.stripDev / trackStrip.dpr
+
+        // Positioned in whole device px rather than by anchors.centerIn.
+        // Anchoring centres on a fractional logical offset, and the non-AA
+        // rasteriser then snaps each edge independently, which drifted the
+        // strip by up to a device pixel horizontally and wobbled the bar
+        // centres by 1 to 1.5 px vertically - measured on a Retina panel. The
+        // symmetric silhouette is the entire point of this glyph, so the
+        // arithmetic is done here instead of being left to the rasteriser.
+        //
+        // At W=12 on a DPR 1 screen seven bars do not fit: the tightest strip
+        // is 6*2+1 = 13 device px and the box is 12, so it overhangs by one.
+        // Nothing clips it, and five bars would be a different glyph, so the
+        // overhang is accepted and deterministic rather than hidden.
+        x: Math.round((root.width * trackStrip.dpr - trackStrip.stripDev) / 2)
+           / trackStrip.dpr
+        y: 0
+
+        readonly property int boxDev: Math.round(root.height * trackStrip.dpr)
+
+        // Every bar's height is given the same parity as the box, so
+        // (box - height) is even and the bar sits on one exact centre line
+        // instead of half a pixel either side of it. Mixed parities are what
+        // made the bars lean at 14-16 px.
+        function barHeightDev(i) {
+            var h = Math.round(2 * trackStrip.halfUnits[i] * trackStrip.unit * trackStrip.dpr)
+            if (((trackStrip.boxDev - h) % 2 + 2) % 2 !== 0) h += 1
+            return Math.max(1, h)
+        }
 
         // Half-heights in grid units, taken from the path this replaces, so
         // the silhouette is unchanged: every bar centred on the middle line,
@@ -127,11 +155,11 @@ Item {
                 width: trackStrip.barDev / trackStrip.dpr
                 // Snapped the same way as the widths, so a bar cannot land on
                 // a half pixel and come out grey at one size and solid at the
-                // next.
-                height: Math.max(1, Math.round(2 * trackStrip.halfUnits[index]
-                                               * trackStrip.unit * trackStrip.dpr))
-                        / trackStrip.dpr
-                anchors.verticalCenter: parent.verticalCenter
+                // next - and parity-matched to the box so every bar shares one
+                // centre line exactly.
+                readonly property int hDev: trackStrip.barHeightDev(index)
+                height: hDev / trackStrip.dpr
+                y: ((trackStrip.boxDev - hDev) / 2) / trackStrip.dpr
             }
         }
     }

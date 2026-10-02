@@ -751,7 +751,24 @@ too: the page `Loader`s are `anchors.fill: parent`, and the content pane is
 `Layout.fillWidth: true` next to the sidebar's `Layout.preferredWidth:
 sideBar.reservedWidth` (`qml/Main.qml:405-432`). Neither caps width.
 
-**Do not propose a third theory.** What is needed is a measurement at the exact
+**UPDATE, same night: measured on the live item, and it is clean.** A sweep of
+every width from 640 to 2000 in steps of 8 (`tst_layout_pages.qml`,
+`test_the_collection_grid_leaves_no_dead_gutter`) hosts a real CollectionPage
+with 60 albums and checks the actual GridView, not the arithmetic:
+`leftMargin + rightMargin` stays inside the promised bound at every width, and
+`columns * cellWidth` exactly equals the space between the margins - the second
+check being the one the arithmetic cannot see, since a grid that lays out fewer
+columns than were budgeted leaves the difference empty on the right without
+either margin growing. 171 widths, no failure.
+
+So the gutter is **not in CollectionPage**. Three explanations have now died.
+The remaining candidates are the sidebar/content width chain at particular
+window widths - which is where the *other* report, "for some very specific
+window widths, the layout breaks like this", also points - or something that
+depends on real library data rather than stub data. Those two reports should be
+treated as one lead until something separates them.
+
+**Do not propose a fourth theory.** What is needed is a measurement at the exact
 window width that reproduces it: the real `width`, `leftMargin`, `rightMargin`,
 `cellWidth` and `count` of the live `GridView`, plus the pane's own width and
 `sideBar.reservedWidth`, logged together. Two theories have now died against
