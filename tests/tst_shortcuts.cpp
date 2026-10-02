@@ -262,6 +262,77 @@ private slots:
                      "instead (Shortcuts.monospaceFamily() does this).\n  %1")
                                 .arg(offenders.join(QStringLiteral("\n  ")))));
     }
+
+    // Every string the UI asks to be translated is actually in the German
+    // catalogue.
+    //
+    // qsTr() only marks a string; it does not translate it. A string that was
+    // never added to i18n/tidal-wave_de.ts silently renders in English, and on
+    // a German desktop that is one English line in the middle of a German
+    // panel - which is exactly what a screenshot from the Mac showed for the
+    // new "Interface size" row.
+    //
+    // It also catches the other half, which is worse because it looks fine in
+    // the diff: changing the English wording of an already-translated string
+    // orphans its entry, so the translation stops being found and the string
+    // silently reverts to English. The login page had been reading "Native
+    // Desktop Tidal Client" in English on German systems ever since the
+    // tagline stopped saying Linux, and nobody noticed.
+    void everyTranslatableStringIsInTheGermanCatalogue() {
+        // Derived from the QML dir rather than given its own define, so this
+        // needs no build-system change to stay true.
+        const QString ts = QStringLiteral(TIDALWAVE_QML_DIR)
+                           + QStringLiteral("/../i18n/tidal-wave_de.ts");
+        QFile f(ts);
+        QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text),
+                 qPrintable(QStringLiteral("could not read %1").arg(ts)));
+        const QString catalogue = QString::fromUtf8(f.readAll());
+
+        QSet<QString> translated;
+        QRegularExpression src(QStringLiteral("<source>(.*?)</source>"),
+                               QRegularExpression::DotMatchesEverythingOption);
+        auto sit = src.globalMatch(catalogue);
+        while (sit.hasNext()) {
+            QString s = sit.next().captured(1);
+            s.replace(QStringLiteral("&quot;"), QStringLiteral("\""));
+            s.replace(QStringLiteral("&lt;"),   QStringLiteral("<"));
+            s.replace(QStringLiteral("&gt;"),   QStringLiteral(">"));
+            s.replace(QStringLiteral("&amp;"),  QStringLiteral("&"));
+            translated.insert(s);
+        }
+        QVERIFY2(!translated.isEmpty(), "the German catalogue parsed as empty");
+
+        QStringList missing;
+        int scanned = 0;
+        QDirIterator it(QStringLiteral(TIDALWAVE_QML_DIR),
+                        QStringList{ QStringLiteral("*.qml") },
+                        QDir::Files, QDirIterator::Subdirectories);
+        QRegularExpression call(QStringLiteral("qsTr\\(\\s*\"((?:[^\"\\\\]|\\\\.)*)\""));
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile q(path);
+            if (!q.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            ++scanned;
+            const QString text = QString::fromUtf8(q.readAll());
+            auto cit = call.globalMatch(text);
+            while (cit.hasNext()) {
+                QString s = cit.next().captured(1);
+                s.replace(QStringLiteral("\\\""), QStringLiteral("\""));
+                if (!translated.contains(s))
+                    missing << QStringLiteral("%1: \"%2\"")
+                                   .arg(QFileInfo(path).fileName(), s);
+            }
+        }
+        QVERIFY2(scanned > 0, "no .qml files were scanned");
+        missing.removeDuplicates();
+        QVERIFY2(missing.isEmpty(),
+                 qPrintable(QStringLiteral(
+                     "these strings are marked qsTr() but have no entry in "
+                     "i18n/tidal-wave_de.ts, so they render in English inside an "
+                     "otherwise German UI:\n  %1")
+                                .arg(missing.join(QStringLiteral("\n  ")))));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestShortcuts)

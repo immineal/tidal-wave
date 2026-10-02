@@ -456,8 +456,8 @@
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Linux Tidal Client</source>
-        <translation>Nativer Tidal-Client für Linux</translation>
+        <source>Native Desktop Tidal Client</source>
+        <translation>Nativer Tidal-Client für den Desktop</translation>
     </message>
     <message>
         <source>Restoring session…</source>
@@ -1011,6 +1011,15 @@
     <message>
         <source>Let the colour in</source>
         <translation>Farbe hereinlassen</translation>
+    </message>
+    <message>
+        <source>Interface size</source>
+        <translation>Oberflächengröße</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <comment>interface size, the default</comment>
+        <translation>Automatisch</translation>
     </message>
     <message>
         <source>Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.</source>
