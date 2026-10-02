@@ -70,6 +70,26 @@ public:
     // Records a play so the entry floats to the top of the library list.
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id);
 
+    // One row the user just added to, or removed from, their library.
+    //
+    // The sidebar is a *second* copy of the account's favourites - TidalBridge
+    // keeps the first, and the two page the same four endpoints independently -
+    // so liking an album only ever reached the bridge: the album page's Save
+    // button flipped to "Saved" and the sidebar went on showing the list it had
+    // fetched at sign-in. These are how the one row gets across.
+    //
+    // Applied to the local lists rather than by re-paging the endpoint, for the
+    // same reason TidalBridge appends rather than re-reading: the row is already
+    // in hand, and a re-page would both cost a round trip and have to trust the
+    // favourites list to already reflect a POST that has only just been
+    // acknowledged.
+    void addAlbum (const Tidal::Album  &a);
+    void addArtist(const Tidal::Artist &a);
+    void addTrack (const Tidal::Track  &t);
+    // `kind` is album/artist/track; mixes and playlists cannot be unfavourited
+    // from anywhere in the interface.
+    void removeEntry(const QString &kind, const QString &id);
+
     // The library list filtered by kind, with nothing typed. `kinds` empty gives
     // the same thing the `entries` property does.
     //

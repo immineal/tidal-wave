@@ -790,6 +790,164 @@ private slots:
         QVERIFY(!lib.loading());
     }
 
+    // ── liking something has to reach the sidebar at once ────────────────
+    //
+    // The 0.4.0 bug, in the user's words: "if I go in and like a previously
+    // unliked album, it should also appear in my left sidebar, right? because
+    // it just didn't for me". TidalBridge and LibraryIndex page the same
+    // favourites endpoints into two separate copies, and only the bridge's was
+    // being updated on a like - so the album page's Save button flipped to
+    // "Saved" while the sidebar went on showing the library it had fetched at
+    // sign-in. These pin the sidebar's half of it.
+
+    void savingAnAlbumPutsItInTheSidebarWithoutARefetch() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("album:4242");
+        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+        const int before = lib.albumRequests;
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.addAlbum(mkAlbum(4242, QStringLiteral("Crystallized"),
+                             {mkArtist(98, QStringLiteral("Brakence"))}));
+
+        QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
+                 qPrintable(QStringLiteral("the sidebar did not gain album:4242; it holds %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Crystallized"));
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("subtitle")).toString(),
+                 QStringLiteral("Brakence"));
+        // The sidebar is told, exactly once, and nothing was re-paged for it.
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(lib.albumRequests, before);
+    }
+
+    void unsavingAnAlbumTakesItOutOfTheSidebarAtOnce() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("album:11");       // "Ärzte Live"
+        QVERIFY(indexOfKey(lib.entries(), key) >= 0);
+        const int was = lib.entries().size();
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("11"));
+
+        QVERIFY2(indexOfKey(lib.entries(), key) < 0,
+                 qPrintable(QStringLiteral("album:11 is still in the sidebar: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QCOMPARE(lib.entries().size(), was - 1);
+        QCOMPARE(spy.count(), 1);
+    }
+
+    // Following an artist is the same gap wearing a different hat, and so is
+    // unfollowing: a stale row left behind is as wrong as a missing one.
+    void followingAndUnfollowingAnArtistMoveTheSidebar() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("artist:30");
+        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+
+        lib.addArtist(mkArtist(30, QStringLiteral("Brakence")));
+        QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
+                 qPrintable(QStringLiteral("the sidebar did not gain artist:30; it holds %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+
+        lib.removeEntry(QStringLiteral("artist"), QStringLiteral("30"));
+        QVERIFY2(indexOfKey(lib.entries(), key) < 0,
+                 qPrintable(QStringLiteral("artist:30 is still in the sidebar: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+    }
+
+    // A liked song is not a row of the library list, but the finder's Tracks
+    // chip and every search read it, so it has to arrive there just the same.
+    void likingASongReachesTheTracksChipAndSearch() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const Album host = mkAlbum(4242, QStringLiteral("Crystallized"),
+                                   {mkArtist(98, QStringLiteral("Brakence"))});
+        const Track t = mkTrack(777, QStringLiteral("death rolL"), host,
+                                {mkArtist(98, QStringLiteral("Brakence"))});
+        const QStringList chip{QStringLiteral("track")};
+        const QString key = QStringLiteral("track:777");
+
+        QCOMPARE(indexOfKey(lib.entriesForKinds(chip), key), -1);
+
+        lib.addTrack(t);
+        QVERIFY2(indexOfKey(lib.entriesForKinds(chip), key) >= 0,
+                 qPrintable(QStringLiteral("the Tracks chip did not gain track:777; it holds %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("death"), {}), key) >= 0);
+        // Still not a row of the library list itself.
+        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+
+        lib.removeEntry(QStringLiteral("track"), QStringLiteral("777"));
+        QVERIFY2(indexOfKey(lib.entriesForKinds(chip), key) < 0,
+                 qPrintable(QStringLiteral("track:777 is still under the Tracks chip: %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+    }
+
+    // Re-liking something already saved must not double the row, and the
+    // sidebar must not be told that nothing happened.
+    void savingSomethingAlreadySavedChangesNothing() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const int was = lib.entries().size();
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+
+        lib.addAlbum(mkAlbum(10, QStringLiteral("Blue Train"),
+                             {mkArtist(99, QStringLiteral("Various"))}));
+        lib.addArtist(mkArtist(20, QStringLiteral("Adele")));
+        // Nothing saved under this id, so there is nothing to take out either.
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("9999"));
+
+        QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("album:10")), 1);
+        QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("artist:20")), 1);
+        QCOMPARE(lib.entries().size(), was);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    // A saved album still sorts where refresh() would have put it, rather than
+    // landing wherever it was appended.
+    void aNewlySavedAlbumSortsIntoPlace() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        // "Avalon" files between "Ärzte Live" and "Beatles" under German
+        // collation, nowhere near the end of the list it is appended to.
+        lib.addAlbum(mkAlbum(4242, QStringLiteral("Avalon"),
+                             {mkArtist(98, QStringLiteral("Roxy Music"))}));
+
+        const QStringList titles = titlesOf(lib.entries());
+        QVERIFY2(titles.indexOf(QStringLiteral("Ärzte Live")) < titles.indexOf(QStringLiteral("Avalon")),
+                 qPrintable(titles.join(QLatin1String(", "))));
+        QVERIFY2(titles.indexOf(QStringLiteral("Avalon")) < titles.indexOf(QStringLiteral("Beatles")),
+                 qPrintable(titles.join(QLatin1String(", "))));
+    }
+
 private:
     static constexpr qint64 kUser      = 1001;
     static constexpr qint64 kOtherUser = 2002;
