@@ -894,9 +894,14 @@ macOS key chips and rejects a stray symbol.
   reintroduce the mismatch.
 - **~80 TypeErrors on quit** (context objects torn down before QML bindings).
   Cosmetic, shutdown only, zero at startup.
-- **Glyph centring at DPR 2/3 is unverified** at the time of writing - the fix
-  is tested by arithmetic here and was sent to the Mac for a final measurement.
-  If no reply arrived, treat it as unverified rather than fine.
+- **Glyph centring: VERIFIED and closed.** The Mac measured ed784c1 at DPR 1, 2
+  and 3 for W=12/14/15/16/18/24 and at four sub-pixel offsets: seven bars, equal
+  widths, equal gaps, coverage exactly 1.0, and vertical centre **spread 0** in
+  every single combination. One correction fell out of its table: at W=12 on a
+  DPR 1 screen the box holds SIX bars, not seven with a one-pixel overhang as
+  the code comment had claimed - the seventh falls outside. It is clipped now
+  rather than left to paint over the neighbouring item. Six at that size is
+  still far better than the two the stroked path managed.
 
 ### Remaining release steps, from the user's own plan
 1. User verifies this build personally on this machine.
