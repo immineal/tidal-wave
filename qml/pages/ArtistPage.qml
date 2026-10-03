@@ -262,9 +262,13 @@ Rectangle {
                     return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
                 })
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
+                // Declares the source, so the player bar records the play. See
+                // the same change in HomePage.
                 onItemPlayClicked: function(i, item) {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {
-                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        if (err || tracks.length === 0) return
+                        player.setPlaybackSource("album", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
                     })
                 }
             }
@@ -288,7 +292,9 @@ Rectangle {
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
                 onItemPlayClicked: function(i, item) {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {
-                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        if (err || tracks.length === 0) return
+                        player.setPlaybackSource("album", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
                     })
                 }
             }

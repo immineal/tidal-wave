@@ -289,6 +289,8 @@ TestCase {
         }
     }
 
+    Component { id: navSpy;    SignalSpy    { signalName: "navigate" } }
+
     Component { id: albumC;    AlbumPage    { anchors.fill: parent } }
     Component { id: playlistC; PlaylistPage { anchors.fill: parent } }
     Component { id: mixC;      MixPage      { anchors.fill: parent } }
@@ -489,6 +491,40 @@ TestCase {
             compare(icon.name, sb.glyphFor(rows[i].kind),
                     "the row's type icon does not match its kind")
         }
+    }
+
+    // Opening a row is not playing it. markPlayed() feeds the recently-played
+    // tier, so marking on navigation meant the top of the sidebar filled up
+    // with whatever the user had clicked on and not listened to. In their words:
+    // "if I just click on an album, I don't want it to show up there. only show
+    // it there if actually any song of the album or playlists or something is
+    // played". Recording a play belongs to the player bar alone, which listens
+    // to player.sourceChanged.
+    function test_opening_a_row_does_not_count_as_playing_it() {
+        var host = showHost(1280, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        library.resetCallsForTest()
+        var spy = navSpy.createObject(testCase, { target: sb })
+        verify(spy, "could not watch the sidebar's navigate signal")
+
+        // Every kind a row can be, so none of them slips a mark through.
+        var rows = [
+            { kind: "album",    id: "a2",  title: "Aquarium" },
+            { kind: "playlist", id: "p2",  title: "Evening Drive", type: "USER" },
+            { kind: "artist",   id: "ar1", title: "Boards of Canada" },
+            { kind: "mix",      id: "m1",  title: "Daily Discovery" }
+        ]
+        for (var i = 0; i < rows.length; ++i) {
+            sb.open(rows[i].kind, rows[i].id, rows[i])
+            compare(library.lastPlayedForTest(), "",
+                    "opening a " + rows[i].kind + " row counted as a play")
+        }
+
+        // ...and it still navigates, so the mark was the only thing removed.
+        compare(spy.count, rows.length, "opening a row stopped navigating")
+        spy.destroy()
     }
 
     // S3: the 30-item fetch is the reported "new playlists don't show up" bug.

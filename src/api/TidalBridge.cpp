@@ -288,7 +288,16 @@ void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
                         m_favoriteTracks.cbegin(), m_favoriteTracks.cend(),
                         [&](const Track &x) { return x.id == t.id; });
                     if (!exists) {
-                        m_favoriteTracks.append(t);
+                        // Which end is "newest" depends on how far loading has
+                        // got. fetchFavoriteTracks asks for order=DATE without
+                        // a direction, so the endpoint answers oldest first and
+                        // the pager appends in that order; the list is only
+                        // turned round once the last page is in. So: front when
+                        // the order has settled, back while it has not, and
+                        // either way the song the user just liked ends up at
+                        // the top of the Tracks tab rather than the bottom.
+                        if (m_favTracksSettled) m_favoriteTracks.prepend(t);
+                        else                    m_favoriteTracks.append(t);
                         emit favoriteTracksChanged();
                     }
                     // The sidebar's copy dedups for itself, so it is told
@@ -342,7 +351,15 @@ void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
                         m_favoriteAlbums.cbegin(), m_favoriteAlbums.cend(),
                         [&](const Album &x) { return x.id == a.id; });
                     if (!exists) {
-                        m_favoriteAlbums.append(a);
+                        // Front, not back. This list is newest-saved first -
+                        // the endpoint is asked for order=DATE&DESC and the
+                        // pages are appended in that order - so appending put
+                        // the album the user had just saved at the *oldest*
+                        // end. The collection grid's default sort is "the order
+                        // the library arrived in", so on a library of any size
+                        // the album did appear, thousands of rows down, which
+                        // is indistinguishable from not appearing at all.
+                        m_favoriteAlbums.prepend(a);
                         emit favoriteAlbumsChanged();
                     }
                     // And the sidebar, which keeps a copy of its own. Emitted
@@ -393,7 +410,8 @@ void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
                     a.name    = d.name;
                     a.picture = d.picture;
                     if (!exists) {
-                        m_favoriteArtists.append(a);
+                        // Front, for the reason given in addAlbumFavorite.
+                        m_favoriteArtists.prepend(a);
                         emit favoriteArtistsChanged();
                     }
                     emit favoriteArtistAdded(a);
@@ -420,6 +438,28 @@ void TidalBridge::removeArtistFavorite(qlonglong artistId, QJSValue cb) {
 
 void TidalBridge::createPlaylist(const QString &title, QJSValue cb) {
     m_client->createPlaylist(title, [this, cb](Playlist p, QString err) mutable {
+        // Creating one updated neither this list nor the sidebar's, so the
+        // playlist existed on the server and nowhere in the interface until the
+        // next launch. Gated on the server having actually made it: a failed
+        // POST must not leave a phantom row.
+        if (err.isEmpty() && !p.uuid.isEmpty()) {
+            const bool exists = std::any_of(
+                m_favoritePlaylists.cbegin(), m_favoritePlaylists.cend(),
+                [&](const Playlist &x) { return x.uuid == p.uuid; });
+            if (!exists) {
+                // Appended, not prepended as the three favourites above are:
+                // every reader of this list runs it through sortPlaylists(),
+                // which orders by max(last played, Playlist::addedAt), so where
+                // a row sits in the raw list decides nothing. It does mean a
+                // created playlist leads the row only if the POST response
+                // carried `created`; nothing here can supply that date itself.
+                m_favoritePlaylists.append(p);
+                emit favoritePlaylistsChanged();
+            }
+            // Outside the guard, as with the favourites: the sidebar keeps its
+            // own list and dedups for itself.
+            emit playlistCreated(p);
+        }
         call(cb, { qjsEngine(this)->toScriptValue(playlistToMap(p)),
                    qjsEngine(this)->toScriptValue(err) });
     });
@@ -523,6 +563,7 @@ void TidalBridge::loadFavoriteTrackIds() {
     // appending after this reset (otherwise the old chain re-adds page 0).
     ++m_favTracksLoadGen;
 
+    m_favTracksSettled = false;
     m_favoriteTrackIds.clear();
     m_favoriteTracks.clear();
     m_favoriteAlbums.clear();
@@ -542,7 +583,11 @@ void TidalBridge::loadNextFavoriteTracksPage(int offset) {
         // A newer load has superseded this chain — stop before touching state.
         if (gen != m_favTracksLoadGen) return;
         if (!err.isEmpty() || tracks.isEmpty()) {
+            // The last page. Until here the list is in the endpoint's order,
+            // which is oldest like first; from here it is newest first, which
+            // is what every reader of it expects.
             std::reverse(m_favoriteTracks.begin(), m_favoriteTracks.end());
+            m_favTracksSettled = true;
             emit favoriteTracksChanged();
             return;
         }

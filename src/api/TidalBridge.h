@@ -108,6 +108,12 @@ signals:
     void favoriteAlbumAdded (const Album  &album);
     void favoriteArtistAdded(const Artist &artist);
     void favoriteTrackAdded (const Track  &track);
+    // A playlist the user just created, which is the only way a playlist can
+    // enter the account from in here: nothing in the interface favourites or
+    // unfavourites one. Nothing in qml/ calls createPlaylist yet either, so
+    // this carries the row to the sidebar for when that button lands rather
+    // than fixing something a user can reach today.
+    void playlistCreated(const Playlist &playlist);
     // `kind` is "album", "artist" or "track", spelled the way LibraryIndex
     // spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
@@ -141,6 +147,11 @@ private:
     // overlapping load chains can't both re-append page 0 (was duplicating the
     // top liked song).
     int             m_favTracksLoadGen = 0;
+    // Whether m_favoriteTracks is in its final, newest-first order. It is built
+    // in the endpoint's order, which is oldest first, and turned round when the
+    // last page lands - so which end a newly liked song belongs at depends on
+    // this. See addTrackFavorite.
+    bool            m_favTracksSettled = false;
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;

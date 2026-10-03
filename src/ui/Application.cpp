@@ -910,6 +910,10 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteArtistAdded, m_library, &LibraryIndex::addArtist);
     connect(m_bridge, &TidalBridge::favoriteTrackAdded,  m_library, &LibraryIndex::addTrack);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
+    // Creating a playlist is the same gap: there is no favourite action for
+    // playlists anywhere, so creating one is the only way a playlist row
+    // appears, and createPlaylist reached neither list.
+    connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
     m_cast = new CastManager(m_client, m_player, this);

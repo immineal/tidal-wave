@@ -142,7 +142,20 @@ Rectangle {
                             isPlaying:      player.currentTrack.id === root.tracks[index].id && player.playing
                             trackData:      root.tracks[index]
                             showPopularity: true
-                            onPlayRequested: player.playTracks(root.tracks, index)
+                            // The one play site in the app that declared no
+                            // source. Nothing was recorded as played here,
+                            // which is right - a song is not one of the four
+                            // kinds the sidebar lists, and markPlayed() drops
+                            // it - but the *previous* source was left standing,
+                            // so the player bar went on naming the album or
+                            // playlist the user had been in before searching.
+                            // "search" is dropped by markPlayed for the same
+                            // reason "radio" and "collection" are, so this
+                            // corrects the label and records nothing.
+                            onPlayRequested: {
+                                player.setPlaybackSource("search", root.query, root.query)
+                                player.playTracks(root.tracks, index)
+                            }
                         }
                     }
                     Item { height: 16 }
@@ -172,9 +185,13 @@ Rectangle {
                     })
                     mediaType: "album"
                     onItemClicked: (i, item) => navigateTo("album", { albumId: item.id })
+                    // Declares the source, so the player bar records the play.
+                    // See the same change in HomePage.
                     onItemPlayClicked: (i, item) => {
                         bridge.fetchAlbumTracks(item.id, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                            if (err || tracks.length === 0) return
+                            player.setPlaybackSource("album", "" + item.id, item.title || "")
+                            player.playTracks(tracks, 0)
                         })
                     }
                 }
@@ -204,9 +221,11 @@ Rectangle {
                     mediaType: "playlist"
                     onItemClicked: (i, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
                     onItemPlayClicked: (i, item) => {
-                        bridge.markPlaylistPlayed(item.id)
                         bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
-                            if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                            if (err || tracks.length === 0) return
+                            bridge.markPlaylistPlayed(item.id)
+                            player.setPlaybackSource("playlist", "" + item.id, item.title || "")
+                            player.playTracks(tracks, 0)
                         })
                     }
                 }

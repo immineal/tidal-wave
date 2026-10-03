@@ -715,8 +715,14 @@ Item {
     }
 
     // Opens one library row. `data` is the row as LibraryIndex handed it over.
+    //
+    // Opening is not playing. This used to call library.markPlayed() here, so
+    // merely clicking a row floated it into the recently-played tier and the
+    // top of the sidebar filled up with things the user had looked at and not
+    // listened to. Recording a play is the player bar's job and only the player
+    // bar's - it listens to player.sourceChanged, which fires when something
+    // actually starts - so there is nothing to do here but navigate.
     function open(kind, id, data) {
-        library.markPlayed(kind, id)
         switch (kind) {
         case "playlist":
             // The row carries the playlist's Tidal type, which is what

@@ -274,6 +274,14 @@ void LibraryIndex::fetchArtistPage(int offset, int limit, ArtistsCb cb) {
     m_client->fetchFavoriteArtists(std::move(cb), limit, offset);
 }
 
+// Careful: the order this returns is load-bearing, in two places. The endpoint
+// is asked for order=DATE with no orderDirection, so it answers oldest like
+// first, and the pager keeps that order; Entry::likeIndex is simply a song's
+// position in it, and the Tracks chip is sorted by that descending to get
+// "newest liked first". Adding orderDirection=DESC here - as
+// TidalClient::fetchFavoriteAlbums does, so it is an easy symmetry to reach for
+// - would silently invert the chip. TidalBridge keeps a second copy of the same
+// list and reverses it once paging ends, which is the other reader.
 void LibraryIndex::fetchTrackPage(int offset, int limit, TracksCb cb) {
     if (!m_client) { cb({}, QStringLiteral("no client")); return; }
     m_client->fetchFavoriteTracks(std::move(cb), limit, offset);
@@ -453,9 +461,49 @@ void LibraryIndex::rebuild() {
         return collator.compare(a.sortKey, b.sortKey) < 0;
     });
 
+    // A liked song does not get a row of its own - a library holds thousands
+    // and they would bury the albums and playlists - with one exception: a song
+    // whose album the user has *not* saved is otherwise unreachable from the
+    // sidebar at all. Nothing on screen leads to it. So that one earns a row,
+    // and it loses it again the moment the album it sits on is saved, because
+    // the album row then leads to it.
+    //
+    // Both directions matter and both are live: saving an album drops the rows
+    // of its now-redundant liked songs, unsaving one brings them back.
+    QSet<qint64> savedAlbumIds;
+    for (const Album &a : m_albums) savedAlbumIds.insert(a.id);
+
+    // Pointers, so the track entries are not copied into m_library: that list
+    // is what entriesForKinds() and search() read, and a song appearing in both
+    // it and m_trackEntries would be considered - and listed - twice.
+    // Reserved for the library rows alone: the songs that get through the two
+    // filters below are a handful, while m_trackEntries can hold tens of
+    // thousands, and rebuild() runs on every pin, play and like.
+    QList<const Entry *> rows;
+    rows.reserve(m_library.size());
+    for (const Entry &e : m_library) rows.append(&e);
+    for (const Entry &e : m_trackEntries) {
+        if (!e.liked) continue;                             // only deliberate likes
+        if (savedAlbumIds.contains(e.albumId)) continue;    // the album row leads to it
+        rows.append(&e);
+    }
+    // Same three tiers, same collation. A song cannot be pinned (PinStore
+    // rejects the kind) and cannot be played into the second tier (markPlayed
+    // rejects it too), so it always lands in the A-Z tier and files under its
+    // title among everything else saved. The Tracks chip is a different list
+    // with a different rule - see entriesForKinds().
+    std::stable_sort(rows.begin(), rows.end(), [&](const Entry *a, const Entry *b) {
+        const int ta = tierOf(*a);
+        const int tb = tierOf(*b);
+        if (ta != tb) return ta < tb;
+        if (ta == 0)  return a->pinIndex < b->pinIndex;
+        if (ta == 1)  return a->lastPlayed > b->lastPlayed;
+        return collator.compare(a->sortKey, b->sortKey) < 0;
+    });
+
     m_entries.clear();
-    m_entries.reserve(m_library.size());
-    for (const Entry &e : m_library) m_entries.append(toRow(e, 0));
+    m_entries.reserve(rows.size());
+    for (const Entry *e : rows) m_entries.append(toRow(*e, 0));
 
     emit entriesChanged();
 }
@@ -493,6 +541,11 @@ void LibraryIndex::addAlbum(const Album &a) {
         if (x.id == a.id) return;        // already saved; re-liking adds no row
     m_albums.append(a);
     rebuild();
+    // The row is only half of it: until this album's tracklist is in the index,
+    // every song on it answers no search. startTrackIndex() runs from
+    // partFinished() alone, so without this the songs waited for the next
+    // launch.
+    indexOneAlbum(a.id);
 }
 
 void LibraryIndex::addArtist(const Artist &a) {
@@ -503,16 +556,29 @@ void LibraryIndex::addArtist(const Artist &a) {
     rebuild();
 }
 
+void LibraryIndex::addPlaylist(const Playlist &p) {
+    if (p.uuid.isEmpty()) return;
+    for (const Playlist &x : m_playlists)
+        if (x.uuid == p.uuid) return;
+    m_playlists.append(p);
+    // No tracklist to index: only saved albums are indexed, deliberately, and a
+    // playlist the user has just created is empty anyway.
+    rebuild();
+}
+
 void LibraryIndex::addTrack(const Track &t) {
     if (t.id <= 0) return;
     for (const Track &x : m_favoriteTracks)
         if (x.id == t.id) return;
     m_favoriteTracks.append(t);
-    // A song is not a row of the library list, so rebuild() has nothing to do
-    // with it. The finder's Tracks chip and every search read m_trackEntries
-    // instead, and entriesChanged is what makes the sidebar ask again.
+    // Appended, not inserted: the favourites endpoint answers oldest first and
+    // the pager keeps that order, so the end of this list is the most recent
+    // like, which is what the Tracks chip orders by.
     rebuildTrackEntries();
-    emit entriesChanged();
+    // rebuild() because a liked song whose album is not saved now takes a row
+    // of the library list as well - see rebuild(). It emits entriesChanged, so
+    // the Tracks chip and every search are told in the same breath.
+    rebuild();
 }
 
 void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
@@ -523,6 +589,11 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
         for (int i = 0; i < m_albums.size(); ++i) {
             if (m_albums[i].id != albumId) continue;
             m_albums.removeAt(i);
+            // Its songs go with it. rebuildTrackEntries() now skips a cached
+            // tracklist whose album is no longer saved, so the cache entry is
+            // left where it is - that is where the disk prune reads it from,
+            // and re-saving the album needs no second round trip.
+            rebuildTrackEntries();
             rebuild();
             return;
         }
@@ -540,7 +611,9 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
             if (m_favoriteTracks[i].id != trackId) continue;
             m_favoriteTracks.removeAt(i);
             rebuildTrackEntries();
-            emit entriesChanged();
+            // rebuild() as in addTrack: unliking a song whose album is not
+            // saved also takes its row out of the library list.
+            rebuild();
             return;
         }
     }
@@ -604,15 +677,33 @@ void LibraryIndex::rebuildTrackEntries() {
     // Liked songs first: they are already cached, so they are what answers a
     // search during the very first seconds, and they are the better record of
     // a song (the favourite carries its own album).
-    for (const Track &t : m_favoriteTracks) {
+    for (qsizetype i = 0; i < m_favoriteTracks.size(); ++i) {
+        const Track &t = m_favoriteTracks.at(i);
         if (m_trackIds.contains(t.id)) continue;
         m_trackIds.insert(t.id);
         Entry e = entryFor(t, 0);
-        e.liked = true;
+        e.liked     = true;
+        e.likeIndex = int(i);
         m_trackEntries.append(e);
     }
 
+    QSet<qint64> stillSaved;
+    for (const Album &a : m_albums) stillSaved.insert(a.id);
+
     for (auto it = m_albumTrackCache.constBegin(); it != m_albumTrackCache.constEnd(); ++it) {
+        // Unsaving an album takes its songs out of the index with it. This used
+        // to walk the whole cache whatever m_albums said, and the cache itself
+        // was pruned only when a full index run finished, so an album the user
+        // had just removed went on answering searches for the rest of the
+        // session.
+        //
+        // The emptiness guard is saveTrackCache()'s, for the same reason: the
+        // cache is read off disk at sign-in, before the album list has been
+        // paged in, and with no album list yet nothing is "no longer saved".
+        // Pruning there would leave the index empty on every launch and make
+        // the disk cache worthless.
+        if (!stillSaved.isEmpty() && !stillSaved.contains(it.key())) continue;
+
         for (const Entry &e : it.value().tracks) {
             const qint64 trackId = e.id.toLongLong();
             if (m_trackIds.contains(trackId)) continue;
@@ -649,6 +740,48 @@ void LibraryIndex::startTrackIndex() {
     }
     setIndexing(true);
     stepTrackIndex(m_indexGen);
+}
+
+void LibraryIndex::indexOneAlbum(qint64 albumId) {
+    if (albumId <= 0) return;
+
+    int declared = 0;
+    bool saved = false;
+    for (const Album &a : m_albums)
+        if (a.id == albumId) { declared = a.numTracks; saved = true; break; }
+    if (!saved) return;
+
+    // Already current, from the disk cache or from an earlier save this
+    // session. Same staleness test startTrackIndex() uses: the album's own
+    // track count moving is the cheapest signal the cached list is wrong.
+    const auto cached = m_albumTrackCache.constFind(albumId);
+    if (cached != m_albumTrackCache.constEnd() && cached->numTracks == declared) {
+        // It was in the cache but filtered out of the index while the album was
+        // unsaved, so the entries have to be built again before it is findable.
+        const qsizetype was = m_trackEntries.size();
+        rebuildTrackEntries();
+        if (m_trackEntries.size() != was) emit entriesChanged();
+        return;
+    }
+
+    // Deliberately not ++m_indexGen: see the header. A run already in flight
+    // keeps its generation and its queue, and this reply is thrown away by
+    // exactly the events that should throw it away.
+    const int gen = m_indexGen;
+    fetchAlbumTracklist(albumId, [this, gen, albumId](QList<Track> tracks, QString err) {
+        if (gen != m_indexGen) return;
+        if (!err.isEmpty()) return;
+        const qsizetype was = m_trackEntries.size();
+        indexAlbum(albumId, tracks);
+        // Written out now rather than at the end of the next run, so the
+        // tracklist is not re-fetched on the next launch. A run in progress
+        // will write again when it finishes; the file is replaced atomically.
+        saveTrackCache();
+        // Only when the index actually grew. An album whose songs were all
+        // liked already, or that has no tracklist to speak of, is no news for
+        // the sidebar, and addAlbum's own emit has already gone out.
+        if (m_trackEntries.size() != was) emit entriesChanged();
+    });
 }
 
 void LibraryIndex::stepTrackIndex(int gen) {
@@ -806,16 +939,29 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
     for (const Entry &e : m_library)
         if (kinds.contains(e.kind)) picked.append(&e);
 
-    // Track entries are built for search and carry neither a pin index nor a
-    // play time - nothing pins a song, and markPlayed() rejects the kind - so
-    // they all sit in the third tier and sort by title. That is the right place
-    // for them: a song is the one kind with no ordering of its own, and mixing
-    // thousands of them into the recently-played tier would push the albums and
-    // playlists that *do* have one out of sight.
+    // Songs get a tier to themselves, below the three the library kinds use.
+    // They carry neither a pin index nor a play time - nothing pins a song, and
+    // markPlayed() rejects the kind - so they have no business in the
+    // recently-played tier, and thousands of them mixed into it would push the
+    // albums and playlists that *do* have an ordering out of sight. That part
+    // has not changed.
+    //
+    // What has changed is the order *within* their tier: newest liked first,
+    // not A-Z. Alphabetical made the chip useless for the thing it is for -
+    // finding the song you just liked - and the ordering costs nothing to
+    // produce, because the favourites endpoint returns likes oldest first and
+    // likeIndex is simply where the song sat in that list. It therefore covers
+    // likes made on the phone too, which a local play time never could; Tidal
+    // exposes no cross-device play history at all.
+    //
+    // A song found on a saved album's tracklist has no liking date (likeIndex
+    // -1) and goes after the liked ones, by title, which is also the order it
+    // was in before.
     if (wantsTracks)
         for (const Entry &e : m_trackEntries) picked.append(&e);
 
     const auto tierOf = [](const Entry &e) {
+        if (e.kind == QLatin1String(kKindTrack)) return 3;
         if (e.pinIndex >= 0) return 0;
         return e.lastPlayed > 0 ? 1 : 2;
     };
@@ -829,6 +975,7 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
         if (ta != tb) return ta < tb;
         if (ta == 0)  return a->pinIndex < b->pinIndex;
         if (ta == 1)  return a->lastPlayed > b->lastPlayed;
+        if (ta == 3 && a->likeIndex != b->likeIndex) return a->likeIndex > b->likeIndex;
         return collator.compare(a->sortKey, b->sortKey) < 0;
     });
 

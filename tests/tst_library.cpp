@@ -871,8 +871,10 @@ private slots:
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
-    // A liked song is not a row of the library list, but the finder's Tracks
-    // chip and every search read it, so it has to arrive there just the same.
+    // A liked song is generally not a row of the library list, but the finder's
+    // Tracks chip and every search read it, so it has to arrive there just the
+    // same. The one exception - a song whose album is not saved - is the
+    // subject of theSidebarKeepsOnlyTheLikedSongsNothingElseLeadsTo() below.
     void likingASongReachesTheTracksChipAndSearch() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -894,8 +896,17 @@ private slots:
                  qPrintable(QStringLiteral("the Tracks chip did not gain track:777; it holds %1")
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
         QVERIFY(indexOfKey(lib.search(QStringLiteral("death"), {}), key) >= 0);
-        // Still not a row of the library list itself.
-        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+        // Liking a song off an album that *is* saved adds no row to the library
+        // list: the album's own row already leads to it. (Album 10 is "Blue
+        // Train", which fillMixedLibrary saves.)
+        const Album saved = mkAlbum(10, QStringLiteral("Blue Train"),
+                                    {mkArtist(99, QStringLiteral("Various"))});
+        lib.addTrack(mkTrack(778, QStringLiteral("Locomotion"), saved,
+                             {mkArtist(99, QStringLiteral("Various"))}));
+        QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:778")) >= 0);
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:778")) < 0,
+                 qPrintable(QStringLiteral("track:778 took a library row although album 10 is saved: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
 
         lib.removeEntry(QStringLiteral("track"), QStringLiteral("777"));
         QVERIFY2(indexOfKey(lib.entriesForKinds(chip), key) < 0,
@@ -946,6 +957,329 @@ private slots:
                  qPrintable(titles.join(QLatin1String(", "))));
         QVERIFY2(titles.indexOf(QStringLiteral("Avalon")) < titles.indexOf(QStringLiteral("Beatles")),
                  qPrintable(titles.join(QLatin1String(", "))));
+    }
+
+    // ── and its songs have to reach the search index with it ─────────────
+    //
+    // The sidebar row was only half of it. A saved album's tracklist is what
+    // makes its songs findable, and startTrackIndex() ran from one place only,
+    // the end of a refresh - so the album the user had just saved showed up in
+    // the sidebar while every song on it stayed unsearchable until the next
+    // launch.
+
+    void savingAnAlbumIndexesItsTracksForSearch() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillSearchLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+        QCOMPARE(lib.indexedAlbumCount(), lib.albums.size());
+
+        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
+        const Album saved = mkAlbum(200, QStringLiteral("III"), {moderat});
+        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eating Hooks"), saved, {moderat}),
+                                mkTrack(601, QStringLiteral("Reminder"),     saved, {moderat})};
+        const int before = lib.tracklistRequests;
+        QVERIFY(lib.search(QStringLiteral("eating hooks"), {}).isEmpty());
+
+        lib.addAlbum(saved);
+        QTest::qWait(5);
+
+        const QStringList chip{QStringLiteral("track")};
+        QVERIFY2(indexOfKey(lib.search(QStringLiteral("eating hooks"), {}), QStringLiteral("track:600")) >= 0,
+                 qPrintable(QStringLiteral("\"Eating Hooks\" is not searchable; the index holds %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+        QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:601")) >= 0);
+        QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() + 1);
+        // One tracklist, the one just saved - not the library over again.
+        QCOMPARE(lib.tracklistRequests, before + 1);
+    }
+
+    // The naive way to do the above is to call startTrackIndex() again, which
+    // bumps the index generation and rebuilds the whole queue: every reply the
+    // run already had in flight is dropped on the floor and its album asked for
+    // a second time. Saving an album has to join the run in progress, not
+    // restart it.
+    void savingAnAlbumDuringAnIndexRunDoesNotRestartIt() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillSearchLibrary(lib);
+        lib.deferTracklists = true;
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QVERIFY(lib.indexing());
+        lib.deliverOneTracklist();              // album 100 lands
+        QTest::qWait(1);
+        QCOMPARE(lib.indexedAlbumCount(), 1);
+        const int requestsBefore = lib.tracklistRequests;   // 100 done, 101 in flight
+
+        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
+        const Album saved = mkAlbum(200, QStringLiteral("III"), {moderat}, 1);
+        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eating Hooks"), saved, {moderat})};
+        lib.addAlbum(saved);
+
+        QCOMPARE(lib.tracklistRequests, requestsBefore + 1);
+
+        lib.deliverAllTracklists();
+        QTRY_VERIFY(!lib.indexing());
+
+        // One request per album and not one more. A restart would have thrown
+        // away the reply for album 101 that was in flight when the save landed
+        // and gone back for it.
+        QCOMPARE(lib.tracklistRequests, int(lib.albums.size()) + 1);
+        QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() + 1);
+        QVERIFY2(indexOfKey(lib.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0,
+                 "album 101's tracklist did not survive the save");
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("eating hooks"), {}), QStringLiteral("track:600")) >= 0);
+    }
+
+    // ── and unsaving one has to take them out again ───────────────────────
+    //
+    // rebuildTrackEntries() walked every album in the tracklist cache without
+    // asking whether that album was still saved, and the cache itself was only
+    // pruned when a whole index run finished. So the songs of an album the user
+    // had just removed went on answering searches for the rest of the session.
+    void unsavingAnAlbumTakesItsTracksOutOfTheSearchIndex() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillSearchLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+
+        const QStringList chip{QStringLiteral("track")};
+        // Album 101 is "Dummy". "Roads" is only ever found through its
+        // tracklist; "Glory Box" sits on it too but is also a liked song.
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0);
+        QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:501")) >= 0);
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("101"));
+
+        QVERIFY2(lib.search(QStringLiteral("roads"), {}).isEmpty(),
+                 qPrintable(QStringLiteral("\"Roads\" still answers a search; the index holds %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+        QVERIFY2(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:504")) < 0,
+                 qPrintable(QStringLiteral("track:504 is still under the Tracks chip: %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+        // A liked song is a favourite in its own right, so it stays even though
+        // the album it happens to sit on has gone.
+        QVERIFY2(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:501")) >= 0,
+                 qPrintable(QStringLiteral("unsaving the album took the liked song with it; left: %1")
+                                .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
+        // Every other album keeps its songs.
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("bachelorette"), {}), QStringLiteral("track:503")) >= 0);
+        QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() - 1);
+        QCOMPARE(spy.count(), 1);
+    }
+
+    // The pruning above is guarded, and this is the guard: the tracklist cache
+    // is read off disk at sign-in, before the album list has been paged in, and
+    // with no album list yet nothing counts as "no longer saved". Without that,
+    // the index would start out empty on every launch and the disk cache would
+    // buy nothing. saveTrackCache() has the same guard for the same reason.
+    void theDiskCacheAnswersBeforeTheAlbumListArrives() {
+        PinStore pins; pins.setUserId(kUser);
+        {
+            TestLibrary lib(&pins);
+            fillSearchLibrary(lib);
+            lib.setUserId(kUser);
+            lib.refresh();
+            waitForIndex(lib);
+            QCOMPARE(lib.indexedAlbumCount(), lib.albums.size());
+        }
+
+        TestLibrary again(&pins);
+        fillSearchLibrary(again);
+        again.setUserId(kUser);          // reads the cache; no refresh() yet
+        QCOMPARE(again.entries().size(), 0);
+        QVERIFY2(indexOfKey(again.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0,
+                 "the cached tracklists answer nothing before the album list arrives");
+    }
+
+    // ── the one liked song that does earn a sidebar row ──────────────────
+    //
+    // Liked songs stay out of the library list on purpose: liking an album and
+    // then five songs off it would bury everything else. The exception the user
+    // asked for is the song nothing else leads to - one whose album they have
+    // not saved - because without a row of its own it cannot be reached from
+    // the sidebar at all.
+    //
+    // Both directions are live, and the second is the interesting one: saving
+    // the album takes the song's row away again, and unsaving it gives the row
+    // back.
+    void theSidebarKeepsOnlyTheLikedSongsNothingElseLeadsTo() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const Artist brakence = mkArtist(98, QStringLiteral("Brakence"));
+        const Album  orphan   = mkAlbum(4242, QStringLiteral("Hypochondriac"), {brakence});
+        const Album  saved    = mkAlbum(10, QStringLiteral("Blue Train"),
+                                        {mkArtist(99, QStringLiteral("Various"))});
+
+        // One song off an unsaved album, one off a saved one.
+        lib.addTrack(mkTrack(777, QStringLiteral("Deepfake"), orphan, {brakence}));
+        lib.addTrack(mkTrack(778, QStringLiteral("Locomotion"), saved, {brakence}));
+
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) >= 0,
+                 qPrintable(QStringLiteral("the unreachable song got no row; the list holds %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:778")) < 0,
+                 qPrintable(QStringLiteral("the song on a saved album took a row too: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+
+        // Saving the album it sits on makes the row redundant, so it goes.
+        lib.addAlbum(orphan);
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) < 0,
+                 qPrintable(QStringLiteral("saving the album left the song's row behind: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QVERIFY(indexOfKey(lib.entries(), QStringLiteral("album:4242")) >= 0);
+
+        // ...and unsaving it hands the row back, because nothing leads to the
+        // song again.
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("4242"));
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) >= 0,
+                 qPrintable(QStringLiteral("unsaving the album did not bring the song's row back: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+
+        // Unliking it is the end of it either way.
+        lib.removeEntry(QStringLiteral("track"), QStringLiteral("777"));
+        QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) < 0,
+                 qPrintable(QStringLiteral("unliking left the row in place: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        // The song is still never a row twice, and the Tracks chip is a
+        // different list that was never filtered this way.
+        lib.addTrack(mkTrack(777, QStringLiteral("Deepfake"), orphan, {brakence}));
+        QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("track:777")), 1);
+        QVERIFY(indexOfKey(lib.entriesForKinds({QStringLiteral("track")}),
+                           QStringLiteral("track:778")) >= 0);
+    }
+
+    // ── the Tracks chip is ordered by when a song was liked ──────────────
+    //
+    // It used to be A-Z, which made the chip useless for the thing it is for:
+    // finding the song just liked. The order comes from the favourites endpoint
+    // itself (order=DATE, oldest first), so it covers likes made on the phone
+    // too - Tidal exposes no cross-device play history, so a local play time
+    // never could.
+    void theTracksChipIsOrderedByWhenASongWasLiked() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        // The pager keeps the endpoint's order, which is oldest like first. The
+        // titles run backwards against it on purpose, so an alphabetical sort
+        // and a by-liking sort cannot agree.
+        lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"),   host, {various}),
+                              mkTrack(802, QStringLiteral("Bravo"),   host, {various}),
+                              mkTrack(803, QStringLiteral("Charlie"), host, {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList chip{QStringLiteral("track")};
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
+            QStringLiteral("Charlie"), QStringLiteral("Bravo"), QStringLiteral("Alpha")}));
+
+        // The case the user actually hits: like a song, and it is the first one
+        // under the chip.
+        lib.addTrack(mkTrack(804, QStringLiteral("Zulu"), host, {various}));
+        const QStringList after = titlesOf(lib.entriesForKinds(chip));
+        QVERIFY2(!after.isEmpty() && after.first() == QStringLiteral("Zulu"),
+                 qPrintable(QStringLiteral("the song just liked is not first: %1")
+                                .arg(after.join(QLatin1String(", ")))));
+        QCOMPARE(after, QStringList({QStringLiteral("Zulu"), QStringLiteral("Charlie"),
+                                     QStringLiteral("Bravo"), QStringLiteral("Alpha")}));
+    }
+
+    // A song the background indexer merely found on a saved album has no liking
+    // date, so it goes after every liked one, by title - which is where it was
+    // before. And the four library kinds keep their own tiers above the songs:
+    // thousands of tracks must not push an album out of sight.
+    void songsWithNoLikingDateFollowTheLikedOnes() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillSearchLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+
+        // Albums and tracks together: the albums come first, then the songs.
+        const QVariantList both =
+            lib.entriesForKinds({QStringLiteral("album"), QStringLiteral("track")});
+        const QStringList keys = keysOf(both);
+        int lastAlbum = -1, firstTrack = INT_MAX;
+        for (int i = 0; i < keys.size(); ++i) {
+            if (keys.at(i).startsWith(QLatin1String("album:"))) lastAlbum = i;
+            else if (keys.at(i).startsWith(QLatin1String("track:")) && i < firstTrack) firstTrack = i;
+        }
+        QVERIFY2(lastAlbum < firstTrack,
+                 qPrintable(QStringLiteral("a song came before an album: %1")
+                                .arg(keys.join(QLatin1String(", ")))));
+
+        // Among the songs: the three liked ones first, newest like first
+        // (500, 501, 502 is the order they were fetched in), then everything the
+        // indexer found, by title.
+        QStringList trackKeys;
+        for (const QString &k : keys)
+            if (k.startsWith(QLatin1String("track:"))) trackKeys << k;
+        QCOMPARE(trackKeys.mid(0, 3), QStringList({QStringLiteral("track:502"),
+                                                   QStringLiteral("track:501"),
+                                                   QStringLiteral("track:500")}));
+        const QVariantList rows = both;
+        QStringList indexedTitles;
+        for (const QVariant &v : rows) {
+            const QVariantMap m = v.toMap();
+            if (m.value(QStringLiteral("kind")).toString() != QLatin1String("track")) continue;
+            const QString k = QStringLiteral("track:") + m.value(QStringLiteral("id")).toString();
+            if (trackKeys.indexOf(k) < 3) continue;
+            indexedTitles << m.value(QStringLiteral("title")).toString();
+        }
+        QStringList sorted = indexedTitles;
+        std::sort(sorted.begin(), sorted.end());
+        QCOMPARE(indexedTitles, sorted);
+    }
+
+    // ── a playlist the user creates (plumbing only) ───────────────────────
+    //
+    // createPlaylist() updated neither TidalBridge's playlist list nor this
+    // one, so a new playlist would have been missing from the sidebar until the
+    // next launch - the same gap as liking an album, and with no favourite
+    // action for playlists anywhere in the interface, creating one is the only
+    // way a playlist row can appear at all. Nothing in qml/ calls
+    // createPlaylist today, so this is the sidebar half of the wiring waiting
+    // for the button, not a user-visible bug being fixed.
+    void creatingAPlaylistPutsItInTheSidebar() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("playlist:p-new");
+        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+        const int before = lib.playlistRequests;
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
+
+        QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
+                 qPrintable(QStringLiteral("the sidebar did not gain playlist:p-new; it holds %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Avalon Mix"));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(lib.playlistRequests, before);
+
+        // Creating is not liking: there is no second time, but a repeat must
+        // not double the row either.
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
+        QCOMPARE(keysOf(lib.entries()).count(key), 1);
+        QCOMPARE(spy.count(), 1);
     }
 
 private:

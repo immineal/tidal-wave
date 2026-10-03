@@ -83,9 +83,17 @@ public:
     // in hand, and a re-page would both cost a round trip and have to trust the
     // favourites list to already reflect a POST that has only just been
     // acknowledged.
+    // Saving an album also pulls its tracklist into the search index, one
+    // album, without disturbing a background index run already going.
     void addAlbum (const Tidal::Album  &a);
     void addArtist(const Tidal::Artist &a);
     void addTrack (const Tidal::Track  &t);
+    // A playlist the user just created. Creating is the only way a playlist
+    // enters the account from here - there is no favourite action for
+    // playlists anywhere in the interface - and TidalBridge::createPlaylist
+    // reached neither its own list nor this one, so a new playlist would have
+    // been missing from the sidebar until the next launch.
+    void addPlaylist(const Tidal::Playlist &p);
     // `kind` is album/artist/track; mixes and playlists cannot be unfavourited
     // from anywhere in the interface.
     void removeEntry(const QString &kind, const QString &id);
@@ -165,6 +173,13 @@ private:
         // the tracklist of a saved album. Liking is a deliberate act, so it
         // counts for more when the results are ranked.
         bool    liked      = false;
+        // Liked tracks only, -1 otherwise: where this song sits in the
+        // favourites list. The endpoint answers order=DATE oldest first and the
+        // pager keeps that order, so a higher number is a more recent like.
+        // That is the only record of when a song was liked that reaches this
+        // far, and it covers likes made on another device, which is why the
+        // Tracks chip is ordered by it rather than by a local play time.
+        int     likeIndex  = -1;
 
         QString key() const { return kind + QLatin1Char(':') + id; }
     };
@@ -182,6 +197,14 @@ private:
 
     void startTrackIndex();
     void stepTrackIndex(int gen);
+    // One album's tracklist, fetched on its own rather than through the queue.
+    // startTrackIndex() is the wrong tool for a single album: it bumps
+    // m_indexGen and rebuilds the queue, which abandons every reply a run
+    // already has in flight and asks for those albums again. This rides the
+    // generation that is current instead, so a sign-out, an account switch or a
+    // fresh refresh still discards the reply, and a run in progress is left
+    // exactly as it was.
+    void indexOneAlbum(qint64 albumId);
     void indexAlbum(qint64 albumId, const QList<Tidal::Track> &tracks);
 
     void loadRecents();

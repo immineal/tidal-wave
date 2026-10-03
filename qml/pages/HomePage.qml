@@ -158,9 +158,16 @@ Rectangle {
                     mixId: item.id, title: item.title,
                     subtitle: item.subtitle, coverUrl: item.coverUrl
                 })
+                // Declaring the source is what records the play: the player
+                // bar listens to player.sourceChanged and is the only place
+                // markPlayed() is called from. Inside the callback and after
+                // the guard, so a fetch that fails or comes back empty cannot
+                // record a play that never happened.
                 onItemPlayClicked: (idx, item) => {
                     bridge.fetchMixTracks(item.id, function(tracks, err) {
-                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        if (err || tracks.length === 0) return
+                        player.setPlaybackSource("mix", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
                     })
                 }
                 onViewAllClicked: navigateTo("collection", { activeTab: 4 })
@@ -180,7 +187,9 @@ Rectangle {
                 onItemClicked: (idx, item) => navigateTo("album", { albumId: item.id })
                 onItemPlayClicked: (idx, item) => {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {
-                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        if (err || tracks.length === 0) return
+                        player.setPlaybackSource("album", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
                     })
                 }
                 onViewAllClicked: navigateTo("collection", { activeTab: 1 })
@@ -199,9 +208,11 @@ Rectangle {
                 mediaType: "playlist"
                 onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
                 onItemPlayClicked: (idx, item) => {
-                    bridge.markPlaylistPlayed(item.id)
                     bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
-                        if (!err && tracks.length > 0) player.playTracks(tracks, 0)
+                        if (err || tracks.length === 0) return
+                        bridge.markPlaylistPlayed(item.id)
+                        player.setPlaybackSource("playlist", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
                     })
                 }
                 onViewAllClicked: navigateTo("collection", { activeTab: 3 })
