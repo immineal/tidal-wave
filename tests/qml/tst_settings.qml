@@ -1184,12 +1184,45 @@ TestCase {
         verify(note.text.length > 0)
         verify(note.text.toLowerCase().indexOf("restart") !== -1,
                "the note says \"" + note.text + "\", which does not mention a restart")
-        // Next to the control, not somewhere else in the panel.
+        // Next to the control, not somewhere else in the panel - asked as what
+        // lies between them rather than as how far apart they are.
+        //
+        // This was `|note.y - toggle.y| < 80`. The row between the two holds a
+        // stock Slider, which is the one control in this panel whose height
+        // comes from the Controls style rather than from the panel, and the app
+        // runs Fusion on every Qt but 6.4, where it runs Basic - see
+        // Application::applyQuickControlsStyle(). Basic's slider asks for 40px
+        // of height - a 28px handle on 6px of padding - where Fusion's asks for
+        // 13, so the row is 40px tall there and 20 here, and that one row is the
+        // whole difference between the note sitting 82px below the toggle on
+        // Debian 12 and 62px below it on 6.12. The layout is the same on both;
+        // only the slider's chrome is not, so a pixel bound here answered which
+        // style the Qt version handed out.
+        //
+        // The order in the card answers the actual question, and answers it more
+        // narrowly: the note has to come straight after the two rows it speaks
+        // for, which a note merely sitting within 80px of the toggle need not.
         var toggle = findByName(h.panel.contentItem, "settingsHwAccelToggle")
+        var slider = findByName(h.panel.contentItem, "settingsUiScaleSlider")
+        verify(toggle && slider, "the performance controls were not found")
+        var card = note.parent
+        compare(toggle.parent.parent, card,
+                "the restart note is not even in the same card as the toggle")
+        var rows = []
+        for (var i = 0; i < card.children.length; ++i)
+            if (card.children[i].visible) rows.push(card.children[i])
+        var ti = rows.indexOf(toggle.parent)
+        var si = rows.indexOf(slider.parent)
+        var ni = rows.indexOf(note)
+        verify(ti >= 0 && si === ti + 1 && ni === si + 1,
+               "the card has " + rows.length + " visible rows, with the toggle at "
+               + ti + ", interface size at " + si + " and the note at " + ni
+               + ": the restart note is nowhere near the toggle it belongs to")
+        // And below it, not above.
         var flick = scrollerOf(h.panel)
-        verify(Math.abs(note.mapToItem(flick.contentItem, 0, 0).y
-                        - toggle.mapToItem(flick.contentItem, 0, 0).y) < 80,
-               "the restart note is nowhere near the toggle it belongs to")
+        verify(note.mapToItem(flick.contentItem, 0, 0).y
+               > toggle.mapToItem(flick.contentItem, 0, 0).y,
+               "the restart note sits above the toggle it belongs to")
         h.panel.close()
     }
 

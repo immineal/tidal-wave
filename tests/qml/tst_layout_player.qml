@@ -282,11 +282,21 @@ TestCase {
         }
     }
 
+    // The size goes in as an initial property rather than being assigned after
+    // creation, which is not a detail. Assigned after, nowPlayingHost came up at
+    // the 960 it declares - 960 less the sidebar is under the 1000px breakpoint,
+    // so the page was born stacked - and every 1280 row then measured it part
+    // way through the 170ms rearrangement out of that, because waitForRendering()
+    // waits for a frame and not for an animation. Which frame it landed on
+    // depended on the machine, so the resting-layout cases below were measuring
+    // a moving layout, differently on every box. Built at its final size there
+    // is nothing to move: `stackness` starts at the value its width asks for,
+    // and a Behavior does not animate an initial binding. The cases that do want
+    // the move drive it themselves, through sweepPage().
     function showHost(component, w, h) {
-        var host = createTemporaryObject(component, testCase)
+        var host = createTemporaryObject(component, testCase,
+                                         { width: w, height: h })
         verify(host, "host window was not created")
-        host.width = w
-        host.height = h
         host.visible = true
         waitForRendering(host.contentItem)
         return host
@@ -364,7 +374,14 @@ TestCase {
             bodyReserve: page.bodyHeight,
             contentWidth: page.contentWidth,
             reserved:   cover.parent.height,
-            contentH:   flick.contentHeight
+            contentH:   flick.contentHeight,
+            // The whole tree, not just the pair. checkSample() measures the two
+            // blocks' own geometry, and that stayed correct through a frame in
+            // which a grandchild of the text column - the seek bar's duration
+            // label - sat 116px outside it. The settled cases cannot see that
+            // either, because by the time they look the move is over. See the
+            // note in qml/components/SeekBar.qml.
+            overflow:   collectOverflow(page, "NowPlayingPage", [])
         }
     }
 
@@ -404,6 +421,11 @@ TestCase {
                where + ": the text column ends at "
                + (s.infoX + s.infoWidth).toFixed(1) + " and the page's content is "
                + s.contentWidth.toFixed(1) + " wide, so there is a gap at one margin")
+        // And nothing anywhere under either block hangs out of its parent on the
+        // way, which is a different question from the two above.
+        verify(s.overflow.length === 0,
+               where + " (t=" + s.t.toFixed(3) + "): something inside the page "
+               + "overflowed mid-move:\n  " + s.overflow.join("\n  "))
     }
 
     // Takes the page across the breakpoint and samples it on the way.

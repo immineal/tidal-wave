@@ -541,6 +541,30 @@ TestCase {
                   "the window came back from fullscreen un-maximised")
     }
 
+    // The window manager has its own ways out of fullscreen - a keybinding, a
+    // double-clicked titlebar - and nothing in Main.qml hears about those except
+    // the window's own visibility. `fullScreen` is assigned by enterFullScreen()
+    // and leaveFullScreen() rather than bound to `visibility`, because on Qt 6.4
+    // the binding reads stale for the rest of the turn it was written in; this
+    // is the case that still needs the signal, and without a test for it the
+    // handler could be deleted and the app's own two paths would not notice.
+    function test_the_window_manager_can_leave_fullscreen_too() {
+        var win = showApp()
+        win.navigate("nowplaying")
+        win.toggleFullScreen()
+        verify(win.fullScreen,
+               "the window should be in fullscreen before anything moves it")
+
+        // Not leaveFullScreen(): this is the window changing under the app.
+        win.visibility = Window.Windowed
+        tryVerify(function () { return !win.fullScreen }, 2000,
+                  "fullScreen stayed set after the window left fullscreen on its own")
+
+        win.visibility = Window.FullScreen
+        tryVerify(function () { return win.fullScreen }, 2000,
+                  "fullScreen stayed clear after the window went fullscreen on its own")
+    }
+
     // Fullscreen is Now Playing's, so following a link out of the page brings
     // the window back with it.
     function test_navigating_away_leaves_fullscreen() {

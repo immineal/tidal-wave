@@ -84,3 +84,68 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build-tests --output-on-failure
+
+  # The declared Qt floor, which no other job here builds: every job above pins
+  # 6.12, so a construct that needs a newer Qt than find_package(Qt6 6.4) asks
+  # for compiles green all the way to the .deb and then fails on the machine of
+  # whoever installed it. Debian 12 "bookworm" is that floor exactly - Qt 6.4.2
+  # and GCC 12.2 - and it is the distribution the release .deb targets.
+  #
+  # Tests run here, not only the build. What this is for is QML that a newer Qt
+  # accepts and 6.4 does not, and that is a load-time error rather than a
+  # compile-time one: assigning a property the type does not have ("Cannot
+  # assign to non-existent property popupType") is raised when the engine loads
+  # the file. tests/qml/*.qml are only ever loaded at runtime, so a build-only
+  # job cannot see them at all - which is how the declarative popupType in
+  # tst_menus_and_glyphs.qml that e972e24 replaced survived until a Debian box
+  # ran the suite on real 6.4.2. Qt comes from apt, as in packaging/Dockerfile,
+  # so nothing is downloaded and the version cannot drift.
+  test-debian-12:
+    name: Tests (Debian 12, Qt 6.4)
+    runs-on: ubuntu-latest
+    container: debian:bookworm
+
+    steps:
+      # Before the checkout: the container is bare, and actions/checkout needs
+      # git or it silently falls back to a tarball download with no .git.
+      # The package set is packaging/Dockerfile's, which documents why each
+      # entry is there - in particular gstreamer1.0-plugins-good, without which
+      # Qt 6.4's GStreamer media backend builds a null pipeline and segfaults
+      # the moment a test touches QMediaPlayer.
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git ca-certificates \
+            qt6-base-dev qt6-declarative-dev qt6-multimedia-dev qt6-svg-dev \
+            qt6-tools-dev qt6-tools-dev-tools \
+            libavahi-client-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts qml6-module-qtquick-shapes \
+            qml6-module-qtquick-templates qml6-module-qtquick-window \
+            qml6-module-qtqml-workerscript \
+            libasound2 gstreamer1.0-plugins-good
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # No CMAKE_PREFIX_PATH: apt's Qt is on the default search path, and
+      # pinning one is the dev-machine leak this job exists to catch.
+      - name: Configure
+        run: cmake -B build-deb12 -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-deb12 --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # The count first: a ctest that discovered nothing exits 0, which
+          # would make this job a green light for an empty run.
+          n=$(ctest --test-dir build-deb12 -N | sed -n 's/^Total Tests: //p')
+          echo "ctest sees ${n:-0} tests"
+          test "${n:-0}" -ge 1
+          ctest --test-dir build-deb12 --output-on-failure

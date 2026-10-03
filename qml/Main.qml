@@ -46,7 +46,37 @@ ApplicationWindow {
     // hardcoded Windowed would quietly un-maximise a window that was maximised
     // when the user went fullscreen.
     property int preFullScreenVisibility: Window.Windowed
-    readonly property bool fullScreen: visibility === Window.FullScreen
+
+    // Written where the state changes, not derived from `visibility`.
+    //
+    // This used to be `readonly property bool fullScreen: visibility ===
+    // Window.FullScreen`, which is a binding on visibilityChanged. On Qt 6.4
+    // that signal does not arrive in the turn the write happens. Measured on
+    // 6.4.2: assigning `visibility` updates the property, so a read straight
+    // afterwards already returns the new value, while a SignalSpy on
+    // visibilityChanged is still at zero and has counted one only a few hundred
+    // milliseconds later. So for the rest of the turn the app changed it in, the
+    // binding read the old value while `visibility` read the new one, and a
+    // tryVerify() on `visibility` passed without ever yielding.
+    //
+    // Both guards below are on this flag, and so is navigate()'s and Escape's,
+    // which means a second toggle in the same turn entered fullscreen twice and
+    // overwrote preFullScreenVisibility with Windowed - so a maximised window
+    // came back un-maximised. Qt 6.12 emits the signal in time and the whole
+    // thing is invisible there.
+    //
+    // The initial value is still the window's, so a window that somehow starts
+    // fullscreen is not mislabelled.
+    property bool fullScreen: visibility === Window.FullScreen
+
+    // ...and still follow the window, for the times nothing here moved it: the
+    // window manager has its own ways out of fullscreen. Recomputed from
+    // `visibility` rather than taken from the signal's argument, because on 6.4
+    // the deferred signal can arrive after a later write has already moved the
+    // window on again, and then the argument is stale and the property is not.
+    onVisibilityChanged: (vis) => {
+        root.fullScreen = (root.visibility === Window.FullScreen)
+    }
 
     function enterFullScreen() {
         if (root.fullScreen) return
@@ -55,11 +85,13 @@ ApplicationWindow {
         root.preFullScreenVisibility =
             (root.visibility === Window.Maximized) ? Window.Maximized : Window.Windowed
         root.visibility = Window.FullScreen
+        root.fullScreen = true
     }
 
     function leaveFullScreen() {
         if (!root.fullScreen) return
         root.visibility = root.preFullScreenVisibility
+        root.fullScreen = false
     }
 
     // Also the F11 handler, which is why it navigates: F11 anywhere in the app
