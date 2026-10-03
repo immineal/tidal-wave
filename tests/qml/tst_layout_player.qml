@@ -1319,8 +1319,8 @@ TestCase {
         // Up Next has folded, and that is where the height came from: it is the
         // one block on the page that is neither chrome nor a control.
         var upNext = findChild(page, "nowPlayingUpNextColumn")
-        var volume = findChild(page, "nowPlayingVolumeRow")
-        verify(upNext && volume, "the Up Next and volume blocks were not found")
+        var volume = volumeHome(page)
+        verify(upNext, "the Up Next block was not found")
         verify(upNext.height <= 0.5,
                row.tag + ": Up Next is " + upNext.height.toFixed(1)
                + " tall in the reading view, so it did not fold")
@@ -1328,24 +1328,49 @@ TestCase {
                row.tag + ": the text column still stands " + reading.info.toFixed(1)
                + "px tall, so the words gained nothing from the fold")
 
-        // And the volume row has not folded. It did once; shown what the fold
-        // was worth the user kept the row, because the volume slider is
-        // something they reach for with the mouse rather than with the arrow
-        // keys. This is the assertion that stops it being folded again.
+        // And the volume has not folded. It did once; shown what the fold was
+        // worth the user kept it, because the volume slider is something they
+        // reach for with the mouse rather than with the arrow keys. This is the
+        // assertion that stops it being folded again, and it follows the
+        // controls: the volume is not a row of its own any more at these
+        // widths, it rides the right-hand end of the transport row, and the
+        // guarantee is about wherever volumeHome() finds it.
         verify(volume.implicitHeight > 1,
-               row.tag + ": the volume row asks for "
+               row.tag + ": " + volume.objectName + " asks for "
                + volume.implicitHeight.toFixed(1)
-               + "px, so this case cannot tell a kept row from a folded one")
+               + "px, so this case cannot tell a kept block from a folded one")
         verify(volume.visible,
-               row.tag + ": the volume row is not visible in the reading view")
+               row.tag + ": " + volume.objectName
+               + " is not visible in the reading view")
         verify(Math.abs(volume.height - volume.implicitHeight) <= 0.5,
-               row.tag + ": the volume row is " + volume.height.toFixed(1)
+               row.tag + ": " + volume.objectName + " is "
+               + volume.height.toFixed(1)
                + "px tall against the " + volume.implicitHeight.toFixed(1)
                + "px it asks for, so it folded - the user chose to keep it")
         var volumeOpacity = effectiveOpacity(volume)
         verify(volumeOpacity > 0.99,
-               row.tag + ": the volume row is drawn at "
+               row.tag + ": " + volume.objectName + " is drawn at "
                + volumeOpacity.toFixed(2) + " opacity in the reading view")
+        // At these widths the volume's home is the transport row, so the row
+        // has to keep its own height too: fold that and the volume folds with
+        // it, which is the trade the user turned down. The cluster cannot be
+        // folded from inside a row whose tallest child is the 64px play
+        // button, so this is where that half of the promise is held.
+        var transport = findChild(page, "nowPlayingTransportRow")
+        verify(transport, row.tag + ": the transport row was not found")
+        verify(Math.abs(transport.height - transport.implicitHeight) <= 0.5,
+               row.tag + ": the transport row is " + transport.height.toFixed(1)
+               + "px tall against the " + transport.implicitHeight.toFixed(1)
+               + "px it asks for, so the volume folded with it")
+
+        // ...and the slider inside it is still a slider, not a sliver.
+        var readingSlider = volumeSliderIn(page)
+        compare(readingSlider.width, page.volumeSliderWidth,
+                row.tag + ": the volume slider is " + readingSlider.width.toFixed(1)
+                + "px in the reading view")
+        verify(effectiveOpacity(readingSlider) > 0.99,
+               row.tag + ": the volume slider is drawn at "
+               + effectiveOpacity(readingSlider).toFixed(2) + " opacity")
 
         // Where the page has the height to give, the words are now the biggest
         // thing on it, which is the whole point and the opposite of the docked
@@ -1542,6 +1567,363 @@ TestCase {
         var faults = collectOverflow(page, "NowPlayingPage", [])
         verify(faults.length === 0,
                reportFor("the credits reading view overflows", row, faults))
+    }
+
+    // ── the volume ───────────────────────────────────────────────────────
+    //
+    // The user: "in the full screen with the lyrics, the volume bar is in a
+    // really weird space. Generally, it looking like a second scrub bar and
+    // being almost the same length isnt doing it for me". It was a full-width
+    // row two blocks under the seek bar, so it was a second bar of almost the
+    // same length at every width, not only in the reading view.
+    //
+    // It is a short fixed-width cluster now - the slider, the mute button, the
+    // percentage and the output picker - with two homes: the right-hand end of
+    // the transport row where the column can carry it, and a short
+    // right-aligned row of its own where it cannot. The cases below hold both
+    // homes to the same promises.
+
+    // The outermost block the volume is living in right now. This is what the
+    // fold and the fade are asked about, so it has to be the block the page
+    // would fold, not something inside it.
+    function volumeHome(page) {
+        var riding = findChild(page, "nowPlayingVolumeCluster")
+        var ownRow = findChild(page, "nowPlayingVolumeRow")
+        verify(riding, "the transport row's volume cluster was not found")
+        verify(ownRow, "the volume's own row was not found")
+        verify(riding.visible !== ownRow.visible,
+               "the volume is showing in "
+               + (riding.visible ? "both of its homes" : "neither of its homes"))
+        compare(riding.visible, page.volumeInTransport,
+                "the volume is not in the home the page says it is in")
+        return riding.visible ? riding : ownRow
+    }
+
+    // The four controls themselves, wherever they are. On the transport row the
+    // cluster is the home; on its own row the home is the full-width line it
+    // sits at the right-hand end of.
+    function volumeCluster(page) {
+        var home = volumeHome(page)
+        if (home.objectName === "nowPlayingVolumeCluster") return home
+        var own = findChild(home, "nowPlayingVolumeOwnCluster")
+        verify(own, "the volume's own row has no cluster in it")
+        return own
+    }
+
+    function volumeSliderIn(page) {
+        var s = findChild(volumeCluster(page), "nowPlayingVolumeSlider")
+        verify(s, "the volume slider was not found")
+        return s
+    }
+
+    // An item's box in page coordinates, and whether two of them meet. The half
+    // pixel keeps two boxes that merely touch from reading as an overlap.
+    function boxIn(page, item) {
+        var p = item.mapToItem(page, 0, 0)
+        return { x: p.x, y: p.y, w: item.width, h: item.height }
+    }
+
+    function boxesMeet(a, b) {
+        return a.x < b.x + b.w - 0.5 && b.x < a.x + a.w - 0.5
+            && a.y < b.y + b.h - 0.5 && b.y < a.y + a.h - 0.5
+    }
+
+    readonly property var transportNames: ["nowPlayingShuffle", "nowPlayingPrevious",
+                                           "nowPlayingPlayButton", "nowPlayingNext",
+                                           "nowPlayingRepeat"]
+
+    // Every resting size the page is measured at, windowed and in the reading
+    // view: the complaint was about the reading view and then "generally", so
+    // both get the same cases.
+    function volumeRows() {
+        var rows = []
+        var win = sizeRows()
+        for (var i = 0; i < win.length; i++)
+            rows.push({ tag: win[i].tag, w: win[i].w, h: win[i].h, reading: false })
+        // sizeRows() stops at 1280, and 1280 less the sidebar lays the page out
+        // side by side on a 480px column - too narrow for the cluster. The
+        // user's monitor is 1920, so a maximised window is where the volume
+        // rides the transport row outside the reading view, and without this
+        // row nothing windowed would ever measure that.
+        rows.push({ tag: "1920x1200", w: 1920, h: 1200, reading: false })
+        var fs = fullScreenRows()
+        for (var j = 0; j < fs.length; j++)
+            rows.push({ tag: fs[j].tag + " reading", w: fs[j].w, h: fs[j].h,
+                        reading: true })
+        return rows
+    }
+
+    function volumeHost(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        if (row.reading) { openLyrics(host); enterReading(host) }
+        else settlePage(host.page)
+        waitForRendering(host.contentItem)
+        return host
+    }
+
+    // The complaint itself: the volume slider is short, it is the same short
+    // wherever it lives, and it never grows towards the seek bar again.
+    function test_the_volume_is_not_a_second_scrub_bar_data() { return volumeRows() }
+
+    function test_the_volume_is_not_a_second_scrub_bar(row) {
+        var host = volumeHost(row)
+        var page = host.page
+        var slider  = volumeSliderIn(page)
+        var cluster = volumeCluster(page)
+        var seek    = findChild(page, "nowPlayingSeekBar")
+        verify(seek, "the seek bar was not found")
+
+        compare(slider.width, page.volumeSliderWidth,
+                row.tag + ": the volume slider is " + slider.width.toFixed(1)
+                + "px, not the fixed " + page.volumeSliderWidth
+                + " - it is stretching with the column again")
+        verify(slider.width <= seek.width / 2,
+                row.tag + ": the volume slider is " + slider.width.toFixed(1)
+                + "px against a " + seek.width.toFixed(1)
+                + "px seek bar, which is the second-scrub-bar look again")
+
+        // And the cluster as a whole is the fixed object the transport row's
+        // arithmetic is written against. The page computes that width from
+        // parts it does not own - PlayerBar.OutputPicker is 32 square at size
+        // 20 because it rounds `size + 12` up - so the sum is measured here
+        // rather than trusted.
+        compare(cluster.implicitWidth, page.volumeClusterWidth,
+                row.tag + ": the cluster measures "
+                + cluster.implicitWidth.toFixed(1)
+                + " where the page budgeted " + page.volumeClusterWidth)
+        compare(cluster.width, page.volumeClusterWidth,
+                row.tag + ": the cluster was laid out at "
+                + cluster.width.toFixed(1) + "px")
+
+        // Flush with the right-hand edge of the text column in both homes, so
+        // it reads as parked rather than floating.
+        var right = cluster.mapToItem(page, cluster.width, 0).x
+        var info  = findChild(page, "nowPlayingInfoColumn")
+        var infoRight = info.mapToItem(page, info.width, 0).x
+        verify(Math.abs(right - infoRight) <= 0.5,
+               row.tag + ": the cluster ends at " + right.toFixed(1)
+               + " where the column ends at " + infoRight.toFixed(1))
+    }
+
+    // The regression most likely to slip past the eye. The cluster is a fixed
+    // object that the transport buttons are placed against, so anything in it
+    // that measures itself walks them sideways - and the percentage runs from
+    // "0%" to "100%". It carried `width: 36` for that already and the 36 never
+    // took, because a Text has an implicit width of its own and the layout
+    // reads that instead.
+    function test_the_play_button_does_not_move_with_the_volume_text_data() {
+        return volumeRows()
+    }
+
+    function test_the_play_button_does_not_move_with_the_volume_text(row) {
+        var host = volumeHost(row)
+        var page = host.page
+        var play = findChild(page, "nowPlayingPlayButton")
+        verify(play, "the play button was not found")
+
+        function centre() {
+            waitForRendering(host.contentItem)
+            return play.mapToItem(page, play.width / 2, 0).x
+        }
+
+        var seen = []
+        var volumes = [0.09, 0.5, 1.0]
+        for (var i = 0; i < volumes.length; i++) {
+            player.setVolume(volumes[i])
+            seen.push({ at: Math.round(volumes[i] * 100) + "%", x: centre() })
+        }
+        // And muted, which is the one that reads "0%" whatever the volume is.
+        player.setMuted(true)
+        seen.push({ at: "muted", x: centre() })
+        player.setMuted(false)
+
+        for (var j = 1; j < seen.length; j++)
+            verify(Math.abs(seen[j].x - seen[0].x) <= 0.01,
+                   row.tag + ": the play button sits at " + seen[j].x.toFixed(2)
+                   + " at " + seen[j].at + " and at " + seen[0].x.toFixed(2)
+                   + " at " + seen[0].at + " - it is drifting with the volume text")
+    }
+
+    // Wherever it is, it is clear of the buttons. A cluster that overlapped the
+    // repeat button, or hung off the end of the column, would be worse than the
+    // row it replaced.
+    function test_the_volume_clears_the_transport_buttons_data() { return volumeRows() }
+
+    function test_the_volume_clears_the_transport_buttons(row) {
+        var host = volumeHost(row)
+        var page = host.page
+        var cluster = volumeCluster(page)
+        var clusterBox = boxIn(page, cluster)
+
+        for (var i = 0; i < transportNames.length; i++) {
+            var btn = findChild(page, transportNames[i])
+            verify(btn, row.tag + ": " + transportNames[i] + " was not found")
+            verify(btn.visible, row.tag + ": " + transportNames[i] + " is not visible")
+            var b = boxIn(page, btn)
+            verify(!boxesMeet(clusterBox, b),
+                   row.tag + ": the volume cluster at " + clusterBox.x.toFixed(1)
+                   + "," + clusterBox.y.toFixed(1) + " " + clusterBox.w.toFixed(1)
+                   + "x" + clusterBox.h.toFixed(1) + " runs into "
+                   + transportNames[i] + " at " + b.x.toFixed(1) + ","
+                   + b.y.toFixed(1) + " " + b.w.toFixed(1) + "x" + b.h.toFixed(1))
+        }
+
+        // And nothing anywhere on the page is hanging out of its parent, which
+        // is where a cluster that did not fit would show up.
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0,
+               reportFor("the page overflows with the volume cluster", row, faults))
+    }
+
+    // The narrow fallback, stated. Below transportWithVolumeWidth the transport
+    // row cannot carry the cluster without eating into the buttons, so the
+    // cluster drops to a row of its own - at the same short width, pushed right
+    // rather than stretched back across the column. The transport row is then
+    // exactly what it was before any of this, play button in the middle.
+    function test_the_volume_drops_to_its_own_row_when_the_column_is_narrow_data() {
+        return volumeRows()
+    }
+
+    function test_the_volume_drops_to_its_own_row_when_the_column_is_narrow(row) {
+        var host = volumeHost(row)
+        var page = host.page
+        var home = volumeHome(page)
+        var trow = findChild(page, "nowPlayingTransportRow")
+        var play = findChild(page, "nowPlayingPlayButton")
+        verify(trow && play, row.tag + ": the transport row was not found")
+
+        // The buttons, the cluster, its counterweight and two more gaps.
+        var needed = page.transportMinWidth + 2 * page.transportSpacing
+                   + 2 * page.volumeClusterWidth
+        compare(page.transportWithVolumeWidth, needed,
+                row.tag + ": the page's own budget does not add up")
+        // The page decides off the width the column settles at, which is the
+        // width it has here and only here: at rest the two are the same number,
+        // and the case is written to say so rather than to assume it.
+        compare(page.settledInfoWidth, page.infoWidth,
+                row.tag + ": the column has not settled")
+        compare(page.volumeInTransport, page.settledInfoWidth >= needed,
+                row.tag + ": at " + page.infoWidth.toFixed(1)
+                + "px of column the volume is in the wrong home")
+
+        // Either way, the play button is in the middle of the column. That is
+        // what the counterweight at the other end of the row is for, and it is
+        // also why the row asks for 828 before it will take the cluster at all:
+        // where the column cannot pay for both, the volume moves instead of the
+        // play button.
+        var playCentre = play.mapToItem(trow, play.width / 2, 0).x
+        verify(Math.abs(playCentre - trow.width / 2) <= 0.5,
+               row.tag + ": the play button is at " + playCentre.toFixed(1)
+               + " in a " + trow.width.toFixed(1) + "px row")
+        // ...and the shuffle button is still flush with the left-hand edge of
+        // the column, where the title and the seek bar start. The counterweight
+        // goes after it for exactly that reason; in front of it the row would
+        // have 226px of nothing before the first control.
+        var shuffle = findChild(page, "nowPlayingShuffle")
+        var shuffleX = shuffle.mapToItem(trow, 0, 0).x
+        verify(Math.abs(shuffleX) <= 0.5,
+               row.tag + ": the shuffle button starts at " + shuffleX.toFixed(1)
+               + " instead of the edge of the column")
+
+        if (page.volumeInTransport) {
+            compare(home.objectName, "nowPlayingVolumeCluster",
+                    row.tag + ": the column has room for the cluster on the row")
+            // The row really does hold everything it was budgeted for.
+            verify(trow.width + 0.5 >= needed,
+                   row.tag + ": the transport row is " + trow.width.toFixed(1)
+                   + "px and needs " + needed)
+            verify(trow.implicitWidth <= trow.width + 0.5,
+                   row.tag + ": the transport row wants "
+                   + trow.implicitWidth.toFixed(1) + " and has "
+                   + trow.width.toFixed(1))
+            // And the counterweight really is the cluster's width, which is the
+            // whole mechanism the centring rests on.
+            var weight = findChild(page, "nowPlayingTransportWeight")
+            verify(weight && weight.visible,
+                   row.tag + ": the counterweight is not there")
+            compare(weight.width, page.volumeClusterWidth,
+                    row.tag + ": the counterweight is " + weight.width.toFixed(1)
+                    + " against a " + page.volumeClusterWidth + "px cluster")
+        } else {
+            compare(home.objectName, "nowPlayingVolumeRow",
+                    row.tag + ": the column is too narrow to carry the cluster")
+            verify(home.visible, row.tag + ": the volume's own row is not showing")
+            // Nothing was taken from the transport: it is the row it always was,
+            // counterweight and all out of the way.
+            var idle = findChild(page, "nowPlayingTransportWeight")
+            verify(idle && !idle.visible,
+                   row.tag + ": the counterweight is holding width in a row "
+                   + "with no cluster to balance")
+            verify(Math.abs(trow.implicitWidth - page.transportMinWidth) <= 0.5,
+                   row.tag + ": the transport row wants "
+                   + trow.implicitWidth.toFixed(1) + " where the page budgets "
+                   + page.transportMinWidth)
+            // And the fallback is a short right-aligned cluster, not the
+            // full-width bar it replaced.
+            var cluster = volumeCluster(page)
+            verify(cluster.width < home.width,
+                   row.tag + ": the fallback row's cluster fills the whole "
+                   + home.width.toFixed(1) + "px line again")
+            var gap = home.width - (cluster.mapToItem(home, cluster.width, 0).x)
+            verify(Math.abs(gap) <= 0.5,
+                   row.tag + ": the fallback cluster is " + gap.toFixed(1)
+                   + "px short of the right-hand edge")
+        }
+    }
+
+    // The cost of writing the cluster once and placing it twice: two mute
+    // buttons, two sliders and two output pickers exist, and only one of each
+    // may be on screen. A control that is drawn twice is a second focus ring,
+    // a second thing to click, and - because Qt only keeps an item out of the
+    // tab chain while it is really invisible - a tab stop on a slider the user
+    // cannot see.
+    //
+    // Counted rather than looked up by name: the live name is handed to
+    // whichever copy is showing, so a page showing both would answer a
+    // by-name lookup perfectly well and say nothing.
+    function collectVisibleNamed(item, name, out) {
+        if (!item || item.visible === false) return out
+        if (item.objectName === name) out.push(item)
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++)
+            collectVisibleNamed(kids[i], name, out)
+        return out
+    }
+
+    function test_only_one_set_of_volume_controls_is_on_screen_data() {
+        return volumeRows()
+    }
+
+    function test_only_one_set_of_volume_controls_is_on_screen(row) {
+        var host = volumeHost(row)
+        var page = host.page
+
+        var names = ["nowPlayingMuteButton", "nowPlayingVolumeSlider",
+                     "nowPlayingOutputButton"]
+        for (var i = 0; i < names.length; i++) {
+            var shown = collectVisibleNamed(page, names[i], [])
+            compare(shown.length, 1,
+                    row.tag + ": " + shown.length + " of " + names[i]
+                    + " are on screen")
+            verify(shown[0].parent === volumeCluster(page),
+                   row.tag + ": the " + names[i]
+                   + " on screen is not the one in the live cluster")
+        }
+
+        // And the live mute button is still the keyboard control it was: it
+        // takes focus, and Return and Space still mute. It came across from the
+        // old row with its handlers and its focus ring and nothing here is
+        // allowed to have dropped them.
+        var mute = findChild(page, "nowPlayingMuteButton")
+        verify(mute.activeFocusOnTab,
+               row.tag + ": the mute button has left the tab chain")
+        mute.forceActiveFocus()
+        verify(mute.activeFocus, row.tag + ": the mute button cannot take focus")
+        verify(!player.muted, row.tag + ": the fixture starts muted")
+        keyClick(Qt.Key_Return)
+        verify(player.muted, row.tag + ": Return on the mute button did nothing")
+        keyClick(Qt.Key_Space)
+        verify(!player.muted, row.tag + ": Space on the mute button did nothing")
     }
 
     // The user: "closing the lyrics tab skips to the line that the lyrics switch

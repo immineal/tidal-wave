@@ -272,6 +272,83 @@ Rectangle {
     readonly property int transportMinWidth:
         transportFixedWidth + transportGaps * transportSpacing
 
+    // ─── Where the volume lives ────────────────────────
+    //
+    // It used to be a full-width row two blocks under the seek bar, and at that
+    // length it read as a second scrub bar: "it looking like a second scrub bar
+    // and being almost the same length isnt doing it for me". So it is a short
+    // fixed-width cluster now, and it has two homes rather than a row of its
+    // own below everything.
+    //
+    // 110px of slider, the 18px mute icon, a 36px percentage and the output
+    // picker, which measures 32 square at size 20 - PlayerBar.OutputPicker
+    // rounds `size + 12` up to 32. Three 10px gaps between the four, tighter
+    // than the 12 the old full-width row used, so they read as one object
+    // parked at the end of a row of buttons rather than as four more controls
+    // in it.
+    readonly property int volumeIconSize:       18
+    readonly property int volumeSliderWidth:    110
+    readonly property int volumePercentWidth:   36
+    readonly property int volumeOutputWidth:    32
+    readonly property int volumeClusterSpacing: 10
+    readonly property int volumeClusterWidth:
+        volumeIconSize + volumeSliderWidth + volumePercentWidth
+        + volumeOutputWidth + 3 * volumeClusterSpacing
+
+    // What the transport row needs to carry the cluster. Not just the cluster
+    // and a gap: the play button is in the middle of this column and it stays
+    // there, so a cluster at the right-hand end buys a counterweight of its own
+    // width at the left-hand one. That is the 248px of buttons, the cluster
+    // twice over and eight gaps instead of six - 828 at the 16px spacing.
+    //
+    // The counterweight sits *after* the shuffle button rather than before it,
+    // which is the whole reason this works: shuffle stays flush with the left
+    // edge of the column, where the title and the seek bar start, and the 226px
+    // goes into the empty stretch between shuffle and the transport, where
+    // there is nothing to push out of place. What the row ends up looking like
+    // is the shape a player has always had - shuffle at one edge, the transport
+    // in the middle, the volume at the other - and the volume is the only thing
+    // that moved.
+    //
+    // 828 is a lot to ask of a column, and asking it is the point: where the
+    // column cannot pay, the volume goes to a short row of its own rather than
+    // the play button coming off the middle. Both answers fix what the user
+    // complained about, because the fallback row is the same short cluster and
+    // not the full-width bar it replaced.
+    readonly property int transportWithVolumeWidth:
+        transportFixedWidth + 2 * volumeClusterWidth
+        + (transportGaps + 2) * transportSpacing
+
+    // Asked of the width the column will settle at, not the width it has in
+    // the middle of a rearrangement. infoWidth is lerped across the
+    // breakpoint, so reading it here would change the volume's home somewhere
+    // inside the 170ms - and the column's height steps by the row's 32 and the
+    // column's 24 when it does. bodyHeight reserves the page off that height
+    // and a QQuickLayout answers a frame later, so a step mid-flight is a frame
+    // of the page reserving room the blocks have not reached: the one thing
+    // test_now_playing_restacks_without_reserving_ahead is there to catch, and
+    // it caught this. Both ends of the lerp are closed-form and neither of them
+    // animates, so taken from there the height is constant for the whole move
+    // and the switch happens in the same frame as everything else.
+    readonly property real settledInfoWidth:
+        stackedLayout ? contentWidth : sideInfoWidth
+    readonly property bool volumeInTransport:
+        settledInfoWidth >= transportWithVolumeWidth
+
+    // And whether the row can hold it *this frame*, which is the same question
+    // at rest and a different one for 170ms. The lerp between a wide stacked
+    // column and a narrow side-by-side one passes through widths narrower than
+    // either end - 411 on the way to a settled 864 - and a nested Layout will
+    // not shrink below what its children ask for: it lays them out at their
+    // full width inside a column that has not got there yet, which is an
+    // overflow and not a squeeze. So the home is settled, and the cluster waits
+    // for the width before it draws. It costs the volume a few frames of a move
+    // in which the whole page is moving, and it keeps the column's height out
+    // of it: the cluster lives inside a 64px row of buttons, so showing or
+    // hiding it changes nothing about how tall the column is.
+    readonly property bool volumeClusterFits:
+        volumeInTransport && infoWidth >= transportWithVolumeWidth
+
     // ─── Fullscreen ────────────────────────────────────
     // The window owns its own visibility, so this page can only ask. Both
     // reads are written to survive a host that has neither - the layout and
@@ -2143,11 +2220,30 @@ Rectangle {
                     RowLayout {
                         objectName: "nowPlayingTransportRow"
                         Layout.fillWidth: true; spacing: root.transportSpacing
-                        CtrlBtn { icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                        CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                        // The cluster's counterweight. Nothing is drawn here:
+                        // it is the width the volume takes at the other end,
+                        // spent on this side so that the two fillWidth spacers
+                        // stay equal and the play button stays in the middle of
+                        // the column. The row is only ever given the cluster
+                        // when it has the width for both, so this never has to
+                        // give anything back.
+                        //
+                        // Invisible and not zero-width: a RowLayout keeps the
+                        // spacing around a zero-width child and only drops it
+                        // for an invisible one, and sixteen stray pixels here
+                        // would put the row over the width the page budgets it
+                        // at every size that has no cluster to balance.
+                        Item {
+                            objectName: "nowPlayingTransportWeight"
+                            visible: root.volumeClusterFits
+                            Layout.preferredWidth: root.volumeClusterWidth
+                        }
                         Item { Layout.fillWidth: true }
-                        CtrlBtn { icon: "previous"; size: 28; onClicked: player.previous() }
+                        CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
                         Rectangle {
                             id: npPlayPause
+                            objectName: "nowPlayingPlayButton"
                             width: 64; height: 64; radius: 32; color: Theme.textPrimary
                             border.width: activeFocus ? 2 : 0
                             border.color: Theme.accent
@@ -2166,62 +2262,43 @@ Rectangle {
                             HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
                             TapHandler   { onTapped: player.playPause() }
                         }
-                        CtrlBtn { icon: "next"; size: 28; onClicked: player.next() }
+                        CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
                         Item { Layout.fillWidth: true }
-                        CtrlBtn { icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+                        CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+
+                        // The volume, where the row is wide enough to hold
+                        // it. Invisible, not folded: a Layout drops an
+                        // invisible child and its spacing outright, so the row
+                        // is exactly the row it always was when the cluster is
+                        // not here, and the cluster is never a squeezed version
+                        // of itself.
+                        VolumeControls {
+                            objectName: "nowPlayingVolumeCluster"
+                            visible: root.volumeClusterFits
+                            Layout.alignment: Qt.AlignVCenter
+                        }
                     }
 
+                    // The volume's other home. The column is too narrow for
+                    // the transport row to carry the cluster, so it gets a line
+                    // to itself - right-aligned at the same short width, not
+                    // stretched across the column, because a bar as long as the
+                    // seek bar above it is the thing being fixed and it is the
+                    // thing being fixed at every width.
+                    //
+                    // Either way the volume stays in the reading view, at its
+                    // own height and full strength. It folded away once, for the
+                    // ~32px of words it is worth; shown the trade the user chose
+                    // the controls, because the volume slider is something they
+                    // reach for with the mouse rather than with the arrow keys.
+                    // tests/qml/tst_layout_player.qml holds both homes to that.
                     RowLayout {
                         objectName: "nowPlayingVolumeRow"
-                        // Stays in the reading view, at its own height and full
-                        // strength. It folded away once, for the ~32px of words
-                        // it is worth; shown the trade the user chose the row,
-                        // because the volume slider is something they reach for
-                        // with the mouse rather than with the arrow keys.
-                        Layout.fillWidth: true; spacing: 12
-                        Item {
-                            id: muteBtn
-                            width: 18; height: 18
-                            activeFocusOnTab: true
-                            Keys.onReturnPressed: player.setMuted(!player.muted)
-                            Keys.onSpacePressed:  player.setMuted(!player.muted)
-                            Rectangle {
-                                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
-                                border.width: muteBtn.activeFocus ? 2 : 0
-                                border.color: Theme.accent
-                            }
-                            VectorIcon {
-                                anchors.fill: parent
-                                name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
-                                color: Theme.textSec
-                                strokeWidth: 1.5
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
-                        }
-                        VolumeSlider {
-                            Layout.fillWidth: true
-                            value: player.muted ? 0 : player.volume
-                            onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
-                        }
-                        Text {
-                            text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
-                                                      .toLocaleString(Qt.locale(), 'f', 0))
-                            color: Theme.textDim; font.pixelSize: 12; width: 36
-                        }
-
-                        // The output picker, the same component the player bar
-                        // puts next to its volume slider: this computer's
-                        // outputs and any cast target in one list. It used to
-                        // be a cast-only picker written out twice, once here
-                        // and once in the bar, because the two could not share
-                        // a file without touching CMakeLists.txt. They share
-                        // PlayerBar's inline component instead, so the list,
-                        // the headings and the "stop casting" rule are written
-                        // once.
-                        PlayerBar.OutputPicker {
-                            objectName: "nowPlayingOutputButton"
-                            size: 20
-                        }
+                        visible: !root.volumeInTransport
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Item { Layout.fillWidth: true }
+                        VolumeControls { objectName: "nowPlayingVolumeOwnCluster" }
                     }
 
                     // Up Next preview
@@ -2241,9 +2318,10 @@ Rectangle {
                         // controls, "so they can skip and scrub without moving
                         // the mouse". So the seek bar, the transport, the
                         // download, the like, the sleep timer and the title
-                        // block all keep their height - and so does the volume
-                        // row above, which the user kept over the ~32px of words
-                        // it costs.
+                        // block all keep their height - and so does the volume,
+                        // which the user kept over the ~32px of words it costs
+                        // and which rides on the transport row itself wherever
+                        // that row is wide enough to carry it.
                         //
                         // This block is the one thing on the page that is
                         // neither chrome nor a control: a list of what comes
@@ -2451,6 +2529,87 @@ Rectangle {
                 root.startSleepTimer(optBtn.minutes, false)
                 sleepTimerPopup.close()
             }
+        }
+    }
+
+    // ─── The volume cluster, written once and placed twice ─────────────
+    //
+    // Two instances and not one that moves between the two homes above: a
+    // Layout owns its children's geometry and there is no handing an item from
+    // one Layout to another, so the cheap thing is to build it twice from one
+    // definition and show whichever the column has room for. The one off
+    // screen is invisible, so it is out of the tab chain as well as off the
+    // layout.
+    component VolumeControls : RowLayout {
+        id: vol
+        spacing: root.volumeClusterSpacing
+
+        Item {
+            id: muteBtn
+            // Named like the picker below, and for the same reason: two of
+            // these exist and the name belongs to the one on screen.
+            objectName: vol.visible ? "nowPlayingMuteButton"
+                                    : "nowPlayingMuteButtonOffstage"
+            Layout.preferredWidth:  root.volumeIconSize
+            Layout.preferredHeight: root.volumeIconSize
+            Layout.alignment: Qt.AlignVCenter
+            activeFocusOnTab: true
+            Keys.onReturnPressed: player.setMuted(!player.muted)
+            Keys.onSpacePressed:  player.setMuted(!player.muted)
+            Rectangle {
+                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                border.width: muteBtn.activeFocus ? 2 : 0
+                border.color: Theme.accent
+            }
+            VectorIcon {
+                anchors.fill: parent
+                name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
+                color: Theme.textSec
+                strokeWidth: 1.5
+            }
+            MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
+        }
+
+        VolumeSlider {
+            objectName: "nowPlayingVolumeSlider"
+            // Layout.preferredWidth and not width: a Layout owns its children's
+            // size, and this width is the whole of the change.
+            Layout.preferredWidth:  root.volumeSliderWidth
+            Layout.preferredHeight: 20
+            Layout.alignment: Qt.AlignVCenter
+            value: player.muted ? 0 : player.volume
+            onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
+        }
+
+        Text {
+            // The label runs from "0%" to "100%", about twelve pixels apart,
+            // and the cluster is now a fixed object that the transport buttons
+            // are placed against - so a label that measured itself would walk
+            // them sideways as the volume moved. It carried `width: 36` for
+            // that already and the 36 never took: a Text has an implicit width
+            // of its own, the layout reads that and overwrites the width it was
+            // given. Layout.preferredWidth is the one a layout listens to.
+            Layout.preferredWidth: root.volumePercentWidth
+            Layout.alignment: Qt.AlignVCenter
+            text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
+                                      .toLocaleString(Qt.locale(), 'f', 0))
+            color: Theme.textDim; font.pixelSize: 12
+        }
+
+        // The output picker, the same component the player bar puts next to its
+        // volume slider: this computer's outputs and any cast target in one
+        // list. It used to be a cast-only picker written out twice, once here
+        // and once in the bar, because the two could not share a file without
+        // touching CMakeLists.txt. They share PlayerBar's inline component
+        // instead, so the list, the headings and the "stop casting" rule are
+        // written once.
+        PlayerBar.OutputPicker {
+            // Two of these exist and one of them is on screen. The name the
+            // other suites look the page's picker up by belongs to that one.
+            objectName: vol.visible ? "nowPlayingOutputButton"
+                                    : "nowPlayingOutputButtonOffstage"
+            Layout.alignment: Qt.AlignVCenter
+            size: 20
         }
     }
 
