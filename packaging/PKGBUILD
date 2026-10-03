@@ -1,0 +1,138 @@
+# Maintainer: Linus Linhof <tidal-wave@linu.li>
+#
+# This is the project's own PKGBUILD. It lives in the repo and is kept current
+# with it, and anyone is welcome to upload it to the AUR - decided 2026-10-03,
+# see docs/PACKAGING.md. Two users wrote their own in GitHub issue #2 and both
+# are wrong against this tree, so what this file gets right is deliberate:
+#
+#   * It installs with `cmake --install` and nothing else. The desktop entry and
+#     the two hicolor icons are install rules in CMakeLists.txt, and the Plasma
+#     tray needs a *named theme icon* or it renders blank - a bug this project
+#     has already fixed once. Copying the build tree into /opt, which one of the
+#     offered PKGBUILDs does, loses all of it.
+#   * It does not depend on sqlite. Nothing in src/ has ever used SQL; Qt6::Sql
+#     and the sqlite packages were deliberately removed. Both offered PKGBUILDs
+#     ask Arch users to install it anyway.
+#
+# Build and install straight from a checkout, no AUR entry needed:
+#     cd packaging && makepkg -si
+#
+# pkgver tracks project() in CMakeLists.txt and the source below is pinned to the
+# matching tag, so on a release branch this file is ready before the release is -
+# the same way CPack already names a .deb nobody can download yet. Until v$pkgver
+# is pushed to origin, makepkg here stops at "couldn't find remote ref", which is
+# the correct failure: it is pinned to a release, not to a branch.
+
+pkgname=tidal-wave
+pkgver=0.4.0
+pkgrel=1
+pkgdesc='A native desktop client for Tidal'
+arch=('x86_64')
+url='https://github.com/immineal/tidal-wave'
+license=('GPL-3.0-or-later')
+
+# Derived from the .deb's Depends list in CMakeLists.txt, which is the only
+# reviewed dependency list this project has, and translated to Arch rather than
+# guessed. Arch ships Qt in far coarser packages than Debian, so eleven libqt6*
+# entries and seven qml6-module-* entries collapse into four:
+#
+#   qt6-base        Core Gui Widgets Network DBus Concurrent OpenGL
+#   qt6-declarative Quick Qml QmlModels QuickControls2, and the QML modules the
+#                   .deb has to name one at a time (QtQuick, .Controls, .Layouts,
+#                   .Shapes, .Templates, .Window, QtQml.WorkerScript)
+#   qt6-multimedia  Multimedia. The backend is a package of its own behind the
+#                   virtual qt6-multimedia-backend, which qt6-multimedia depends
+#                   on and pacman resolves to qt6-multimedia-ffmpeg, so naming
+#                   the backend here would only pin a choice that is not ours.
+#   qt6-svg         Svg
+#
+# The rest are the .deb's non-Qt entries under their Arch names: libasound2 ->
+# alsa-lib (ALSA output), libavahi-client3 -> avahi (mDNS for Chromecast
+# discovery), libstdc++6 -> libstdc++. Not gcc-libs, which Arch has since turned
+# into a metapackage pulling libasan, libgomp, libgfortran and eight more this
+# app has no use for; libstdc++ is the one that owns libstdc++.so.6, and it is
+# what Arch's own qt6-* packages depend on. glibc and libgcc are listed because
+# the binary links them directly.
+#
+# No version floors. The .deb needs them because it must install on a
+# distribution older than the machine that built it; Arch is rolling, so a floor
+# here could only ever exclude a version nobody still has.
+depends=(
+  'qt6-base'
+  'qt6-declarative'
+  'qt6-multimedia'
+  # namcap says both of the next two "may not be needed", and namcap is reading
+  # ELF links, which is not where either of them is used:
+  #   alsa-lib  Application.cpp dlopens it by name - QLibrary("asound"), then
+  #             "asound.so.2" - to install a no-op snd_lib_error_set_handler and
+  #             stop ALSA writing parse errors to stderr on every launch.
+  #   qt6-svg   nothing references a Qt6::Svg symbol, so --as-needed drops the
+  #             link, but the SVG *plugins* live in that package
+  #             (qt6/plugins/iconengines/libqsvgicon.so and
+  #             imageformats/libqsvg.so) and they are what loads the scalable
+  #             icon the tray and the theme use.
+  'qt6-svg'
+  'alsa-lib'
+  'avahi'
+  'glibc'
+  'libgcc'
+  'libstdc++'
+  # Owns /usr/share/icons/hicolor and its index.theme. Without that index the
+  # directories cmake --install writes into are not a theme, so the named-icon
+  # lookup the tray depends on finds nothing.
+  'hicolor-icon-theme'
+)
+
+# git for the source below. qt6-tools is lrelease, and it is not optional in
+# spirit even though CMakeLists.txt treats LinguistTools as optional: without it
+# the configure step prints a warning, carries on, and ships a release with no
+# German catalogue at all. With it, the build logs "Generating tidal-wave_de.qm"
+# and the catalogue is embedded in the binary's resources.
+makedepends=('cmake' 'ninja' 'git' 'qt6-tools')
+
+# The .deb's Recommends, which is the same judgement: neither is needed to play
+# music, and neither should be a hard dependency for the users who do not.
+optdepends=(
+  'ffmpeg: track downloads and Chromecast transcoding'
+  'qt6-wayland: run as a native Wayland client instead of through XWayland'
+)
+
+# Pinned to the release tag, not to a branch. A -git package would build
+# whatever the default branch happens to hold when the user runs makepkg, which
+# cannot be tied to a bug report and is not what someone installing "tidal-wave"
+# is asking for; see docs/PACKAGING.md for the full reasoning.
+#
+# A git tag rather than the GitHub tarball because a tarball needs a sha256sum,
+# and the checksums for a release are meant to be generated by the release
+# pipeline rather than pasted here. 'SKIP' is correct and conventional for a VCS
+# source - the tag name is the thing being pinned - whereas 'SKIP' on an https
+# tarball is the review objection it looks like. Switching to the tarball is
+# three lines once the release emits checksums.
+source=("$pkgname::git+$url.git#tag=v$pkgver")
+sha256sums=('SKIP')
+
+build() {
+  # CMAKE_BUILD_TYPE=None, which is the Arch standard and not an oversight: it
+  # keeps makepkg.conf's CXXFLAGS/LDFLAGS (the -O level, the hardening flags,
+  # LTO) instead of letting a Release config overwrite them with CMake's own.
+  #
+  # Nothing is passed for RPATH, and nothing should be. CMakeLists.txt appends
+  # the directory Qt6::Core came from to the install RPATH, but only when the
+  # dynamic linker would not have found it anyway, and Arch's Qt is in /usr/lib,
+  # which is an implicit link directory - so that branch correctly declines, and
+  # the installed binary keeps only Qt's own default $ORIGIN:$ORIGIN/../lib,
+  # which resolves to /usr/bin and /usr/lib and which namcap passes without
+  # comment. Passing a CMAKE_PREFIX_PATH, or -DCMAKE_SKIP_INSTALL_RPATH, is what
+  # would start an argument with logic that exists for a reason elsewhere.
+  cmake -S "$pkgname" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -Wno-dev
+  cmake --build build
+}
+
+package() {
+  # The only install step there is. It brings the binary, the .desktop entry,
+  # both hicolor icons and the AppStream metainfo file with it.
+  DESTDIR="$pkgdir" cmake --install build
+}

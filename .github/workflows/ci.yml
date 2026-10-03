@@ -177,3 +177,92 @@ jobs:
             exit 1
           fi
           echo "clean"
+
+  # Also seconds, no Qt, no build, for the same reason the job above exists: the
+  # two files every Linux store reads are the two nothing else in CI looks at,
+  # and a mistake in either is found by the store that rejects the submission.
+  # The AppStream metainfo file is the hard blocker for Flathub, KDE Discover and
+  # GNOME Software - see docs/PACKAGING.md.
+  store-metadata:
+    name: The metadata stores read is valid
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the validators
+        run: |
+          sudo apt-get update
+          # ca-certificates is not decoration: appstreamcli reaches out to every
+          # <url> in the file (and will reach out to every screenshot once there
+          # are any), and without a CA bundle each one comes back as
+          # "W: url-not-reachable ... server certificate verification failed",
+          # which is four warnings and a red job on a correct file.
+          sudo apt-get install -y --no-install-recommends \
+            appstream desktop-file-utils ca-certificates
+
+      - name: Validate both files, and check they still agree with the project
+        run: |
+          set -euo pipefail
+          id=io.github.immineal.TidalWave
+          desktop=packaging/tidal-wave.desktop
+          template="packaging/$id.metainfo.xml.in"
+
+          # --warn-kde because Plasma is where this app's tray lives and where a
+          # blank icon has already cost a bug once; the extra checks are free.
+          desktop-file-validate --warn-kde "$desktop"
+          echo "desktop-file-validate: clean"
+
+          # The metainfo file in the tree is a configure_file() template, so
+          # substitute it the way CMakeLists.txt does - out of the same single
+          # declaration of the version - and validate the text that is actually
+          # installed rather than the template.
+          ver=$(sed -n 's/^project(tidal-wave VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          test -n "$ver" || { echo "no version found in CMakeLists.txt"; exit 1; }
+          echo "project() version: $ver"
+          sed "s/@PROJECT_VERSION@/$ver/g" "$template" > "$id.metainfo.xml"
+          if grep -q '@[A-Z_]*@' "$id.metainfo.xml"; then
+            echo "a @PLACEHOLDER@ survived substitution:"
+            grep -n '@[A-Z_]*@' "$id.metainfo.xml"
+            exit 1
+          fi
+
+          # No --no-net on purpose. Once a <screenshots> block exists, this is
+          # the step that fetches each image and fails on one that is not there,
+          # which is otherwise a mistake Flathub finds for us.
+          #
+          # --explain and --pedantic are for the log, not for the verdict.
+          # appstreamcli exits non-zero on errors and on warnings, and zero on
+          # infos and pedantic hints, so the gate is its own severity judgement
+          # with nothing escalated on top. Escalating pedantic would be wrong
+          # here: the one hint this file draws is cid-contains-uppercase-letter
+          # on io.github.immineal.TidalWave, and that is the app id the owner
+          # decided on and the casing Flathub itself uses throughout. A job that
+          # goes red on a correct file teaches people to ignore it.
+          appstreamcli validate --explain --pedantic "$id.metainfo.xml"
+
+          # The three ways the component names itself, which nothing above can
+          # check because each lives in a different file:
+          #
+          # 1. AppStream pairs a metainfo file with its component by filename, so
+          #    <id> and the installed basename have to be the same string. This
+          #    is also the guard against the second spelling of the app id that
+          #    docs/PACKAGING.md warns about.
+          grep -q "<id>$id</id>" "$id.metainfo.xml" \
+            || { echo "<id> does not match the filename $id.metainfo.xml"; exit 1; }
+          # 2. <launchable> has to name the desktop entry as installed. If it
+          #    does not, the store lists an app with no way to start it.
+          want=$(sed -n 's@.*<launchable type="desktop-id">\(.*\)</launchable>.*@\1@p' \
+                 "$id.metainfo.xml")
+          test "$want" = "$(basename "$desktop")" \
+            || { echo "<launchable> says '$want', we install '$(basename "$desktop")'"; exit 1; }
+          # 3. The version must not be a second copy of project()'s. The template
+          #    has to defer to CMake for it, and the PKGBUILD cannot (pkgver is
+          #    needed before any source is fetched), so it is checked instead.
+          grep -q 'version="@PROJECT_VERSION@"' "$template" \
+            || { echo "$template hardcodes a version instead of taking @PROJECT_VERSION@"; exit 1; }
+          pkgver=$(sed -n 's/^pkgver=//p' packaging/PKGBUILD)
+          test "$pkgver" = "$ver" \
+            || { echo "packaging/PKGBUILD says pkgver=$pkgver, project() says $ver"; exit 1; }
+
+          echo "id, launchable and version all agree"

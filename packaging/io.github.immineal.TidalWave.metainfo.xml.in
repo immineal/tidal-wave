@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo. This is the file KDE Discover and GNOME Software build the
+  store listing from, and the file Flathub refuses a submission without.
+
+  It is a configure_file() template, not the finished article: the version
+  placeholder in <releases> at the bottom is filled in by the install rule in
+  CMakeLists.txt, so the released version is stated once, by project(), rather
+  than kept in step by hand. (Nothing in this header spells that placeholder
+  out, because @ONLY substitution does not stop at comments and the installed
+  file would end up explaining itself with the answer already in place.)
+
+  The installed name has to be <id>.metainfo.xml exactly - that is how AppStream
+  pairs a metainfo file with its component - so the generated file is named
+  io.github.immineal.TidalWave.metainfo.xml and this one only adds ".in".
+-->
+<component type="desktop-application">
+  <!-- Decided by the owner 2026-10-03 over a domain-based id; see
+       docs/PACKAGING.md. It is the one spelling: the metainfo filename, the
+       Flatpak id and any future D-Bus name all use it verbatim. -->
+  <id>io.github.immineal.TidalWave</id>
+
+  <name>Tidal Wave</name>
+  <!-- Deliberately the same string as Comment= in packaging/tidal-wave.desktop
+       and CPACK_PACKAGE_DESCRIPTION_SUMMARY, so the three places a user can
+       read a one-line description of this app cannot drift apart. -->
+  <summary>A native desktop client for Tidal</summary>
+
+  <!-- The licence of this metadata, which is not the licence of the program.
+       CC0-1.0 is what AppStream's own documentation suggests and what lets a
+       distribution's metadata aggregator redistribute the text freely. -->
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- The owner's decision, 2026-10-03. Note that no source file in the tree
+       carries a licence notice or an SPDX tag yet, so this string is currently
+       asserted here and in the .deb and nowhere in the code it describes;
+       docs/PACKAGING.md tracks that as its own piece of work. -->
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="io.github.immineal">
+    <name>Linus Linhof</name>
+  </developer>
+
+  <!-- Has to name the desktop file as it is actually installed. CMakeLists.txt
+       installs packaging/tidal-wave.desktop under that basename, and the app
+       calls QGuiApplication::setDesktopFileName("tidal-wave") so the Wayland
+       compositor can match the window to it. A Flatpak build will need this
+       renamed to the app id - see docs/PACKAGING.md, it is not a free change. -->
+  <launchable type="desktop-id">tidal-wave.desktop</launchable>
+
+  <description>
+    <p>
+      Tidal Wave is a desktop client for the Tidal music service, written in C++
+      with Qt Quick rather than wrapped around a web view. It plays your
+      collection, playlists and mixes, searches the catalogue, follows album and
+      artist pages, and keeps a queue you can reorder.
+    </p>
+    <p>
+      It integrates with the desktop it runs on: a tray icon, MPRIS so the usual
+      media keys and the panel's player widget work, Chromecast output, and
+      downloads for offline listening. Lossless and hi-res streams are labelled
+      where the account allows them.
+    </p>
+    <p>Also included:</p>
+    <ul>
+      <li>Six themes, three dark and three light, with a true-black mode for OLED screens</li>
+      <li>Lyrics, album credits and artist biographies, with every name a link</li>
+      <li>A sleep timer with a fade-out, and a sidebar that searches your library</li>
+      <li>Pinning, with drag-to-reorder, kept per Tidal account</li>
+      <li>A complete German translation, switchable without restarting</li>
+      <li>A software-rendering switch for machines where the GPU path misbehaves</li>
+    </ul>
+    <p>
+      An account with an active subscription is required. This program is not
+      produced by, endorsed by or affiliated with Tidal.
+    </p>
+  </description>
+
+  <url type="homepage">https://github.com/immineal/tidal-wave</url>
+  <url type="bugtracker">https://github.com/immineal/tidal-wave/issues</url>
+  <url type="vcs-browser">https://github.com/immineal/tidal-wave</url>
+  <url type="help">https://github.com/immineal/tidal-wave#readme</url>
+  <!-- No <url type="contact">. The obvious value is the project mailbox that the
+       .deb's Maintainer field carries, and appstreamcli rejects it outright:
+       "E: web-url-expected mailto:tidal-wave@linu.li" - the type takes a page,
+       not an address. The tracker above is the contact route the app itself
+       uses anyway (src/ui/Feedback.cpp files prefilled issues there). -->
+
+  <provides>
+    <binary>tidal-wave</binary>
+  </provides>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>streaming</keyword>
+    <keyword>tidal</keyword>
+    <keyword>audio</keyword>
+    <keyword>hifi</keyword>
+  </keywords>
+
+  <!-- A pointer and a keyboard, not touch: the layout is a desktop one and the
+       shortcut table in the README is half the interface. -->
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+
+  <!--
+    OARS, answered for what this app can actually put in front of a user rather
+    than for what its own code contains. It is a client for an unfiltered
+    commercial catalogue: `explicit` arrives on every track (src/api/Models.h)
+    and nothing in the UI filters on it, and TidalClient::fetchLyrics puts the
+    lyrics of whatever is playing on screen verbatim. So:
+
+      language-profanity  intense  Strong profanity, frequently, is in the
+                                   catalogue and in the lyrics pane, and the app
+                                   offers no explicit-content filter at all.
+      sex-themes          moderate Sexual references in lyrics and titles.
+      sex-nudity          mild     Album artwork, which we neither choose nor
+                                   screen, includes artistic nudity.
+      drugs-*             mild     References in lyrics and titles. "mild" is
+                                   the reference tier; "moderate" is depicted
+                                   use, which text is not.
+      social-info         intense  OARS's top tier here is "shares information
+                                   that identifies the user". Logging in sends
+                                   the account's OAuth identity to Tidal on
+                                   every request. The daily GitHub update check
+                                   would be the "mild" tier on its own.
+
+    Left at none, on purpose: the violence tiers are all worded as *depictions*
+    ("unrealistic depiction", "graphic depictions"), which song lyrics are not,
+    so rating them here would be guessing about third-party album art.
+    money-purchasing is none because the app sells nothing - a subscription is
+    bought on Tidal's own site, outside it. social-chat/-audio/-contacts/
+    -location are none because there is no messaging of any kind.
+
+    This set is honest, and it costs something: language-profanity=intense maps
+    to an 18 age rating in the store front-ends, which parental controls act on.
+    Lowering it means either arguing for "moderate" or shipping an
+    explicit-content filter, and both are the owner's call, not ours.
+  -->
+  <content_rating type="oars-1.1">
+    <content_attribute id="language-profanity">intense</content_attribute>
+    <content_attribute id="sex-themes">moderate</content_attribute>
+    <content_attribute id="sex-nudity">mild</content_attribute>
+    <content_attribute id="drugs-alcohol">mild</content_attribute>
+    <content_attribute id="drugs-narcotics">mild</content_attribute>
+    <content_attribute id="drugs-tobacco">mild</content_attribute>
+    <content_attribute id="social-info">intense</content_attribute>
+  </content_rating>
+
+  <!--
+    No <screenshots> block, deliberately, and not an oversight to be filled in
+    with placeholder URLs: Flathub fetches every screenshot URL at submission
+    time, so a link to an image that does not exist fails louder than no link.
+
+    What completing it needs, in order (docs/PACKAGING.md has the long version):
+      1. Captures taken on a headless X server from the owner's own session -
+         their account, never their monitor, never their running instance.
+      2. The owner's yes to each individual image. Nothing ships without it.
+      3. The approved files hosted at a stable raw URL on a tag, and listed here
+         as <screenshot type="default"> with <image> and <caption>.
+    Flathub requires at least one screenshot, so this block is the last thing
+    between the metainfo file and a submission.
+  -->
+
+  <releases>
+    <!-- date= is the release date and cannot be derived, so it is the one thing
+         here that has to be touched by hand when v@PROJECT_VERSION@ is tagged. -->
+    <release version="@PROJECT_VERSION@" date="2026-10-03">
+      <description>
+        <p>The theming, reading and settings release.</p>
+        <ul>
+          <li>Six themes, paired light and dark, plus a true-black mode for OLED screens</li>
+          <li>A lyrics view, album credits, and artist biographies with clickable names</li>
+          <li>A Settings panel, live language switching, and a complete German catalogue</li>
+          <li>The sidebar rebuilt as one searchable list, with pinning and drag-to-reorder</li>
+          <li>Now Playing reworked: a spectrum display, a cover-coloured page, a sleep timer</li>
+          <li>The audio output follows the system default as it changes, without losing position</li>
+          <li>Reduced-motion and software-rendering switches, and a daily opt-out update check</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

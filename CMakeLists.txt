@@ -392,6 +392,29 @@ if(UNIX AND NOT APPLE)
     install(FILES assets/icon.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
         RENAME tidal-wave.svg)
+
+    # AppStream metainfo: the file KDE Discover and GNOME Software build the
+    # store listing *from*, and the one Flathub refuses a submission without.
+    # Without it the app is at best a bare desktop entry with no description.
+    #
+    # The installed basename has to be "<component id>.metainfo.xml" exactly -
+    # that is how AppStream pairs the file with the component - so the name is
+    # spelled out here rather than inherited from the source file. The id is
+    # io.github.immineal.TidalWave (docs/PACKAGING.md), which is deliberately
+    # *not* the .desktop basename above; <launchable> inside the file is what
+    # ties the two together, so the Wayland matching the comment above describes
+    # is untouched by this.
+    #
+    # Configured rather than copied so the version in <releases> comes from
+    # project(), instead of being a second copy of 0.4.0 to forget. @ONLY
+    # because ${...} means nothing in AppStream and a future <caption> with
+    # braces in it should not quietly become a CMake expansion.
+    set(TW_METAINFO
+        "${CMAKE_CURRENT_BINARY_DIR}/io.github.immineal.TidalWave.metainfo.xml")
+    configure_file(packaging/io.github.immineal.TidalWave.metainfo.xml.in
+        "${TW_METAINFO}" @ONLY)
+    install(FILES "${TW_METAINFO}"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 endif()
 
 # ── Packaging (.deb via CPack) ───────────────────────────────────────────────
