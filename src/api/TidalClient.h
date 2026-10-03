@@ -119,6 +119,11 @@ public:
     // Track features
     void fetchTrackRadio(qint64 trackId, TracksCallback cb);
     void fetchLyrics    (qint64 trackId, std::function<void(QString, bool, QString)> cb);
+    // Who made the recording, plus the rights line, the exact release date and
+    // the two identifiers. Three GETs behind one call - see TrackCredits in
+    // Models.h for which one carries what.
+    void fetchTrackCredits(qint64 trackId,
+                           std::function<void(TrackCredits, QString /*error*/)> cb);
 
     // Recently played
     void fetchRecentlyPlayed(TracksCallback cb);

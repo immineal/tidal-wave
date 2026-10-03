@@ -205,11 +205,24 @@ TestCase {
             function navigate(page, params) {}
             function goBack() {}
 
+            // Fullscreen lives on the application window too (Main.qml), and the
+            // page can only ask: it reads Window.window.fullScreen and calls
+            // Window.window.toggleFullScreen(). Mirror that surface, nothing
+            // more - the real one also hides the sidebar and the player bar, and
+            // the page's own geometry is what these cases measure.
+            property bool fullScreen: false
+            function toggleFullScreen() { fullScreen = !fullScreen }
+
             property alias page: np
             NowPlayingPage {
                 id: np
-                x: testCase.sidebarWidth
-                width: Math.max(0, npWin.width - testCase.sidebarWidth)
+                // Fullscreen hides the sidebar in Main.qml, and a Layout skips an
+                // invisible item entirely, so the page gets that width back. The
+                // reading view cases below measure the page against the screen,
+                // so the host has to hand it the screen.
+                x: npWin.fullScreen ? 0 : testCase.sidebarWidth
+                width: Math.max(0, npWin.width
+                                   - (npWin.fullScreen ? 0 : testCase.sidebarWidth))
                 height: npWin.height
             }
         }
@@ -1072,6 +1085,8 @@ TestCase {
         tryVerify(function () {
             return page.stackness === (page.stackedLayout ? 1 : 0)
                 && page.lyricsness === (page.showLyrics ? 1 : 0)
+                && page.creditsness === (page.showCredits ? 1 : 0)
+                && page.readingness === (page.readingView ? 1 : 0)
         }, 3000, "the page never settled")
     }
 
@@ -1172,11 +1187,306 @@ TestCase {
                + view.bottomMargin + "), so the last line cannot clear the chips")
         verify(view.topMargin >= 30,
                row.tag + ": the list reserves no content room at the top ("
-               + view.topMargin + "), so the first line cannot clear the "
-               + "fullscreen button")
+               + view.topMargin + "), so the first line can only ever sit flush "
+               + "against the top of the panel")
 
         var faults = collectOverflow(page, "NowPlayingPage", [])
         verify(faults.length === 0, reportFor("Now Playing overflows with lyrics", row, faults))
+    }
+
+    // ── the reading view ─────────────────────────────────────────────────
+    //
+    // Fullscreen with a panel open is not a second fullscreen and has no control
+    // of its own: the chrome row's button is still the only one, and this is what
+    // it shows. The user asked for exactly that - "lass uns den fullscreen
+    // einfach das anzeigen wenn lyrics an sind und der user auf fullscreen ist" -
+    // after finding that the lyrics panel's own fullscreen button "just do[es]
+    // the same thing as the button that's like four centimetres to the top
+    // right".
+
+    // Screen sizes, not window sizes: fullscreen is the whole screen and the
+    // sidebar is gone with it. 1920x1200 is the user's own monitor.
+    //
+    // `roomy` is whether the page has any height to give the words in the first
+    // place. At 600 it has not - the text column alone is taller than that - so
+    // there the reading view can only be asked not to make things worse.
+    function fullScreenRows() {
+        return [
+            { tag: "1920x1200", w: 1920, h: 1200, roomy: true  },
+            { tag: "1920x1080", w: 1920, h: 1080, roomy: true  },
+            { tag: "1280x1200", w: 1280, h: 1200, roomy: true  },
+            { tag: "1280x600",  w: 1280, h: 600,  roomy: false }
+        ]
+    }
+
+    function enterReading(host) {
+        host.fullScreen = true
+        settlePage(host.page)
+        waitForRendering(host.contentItem)
+    }
+
+    // The size the first lyric line is really painted at, off the delegate and
+    // not off the page's property for it: the page asking for 28 and the list
+    // drawing 14 is exactly the kind of disagreement a layout test is for, and
+    // reading only the property passed with the delegate reverted to a literal.
+    function lyricLinePixelSize(page) {
+        var view = findChild(page, "nowPlayingLyricsView")
+        if (!view) return -1
+        // Whichever delegate the view happens to have realised, not index 0: the
+        // list re-wraps when the measure changes and the first line is not
+        // always one of them, which would read as "the type is gone" when the
+        // type is fine.
+        var kids = view.contentItem ? view.contentItem.children : []
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i]
+            if (c && c.visible && typeof c.text === "string" && c.text.length > 0
+                    && c.font)
+                return c.font.pixelSize
+        }
+        return -1
+    }
+
+    // Everything the panel is at rest, in one object, so a before and an after
+    // can be compared field by field.
+    function panelShape(page) {
+        var box = findChild(page, "nowPlayingCoverBox")
+        verify(box, "the hero slot was not found")
+        return { w: box.width, h: box.height, size: page.lyricLineSize,
+                 drawn: lyricLinePixelSize(page), info: page.infoHeight }
+    }
+
+    function test_reading_view_gives_the_words_the_screen_data() { return fullScreenRows() }
+
+    function test_reading_view_gives_the_words_the_screen(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        var docked = panelShape(page)
+
+        // Docked, the words are the smaller half of the page: the text column is
+        // taller than the panel. That is the thing being changed, so it is
+        // measured rather than assumed.
+        verify(docked.h < docked.info,
+               row.tag + ": docked, the panel is already " + docked.h.toFixed(1)
+               + " against a " + docked.info.toFixed(1)
+               + "px text column, so this case is measuring nothing")
+
+        enterReading(host)
+        verify(page.readingView,
+               row.tag + ": fullscreen with the lyrics open is the reading view")
+
+        var reading = panelShape(page)
+
+        // All the width the page has, up to the measure - which is held in
+        // characters, so at twice the type it is twice the pixels.
+        verify(reading.size === 2 * docked.size,
+               row.tag + ": the lyric line is set at " + reading.size
+               + "px where docked it was " + docked.size)
+        verify(docked.drawn > 0 && reading.drawn > 0,
+               row.tag + ": the lyric line's painted size was not measured")
+        verify(reading.drawn === reading.size,
+               row.tag + ": the page asks for " + reading.size
+               + "px lines and the list paints them at " + reading.drawn)
+        verify(reading.drawn > docked.drawn,
+               row.tag + ": the lines are painted at " + reading.drawn
+               + "px, the same as the " + docked.drawn + " they had docked")
+        verify(Math.abs(reading.w - Math.min(page.contentWidth, 2 * 640)) <= 1,
+               row.tag + ": the words got " + reading.w.toFixed(1)
+               + "px of a " + page.contentWidth.toFixed(1) + "px page")
+        verify(reading.w > docked.w + 1,
+               row.tag + ": the words are no wider than the " + docked.w.toFixed(1)
+               + "px they had docked")
+
+        // And all the height the page can spare, with nothing capping it: the
+        // 560 the docked panel stops at is gone, and the floor and the room are
+        // all that are left.
+        var spare = Math.max(page.coverSize, 280, page.stackedCoverRoom)
+        verify(Math.abs(reading.h - spare) <= 0.5,
+               row.tag + ": the panel is " + reading.h.toFixed(1)
+               + " where the page could spare " + spare.toFixed(1))
+        verify(reading.h >= docked.h - 0.5,
+               row.tag + ": the panel lost height entering the reading view, "
+               + docked.h.toFixed(1) + " -> " + reading.h.toFixed(1))
+
+        // The two blocks that are neither chrome nor a control have folded, and
+        // that is where the height came from.
+        var upNext = findChild(page, "nowPlayingUpNextColumn")
+        var volume = findChild(page, "nowPlayingVolumeRow")
+        verify(upNext && volume, "the folding blocks were not found")
+        verify(upNext.height <= 0.5 && volume.height <= 0.5,
+               row.tag + ": Up Next is " + upNext.height.toFixed(1)
+               + " and the volume row " + volume.height.toFixed(1)
+               + " tall in the reading view, so neither folded")
+        verify(reading.info < docked.info - 1,
+               row.tag + ": the text column still stands " + reading.info.toFixed(1)
+               + "px tall, so the words gained nothing from the fold")
+
+        // Where the page has the height to give, the words are now the biggest
+        // thing on it, which is the whole point and the opposite of the docked
+        // measurement above.
+        if (row.roomy)
+            verify(reading.h > reading.info,
+                   row.tag + ": the panel is " + reading.h.toFixed(1)
+                   + " against a " + reading.info.toFixed(1)
+                   + "px text column, so the page is still mostly not the words")
+
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0,
+               reportFor("the reading view overflows", row, faults))
+    }
+
+    // The chrome row and the transport stay, and they stay at full strength.
+    // The user picked this over a cinematic mode that hides them and brings them
+    // back on mouse move, so that skipping and scrubbing do not cost a mouse
+    // move first. Nothing here may fade.
+    function test_reading_view_never_fades_the_chrome_data() { return fullScreenRows() }
+
+    function test_reading_view_never_fades_the_chrome(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        enterReading(host)
+
+        var names = ["nowPlayingCollapse", "nowPlayingFullscreen",
+                     "nowPlayingSeekBar", "nowPlayingTransportRow"]
+        for (var i = 0; i < names.length; i++) {
+            var it = findChild(page, names[i])
+            verify(it, row.tag + ": " + names[i] + " was not found")
+            verify(it.visible, row.tag + ": " + names[i]
+                   + " is not visible in the reading view")
+            // Opacity is inherited down the tree, so a parent fading would show
+            // here as well as the item itself fading.
+            var o = it.opacity
+            var p = it.parent
+            while (p) { o *= p.opacity; p = p.parent }
+            verify(o > 0.99, row.tag + ": " + names[i] + " is drawn at "
+                   + o.toFixed(2) + " opacity in the reading view")
+            // And actually on the screen, not scrolled off the bottom of it.
+            if (row.roomy) {
+                var top = it.mapToItem(page, 0, 0).y
+                verify(top >= 0 && top + it.height <= page.height + 0.5,
+                       row.tag + ": " + names[i] + " sits at " + top.toFixed(1)
+                       + ".." + (top + it.height).toFixed(1)
+                       + " on a page " + page.height + " tall")
+            }
+        }
+    }
+
+    // One column at every width. Opening a panel already stacks the page
+    // whatever the window is doing, so the reading view has no second
+    // arrangement to get wrong - and the two blocks still have to be clear of
+    // each other once it has settled.
+    function test_reading_view_is_one_column_at_every_width_data() {
+        var rows = []
+        var widths = [640, 820, 960, 1280, 1920]
+        for (var i = 0; i < widths.length; i++)
+            rows.push({ tag: widths[i] + "x1200", w: widths[i], h: 1200 })
+        return rows
+    }
+
+    function test_reading_view_is_one_column_at_every_width(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        enterReading(host)
+
+        compare(page.stackness, 1,
+                row.tag + ": the reading view is not one column")
+        var box  = findChild(page, "nowPlayingCoverBox")
+        var info = findChild(page, "nowPlayingInfoColumn")
+        verify(box && info, "the two blocks were not found")
+        verify(info.y >= box.y + box.height + blockClearance,
+               row.tag + ": the text column starts at " + info.y.toFixed(1)
+               + " where the panel ends at " + (box.y + box.height).toFixed(1))
+    }
+
+    // The panel's own fullscreen button is gone. The user: "then we also don't
+    // need the separate full screen icon in the lyrics thing, right?" - it did
+    // the same thing as the chrome row's, which is visible the whole time now.
+    function test_the_lyrics_panel_has_no_fullscreen_button_of_its_own() {
+        var host = showHost(nowPlayingHost, 1920, 1200)
+        var page = openLyrics(host)
+        var panel = findChild(page, "nowPlayingLyricsPanel")
+        verify(panel && panel.visible, "the lyrics panel did not open")
+
+        verify(findChild(page, "nowPlayingLyricsFullscreen") === null,
+               "the lyrics panel still has a fullscreen button of its own")
+
+        // And the one in the chrome row is reachable and is the one that works.
+        var chrome = findChild(page, "nowPlayingFullscreen")
+        verify(chrome && chrome.visible, "the chrome row's fullscreen button is gone")
+        verify(!page.readingView, "the page should not start fullscreen")
+        mouseClick(chrome, Math.round(chrome.width / 2),
+                           Math.round(chrome.height / 2))
+        tryVerify(function () { return page.readingView }, 2000,
+                  "the chrome row's button did not put the page into the reading view")
+    }
+
+    // And it is reversible: leaving fullscreen puts every number back exactly
+    // where it was, rather than leaving the page in a third state.
+    function test_leaving_fullscreen_puts_the_panel_back_data() { return fullScreenRows() }
+
+    function test_leaving_fullscreen_puts_the_panel_back(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        var docked = panelShape(page)
+
+        enterReading(host)
+        host.fullScreen = false
+        verify(!page.readingView,
+               row.tag + ": leaving fullscreen did not leave the reading view")
+        // Asked before settlePage(), which waits on this among other things and
+        // would otherwise report a page stuck in the reading view as "never
+        // settled" without saying what it was stuck in.
+        tryVerify(function () { return page.readingness === 0 }, 3000,
+                  row.tag + ": the page is still drawing the reading view "
+                  + "after leaving fullscreen")
+        settlePage(page)
+        waitForRendering(host.contentItem)
+
+        var back = panelShape(page)
+        compare(back.size, docked.size, row.tag + ": the type did not come back")
+        compare(back.drawn, docked.drawn,
+                row.tag + ": the painted type did not come back")
+        verify(Math.abs(back.w - docked.w) <= 0.5 && Math.abs(back.h - docked.h) <= 0.5,
+               row.tag + ": the panel came back at " + back.w.toFixed(1) + "x"
+               + back.h.toFixed(1) + " where it was " + docked.w.toFixed(1) + "x"
+               + docked.h.toFixed(1))
+        verify(Math.abs(back.info - docked.info) <= 0.5,
+               row.tag + ": the text column came back at " + back.info.toFixed(1)
+               + " where it was " + docked.info.toFixed(1))
+    }
+
+    // The credits tab is the same slot and gets the same reading view. Its
+    // contents are tests/qml/tst_credits.qml's business; this is the geometry.
+    function test_credits_get_the_same_reading_view_data() { return fullScreenRows() }
+
+    function test_credits_get_the_same_reading_view(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        enterReading(host)
+        var withLyrics = panelShape(page)
+
+        page.showCredits = true
+        settlePage(page)
+        waitForRendering(host.contentItem)
+        verify(!page.showLyrics,
+               row.tag + ": opening the credits did not close the lyrics")
+        verify(page.readingView, row.tag + ": the credits are not the reading view")
+
+        var withCredits = panelShape(page)
+        verify(Math.abs(withCredits.w - withLyrics.w) <= 0.5
+               && Math.abs(withCredits.h - withLyrics.h) <= 0.5,
+               row.tag + ": the credits got " + withCredits.w.toFixed(1) + "x"
+               + withCredits.h.toFixed(1) + " where the lyrics got "
+               + withLyrics.w.toFixed(1) + "x" + withLyrics.h.toFixed(1))
+
+        var panel = findChild(page, "nowPlayingCreditsPanel")
+        verify(panel && panel.visible, row.tag + ": the credits panel did not open")
+        var art = findChild(page, "nowPlayingArt")
+        verify(art && !art.visible,
+               row.tag + ": the artwork is still drawn behind the credits")
+
+        var faults = collectOverflow(page, "NowPlayingPage", [])
+        verify(faults.length === 0,
+               reportFor("the credits reading view overflows", row, faults))
     }
 
     // The user: "closing the lyrics tab skips to the line that the lyrics switch

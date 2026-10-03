@@ -12,6 +12,14 @@ Rectangle {
     property bool hasTrack: track && track.id > 0
     property bool isLiked: false
     property bool showLyrics: false
+    // The other thing the hero slot can be. The two are tabs over one slot, not
+    // two panels: opening either closes the other, which is what the chip pair
+    // at the bottom of the slot does.
+    property bool showCredits: false
+    // Whichever of them is open, if either. Everything that used to ask
+    // `showLyrics` about the *shape* of the slot asks this instead; what asks
+    // about the words still asks showLyrics.
+    readonly property bool showPanel: showLyrics || showCredits
     // Download state for the current track: "idle" | "busy" | "done" | "error"
     property string dlState: "idle"
 
@@ -53,12 +61,15 @@ Rectangle {
     // goes through the duration rather than through `enabled` so the move
     // still starts and still finishes, in the frame it started (see
     // Theme.dur).
-    // Lyrics are the stacked arrangement whatever the window is doing. A tall
-    // column of words beside a tall column of controls is two columns and
+    // Either panel is the stacked arrangement whatever the window is doing. A
+    // tall column of words beside a tall column of controls is two columns and
     // neither gets a measure worth reading; the page has one wide slot to give
-    // and the lyrics want all of it. So opening them is a breakpoint crossing
+    // and the panel wants all of it. So opening one is a breakpoint crossing
     // in its own right, and it goes down the same clock rather than switching.
-    readonly property bool stackedLayout: stacked || showLyrics
+    // It is also why there is no separate reading view at the side-by-side
+    // width: with a panel open the page is one column at every width, and
+    // fullscreen only changes how much of that column the panel gets.
+    readonly property bool stackedLayout: stacked || showPanel
     property real stackness: stackedLayout ? 1 : 0
 
     Behavior on stackness {
@@ -82,6 +93,22 @@ Rectangle {
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
     }
 
+    // The same for the credits, and read the same way: 0 artwork, 1 credits.
+    property real creditsness: showCredits ? 1 : 0
+
+    Behavior on creditsness {
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+    }
+
+    // How far the slot is from being an album cover and towards being a panel,
+    // whichever panel that is. The max and not the sum: swapping one panel for
+    // the other runs both clocks at once, in opposite directions, and the slot
+    // must not breathe while they cross. Both are OutCubic over the same
+    // duration, so the rising one is already past the falling one at the
+    // midpoint and this never dips below 0.5 during a swap -- the slot holds
+    // its panel shape and only the contents cross-fade.
+    readonly property real panelness: Math.max(lyricsness, creditsness)
+
     // Reads as "a quantity on its way from the side-by-side value to the
     // stacked one". Every piece of geometry below is written this way so that
     // at rest it is exactly the number the layout used before, and in between
@@ -90,10 +117,71 @@ Rectangle {
         return side + (stackedValue - side) * root.stackness
     }
 
-    // The same, between the artwork's shape and the lyrics'.
-    function lblend(art, lyrics) {
-        return art + (lyrics - art) * root.lyricsness
+    // The same, between the artwork's shape and a panel's.
+    function lblend(art, panel) {
+        return art + (panel - art) * root.panelness
     }
+
+    // ─── The reading view ──────────────────────────────────────────────
+    //
+    // Fullscreen with a panel open is not a second fullscreen mode and has no
+    // control of its own: the chrome row's button is the only fullscreen there
+    // is. It is what fullscreen *shows* once the lyrics are open, which is what
+    // the user asked for -- "lass uns den fullscreen einfach das anzeigen wenn
+    // lyrics an sind und der user auf fullscreen ist".
+    //
+    // The chrome row and the transport stay exactly where they are and never
+    // fade. The user chose that over a cinematic mode that hides them and brings
+    // them back on mouse move, so that skipping and scrubbing do not cost a
+    // mouse move first.
+    readonly property bool readingView: fullScreen && showPanel
+
+    // The third clock on this page, run like the two above it and at the same
+    // duration: entering fullscreen with the lyrics already open moves neither
+    // stackness nor lyricsness, so without one of its own this transition would
+    // be a single frame.
+    property real readingness: readingView ? 1 : 0
+
+    Behavior on readingness {
+        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+    }
+
+    // "A quantity on its way from the windowed panel's value to the reading
+    // view's", the third of the three blends.
+    function rblend(panelValue, reading) {
+        return panelValue + (reading - panelValue) * root.readingness
+    }
+
+    // ─── What the reading view takes the height from ────
+    //
+    // The 560 cap below was not what was holding the words down. Measured at
+    // 1920x1200 with the lyrics open, the text column stands 617px tall and the
+    // page had 387px left to give the panel: the cap never bound at all, and
+    // uncapping it on its own buys nothing. The height has to come out of that
+    // column, and the only question is which of it.
+    //
+    // The user named what has to stay: the chrome row, and the controls, "so
+    // they can skip and scrub without moving the mouse". So the seek bar and
+    // the transport stay, and so does everything that is a control - the
+    // download, the like, the sleep timer - and the title block that says what
+    // is playing.
+    //
+    // Two blocks are neither. The Up Next preview is a list of what comes next,
+    // which is a thing to look at and not a thing to press, and the volume row
+    // is the one control on this page that is entirely on the keyboard already
+    // (Up, Down, Ctrl+M - see Main.qml). Those two fold away, and at 1920x1200
+    // the words go from 387px of the screen to 645.
+    //
+    // Folded, not hidden: the height is lerped off the same clock as everything
+    // else, so the panel grows into the space as the blocks give it up instead of
+    // the page re-forming in a frame.
+    //
+    // Each folded block leaves the column's 24px gap behind it, because a
+    // ColumnLayout keeps the spacing of a zero-height child and only drops it
+    // for an invisible one - and going invisible is a 48px step in the last
+    // frame of an otherwise smooth move. 48px of a 1200px screen is the price of
+    // not having that step.
+    readonly property real foldAway: 1 - readingness
 
     // Stacked, the cover takes the height the rest of the page leaves it,
     // capped at 420 and at the content width and floored at 180 so it stays a
@@ -106,25 +194,47 @@ Rectangle {
                                                       Math.max(180, stackedCoverRoom))
     readonly property real coverSize: blend(sideCoverSize, stackedCoverSize)
 
-    // ─── What the lyrics ask for instead ───────────────
+    // ─── What a panel asks for instead ─────────────────
     //
+    // The size the lines are set in. 14 docked; in the reading view the words
+    // are the whole screen and are read from further back than a panel in a
+    // window, so they are set at twice that. Lerped, not switched, so the type
+    // grows with the slot on the one clock.
+    readonly property int  lyricsSize:  14
+    readonly property int  readingSize: 28
+    readonly property real lyricLineSize: rblend(lyricsSize, readingSize)
+
     // A measure, not a square. 640px is about 90 characters of the 14px the
     // lines are set in, which is past the longest line anything the parser
     // produces, so at that width a lyric is one line and the eye comes back to
     // a known place. Wider is not more readable, so the slot stops there and
     // centres in whatever is left.
-    readonly property int lyricsMeasure: 640
+    //
+    // The measure that matters is the character count, so it is held in
+    // characters and spent in pixels: at the reading size the same ~90
+    // characters need twice the width, which is how the reading view takes all
+    // the width the page has without giving up the rule.
+    readonly property real lyricsMeasure: 640 * lyricLineSize / lyricsSize
     readonly property real lyricsWidth: Math.min(contentWidth, lyricsMeasure)
+
+    // The height cap, 560 docked, and gone in the reading view.
+    //
+    // It is not what was holding the panel down either way: measured at
+    // 1920x1200 with the lyrics open the page had 387px to spare, so the cap
+    // never bound at any size this suite sweeps. What it still does is stop a
+    // very tall window from handing the panel more column than the eye can
+    // follow, and in the reading view the room itself is the limit - the panel
+    // takes everything the page can spare and no more, and the chrome row above
+    // it and the transport below keep every pixel they had.
+    readonly property real lyricsCap: rblend(560, Math.max(560, stackedCoverRoom))
 
     // And the height the page can spare, read off the same room the stacked
     // cover takes: floored at 280 so there is always a column rather than a
-    // porthole, capped at 560 because past that the active line is too far from
-    // the middle of the screen to follow. Never shorter than the artwork it
-    // replaces, so opening the lyrics only ever makes the slot bigger -- which
-    // is what lets the crossfade below leave the cover at its own size while
-    // the slot grows around it.
+    // porthole. Never shorter than the artwork it replaces, so opening a panel
+    // only ever makes the slot bigger -- which is what lets the crossfade below
+    // leave the cover at its own size while the slot grows around it.
     readonly property real lyricsHeight:
-        Math.max(coverSize, 280, Math.min(560, stackedCoverRoom))
+        Math.max(coverSize, 280, Math.min(lyricsCap, stackedCoverRoom))
 
     // The slot both of them live in. Square for the artwork, a column for the
     // lyrics, and on its way between the two for 170ms.
@@ -246,16 +356,19 @@ Rectangle {
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
 
-    // The band at the bottom of the lyrics panel that belongs to the two chips
-    // and not to the words. Resync is 28 tall on a 10px bottom margin, so it
-    // reaches 38px up from the panel floor, and the Lyrics toggle 36; 48 leaves
-    // ten pixels of air between the taller of them and the last line. Nothing
-    // scrolls through it, which is what stops a tap on a chip also landing on a
-    // lyric.
+    // The band at the bottom of whichever panel is open that belongs to the
+    // chips and not to the content. Resync is 28 tall on a 10px bottom margin,
+    // so it reaches 38px up from the panel floor, and the chip row 36; 48
+    // leaves ten pixels of air between the taller of them and the last line.
+    // Nothing scrolls through it, which is what stops a tap on a chip also
+    // landing on a lyric.
     readonly property int lyricsFooterRoom: 48
-    // The same at the top, for the fullscreen button in that corner: 36 tall on
-    // a 10px margin reaches 46, and this leaves a little air above the first
-    // line once it has been scrolled to the top.
+    // The same at the top: the air above the first line once it has been
+    // scrolled there. It is content margin for the same reason the band below
+    // is, and it is also all the room there is to move the first line off the
+    // panel's top edge -- a ListView will not scroll past -topMargin, so with
+    // no band here line 0 can only ever sit flush against the top while every
+    // other line can sit in the middle.
     readonly property int lyricsHeaderRoom: 56
 
     // Puts the line being sung back in the middle. Called on every resize of
@@ -302,7 +415,19 @@ Rectangle {
 
     // Opening the panel is the one resize that happens before there is a list
     // to position, so it asks again once there is.
-    onShowLyricsChanged: if (showLyrics) Qt.callLater(root.recentreLyrics)
+    //
+    // The two panels being one slot is held here and not in the chips that
+    // toggle them: a chip is one way in, and anything else that opens a panel -
+    // a test, a shortcut, a restored session - has to get the same slot rather
+    // than two panels stacked on top of each other. Neither handler can
+    // re-enter, because each only acts on its own property turning ON.
+    onShowLyricsChanged: {
+        if (showLyrics) {
+            showCredits = false
+            Qt.callLater(root.recentreLyrics)
+        }
+    }
+    onShowCreditsChanged: if (showCredits) showLyrics = false
 
     Timer {
         id: ignoreSyncTimer
@@ -356,6 +481,120 @@ Rectangle {
         })
     }
 
+    // ─── Credits ───────────────────────────────────────
+    //
+    // The same four states the lyrics have, read the same way: "none" before
+    // anything was asked for, "loading" while the fetch is out, "ready" when
+    // there is something to show, "unavailable" when there is not. A failed
+    // fetch lands on "unavailable" too, and shows the same one message, because
+    // from the panel's side "we asked and there is nothing to show you" is one
+    // fact and two sentences for it is two patterns.
+    property string creditsState: "none"
+    // [{type, contributors: [{id, name}]}] exactly as the bridge hands it over.
+    property var    creditsGroups: []
+    property string creditsCopyright:   ""
+    property string creditsIsrc:        ""
+    property string creditsReleaseDate: ""   // "2017-09-22", the album's
+    property string creditsUpc:         ""
+
+    // Per track id, so flipping between the two tabs does not refetch and
+    // neither does coming back to a track later in the session. Three requests
+    // go into one entry (see TidalClient::fetchTrackCredits), which is most of
+    // why this is cached at all.
+    //
+    // Written into in place rather than reassigned: nothing binds to it, so
+    // there is no notification to miss, and reassigning a fresh object per
+    // track would copy the whole cache on every write.
+    property var creditsCache: ({})
+
+    function applyCredits(entry) {
+        root.creditsGroups      = entry.groups
+        root.creditsCopyright   = entry.copyright
+        root.creditsIsrc        = entry.isrc
+        root.creditsReleaseDate = entry.releaseDate
+        root.creditsUpc         = entry.upc
+        root.creditsState       = entry.state
+    }
+
+    function clearCredits() {
+        root.creditsGroups      = []
+        root.creditsCopyright   = ""
+        root.creditsIsrc        = ""
+        root.creditsReleaseDate = ""
+        root.creditsUpc         = ""
+        root.creditsState       = "none"
+    }
+
+    // Asked for when the tab is opened, not when the track changes.
+    //
+    // The lyrics are prefetched because their chip hides itself when there are
+    // none, so the page has to know the answer before anyone asks the question.
+    // Nothing here depends on the answer that way - the chip is offered for
+    // every track - and the fetch is three requests, so paying for it on every
+    // track change would be paying for a panel nobody opened.
+    function loadCredits() {
+        if (!hasTrack || track.id <= 0) return
+        if (root.creditsState === "loading") return
+        var key = "" + track.id
+        var hit = root.creditsCache[key]
+        if (hit) { root.applyCredits(hit); return }
+
+        root.creditsState = "loading"
+        bridge.fetchTrackCredits(track.id, function (result, err) {
+            var groups = (!err && result && result.groups) ? result.groups : []
+            var entry = {
+                groups:      groups,
+                copyright:   (!err && result) ? (result.copyright   || "") : "",
+                isrc:        (!err && result) ? (result.isrc        || "") : "",
+                releaseDate: (!err && result) ? (result.releaseDate || "") : "",
+                upc:         (!err && result) ? (result.upc         || "") : ""
+            }
+            // "Ready" means there is something on the panel, which a track with
+            // no contributor groups can still be: a release date and a rights
+            // line are what the user asked for as much as the names are.
+            entry.state = (!err && (groups.length > 0 || entry.copyright.length > 0
+                                    || entry.releaseDate.length > 0))
+                          ? "ready" : "unavailable"
+
+            // A failure is not cached, so reopening the tab asks again. Only an
+            // answer is worth keeping, including an empty one: that track really
+            // has no credits and asking twice will not change it.
+            if (!err) root.creditsCache[key] = entry
+
+            // The answer can arrive after the user has moved on, and then it
+            // belongs to the track it was asked about and not to this one.
+            if (root.hasTrack && ("" + root.track.id) === key)
+                root.applyCredits(entry)
+        })
+    }
+
+    // "2017-09-22" in the reader's own date order and language. Anything that is
+    // not a full ISO date - a bare year, an empty string - is handed back
+    // untouched rather than guessed at, which is also what keeps
+    // Date.fromLocaleDateString away from a string it would throw on.
+    //
+    // The locale's long date format with the weekday taken off the front. Qt
+    // offers a long form that names the day of the week and a short one that is
+    // all digits, and neither is what a release date wants: which Friday a
+    // record came out on in 1975 is noise, and "22/09/2017" is the fact without
+    // the month. So the locale's own long format is used - it is the locale that
+    // knows whether the day comes before the month - with the dddd token and its
+    // separator removed. A locale whose long format does not lead with the
+    // weekday is left exactly as it is.
+    //
+    // The same function lives in qml/pages/AlbumPage.qml, which prints the same
+    // date in its hero. Sharing it would take a new QML file in the module.
+    function releaseDateText(iso) {
+        if (!iso) return ""
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+        var d = Date.fromLocaleDateString(Qt.locale(), iso, "yyyy-MM-dd")
+        if (isNaN(d.getTime())) return iso
+        var fmt = Qt.locale().dateFormat(Locale.LongFormat)
+                             .replace(/^dddd[,.]?\s*/, "")
+                             .replace(/[,.]?\s*dddd$/, "")
+        return d.toLocaleDateString(Qt.locale(), fmt)
+    }
+
     Timer {
         id: lyricsSyncTimer
         interval: 400
@@ -388,6 +627,11 @@ Rectangle {
             ignoreSyncTimer.stop()
             root.updateLikedState()
             root.loadLyrics()
+            // The displayed credits belong to the track that was playing; the
+            // cache does not, and is left alone. Refetched here only if the tab
+            // is actually open, which is the same bargain loadCredits() makes.
+            root.clearCredits()
+            if (root.showCredits) root.loadCredits()
             var t = player.currentTrack
             root.dlState = (t && t.id > 0 && downloader.isDownloading(t.id)) ? "busy" : "idle"
         }
@@ -594,7 +838,7 @@ Rectangle {
                         width:  root.coverSize
                         height: root.coverSize
                         radius: Theme.radiusArt; color: Theme.surfaceHigh; clip: true
-                        opacity: 1 - root.lyricsness
+                        opacity: 1 - root.panelness
                         visible: opacity > 0.01
                         Image {
                             anchors.fill: parent
@@ -612,8 +856,24 @@ Rectangle {
                         anchors.fill: parent
                         // Takes the cover's slot, so it takes the cover's corner too
                         radius: Theme.radiusArt
-                        color: Theme.surface
-                        border.color: Theme.border
+                        // A box in a window; the whole screen in the reading
+                        // view, where a surface fill and a border would be
+                        // drawing a box around the page itself. Faded out rather
+                        // than switched off, on the same clock as everything
+                        // else, so the walls go as the type grows.
+                        //
+                        // What is behind them there is the cover gradient, which
+                        // is on in fullscreen (see CoverTint above) and whose
+                        // top stop is clamped in C++ to a lightness this page's
+                        // own type stays legible against -- so the lines keep
+                        // the colours they had rather than being re-mixed for a
+                        // ground that was measured for them already.
+                        color: Qt.rgba(Theme.surface.r, Theme.surface.g,
+                                       Theme.surface.b,
+                                       Theme.surface.a * (1 - root.readingness))
+                        border.color: Qt.rgba(Theme.border.r, Theme.border.g,
+                                              Theme.border.b,
+                                              Theme.border.a * (1 - root.readingness))
                         opacity: root.lyricsness
                         visible: opacity > 0.01
                         clip: true
@@ -644,7 +904,10 @@ Rectangle {
                             bottomMargin: root.lyricsFooterRoom
                             clip: true
                             model: root.lyricsData
-                            spacing: 8
+                            // The gap between lines rides the type, so the
+                            // reading view does not set 28px lines eight pixels
+                            // apart.
+                            spacing: Math.round(8 * root.lyricLineSize / root.lyricsSize)
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
@@ -667,8 +930,17 @@ Rectangle {
                                 width: lyricsView.width
                                 text: modelData.text
                                 color: active ? Theme.accent : (hovered ? Theme.textPrimary : Theme.textSec)
-                                font.pixelSize: 14
+                                font.pixelSize: root.lyricLineSize
                                 font.bold: active
+                                // Left in a panel, centred when the panel is the
+                                // screen. Alignment is the one thing here that
+                                // cannot be lerped, so it flips at the halfway
+                                // point of the move, where the width and the
+                                // type are both still changing and the step is
+                                // the smallest it can be.
+                                horizontalAlignment: root.readingness >= 0.5
+                                                     ? Text.AlignHCenter
+                                                     : Text.AlignLeft
                                 opacity: active ? 1.0 : (hovered ? 0.85 : 0.55)
                                 lineHeight: 1.6
                                 wrapMode: Text.WordWrap
@@ -709,25 +981,6 @@ Rectangle {
                             }
                         }
 
-                        // Fullscreen, in the lyrics panel's own top right.
-                        //
-                        // The same toggle as the one in the page chrome, not a
-                        // second notion of fullscreen: reading lyrics is the
-                        // case where the whole screen is most wanted, and
-                        // reaching back up to the chrome row to get it meant
-                        // leaving the thing you were reading.
-                        ChromeButton {
-                            objectName: "nowPlayingLyricsFullscreen"
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.margins: 10
-                            icon: root.fullScreen ? "fullscreen-exit" : "fullscreen"
-                            tip: root.fullScreen
-                                 ? qsTr("Leave fullscreen", "button, restores the window")
-                                 : qsTr("Fullscreen", "button, fills the screen with this page")
-                            onActivated: root.toggleFullScreen()
-                        }
-
                         // Resync button
                         Rectangle {
                             objectName: "nowPlayingLyricsResync"
@@ -766,38 +1019,247 @@ Rectangle {
                         }
                     }
 
-                    // Lyrics toggle button — hidden when lyrics confirmed unavailable
+                    // Credits panel. The other tab over the same slot, and
+                    // deliberately the lyrics panel again rather than a shape of
+                    // its own: the same walls, the same clock, the same content
+                    // margins for the chips, and the same retreat in the reading
+                    // view. Its own content and its own four-state loader are
+                    // all that differ.
                     Rectangle {
-                        objectName: "nowPlayingLyricsToggle"
-                        visible: root.lyricsState !== "unavailable"
+                        id: creditsPanel
+                        objectName: "nowPlayingCreditsPanel"
+                        anchors.fill: parent
+                        radius: Theme.radiusArt
+                        color: Qt.rgba(Theme.surface.r, Theme.surface.g,
+                                       Theme.surface.b,
+                                       Theme.surface.a * (1 - root.readingness))
+                        border.color: Qt.rgba(Theme.border.r, Theme.border.g,
+                                              Theme.border.b,
+                                              Theme.border.a * (1 - root.readingness))
+                        opacity: root.creditsness
+                        visible: opacity > 0.01
+                        clip: true
+
+                        // How much bigger everything in here is than it is
+                        // docked, which is the one number the reading view's type
+                        // is built off: the lyric line carries it, and every size
+                        // below is that ratio applied to the size it had.
+                        readonly property real typeScale:
+                            root.lyricLineSize / root.lyricsSize
+                        readonly property int  labelSize: Math.round(11 * typeScale)
+                        readonly property int  nameSize:  Math.round(14 * typeScale)
+                        readonly property int  factSize:  Math.round(12 * typeScale)
+                        // Same flip, same reason, as the lyric line's.
+                        readonly property int  align: root.readingness >= 0.5
+                                                      ? Text.AlignHCenter
+                                                      : Text.AlignLeft
+
+                        Flickable {
+                            id: creditsFlick
+                            objectName: "nowPlayingCreditsView"
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            visible: root.creditsState === "ready"
+                            // Content margins, not a smaller viewport - the same
+                            // choice the lyric list makes, and for the same
+                            // reason: the box can draw to its own bottom edge and
+                            // the last line can still be scrolled clear of the
+                            // chips.
+                            bottomMargin: root.lyricsFooterRoom
+                            contentWidth: width
+                            contentHeight: creditsColumn.implicitHeight
+                            interactive: contentHeight + bottomMargin > height
+                            boundsBehavior: Flickable.StopAtBounds
+                            clip: true
+                            ScrollBar.vertical: ScrollBar {
+                                policy: creditsFlick.interactive ? ScrollBar.AsNeeded
+                                                                 : ScrollBar.AlwaysOff
+                            }
+
+                            ColumnLayout {
+                                id: creditsColumn
+                                width: creditsFlick.width
+                                spacing: Math.round(16 * creditsPanel.typeScale)
+
+                                // Who played what. The group's type is the
+                                // label's own word for the role - "Producer",
+                                // "Bass guitar" - so it arrives in English and
+                                // is not ours to translate; it is data on the
+                                // recording, like the names beside it.
+                                Repeater {
+                                    model: root.creditsGroups
+                                    delegate: ColumnLayout {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.type || ""
+                                            color: Theme.textDim
+                                            font.pixelSize: creditsPanel.labelSize
+                                            font.bold: true
+                                            font.letterSpacing: 1
+                                            horizontalAlignment: creditsPanel.align
+                                            wrapMode: Text.WordWrap
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: {
+                                                var names = []
+                                                var cs = modelData.contributors || []
+                                                for (var i = 0; i < cs.length; i++)
+                                                    if (cs[i].name) names.push(cs[i].name)
+                                                return names.join(", ")
+                                            }
+                                            color: Theme.textPrimary
+                                            font.pixelSize: creditsPanel.nameSize
+                                            horizontalAlignment: creditsPanel.align
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                }
+
+                                // The small print, under a rule so it reads as a
+                                // footnote to the names rather than as another
+                                // credit. Each line hides itself when the API
+                                // did not carry it, so a track with only a
+                                // release date does not get two empty rows and a
+                                // rule with nothing under it.
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Math.round(8 * creditsPanel.typeScale)
+                                    height: 1
+                                    color: Theme.border
+                                    visible: root.creditsReleaseDate.length > 0
+                                             || root.creditsCopyright.length > 0
+                                             || root.creditsIsrc.length > 0
+                                             || root.creditsUpc.length > 0
+                                }
+
+                                // The date the record came out, in full. The
+                                // album page used to be the only place this
+                                // showed and it showed four digits of it.
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: root.creditsReleaseDate.length > 0
+                                    text: qsTr("Released %1",
+                                               "label and date, when the record came out")
+                                          .arg(root.releaseDateText(root.creditsReleaseDate))
+                                    color: Theme.textSec
+                                    font.pixelSize: creditsPanel.factSize
+                                    horizontalAlignment: creditsPanel.align
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                // The rights line exactly as the label worded
+                                // it. Not translated and not reformatted: it is
+                                // a legal notice, and the (P)/(C) marks and the
+                                // year are part of what it says.
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: root.creditsCopyright.length > 0
+                                    text: root.creditsCopyright
+                                    color: Theme.textSec
+                                    font.pixelSize: creditsPanel.factSize
+                                    horizontalAlignment: creditsPanel.align
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                // The two identifiers, quietly. Reference data -
+                                // the thing you came for when you came for it -
+                                // so one dim line at the foot rather than a row
+                                // each above the names.
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: root.creditsIsrc.length > 0
+                                             || root.creditsUpc.length > 0
+                                    text: {
+                                        var ids = []
+                                        if (root.creditsIsrc.length > 0)
+                                            ids.push(qsTr("ISRC %1",
+                                                     "label and code, identifies the recording")
+                                                     .arg(root.creditsIsrc))
+                                        if (root.creditsUpc.length > 0)
+                                            ids.push(qsTr("UPC %1",
+                                                     "label and barcode, identifies the release")
+                                                     .arg(root.creditsUpc))
+                                        return ids.join("  \u00b7  ")
+                                    }
+                                    color: Theme.textDim
+                                    font.pixelSize: creditsPanel.labelSize
+                                    horizontalAlignment: creditsPanel.align
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+
+                        // In flight, and the two ways there is nothing to show.
+                        // The same two messages in the same place the lyrics put
+                        // theirs, because they answer the same two questions.
+                        Text {
+                            anchors.centerIn: parent
+                            visible: root.creditsState === "loading"
+                            text: qsTr("Loading credits…")
+                            color: Theme.textDim
+                            font.pixelSize: creditsPanel.nameSize
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            visible: root.creditsState === "unavailable"
+                            text: qsTr("No credits available")
+                            color: Theme.textDim
+                            font.pixelSize: creditsPanel.nameSize
+                        }
+                    }
+
+                    // The two tabs for the slot, at its foot.
+                    //
+                    // Lyrics keeps the bottom-right corner it has always had and
+                    // Credits is added to its left, so the chip that was there
+                    // before is still where it was. The row skips a hidden chip,
+                    // so with no lyrics Credits takes the corner rather than
+                    // leaving a gap in it.
+                    Row {
+                        objectName: "nowPlayingPanelChips"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right
                         anchors.margins: 10
-                        width: lyricsToggleText.implicitWidth + 16
-                        height: 26; radius: Theme.radiusChip
-                        color: root.showLyrics ? Theme.accent : Theme.artScrimStrong
-                        border.color: root.showLyrics ? "transparent" : Theme.artBorder
-                        Text {
-                            id: lyricsToggleText
-                            anchors.centerIn: parent
-                            text: root.lyricsState === "loading" ? qsTr("Loading…") : qsTr("Lyrics")
-                            color: root.showLyrics ? Theme.accentInk : Theme.artInk; font.pixelSize: 11; font.bold: true
+                        spacing: 8
+
+                        PanelChip {
+                            objectName: "nowPlayingCreditsToggle"
+                            // Offered for every track. Unlike the lyrics chip
+                            // this one cannot hide itself when there is nothing
+                            // to show, because finding that out is the fetch
+                            // that opening it pays for.
+                            visible: root.hasTrack
+                            on: root.showCredits
+                            // The same comment-free "Loading…" the lyrics chip
+                            // uses, deliberately: a disambiguation comment is
+                            // part of a message's key, so the same word with a
+                            // comment of its own would be a second entry in the
+                            // catalogue for one state of one pair of chips.
+                            label: root.creditsState === "loading"
+                                   ? qsTr("Loading…")
+                                   : qsTr("Credits", "chip, opens the song credits")
+                            onToggled: {
+                                root.showCredits = !root.showCredits
+                                if (root.showCredits) root.loadCredits()
+                            }
                         }
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
-                        // ReleaseWithinBounds, not the default: the user found
-                        // that "closing the lyrics tab skips to the line that
-                        // the lyrics switch button is over". A DragThreshold
-                        // TapHandler takes only a passive grab, so the lyric
-                        // line under this chip answered the same tap and seeked.
-                        // The band the list now leaves at the bottom of the
-                        // panel means nothing is under the chip any more; this
-                        // is what makes that a layout choice rather than the
-                        // only thing holding the bug shut.
-                        TapHandler {
-                            gesturePolicy: TapHandler.ReleaseWithinBounds
-                            onTapped: {
+
+                        // Hidden when lyrics are confirmed unavailable.
+                        PanelChip {
+                            objectName: "nowPlayingLyricsToggle"
+                            visible: root.lyricsState !== "unavailable"
+                            on: root.showLyrics
+                            label: root.lyricsState === "loading"
+                                   ? qsTr("Loading…") : qsTr("Lyrics")
+                            onToggled: {
                                 root.showLyrics = !root.showLyrics
-                                if (root.showLyrics && root.lyricsState === "none") root.loadLyrics()
+                                if (root.showLyrics && root.lyricsState === "none")
+                                    root.loadLyrics()
                             }
                         }
                     }
@@ -1689,12 +2151,18 @@ Rectangle {
                     }
 
                     SeekBar {
+                        // Named, with the transport row below it, because the
+                        // reading view's whole bargain is that these two stay
+                        // visible and fully opaque: see
+                        // tests/qml/tst_layout_player.qml.
+                        objectName: "nowPlayingSeekBar"
                         Layout.fillWidth: true
                         position: player.position; duration: player.duration
                         onSeeked: (ms) => player.seek(ms)
                     }
 
                     RowLayout {
+                        objectName: "nowPlayingTransportRow"
                         Layout.fillWidth: true; spacing: root.transportSpacing
                         CtrlBtn { icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
                         Item { Layout.fillWidth: true }
@@ -1725,7 +2193,19 @@ Rectangle {
                     }
 
                     RowLayout {
+                        objectName: "nowPlayingVolumeRow"
+                        // Folds away in the reading view - see root.foldAway.
+                        // Volume, mute and the output picker are all on the
+                        // keyboard or one Escape away from being back.
                         Layout.fillWidth: true; spacing: 12
+                        Layout.preferredHeight: implicitHeight * root.foldAway
+                        // Without this the fold stops short. A nested Layout
+                        // reports a minimum height off its children's, and a
+                        // parent Layout will not take a child below its minimum
+                        // however small the preferred height asks to be.
+                        Layout.minimumHeight: 0
+                        opacity: root.foldAway
+                        clip: true
                         Item {
                             id: muteBtn
                             width: 18; height: 18
@@ -1774,7 +2254,17 @@ Rectangle {
                     // Up Next preview
                     ColumnLayout {
                         id: upNextCol
+                        objectName: "nowPlayingUpNextColumn"
                         Layout.fillWidth: true
+                        // Folds away in the reading view - see root.foldAway.
+                        // The biggest block in this column and the only one with
+                        // nothing in it to press.
+                        Layout.preferredHeight: implicitHeight * root.foldAway
+                        // See the volume row: a nested Layout's own minimum
+                        // height would otherwise stop the fold short.
+                        Layout.minimumHeight: 0
+                        opacity: root.foldAway
+                        clip: true
                         spacing: 12
                         // Reflects the true play order (respects shuffle).
                         // queueCount, not queueTracks, is read for the
@@ -1832,6 +2322,44 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    // One of the chips at the foot of the hero slot: the pair that decide what
+    // the slot is showing. Lifted out of the lyrics chip rather than written a
+    // second time, so Credits is the same control and not another one that looks
+    // like it.
+    component PanelChip : Rectangle {
+        id: chip
+        property string label
+        property bool   on: false
+        signal toggled()
+
+        width: chipLabel.implicitWidth + 16
+        height: 26; radius: Theme.radiusChip
+        color: chip.on ? Theme.accent : Theme.artScrimStrong
+        border.color: chip.on ? "transparent" : Theme.artBorder
+
+        Text {
+            id: chipLabel
+            anchors.centerIn: parent
+            text: chip.label
+            color: chip.on ? Theme.accentInk : Theme.artInk
+            font.pixelSize: 11; font.bold: true
+        }
+
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+
+        // ReleaseWithinBounds, not the default: the user found that "closing the
+        // lyrics tab skips to the line that the lyrics switch button is over". A
+        // DragThreshold TapHandler takes only a passive grab, so the lyric line
+        // under the chip answered the same tap and seeked. The band the list
+        // leaves at the bottom of the panel means nothing is under a chip any
+        // more; this is what makes that a layout choice rather than the only
+        // thing holding the bug shut.
+        TapHandler {
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: chip.toggled()
         }
     }
 

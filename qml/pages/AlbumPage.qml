@@ -31,6 +31,33 @@ Rectangle {
             : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
     }
 
+    // The day the record came out, in the reader's own date order and language.
+    //
+    // The hero used to print `albumData.year`, which is the first four
+    // characters of this: the user asked for "the actual date that something
+    // came out", and albums/<id> has carried it in full all along.
+    //
+    // Anything that is not a full ISO date is handed back untouched rather than
+    // guessed at - a bare year from an older response stays a bare year - which
+    // is also what keeps Date.fromLocaleDateString away from a string it would
+    // throw on.
+    // The locale's long date format with the weekday taken off the front: which
+    // Friday a record came out on is noise, and Qt's short form is all digits
+    // and drops the month name. A locale whose long format does not lead with
+    // the weekday is left exactly as it is. The same function is in
+    // qml/pages/NowPlayingPage.qml, where the credits panel prints the same
+    // date; sharing it would take a new QML file in the module.
+    function releaseText(iso) {
+        if (!iso) return ""
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+        var d = Date.fromLocaleDateString(Qt.locale(), iso, "yyyy-MM-dd")
+        if (isNaN(d.getTime())) return iso
+        var fmt = Qt.locale().dateFormat(Locale.LongFormat)
+                             .replace(/^dddd[,.]?\s*/, "")
+                             .replace(/[,.]?\s*dddd$/, "")
+        return d.toLocaleDateString(Qt.locale(), fmt)
+    }
+
     function updateSavedState() {
         isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
     }
@@ -187,7 +214,11 @@ Rectangle {
                             text: {
                                 // Bullet-separated facts, each a complete qsTr unit.
                                 var parts = []
-                                if (albumData.year) parts.push(albumData.year)
+                                // The whole date where there is one, the year on
+                                // its own where the response only had that.
+                                var released = root.releaseText(albumData.releaseDate)
+                                if (released) parts.push(released)
+                                else if (albumData.year) parts.push(albumData.year)
                                 if (albumData.numTracks) parts.push(qsTr("%n track(s)", "", albumData.numTracks))
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
@@ -199,6 +230,23 @@ Rectangle {
                             }
                             color: Theme.textSec
                             font.pixelSize: 13
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        // The rights line, exactly as the label worded it: a
+                        // legal notice, so it is neither translated nor
+                        // reformatted. Under the facts line and dimmer than it,
+                        // because it is the sleeve's small print and not one of
+                        // the facts about the record. Hidden entirely when the
+                        // response carried none, so nothing reserves a row for
+                        // an empty string.
+                        Text {
+                            objectName: "albumCopyright"
+                            visible: text.length > 0
+                            text: albumData.copyright || ""
+                            color: Theme.textDim
+                            font.pixelSize: 11
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }

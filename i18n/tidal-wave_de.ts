@@ -589,6 +589,34 @@
         <translation>Kein Songtext verfügbar</translation>
     </message>
     <message>
+        <source>Credits</source>
+        <comment>chip, opens the song credits</comment>
+        <translation>Credits</translation>
+    </message>
+    <message>
+        <source>Loading credits…</source>
+        <translation>Credits werden geladen…</translation>
+    </message>
+    <message>
+        <source>No credits available</source>
+        <translation>Keine Credits verfügbar</translation>
+    </message>
+    <message>
+        <source>Released %1</source>
+        <comment>label and date, when the record came out</comment>
+        <translation>Veröffentlicht %1</translation>
+    </message>
+    <message>
+        <source>ISRC %1</source>
+        <comment>label and code, identifies the recording</comment>
+        <translation>ISRC %1</translation>
+    </message>
+    <message>
+        <source>UPC %1</source>
+        <comment>label and barcode, identifies the release</comment>
+        <translation>UPC %1</translation>
+    </message>
+    <message>
         <source>Resync</source>
         <translation>Sync</translation>
     </message>

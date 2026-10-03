@@ -50,6 +50,13 @@ struct Album {
     QString releaseDate;
     QString audioQuality;
     QString type;       // ALBUM / SINGLE / EP / COMPILATION
+    // The two lines the sleeve carries and nothing in the app used to: the
+    // rights line ("(P) 1975 ...") verbatim as the label worded it, and the
+    // barcode. Both only arrive on albums/<id>; the album object nested inside
+    // a track or a favourites row carries neither, which is why a page that
+    // wants them has to fetch the album.
+    QString copyright;
+    QString upc;
     QList<Artist> artists;
     // When this user saved the album, in ms since epoch, 0 when the response
     // carried no date. Half of the sidebar's ordering key - see the comment on
@@ -79,6 +86,8 @@ struct Album {
         a.releaseDate  = j["releaseDate"].toString();
         a.audioQuality = j["audioQuality"].toString();
         a.type         = j["type"].toString();
+        a.copyright    = j["copyright"].toString();
+        a.upc          = j["upc"].toString();
         for (const auto &v : j["artists"].toArray())
             a.artists.append(Artist::fromJson(v.toObject()));
         a.addedAt = isoToMSecs(wrapper["created"].toString());
@@ -140,6 +149,53 @@ struct Track {
 
     QString coverUrl(int size = 320) const {
         return album.coverUrl(size);
+    }
+};
+
+// Who made one recording, and the small print that goes with it.
+//
+// Assembled from three responses rather than one, because no single endpoint
+// carries all of it (see TidalClient::fetchTrackCredits):
+//
+//   tracks/<id>/credits  the contributor groups, as a top-level JSON array
+//   tracks/<id>          the track's own rights line and its ISRC
+//   albums/<id>          the release date in full, the barcode, and the
+//                        album's rights line as a fallback for the track's
+//
+// albums/<id>/credits exists too and answered zero groups for every album
+// probed against this account, so the per-track endpoint is the only one built
+// on here.
+struct CreditGroup {
+    QString type;               // "Producer", "Bass guitar" - the label's word
+    QList<Artist> contributors; // id and name; the id is not always an artist
+};
+
+struct TrackCredits {
+    QList<CreditGroup> groups;
+    QString copyright;   // the rights line, verbatim
+    QString isrc;        // this recording
+    QString releaseDate; // the album's, in full: "2017-09-22", not just a year
+    QString upc;         // the album's barcode
+
+    // Whether there is anything at all to put on screen. A track with no
+    // contributor groups still has a release date and a rights line, and that
+    // is worth a panel; nothing at all is not.
+    bool isEmpty() const {
+        return groups.isEmpty() && copyright.isEmpty()
+            && releaseDate.isEmpty() && isrc.isEmpty() && upc.isEmpty();
+    }
+
+    static CreditGroup groupFromJson(const QJsonObject &j) {
+        CreditGroup g;
+        g.type = j["type"].toString();
+        for (const auto &v : j["contributors"].toArray()) {
+            const auto o = v.toObject();
+            Artist a;
+            a.id   = o["id"].toVariant().toLongLong();
+            a.name = o["name"].toString();
+            if (!a.name.isEmpty()) g.contributors.append(a);
+        }
+        return g;
     }
 };
 

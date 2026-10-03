@@ -299,6 +299,26 @@ public:
         }
         resolve(cb, res);
     }
+    // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
+    // off the result. Answered empty, like fetchLyrics above, so the credits
+    // panel lands on its "unavailable" state without a network: the page's own
+    // credits state is writable, which is how a test gets a filled panel.
+    //
+    // Counted, because the page caches per track id and "flipping between the
+    // panels does not refetch" is only a claim if something is counting.
+    Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb) {
+        Q_UNUSED(trackId);
+        m_trackCreditsFetches++;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("groups"), emptyArray());
+            res.setProperty(QStringLiteral("copyright"), QJSValue(QString()));
+            res.setProperty(QStringLiteral("isrc"), QJSValue(QString()));
+            res.setProperty(QStringLiteral("releaseDate"), QJSValue(QString()));
+            res.setProperty(QStringLiteral("upc"), QJSValue(QString()));
+        }
+        resolve(cb, res);
+    }
     Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb) { resolve(cb, emptyArray()); }
 
     // Local (already-loaded) filters used by CollectionPage's search field and by
@@ -335,8 +355,11 @@ public:
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
     Q_INVOKABLE QString lastPlaylistPlayedForTest() const { return m_lastPlaylistPlayed; }
     Q_INVOKABLE int  userPlaylistFetchCountForTest() const { return m_userPlaylistFetches; }
+    Q_INVOKABLE int  trackCreditsFetchCountForTest() const { return m_trackCreditsFetches; }
+    Q_INVOKABLE void resetTrackCreditsFetchCountForTest() { m_trackCreditsFetches = 0; }
     Q_INVOKABLE void resetForTest() {
         m_userPlaylistFetches = 0;
+        m_trackCreditsFetches = 0;
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
     }
@@ -381,6 +404,7 @@ private:
     QString m_lastClipboardText;
     QString m_lastPlaylistPlayed;
     int     m_userPlaylistFetches = 0;
+    int     m_trackCreditsFetches = 0;
 };
 
 // ─── player ─────────────────────────────────────────────────────────────────

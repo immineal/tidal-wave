@@ -29,8 +29,25 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
     getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, std::move(cb));
 }
 
+void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
+    getDoc(QString::fromLatin1(kApiBase), endpoint, params,
+        [cb](QJsonDocument doc, QString err) {
+            if (!err.isEmpty()) { cb({}, err); return; }
+            cb(doc.array(), {});
+        });
+}
+
 void TidalApi::getFrom(const QString &base, const QString &endpoint,
                        const QUrlQuery &params, JsonCallback cb) {
+    getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err) {
+        if (!err.isEmpty()) { cb({}, err); return; }
+        cb(doc.object(), {});
+    });
+}
+
+void TidalApi::getDoc(const QString &base, const QString &endpoint,
+                      const QUrlQuery &params,
+                      std::function<void(QJsonDocument, QString)> cb) {
     QUrl url(base + endpoint);
     QUrlQuery q = params;
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
@@ -49,7 +66,7 @@ void TidalApi::getFrom(const QString &base, const QString &endpoint,
             cb({}, err.errorString());
             return;
         }
-        cb(doc.object(), {});
+        cb(doc, {});
     });
 }
 

@@ -80,6 +80,9 @@ public:
     // Track features
     Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
+    // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
+    //           releaseDate, upc } and an error string.
+    Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
 
     // Recently played
     Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb);

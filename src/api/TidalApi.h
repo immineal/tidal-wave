@@ -3,6 +3,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUrlQuery>
@@ -12,6 +13,12 @@ class TidalApi : public QObject {
     Q_OBJECT
 public:
     using JsonCallback = std::function<void(QJsonObject, QString /*error*/)>;
+    // For the endpoints whose whole body is a bare JSON array rather than an
+    // object with an "items" key. tracks/<id>/credits is one: it answers
+    // [{type, contributors:[…]}, …] at the top level, so QJsonDocument::object()
+    // reads it as {} and every field comes back empty with no error to show for
+    // it.
+    using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
 
     explicit TidalApi(QObject *parent = nullptr);
@@ -26,6 +33,8 @@ public:
     // favorites/mixes is one - and they are cursor-paged rather than
     // offset-paged, so they are not drop-in replacements for their v1 siblings.
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // The same v1 GET, for a body that is an array at the top level.
+    void getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb);
     void post(const QString &endpoint, const QByteArray &body,
               const QMap<QString,QString> &extraHeaders, JsonCallback cb);
     void postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
@@ -50,4 +59,10 @@ private:
     QNetworkRequest makeRequest(const QUrl &url);
     void getFrom(const QString &base, const QString &endpoint,
                  const QUrlQuery &params, JsonCallback cb);
+    // What getFrom() and getArray() share: the URL, the country code, the
+    // request and the parse, handing back the whole document so the caller can
+    // decide whether it wanted an object or an array out of it.
+    void getDoc(const QString &base, const QString &endpoint,
+                const QUrlQuery &params,
+                std::function<void(QJsonDocument, QString /*error*/)> cb);
 };

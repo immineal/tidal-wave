@@ -115,6 +115,8 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["coverUrl"]    = a.coverUrl(320);
     m["coverUrl640"] = a.coverUrl(640);
     m["releaseDate"] = a.releaseDate;
+    m["copyright"]   = a.copyright;
+    m["upc"]         = a.upc;
     m["numTracks"]   = a.numTracks;
     m["duration"]    = a.duration;
     m["quality"]     = a.audioQuality;
@@ -502,6 +504,25 @@ void TidalBridge::fetchLyrics(qlonglong trackId, QJSValue cb) {
         QVariantMap result;
         result["text"]  = text;
         result["timed"] = timed;
+        call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {
+    m_client->fetchTrackCredits(trackId, [this, cb](TrackCredits c, QString err) mutable {
+        QVariantMap result;
+        QVariantList groups;
+        for (const CreditGroup &g : c.groups) {
+            QVariantMap gm;
+            gm["type"]         = g.type;
+            gm["contributors"] = artistsToVariantList(g.contributors);
+            groups.append(gm);
+        }
+        result["groups"]      = groups;
+        result["copyright"]   = c.copyright;
+        result["isrc"]        = c.isrc;
+        result["releaseDate"] = c.releaseDate;
+        result["upc"]         = c.upc;
         call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
     });
 }

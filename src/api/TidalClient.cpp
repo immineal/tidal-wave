@@ -636,6 +636,57 @@ void TidalClient::fetchLyrics(qint64 trackId, std::function<void(QString, bool, 
         });
 }
 
+void TidalClient::fetchTrackCredits(qint64 trackId,
+    std::function<void(TrackCredits, QString)> cb)
+{
+    // The contributor list first, because it is the only one of the three whose
+    // failure is worth refusing the panel over: it is what the user asked to
+    // see, and if it did not arrive the network is not answering. The two
+    // requests chained behind it are additions to a result that already exists,
+    // so their errors are swallowed and their fields stay empty rather than
+    // throwing away credits that did arrive.
+    QUrlQuery q;
+    q.addQueryItem("includeContributors", "true");
+    m_api->getArray(QStringLiteral("tracks/%1/credits").arg(trackId), q,
+        [this, trackId, cb](QJsonArray groups, QString err) {
+            if (!err.isEmpty()) { cb({}, err); return; }
+
+            auto out = std::make_shared<TrackCredits>();
+            for (const auto &v : groups) {
+                auto g = TrackCredits::groupFromJson(v.toObject());
+                if (!g.type.isEmpty() && !g.contributors.isEmpty())
+                    out->groups.append(g);
+            }
+
+            m_api->get(QStringLiteral("tracks/%1").arg(trackId), {},
+                [this, out, cb](QJsonObject track, QString trackErr) {
+                    qint64 albumId = 0;
+                    if (trackErr.isEmpty()) {
+                        out->copyright = track["copyright"].toString();
+                        out->isrc      = track["isrc"].toString();
+                        albumId = track["album"].toObject()["id"]
+                                      .toVariant().toLongLong();
+                    }
+                    // streamStartDate is deliberately not read here. It is when
+                    // this account's catalogue got the track, not when the
+                    // record came out: probed against a 1975 album it answered
+                    // 2026-07-01. The release date is the album's.
+                    if (albumId <= 0) { cb(*out, {}); return; }
+
+                    m_api->get(QStringLiteral("albums/%1").arg(albumId), {},
+                        [out, cb](QJsonObject album, QString albumErr) {
+                            if (albumErr.isEmpty()) {
+                                out->releaseDate = album["releaseDate"].toString();
+                                out->upc         = album["upc"].toString();
+                                if (out->copyright.isEmpty())
+                                    out->copyright = album["copyright"].toString();
+                            }
+                            cb(*out, {});
+                        });
+                });
+        });
+}
+
 void TidalClient::fetchRecentlyPlayed(TracksCallback cb) {
     QUrlQuery q;
     q.addQueryItem("limit", "20");
