@@ -3,6 +3,7 @@
 #include <QJsonDocument>
 #include <QByteArray>
 #include <QDebug>
+#include <algorithm>
 
 TidalClient::TidalClient(TidalApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -73,23 +74,46 @@ QList<Playlist> TidalClient::parsePlaylists(const QJsonObject &root) {
 
 // ─── Mixes / Home ──────────────────────────────────
 
+QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
+    QList<Mix> mixes;
+    // Navigate the nested page structure
+    for (const auto &row : root["rows"].toArray()) {
+        for (const auto &module : row.toObject()["modules"].toArray()) {
+            auto mod = module.toObject();
+            if (mod["type"].toString() != "MIX_LIST") continue;
+            for (const auto &item : mod["pagedList"].toObject()["items"].toArray())
+                mixes.append(Mix::fromJson(item.toObject()));
+        }
+    }
+
+    // my_collection_my_mixes answers "My Mix 1" to "My Mix 8" first and the two
+    // personalised mixes last, so "My Daily Discovery" and "My New Arrivals"
+    // were items nine and ten of ten on a row of 160px cards - past the right
+    // edge at any ordinary window width, in a list that is interactive: false
+    // and so only scrolls by dragging its scrollbar. They lead the row instead.
+    //
+    // The sort is on mixType, never on the title: every one of these titles
+    // arrives translated, so matching "My Daily Discovery" would put the two
+    // back at the end for every user who is not reading the app in English.
+    // Stable, so the eight behind them keep the order the server sent, which is
+    // what the Collection grid shows on its default (unsorted) setting.
+    const auto rank = [](const Mix &m) {
+        if (m.isDailyDiscovery()) return 0;
+        if (m.isNewArrivals())    return 1;
+        return 2;
+    };
+    std::stable_sort(mixes.begin(), mixes.end(),
+                     [&rank](const Mix &a, const Mix &b) { return rank(a) < rank(b); });
+    return mixes;
+}
+
 void TidalClient::fetchHomeMixes(MixesCallback cb) {
     QUrlQuery q;
     q.addQueryItem("deviceType", "BROWSER");
     m_api->get(QStringLiteral("pages/my_collection_my_mixes"), q,
         [cb](QJsonObject root, QString err) {
             if (!err.isEmpty()) { cb({}, err); return; }
-            QList<Mix> mixes;
-            // Navigate the nested page structure
-            for (const auto &row : root["rows"].toArray()) {
-                for (const auto &module : row.toObject()["modules"].toArray()) {
-                    auto mod = module.toObject();
-                    if (mod["type"].toString() != "MIX_LIST") continue;
-                    for (const auto &item : mod["pagedList"].toObject()["items"].toArray())
-                        mixes.append(Mix::fromJson(item.toObject()));
-                }
-            }
-            cb(mixes, {});
+            cb(parseMixPage(root), {});
         });
 }
 

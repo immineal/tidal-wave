@@ -3,6 +3,10 @@
 #include <QQmlEngine>
 #include <QVariantList>
 
+#include <functional>
+
+#include "api/Models.h"
+
 // Items the user pinned above the sidebar library, persisted per Tidal account.
 // A pin is {kind, id, title, subtitle, imageUrl}; kind is one of
 // "album" | "playlist" | "artist" | "mix". Order is user-defined (drag).
@@ -22,6 +26,25 @@ public:
     // Pins are stored under the signed-in account, so they follow the user.
     void setUserId(qint64 uid);
     qint64 userId() const { return m_userId; }
+
+    // Where the one-shot default pin finds something to point at. Pinning is
+    // the one feature in the sidebar with nothing on screen to announce it: the
+    // only way to find it is to guess that a library row has a context menu. So
+    // an account that has never had a pin is given one - "My Daily Discovery",
+    // which is a destination worth having there in its own right - and from then
+    // on the block, and the fact that rows go into it, are simply visible.
+    //
+    // It cannot be written down, because a mix id is minted per account, so the
+    // mix list has to be fetched first. Application hands in the client's
+    // fetch; a test hands in a canned list and the store never goes near a
+    // network. Set this before setUserId(), which is what starts the one shot.
+    using MixesHandler = std::function<void(QList<Tidal::Mix>, QString)>;
+    using MixSource    = std::function<void(MixesHandler)>;
+    void setMixSource(MixSource src) { m_mixSource = std::move(src); }
+
+    // Whether this account has already had its one shot, however it turned out.
+    // The sidebar does not read this; it is here so a test can state the rule.
+    bool wasSeeded() const;
 
     QVariantList items() const;
 
@@ -49,6 +72,11 @@ private:
     void load();
     void save() const;
 
+    // The one shot, run from setUserId().
+    void seedDefaultPin();
+    void markSeeded() const;
+
     qint64       m_userId = 0;
     QVariantList m_items;
+    MixSource    m_mixSource;
 };

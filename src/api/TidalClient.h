@@ -123,6 +123,16 @@ public:
     // Recently played
     void fetchRecentlyPlayed(TracksCallback cb);
 
+    // Walks a `pages/*` feed for mixes: rows, each holding modules, a module of
+    // type MIX_LIST carrying them in its pagedList. Returns them with the two
+    // personalised mixes in front (see the comment on the definition).
+    //
+    // Public and static only so a test can reach it, as with parsePlaylists
+    // below: which mixes a real page yields, and in what order, is the whole of
+    // what decides whether "My Daily Discovery" and "My New Arrivals" can be
+    // got at. Touches no member state.
+    static QList<Mix> parseMixPage(const QJsonObject &root);
+
     // Public and static only so a test can reach it. The favourites endpoints
     // wrap each playlist in a row carrying the date this user added it, and
     // whether that row survives unwrapping is what decides the order of the home

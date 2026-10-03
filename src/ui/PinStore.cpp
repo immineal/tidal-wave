@@ -11,6 +11,12 @@ namespace {
 // as user_<id>/..., so this follows the same shape.
 QString pinsKey(qint64 uid) { return QStringLiteral("user_%1/pins").arg(uid); }
 
+// The one-shot marker for the default pin. Separate from the pin list, because
+// the question it answers is not "is this pinned" but "has this account been
+// offered it", and those differ the moment the user unpins the thing: an empty
+// list with the marker set is a user who said no.
+QString seedKey(qint64 uid) { return QStringLiteral("user_%1/pinsSeeded").arg(uid); }
+
 constexpr auto kKind     = "kind";
 constexpr auto kId       = "id";
 constexpr auto kTitle    = "title";
@@ -33,6 +39,59 @@ void PinStore::setUserId(qint64 uid) {
     m_userId = uid;
     load();
     emit changed();
+    seedDefaultPin();
+}
+
+bool PinStore::wasSeeded() const {
+    // Signed out there is no account to seed, and nowhere to record that it was
+    // done, so the answer that stops anything from happening is the safe one.
+    if (m_userId <= 0) return true;
+    return QSettings().value(seedKey(m_userId), false).toBool();
+}
+
+void PinStore::markSeeded() const {
+    if (m_userId <= 0) return;
+    QSettings().setValue(seedKey(m_userId), true);
+}
+
+void PinStore::seedDefaultPin() {
+    if (m_userId <= 0 || wasSeeded()) return;
+
+    // An account that already has pins has been curated, and dropping a row the
+    // user never asked for into the middle of the ones they chose is worse than
+    // leaving the feature unannounced - they have evidently found it. Marked
+    // done rather than left open, so the network is never asked a question whose
+    // answer cannot change the outcome.
+    if (!m_items.isEmpty()) { markSeeded(); return; }
+
+    if (!m_mixSource) return;
+
+    const qint64 uid = m_userId;
+    m_mixSource([this, uid](QList<Tidal::Mix> mixes, QString err) {
+        // Another account signed in, or signed out, while the request was out.
+        if (uid != m_userId) return;
+        // A failed request is not an answer about this account. Left for the
+        // next launch rather than spent.
+        if (!err.isEmpty()) return;
+        // Neither is an empty list: Tidal generates these mixes from listening
+        // history, so a new account has none yet and will have some later.
+        if (mixes.isEmpty()) return;
+        // Pinning something by hand in the seconds the request was out counts
+        // as finding the feature.
+        if (!m_items.isEmpty()) { markSeeded(); return; }
+
+        // Spent whether or not this account has a Daily Discovery, because the
+        // list came back and that is the authoritative answer. Without it, a
+        // user who unpins the seeded row would be handed it again on the next
+        // launch, for ever.
+        markSeeded();
+
+        for (const Tidal::Mix &m : mixes) {
+            if (!m.isDailyDiscovery()) continue;
+            pin(QStringLiteral("mix"), m.id, m.title, m.subTitle, m.coverUrl(320));
+            return;
+        }
+    });
 }
 
 QVariantList PinStore::items() const { return m_items; }

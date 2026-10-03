@@ -896,6 +896,11 @@ int Application::run(int argc, char **argv) {
     // The sidebar's model and the pins it orders itself by. LibraryIndex asks
     // PinStore where each row belongs, so the store is built first.
     m_pins    = new PinStore(this);
+    // What the one-shot default pin points at. Set before any setUserId(),
+    // which is what runs that shot; see PinStore::setMixSource.
+    m_pins->setMixSource([client = m_client](PinStore::MixesHandler done) {
+        client->fetchHomeMixes(std::move(done));
+    });
     m_library = new LibraryIndex(m_client, m_pins, this);
     // Liking an album from its page reached TidalBridge and stopped there: the
     // Save button flipped to "Saved" while the sidebar went on showing the

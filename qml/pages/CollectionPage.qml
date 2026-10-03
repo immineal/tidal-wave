@@ -80,7 +80,19 @@ Rectangle {
         updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
     }
-    Component.onCompleted: updateFilteredContent()
+    // The four favourites tabs count what the bridge already holds; mixes used
+    // to be fetched only on the way into their own tab, and the tab label reads
+    // the same list the grid does. So the row of tabs said "Mixes (0)" to
+    // everyone who had not been in there yet - including anyone arriving from
+    // "View all" on the home row, which points straight at it. A tab that
+    // reports itself empty is not a tab anyone opens, which is most of why the
+    // two mixes at the end of that row could not be got at. Fetched on the way
+    // in instead; the Loader only builds this page once the user is signed in,
+    // and only ever builds it once.
+    Component.onCompleted: {
+        updateFilteredContent()
+        loadMixes()
+    }
 
     function sortItems(items, mode) {
         if (mode === 0) return items

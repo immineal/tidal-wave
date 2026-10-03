@@ -171,11 +171,29 @@ struct Playlist {
     }
 };
 
+// The `mixType` constants Tidal labels its generated mixes with. Only the two
+// the app names are written down; the rest (DAILY_MIX for "My Mix 1".."My Mix
+// 8", TRACK_MIX and ARTIST_MIX for radios, WELCOME_MIX, HISTORY_*_MIX) are
+// carried through as whatever string the page sent.
+namespace MixTypes {
+inline constexpr auto DailyDiscovery = "DISCOVERY_MIX";   // "My Daily Discovery"
+inline constexpr auto NewArrivals    = "NEW_RELEASE_MIX"; // "My New Arrivals"
+} // namespace MixTypes
+
 struct Mix {
     QString id;
     QString title;
     QString subTitle;
     QString cover;  // UUID
+    // Which generated mix this is. The only handle on a particular mix that
+    // survives translation and a change of account: `title` comes back in the
+    // account's language, and the id is minted per account ("My Daily
+    // Discovery" is 01674a6a… for one user and 016e5b32… for another), so
+    // neither can be written down anywhere.
+    QString mixType;
+
+    bool isDailyDiscovery() const { return mixType == QLatin1String(MixTypes::DailyDiscovery); }
+    bool isNewArrivals()    const { return mixType == QLatin1String(MixTypes::NewArrivals); }
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};
@@ -190,6 +208,12 @@ struct Mix {
         m.id       = j["id"].toString();
         m.title    = j["title"].toString();
         m.subTitle = j["subTitle"].toString();
+        // A plain string on every endpoint that labels a mix at all -
+        // "DISCOVERY_MIX", not an object. It used to be read as one, purely to
+        // look for artwork inside it; that lookup therefore always came up
+        // empty and is gone. detailImages is the hero-sized set that really
+        // does sit beside `images` on the v2 shape.
+        m.mixType  = j["mixType"].toString();
         // Try multiple known image locations in the API response
         auto tryImages = [&](const QJsonObject &imgs) {
             if (m.cover.isEmpty() && imgs.contains("LARGE"))
@@ -201,7 +225,7 @@ struct Mix {
         };
         tryImages(j["images"].toObject());
         tryImages(j["detail"].toObject()["images"].toObject());
-        tryImages(j["mixType"].toObject()["images"].toObject());
+        tryImages(j["detailImages"].toObject());
         return m;
     }
 };
