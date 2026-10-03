@@ -42,6 +42,11 @@ public:
 
     Q_INVOKABLE void fetchHomeMixes     (QJSValue cb);
     Q_INVOKABLE void fetchMixTracks     (const QString &mixId, QJSValue cb);
+    // function(mix, tracks, error): the mix's own title, subtitle and artwork
+    // alongside its tracks, both out of the one `pages/mix` response. MixPage
+    // uses it instead of fetchMixTracks because it can be opened with nothing
+    // but an id.
+    Q_INVOKABLE void fetchMixPage       (const QString &mixId, QJSValue cb);
 
     Q_INVOKABLE void fetchFavoriteTracks  (QJSValue cb, int limit = 50, int offset = 0);
     Q_INVOKABLE void fetchFavoriteAlbums  (QJSValue cb, int limit = 50, int offset = 0);
@@ -50,6 +55,10 @@ public:
 
     Q_INVOKABLE void fetchAlbumTracks     (qlonglong albumId,      QJSValue cb);
     Q_INVOKABLE void fetchPlaylistTracks  (const QString &uuid,    QJSValue cb);
+    // The playlist itself: {uuid, title, description, numTracks, duration,
+    // coverUrl, type}. Its tracks come from fetchPlaylistTracks above, which
+    // carries none of this.
+    Q_INVOKABLE void fetchPlaylist        (const QString &uuid,    QJSValue cb);
     Q_INVOKABLE void fetchAlbum           (qlonglong albumId,      QJSValue cb);
     Q_INVOKABLE void fetchArtistDetail    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistAlbums    (qlonglong artistId,     QJSValue cb);

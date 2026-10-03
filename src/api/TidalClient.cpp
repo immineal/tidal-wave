@@ -115,6 +115,38 @@ QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
     return orderMixes(std::move(mixes));
 }
 
+Mix TidalClient::parseMixHeader(const QJsonObject &root) {
+    // The same rows-of-modules walk as parseMixPage(), looking for the one
+    // module that describes the page rather than a list on it. The mix hangs
+    // off `mix`, and carries the id, title, subTitle, mixType and images that
+    // Mix::fromJson already knows how to read.
+    for (const auto &row : root["rows"].toArray())
+        for (const auto &module : row.toObject()["modules"].toArray()) {
+            const QJsonObject mod = module.toObject();
+            if (mod["type"].toString() != "MIX_HEADER") continue;
+            const Mix mix = Mix::fromJson(mod["mix"].toObject());
+            // A header with nothing under it is not an answer: keep walking
+            // rather than handing back a blank mix that looks like one.
+            if (!mix.id.isEmpty() || !mix.title.isEmpty()) return mix;
+        }
+    return {};
+}
+
+QList<Track> TidalClient::parseMixTracks(const QJsonObject &root) {
+    QList<Track> tracks;
+    for (const auto &row : root["rows"].toArray())
+        for (const auto &module : row.toObject()["modules"].toArray()) {
+            const QJsonObject mod = module.toObject();
+            // TRACK_LIST and nothing else. A video mix's VIDEO_LIST holds
+            // "Music Video" items this app has no way to play - see
+            // parseMixPage() - and reading it would be worse than reading
+            // nothing.
+            if (mod["type"].toString() != "TRACK_LIST") continue;
+            tracks.append(parseTracks(mod["pagedList"].toObject()));
+        }
+    return tracks;
+}
+
 QList<Mix> TidalClient::parseSavedMixes(const QJsonObject &root) {
     // v2/favorites/mixes. Nothing like the `pages/*` feeds: a flat "items" array
     // whose entries *are* the mixes - no {"item": {…}} wrapper, unlike the v1
@@ -272,21 +304,22 @@ void TidalClient::fetchHomeMixes(MixesCallback cb) {
     });
 }
 
-void TidalClient::fetchMixTracks(const QString &mixId, TracksCallback cb) {
+void TidalClient::fetchMixPage(const QString &mixId, MixPageCallback cb) {
     QUrlQuery q;
     q.addQueryItem("mixId", mixId);
     q.addQueryItem("deviceType", "BROWSER");
-    m_api->get(QStringLiteral("pages/mix"), q, [this, cb](QJsonObject root, QString err) {
-        if (!err.isEmpty()) { cb({}, err); return; }
-        QList<Track> tracks;
-        for (const auto &row : root["rows"].toArray())
-            for (const auto &module : row.toObject()["modules"].toArray()) {
-                auto mod = module.toObject();
-                if (mod["type"].toString() != "TRACK_LIST") continue;
-                tracks.append(parseTracks(mod["pagedList"].toObject()));
-            }
-        cb(tracks, {});
+    m_api->get(QStringLiteral("pages/mix"), q, [cb](QJsonObject root, QString err) {
+        if (!err.isEmpty()) { cb({}, {}, err); return; }
+        // Two independent walks of the same response, so that a page missing
+        // one module still delivers the other: a video mix has a header and a
+        // VIDEO_LIST this app cannot read, and that must still label the page
+        // rather than answering nothing at all.
+        cb(parseMixHeader(root), parseMixTracks(root), {});
     });
+}
+
+void TidalClient::fetchMixTracks(const QString &mixId, TracksCallback cb) {
+    fetchMixPage(mixId, [cb](Mix, QList<Track> tracks, QString err) { cb(tracks, err); });
 }
 
 // ─── Favorites ─────────────────────────────────────
@@ -372,6 +405,19 @@ void TidalClient::fetchAlbumTracks(qint64 albumId, TracksCallback cb) {
 
 void TidalClient::fetchPlaylistTracks(const QString &uuid, TracksCallback cb) {
     fetchAllTracks(QStringLiteral("playlists/%1/tracks").arg(uuid), cb);
+}
+
+void TidalClient::fetchPlaylist(const QString &uuid,
+    std::function<void(Playlist, QString)> cb)
+{
+    // The same object the favourites endpoints wrap, served on its own, so
+    // there is no row to unwrap and no save date to recover: Playlist::fromJson
+    // reads the playlist's own fields and leaves addedAt at 0.
+    m_api->get(QStringLiteral("playlists/%1").arg(uuid), {},
+        [cb](QJsonObject root, QString err) {
+            if (!err.isEmpty()) { cb({}, err); return; }
+            cb(Playlist::fromJson(root), {});
+        });
 }
 
 void TidalClient::fetchAllTracks(const QString &endpoint, TracksCallback cb,

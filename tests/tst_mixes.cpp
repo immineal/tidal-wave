@@ -101,6 +101,37 @@ constexpr auto kSavedMixes = R"json({
   ]
 })json";
 
+// pages/mix - the response behind *one* open mix, which is a different shape
+// again: a MIX_HEADER module naming the mix, and a TRACK_LIST module holding
+// its tracks.
+//
+// Invented, not captured, and it says so: every id, title and track name below
+// is made up. What is taken from the live API, and was probed against it, is
+// the shape - that this page carries a MIX_HEADER whose `mix` object has id,
+// title, subTitle, mixType and an `images` block with LARGE/MEDIUM/SMALL - and
+// the rows-of-modules nesting, which the two captured fixtures above already
+// establish. Nothing of the account's own content is in here.
+constexpr auto kMixPage = R"json({
+  "id": "mix",
+  "title": "Mix",
+  "rows": [
+    { "modules": [
+      { "type": "MIX_HEADER", "title": "",
+        "mix": {"id":"mx000000000000000000000000001","title":"My Daily Discovery",
+                "subTitle":"placeholder subtitle","mixType":"DISCOVERY_MIX",
+                "images":{"LARGE":{"url":"@http@art/large.jpg"},
+                          "MEDIUM":{"url":"@http@art/medium.jpg"},
+                          "SMALL":{"url":"@http@art/small.jpg"}}} } ] },
+    { "modules": [
+      { "type": "TRACK_LIST", "title": "",
+        "pagedList": { "limit": 50, "offset": 0, "totalNumberOfItems": 3, "items": [
+          {"id":101,"title":"First Light","duration":215,"trackNumber":1},
+          {"id":102,"title":"Second Wind","duration":198,"trackNumber":2},
+          {"id":103,"title":"Third Rail","duration":242,"trackNumber":3}
+        ] } } ] }
+  ]
+})json";
+
 // The fixtures write "https://host/path" where the response has
 // "https://host/path", and this puts the scheme back. moc strips // comments
 // line by line and does it inside a multi-line raw string too, so a URL written
@@ -119,6 +150,7 @@ QJsonObject pageOf(const char *json) {
 }
 
 QJsonObject generatedPage() { return pageOf(kGeneratedPage); }
+QJsonObject mixPage()       { return pageOf(kMixPage); }
 QJsonObject savedPage()     { return pageOf(kSavedMixes); }
 
 // The tab as the app assembles it: the generated feed first, so its run of
@@ -143,6 +175,12 @@ QStringList titlesOf(const QList<Mix> &mixes) {
 QStringList typesOf(const QList<Mix> &mixes) {
     QStringList out;
     for (const Mix &m : mixes) out << m.mixType;
+    return out;
+}
+
+QStringList titlesOfTracks(const QList<Track> &tracks) {
+    QStringList out;
+    for (const Track &t : tracks) out << t.title;
     return out;
 }
 
@@ -600,6 +638,128 @@ private slots:
         QVERIFY(TidalClient::parseMixPage(pageOf(R"json({"rows":[{"modules":[]}]})json")).isEmpty());
         QVERIFY(TidalClient::parseMixPage(
             pageOf(R"json({"rows":[{"modules":[{"type":"MIX_LIST"}]}]})json")).isEmpty());
+    }
+
+    // ── one open mix: pages/mix, header and tracks ───────────────────────
+
+    // The bug this section was written for: "Playing from: <a mix>" in Now
+    // Playing navigates with `{ mixId: … }` and nothing else, and the page it
+    // opened had no title and no cover. The title and the cover were in the
+    // response all along, in the module beside the tracks, and nothing read it.
+    void theMixHeaderNamesThePageItOpened() {
+        const Mix m = TidalClient::parseMixHeader(mixPage());
+        QCOMPARE(m.id, QStringLiteral("mx000000000000000000000000001"));
+        QCOMPARE(m.title, QStringLiteral("My Daily Discovery"));
+        QCOMPARE(m.subTitle, QStringLiteral("placeholder subtitle"));
+        QCOMPARE(m.mixType, QStringLiteral("DISCOVERY_MIX"));
+    }
+
+    void theMixHeaderCarriesTheHeroArtwork() {
+        // LARGE first, the same preference order Mix::fromJson applies
+        // everywhere else; the hero is the one place that wants the big one.
+        QCOMPARE(TidalClient::parseMixHeader(mixPage()).coverUrl(),
+                 QStringLiteral("http://art/large.jpg"));
+    }
+
+    void theMixPageYieldsItsTracksInPageOrder() {
+        QCOMPARE(titlesOfTracks(TidalClient::parseMixTracks(mixPage())),
+                 QStringList({QStringLiteral("First Light"), QStringLiteral("Second Wind"),
+                              QStringLiteral("Third Rail")}));
+    }
+
+    // Which mix this is may only ever be read off mixType. Every one of these
+    // titles arrives in the account's language, so a page whose header says
+    // "Meine tägliche Entdeckung" is still the discovery mix.
+    void theMixHeaderIsIdentifiedByItsTypeAndNotItsTitle() {
+        const QJsonObject german = pageOf(R"json({"rows":[{"modules":[
+            {"type":"MIX_HEADER","mix":{"id":"a","title":"Meine tägliche Entdeckung",
+                                        "mixType":"DISCOVERY_MIX"}}]}]})json");
+        QVERIFY2(TidalClient::parseMixHeader(german).isDailyDiscovery(),
+                 "a translated title stopped the discovery mix being recognised");
+
+        // And the other way round: the English title alone proves nothing.
+        const QJsonObject untyped = pageOf(R"json({"rows":[{"modules":[
+            {"type":"MIX_HEADER","mix":{"id":"b","title":"My Daily Discovery"}}]}]})json");
+        QVERIFY(!TidalClient::parseMixHeader(untyped).isDailyDiscovery());
+    }
+
+    // ── one module missing may not cost the caller the other ─────────────
+
+    // A video mix answers VIDEO_LIST where this one answers TRACK_LIST - that
+    // is how eight tiles once opened empty - so its tracks read as none. The
+    // header is still there, and a titled page over an empty list is a better
+    // answer than the blank hero the complaint was about.
+    void aHeaderWithoutAReadableTrackListStillNamesThePage() {
+        const QJsonObject page = pageOf(R"json({"rows":[
+            {"modules":[{"type":"MIX_HEADER","mix":{"id":"v","title":"My Video Mix 1",
+                                                    "mixType":"VIDEO_DAILY_MIX"}}]},
+            {"modules":[{"type":"VIDEO_LIST","pagedList":{"items":[
+              {"id":9001,"title":"a music video"}]}}]}
+          ]})json");
+        QVERIFY2(TidalClient::parseMixTracks(page).isEmpty(),
+                 "a VIDEO_LIST is not something this app can play");
+        const Mix m = TidalClient::parseMixHeader(page);
+        QCOMPARE(m.title, QStringLiteral("My Video Mix 1"));
+        QCOMPARE(m.mixType, QStringLiteral("VIDEO_DAILY_MIX"));
+    }
+
+    // And the reverse: a response with tracks and no header hands the tracks
+    // over all the same, rather than the two walks failing together.
+    void aTrackListWithoutAHeaderStillYieldsItsTracks() {
+        const QJsonObject page = pageOf(R"json({"rows":[{"modules":[
+            {"type":"TRACK_LIST","pagedList":{"items":[
+              {"id":1,"title":"only a track"}]}}]}]})json");
+        QVERIFY(TidalClient::parseMixHeader(page).id.isEmpty());
+        QCOMPARE(titlesOfTracks(TidalClient::parseMixTracks(page)),
+                 QStringList({QStringLiteral("only a track")}));
+    }
+
+    void everyRowAndModuleIsWalkedForBothHalves() {
+        // The header need not be in the first row, and the tracks may arrive in
+        // more than one module: both walks read all of them.
+        const QJsonObject page = pageOf(R"json({"rows":[
+            {"modules":[{"type":"TRACK_LIST","pagedList":{"items":[{"id":1,"title":"A"}]}}]},
+            {"modules":[
+              {"type":"ALBUM_LIST","pagedList":{"items":[{"id":5,"title":"an album"}]}},
+              {"type":"MIX_HEADER","mix":{"id":"late","title":"Late Header","mixType":"DAILY_MIX"}},
+              {"type":"TRACK_LIST","pagedList":{"items":[{"id":2,"title":"B"}]}}
+            ]}
+          ]})json");
+        QCOMPARE(TidalClient::parseMixHeader(page).title, QStringLiteral("Late Header"));
+        QCOMPARE(titlesOfTracks(TidalClient::parseMixTracks(page)),
+                 QStringList({QStringLiteral("A"), QStringLiteral("B")}));
+    }
+
+    void emptyAndMalformedMixPagesAnswerNothing() {
+        QVERIFY(TidalClient::parseMixHeader({}).id.isEmpty());
+        QVERIFY(TidalClient::parseMixTracks({}).isEmpty());
+        QVERIFY(TidalClient::parseMixHeader(
+            pageOf(R"json({"rows":[]})json")).id.isEmpty());
+        // A MIX_HEADER with no `mix` under it is not a header; the walk keeps
+        // looking rather than answering an empty mix it mistook for one.
+        const QJsonObject hollow = pageOf(R"json({"rows":[
+            {"modules":[{"type":"MIX_HEADER"}]},
+            {"modules":[{"type":"MIX_HEADER","mix":{"id":"real","title":"Real"}}]}
+          ]})json");
+        QCOMPARE(TidalClient::parseMixHeader(hollow).title, QStringLiteral("Real"));
+    }
+
+    // ── the header is not a tile list ────────────────────────────────────
+
+    // The one way reading headers could do harm is by putting a video mix back
+    // into a list of things to open. It cannot: the Collection's tiles come
+    // from MIX_LIST modules, and a MIX_HEADER is not one.
+    void aMixHeaderNeverBecomesACollectionTile() {
+        QVERIFY2(TidalClient::parseMixPage(mixPage()).isEmpty(),
+                 "the page's own header was counted as a tile");
+
+        const QJsonObject videoPage = pageOf(R"json({"rows":[{"modules":[
+            {"type":"MIX_HEADER","mix":{"id":"v","title":"My Video Mix 1",
+                                        "mixType":"VIDEO_DAILY_MIX"}}]}]})json");
+        QVERIFY(TidalClient::parseMixPage(videoPage).isEmpty());
+        // ...while the generated feed still drops its video mixes, untouched by
+        // any of this: seventeen items in, nine tiles out.
+        QCOMPARE(TidalClient::parseMixPage(generatedPage()).size(), 9);
     }
 
     // ── artwork ──────────────────────────────────────────────────────────

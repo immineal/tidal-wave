@@ -37,6 +37,7 @@
 #include <QQuickImageProvider>
 #include <QSet>
 #include <QString>
+#include <utility>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -181,6 +182,25 @@ public:
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
 
+    // function(mix, tracks, error) — the one `pages/mix` reply, both halves of
+    // it. Empty until setMixPageForTest() says otherwise, like every other
+    // fetch here, so a page that opens with nothing still finishes loading.
+    //
+    // The id is recorded rather than ignored: a page opened by id alone has to
+    // ask for *that* mix, and nothing else in the stub would notice if it
+    // asked for the wrong one.
+    Q_INVOKABLE void fetchMixPage(const QString &mixId, QJSValue cb) {
+        m_lastMixPageId = mixId;
+        m_mixPageFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_mixHeader) : emptyObject())
+             << (e ? e->toScriptValue(m_mixTracks) : emptyArray())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
+    }
+
     // Favourites / playlists (paged in the real bridge; defaults kept identical)
     Q_INVOKABLE void fetchFavoriteTracks(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
@@ -206,6 +226,19 @@ public:
     }
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
         Q_UNUSED(uuid); resolve(cb, emptyArray());
+    }
+    // The playlist itself: {uuid, title, description, numTracks, duration,
+    // coverUrl, type}. PlaylistPage's hero reads it, and `type` is the one
+    // field that is not cosmetic — it decides whether the playlist is editable.
+    Q_INVOKABLE void fetchPlaylist(const QString &uuid, QJSValue cb) {
+        m_lastPlaylistFetched = uuid;
+        m_playlistFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_playlist) : emptyObject())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     Q_INVOKABLE void fetchAlbum(qlonglong albumId, QJSValue cb) {
         Q_UNUSED(albumId); resolve(cb, emptyObject());
@@ -363,6 +396,56 @@ public:
         m_userPlaylists = playlists;
         emit favoritePlaylistsChanged();
     }
+    // What fetchMixPage() answers: the MIX_HEADER half and the TRACK_LIST half,
+    // settable apart, because the response that started all of this had one and
+    // not the other.
+    Q_INVOKABLE void setMixPageForTest(const QVariantMap &header,
+                                       const QVariantList &tracks) {
+        m_mixHeader = header;
+        m_mixTracks = tracks;
+    }
+    // What fetchPlaylist() answers.
+    Q_INVOKABLE void setPlaylistForTest(const QVariantMap &playlist) {
+        m_playlist = playlist;
+    }
+    // Non-empty makes both header fetches fail with this reason. A page that
+    // was handed a title by its caller has to keep it when the fetch that would
+    // have confirmed it never answers.
+    Q_INVOKABLE void setHeaderErrorForTest(const QString &err) { m_headerError = err; }
+    // Holds the two header replies instead of answering them, so a test can
+    // let a second page open before the first one's reply lands. Everything
+    // else here answers synchronously, which makes the one race these pages
+    // actually have - a reply arriving for the mix the user has already
+    // navigated away from, into the same reused page item - impossible to
+    // reach. The payload is frozen when the call is made, so each held reply
+    // carries what the fetch would really have answered.
+    Q_INVOKABLE void setDeferHeaderRepliesForTest(bool on) { m_deferHeaders = on; }
+    Q_INVOKABLE int  pendingHeaderRepliesForTest() const { return int(m_pendingHeaders.size()); }
+    // In the order they were asked, which is the order that makes the first
+    // reply the stale one.
+    Q_INVOKABLE void flushHeaderRepliesForTest() {
+        QList<std::pair<QJSValue, QJSValueList>> pending;
+        pending.swap(m_pendingHeaders);
+        for (auto &p : pending)
+            if (p.first.isCallable()) p.first.call(p.second);
+    }
+    Q_INVOKABLE QString lastMixPageIdForTest() const { return m_lastMixPageId; }
+    Q_INVOKABLE QString lastPlaylistFetchedForTest() const { return m_lastPlaylistFetched; }
+    Q_INVOKABLE int     mixPageFetchCountForTest() const { return m_mixPageFetches; }
+    Q_INVOKABLE int     playlistFetchCountForTest() const { return m_playlistFetches; }
+    Q_INVOKABLE void    resetHeadersForTest() {
+        m_mixHeader.clear();
+        m_mixTracks.clear();
+        m_playlist.clear();
+        m_headerError.clear();
+        m_lastMixPageId.clear();
+        m_lastPlaylistFetched.clear();
+        m_mixPageFetches = 0;
+        m_playlistFetches = 0;
+        m_deferHeaders = false;
+        m_pendingHeaders.clear();
+    }
+
     Q_INVOKABLE void setTrackFavoriteForTest(qlonglong trackId, bool fav) {
         m_favoriteTracks[trackId] = fav;
         emit favoriteTracksChanged();
@@ -409,6 +492,7 @@ public:
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
+        resetHeadersForTest();
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -450,6 +534,23 @@ private:
     QVariantList m_favoriteTrackList;
     QString m_lastClipboardText;
     QString m_lastPlaylistPlayed;
+    // The canned hero replies and what was asked for them.
+    QVariantMap  m_mixHeader;
+    QVariantList m_mixTracks;
+    QVariantMap  m_playlist;
+    QString      m_headerError;
+    QString      m_lastMixPageId;
+    QString      m_lastPlaylistFetched;
+    int          m_mixPageFetches = 0;
+    int          m_playlistFetches = 0;
+    bool         m_deferHeaders = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingHeaders;
+
+    // Answer now, or hold the reply for flushHeaderRepliesForTest().
+    void deliver(QJSValue &cb, const QJSValueList &args) {
+        if (m_deferHeaders) { m_pendingHeaders.append({cb, args}); return; }
+        cb.call(args);
+    }
     int     m_userPlaylistFetches = 0;
     int     m_trackCreditsFetches = 0;
     // The canned search reply and what was asked of it.

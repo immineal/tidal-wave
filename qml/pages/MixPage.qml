@@ -50,11 +50,33 @@ Rectangle {
         })
     }
 
+    // The page labels itself. It can be opened with nothing but an id - the
+    // "Playing from" link in Now Playing navigates with exactly that, which is
+    // how a mix came up with its tracks loaded and a blank hero - so the title,
+    // the subtitle and the artwork come out of the response, not out of
+    // whoever happened to navigate here.
+    //
+    // A caller that already has them still passes them, and should: that is
+    // what keeps the hero from flashing empty for the length of a request. But
+    // the page no longer depends on it, and nothing the response leaves out
+    // overwrites what the caller gave - a header with no title, or no header
+    // at all, leaves the caller's standing rather than blanking it.
     function loadMix() {
         loading = true
-        bridge.fetchMixTracks(mixId, function(t, err) {
+        // Which mix this reply is about. The loader is reused when one mix
+        // navigates to another, so a slow reply for the mix just left would
+        // otherwise retitle the one now on screen.
+        var requested = mixId
+        bridge.fetchMixPage(requested, function (header, t, err) {
+            if (requested !== root.mixId) return
             loading = false
-            if (!err) tracks = t
+            if (err) return
+            if (header) {
+                if (header.title)    root.title    = header.title
+                if (header.subtitle) root.subtitle = header.subtitle
+                if (header.coverUrl) root.coverUrl = header.coverUrl
+            }
+            tracks = t
         })
     }
 
@@ -99,6 +121,7 @@ Rectangle {
                     clip: true
                     Image {
                         id: mixCover
+                        objectName: "heroCover"
                         anchors.fill: parent
                         source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
                         fillMode: Image.PreserveAspectCrop
@@ -134,6 +157,7 @@ Rectangle {
                     }
 
                     Text {
+                        objectName: "heroTitle"
                         Layout.fillWidth: true
                         text: root.title
                         color: Theme.textPrimary

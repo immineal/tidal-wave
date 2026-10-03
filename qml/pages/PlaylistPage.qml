@@ -67,9 +67,38 @@ Rectangle {
 
     function loadPlaylist() {
         loading = true
-        bridge.fetchPlaylistTracks(playlistUuid, function(t, err) {
+        // Which playlist these replies are about; see MixPage.loadMix().
+        var requested = playlistUuid
+        bridge.fetchPlaylistTracks(requested, function (t, err) {
+            if (requested !== root.playlistUuid) return
             loading = false
             if (!err) tracks = t
+        })
+        loadPlaylistHeader(requested)
+    }
+
+    // The hero's own request, for the same reason MixPage makes one: this page
+    // can be opened with nothing but a uuid, and the "Playing from" link in Now
+    // Playing opens it with a uuid and an explicit empty cover.
+    //
+    // It is a second request where the mix's header came free, because
+    // `playlists/<uuid>/tracks` answers tracks and nothing else - there is no
+    // module beside them to read. And `type` is the field that makes it worth
+    // a request of its own: it is not decoration, it is what decides whether
+    // the user may edit a playlist they own. Opened from Now Playing it
+    // arrived as "", which reads as EDITORIAL, so their own playlist opened
+    // read-only.
+    //
+    // Nothing the reply leaves out overwrites what the caller passed, and a
+    // reply that never comes overwrites nothing at all.
+    function loadPlaylistHeader(requested) {
+        bridge.fetchPlaylist(requested, function (p, err) {
+            if (err || !p || requested !== root.playlistUuid) return
+            if (p.title)       root.playlistTitle       = p.title
+            if (p.coverUrl)    root.coverUrl            = p.coverUrl
+            if (p.description) root.playlistDescription = p.description
+            if (p.duration)    root.playlistDuration    = p.duration
+            if (p.type)        root.playlistType        = p.type
         })
     }
 
@@ -114,6 +143,7 @@ Rectangle {
                     clip: true
                     Image {
                         id: playlistCover
+                        objectName: "heroCover"
                         anchors.fill: parent
                         visible: root.coverUrl.length > 0
                         source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
@@ -168,6 +198,7 @@ Rectangle {
                     }
 
                     Text {
+                        objectName: "heroTitle"
                         Layout.fillWidth: true
                         text: root.playlistTitle
                         color: Theme.textPrimary

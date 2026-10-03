@@ -64,6 +64,10 @@ public:
     using ArtistsCallback  = std::function<void(QList<Artist>,  QString)>;
     using PlaylistsCallback= std::function<void(QList<Playlist>,QString)>;
     using MixesCallback    = std::function<void(QList<Mix>,     QString)>;
+    // One whole `pages/mix` response: the mix the page is about, then its
+    // tracks. Two results from one request, because that response carries both
+    // and a page opened by id alone needs both - see fetchMixPage().
+    using MixPageCallback  = std::function<void(Mix, QList<Track>, QString)>;
     using SearchCb         = std::function<void(SearchResults,  QString)>;
     using StreamCb         = std::function<void(StreamManifest, QString)>;
 
@@ -77,6 +81,10 @@ public:
     // Home page feeds
     void fetchHomeMixes   (MixesCallback cb);
     void fetchMixTracks   (const QString &mixId, TracksCallback cb);
+    // The same request as fetchMixTracks(), delivering the MIX_HEADER beside
+    // the tracks. fetchMixTracks() is this call with the header dropped, so a
+    // caller that wants both does not pay for two round trips.
+    void fetchMixPage     (const QString &mixId, MixPageCallback cb);
 
     // My collection
     void fetchFavoriteTracks  (TracksCallback    cb, int limit=50, int offset=0);
@@ -87,6 +95,10 @@ public:
     // Content
     void fetchAlbumTracks  (qint64 albumId,        TracksCallback    cb);
     void fetchPlaylistTracks(const QString &uuid,  TracksCallback    cb);
+    // The playlist itself - title, artwork, description, duration and the
+    // USER/EDITORIAL type. `playlists/<uuid>/tracks` answers tracks and nothing
+    // else, so a page handed only a uuid has no other way to label itself.
+    void fetchPlaylist     (const QString &uuid,  std::function<void(Playlist,QString)> cb);
     void fetchArtistDetail (qint64 artistId,       std::function<void(ArtistDetail,QString)> cb);
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
@@ -137,6 +149,24 @@ public:
     // reconciled is the whole of what decides what the Collection's Mixes tab
     // holds. They touch no member state.
     static QList<Mix> parseMixPage(const QJsonObject &root);
+
+    // The hero of one `pages/mix` response: the mix that page is *about*, as
+    // its MIX_HEADER module names it. A page opened by id alone - the "Playing
+    // from" link in Now Playing navigates with nothing else - has no other
+    // source for a title or a cover, and used to show neither.
+    //
+    // Deliberately not filtered on mixType the way parseMixPage() is. That
+    // filter keeps video mixes out of a list of things the user can open; this
+    // is the label on the one page they already opened, and a titled page over
+    // an empty list says more than a blank one. Nothing here can put a video
+    // mix into a list.
+    static Mix parseMixHeader(const QJsonObject &root);
+
+    // The tracks of one `pages/mix` response: every TRACK_LIST module, in page
+    // order. A video mix answers VIDEO_LIST instead and so comes back empty -
+    // which is exactly the case that must not cost the caller its header, so
+    // this and parseMixHeader() are two walks and not one.
+    static QList<Track> parseMixTracks(const QJsonObject &root);
 
     // One page of v2/favorites/mixes - the mixes this user *saved*. Flat items,
     // each carrying its own `dateAdded`, and nothing filtered out of them.
@@ -191,7 +221,9 @@ private:
     // Daily Discovery, then New Arrivals, then the order they came in.
     static QList<Mix> orderMixes(QList<Mix> mixes);
 
-    QList<Track>    parseTracks   (const QJsonObject &root);
+    // Static because it touches no member state and the mix-page statics above
+    // are built on it.
+    static QList<Track> parseTracks(const QJsonObject &root);
 
     static QString qualityString(AudioQuality q);
 

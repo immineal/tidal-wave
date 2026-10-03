@@ -155,6 +155,10 @@ QVariantMap TidalBridge::mixToMap(const Mix &m_) {
     m["title"]    = m_.title;
     m["subtitle"] = m_.subTitle;
     m["coverUrl"] = m_.coverUrl(320);
+    // The only handle on *which* mix this is that QML may branch on: the title
+    // arrives in the account's language (MixTypes in Models.h says so at
+    // length), so anything comparing against one breaks in German.
+    m["mixType"]  = m_.mixType;
     return m;
 }
 
@@ -186,6 +190,14 @@ void TidalBridge::fetchHomeMixes(QJSValue cb) {
 void TidalBridge::fetchMixTracks(const QString &mixId, QJSValue cb) {
     m_client->fetchMixTracks(mixId, [this, cb](QList<Track> tracks, QString err) mutable {
         call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchMixPage(const QString &mixId, QJSValue cb) {
+    m_client->fetchMixPage(mixId, [this, cb](Mix mix, QList<Track> tracks, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(mixToMap(mix)),
+                   qjsEngine(this)->toScriptValue(tracksToList(tracks)),
                    qjsEngine(this)->toScriptValue(err) });
     });
 }
@@ -229,6 +241,13 @@ void TidalBridge::fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
 void TidalBridge::fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
     m_client->fetchPlaylistTracks(uuid, [this, cb](QList<Track> tracks, QString err) mutable {
         call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::fetchPlaylist(const QString &uuid, QJSValue cb) {
+    m_client->fetchPlaylist(uuid, [this, cb](Playlist p, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(playlistToMap(p)),
                    qjsEngine(this)->toScriptValue(err) });
     });
 }
