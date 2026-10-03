@@ -1002,6 +1002,30 @@
             <numerusform>%n Titel</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Mixes</source>
+        <translation>Mixe</translation>
+    </message>
+    <message>
+        <source>No mixes for &quot;%1&quot;</source>
+        <translation>Keine Mixe für „%1“</translation>
+    </message>
+    <message>
+        <source>Recent searches</source>
+        <translation>Zuletzt gesucht</translation>
+    </message>
+    <message>
+        <source>Clear all</source>
+        <translation>Alle löschen</translation>
+    </message>
+    <message>
+        <source>Loading more…</source>
+        <translation>Mehr wird geladen…</translation>
+    </message>
+    <message>
+        <source>End of results</source>
+        <translation>Ende der Ergebnisse</translation>
+    </message>
 </context>
 <context>
     <name>SettingsPanel</name>

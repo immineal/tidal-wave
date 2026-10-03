@@ -132,6 +132,38 @@ constexpr auto kMixPage = R"json({
   ]
 })json";
 
+// The `mixes` node of a /v1/search response - the sixth kind the search page
+// asks for. Invented, and it says so: every id and every title below is made
+// up, and none of it is anyone's library.
+//
+// What is *not* invented is the shape and the vocabulary. A per-kind node of
+// {items, totalNumberOfItems} is what the four kinds search already parses
+// come in (see TidalClient::search), and a mix object carrying
+// id/title/subTitle/mixType/images is what the two captured fixtures above
+// establish. The mixType strings are the captured ones.
+//
+// Built to put the filter under pressure rather than to be typical:
+//
+//   * one VIDEO_DAILY_MIX, which must not survive;
+//   * one DAILY_MIX whose *title* says "Video Mix", which must survive - the
+//     identification is the type and never the title, which arrives in the
+//     account's language;
+//   * one item wrapped in {"item": {...}}, the favourites shape;
+//   * one item with no id at all;
+//   * a DISCOVERY_MIX late in the list, which parseMixPage's ordering would
+//     pull to the front and this must leave where the server put it.
+constexpr auto kSearchMixes = R"json({
+  "limit": 20, "offset": 0, "totalNumberOfItems": 6,
+  "items": [
+    {"id":"sm00000000000000000000000001","title":"Erfundener Mix A","subTitle":"placeholder subtitle","mixType":"ARTIST_MIX","images":{"LARGE":{"url":"@http@art/a.jpg"}}},
+    {"id":"sm00000000000000000000000002","title":"Erfundener Video Mix","subTitle":"placeholder subtitle","mixType":"VIDEO_DAILY_MIX","images":{"LARGE":{"url":"@http@art/b.jpg"}}},
+    {"id":"sm00000000000000000000000003","title":"Erfundener Mix B","subTitle":"placeholder subtitle","mixType":"TRACK_MIX","images":{"LARGE":{"url":"@http@art/c.jpg"}}},
+    {"id":"sm00000000000000000000000004","title":"Mein Video Mix 9","subTitle":"placeholder subtitle","mixType":"DAILY_MIX","images":{"LARGE":{"url":"@http@art/d.jpg"}}},
+    {"item":{"id":"sm00000000000000000000000005","title":"Erfundener Mix C","subTitle":"placeholder subtitle","mixType":"DISCOVERY_MIX"}},
+    {"title":"Ohne Kennung","mixType":"DAILY_MIX"}
+  ]
+})json";
+
 // The fixtures write "https://host/path" where the response has
 // "https://host/path", and this puts the scheme back. moc strips // comments
 // line by line and does it inside a multi-line raw string too, so a URL written
@@ -150,6 +182,7 @@ QJsonObject pageOf(const char *json) {
 }
 
 QJsonObject generatedPage() { return pageOf(kGeneratedPage); }
+QJsonObject searchMixes()  { return pageOf(kSearchMixes); }
 QJsonObject mixPage()       { return pageOf(kMixPage); }
 QJsonObject savedPage()     { return pageOf(kSavedMixes); }
 
@@ -787,6 +820,70 @@ private slots:
         QCOMPARE(mixes.at(2).coverUrl(), QStringLiteral("http://art/l.jpg"));
         QVERIFY(mixes.at(3).coverUrl().isEmpty());
     }
+    // ── mixes in search (the sixth kind the search page asks for) ───────
+    //
+    // The same video filter as the generated Home/Collection list, for the
+    // same reason: the app cannot play a video mix, so a tile for one opens an
+    // empty page. parseSearchMixes() is where that happens for search, which
+    // means a video mix never reaches TidalBridge, never reaches QML and so
+    // cannot be let through by anything downstream.
+
+    void searchDropsVideoMixes() {
+        const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
+        QVERIFY2(!typesOf(mixes).contains(QStringLiteral("VIDEO_DAILY_MIX")),
+                 qPrintable("a video mix survived the search filter: " + listing(mixes)));
+    }
+
+    // The one that would break the day someone matched on the title instead:
+    // a DAILY_MIX called "Mein Video Mix 9" is a perfectly playable mix whose
+    // name happens to say video, and in German at that.
+    void searchIdentifiesAVideoMixByItsTypeAndNotItsTitle() {
+        const QStringList titles = titlesOf(TidalClient::parseSearchMixes(searchMixes()));
+        QVERIFY2(titles.contains(QStringLiteral("Mein Video Mix 9")),
+                 qPrintable("a playable mix was dropped because its title says "
+                            "\"Video\": " + titles.join(QLatin1String(", "))));
+    }
+
+    void searchKeepsEveryOtherKindOfMix() {
+        QCOMPARE(titlesOf(TidalClient::parseSearchMixes(searchMixes())),
+                 QStringList({QStringLiteral("Erfundener Mix A"),
+                              QStringLiteral("Erfundener Mix B"),
+                              QStringLiteral("Mein Video Mix 9"),
+                              QStringLiteral("Erfundener Mix C")}));
+    }
+
+    // The favourites endpoints wrap each item in a row; search does not, but
+    // one costs a branch and the alternative is a list of blank mixes.
+    void searchUnwrapsAWrappedItem() {
+        const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
+        QVERIFY(!mixes.isEmpty());
+        QCOMPARE(mixes.last().id, QStringLiteral("sm00000000000000000000000005"));
+        QCOMPARE(mixes.last().title, QStringLiteral("Erfundener Mix C"));
+    }
+
+    // Nothing to open, so nothing to show.
+    void searchDropsAnItemWithNoId() {
+        QVERIFY2(!titlesOf(TidalClient::parseSearchMixes(searchMixes()))
+                      .contains(QStringLiteral("Ohne Kennung")),
+                 "a mix with no id became a tile that opens nothing");
+    }
+
+    // Unlike parseMixPage(), which pulls the two personalised mixes to the
+    // front of a list the user is browsing. A search result is in the server's
+    // relevance order and moving anything inside it answers a different
+    // question - so the DISCOVERY_MIX stays where it was sent, last.
+    void searchKeepsTheServersOrder() {
+        const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
+        QVERIFY(!mixes.isEmpty());
+        QCOMPARE(mixes.last().mixType, QStringLiteral("DISCOVERY_MIX"));
+    }
+
+    void searchAnswersNothingForAnEmptyOrMalformedNode() {
+        QVERIFY(TidalClient::parseSearchMixes(QJsonObject{}).isEmpty());
+        QVERIFY(TidalClient::parseSearchMixes(
+                    QJsonObject{{QStringLiteral("items"), QJsonValue::Null}}).isEmpty());
+    }
+
 };
 
 QTEST_GUILESS_MAIN(TestMixes)

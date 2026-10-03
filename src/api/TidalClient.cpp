@@ -491,11 +491,31 @@ void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {
 
 // ─── Search ────────────────────────────────────────
 
-void TidalClient::search(const QString &query, SearchCb cb, int limit) {
+// The `mixes` node of a search response. See the header for why the video
+// filter is here and why nothing is reordered.
+QList<Mix> TidalClient::parseSearchMixes(const QJsonObject &node) {
+    QList<Mix> out;
+    for (const auto &v : node["items"].toArray()) {
+        QJsonObject item = v.toObject();
+        // The favourites endpoints wrap each item in a row carrying a date;
+        // search does not, but unwrapping costs one branch and parsePlaylists
+        // already hedges the same way, so a wrapped shape cannot silently
+        // yield a list of blank mixes.
+        if (item.contains("item")) item = item["item"].toObject();
+        const Mix mix = Mix::fromJson(item);
+        if (mix.id.isEmpty()) continue;
+        if (mix.isVideoMix()) continue;
+        out.append(mix);
+    }
+    return out;
+}
+
+void TidalClient::search(const QString &query, SearchCb cb, int limit, int offset) {
     QUrlQuery q;
     q.addQueryItem("query", query);
     q.addQueryItem("limit", QString::number(limit));
-    q.addQueryItem("types", "TRACKS,ALBUMS,ARTISTS,PLAYLISTS");
+    q.addQueryItem("offset", QString::number(offset));
+    q.addQueryItem("types", "TRACKS,ALBUMS,ARTISTS,PLAYLISTS,MIXES");
     m_api->get("search", q, [this, cb](QJsonObject root, QString err) {
         if (!err.isEmpty()) { cb({}, err); return; }
         SearchResults r;
@@ -514,6 +534,10 @@ void TidalClient::search(const QString &query, SearchCb cb, int limit) {
         if (root.contains("playlists")) {
             r.playlists      = parsePlaylists(root["playlists"].toObject());
             r.totalPlaylists = root["playlists"].toObject()["totalNumberOfItems"].toInt();
+        }
+        if (root.contains("mixes")) {
+            r.mixes      = parseSearchMixes(root["mixes"].toObject());
+            r.totalMixes = root["mixes"].toObject()["totalNumberOfItems"].toInt();
         }
         cb(r, {});
     });

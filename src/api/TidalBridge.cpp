@@ -2,6 +2,9 @@
 #include "TidalBridge.h"
 #include <QJSEngine>
 #include <QSettings>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonValue>
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QDebug>
@@ -14,6 +17,11 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     setPreferredQuality(saved);
 
     connect(m_client, &TidalClient::userIdChanged, this, [this](qint64 uid) {
+        // The recents are keyed by account and so are a different list before
+        // and after a sign-in - including "none at all" while there is no
+        // account. Anything showing them has to be told, or the search page
+        // keeps whatever it read when it was built.
+        emit recentSearchesChanged();
         if (uid > 0) {
             loadFavoriteTrackIds();
         } else {
@@ -288,15 +296,116 @@ void TidalBridge::fetchArtistTopTracks(qlonglong artistId, QJSValue cb) {
     });
 }
 
-void TidalBridge::search(const QString &q, QJSValue cb, int limit) {
+void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
     m_client->search(q, [this, cb](SearchResults r, QString err) mutable {
         QVariantMap res;
         res["tracks"]    = tracksToList(r.tracks);
         res["albums"]    = albumsToList(r.albums);
         res["artists"]   = artistsToList(r.artists);
         res["playlists"] = playlistsList(r.playlists);
+        res["mixes"]     = mixesList(r.mixes);
+        // The five totals. TidalClient has always parsed them and this method
+        // dropped all four of the ones that existed, which is why the page had
+        // no end-of-list state to offer: a kind whose last page happens to be
+        // full is indistinguishable from one with more behind it.
+        res["totalTracks"]    = r.totalTracks;
+        res["totalAlbums"]    = r.totalAlbums;
+        res["totalArtists"]   = r.totalArtists;
+        res["totalPlaylists"] = r.totalPlaylists;
+        res["totalMixes"]     = r.totalMixes;
         call(cb, { qjsEngine(this)->toScriptValue(res), qjsEngine(this)->toScriptValue(err) });
-    }, limit);
+    }, limit, offset);
+}
+
+// ─── Recent searches ───────────────────────────────
+//
+// Beside the recents LibraryIndex already keeps, and in the same place: a
+// QSettings value under a per-account key, written whole on every change.
+// LibraryIndex uses "user_<id>/library/lastPlayed" for what the user played;
+// this is "user_<id>/search/recentQueries" for what they searched. Same store,
+// same per-account scoping, same "serialise the lot, it is tiny" approach -
+// a JSON array of strings rather than LibraryIndex's JSON object only because
+// this list is ordered and has no values to carry.
+//
+// Not a file beside the album-track cache (LibraryIndex::trackCachePath), which
+// is the other half of how LibraryIndex persists: that file exists because a
+// whole library's tracklists are megabytes and do not belong in a settings
+// file. Eight strings do.
+//
+// Nothing is logged. markPlaylistPlayed() a few lines up prints the uuid it
+// records; the equivalent here would print what the user searched for, so
+// there is deliberately no qDebug in any of these four.
+QString TidalBridge::recentSearchesKey() const {
+    return QStringLiteral("user_%1/search/recentQueries").arg(m_client->userId());
+}
+
+QStringList TidalBridge::recentSearches() const {
+    if (m_client->userId() <= 0) return {};
+    QSettings settings;
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        settings.value(recentSearchesKey()).toString().toUtf8());
+    if (!doc.isArray()) return {};
+    QStringList out;
+    for (const QJsonValue &v : doc.array()) {
+        const QString q = v.toString();
+        if (!q.isEmpty()) out.append(q);
+    }
+    // A file edited by hand, or written by a future version with a bigger cap,
+    // must not make the empty state scroll.
+    while (out.size() > kRecentSearchCap) out.removeLast();
+    return out;
+}
+
+void TidalBridge::saveRecentSearches(const QStringList &queries) {
+    if (m_client->userId() <= 0) return;
+    QJsonArray arr;
+    for (const QString &q : queries) arr.append(q);
+    QSettings settings;
+    settings.setValue(recentSearchesKey(),
+                      QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+    emit recentSearchesChanged();
+}
+
+void TidalBridge::addRecentSearch(const QString &q) {
+    const QStringList before = recentSearches();
+    const QStringList after  = withRecentSearch(before, q);
+    if (after == before) return;
+    saveRecentSearches(after);
+}
+
+void TidalBridge::removeRecentSearch(const QString &q) {
+    QStringList queries = recentSearches();
+    const qsizetype removed = queries.removeIf([&q](const QString &e) {
+        return e.compare(q, Qt::CaseInsensitive) == 0;
+    });
+    if (removed == 0) return;
+    saveRecentSearches(queries);
+}
+
+void TidalBridge::clearRecentSearches() {
+    if (recentSearches().isEmpty()) return;
+    saveRecentSearches({});
+}
+
+// See the header for the two rules beyond "prepend and truncate".
+QStringList withRecentSearch(QStringList recents, const QString &query, int cap) {
+    const QString q = query.trimmed();
+    if (q.isEmpty() || cap <= 0) return recents;
+
+    recents.removeIf([&q](const QString &e) {
+        return e.compare(q, Qt::CaseInsensitive) == 0;
+    });
+    // The newest entry, if this query is a longer spelling of it, is the same
+    // search still being typed - so it is replaced rather than kept above the
+    // thing it was a prefix of.
+    if (!recents.isEmpty()
+        && q.size() > recents.first().size()
+        && q.startsWith(recents.first(), Qt::CaseInsensitive))
+        recents.removeFirst();
+
+    recents.prepend(q);
+    while (recents.size() > cap) recents.removeLast();
+    return recents;
 }
 
 bool TidalBridge::isTrackFavorite(qlonglong trackId) const {

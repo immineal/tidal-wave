@@ -42,6 +42,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
 #include "ui/Application.h"
 #include "ui/ThemePalette.h"
 
@@ -266,9 +267,16 @@ public:
     // The query is still ignored. What is under test is what the page does with
     // a reply; how Tidal matches text is not this stub's business, and a stub
     // that guessed at it would be asserting its own guess.
-    Q_INVOKABLE void search(const QString &q, QJSValue cb, int limit = 20) {
-        m_lastSearchQuery = q;
-        m_lastSearchLimit = limit;
+    //
+    // The *offset* is not ignored, and this is the one place the stub models
+    // the server rather than just answering: each canned list is sliced
+    // [offset, offset+limit) and the five totals report the whole list. Without
+    // that a paging test could only ever see page one again, and "append as the
+    // bottom is reached" would go green against a page that never moved.
+    Q_INVOKABLE void search(const QString &q, QJSValue cb, int limit = 20, int offset = 0) {
+        m_lastSearchQuery  = q;
+        m_lastSearchLimit  = limit;
+        m_lastSearchOffset = offset;
         m_searchCount++;
         if (!cb.isCallable()) return;
         // The real bridge builds the map from a default-constructed
@@ -277,8 +285,57 @@ public:
         // results.tracks before checking err must fail the same way in a test
         // as it would in the app.
         QJSValueList args;
-        args << searchPayload(m_searchError.isEmpty()) << QJSValue(m_searchError);
+        args << searchPayload(m_searchError.isEmpty(), limit, offset)
+             << QJSValue(m_searchError);
+        // Held back when a test wants two requests in flight at once. Every
+        // other reply in this file is synchronous, which is enough for a page
+        // that only ever has one request out - but the search page now has a
+        // generation guard and a paging cursor, and neither can be looked at
+        // unless a reply can be made to arrive after the query it was for has
+        // been replaced.
+        if (m_deferSearch) { m_pendingSearches.append({cb, args}); return; }
         cb.call(args);
+    }
+
+    // Hold search replies until flushSearchRepliesForTest(). The canned payload
+    // is built at call time, so what was in the stub when the request went out
+    // is what comes back - exactly like a server that already answered.
+    Q_INVOKABLE void setDeferSearchForTest(bool on) { m_deferSearch = on; }
+    Q_INVOKABLE int  pendingSearchCountForTest() const { return int(m_pendingSearches.size()); }
+    Q_INVOKABLE void flushSearchRepliesForTest() {
+        auto pending = m_pendingSearches;
+        m_pendingSearches.clear();
+        for (auto &p : pending) p.first.call(p.second);
+    }
+
+    // ── recent searches ─────────────────────────────────────────────────
+    //
+    // In memory, never on disk: these are the queries a person typed, and a
+    // test run must not append to - or read - the real account's list. The
+    // ordering rule itself is the app's own withRecentSearch() out of
+    // TidalBridge.h and not a second copy, so a test that asserts on it is
+    // asserting the shipping rule.
+    Q_INVOKABLE QStringList recentSearches() const { return m_recentSearches; }
+    Q_INVOKABLE void addRecentSearch(const QString &q) {
+        const QStringList after = withRecentSearch(m_recentSearches, q);
+        if (after == m_recentSearches) return;
+        m_recentSearches = after;
+        emit recentSearchesChanged();
+    }
+    Q_INVOKABLE void removeRecentSearch(const QString &q) {
+        if (m_recentSearches.removeIf([&q](const QString &e) {
+                return e.compare(q, Qt::CaseInsensitive) == 0; }) == 0) return;
+        emit recentSearchesChanged();
+    }
+    Q_INVOKABLE void clearRecentSearches() {
+        if (m_recentSearches.isEmpty()) return;
+        m_recentSearches.clear();
+        emit recentSearchesChanged();
+    }
+    // Test hook: seed the list without going through the add rule.
+    Q_INVOKABLE void setRecentSearchesForTest(const QStringList &queries) {
+        m_recentSearches = queries;
+        emit recentSearchesChanged();
     }
 
     Q_INVOKABLE void copyToClipboard(const QString &text) { m_lastClipboardText = text; }
@@ -454,6 +511,10 @@ public:
     // The canned remote search reply. Four lists because the page reads four
     // and reacts differently to each: a result set with tracks and no albums is
     // exactly what makes the Albums tab say something rather than nothing.
+    //
+    // Mixes are the sixth kind and come through their own hook below rather
+    // than a fifth argument here, so the twenty-odd existing call sites keep
+    // meaning "these four and no mixes".
     Q_INVOKABLE void setSearchResultsForTest(const QVariantList &tracks,
                                             const QVariantList &albums,
                                             const QVariantList &artists,
@@ -464,21 +525,36 @@ public:
         m_searchPlaylists = playlists;
         m_searchError.clear();   // a filled reply is a successful one
     }
+    // The mixes the catalogue answers with. The *video* filter is not modelled
+    // here and must not be: TidalClient::parseSearchMixes drops a video mix
+    // before the bridge ever sees one, so by the time a reply reaches QML the
+    // list is already clean. tests/tst_mixes.cpp is where that filter is
+    // proved, against the captured mixType values.
+    Q_INVOKABLE void setSearchMixesForTest(const QVariantList &mixes) {
+        m_searchMixes = mixes;
+        m_searchError.clear();
+    }
     // Non-empty makes every later search fail with this reason, the way a lost
     // network does: errorString() reaches the callback and nothing else does.
     Q_INVOKABLE void setSearchErrorForTest(const QString &err) { m_searchError = err; }
     Q_INVOKABLE QString lastSearchQueryForTest() const { return m_lastSearchQuery; }
     Q_INVOKABLE int     lastSearchLimitForTest() const { return m_lastSearchLimit; }
+    Q_INVOKABLE int     lastSearchOffsetForTest() const { return m_lastSearchOffset; }
     Q_INVOKABLE int     searchCountForTest() const { return m_searchCount; }
     Q_INVOKABLE void    resetSearchForTest() {
         m_searchTracks.clear();
         m_searchAlbums.clear();
         m_searchArtists.clear();
         m_searchPlaylists.clear();
+        m_searchMixes.clear();
         m_searchError.clear();
         m_lastSearchQuery.clear();
         m_lastSearchLimit = 0;
+        m_lastSearchOffset = -1;
         m_searchCount = 0;
+        m_recentSearches.clear();
+        m_deferSearch = false;
+        m_pendingSearches.clear();
     }
 
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
@@ -520,6 +596,7 @@ signals:
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
+    void recentSearchesChanged();
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
@@ -558,24 +635,45 @@ private:
     QVariantList m_searchAlbums;
     QVariantList m_searchArtists;
     QVariantList m_searchPlaylists;
+    QVariantList m_searchMixes;
     QString      m_searchError;
     QString      m_lastSearchQuery;
     int          m_lastSearchLimit = 0;
+    int          m_lastSearchOffset = -1;
     int          m_searchCount = 0;
+    QStringList  m_recentSearches;
+    bool         m_deferSearch = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingSearches;
 
-    // {tracks, albums, artists, playlists}; `filled` false gives the same map
-    // with four empty lists, which is what the real bridge sends on an error.
-    QJSValue searchPayload(bool filled) const {
+    // {tracks, albums, artists, playlists, mixes} plus the five totals;
+    // `filled` false gives the same map with five empty lists and five zeroes,
+    // which is what the real bridge sends on an error.
+    //
+    // Each list is the slice the caller asked for. The total is the length of
+    // the whole canned list, which is what lets the page see that there is
+    // more behind a full page and nothing behind a short one.
+    QJSValue searchPayload(bool filled, int limit, int offset) const {
         QJSEngine *e = jsEngine();
         QJSValue res = e ? e->newObject() : QJSValue();
         if (!res.isObject() || !e) return res;
-        const auto list = [&](const QVariantList &l) {
-            return filled ? e->toScriptValue(l) : e->newArray(0);
+        const auto page = [&](const QVariantList &l) {
+            if (!filled) return e->newArray(0);
+            if (offset >= l.size() || limit <= 0) return e->newArray(0);
+            return e->toScriptValue(l.mid(offset, limit));
         };
-        res.setProperty(QStringLiteral("tracks"),    list(m_searchTracks));
-        res.setProperty(QStringLiteral("albums"),    list(m_searchAlbums));
-        res.setProperty(QStringLiteral("artists"),   list(m_searchArtists));
-        res.setProperty(QStringLiteral("playlists"), list(m_searchPlaylists));
+        const auto total = [&](const QVariantList &l) {
+            return QJSValue(filled ? int(l.size()) : 0);
+        };
+        res.setProperty(QStringLiteral("tracks"),    page(m_searchTracks));
+        res.setProperty(QStringLiteral("albums"),    page(m_searchAlbums));
+        res.setProperty(QStringLiteral("artists"),   page(m_searchArtists));
+        res.setProperty(QStringLiteral("playlists"), page(m_searchPlaylists));
+        res.setProperty(QStringLiteral("mixes"),     page(m_searchMixes));
+        res.setProperty(QStringLiteral("totalTracks"),    total(m_searchTracks));
+        res.setProperty(QStringLiteral("totalAlbums"),    total(m_searchAlbums));
+        res.setProperty(QStringLiteral("totalArtists"),   total(m_searchArtists));
+        res.setProperty(QStringLiteral("totalPlaylists"), total(m_searchPlaylists));
+        res.setProperty(QStringLiteral("totalMixes"),     total(m_searchMixes));
         return res;
     }
 };

@@ -106,7 +106,10 @@ public:
     void fetchTrack        (qint64 trackId,        std::function<void(Track,QString)>  cb);
 
     // Search
-    void search(const QString &query, SearchCb cb, int limit = 20);
+    // `offset` is the row to start at, per kind — the search endpoint takes one
+    // and this never sent it, so the page could only ever see the first 20 of
+    // each kind and "load more" had nothing to ask with.
+    void search(const QString &query, SearchCb cb, int limit = 20, int offset = 0);
 
     // Favorites management
     void addTrackFavorite   (qint64 trackId,    std::function<void(bool)> cb);
@@ -171,6 +174,17 @@ public:
     // One page of v2/favorites/mixes - the mixes this user *saved*. Flat items,
     // each carrying its own `dateAdded`, and nothing filtered out of them.
     static QList<Mix> parseSavedMixes(const QJsonObject &root);
+
+    // The `mixes` node of a search response: {items, totalNumberOfItems}, the
+    // same per-kind shape the other four come in. Video mixes are dropped here
+    // for the reason parseMixPage() drops them — nothing in this app can play
+    // one, so a tile for it opens an empty page — and identified by `mixType`,
+    // never by the title, which arrives in the account's language.
+    //
+    // Unlike parseMixPage() the survivors are *not* reordered: a search result
+    // is in the server's relevance order and pulling the personalised mixes to
+    // the front of it would be answering a different question.
+    static QList<Mix> parseSearchMixes(const QJsonObject &node);
 
     // The cursor to ask for the next page of v2/favorites/mixes with, or an empty
     // string when the run is over. `previous` is the cursor this page was fetched

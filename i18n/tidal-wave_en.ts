@@ -931,6 +931,30 @@
             <numerusform>%n tracks</numerusform>
         </translation>
     </message>
+    <message>
+        <source>Mixes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No mixes for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent searches</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear all</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading more…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>End of results</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SettingsPanel</name>

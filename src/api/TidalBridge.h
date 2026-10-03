@@ -5,6 +5,7 @@
 #include <QList>
 #include <QSet>
 #include <QVariantMap>
+#include <QStringList>
 #include "TidalClient.h"
 
 // Orders playlists by how recently the user last had anything to do with them:
@@ -23,6 +24,35 @@
 // Tidal session and QSettings to find the playtimes; this takes them as an
 // argument and so can be tested on its own (tests/tst_playlist_order.cpp).
 void sortPlaylistsByRecency(QList<Playlist> &playlists, const QVariantMap &playtimes);
+
+// How many past queries the search page's empty state keeps.
+//
+// Eight. The empty state is a centred column in the page body, and eight rows
+// of a row height plus the heading and the clear-all still fit a window small
+// enough to have caused the complaint this whole pass came out of - a list that
+// needs scrolling to read is no longer an empty state. It is also past the
+// point where a list helps: the queries a person actually repeats are the last
+// two or three, and everything below that is a record of what they searched
+// for, which is not a thing to keep more of than is useful.
+inline constexpr int kRecentSearchCap = 8;
+
+// `recents` with `query` moved to the front, capped at `cap`. Pure, so the same
+// rule is testable without a Tidal session or QSettings - and so the test stub
+// can call *this* rather than carry a second copy that could drift.
+//
+// Two things beyond "prepend and truncate":
+//
+//   * matching is case-insensitive, so retyping a query in another case moves
+//     the existing row up instead of adding a near-duplicate beside it.
+//   * a query that *extends* the entry in front of it replaces it. Typing one
+//     word with pauses in it dispatches a search per pause - "ken", "kend",
+//     "kendri", "kendrick" - and without this the list would be four rows of
+//     the same search. Only against the newest entry, so an earlier short
+//     query someone really does repeat is left alone.
+//
+// An empty or whitespace-only query changes nothing.
+QStringList withRecentSearch(QStringList recents, const QString &query,
+                             int cap = kRecentSearchCap);
 
 // QML-facing wrapper around TidalClient.
 // All methods take QJSValue callbacks: function(data, errorString)
@@ -64,7 +94,20 @@ public:
     Q_INVOKABLE void fetchArtistAlbums    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistTopTracks (qlonglong artistId,     QJSValue cb);
 
-    Q_INVOKABLE void search              (const QString &q,        QJSValue cb, int limit = 20);
+    // `offset` is the row to start at, per kind; the reply carries the four
+    // totals beside the four lists so the caller can tell a short page from
+    // the last one. See SearchPage, which pages on it.
+    Q_INVOKABLE void search              (const QString &q,        QJSValue cb,
+                                          int limit = 20, int offset = 0);
+
+    // ── the queries this account has run, newest first ──────────────────
+    //
+    // The search field's empty state. Local to this machine and to this
+    // account: nothing is sent anywhere, and no query is ever logged.
+    Q_INVOKABLE QStringList recentSearches() const;
+    Q_INVOKABLE void addRecentSearch   (const QString &q);
+    Q_INVOKABLE void removeRecentSearch(const QString &q);
+    Q_INVOKABLE void clearRecentSearches();
     Q_INVOKABLE void copyToClipboard     (const QString &text);
 
     Q_INVOKABLE bool isTrackFavorite     (qlonglong trackId)  const;
@@ -107,6 +150,7 @@ signals:
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
+    void recentSearchesChanged();
 
     // One favourite the user deliberately added or removed, carrying the row
     // itself. LibraryIndex - the sidebar's own, separate copy of the library -
@@ -133,6 +177,8 @@ signals:
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     void sortPlaylists(QList<Playlist> &playlists) const;
+    QString recentSearchesKey() const;
+    void    saveRecentSearches(const QStringList &queries);
     void loadFavoriteTrackIds();
     void loadNextFavoriteTracksPage(int offset);
     void loadNextFavoriteAlbumsPage(int offset);

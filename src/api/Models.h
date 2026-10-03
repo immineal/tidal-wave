@@ -356,10 +356,25 @@ struct SearchResults {
     QList<Album>    albums;
     QList<Artist>   artists;
     QList<Playlist> playlists;
+    // Mixes are a sixth kind the catalogue can answer with, filtered the way
+    // the Home row filters them: a VIDEO_DAILY_MIX is dropped before it ever
+    // reaches this struct, because the app cannot play one (see
+    // TidalClient::parseSearchMixes and the long note on parseMixPage).
+    QList<Mix>      mixes;
+
+    // How many the server says it has, per kind, out of `totalNumberOfItems`
+    // beside each list. These used to be parsed and then thrown away one layer
+    // up, which left the page with no way to know it had reached the end of a
+    // kind: a short page and the last page look identical when the only thing
+    // you can count is what you were handed.
     int totalTracks    = 0;
     int totalAlbums    = 0;
     int totalArtists   = 0;
     int totalPlaylists = 0;
+    // The count *before* the video filter, so "20 of 57" stays honest about
+    // what paging has left to ask for. The page never shows it; it bounds the
+    // run (see SearchPage's `_more`).
+    int totalMixes     = 0;
 };
 
 } // namespace Tidal
