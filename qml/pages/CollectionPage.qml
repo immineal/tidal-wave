@@ -76,10 +76,34 @@ Rectangle {
     // The card inside a cell, never smaller than a pixel.
     function gridCardSize(cell) { return Math.max(1, cell - gridGutter) }
 
+    // ── the content area changing under the tabs and the sort pills ──────
+    //
+    // A tab switch and a re-sort both replace what the content area shows
+    // outright, and until this they replaced it between two frames.
+    //
+    // A fade and not a reorder, deliberately. Every view below is modelled on
+    // a JS array, and a ListView or GridView can only read a new array as a
+    // model *reset* - probed on Qt 6.12: reordering a five-item array fires
+    // `populate` once per row and `move` not at all - so there is no reorder
+    // for the view to animate. Re-sorting also moves nearly every tile at
+    // once, which is a different thing from one row changing tier in the
+    // sidebar: the content is new, and arriving is what it should look like.
+    property real contentIn: 1
+    NumberAnimation {
+        id: contentEntry
+        target: root
+        property: "contentIn"
+        from: 0; to: 1
+        duration: Theme.dur(170)
+        easing.type: Easing.OutCubic
+    }
+
     onActiveTabChanged: {
         updateFilteredContent()
         if (activeTab === 4 && mixes.length === 0) loadMixes()
+        contentEntry.restart()
     }
+    onSortModeChanged: contentEntry.restart()
     // The four favourites tabs count what the bridge already holds; mixes used
     // to be fetched only on the way into their own tab, and the tab label reads
     // the same list the grid does. So the row of tabs said "Mixes (0)" to
@@ -252,6 +276,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 0
+            opacity: root.contentIn
             clip: true
             property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
             model: root.activeTab === 0 ? sortedTracks : []
@@ -300,6 +325,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 1
+            opacity: root.contentIn
             clip: true
             property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
             model: root.activeTab === 1 ? sortedAlbums : []
@@ -369,6 +395,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 2
+            opacity: root.contentIn
             clip: true
             property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
             model: root.activeTab === 2 ? sortedArtists : []
@@ -424,6 +451,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
+            opacity: root.contentIn
             clip: true
             model: root.activeTab === 3 ? root.filteredPlaylists : []
             readonly property int columns: root.gridColumns(width)
@@ -482,6 +510,7 @@ Rectangle {
         // Empty state for playlists
         Item {
             visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
+            opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -499,6 +528,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 4 && root.mixes.length > 0
+            opacity: root.contentIn
             clip: true
             model: root.activeTab === 4 ? root.mixes : []
             readonly property int columns: root.gridColumns(width)
@@ -549,6 +579,7 @@ Rectangle {
         // Empty state for mixes
         Item {
             visible: root.activeTab === 4 && root.mixes.length === 0
+            opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {

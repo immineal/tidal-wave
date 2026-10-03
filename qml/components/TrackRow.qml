@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Window
+import QtQml.Models
 import TidalWave
 
 Item {
@@ -55,6 +56,41 @@ Item {
         return Math.floor(secs / 60) + ":" + ("0" + Math.floor(secs % 60)).slice(-2)
     }
     readonly property string coverText:   textOf(root.coverUrl)
+
+    // ── who made it, name by name ───────────────────────────────────────
+    //
+    // TidalBridge::trackToMap() carries the whole artist list as [{id, name}],
+    // which is what makes each name its own link (SPEC N2). textOf() above
+    // cannot carry it: it answers with a string or nothing, on purpose.
+    //
+    // A map without the field — a recently-played entry restored from disk,
+    // anything a caller builds by hand — leaves this empty and ArtistLinks
+    // falls back to the joined `artists` string and the lead id.
+    readonly property var artistList:
+        (root.trackData && root.trackData.artistList && root.trackData.artistList.length > 0)
+            ? root.trackData.artistList : []
+
+    readonly property real leadArtistId: {
+        var n = root.trackData ? Number(root.trackData.artistId) : 0
+        return isFinite(n) ? n : 0
+    }
+
+    // The credits the "Go to artist" menu entry can actually offer: every one
+    // with a usable id, in order. A credit with no id is dropped rather than
+    // becoming a row that does nothing, the same way the text links skip it
+    // for tab focus. When the map carries no list at all, the lead id is the
+    // one credit there is.
+    readonly property var artistCredits: {
+        var out = []
+        var list = root.artistList
+        for (var i = 0; i < list.length; i++) {
+            var id = Number(list[i].id)
+            if (id > 0) out.push({ id: id, name: String(list[i].name) })
+        }
+        if (out.length === 0 && root.leadArtistId > 0)
+            out.push({ id: root.leadArtistId, name: root.artistsText })
+        return out
+    }
 
     // 0 when the payload carried no usable id, which is what every id-keyed
     // action below checks before offering itself.
@@ -113,6 +149,15 @@ Item {
         root.dlError = ""
     }
 
+    // Routing for the menu's artist rows. Asked from the row and not from the
+    // menu entry: a submenu is a Popup, and until it is shown it is in no
+    // item's window, so `Window.window` inside one is null and the navigate
+    // call went nowhere.
+    function goToArtist(artistId) {
+        if (artistId > 0 && Window.window)
+            Window.window.navigate("artist", { artistId: artistId })
+    }
+
     signal playRequested()
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
@@ -137,13 +182,20 @@ Item {
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
 
+        // The row's hover, read by the play glyph, the background, the download
+        // button and the menu button. A handler and not the MouseArea's
+        // containsMouse: the artist names in the line below are hit targets of
+        // their own, and a child MouseArea takes the hover event off the item
+        // behind it, so the row dropped back to its resting look whenever the
+        // pointer was on a name. A HoverHandler is not blocked that way.
+        HoverHandler { id: rowHover }
+
         MouseArea {
             id: hov
             anchors.fill: parent
-            hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
-            readonly property bool hovered: containsMouse
+            readonly property bool hovered: rowHover.hovered
 
             onClicked: (mouse) => {
                 if (mouse.button === Qt.RightButton) {
@@ -224,12 +276,18 @@ Item {
                     font.pixelSize: 14
                     elide: Text.ElideRight
                 }
-                Text {
+                // One hover target and one tab stop per artist. The row's
+                // own MouseArea is declared before the RowLayout holding this,
+                // so a name takes the left click before the row does; a right
+                // click is not one of this item's buttons and still reaches the
+                // row menu.
+                ArtistLinks {
                     Layout.fillWidth: true
-                    text: root.artistsText
-                    color: Theme.textSec
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
+                    namePrefix: "trackRow"
+                    fontPixelSize: 12
+                    artistList: root.artistList
+                    joinedText: root.artistsText
+                    fallbackArtistId: root.leadArtistId
                 }
             }
 
@@ -412,6 +470,10 @@ Item {
         // sized item at the row's origin.
         sourceComponent: Menu {
             parent: root
+            // The same arrival as every other menu in the app; see
+            // ContextMenu.qml for why it is opacity and nothing else.
+            enter: ContextMenu.OpenFade { }
+            exit:  ContextMenu.CloseFade { }
             // Insets reset, not inherited. A Menu's insets exist for a style's drop
             // shadow, and the native macOS style sets all four to -32; this menu
             // replaces the background with its own Rectangle and never drew that
@@ -457,6 +519,32 @@ Item {
             // popup's contents, the way ContextMenu exposes its pin item.
             readonly property alias playNextItem:   playNextEntry
             readonly property alias addToQueueItem: addToQueueEntry
+
+            // The row that opens a submenu is never declared: a nested Menu's
+            // row in its parent is built from the parent's `delegate`, with the
+            // submenu's title as its text and its `subMenu` already set. So the
+            // "Go to artist ▸" row is described here, and the only submenu in
+            // this menu is the artists one.
+            delegate: ContextMenu.Entry {
+                id: artistSubRow
+                objectName: "goToArtistSubMenuRow"
+                iconName: "artist"
+                // One credit is the direct action below, not a submenu.
+                visible: root.artistCredits.length > 1
+                height: visible ? implicitHeight : 0
+                // Room for the arrow, which the style draws beside the content
+                // item rather than inside it.
+                rightPadding: 12 + 18
+                arrow: VectorIcon {
+                    visible: artistSubRow.subMenu
+                    x: artistSubRow.width - width - 12
+                    y: (artistSubRow.height - height) / 2
+                    width: 14; height: 14
+                    name: "chevron-right"
+                    color: artistSubRow.ink
+                    strokeWidth: 1.6
+                }
+            }
 
             ContextMenu.Entry {
                 text: qsTr("Play now")
@@ -557,13 +645,63 @@ Item {
                         Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
                 }
             }
+            // One credited artist, one action — which is every single-artist
+            // track, and what this row has always been. Still shown but dead
+            // when the map carries no usable artist id at all, as before.
             ContextMenu.Entry {
+                objectName: "goToArtistMenuItem"
                 text: qsTr("Go to artist")
                 iconName: "artist"
-                enabled: root.trackData && Number(root.trackData.artistId) > 0
+                visible: root.artistCredits.length <= 1
+                height: visible ? implicitHeight : 0
+                enabled: root.artistCredits.length === 1
                 onTriggered: {
-                    if (root.trackData && Number(root.trackData.artistId) > 0)
-                        Window.window.navigate("artist", { artistId: Number(root.trackData.artistId) })
+                    if (root.artistCredits.length === 1)
+                        root.goToArtist(root.artistCredits[0].id)
+                }
+            }
+            // More than one, and the names go in a submenu rather than the one
+            // row picking the lead for you. Its row in this menu comes from the
+            // `delegate` above.
+            Menu {
+                id: artistSubMenu
+                // A Popup is a QObject and not an Item, so it is in no item's
+                // children; the objectName is how a test reaches it, the way
+                // QueuePanel's per-row menu is reached.
+                objectName: "goToArtistSubMenu"
+                title: qsTr("Go to artist")
+
+                // Everything below is the same treatment the two menus above
+                // get, for the same reasons: insets reset rather than inherited
+                // (a style's drop-shadow insets laid the panel out past the
+                // popup), `popupType` set only where it exists and through
+                // `this.` so a miss is undefined rather than a ReferenceError,
+                // and opacity-only transitions because Qt 6.4 loops when a
+                // popup's own geometry feeds back into its contents.
+                leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
+                Component.onCompleted: {
+                    if (this.popupType !== undefined) this.popupType = Popup.Item
+                }
+                enter: ContextMenu.OpenFade { }
+                exit:  ContextMenu.CloseFade { }
+                implicitWidth: Theme.menuWidth(this)
+                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+
+                // Instantiator and not a Repeater: a Repeater is an Item, so a
+                // Menu would take it for an entry of its own. This is the shape
+                // Qt documents for a menu whose rows are data.
+                Instantiator {
+                    model: root.artistCredits
+                    delegate: ContextMenu.Entry {
+                        objectName: "goToArtistCreditItem"
+                        // No icon: the row above already says "artist", and the
+                        // gutter is reserved per menu, so a submenu of bare
+                        // names is not indented for nothing.
+                        text: modelData.name
+                        onTriggered: root.goToArtist(modelData.id)
+                    }
+                    onObjectAdded: (index, object) => artistSubMenu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
                 }
             }
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }

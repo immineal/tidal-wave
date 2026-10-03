@@ -147,7 +147,7 @@ Item {
 
     function rebuildRows() {
         if (searching) {
-            root.rows = library.search(finder.query, finder.kinds)
+            syncRows(library.search(finder.query, finder.kinds))
             return
         }
         // Filtered by the index rather than here. The `entries` property holds
@@ -156,8 +156,148 @@ Item {
         // filtering it in QML could never answer the Tracks chip, which showed
         // "Nothing saved yet" while the same chip worked as soon as anything
         // was typed. entriesForKinds() knows about the track entries too.
-        root.rows = library.entriesForKinds(finder.kinds || [])
+        syncRows(library.entriesForKinds(finder.kinds || []))
     }
+
+    // ── the same rows, as a model the view can animate ───────────────────
+    //
+    // `rows` is the array; `libModel` is what the ListView binds to. The two
+    // hold the same entries in the same order, and the only reason there are
+    // two is motion.
+    //
+    // A ListView over a JS array has no change set to work from: assigning a
+    // new array is a model *reset*, which throws every delegate away and
+    // builds it again. Probed on Qt 6.12 - reordering a five-item array fires
+    // `populate` five times and `move`/`displaced` not once - so a row that
+    // changes tier because it was pinned, played or liked teleports to its new
+    // place. Feeding the same rows through a ListModel turns one pin into one
+    // move() on the model, which the view *can* animate.
+    ListModel {
+        id: libModel
+        // The rows are whole objects out of LibraryIndex. A static-role
+        // ListModel would turn a nested value into a sub-model; a dynamic one
+        // stores it as it is.
+        dynamicRoles: true
+    }
+
+    // What makes two rebuilds' rows the same row. Both halves are strings
+    // already, and no kind contains a slash.
+    function rowKey(e) { return e ? e.kind + "/" + e.id : "" }
+
+    // The smallest remove/move/insert list that turns `oldKeys` into
+    // `newKeys`, or null when it would take more than `cap` of them.
+    //
+    // Planned against a copy of the keys before anything touches the model,
+    // so the decision to give up and rebuild wholesale is made before the
+    // first op rather than halfway through. Past the cap the rows have little
+    // to do with each other anyway - a finder query replacing the whole list,
+    // not a pin changing one row's tier - and walking them one at a time would
+    // cost more than it could show.
+    function rowPlan(oldKeys, newKeys, cap) {
+        var ops = []
+        var cur = oldKeys.slice()
+        var want = {}
+        var i
+        for (i = 0; i < newKeys.length; ++i) want[newKeys[i]] = true
+
+        // Gone, back to front, so the indices still to be looked at stay put.
+        // A run of neighbours goes in one op.
+        var j = cur.length - 1
+        while (j >= 0) {
+            if (want[cur[j]] === true) { j--; continue }
+            var end = j
+            while (j > 0 && want[cur[j - 1]] !== true) j--
+            ops.push({ op: "remove", at: j, n: end - j + 1 })
+            cur.splice(j, end - j + 1)
+            if (ops.length > cap) return null
+            j--
+        }
+
+        var pos = {}
+        for (i = 0; i < cur.length; ++i) pos[cur[i]] = i
+        for (var t = 0; t < newKeys.length; ++t) {
+            if (t < cur.length && cur[t] === newKeys[t]) continue
+            var from = pos[newKeys[t]]
+            if (from === undefined) {
+                ops.push({ op: "insert", at: t })
+                cur.splice(t, 0, newKeys[t])
+            } else {
+                ops.push({ op: "move", from: from, at: t })
+                cur.splice(t, 0, cur.splice(from, 1)[0])
+            }
+            for (i = t; i < cur.length; ++i) pos[cur[i]] = i
+            if (ops.length > cap) return null
+        }
+        return ops
+    }
+
+    function fillLibModel(next, newKeys) {
+        libModel.clear()
+        for (var i = 0; i < next.length; ++i)
+            libModel.append({ key: newKeys[i], entry: next[i] })
+    }
+
+    function syncRows(next) {
+        root.rows = next
+
+        var i
+        var oldKeys = []
+        for (i = 0; i < libModel.count; ++i) oldKeys.push(libModel.get(i).key)
+        var newKeys = []
+        for (i = 0; i < next.length; ++i) newKeys.push(rowKey(next[i]))
+
+        var plan = oldKeys.length === 0 ? null : rowPlan(oldKeys, newKeys, 32)
+        if (plan === null) {
+            fillLibModel(next, newKeys)
+            return
+        }
+
+        for (i = 0; i < plan.length; ++i) {
+            var op = plan[i]
+            if (op.op === "remove")    libModel.remove(op.at, op.n)
+            else if (op.op === "move") libModel.move(op.from, op.at, 1)
+            else                       libModel.insert(op.at, { key: newKeys[op.at],
+                                                                entry: next[op.at] })
+        }
+
+        // The plan is only as good as the keys being unique. Two rows that
+        // answer to the same key - which a payload missing both kind and id
+        // would do - collapse into one entry in the lookups above and leave the
+        // model a different length from `rows`, which from then on would draw
+        // one row's content under another row's index. Rebuilt outright
+        // instead, which cannot be wrong even when the keys are.
+        if (libModel.count !== next.length) {
+            fillLibModel(next, newKeys)
+            return
+        }
+
+        // Every rebuild hands over fresh objects, and a row that kept its key
+        // can still have changed: `pinned` flips, a title or a cover url
+        // arrives. So the rows that did not move are handed the new entry too.
+        for (i = 0; i < next.length; ++i) libModel.setProperty(i, "entry", next[i])
+    }
+
+    // How long a row takes to travel to its new place.
+    readonly property int libraryTravelMs: 170
+
+    // How many rows have been asked to travel since the sidebar was built. A
+    // ListView says nothing about its own transitions, and whether a reorder
+    // was animated or merely redrawn is the thing the sidebar's tests are
+    // about.
+    //
+    // It only ever goes up, deliberately. The first version of this was a
+    // "still moving" flag, and a flag is a transient: tests/qml/tst_reduced_
+    // motion.qml polls at 50ms, and on a machine running four test processes
+    // at once a poll interval ran long enough for a 170ms travel to start and
+    // finish between two of them - the reorder had animated and the test read
+    // "it did not", four times out of four. A count cannot be stepped over.
+    //
+    // A counted-in/counted-out pair would not do either: a ViewTransition the
+    // view *cancels*, which is what a second reorder arriving inside the first
+    // one does, drops the rest of its animation, so a trailing ScriptAction
+    // never runs. Probed on Qt 6.12: three reorders 40ms apart left such a
+    // counter stuck at 10 with everything long since settled.
+    property int libraryMoves: 0
 
     // One list in both shapes of the sidebar means one model, so a query or a
     // chip left behind would go on filtering a rail that has no finder on
@@ -482,7 +622,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 bottomMargin: 8
-                model: root.rows
+                model: libModel
                 // This list draws no selection, but a ListView builds a
                 // default highlight item regardless and then *smooth-resizes*
                 // it toward the current row: an empty Item that paints
@@ -498,6 +638,47 @@ Item {
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                 delegate: LibraryRow { }
+
+                // S4/P3: the list reorders under the user constantly - pinning
+                // moves a row to the top, playing or liking something moves it
+                // up a tier - and until these the new order simply appeared.
+                //
+                // Only y is animated, and only on `move` and `displaced`: the
+                // row that was asked to move travels, and the rows it pushed
+                // past travel with it. `add` fades instead, because a row
+                // arriving has no previous place to travel from. There is no
+                // `remove` transition on purpose: a removed row's delegate
+                // would stay alive for the length of it, and the gap closing
+                // under `displaced` already says the row is gone.
+                move: Transition {
+                    ScriptAction { script: root.libraryMoves++ }
+                    NumberAnimation {
+                        properties: "y"
+                        duration: Theme.dur(root.libraryTravelMs)
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                displaced: Transition {
+                    ScriptAction { script: root.libraryMoves++ }
+                    NumberAnimation {
+                        properties: "y"
+                        duration: Theme.dur(root.libraryTravelMs)
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                // Not while the finder is filtering. A query replaces most of
+                // the list on every keystroke, and a fade that restarts from
+                // zero that often reads as the list flickering rather than as
+                // rows arriving.
+                add: Transition {
+                    enabled: !root.searching
+                    NumberAnimation {
+                        property: "opacity"
+                        from: 0; to: 1
+                        duration: Theme.dur(140)
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 // P4: where the dragged row will land. Declared inside the
                 // list, which parents it to the content item, so it is
@@ -777,7 +958,11 @@ Item {
         objectName: "libraryRow"
 
         required property int index
-        required property var modelData
+        // The `entry` role of libModel, which holds the whole library row.
+        // Kept under the old name as well: everything below, and the sidebar's
+        // tests, read the row through `modelData`.
+        required property var entry
+        readonly property var modelData: entry
 
         readonly property string kind:   modelData.kind
         readonly property string itemId: modelData.id
@@ -787,8 +972,16 @@ Item {
 
         // The break between the pinned block and the rest (P3/P5). Search
         // results have no pinned block, so they have nothing to break.
-        readonly property bool blockBreak: !root.searching && index > 0 && !pinned
-                                           && root.rows[index - 1].pinned === true
+        //
+        // The row above is read out of `rows` rather than out of the model,
+        // and guarded: a rebuild writes `rows` before it reorders the model,
+        // so for the rest of that call a delegate can still be sitting on an
+        // index the new rows do not reach.
+        readonly property bool blockBreak: {
+            if (root.searching || index <= 0 || pinned) return false
+            var above = root.rows[index - 1]
+            return above !== undefined && above.pinned === true
+        }
 
         // P4. There is nothing to reorder in a block of one, and nothing
         // outside the block is draggable at all, which is half of why a

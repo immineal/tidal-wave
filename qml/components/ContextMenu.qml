@@ -16,6 +16,37 @@ import TidalWave
 Menu {
     id: root
 
+    // ── how a menu arrives and leaves, once ─────────────────────────────
+    //
+    // Opacity, and nothing else. Qt 6.4 has a Popup/Layout polish loop that
+    // closes whenever a popup's own geometry feeds back into its contents
+    // (commit 5c1125f, and the long comment on the output picker's popup in
+    // PlayerBar.qml); a transition that animated height, scale or y would hand
+    // the positioner a moving target again, and that loop printed 1992
+    // warnings and hung a test run.
+    //
+    // Declared here and borrowed, the way Entry is: the two Menus in the app
+    // that are not this one, TrackRow's and QueuePanel's, open the same way.
+    component OpenFade : Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 0; to: 1
+            duration: Theme.dur(110)
+            easing.type: Easing.OutCubic
+        }
+    }
+    component CloseFade : Transition {
+        NumberAnimation {
+            property: "opacity"
+            from: 1; to: 0
+            duration: Theme.dur(90)
+            easing.type: Easing.InCubic
+        }
+    }
+
+    enter: OpenFade { }
+    exit:  CloseFade { }
+
     // ── what a menu entry looks like, once ───────────────────────────────
     //
     // Every entry carries an icon.

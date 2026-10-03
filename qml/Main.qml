@@ -527,7 +527,9 @@ ApplicationWindow {
                 QueuePanel {
                     id: queuePanel
                     anchors.fill: parent
-                    visible:     root.queueOpen
+                    // `open`, not `visible`: the panel slides in and out, so it
+                    // stays visible for as long as that takes.
+                    open:        root.queueOpen
                     onDismissed: root.queueOpen = false
                 }
             }

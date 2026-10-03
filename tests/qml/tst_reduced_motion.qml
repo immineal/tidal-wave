@@ -596,4 +596,304 @@ TestCase {
                       settleMs, "the bars never moved with motion allowed")
         }
     }
+
+    // ── things that rearrange ────────────────────────────────────────────
+    //
+    // The cases above are all one property easing to a new value. These five
+    // are the other kind: something changes *place* or is replaced outright,
+    // and the question is whether it arrives or is simply drawn there.
+
+    Component { id: queuePanelC;   QueuePanel   { open: false } }
+    Component { id: collectionC;   CollectionPage { anchors.fill: parent } }
+    Component { id: trackRowC;     TrackRow     { } }
+
+    function collectByName(item, name, out) {
+        if (item.objectName === name) out.push(item)
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) collectByName(kids[i], name, out)
+        return out
+    }
+
+    function libraryRowFor(sb, id) {
+        var rows = collectByName(sb, "libraryRow", [])
+        for (var i = 0; i < rows.length; ++i)
+            if (rows[i].itemId === id) return rows[i]
+        return null
+    }
+
+    // Three plain library rows, in one of the two orders LibraryIndex hands
+    // over: the second order is what a play produces, which moves the thing
+    // that was just played to the front.
+    function libraryRows(playedSecond) {
+        var a = { kind: "album",  id: "a1", title: "Aquarium",   subtitle: "", imageUrl: "" }
+        var b = { kind: "album",  id: "b2", title: "Blue Lines", subtitle: "", imageUrl: "" }
+        var c = { kind: "artist", id: "c3", title: "Caribou",    subtitle: "", imageUrl: "" }
+        return playedSecond ? [b, a, c] : [a, b, c]
+    }
+
+    // S4/P3: pinning, playing or liking something moves a row to a different
+    // tier, so the sidebar's library list reorders while it is being looked at.
+    // It is the list in the app that reorders most often.
+    function test_library_reorder_travels_data() { return test_rail_expansion_data() }
+
+    function test_library_reorder_travels(row) {
+        app.setReducedMotionForTest(row.reduced)
+        library.setEntriesForTest(libraryRows(false))
+
+        var host = createTemporaryObject(shellHost, testCase)
+        verify(host, "the sidebar host window was not created")
+        host.width = 1280
+        host.visible = true
+        waitForRendering(host.contentItem, settleMs)
+
+        var sb = host.sidebar
+        verify(!sb.compact, "1280px must give the full sidebar, not the rail")
+        tryVerify(function () { return sb.rows.length === 3 }, settleMs,
+                  "the three fixture rows never reached the list")
+
+        var moved = libraryRowFor(sb, "b2")
+        verify(moved, "the row that is about to move was never drawn")
+        var step = sb.libRowHeight
+        tryVerify(function () { return Math.round(moved.y) === step }, settleMs,
+                  "the fixture never settled with the row in the middle")
+
+        // The reorder itself: the second row becomes the first.
+        var movesBefore = sb.libraryMoves
+        library.setEntriesForTest(libraryRows(true))
+        tryVerify(function () { return sb.rows[0].id === "b2" }, settleMs,
+                  "the model never took the new order")
+
+        // One frame: long enough for the view to take the change and start the
+        // transition, far too short for a 170ms travel to finish.
+        oneFrame()
+
+        if (row.reduced) {
+            compare(Math.round(moved.y), 0,
+                    "reduced motion: the row must be at the top on the next frame, not slide")
+        } else {
+            verify(Math.round(moved.y) !== 0,
+                   "the row was drawn at its new place before it had travelled there")
+            tryVerify(function () { return Math.round(moved.y) === 0 }, settleMs,
+                      "the row never arrived at the top")
+        }
+
+        // Asked of a count rather than of a "still moving" flag, and asked
+        // after the waiting is over: a count cannot be stepped over by a slow
+        // poll, so this says whether the reorder went through the view's move
+        // transition however loaded the machine is. Reduced motion runs the
+        // transition too, at zero length, so it holds either way.
+        verify(sb.libraryMoves > movesBefore,
+               "the list did not animate the reorder at all - the row teleported")
+        tryVerify(function () { return Math.round(libraryRowFor(sb, "a1").y) === step },
+                  settleMs, "the row that was pushed down never reached its place")
+    }
+
+    // L9: the queue overlay. It used to appear and disappear between two
+    // frames; it slides in off the right edge instead, under the scrim fading
+    // up with it.
+    function test_queue_panel_slides_data() { return test_rail_expansion_data() }
+
+    function test_queue_panel_slides(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var qp = createTemporaryObject(queuePanelC, holder,
+                                       { width: 900, height: 700 })
+        verify(qp, "the queue panel was not created")
+        settle(holder)
+
+        compare(qp.openness, 0, "a closed panel is not closed")
+        verify(!qp.visible, "a closed panel is still on screen")
+
+        var list = findByName(qp, "queuePanelList")
+        verify(list, "the panel has no list to measure")
+        // Measured off the list rather than off `openness`: the slide is a
+        // transform, and this is the only reading that proves the transform is
+        // wired to it.
+        function inset() { return list.mapToItem(qp, 0, 0).x }
+
+        qp.open = true
+        verify(qp.visible, "the panel did not come on screen at all")
+
+        if (row.reduced) {
+            oneFrame()
+            compare(qp.openness, 1,
+                    "reduced motion: the panel must be open on the next frame, not slide")
+            compare(Math.round(inset()), Math.round(qp.width - qp.panelWidth),
+                    "reduced motion: the panel is still off to the right")
+        } else {
+            // Read with nothing in between: `openness` is driven by a Behavior,
+            // which the write above has already started, so there is no frame
+            // to wait for and no window for the slide to finish inside.
+            verify(qp.openness < 1, "the panel jumped to open instead of sliding in")
+            verify(inset() > qp.width - qp.panelWidth + 1,
+                   "the panel was drawn at its resting place before it had slid in")
+            tryVerify(function () { return qp.openness === 1 }, settleMs,
+                      "the slide never finished")
+            compare(Math.round(inset()), Math.round(qp.width - qp.panelWidth),
+                    "the panel did not come to rest against the right edge")
+        }
+
+        qp.open = false
+        if (row.reduced) {
+            oneFrame()
+            compare(qp.openness, 0, "reduced motion: the panel must be gone on the next frame")
+            verify(!qp.visible, "reduced motion left the closed panel on screen")
+        } else {
+            verify(qp.visible, "the panel vanished instead of sliding out")
+            verify(qp.openness > 0, "the panel jumped shut instead of sliding out")
+            tryVerify(function () { return !qp.visible }, settleMs,
+                      "the panel never finished leaving")
+        }
+    }
+
+    // Every Menu in the app arrives the same way, which is why the transition
+    // is declared once in ContextMenu.qml. TrackRow's menu is one of the two
+    // that borrow it, so proving it here proves the sharing as well.
+    function test_menus_fade_in_data() { return test_rail_expansion_data() }
+
+    function test_menus_fade_in(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var tr = createTemporaryObject(trackRowC, holder,
+                                       { width: 600, title: "Teardrop",
+                                         artists: "Massive Attack" })
+        verify(tr, "the track row was not created")
+        settle(holder)
+
+        tr.openMenu()
+        var menu = tr.rowMenu
+        verify(menu, "the row never built its menu")
+        tryVerify(function () { return menu.visible }, settleMs, "the menu never opened")
+
+        if (row.reduced) {
+            compare(menu.opacity, 1,
+                    "reduced motion: the menu must be fully there on the frame it opens")
+        } else {
+            verify(menu.opacity < 1, "the menu appeared at full opacity instead of fading in")
+            tryVerify(function () { return menu.opacity === 1 }, settleMs,
+                      "the menu never finished fading in")
+        }
+
+        menu.close()
+        tryVerify(function () { return !menu.visible }, settleMs, "the menu never closed")
+    }
+
+    // A tab switch and a re-sort both replace the whole content area. The
+    // views are modelled on JS arrays, which a view can only read as a reset,
+    // so what is asserted is the fade and not a reorder.
+    function test_collection_content_fades_in_data() { return test_rail_expansion_data() }
+
+    function test_collection_content_fades_in(row) {
+        app.setReducedMotionForTest(row.reduced)
+        bridge.setFavoriteAlbumsForTest([
+            { id: 1, title: "Aquarium",   artists: "Aqua Band",      coverUrl: "" },
+            { id: 2, title: "Blue Lines", artists: "Massive Attack", coverUrl: "" }
+        ])
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(collectionC, holder)
+        verify(page, "CollectionPage was not created")
+        settle(holder)
+
+        compare(page.activeTab, 0, "the page did not open on the first tab")
+        tryVerify(function () { return page.contentIn === 1 }, settleMs,
+                  "the content never settled before the switch")
+
+        var grid = findByName(page, "collectionAlbumsGrid")
+        verify(grid, "the albums grid was not found")
+
+        page.activeTab = 1
+        oneFrame()
+        verify(grid.visible, "the albums tab did not come up")
+
+        if (row.reduced) {
+            compare(page.contentIn, 1,
+                    "reduced motion: the new tab must be fully there on the next frame")
+            compare(grid.opacity, 1, "reduced motion left the grid half faded")
+        } else {
+            verify(page.contentIn < 1, "the new tab appeared outright instead of fading in")
+            verify(grid.opacity < 1, "the grid is not following the page's fade")
+            tryVerify(function () { return page.contentIn === 1 }, settleMs,
+                      "the fade never finished")
+            compare(grid.opacity, 1, "the grid did not come up to full opacity")
+        }
+
+        // A re-sort is the same change to the same content area.
+        page.sortMode = 1
+        oneFrame()
+        if (row.reduced)
+            compare(page.contentIn, 1, "reduced motion: a re-sort must land on the next frame")
+        else
+            verify(page.contentIn < 1, "a re-sort replaced the grid without a word")
+    }
+
+    // The lyric being sung is kept in the middle of the panel. Every line
+    // change used to write the scroll offset outright, so the words jumped.
+    function test_lyrics_scroll_travels_data() { return test_rail_expansion_data() }
+
+    function test_lyrics_scroll_travels(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var host = showWindow(nowPlayingHostC, 1280, 1200)
+        var page = host.page
+
+        // The bridge stub answers fetchLyrics with nothing by design, so the
+        // page's own lyrics state is written here instead. Same as
+        // tests/qml/tst_layout_player.qml does it.
+        var lines = []
+        for (var i = 0; i < 40; ++i)
+            lines.push({ ms: i * 5000,
+                         text: "Line " + i + " of a lyric long enough to want a measure" })
+        page.lyricsIsTimed = true
+        page.lyricsData    = lines
+        page.lyricsState   = "ready"
+        page.userScrolled  = false
+        page.currentLyricLine = 0
+        player.setPositionForTest(0)
+        page.showLyrics = true
+        tryVerify(function () { return page.lyricsness === 1 }, settleMs,
+                  "the lyrics panel never opened")
+        waitForRendering(host.contentItem, settleMs)
+
+        var view = findByName(page, "nowPlayingLyricsView")
+        verify(view, "the lyric list was not found")
+
+        // How far the sung line is from the middle of the panel.
+        function offCentre() {
+            var it = view.itemAtIndex(page.currentLyricLine)
+            if (!it) return 1e6
+            return Math.abs(it.mapToItem(view, 0, it.height / 2).y - view.height / 2)
+        }
+
+        // Twenty lines on: far enough that centring is clamped at neither end.
+        //
+        // Driven by hand rather than by waiting for the sync timer, which is
+        // what calls this in the app. Waiting for the timer means waiting, and
+        // a poll that runs long on a loaded machine can step over the whole
+        // scroll and read the end of it as "it never moved". Nothing elapses
+        // between the call below and the reading after it, so there is no
+        // window to miss. That the timer calls it is tst_layout_player.qml's
+        // business - it asserts the sung line ends up centred.
+        // The position moves first so the sync timer agrees with the line
+        // below. Left at zero it would decide line 0 was the one being sung and
+        // scroll straight back on its next tick.
+        player.setPositionForTest(20 * 5000)
+        page.currentLyricLine = 20
+        page.centreLyricLine(20, true)
+
+        if (row.reduced) {
+            oneFrame()
+            verify(offCentre() <= 8,
+                   "reduced motion: the sung line must be centred on the next frame, off by "
+                   + offCentre().toFixed(1) + "px")
+        } else {
+            verify(offCentre() > 8,
+                   "the lyrics jumped to the new line instead of scrolling to it")
+            tryVerify(function () { return offCentre() <= 8 }, settleMs,
+                      "the scroll never brought the sung line to the middle: off by "
+                      + offCentre().toFixed(1) + "px")
+        }
+    }
 }

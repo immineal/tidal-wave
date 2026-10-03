@@ -265,7 +265,39 @@ Rectangle {
     function recentreLyrics() {
         if (!root.showLyrics || root.userScrolled) return
         if (root.currentLyricLine < 0 || root.lyricsData.length === 0) return
-        lyricsView.positionViewAtIndex(root.currentLyricLine, ListView.Center)
+        // Instant: a re-wrap is a correction, and a correction that travels
+        // reads as the words drifting on their own.
+        centreLyricLine(root.currentLyricLine, false)
+    }
+
+    // Puts one line in the middle of the panel, travelling there when the line
+    // changed because the song moved on.
+    //
+    // The target comes from positionViewAtIndex and not from
+    // index * lineHeight: lyric lines wrap, so they are not all one height and
+    // the view's own answer is the only exact one. So it is asked, the contentY
+    // it wrote is read back, the view is put back where it was, and that number
+    // is travelled to instead.
+    NumberAnimation {
+        id: lyricsScroll
+        target: lyricsView
+        property: "contentY"
+        duration: Theme.dur(260)
+        easing.type: Easing.OutCubic
+    }
+
+    function centreLyricLine(line, animated) {
+        if (line < 0 || line >= root.lyricsData.length) return
+        lyricsScroll.stop()
+        var was = lyricsView.contentY
+        lyricsView.positionViewAtIndex(line, ListView.Center)
+        if (!animated) return
+        var want = lyricsView.contentY
+        if (want === was) return
+        lyricsView.contentY = was
+        lyricsScroll.from = was
+        lyricsScroll.to   = want
+        lyricsScroll.start()
     }
 
     // Opening the panel is the one resize that happens before there is a list
@@ -340,7 +372,7 @@ Rectangle {
             if (found !== root.currentLyricLine) {
                 root.currentLyricLine = found
                 if (!root.userScrolled)
-                    lyricsView.positionViewAtIndex(found, ListView.Center)
+                    root.centreLyricLine(found, true)
             }
         }
     }
@@ -657,7 +689,7 @@ Rectangle {
                                         player.seek(modelData.ms)
                                         root.userScrolled = false
                                         root.currentLyricLine = index
-                                        lyricsView.positionViewAtIndex(index, ListView.Center)
+                                        root.centreLyricLine(index, true)
                                     }
                                 }
                             }
@@ -728,7 +760,7 @@ Rectangle {
                                 onTapped: {
                                     root.userScrolled = false
                                     if (root.currentLyricLine >= 0)
-                                        lyricsView.positionViewAtIndex(root.currentLyricLine, ListView.Center)
+                                        root.centreLyricLine(root.currentLyricLine, true)
                                 }
                             }
                         }
@@ -836,162 +868,22 @@ Rectangle {
                             }
                             // One focus stop and one hover target per artist,
                             // so a featured credit opens the guest rather than
-                            // the lead — the behaviour the bottom bar already
-                            // has (components/PlayerBar.qml), at this page's
-                            // size and in this page's accent. Unlike the bar
-                            // there is nothing for the gaps between the names
-                            // to fall through to: the page they would open is
-                            // this one, so they are simply not targets.
-                            Item {
-                                id: artistLine
-                                objectName: "nowPlayingArtistLine"
-                                // Fills and elides, like the title above it.
-                                // Without this the names' own 453px was the
-                                // column's minimum width and dragged the whole
-                                // page out past the window edge.
+                            // the lead. Unlike the bar there is nothing for the
+                            // gaps between the names to fall through to: the
+                            // page they would open is this one, so they are
+                            // simply not targets.
+                            //
+                            // Fills and elides, like the title above it.
+                            // Without Layout.fillWidth the names' own 453px was
+                            // the column's minimum width and dragged the whole
+                            // page out past the window edge.
+                            ArtistLinks {
                                 Layout.fillWidth: true
-                                implicitHeight: Math.max(artistLink.implicitHeight,
-                                                         artistRow.implicitHeight)
-
-                                // The fallback for a track with no artistList:
-                                // the joined string, linking to the one
-                                // artistId such a track carries. It is the lead
-                                // artist or nothing, which is all the map says.
-                                Text {
-                                    id: artistLink
-                                    objectName: "nowPlayingArtists"
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    visible: root.artistList.length === 0
-                                    text: hasTrack ? track.artists : ""
-                                    // The bar's treatment, not an accent link:
-                                    // textSec at rest, textPrimary and
-                                    // underlined under the pointer. Now Playing
-                                    // is being cleared of accent-coloured
-                                    // content so a cover-derived background can
-                                    // go behind it, and this line was the first
-                                    // of it.
-                                    color: artistHit.containsMouse && hasTrack && Number(track.artistId) > 0
-                                           ? Theme.textPrimary : Theme.textSec
-                                    font.pixelSize: 18
-                                    elide: Text.ElideRight
-                                    font.underline: artistHit.containsMouse && hasTrack && Number(track.artistId) > 0
-                                    activeFocusOnTab: visible && hasTrack && Number(track.artistId) > 0
-                                    Keys.onReturnPressed: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
-                                    Keys.onSpacePressed:  if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
-                                    Rectangle {
-                                        // Tracks the words, not the column the Text now
-                                        // fills, so the ring and the hit target do not
-                                        // float out to the right of a short name.
-                                        x: -4; y: -4
-                                        width:  Math.min(parent.width, parent.contentWidth) + 8
-                                        height: parent.height + 8
-                                        radius: Theme.radiusButton; color: "transparent"
-                                        border.width: artistLink.activeFocus ? 2 : 0
-                                        border.color: Theme.accent
-                                    }
-                                    MouseArea {
-                                        id: artistHit
-                                        width:  Math.min(parent.width, parent.contentWidth)
-                                        height: parent.height
-                                        hoverEnabled: true
-                                        cursorShape: hasTrack && Number(track.artistId) > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                        onClicked: if (hasTrack && Number(track.artistId) > 0) navigateTo("artist", { artistId: Number(track.artistId) })
-                                    }
-                                }
-
-                                Row {
-                                    id: artistRow
-                                    width: parent.width
-                                    visible: root.artistList.length > 0
-                                    spacing: 0
-
-                                    Repeater {
-                                        model: root.artistList
-                                        delegate: Row {
-                                            id: artistItem
-                                            required property var modelData
-                                            required property int index
-
-                                            readonly property bool linkable: Number(modelData.id) > 0
-                                            readonly property real sepWidth: index > 0 ? npSep.implicitWidth : 0
-                                            // What the line has left once the
-                                            // names in front of this one have
-                                            // taken theirs. The pixel of slack
-                                            // absorbs the difference between
-                                            // the measured string and the
-                                            // rendered one.
-                                            readonly property real room:
-                                                Math.max(0, artistRow.width - root.artistStartX(index) - sepWidth - 1)
-                                            // Too tight to read is too tight to
-                                            // aim at, so the name goes rather
-                                            // than leaving a clickable sliver
-                                            // or an unreachable tab stop behind.
-                                            visible: room >= 8
-                                            spacing: 0
-
-                                            Text {
-                                                id: npSep
-                                                objectName: "nowPlayingArtistSeparator"
-                                                visible: artistItem.index > 0
-                                                text: root.artistSeparator
-                                                color: Theme.textSec
-                                                font.pixelSize: 18
-                                            }
-
-                                            Text {
-                                                id: npName
-                                                objectName: "nowPlayingArtistName"
-                                                text: artistItem.modelData.name
-                                                // Only the name that runs out
-                                                // of line elides; the ones
-                                                // before it keep their full
-                                                // width.
-                                                width: Math.min(implicitWidth, artistItem.room)
-                                                elide: Text.ElideRight
-                                                color: npNameHit.containsMouse
-                                                       ? Theme.textPrimary : Theme.textSec
-                                                font.pixelSize: 18
-                                                font.underline: npNameHit.containsMouse
-                                                // Tab reaches each artist in
-                                                // turn rather than one blob,
-                                                // and skips a credit with no id
-                                                // because there is nowhere for
-                                                // it to go.
-                                                activeFocusOnTab: artistItem.linkable
-                                                Keys.onReturnPressed: root.openArtist(Number(artistItem.modelData.id))
-                                                Keys.onSpacePressed:  root.openArtist(Number(artistItem.modelData.id))
-
-                                                Rectangle {
-                                                    x: -4; y: -4
-                                                    width:  parent.width + 8
-                                                    height: parent.height + 8
-                                                    radius: Theme.radiusButton; color: "transparent"
-                                                    border.width: npName.activeFocus ? 2 : 0
-                                                    border.color: Theme.accent
-                                                }
-
-                                                // A MouseArea rather than a
-                                                // Tap/Hover handler pair, for
-                                                // the same reason the bar uses
-                                                // one: a TapHandler only takes
-                                                // a passive grab, so anything
-                                                // under the names answers the
-                                                // same click. Disabled when the
-                                                // artist has no id, so that
-                                                // name is not a dead target.
-                                                MouseArea {
-                                                    id: npNameHit
-                                                    anchors.fill: parent
-                                                    enabled: artistItem.linkable
-                                                    hoverEnabled: true
-                                                    cursorShape: Qt.PointingHandCursor
-                                                    onClicked: root.openArtist(Number(artistItem.modelData.id))
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                namePrefix: "nowPlaying"
+                                fontPixelSize: 18
+                                artistList: root.artistList
+                                joinedText: hasTrack ? track.artists : ""
+                                fallbackArtistId: hasTrack ? Number(track.artistId) : 0
                             }
                             Text {
                                 id: albumLink
@@ -1789,7 +1681,14 @@ Rectangle {
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: 4
                                     Text { Layout.fillWidth: true; text: upTrack ? upTrack.title : ""; color: Theme.textPrimary; font.pixelSize: 14; elide: Text.ElideRight }
-                                    Text { Layout.fillWidth: true; text: upTrack ? upTrack.artists : ""; color: Theme.textSec; font.pixelSize: 12; elide: Text.ElideRight }
+                                    ArtistLinks {
+                                        Layout.fillWidth: true
+                                        namePrefix: "nowPlayingUpNext"
+                                        fontPixelSize: 12
+                                        artistList: upTrack && upTrack.artistList ? upTrack.artistList : []
+                                        joinedText: upTrack ? upTrack.artists : ""
+                                        fallbackArtistId: upTrack ? Number(upTrack.artistId) : 0
+                                    }
                                 }
                             }
                         }
@@ -1912,41 +1811,12 @@ Rectangle {
     }
 
     // ─── Artist links (SPEC N2, here as well as in the bar) ──────────────
-    // The same arithmetic as components/PlayerBar.qml's artist line, at this
-    // page's 18px rather than the bar's 12px. Kept here rather than extracted
-    // into a shared component because a new qml/ file has to be added to
-    // QML_FILES in CMakeLists.txt, which another change owns this session; if
-    // the two ever disagree, this is the pair to reconcile.
-    //
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}].
     // Tracks whose map predates it — the recently-played entries saved to
     // disk, anything a caller builds by hand — only have the joined `artists`
-    // string and a single `artistId`, and artistLink below stands in for them.
+    // string and a single `artistId`, which is what ArtistLinks falls back to.
     readonly property var artistList:
         (hasTrack && track.artistList && track.artistList.length > 0) ? track.artistList : []
-
-    // Sits between two names and belongs to neither, so it is not a link.
-    readonly property string artistSeparator: qsTr(", ", "between two artist names")
-
-    FontMetrics { id: artistFm; font.pixelSize: 18 }
-
-    // Where the i-th name begins, measured on the names in front of it rather
-    // than on the laid-out items: a delegate cannot see its siblings' widths,
-    // and binding a width to the x a Row just assigned is how binding loops
-    // start.
-    function artistStartX(i) {
-        if (i <= 0) return 0
-        var before = []
-        for (var k = 0; k < i && k < root.artistList.length; k++)
-            before.push(root.artistList[k].name)
-        return artistFm.advanceWidth(before.join(root.artistSeparator))
-    }
-
-    // Guarded here rather than at each of the three call sites, so a credit
-    // with no id is a no-op wherever it is activated from.
-    function openArtist(artistId) {
-        if (artistId > 0) root.navigateTo("artist", { artistId: artistId })
-    }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params || {})

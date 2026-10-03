@@ -65,24 +65,29 @@ void TidalBridge::call(QJSValue &cb, const QJSValueList &args) {
 
 // ─── Converters ────────────────────────────────────
 
+// Every artist, so a credit line can make each name its own link (SPEC N2)
+// instead of sending every name to the lead. The joined `artists` string and
+// the single `artistId` beside it stay exactly as they were: the string is what
+// a window title and an MPRIS payload want, and the first id is what
+// Player::trackFromMap reads back.
+static QVariantList artistsToVariantList(const QList<Artist> &artists) {
+    QVariantList out;
+    for (const Artist &a : artists) {
+        QVariantMap am;
+        am["id"]   = a.id;
+        am["name"] = a.name;
+        out.append(am);
+    }
+    return out;
+}
+
 QVariantMap TidalBridge::trackToMap(const Track &t) {
     QVariantMap m;
     m["id"]          = t.id;
     m["title"]       = t.title;
     m["artists"]     = t.artistNames();
     m["artistId"]    = t.artists.isEmpty() ? 0LL : t.artists[0].id;
-    // Every artist, so the player bar can make each name its own link
-    // (SPEC N2). `artists` and `artistId` above stay exactly as they were:
-    // the joined string is what most call sites display, and the first id is
-    // what Player::trackFromMap and the TrackRow context menu read back.
-    QVariantList artistList;
-    for (const Artist &a : t.artists) {
-        QVariantMap am;
-        am["id"]   = a.id;
-        am["name"] = a.name;
-        artistList.append(am);
-    }
-    m["artistList"]  = artistList;
+    m["artistList"]  = artistsToVariantList(t.artists);
     m["albumTitle"]  = t.album.title;
     m["albumId"]     = t.album.id;
     m["albumCover"]  = t.album.cover;
@@ -105,6 +110,8 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["title"]       = a.title;
     m["artists"]     = a.artistNames();
     m["artistId"]    = a.artists.isEmpty() ? 0LL : a.artists[0].id;
+    // An album is credited to a list too, and the hero shows it.
+    m["artistList"]  = artistsToVariantList(a.artists);
     m["coverUrl"]    = a.coverUrl(320);
     m["coverUrl640"] = a.coverUrl(640);
     m["releaseDate"] = a.releaseDate;

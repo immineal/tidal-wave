@@ -34,6 +34,25 @@ Item {
     // Raised by a click on the scrim. The owner decides what dismissal means.
     signal dismissed()
 
+    // ── opening and closing ──────────────────────────────────────────────
+    //
+    // The owner raises `open`; the panel decides how long it stays on screen,
+    // because it has to outlive `open` by the length of the slide. `visible`
+    // is what everything inside gates its bindings on, so it is still the one
+    // question "is this panel costing anything" - it is just answered from the
+    // animation now instead of straight from the owner.
+    //
+    // It defaults to open so that a bare QueuePanel is a panel, which is how
+    // the layout and glyph tests instantiate it.
+    property bool open: true
+    property real openness: open ? 1 : 0
+    // A Behavior does not run on a binding's first evaluation, so a panel that
+    // starts open is open in its first frame and only later changes slide.
+    Behavior on openness {
+        NumberAnimation { duration: Theme.dur(190); easing.type: Easing.OutCubic }
+    }
+    visible: open || openness > 0.001
+
     // 340 is the design width. The 85% cap keeps the panel from eating a narrow
     // window whole: at the 640px minimum the content area is 420px, where a
     // fixed 340 would leave 80px of page showing.
@@ -278,11 +297,16 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: Theme.scrim
+        opacity: root.openness
     }
 
     // Swallows anything that misses the panel, so no click reaches the page.
+    // Dead while the panel is on its way out: the scrim is still painted for
+    // those frames and a click on it must reach the page, not be eaten by a
+    // panel that is already closing.
     MouseArea {
         anchors.fill: parent
+        enabled: root.open
         acceptedButtons: Qt.AllButtons
         onClicked: root.dismissed()
         onWheel: (wheel) => wheel.accepted = true
@@ -296,6 +320,12 @@ Item {
         width: root.panelWidth
         color: Theme.surface
         border.color: Theme.border
+
+        // The slide. A transform rather than an x offset, so the panel's
+        // geometry - which the list inside measures itself against, and which
+        // the layout guard in tests/qml/tst_layout_player.qml checks - is the
+        // same during the slide as it is at rest.
+        transform: Translate { x: (1 - root.openness) * root.panelWidth }
 
         // Declared before the panel's content, so it only ever sees what the
         // content did not take. The panel is not the scrim: a click that lands
@@ -515,6 +545,17 @@ Item {
             isHeader ? "" : (fieldOf("artists") || qsTranslate("TrackRow", "Unknown artist"))
         readonly property string coverText: fieldOf("coverUrl80")
 
+        // fieldOf() answers with a string or nothing, so the artist list needs
+        // its own accessor. A queue restored from QSettings is whatever was
+        // saved, so a map without the field is normal here and ArtistLinks
+        // falls back to the joined string and the lead id.
+        readonly property var artistList:
+            (track && track.artistList && track.artistList.length > 0) ? track.artistList : []
+        readonly property real leadArtistId: {
+            var n = track ? Number(track.artistId) : 0
+            return isFinite(n) ? n : 0
+        }
+
         activeFocusOnTab: actionable
         Keys.onReturnPressed: root.activate(kind, slot)
         Keys.onSpacePressed:  root.activate(kind, slot)
@@ -700,12 +741,17 @@ Item {
                         font.bold: entry.isCurrent
                         elide: Text.ElideRight
                     }
-                    Text {
+                    // One hover target and one tab stop per artist. The
+                    // row's own click target is declared before this, so a name
+                    // takes the left click before the row does and the rest of
+                    // the line still jumps to the track.
+                    ArtistLinks {
                         Layout.fillWidth: true
-                        text: entry.artistsText
-                        color: Theme.textSec
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
+                        namePrefix: "queue"
+                        fontPixelSize: 11
+                        artistList: entry.artistList
+                        joinedText: entry.artistsText
+                        fallbackArtistId: entry.leadArtistId
                     }
                 }
 
@@ -761,6 +807,10 @@ Item {
                 // So a test can reach a per-delegate menu, which is not in
                 // any item's children: a Popup is a QObject, not an Item.
                 objectName: "queueRowMenu"
+                // The same arrival as every other menu in the app; see
+                // ContextMenu.qml for why it is opacity and nothing else.
+                enter: ContextMenu.OpenFade { }
+                exit:  ContextMenu.CloseFade { }
                 // Insets reset, not inherited. A Menu's insets exist for a style's drop
                 // shadow, and the native macOS style sets all four to -32; this menu
                 // replaces the background with its own Rectangle and never drew that

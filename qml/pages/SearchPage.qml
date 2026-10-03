@@ -22,6 +22,25 @@ Rectangle {
         searchBar.releaseFocus()
     }
 
+    // The results change shape on a tab switch: "All" shows four sections and
+    // every other tab shows one, so the whole column below is replaced between
+    // two frames. It fades in instead.
+    //
+    // A fade and not a reorder: the sections are Repeaters over JS arrays, so
+    // nothing here is a view with a change set to animate, and the content
+    // after a switch is different content rather than the same content
+    // rearranged.
+    property real resultsIn: 1
+    NumberAnimation {
+        id: resultsEntry
+        target: root
+        property: "resultsIn"
+        from: 0; to: 1
+        duration: Theme.dur(170)
+        easing.type: Easing.OutCubic
+    }
+    onActiveTabChanged: resultsEntry.restart()
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -111,6 +130,7 @@ Rectangle {
             rightPadding: 14
             contentWidth: availableWidth
             visible: root.query.length >= 2
+            opacity: root.resultsIn
 
             ColumnLayout {
                 width: parent.width

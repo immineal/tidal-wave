@@ -58,6 +58,14 @@
     </message>
 </context>
 <context>
+    <name>ArtistLinks</name>
+    <message>
+        <source>, </source>
+        <comment>between two artist names</comment>
+        <translation>, </translation>
+    </message>
+</context>
+<context>
     <name>ArtistPage</name>
     <message>
         <source>Play</source>

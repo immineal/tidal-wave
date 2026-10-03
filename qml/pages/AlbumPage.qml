@@ -38,6 +38,16 @@ Rectangle {
     readonly property int effectiveArtistId: albumData.artistId > 0 ? albumData.artistId
         : (tracks.length > 0 && tracks[0].artistId > 0 ? tracks[0].artistId : 0)
 
+    // The album's own credits, name by name (SPEC N2). Deliberately not
+    // recovered off the tracklist the way effectiveArtistId recovers the lead
+    // id: a compilation's album credit and its first track's credit are
+    // different things, and taking the names from track 1 would put that
+    // track's artists under the album's title. No list means the joined
+    // `artists` string and the one id above, which is what ArtistLinks falls
+    // back to.
+    readonly property var albumArtistList:
+        (albumData.artistList && albumData.artistList.length > 0) ? albumData.artistList : []
+
     onAlbumIdChanged: if (albumId > 0) { loadAlbum(); updateSavedState() }
 
     Connections {
@@ -70,6 +80,9 @@ Rectangle {
 
     ListView {
         id: tracksList
+        // So a test can scroll the hero out of the way and ask what the sticky
+        // header does when it is actually on screen.
+        objectName: "albumTracksList"
         anchors.fill: parent
         clip: true
         model: root.tracks
@@ -159,26 +172,15 @@ Rectangle {
                             wrapMode: Text.WordWrap
                         }
 
-                        Text {
-                            id: artistNameText
+                        // One hover target and one tab stop per artist, so a
+                        // featured credit opens the guest rather than the lead.
+                        ArtistLinks {
                             Layout.fillWidth: true
-                            text: albumData.artists || ""
-                            color: root.effectiveArtistId > 0 ? Theme.accent : Theme.textSec
-                            font.pixelSize: 14
-                            elide: Text.ElideRight
-                            activeFocusOnTab: root.effectiveArtistId > 0
-                            Keys.onReturnPressed: if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
-                            Keys.onSpacePressed:  if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
-                            Rectangle {
-                                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
-                                border.width: artistNameText.activeFocus ? 2 : 0
-                                border.color: Theme.accent
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: root.effectiveArtistId > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                onClicked: if (root.effectiveArtistId > 0) root.navigateTo("artist", { artistId: root.effectiveArtistId })
-                            }
+                            namePrefix: "albumHero"
+                            fontPixelSize: 14
+                            artistList: root.albumArtistList
+                            joinedText: albumData.artists || ""
+                            fallbackArtistId: root.effectiveArtistId
                         }
 
                         Text {
@@ -295,8 +297,11 @@ Rectangle {
         id: stickyHeader
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: 52
-        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b,
-                       Math.min(0.95, Math.max(0, (tracksList.contentY - 200) / 80)))
+        // How far the header has come in: 0 while the hero is still on screen,
+        // 1 once it has scrolled away.
+        readonly property real reveal:
+            Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Math.min(0.95, reveal))
 
         BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
 
@@ -305,7 +310,7 @@ Rectangle {
             anchors.leftMargin: 64
             anchors.rightMargin: 16
             spacing: 12
-            opacity: Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+            opacity: stickyHeader.reveal
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
@@ -317,19 +322,25 @@ Rectangle {
                     font.bold: true
                     elide: Text.ElideRight
                 }
-                Text {
+                ArtistLinks {
                     Layout.fillWidth: true
-                    text: albumData.artists || ""
-                    color: Theme.textSec
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
+                    namePrefix: "albumSticky"
+                    fontPixelSize: 12
+                    artistList: root.albumArtistList
+                    joinedText: albumData.artists || ""
+                    fallbackArtistId: root.effectiveArtistId
+                    // The header is present at full size the whole time and
+                    // only fades in, so without this its links would be hit
+                    // targets and tab stops over the top of the hero while it
+                    // is invisible. A disabled item is neither.
+                    enabled: stickyHeader.reveal > 0
                 }
             }
         }
 
         Rectangle {
             anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border
-            opacity: Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+            opacity: stickyHeader.reveal
         }
     }
 
