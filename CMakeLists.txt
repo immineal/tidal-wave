@@ -32,7 +32,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
 qt_standard_project_setup()
 
 # Qt policies — guarded by version so the project builds across Qt releases:
-# QTP0001 exists since Qt 6.5, QTP0004 only since Qt 6.7 (setting an unknown
+# QTP0001 exists since Qt 6.5, QTP0004 only since Qt 6.8 (setting an unknown
 # policy is a hard error, which broke CI on Qt 6.5.3). These must be set before
 # qt_add_qml_module() below, since QTP0001 decides the module's resource prefix
 # (":/qt/qml/TidalWave/..." vs ":/TidalWave/...").
@@ -172,6 +172,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/UpdatePrompt.qml
         qml/components/VectorIcon.qml
         qml/components/AppMark.qml
+        qml/components/ArtistLinks.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml
