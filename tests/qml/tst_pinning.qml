@@ -605,6 +605,78 @@ TestCase {
         compare(sb.pinnedCount, 3, "the block changed size over a reorder")
         verify(!findByName(sb, "pinDropIndicator").visible, "the drop indicator outlived the drag")
     }
+    // A block of two, which is both the smallest block that can be dragged at
+    // all and the size every account reaches first: PinStore seeds one pin, so
+    // the second pin the user makes is where reordering becomes possible.
+    //
+    // One gesture, three times, and the only thing that differs is where inside
+    // the handle the pointer came down — which is not something anyone can see,
+    // choose, or be told about.
+    //
+    // It used to decide whether the drop counted. pinSlotAt() *clamps* its
+    // target into the block, so the indicator always points at a legal slot,
+    // but the bounds were measured against the pointer: the press's own place
+    // in the row it grabbed, plus the travel, against the block's pixel extent.
+    // The two disagree by however far into the row the press landed, and the
+    // block is only pinnedCount rows tall — 88px here — so a press in the
+    // middle of the row and a pull of a row and a half put the pointer past the
+    // block's bottom edge while the indicator was still pointing at the bottom
+    // slot. The drop was then thrown away with nothing said: a line drawn where
+    // the row was going to land, and a row that stayed where it was.
+    //
+    // It took a block of two to show. The three-pin fixture above has 132px to
+    // play with, which swallows the same gesture whole.
+    function test_a_block_of_two_swaps_wherever_the_handle_was_grabbed_data() {
+        return [
+            { tag: "grabbed at the top",    grab: 4  },
+            { tag: "grabbed in the middle", grab: 22 },
+            { tag: "grabbed at the bottom", grab: 36 }
+        ]
+    }
+
+    function test_a_block_of_two_swaps_wherever_the_handle_was_grabbed(row) {
+        setPins([pinRow("mix",   "mix-1", "Daily Discovery"),
+                 pinRow("album", "43",    "Aquarium")])
+
+        var host = showHost(1280)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        compare(sb.pinnedCount, 2, "two fixture pins belong above the break")
+        compare(rowIds(sb).join(","), "mix-1,43,7,uuid-p1,42,uuid-p2", "the starting order")
+
+        var rowHeight = rowHeightOf(sb)
+        var top = rowFor(sb, "mix-1")
+        verify(top, "the row to drag was never drawn")
+        // Aimed in the *row's* coordinates and not the handle's: the handle
+        // inflates its hit area by 5px on every side, so its own lower edge is
+        // inside the row below, where a press is a press on that row.
+        var at = pointIn(host, top, top.width - 22, row.grab)
+        mousePress(host.contentItem, at.x, at.y)
+        // A row and a half: far enough that the row being dragged is past the
+        // one it is changing places with, which is how far a hand takes it.
+        mouseMove(host.contentItem, at.x, at.y + 1.5 * rowHeight)
+        wait(1)
+        // Whatever the pointer did, this is where the sidebar had decided the
+        // row would land, because pinSlotAt() clamps into the block.
+        compare(sb.pinDragTo, 1, "the bottom slot is the only place a block of two can send it")
+        var promised = findByName(sb, "pinDropIndicator").visible
+        mouseRelease(host.contentItem, at.x, at.y + 1.5 * rowHeight)
+        settle(host.contentItem)
+
+        // The store, because the store is the order and the rows are a reading
+        // of it: a drop that moves the rows and not the pins is undone by the
+        // next rebuild, and one that moves neither is this bug.
+        compare(pinIds().join(","), "43,mix-1",
+                "the drop was thrown away — the target was slot 1 and the pins did not move"
+                + " (the indicator was " + (promised ? "still up" : "already dark")
+                + " when the pointer came up)")
+        compare(pins.items.length, 2, "the drop added or dropped a pin")
+        compare(pinsSpy.count, 1, "one drop is one write")
+        tryVerify(function () { return rowIds(sb).join(",") === "43,mix-1,7,uuid-p1,42,uuid-p2" },
+                  2000, "the visible order did not follow the drop")
+        compare(sb.pinnedCount, 2, "the block changed size over a reorder")
+    }
 
     // The drag is confined to the block: a row dropped over the ordinary
     // library list below is not reordered, and is certainly not unpinned.

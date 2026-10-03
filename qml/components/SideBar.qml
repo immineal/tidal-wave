@@ -396,8 +396,8 @@ Item {
     property int  pinDragFrom:   -1
     property int  pinDragTo:     -1
     property real pinDragOffset: 0
-    // Whether the pointer is still inside the pinned block. A drag that ends
-    // anywhere else is abandoned rather than clamped: a pinned row must not
+    // Whether the row being dragged is still over the pinned block. A drag that
+    // ends anywhere else is abandoned rather than clamped: a pinned row must not
     // land in the ordinary library list below, and letting a drop out there
     // mean anything at all would turn a slip of the hand into an edit.
     property bool pinDropValid:  false
@@ -407,6 +407,36 @@ Item {
     function pinSlotAt(from, offset) {
         return Math.max(0, Math.min(root.pinnedCount - 1,
                                     from + Math.round(offset / root.libRowHeight)))
+    }
+
+    // Whether that row is over the block at all, which is what decides whether
+    // the drop is taken. Any overlap counts: a row is libRowHeight tall and the
+    // block is pinnedCount of them, so a row whose top has not yet reached the
+    // bottom edge still has part of itself inside.
+    //
+    // This and pinSlotAt() have to answer about the same thing, and they used
+    // not to. pinSlotAt() clamps, so the target is always a legal slot and the
+    // indicator always points at one; the bound was measured against the
+    // *pointer* instead -- where in the row the press landed, plus the travel.
+    // Where in the row the press landed is invisible, and in a small block it is
+    // most of the room there is: a block of two is two rows tall, so a press
+    // half a row down and a pull of a row and a half put the pointer out of
+    // bounds while the line was still drawn under the bottom row, and the drop
+    // was thrown away with nothing said. Asked of the row, the two cannot come
+    // apart, and where the hand came down inside the handle stops meaning
+    // anything.
+    //
+    // In the block's own grid -- whole rows down from the top of the list -- and
+    // deliberately not in the row's drawn y. A row in travel has its new index
+    // for the whole 170ms the move/displaced transitions take while it is still
+    // drawn at its old place, so a reading off the drawn position is in the
+    // wrong frame for a drag begun inside that window, and the release was
+    // abandoned as "outside the block". `from` is an index and so is what
+    // pinSlotAt() returns; this stays on that side of the line.
+    function pinOverBlock(from, offset) {
+        var top = from * root.libRowHeight + offset
+        return top > -root.libRowHeight
+            && top < root.pinnedCount * root.libRowHeight
     }
 
     function beginPinDrag(index) {
@@ -1232,37 +1262,9 @@ Item {
                     // coordinates, which do not move when the list scrolls.
                     property real pressY: 0
 
-                    // The same press, in the pinned block's own grid: whole
-                    // rows down from the top of the list, which is what
-                    // pinSlotAt() counts in and what the bounds below are
-                    // measured against.
-                    //
-                    // The two are the same number at rest and not during a
-                    // reorder. The move and displaced transitions on the list
-                    // take libraryTravelMs to carry a row to its new place, and
-                    // for that long a row's `index` is already the new one while
-                    // its `y` is still the old one. Everything else here works
-                    // in indices -- `pinDragFrom` is an index, pinSlotAt()
-                    // returns one -- so taking the bounds from the drawn
-                    // position alone mixed the two frames, and a drag begun
-                    // inside that window was measured as travelling out of the
-                    // block and abandoned on release. Which is every drag made
-                    // in the moment after the last one: one drop starts the
-                    // travel that breaks the next.
-                    property real pressSlotY: 0
-
                     onPressed: function (mouse) {
-                        var p = mapToItem(libList.contentItem, mouse.x, mouse.y)
-                        dragArea.pressY = p.y
-                        // Where in the row the press landed -- which is a
-                        // reading off the row as *drawn*, and the only one of
-                        // the two that is -- carried over to the slot the row's
-                        // index says it occupies. Every pinned row is
-                        // libRowHeight tall: only the first unpinned row carries
-                        // the block break, and nothing outside the block is
-                        // draggable.
-                        dragArea.pressSlotY = rowItem.index * root.libRowHeight
-                                              + (p.y - rowItem.y)
+                        dragArea.pressY = mapToItem(libList.contentItem,
+                                                    mouse.x, mouse.y).y
                         root.beginPinDrag(rowItem.index)
                     }
                     onPositionChanged: function (mouse) {
@@ -1275,10 +1277,12 @@ Item {
                         root.pinDragOffset = p.y - dragArea.pressY
                         root.pinDragTo     = root.pinSlotAt(rowItem.index, root.pinDragOffset)
                         // Confined to the pinned block, in both directions:
-                        // the list below it and the page beside it.
-                        var slotY = dragArea.pressSlotY + root.pinDragOffset
-                        root.pinDropValid  = slotY >= 0
-                            && slotY < root.pinnedCount * root.libRowHeight
+                        // the list below it and the page beside it. The row
+                        // decides the first of those, the pointer the second --
+                        // leaving the sidebar sideways is leaving the sidebar
+                        // whatever the row is doing.
+                        root.pinDropValid  =
+                            root.pinOverBlock(rowItem.index, root.pinDragOffset)
                             && p.x >= 0 && p.x <= libList.width
                     }
                     onReleased: root.endPinDrag()
