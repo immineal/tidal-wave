@@ -19,11 +19,24 @@ class PinStore;
 // The sidebar's model: every playlist, album, artist and mix the user saved, in
 // one flat list, plus the local search index over them.
 //
-// Ordering is pinned first, then most recently played, then A-Z for everything
-// never played. "Recently played" is tracked locally for all four kinds; Tidal
-// exposes no cross-device play history (users/{id}/history is 404 and
-// users/{id}/activity only reports favourites added), so phone plays cannot
-// contribute.
+// Ordering is the pinned block, in pin order, and then one list - no divider, no
+// groups, no A-Z tier - sorted newest first on the most recent of (last played,
+// date added). The user asked for exactly that: "it makes more sense to just
+// sort everything by when it was added. Instead of A to Z", and "playing from
+// something and (re)saving it should both just put it at the top with the same
+// priority". So the two are one signal on one timestamp: re-saving an old album
+// lifts it exactly as playing it would, and nothing resets on a restart.
+//
+// Play times are tracked locally for all four kinds, because Tidal exposes no
+// cross-device play history (users/{id}/history is 404 and users/{id}/activity
+// only reports favourites added), so phone plays cannot contribute. The date
+// added comes from the favourites rows on every sign-in, which is what makes the
+// order reproducible across launches rather than only for this session.
+//
+// A mix the user saved carries its own date (v2/favorites/mixes reports
+// `dateAdded` per item) and ranks with everything else. One that Tidal merely
+// generated has no date - nobody added it, and Tidal regenerates the set - so it
+// files at the end of the list, by title, until it is played or pinned.
 //
 // Search covers songs as well as the four library kinds. Liked songs come down
 // with the rest of the library, so they answer at once; the tracklists of saved
@@ -169,6 +182,17 @@ private:
         QString foldTitle;           // case- and accent-folded, for matching
         int     pinIndex   = -1;
         qint64  lastPlayed = 0;
+        // When this user added the thing to their library, in ms since epoch,
+        // from the `created` on the favourites row it arrived in, or a saved
+        // mix's own `dateAdded`. 0 for a generated mix (nobody added it) and for
+        // a song (the favourites row is not carried that far - see likeIndex
+        // below, which is the record songs do have).
+        qint64  addedAt    = 0;
+        // max(lastPlayed, addedAt): the whole of the sidebar's ordering below
+        // the pinned block. Computed once per rebuild() rather than inside the
+        // comparator, because a library runs to a thousand rows and rebuild()
+        // runs on every pin, play and like.
+        qint64  recency    = 0;
         // Tracks only: the user liked this one, rather than it turning up in
         // the tracklist of a saved album. Liking is a deliberate act, so it
         // counts for more when the results are ranked.
@@ -206,6 +230,10 @@ private:
     // exactly as it was.
     void indexOneAlbum(qint64 albumId);
     void indexAlbum(qint64 albumId, const QList<Tidal::Track> &tracks);
+
+    // "Now", but never equal to or behind anything already recorded. See the
+    // definition: a play and a save inside one millisecond would otherwise tie.
+    qint64 stampNow() const;
 
     void loadRecents();
     void saveRecents() const;

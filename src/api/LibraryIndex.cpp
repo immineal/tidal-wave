@@ -373,6 +373,7 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Playlist &p) {
     e.imageUrl     = p.coverUrl(320);
     e.trackCount   = p.numTracks;
     e.playlistType = p.type;
+    e.addedAt      = p.addedAt;
     finishEntry(e);
     return e;
 }
@@ -385,6 +386,7 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Album &a) {
     e.subtitle   = a.artistNames();
     e.imageUrl   = a.coverUrl(320);
     e.trackCount = a.numTracks;
+    e.addedAt    = a.addedAt;
     for (const Artist &artist : a.artists) e.artistIds.append(artist.id);
     finishEntry(e);
     return e;
@@ -396,11 +398,17 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Artist &a) {
     e.id       = QString::number(a.id);
     e.title    = a.name;
     e.imageUrl = artistPictureUrl(a.picture);
+    e.addedAt  = a.addedAt;
     e.artistIds.append(a.id);
     finishEntry(e);
     return e;
 }
 
+// A mix the user *saved* carries the date they saved it, from v2/favorites/mixes,
+// and ranks with the saved albums and artists on it. One that only Tidal
+// generated - "My Mix 1".."My Mix 8" - has no date, because nobody added it and
+// Tidal regenerates the set; it files below everything dated until it is played
+// or pinned.
 LibraryIndex::Entry LibraryIndex::entryFor(const Mix &m) {
     Entry e;
     e.kind     = QLatin1String(kKindMix);
@@ -408,6 +416,7 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Mix &m) {
     e.title    = m.title;
     e.subtitle = m.subTitle;
     e.imageUrl = m.coverUrl(320);
+    e.addedAt  = m.addedAt;
     finishEntry(e);
     return e;
 }
@@ -436,18 +445,27 @@ void LibraryIndex::rebuild() {
     for (Entry &e : m_library) {
         e.pinIndex   = m_pins ? m_pins->indexOf(e.kind, e.id) : -1;
         e.lastPlayed = m_recents.value(e.key(), 0);
+        // Playing and saving are one signal, so the key is whichever happened
+        // later. Computed here, once per row, and not inside the comparator: a
+        // library of a thousand rows is sorted on every pin, play and like.
+        e.recency    = std::max(e.lastPlayed, e.addedAt);
     }
 
-    // Three tiers (S2). A pinned row is only ever in the first one, which is
-    // what keeps it out of the list below it (P5): there is one list, and an
-    // entry occupies one place in it.
-    const auto tierOf = [](const Entry &e) {
-        if (e.pinIndex >= 0) return 0;
-        return e.lastPlayed > 0 ? 1 : 2;
-    };
+    // Two tiers: the pinned block, then everything else newest first. A pinned
+    // row is only ever in the first one, which is what keeps it out of the list
+    // below it: there is one list, and an entry occupies one place in it.
+    //
+    // There used to be a third tier, A-Z for everything never played, and it is
+    // what sent a just-saved album to alphabetical position 589 of 971 - which
+    // the user could not tell from the album not being saved at all. It is gone
+    // on their decision; `created` on the favourites row is what replaced it.
+    const auto tierOf = [](const Entry &e) { return e.pinIndex >= 0 ? 0 : 1; };
 
     // Collation, not byte order, so "Ärzte" lands with the As and case does
-    // not decide anything. QCollator follows the application locale.
+    // not decide anything. QCollator follows the application locale. It is the
+    // tie-break now rather than a tier of its own: rows with no date at all -
+    // mixes, and liked songs whose album is not saved - would otherwise come out
+    // in whatever order the library happened to be fetched in.
     QCollator collator{QLocale()};
     collator.setCaseSensitivity(Qt::CaseInsensitive);
 
@@ -457,7 +475,7 @@ void LibraryIndex::rebuild() {
         const int tb = tierOf(b);
         if (ta != tb) return ta < tb;
         if (ta == 0)  return a.pinIndex < b.pinIndex;
-        if (ta == 1)  return a.lastPlayed > b.lastPlayed;
+        if (a.recency != b.recency) return a.recency > b.recency;
         return collator.compare(a.sortKey, b.sortKey) < 0;
     });
 
@@ -487,17 +505,17 @@ void LibraryIndex::rebuild() {
         if (savedAlbumIds.contains(e.albumId)) continue;    // the album row leads to it
         rows.append(&e);
     }
-    // Same three tiers, same collation. A song cannot be pinned (PinStore
-    // rejects the kind) and cannot be played into the second tier (markPlayed
-    // rejects it too), so it always lands in the A-Z tier and files under its
-    // title among everything else saved. The Tracks chip is a different list
-    // with a different rule - see entriesForKinds().
+    // Same two tiers, same collation. A song cannot be pinned (PinStore rejects
+    // the kind), cannot be played (markPlayed rejects it too) and carries no
+    // date added - the favourites row a song arrives in is not read this far -
+    // so its recency is 0 and it files at the end, under its title. The Tracks
+    // chip is a different list with a different rule - see entriesForKinds().
     std::stable_sort(rows.begin(), rows.end(), [&](const Entry *a, const Entry *b) {
         const int ta = tierOf(*a);
         const int tb = tierOf(*b);
         if (ta != tb) return ta < tb;
         if (ta == 0)  return a->pinIndex < b->pinIndex;
-        if (ta == 1)  return a->lastPlayed > b->lastPlayed;
+        if (a->recency != b->recency) return a->recency > b->recency;
         return collator.compare(a->sortKey, b->sortKey) < 0;
     });
 
@@ -517,6 +535,11 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     m[QStringLiteral("imageUrl")]   = e.imageUrl;
     m[QStringLiteral("pinned")]     = e.pinIndex >= 0;
     m[QStringLiteral("lastPlayed")] = e.lastPlayed;
+    // The date added, and the ordering key the row was placed by, which is the
+    // later of the two. Nothing in qml/ reads them yet; they are what makes the
+    // placement inspectable from outside rebuild().
+    m[QStringLiteral("addedAt")]    = e.addedAt;
+    m[QStringLiteral("recency")]    = e.recency;
     m[QStringLiteral("trackCount")] = e.trackCount;
     // Playlists carry their Tidal type. PlaylistPage needs it to tell an
     // editable user playlist from a read-only editorial one, and the row is
@@ -534,12 +557,23 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
 // Each of these is "is it already here, if not put it in the list refresh()
 // would have put it in, then rebuild". rebuild() does the tiering, the
 // collation and the signal, so none of that is repeated here.
+//
+// What arrives here is a freshly fetched album/artist/playlist - TidalBridge
+// re-reads the item after the POST is acknowledged - so there is no favourites
+// row on it and no `created`. The date is stamped here instead, and "now" is the
+// right answer because the user has just saved it; the next sign-in replaces it
+// with the server's own `created` for the same moment, so the order survives a
+// restart. Un-saving and saving again is the only way to re-save something, and
+// it arrives as removeEntry() then this, which re-stamps it - which is what puts
+// a re-saved album at the top, level with having played it.
 
 void LibraryIndex::addAlbum(const Album &a) {
     if (a.id <= 0) return;
     for (const Album &x : m_albums)
         if (x.id == a.id) return;        // already saved; re-liking adds no row
-    m_albums.append(a);
+    Album saved = a;
+    saved.addedAt = stampNow();
+    m_albums.append(saved);
     rebuild();
     // The row is only half of it: until this album's tracklist is in the index,
     // every song on it answers no search. startTrackIndex() runs from
@@ -552,7 +586,9 @@ void LibraryIndex::addArtist(const Artist &a) {
     if (a.id <= 0) return;
     for (const Artist &x : m_artists)
         if (x.id == a.id) return;
-    m_artists.append(a);
+    Artist followed = a;
+    followed.addedAt = stampNow();
+    m_artists.append(followed);
     rebuild();
 }
 
@@ -560,7 +596,9 @@ void LibraryIndex::addPlaylist(const Playlist &p) {
     if (p.uuid.isEmpty()) return;
     for (const Playlist &x : m_playlists)
         if (x.uuid == p.uuid) return;
-    m_playlists.append(p);
+    Playlist created = p;
+    created.addedAt = stampNow();
+    m_playlists.append(created);
     // No tracklist to index: only saved albums are indexed, deliberately, and a
     // playlist the user has just created is empty anyway.
     rebuild();
@@ -625,15 +663,33 @@ void LibraryIndex::markPlayed(const QString &kind, const QString &id) {
     // Only the four things the sidebar lists. A song play reorders nothing.
     if (id.isEmpty() || !PinStore::isValidKind(kind)) return;
 
-    // Two plays inside the same millisecond would tie and the newer one would
-    // not come first, so the clock is nudged forward instead.
-    qint64 stamp = QDateTime::currentMSecsSinceEpoch();
-    for (auto it = m_recents.constBegin(); it != m_recents.constEnd(); ++it)
-        if (it.value() >= stamp) stamp = it.value() + 1;
-
-    m_recents.insert(kind + QLatin1Char(':') + id, stamp);
+    m_recents.insert(kind + QLatin1Char(':') + id, stampNow());
     saveRecents();
     rebuild();
+}
+
+// A timestamp for something the user has just done - played it, saved it or
+// followed it - guaranteed to be strictly later than every play and every save
+// already recorded.
+//
+// The clock on its own is not enough. Two actions inside the same millisecond
+// would tie, the tie-break below a pin is the title, and so playing a track and
+// then saving an album could leave the album second - the exact failure the
+// ordering exists to prevent. markPlayed() has always nudged past the play times
+// for this reason; it has to clear the save dates too, now that the two are one
+// axis, which is also what makes "(re)saving puts it at the top with the same
+// priority as playing" true rather than true most of the time.
+//
+// Linear in the size of the library, which is a thousand or so, and only ever
+// called from something that is about to rebuild() the whole list anyway.
+qint64 LibraryIndex::stampNow() const {
+    qint64 stamp = QDateTime::currentMSecsSinceEpoch();
+    const auto after = [&stamp](qint64 t) { if (t >= stamp) stamp = t + 1; };
+    for (auto it = m_recents.constBegin(); it != m_recents.constEnd(); ++it) after(it.value());
+    for (const Album &a : m_albums)       after(a.addedAt);
+    for (const Artist &a : m_artists)     after(a.addedAt);
+    for (const Playlist &p : m_playlists) after(p.addedAt);
+    return stamp;
 }
 
 void LibraryIndex::loadRecents() {
@@ -939,12 +995,12 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
     for (const Entry &e : m_library)
         if (kinds.contains(e.kind)) picked.append(&e);
 
-    // Songs get a tier to themselves, below the three the library kinds use.
-    // They carry neither a pin index nor a play time - nothing pins a song, and
-    // markPlayed() rejects the kind - so they have no business in the
-    // recently-played tier, and thousands of them mixed into it would push the
-    // albums and playlists that *do* have an ordering out of sight. That part
-    // has not changed.
+    // Songs get a tier to themselves, below the two the library kinds use.
+    // They carry neither a pin index nor a play time nor a date added - nothing
+    // pins a song, markPlayed() rejects the kind, and the favourites row a song
+    // arrives in is not read this far - so they have no business among the dated
+    // rows, and thousands of them mixed in would push the albums and playlists
+    // that *do* have an ordering out of sight. That part has not changed.
     //
     // What has changed is the order *within* their tier: newest liked first,
     // not A-Z. Alphabetical made the chip useless for the thing it is for -
@@ -961,9 +1017,8 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
         for (const Entry &e : m_trackEntries) picked.append(&e);
 
     const auto tierOf = [](const Entry &e) {
-        if (e.kind == QLatin1String(kKindTrack)) return 3;
-        if (e.pinIndex >= 0) return 0;
-        return e.lastPlayed > 0 ? 1 : 2;
+        if (e.kind == QLatin1String(kKindTrack)) return 2;
+        return e.pinIndex >= 0 ? 0 : 1;
     };
 
     QCollator collator{QLocale()};
@@ -974,8 +1029,8 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
         const int tb = tierOf(*b);
         if (ta != tb) return ta < tb;
         if (ta == 0)  return a->pinIndex < b->pinIndex;
-        if (ta == 1)  return a->lastPlayed > b->lastPlayed;
-        if (ta == 3 && a->likeIndex != b->likeIndex) return a->likeIndex > b->likeIndex;
+        if (ta == 2 && a->likeIndex != b->likeIndex) return a->likeIndex > b->likeIndex;
+        if (ta != 2 && a->recency != b->recency) return a->recency > b->recency;
         return collator.compare(a->sortKey, b->sortKey) < 0;
     });
 

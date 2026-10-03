@@ -123,21 +123,54 @@ public:
     // Recently played
     void fetchRecentlyPlayed(TracksCallback cb);
 
-    // Walks a `pages/*` feed for mixes: rows, each holding modules, a module of
-    // type MIX_LIST carrying them in its pagedList. Returns them with the two
-    // personalised mixes in front (see the comment on the definition).
+    // Walks one `pages/*` feed for mixes: rows, each holding modules, a module
+    // of type MIX_LIST carrying them in its pagedList. Video mixes are dropped
+    // and the two personalised mixes lead - see the comments on the definitions.
     //
-    // Public and static only so a test can reach it, as with parsePlaylists
-    // below: which mixes a real page yields, and in what order, is the whole of
-    // what decides whether "My Daily Discovery" and "My New Arrivals" can be
-    // got at. Touches no member state.
+    // Public and static only so a test can reach them, as with parsePlaylists
+    // below: which mixes each source yields, in what order, and how the two are
+    // reconciled is the whole of what decides what the Collection's Mixes tab
+    // holds. They touch no member state.
     static QList<Mix> parseMixPage(const QJsonObject &root);
 
-    // Public and static only so a test can reach it. The favourites endpoints
-    // wrap each playlist in a row carrying the date this user added it, and
-    // whether that row survives unwrapping is what decides the order of the home
-    // playlist row, so it is worth a regression test. Touches no member state.
+    // One page of v2/favorites/mixes - the mixes this user *saved*. Flat items,
+    // each carrying its own `dateAdded`, and nothing filtered out of them.
+    static QList<Mix> parseSavedMixes(const QJsonObject &root);
+
+    // The cursor to ask for the next page of v2/favorites/mixes with, or an empty
+    // string when the run is over. `previous` is the cursor this page was fetched
+    // with. See the definition: the endpoint reports no total, so this is the only
+    // thing that ends a run.
+    static QString nextCursor(const QJsonObject &page, const QString &previous);
+
+    // The union of several mix lists, deduplicated on the mix id. The first list
+    // to carry an id fixes the position; `dateAdded` is taken from whichever
+    // record has one. See the definition.
+    static QList<Mix> mergeMixLists(const QList<QList<Mix>> &lists);
+
+    // The two sources fetchHomeMixes merges. Separate so that what the Collection
+    // shows is one decision in one place rather than a shape spread over the
+    // class: the generated feed (pages/my_collection_my_mixes) and the saved list
+    // (v2/favorites/mixes, cursor-paged).
+    void fetchGeneratedMixes(MixesCallback cb);
+    void fetchSavedMixes    (MixesCallback cb, const QString &cursor = QString(),
+                             QList<Mix> acc = {}, int page = 0);
+
+    // The server's maximum for v2/favorites/mixes; limit=100 answers 400.
+    static constexpr int kSavedMixesPageSize = 50;
+    // A backstop on the cursor loop, as LibraryIndex::maxPages is on the
+    // offset-paged endpoints. nextCursor() already stops on a repeat and on an
+    // empty page; this is for a server that does neither.
+    static constexpr int kMaxSavedMixesPages = 50;
+
+    // Public and static only so a test can reach them. The favourites endpoints
+    // wrap each item in a row carrying the date this user added it, and whether
+    // that row survives unwrapping is what decides the order of the home playlist
+    // row and of the whole sidebar, so it is worth a regression test. They touch
+    // no member state.
     static QList<Playlist> parsePlaylists(const QJsonObject &root);
+    static QList<Album>    parseAlbums   (const QJsonObject &root);
+    static QList<Artist>   parseArtists  (const QJsonObject &root);
 
 signals:
     void error(const QString &msg);
@@ -150,9 +183,10 @@ private:
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
 
+    // Daily Discovery, then New Arrivals, then the order they came in.
+    static QList<Mix> orderMixes(QList<Mix> mixes);
+
     QList<Track>    parseTracks   (const QJsonObject &root);
-    QList<Album>    parseAlbums   (const QJsonObject &root);
-    QList<Artist>   parseArtists  (const QJsonObject &root);
 
     static QString qualityString(AudioQuality q);
 

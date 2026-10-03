@@ -22,6 +22,10 @@ public:
 
     // Low-level GET/POST
     void get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // The same GET against the v2 host. A handful of endpoints only exist there -
+    // favorites/mixes is one - and they are cursor-paged rather than
+    // offset-paged, so they are not drop-in replacements for their v1 siblings.
+    void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     void post(const QString &endpoint, const QByteArray &body,
               const QMap<QString,QString> &extraHeaders, JsonCallback cb);
     void postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
@@ -34,8 +38,9 @@ public:
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
-    static constexpr auto kApiBase  = "https://api.tidal.com/v1/";
-    static constexpr auto kAuthBase = "https://auth.tidal.com/v1/";
+    static constexpr auto kApiBase   = "https://api.tidal.com/v1/";
+    static constexpr auto kApiBaseV2 = "https://api.tidal.com/v2/";
+    static constexpr auto kAuthBase  = "https://auth.tidal.com/v1/";
 
 private:
     QNetworkAccessManager *m_nam;
@@ -43,4 +48,6 @@ private:
     QString m_countryCode;
 
     QNetworkRequest makeRequest(const QUrl &url);
+    void getFrom(const QString &base, const QString &endpoint,
+                 const QUrlQuery &params, JsonCallback cb);
 };

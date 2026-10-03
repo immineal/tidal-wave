@@ -3,7 +3,10 @@
 #include <QJsonDocument>
 #include <QByteArray>
 #include <QDebug>
+#include <QHash>
 #include <algorithm>
+#include <memory>
+#include <utility>
 
 TidalClient::TidalClient(TidalApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -33,12 +36,19 @@ QList<Track> TidalClient::parseTracks(const QJsonObject &root) {
     return out;
 }
 
+// The favourites endpoints answer {"created": …, "item": {…}} per row, and the
+// "created" is the date *this* user saved the item. The album and artist objects
+// inside carry no date of their own (checked against a live response: neither
+// has a "created" key), so the row has to reach fromJson() along with the item
+// or the save date is gone - and the sidebar's ordering is built on it.
 QList<Album> TidalClient::parseAlbums(const QJsonObject &root) {
     QList<Album> out;
     for (const auto &v : root["items"].toArray()) {
-        auto obj = v.toObject();
-        if (obj.contains("item")) obj = obj["item"].toObject();
-        if (obj.contains("id"))   out.append(Album::fromJson(obj));
+        const QJsonObject row = v.toObject();
+        QJsonObject obj = row;
+        QJsonObject wrapper;
+        if (row.contains("item")) { obj = row["item"].toObject(); wrapper = row; }
+        if (obj.contains("id"))   out.append(Album::fromJson(obj, wrapper));
     }
     return out;
 }
@@ -46,9 +56,11 @@ QList<Album> TidalClient::parseAlbums(const QJsonObject &root) {
 QList<Artist> TidalClient::parseArtists(const QJsonObject &root) {
     QList<Artist> out;
     for (const auto &v : root["items"].toArray()) {
-        auto obj = v.toObject();
-        if (obj.contains("item")) obj = obj["item"].toObject();
-        if (obj.contains("id"))   out.append(Artist::fromJson(obj));
+        const QJsonObject row = v.toObject();
+        QJsonObject obj = row;
+        QJsonObject wrapper;
+        if (row.contains("item")) { obj = row["item"].toObject(); wrapper = row; }
+        if (obj.contains("id"))   out.append(Artist::fromJson(obj, wrapper));
     }
     return out;
 }
@@ -81,22 +93,102 @@ QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
         for (const auto &module : row.toObject()["modules"].toArray()) {
             auto mod = module.toObject();
             if (mod["type"].toString() != "MIX_LIST") continue;
-            for (const auto &item : mod["pagedList"].toObject()["items"].toArray())
-                mixes.append(Mix::fromJson(item.toObject()));
+            for (const auto &item : mod["pagedList"].toObject()["items"].toArray()) {
+                const Mix mix = Mix::fromJson(item.toObject());
+                // The app cannot play a video mix. Nothing in src/ or qml/ touches
+                // video at all, and `pages/mix` answers a VIDEO_DAILY_MIX with a
+                // VIDEO_LIST module of 50 items of type "Music Video" where a
+                // DAILY_MIX answers a TRACK_LIST - so fetchMixTracks(), which
+                // reads TRACK_LIST modules, finds nothing and the tile opens an
+                // empty mix. my_collection_my_mixes sends eight of seventeen, two
+                // of them sharing the title "My Video Mix 7", so the duplicate
+                // goes with them. Delete this `continue` to let them through.
+                //
+                // Only here, on the *generated* list. parseSavedMixes() keeps a
+                // video mix, because the user put it there on purpose and
+                // silently dropping something they saved is the worse failure.
+                if (mix.isVideoMix()) continue;
+                mixes.append(mix);
+            }
         }
     }
+    return orderMixes(std::move(mixes));
+}
 
-    // my_collection_my_mixes answers "My Mix 1" to "My Mix 8" first and the two
-    // personalised mixes last, so "My Daily Discovery" and "My New Arrivals"
-    // were items nine and ten of ten on a row of 160px cards - past the right
-    // edge at any ordinary window width, in a list that is interactive: false
-    // and so only scrolls by dragging its scrollbar. They lead the row instead.
+QList<Mix> TidalClient::parseSavedMixes(const QJsonObject &root) {
+    // v2/favorites/mixes. Nothing like the `pages/*` feeds: a flat "items" array
+    // whose entries *are* the mixes - no {"item": {…}} wrapper, unlike the v1
+    // favourites endpoints - and each carries the `dateAdded` the sidebar orders
+    // on. No "totalNumberOfItems" either; see nextCursor() for how paging ends.
     //
-    // The sort is on mixType, never on the title: every one of these titles
+    // Nothing is filtered. A TRACK_MIX or ARTIST_MIX here is a radio station the
+    // user saved, which is a saved mix like any other and is the thing they
+    // noticed was missing from the Collection.
+    QList<Mix> mixes;
+    for (const auto &v : root["items"].toArray()) {
+        const QJsonObject obj = v.toObject();
+        if (obj.contains("id")) mixes.append(Mix::fromJson(obj));
+    }
+    return mixes;
+}
+
+QString TidalClient::nextCursor(const QJsonObject &page, const QString &previous) {
+    // This endpoint pages on an opaque cursor and reports no total, so there is no
+    // arithmetic that says "done". Three things end a run:
+    //
+    //   * an empty page. Nothing more can come of asking again.
+    //   * the cursor the page was just fetched with, which would fetch the same
+    //     page for ever. (LibraryIndex has the same guard on the offset-paged
+    //     endpoints, for the same reason.)
+    //   * no cursor at all - the last page answers `"cursor": null`, which reads
+    //     back as an empty string. That needs no branch of its own: an empty
+    //     cursor returned is what the caller stops on. The temptation is to treat
+    //     "no new cursor" as "ask again with the old one"; that is an endless run.
+    const QString cursor = page["cursor"].toString();
+    if (page["items"].toArray().isEmpty()) return {};
+    if (cursor == previous) return {};
+    return cursor;
+}
+
+QList<Mix> TidalClient::mergeMixLists(const QList<QList<Mix>> &lists) {
+    // One row per mix id, never per title: titles arrive translated, and
+    // my_collection_my_mixes proves they are not unique even inside one response
+    // (two different mixes both called "My Video Mix 7").
+    //
+    // The first list to carry an id fixes that mix's position, which is why
+    // fetchHomeMixes passes the generated list first: it is the one that holds
+    // "My Mix 1".."My Mix 8" as a run, and taking the saved list first would
+    // break the run apart wherever a mix happens to be saved. The saved record
+    // still wins on one field - `dateAdded`, which only it has, and which the
+    // sidebar's ordering needs. Everything else (title, subtitle, artwork) is the
+    // same mix either way.
+    QList<Mix> out;
+    QHash<QString, qsizetype> seen;
+    for (const QList<Mix> &list : lists) {
+        for (const Mix &m : list) {
+            if (m.id.isEmpty()) { out.append(m); continue; }
+            const auto at = seen.constFind(m.id);
+            if (at == seen.constEnd()) {
+                seen.insert(m.id, out.size());
+                out.append(m);
+                continue;
+            }
+            Mix &kept = out[*at];
+            if (kept.addedAt == 0 && m.addedAt > 0) kept.addedAt = m.addedAt;
+        }
+    }
+    return orderMixes(std::move(out));
+}
+
+QList<Mix> TidalClient::orderMixes(QList<Mix> mixes) {
+    // "My Daily Discovery" first, then "My New Arrivals", then the order the
+    // lists were walked in.
+    //
+    // The ranking is on mixType, never on the title: every one of these titles
     // arrives translated, so matching "My Daily Discovery" would put the two
-    // back at the end for every user who is not reading the app in English.
-    // Stable, so the eight behind them keep the order the server sent, which is
-    // what the Collection grid shows on its default (unsorted) setting.
+    // back behind the rest for every user not reading the app in English.
+    // Stable, so everything else keeps the order it came in, which is what the
+    // Collection grid shows on its default (unsorted) setting.
     const auto rank = [](const Mix &m) {
         if (m.isDailyDiscovery()) return 0;
         if (m.isNewArrivals())    return 1;
@@ -107,7 +199,7 @@ QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
     return mixes;
 }
 
-void TidalClient::fetchHomeMixes(MixesCallback cb) {
+void TidalClient::fetchGeneratedMixes(MixesCallback cb) {
     QUrlQuery q;
     q.addQueryItem("deviceType", "BROWSER");
     m_api->get(QStringLiteral("pages/my_collection_my_mixes"), q,
@@ -115,6 +207,69 @@ void TidalClient::fetchHomeMixes(MixesCallback cb) {
             if (!err.isEmpty()) { cb({}, err); return; }
             cb(parseMixPage(root), {});
         });
+}
+
+void TidalClient::fetchSavedMixes(MixesCallback cb, const QString &cursor,
+                                  QList<Mix> acc, int page)
+{
+    QUrlQuery q;
+    // 50 is the server's maximum, not a preference: limit=100 answers 400
+    // "getMixes.limit: must be less than or equal to 50".
+    q.addQueryItem("limit", QString::number(kSavedMixesPageSize));
+    if (!cursor.isEmpty()) q.addQueryItem("cursor", cursor);
+    m_api->getV2(QStringLiteral("favorites/mixes"), q,
+        [this, cb, cursor, acc, page](QJsonObject root, QString err) mutable {
+            if (!err.isEmpty()) {
+                // A later page failing still delivers the earlier ones; only an
+                // empty run is an error.
+                cb(acc, acc.isEmpty() ? err : QString());
+                return;
+            }
+            acc.append(parseSavedMixes(root));
+            const QString next = nextCursor(root, cursor);
+            if (next.isEmpty() || page + 1 >= kMaxSavedMixesPages) { cb(acc, {}); return; }
+            fetchSavedMixes(cb, next, acc, page + 1);
+        });
+}
+
+void TidalClient::fetchHomeMixes(MixesCallback cb) {
+    // Both lists, merged on the mix id. The generated feed has the eight "My Mix
+    // N" that are not saved; v2/favorites/mixes has whatever the user saved,
+    // including "My New Arrivals" - which is on no `pages/*` feed the app reads -
+    // and any radio station they saved. Neither is a subset of the other.
+    //
+    // This is the one place that decides what the Collection's Mixes tab holds.
+    // Dropping a source is deleting one of the two fetches below and the matching
+    // argument to mergeMixLists(); nothing else has to change.
+    struct Pending {
+        QList<Mix> generated;
+        QList<Mix> saved;
+        int        outstanding = 2;
+        QString    err;
+    };
+    const auto pending = std::make_shared<Pending>();
+
+    const auto finish = [cb, pending]() {
+        if (--pending->outstanding > 0) return;
+        const QList<Mix> mixes = mergeMixLists({pending->generated, pending->saved});
+        // One source failing must not empty the tab: whatever the other answered
+        // is better than nothing, and PinStore spends its one seeding shot on an
+        // empty list only when that was a real answer. The error is reported only
+        // when neither source yielded anything.
+        if (mixes.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
+        cb(mixes, {});
+    };
+
+    fetchGeneratedMixes([pending, finish](QList<Mix> mixes, QString err) {
+        if (err.isEmpty()) pending->generated = mixes;
+        else if (pending->err.isEmpty()) pending->err = err;
+        finish();
+    });
+    fetchSavedMixes([pending, finish](QList<Mix> mixes, QString err) {
+        if (err.isEmpty()) pending->saved = mixes;
+        else if (pending->err.isEmpty()) pending->err = err;
+        finish();
+    });
 }
 
 void TidalClient::fetchMixTracks(const QString &mixId, TracksCallback cb) {

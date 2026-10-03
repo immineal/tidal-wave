@@ -3,6 +3,14 @@
 // withdrawn by the user; the case below named for it is the one that keeps it
 // from coming back.
 //
+// The ordering S2 described - pinned, then recently played, then A-Z - is gone
+// too. The A-Z tier put an album the user had just saved at alphabetical
+// position 589 of 971, which they could not tell from its not being saved, so
+// there is now one list under the pinned block, ordered by the most recent of
+// (last played, date added). The cases under "one list, newest first" below are
+// that rule; the fixtures that carry no dates at all still come out A-Z, because
+// collation is the tie-break.
+//
 // Written before LibraryIndex.cpp. The interesting cases are the ones the live
 // API made expensive to reach: paging that has to terminate even when the
 // server keeps handing back the same page, and a background tracklist index
@@ -29,25 +37,40 @@ using namespace Tidal;
 
 namespace {
 
-Artist mkArtist(qint64 id, const QString &name) {
+// `addedAt` defaults to 0 - "no date on the response" - which is what most of
+// these fixtures want: with no dates anywhere, the ordering falls through to the
+// collation tie-break and the expectations stay readable. The cases that are
+// about the date pass one in.
+Artist mkArtist(qint64 id, const QString &name, qint64 addedAt = 0) {
     Artist a; a.id = id; a.name = name; a.picture = QStringLiteral("pic-%1").arg(id);
+    a.addedAt = addedAt;
     return a;
 }
 
-Album mkAlbum(qint64 id, const QString &title, const QList<Artist> &artists, int numTracks = 2) {
+Album mkAlbum(qint64 id, const QString &title, const QList<Artist> &artists, int numTracks = 2,
+              qint64 addedAt = 0) {
     Album a; a.id = id; a.title = title; a.artists = artists;
     a.numTracks = numTracks; a.cover = QStringLiteral("cov-%1").arg(id);
+    a.addedAt = addedAt;
     return a;
 }
 
-Playlist mkPlaylist(const QString &uuid, const QString &title, int numTracks = 10) {
+Playlist mkPlaylist(const QString &uuid, const QString &title, int numTracks = 10,
+                    qint64 addedAt = 0) {
     Playlist p; p.uuid = uuid; p.title = title; p.numTracks = numTracks;
     p.image = QStringLiteral("img-%1").arg(uuid);
+    p.addedAt = addedAt;
     return p;
 }
 
-Mix mkMix(const QString &id, const QString &title) {
+// A fixed instant to hang the date cases off, so nothing depends on the clock.
+constexpr qint64 kDay = 24LL * 60 * 60 * 1000;
+constexpr qint64 kJan2026 = 1767225600000LL;   // 2026-01-01T00:00:00Z
+qint64 daysAfterJan(int days) { return kJan2026 + days * kDay; }
+
+Mix mkMix(const QString &id, const QString &title, qint64 addedAt = 0) {
     Mix m; m.id = id; m.title = title; m.subTitle = QStringLiteral("mix sub");
+    m.addedAt = addedAt;
     return m;
 }
 
@@ -220,13 +243,16 @@ private slots:
         QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).removeRecursively();
     }
 
-    // ── ordering: pinned, then recently played, then A to Z (S2) ─────────
+    // ── one list, newest first, under the pinned block ───────────────────
 
-    void threeTierOrdering() {
+    // With no dates on the fixture at all, the list is the play times and then
+    // the collation tie-break - which is the old three-tier output, and is here
+    // to show that taking the A-Z tier out did not disturb it.
+    void pinnedThenPlayedThenTheRest() {
         PinStore pins;
         pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"),  QStringLiteral("12"), QStringLiteral("The Wall"), QString(), QString());
-        pins.pin(QStringLiteral("artist"), QStringLiteral("20"), QStringLiteral("Adele"),    QString(), QString());
+        pins.pin(QStringLiteral("artist"), QStringLiteral("20"), QStringLiteral("Alder Vane"),    QString(), QString());
 
         TestLibrary lib(&pins);
         fillMixedLibrary(lib);
@@ -260,7 +286,7 @@ private slots:
     void alphabeticalOrderIsCollatedNotByteWise() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
-        lib.artists = {mkArtist(1, QStringLiteral("adele")),
+        lib.artists = {mkArtist(1, QStringLiteral("alder vane")),
                        mkArtist(2, QStringLiteral("Ärzte")),
                        mkArtist(3, QStringLiteral("Beatles")),
                        mkArtist(4, QStringLiteral("Zero 7")),
@@ -268,7 +294,7 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
         QCOMPARE(titlesOf(lib.entries()), QStringList({
-            QStringLiteral("adele"), QStringLiteral("Ärzte"), QStringLiteral("Beatles"),
+            QStringLiteral("alder vane"), QStringLiteral("Ärzte"), QStringLiteral("Beatles"),
             QStringLiteral("Örsted"), QStringLiteral("Zero 7")}));
     }
 
@@ -928,7 +954,7 @@ private slots:
 
         lib.addAlbum(mkAlbum(10, QStringLiteral("Blue Train"),
                              {mkArtist(99, QStringLiteral("Various"))}));
-        lib.addArtist(mkArtist(20, QStringLiteral("Adele")));
+        lib.addArtist(mkArtist(20, QStringLiteral("Alder Vane")));
         // Nothing saved under this id, so there is nothing to take out either.
         lib.removeEntry(QStringLiteral("album"), QStringLiteral("9999"));
 
@@ -938,25 +964,262 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // A saved album still sorts where refresh() would have put it, rather than
-    // landing wherever it was appended.
-    void aNewlySavedAlbumSortsIntoPlace() {
+    // The bug that produced this whole ordering: the user saved an album and it
+    // did not appear. It was saved, and it filed at alphabetical position 589 of
+    // 971. A just-saved album is now the first row under the pinned block.
+    //
+    // "Avalon" is deliberately a title that collates into the middle - between
+    // "Ärzte Live" and "Beatles" in German - so an alphabetical placement and a
+    // newest-first one cannot agree.
+    void aJustSavedAlbumIsTheFirstRowUnderThePins() {
         PinStore pins; pins.setUserId(kUser);
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+                 QString(), QString());
+
         TestLibrary lib(&pins);
         fillMixedLibrary(lib);
         lib.setUserId(kUser);
         lib.refresh();
 
-        // "Avalon" files between "Ärzte Live" and "Beatles" under German
-        // collation, nowhere near the end of the list it is appended to.
         lib.addAlbum(mkAlbum(4242, QStringLiteral("Avalon"),
-                             {mkArtist(98, QStringLiteral("Roxy Music"))}));
+                             {mkArtist(98, QStringLiteral("Isle Trio"))}));
 
+        const QStringList keys = keysOf(lib.entries());
+        QCOMPARE(keys.at(0), QStringLiteral("album:12"));      // the pin keeps its place
+        QVERIFY2(keys.at(1) == QStringLiteral("album:4242"),
+                 qPrintable(QStringLiteral("the album just saved is not the first row under the "
+                                           "pinned block; the list is %1")
+                                .arg(keys.join(QLatin1String(", ")))));
+        // And it did not land there alphabetically.
         const QStringList titles = titlesOf(lib.entries());
-        QVERIFY2(titles.indexOf(QStringLiteral("Ärzte Live")) < titles.indexOf(QStringLiteral("Avalon")),
+        QVERIFY2(titles.indexOf(QStringLiteral("Avalon")) < titles.indexOf(QStringLiteral("Ärzte Live")),
                  qPrintable(titles.join(QLatin1String(", "))));
-        QVERIFY2(titles.indexOf(QStringLiteral("Avalon")) < titles.indexOf(QStringLiteral("Beatles")),
-                 qPrintable(titles.join(QLatin1String(", "))));
+    }
+
+    // The date comes from the API on every sign-in, so the order a fresh launch
+    // produces is the same one, with nothing played yet.
+    void aRefreshOrdersByTheDateTheItemsWereAdded() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        // Titles ascending, dates descending, so A-Z and newest-first disagree
+        // on every pair.
+        lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),  {various}, 2, daysAfterJan(1)),
+                      mkAlbum(2, QStringLiteral("Barrow"), {various}, 2, daysAfterJan(9)),
+                      mkAlbum(3, QStringLiteral("Cinder"), {various}, 2, daysAfterJan(5))};
+        lib.artists   = {mkArtist(20, QStringLiteral("Dune Choir"), daysAfterJan(7))};
+        lib.playlists = {mkPlaylist(QStringLiteral("p-1"), QStringLiteral("Embers"), 10,
+                                    daysAfterJan(3))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(titlesOf(lib.entries()), QStringList({
+            QStringLiteral("Barrow"),      // day 9
+            QStringLiteral("Dune Choir"),  // day 7, an artist ranks with the rest
+            QStringLiteral("Cinder"),      // day 5
+            QStringLiteral("Embers"),      // day 3, and so does a playlist
+            QStringLiteral("Anvil")}));    // day 1
+
+        // The row carries both halves of the key it was placed by.
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("album:2"))
+                     .value(QStringLiteral("addedAt")).toLongLong(), daysAfterJan(9));
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("album:2"))
+                     .value(QStringLiteral("recency")).toLongLong(), daysAfterJan(9));
+    }
+
+    // "playing from something and (re)saving it should both just put it at the
+    // top with the same priority": one timestamp, and the later of the two wins.
+    void playingAndSavingAreOneSignalOnOneTimestamp() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),  {various}, 2, daysAfterJan(1)),
+                      mkAlbum(2, QStringLiteral("Barrow"), {various}, 2, daysAfterJan(9))};
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("album:2"));
+
+        // Playing the older one lifts it over the newer save: markPlayed stamps
+        // now, and now is after January.
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("1"));
+        QCOMPARE(keysOf(lib.entries()), QStringList({QStringLiteral("album:1"),
+                                                     QStringLiteral("album:2")}));
+
+        // Re-saving the other one lifts it back, by the same measure. Re-saving
+        // is un-save then save, which is how it arrives from the bridge.
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("2"));
+        lib.addAlbum(mkAlbum(2, QStringLiteral("Barrow"), {various}, 2, daysAfterJan(9)));
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("album:2"),
+                 qPrintable(QStringLiteral("re-saving did not lift the album: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        // It was lifted by being re-saved *now*, not by the January date the
+        // response still carried.
+        QVERIFY(rowFor(lib.entries(), QStringLiteral("album:2"))
+                    .value(QStringLiteral("recency")).toLongLong() > daysAfterJan(9));
+    }
+
+    // The stamp a play or a save gets is strictly later than every play and save
+    // already recorded, rather than whatever the clock says. Two actions inside
+    // one millisecond would otherwise tie, and the tie-break below a pin is the
+    // title, so the thing the user had just done could come out second.
+    //
+    // Driven with a date the clock cannot beat, so the collision is certain
+    // rather than a race against the millisecond boundary - which is the same
+    // collision, and is also a real shape: a server `created` can be ahead of a
+    // local clock that is behind or in the wrong zone.
+    void aPlayOrSaveIsNeverBehindWhatIsAlreadyRecorded() {
+        const qint64 ahead = QDateTime::currentMSecsSinceEpoch() + 60 * 60 * 1000;
+
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.albums = {mkAlbum(1, QStringLiteral("Already ahead"), {various}, 2, ahead)};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        // Saving something now has to beat it, although the clock does not.
+        lib.addAlbum(mkAlbum(2, QStringLiteral("Saved now"), {various}));
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("album:2"),
+                 qPrintable(QStringLiteral("the album just saved lost to a date ahead of the "
+                                           "clock: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QVERIFY(rowFor(lib.entries(), QStringLiteral("album:2"))
+                    .value(QStringLiteral("recency")).toLongLong() > ahead);
+
+        // And so does playing it, by the same measure.
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("1"));
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("album:1"),
+                 qPrintable(QStringLiteral("the album just played lost to a stamp from a moment "
+                                           "ago: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
+    }
+
+    // Nothing resets on a restart: the play times are on disk and the dates come
+    // back from the API, so a second launch over the same data is the same list.
+    void theOrderIsTheSameAfterARestart() {
+        PinStore pins; pins.setUserId(kUser);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const auto fill = [&](TestLibrary &lib) {
+            lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),  {various}, 2, daysAfterJan(1)),
+                          mkAlbum(2, QStringLiteral("Barrow"), {various}, 2, daysAfterJan(9)),
+                          mkAlbum(3, QStringLiteral("Cinder"), {various}, 2, daysAfterJan(5))};
+        };
+
+        QStringList first;
+        {
+            TestLibrary lib(&pins);
+            fill(lib);
+            lib.setUserId(kUser);
+            lib.refresh();
+            lib.markPlayed(QStringLiteral("album"), QStringLiteral("1"));
+            first = keysOf(lib.entries());
+            QCOMPARE(first, QStringList({QStringLiteral("album:1"), QStringLiteral("album:2"),
+                                         QStringLiteral("album:3")}));
+        }
+        TestLibrary again(&pins);
+        fill(again);
+        again.setUserId(kUser);
+        again.refresh();
+        QCOMPARE(keysOf(again.entries()), first);
+    }
+
+    // A mix Tidal merely generated - "My Mix 1".."My Mix 8" - is not something
+    // the user added, and Tidal regenerates the set, so it carries no date and
+    // files below everything that does. Until it is played.
+    void aGeneratedMixHasNoDateAndFilesBelowWhatDoes() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),
+                              {mkArtist(99, QStringLiteral("Various"))}, 2, daysAfterJan(1))};
+        lib.mixes  = {mkMix(QStringLiteral("m1"), QStringLiteral("Aardvark Mix"))};
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(keysOf(lib.entries()), QStringList({QStringLiteral("album:1"),
+                                                     QStringLiteral("mix:m1")}));
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("mix:m1"))
+                     .value(QStringLiteral("addedAt")).toLongLong(), 0LL);
+
+        lib.markPlayed(QStringLiteral("mix"), QStringLiteral("m1"));
+        QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("mix:m1"));
+    }
+
+    // A mix the user *saved* does carry one - v2/favorites/mixes reports
+    // `dateAdded` per item - and ranks against the saved albums and artists on it,
+    // not in a block of its own at the end.
+    void aSavedMixRanksOnItsDateLikeEverythingElse() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),  {various}, 2, daysAfterJan(9)),
+                      mkAlbum(2, QStringLiteral("Barrow"), {various}, 2, daysAfterJan(1))};
+        lib.artists = {mkArtist(20, QStringLiteral("Dune Choir"), daysAfterJan(3))};
+        // Titles chosen so an alphabetical order would put both mixes first.
+        lib.mixes  = {mkMix(QStringLiteral("saved"),     QStringLiteral("Aardvark Mix"),
+                            daysAfterJan(5)),
+                      mkMix(QStringLiteral("generated"), QStringLiteral("Abacus Mix"))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(keysOf(lib.entries()), QStringList({
+            QStringLiteral("album:1"),      // day 9
+            QStringLiteral("mix:saved"),    // day 5, in among the albums
+            QStringLiteral("artist:20"),    // day 3
+            QStringLiteral("album:2"),      // day 1
+            QStringLiteral("mix:generated")}));   // no date at all
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("mix:saved"))
+                     .value(QStringLiteral("addedAt")).toLongLong(), daysAfterJan(5));
+    }
+
+    // The size the bug was reported at: an album saved into a library of 971.
+    // The point is that the ordering holds at that size and that one save still
+    // only re-sorts what is already in hand - nothing is re-paged for it.
+    void aThousandRowsStillOrderByRecency() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        // Titles ascending with the id, dates descending, so A-Z and
+        // newest-first are exact opposites over the whole list.
+        for (int i = 0; i < 971; ++i)
+            lib.albums.append(mkAlbum(1000 + i,
+                                      QStringLiteral("Album %1").arg(i, 4, 10, QChar('0')),
+                                      {various}, 2, daysAfterJan(971 - i)));
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(lib.entries().size(), 971);
+        QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("album:1000"));
+        QCOMPARE(keysOf(lib.entries()).last(),  QStringLiteral("album:1970"));
+
+        // The reported case, at the reported size: save one more and it is first.
+        const int pagedBefore = lib.albumRequests;
+        lib.addAlbum(mkAlbum(50, QStringLiteral("Album 9999"), {various}));
+        QCOMPARE(lib.entries().size(), 972);
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("album:50"),
+                 qPrintable(QStringLiteral("the saved album is at position %1 of %2")
+                                .arg(indexOfKey(lib.entries(), QStringLiteral("album:50")))
+                                .arg(lib.entries().size())));
+        QCOMPARE(lib.albumRequests, pagedBefore);
+
+        // And playing something from the far end of the list lifts it over that.
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("1970"));
+        QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("album:1970"));
+    }
+
+    // Following an artist is the same signal as saving an album, and the two
+    // rank against each other rather than in separate blocks.
+    void followingAnArtistRanksWithSavingAnAlbum() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        lib.albums = {mkAlbum(1, QStringLiteral("Anvil"),
+                              {mkArtist(99, QStringLiteral("Various"))}, 2, daysAfterJan(9))};
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("album:1"));
+
+        lib.addArtist(mkArtist(30, QStringLiteral("Zephyr Nine")));
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("artist:30"),
+                 qPrintable(QStringLiteral("the artist just followed is not first: %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
     // ── and its songs have to reach the search index with it ─────────────
@@ -1295,7 +1558,7 @@ private:
         lib.albums = {mkAlbum(10, QStringLiteral("Blue Train"),  {various}),
                       mkAlbum(11, QStringLiteral("Ärzte Live"),  {various}),
                       mkAlbum(12, QStringLiteral("The Wall"),    {various})};
-        lib.artists = {mkArtist(20, QStringLiteral("Adele")),
+        lib.artists = {mkArtist(20, QStringLiteral("Alder Vane")),
                        mkArtist(21, QStringLiteral("Beatles"))};
         lib.mixes = {mkMix(QStringLiteral("m1"), QStringLiteral("The Cosmos"))};
     }

@@ -1,5 +1,10 @@
-// Playlists are ordered by how recently the user last had anything to do with
+// Library rows are ordered by how recently the user last had anything to do with
 // them, which is more than "last played".
+//
+// This file covers the date half of that: Playlist::addedAt and the home row's
+// sortPlaylistsByRecency(), which came first, and the same `created` now being
+// carried for albums and artists, which is what the sidebar's one list is sorted
+// on (LibraryIndex::rebuild(); the ordering itself is in tst_library).
 //
 // The old key was the locally stored play time alone, sorted descending and
 // stable, so every playlist the user had never played kept whatever order the
@@ -197,6 +202,63 @@ private slots:
         QCOMPARE(Playlist::fromJson(json(R"({"uuid":"x","created":"last Tuesday"})")).addedAt, 0LL);
         QCOMPARE(Playlist::fromJson(json(R"({"uuid":"x"})")).addedAt, 0LL);
         QCOMPARE(Playlist::fromJson(json(R"({"uuid":"x","created":""})")).addedAt, 0LL);
+    }
+
+    // ── the same date, for albums and artists ────────────────────────────
+    //
+    // users/<id>/favorites/albums and .../artists answer rows of
+    // {"created": …, "item": {…}}, where "created" is this user's save date.
+    // Checked against a live response: the album and artist objects inside carry
+    // no "created" of their own, so unwrapping without keeping the row leaves
+    // nothing to sort on - which is why a saved album had no date at all and the
+    // sidebar fell back to A-Z for it.
+    void parseAlbumsKeepsTheFavouritesRowDate() {
+        const QList<Album> parsed = TidalClient::parseAlbums(json(R"({
+            "limit": 50, "offset": 0, "totalNumberOfItems": 2,
+            "items": [
+                { "created": "2026-10-03T10:03:52.196+0000",
+                  "item": { "id": 389720389, "title": "Saved today",
+                            "releaseDate": "1998-04-21" } },
+                { "created": "2026-10-01T14:41:54.492+0000",
+                  "item": { "id": 12345, "title": "Saved on Thursday" } }
+            ]
+        })"));
+
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].addedAt, instant("2026-10-03T10:03:52.196+0000"));
+        QCOMPARE(parsed[1].addedAt, instant("2026-10-01T14:41:54.492+0000"));
+        // Not the release date. An album from 1998 saved this morning has to rank
+        // as saved this morning, which is the whole point of the key.
+        QVERIFY(parsed[0].addedAt > parsed[1].addedAt);
+        QCOMPARE(parsed[0].releaseDate, QStringLiteral("1998-04-21"));
+    }
+
+    void parseArtistsKeepsTheFavouritesRowDate() {
+        const QList<Artist> parsed = TidalClient::parseArtists(json(R"({
+            "items": [
+                { "created": "2026-10-01T10:53:12.130+0000",
+                  "item": { "id": 7, "name": "Followed today" } },
+                { "created": "2026-08-24T11:24:38.119+0000",
+                  "item": { "id": 8, "name": "Followed in August" } }
+            ]
+        })"));
+
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].addedAt, instant("2026-10-01T10:53:12.130+0000"));
+        QCOMPARE(parsed[1].addedAt, instant("2026-08-24T11:24:38.119+0000"));
+    }
+
+    // Everywhere else an album or artist is parsed - albums/<id>, a search hit,
+    // the album inside a track - there is no favourites row and so no date. 0,
+    // not a guess: the alternative was releaseDate, which is a different fact.
+    void anItemWithNoFavouritesRowHasNoDate() {
+        QCOMPARE(Album::fromJson(json(R"({"id":1,"title":"x","releaseDate":"1998-04-21"})")).addedAt,
+                 0LL);
+        QCOMPARE(Artist::fromJson(json(R"({"id":1,"name":"x"})")).addedAt, 0LL);
+        // An unparseable row date is 0 too, for the reason given above
+        // unparseableOrMissingCreatedIsZero.
+        const QJsonObject row = json(R"({"created":"last Tuesday","item":{"id":1,"title":"x"}})");
+        QCOMPARE(Album::fromJson(row["item"].toObject(), row).addedAt, 0LL);
     }
 
     // The plumbing, not just the semantics: the wrapper has to survive

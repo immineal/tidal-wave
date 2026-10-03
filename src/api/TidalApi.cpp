@@ -22,7 +22,16 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) {
 }
 
 void TidalApi::get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
-    QUrl url(kApiBase + endpoint);
+    getFrom(QString::fromLatin1(kApiBase), endpoint, params, std::move(cb));
+}
+
+void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, std::move(cb));
+}
+
+void TidalApi::getFrom(const QString &base, const QString &endpoint,
+                       const QUrlQuery &params, JsonCallback cb) {
+    QUrl url(base + endpoint);
     QUrlQuery q = params;
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
