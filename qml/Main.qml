@@ -33,9 +33,42 @@ ApplicationWindow {
     property var    pageParams:  ({})
     property bool   queueOpen:   false
 
-    property string previousPage: "home"
-    property var    previousPageParams: ({})
-    property var    _currentNavParams: ({})
+    // ─── Where back goes ───────────────────────────────────────────────────
+    // A stack, not a slot. This was one `previousPage` string that navigate()
+    // overwrote on every move, and goBack() was an ordinary navigate() - so
+    // going back recorded the page it was leaving, and the next back came
+    // straight forward again. Escape on Now Playing opened and closed it for as
+    // long as the user held the key, because "nowplaying" is in detailPages and
+    // the shortcut keeps firing there instead of falling through to doing
+    // nothing. Every pair of detail pages had it; album -> artist -> back ->
+    // back came back to the artist, which is the same defect without a slide to
+    // make it obvious.
+    //
+    // Each entry is a (page, params) pair. The params are what make an entry
+    // *that* album rather than an album page, so they travel with the page they
+    // belong to; beside the stack they were a second loose slot with the same
+    // bug in it.
+    //
+    // The top is where one back goes. The bottom is the last top-level
+    // destination the user was on, because arriving at one empties the stack
+    // (see navigate): the sidebar's destinations are where history starts, not
+    // somewhere to come back out of. So in normal use this is exactly as deep
+    // as the chain of links the user has followed since they last used the
+    // sidebar, and it is empty whenever they are standing on a destination.
+    property var navHistory: []
+
+    // That chain is the only thing that grows it, and a chain of links can be
+    // followed forever: album -> artist -> album never touches a top-level
+    // page. An array that only ever grows is a leak however slowly it fills,
+    // and this process lives in the tray for days, so the oldest entry is
+    // dropped at the ceiling. 32 is far past any path a user walks back out of
+    // by hand - and past it, back still walks out, it just runs out of recorded
+    // pages one step sooner than a 33-press user would want.
+    readonly property int maxNavHistory: 32
+
+    // The params `currentPage` was reached with, kept so that leaving it can
+    // push the pair and not the page on its own.
+    property var _currentNavParams: ({})
 
     // ─── Now Playing's way in and out ──────────────────────────────────
     // It rises out of the player bar and sinks back into it. The bar is the
@@ -323,7 +356,15 @@ ApplicationWindow {
     // don't need — or want — a back affordance.
     readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
-    function navigate(page, params) {
+    // The other side of that line, and the bottom of the back history: these
+    // are reached in one press from the sidebar (and from Ctrl+H/Ctrl+F/Ctrl+L),
+    // so there is never a chain of them to walk back through.
+    readonly property var topLevelPages: ["home", "search", "collection"]
+
+    // `fromHistory` is goBack()'s and nobody else's; every other caller passes
+    // two arguments. It is what stops a back step from recording the page it is
+    // leaving, which is the whole of the bug the stack replaces.
+    function navigate(page, params, fromHistory) {
         // Fullscreen belongs to Now Playing. Following a link out of it - an
         // artist name, the album, the source it is playing from - brings the
         // window back first, so the user never lands on another page with no
@@ -331,12 +372,42 @@ ApplicationWindow {
         if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
 
         var p = params || {}
-        if (page !== currentPage) {
-            previousPage = currentPage
-            previousPageParams = _currentNavParams
+        if (!fromHistory) {
+            if (root.topLevelPages.indexOf(page) !== -1) {
+                // A sidebar destination is the bottom of history, not a step in
+                // it: back is not offered there, so anything underneath could
+                // never be walked to anyway. It is also what keeps a stack from
+                // outliving the session it belongs to, since signing in lands
+                // here (see the auth Connections below).
+                root.navHistory = []
+            } else if (root._isTopOfHistory(page, p)) {
+                // Going forward onto the page back would have returned to *is*
+                // going back - Now Playing's track title opens the album the
+                // page rose from, and that album is where back already pointed.
+                // Recording it would make the next back a step forward, which is
+                // this bug's own shape one bounce deep, so unwind instead.
+                //
+                // The top entry only. A match further down is a page the user
+                // has walked away from since, and truncating the stack there
+                // would skip everything they walked through in between.
+                root.navHistory = root.navHistory.slice(0, -1)
+            } else if (currentPage !== ""
+                       && (page !== currentPage
+                           || !root._sameNavParams(_currentNavParams, p))) {
+                // A different page, or the same page type with different params
+                // - another album is another page to come back to. Asking for
+                // the one already on screen with the same params is a reload
+                // (below) and not a step.
+                //
+                // `currentPage !== ""` because that reload blanks it for a turn.
+                // Nothing should navigate from inside that turn, but a binding on
+                // currentPage could, and an empty string is not a page to come
+                // back to.
+                root._pushHistory(currentPage, _currentNavParams)
+            }
         }
         _currentNavParams = p
-        
+
         var targetLoader = getLoader(page)
         if (targetLoader) {
             if (currentPage === page
@@ -379,8 +450,50 @@ ApplicationWindow {
         }
     }
 
+    // A copy and an assignment rather than navHistory.push(), because mutating
+    // the array in place changes nothing the property's change signal can see,
+    // and anything reading the depth off a binding would never hear about it.
+    // The arrays are at most maxNavHistory long, so the copy costs nothing a
+    // navigation does not already cost many times over.
+    function _pushHistory(page, params) {
+        var h = root.navHistory.slice()
+        h.push({ page: page, params: params || {} })
+        if (h.length > root.maxNavHistory)
+            h.splice(0, h.length - root.maxNavHistory)
+        root.navHistory = h
+    }
+
+    function _isTopOfHistory(page, params) {
+        if (root.navHistory.length === 0) return false
+        var top = root.navHistory[root.navHistory.length - 1]
+        return top.page === page && root._sameNavParams(top.params, params)
+    }
+
+    // Shallow, because every params object in the app is flat - ids, uuids and
+    // titles; see the navigate() calls in SideBar, TrackRow and NowPlayingPage.
+    // Strict about it on purpose: a playlist opened with a cover and the same
+    // playlist opened without one do not draw the same page, so they are not the
+    // same entry and the stack keeps both.
+    function _sameNavParams(a, b) {
+        var x = a || {}, y = b || {}
+        for (var k in x) if (x[k] !== y[k]) return false
+        for (var k2 in y) if (!(k2 in x)) return false
+        return true
+    }
+
     function goBack() {
-        navigate(previousPage, previousPageParams)
+        if (root.navHistory.length === 0) {
+            // Nowhere recorded to go: a window that has only ever been where it
+            // is, or a history the ceiling has eaten. Back is an affordance the
+            // user can see - the button, the chevron - so it has to do
+            // something, and home is where the app starts.
+            root.navigate("home")
+            return
+        }
+        var h = root.navHistory.slice()
+        var entry = h.pop()
+        root.navHistory = h
+        root.navigate(entry.page, entry.params, true)
     }
 
     Connections {
@@ -395,6 +508,11 @@ ApplicationWindow {
                 // that just went away. Leaving it here is what keeps that from
                 // being a window only the window manager can rescue.
                 root.leaveFullScreen()
+                // The pages in the history belong to the session that just
+                // ended, ids and all. Signing in navigates to home and would
+                // empty the stack anyway; this is what makes that true whatever
+                // page the next sign-in happens to land on.
+                root.navHistory = []
             }
         }
     }
