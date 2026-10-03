@@ -382,8 +382,8 @@ TestCase {
         compare(pins.items[0].title, "Fever Dream")
         menu.close()
 
-        // And the rest of the one menu is here too, destructive entry last
-        // and the only row carrying a mark.
+        // And the rest of the one menu is here too, destructive entry last,
+        // every row carrying an icon.
         rightClickItem(host, cards[0])
         tryVerify(function () { return menu.visible }, 2000, "the menu did not reopen")
         compare(menu.pinItem.text, qsTr("Unpin"), "the label must follow the pin state")
@@ -392,8 +392,14 @@ TestCase {
         compare(menu.removeItem.text, qsTr("Remove from library"))
         verify(menu.removeItem.danger, "removing from the library is destructive")
         compare(menu.removeItem.iconName, "trash")
-        verify(!menu.pinItem.danger && menu.pinItem.iconName === "",
-               "only the destructive entry carries a mark")
+        verify(!menu.pinItem.danger, "pinning is not destructive")
+        // Pin is the row that proves the icon is not merely decoration: the
+        // filled pin is the one already stuck in, so it is the row that pulls
+        // it out, and the glyph has to follow the label rather than sit fixed.
+        compare(menu.pinItem.iconName, "pin-filled",
+                "the Unpin row must draw the state it is in")
+        verify(menu.playNextItem.iconName !== "" && menu.addToQueueItem.iconName !== "",
+               "every entry of this menu carries an icon, not only the destructive one")
         menu.close()
     }
 
