@@ -156,6 +156,27 @@ QString Auth::displayNameFrom(const QJsonObject &u) {
     return {};
 }
 
+// The expiry is written as UTC, because a bare wall clock is not an instant: a
+// machine that crosses a timezone between the write and the read sees a live
+// token as expired, or a dead one as current, by the difference between the two
+// offsets. Both of those land in refreshAccessToken() and recover while the
+// refresh token holds - so this costs a wasted round trip rather than a sign-out
+// - but it also mis-schedules m_refreshTimer by the same hours, and a stored
+// instant has no business depending on where the laptop was.
+QString Auth::expiryToString(const QDateTime &when) {
+    if (!when.isValid()) return {};
+    return when.toUTC().toString(Qt::ISODate);
+}
+
+// Both formats are read: ISODate takes the trailing Z or offset when there is
+// one, and a value written before the change above carries neither, so Qt reads
+// it as the local time it was in fact written as. That is deliberately *not*
+// reinterpreted as UTC - it would move every existing install's expiry by its
+// own offset - and the first saveCredentials() after this rewrites it with one.
+QDateTime Auth::expiryFromString(const QString &stored) {
+    return QDateTime::fromString(stored, Qt::ISODate);
+}
+
 void Auth::fetchSession() {
     m_api->get("sessions", {}, [this](QJsonObject obj, QString err) {
         if (!err.isEmpty()) {
@@ -216,7 +237,7 @@ void Auth::loadCredentials() {
     auto obj = doc.object();
     m_accessToken  = obj["access_token"].toString();
     m_refreshToken = obj["refresh_token"].toString();
-    m_tokenExpiry  = QDateTime::fromString(obj["expires_at"].toString(), Qt::ISODate);
+    m_tokenExpiry  = expiryFromString(obj["expires_at"].toString());
     m_userId       = obj["user_id"].toVariant().toLongLong();
     m_countryCode  = obj["country_code"].toString();
     m_username     = obj["username"].toString();
@@ -251,7 +272,7 @@ void Auth::saveCredentials() {
     QJsonObject obj;
     obj["access_token"]  = m_accessToken;
     obj["refresh_token"] = m_refreshToken;
-    obj["expires_at"]    = m_tokenExpiry.toString(Qt::ISODate);
+    obj["expires_at"]    = expiryToString(m_tokenExpiry);
     obj["user_id"]       = m_userId;
     obj["country_code"]  = m_countryCode;
     obj["username"]      = m_username;

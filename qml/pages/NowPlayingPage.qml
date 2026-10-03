@@ -398,6 +398,16 @@ Rectangle {
     }
     onShowCreditsChanged: if (showCredits) showLyrics = false
 
+    // The lyrics chip hides itself once the answer is "there are none" (see
+    // the chip), which leaves a panel already open over that track's cover
+    // with nothing to close it: skipping to an instrumental used to park "No
+    // lyrics available" over the artwork for the rest of the session, and in
+    // fullscreen it kept the reading view's whole layout with it. The slot
+    // follows the words. It does not re-open on the next track that has some -
+    // the panel is the user's to open - which is the price of the chip being
+    // allowed to disappear.
+    onLyricsStateChanged: if (lyricsState === "unavailable") showLyrics = false
+
     Timer {
         id: ignoreSyncTimer
         interval: 1000

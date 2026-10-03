@@ -203,11 +203,11 @@ Item {
         }
     }
 
-    // Track hover over entire section for scrollbar visibility
-    MouseArea {
-        id: sectionHover
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-    }
+    // Nothing sits over the whole section. A hoverEnabled MouseArea used to,
+    // left over from when the scrollbar was only shown while the row was
+    // hovered; the scrollbar follows `overflows` now and nothing read it. As
+    // the section's last child it was in front of every card, and hover
+    // delivery stops at the first item that takes it, so it swallowed the
+    // cards' own hover: no wash, no play button and the arrow cursor where the
+    // pointing hand belongs. See tst_layout_pages.
 }

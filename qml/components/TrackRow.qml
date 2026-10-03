@@ -256,8 +256,18 @@ Item {
                 color: Theme.surfaceHigh
                 clip: true
                 Image {
+                    objectName: "trackRowCover"
                     anchors.fill: parent
                     source: root.coverText.length > 0 ? "image://tidal/" + root.coverText : ""
+                    // Decoded at twice the 36px box it is drawn in rather than
+                    // at the 320px the cover URL serves: a long list was
+                    // holding a full-size QImage per row for a thumbnail.
+                    // Both dimensions, never one - sourceSize.width alone
+                    // reaches the provider as 72x0, which QSize calls valid
+                    // and QImageReader scales away to nothing. Safe against
+                    // the crop because this art is square (tidal serves it
+                    // WxW), which is the condition MediaCard does not meet.
+                    sourceSize: Qt.size(72, 72)
                     fillMode: Image.PreserveAspectCrop
                     smooth: true
                     mipmap: true
@@ -802,6 +812,8 @@ Item {
                                     Image {
                                         anchors.fill: parent
                                         source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
+                                        // 28px box, doubled; see the row cover above.
+                                        sourceSize: Qt.size(56, 56)
                                         fillMode: Image.PreserveAspectCrop; smooth: true
                                     }
                                 }

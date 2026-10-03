@@ -865,9 +865,14 @@ Track Player::trackFromMap(const QVariantMap &m) const {
 void Player::loadAndPlay(int index) {
     if (!m_player || index < 0 || index >= m_queue.count()) return;
 
-    setLoading(true);
+    // The order matters. stop() takes a playing track back to LoadedMedia and
+    // setSource({}) takes it to NoMedia, and both of those go through
+    // onMediaStatusChanged - so a flag raised before them is lowered again by
+    // the teardown of the track being left, and the app reports "not loading"
+    // for the whole of the next track's manifest fetch and download.
     m_player->stop();
     m_player->setSource(QUrl());
+    setLoading(true);
 
     if (m_activeDownload) {
         auto *dl = m_activeDownload;
@@ -926,7 +931,10 @@ void Player::loadAndPlay(int index) {
         m_preloadReady    = false;
         m_preloadQuality  = {};
         emit currentTrackChanged();
-        setLoading(false);
+        // Still loading, for the same reason as above: the file is local and
+        // already on disk, but it is not open yet. The media status clears the
+        // flag when it is, which is a few milliseconds of spinner rather than
+        // one frame of "done" followed by LoadingMedia putting it back.
         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
         beginPlayback();
         return;
@@ -1043,6 +1051,11 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
 void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     if (m_rebinding) return;   // rebindAudioOutput() reports the settled state
+    // Audio is coming out: the load is over whatever the media status did or
+    // did not say. The backstop is what stops a missed status leaving the
+    // spinner on top of a track that is audibly playing, and it belongs after
+    // the guard above - a rebind's transient Playing is not a load finishing.
+    if (state == QMediaPlayer::PlayingState) setLoading(false);
     emit playingChanged(state == QMediaPlayer::PlayingState);
     schedulePersist();         // a pause is the position worth coming back to
 }

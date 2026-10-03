@@ -366,6 +366,57 @@ TestCase {
                 + Object.keys(sizes).join(", "))
     }
 
+    // A thumbnail in a list is drawn at 36px and the cover URL serves 320, so
+    // without a sourceSize every row of a long list holds a full-size decoded
+    // image. The budget is the box doubled, for a 2x screen, and it has to
+    // name both dimensions: a width-only sourceSize reaches the image provider
+    // as 72x0, which QSize::isValid() accepts and QImageReader::setScaledSize()
+    // turns into nothing at all.
+    function test_a_list_thumbnail_decodes_at_the_size_it_is_drawn() {
+        var row = makeRow(900)
+        var cover = findByName(row, "trackRowCover")
+        verify(cover, "the row has no cover image")
+        var box = cover.width
+        verify(box > 0, "the cover box collapsed")
+
+        compare(cover.sourceSize.width, cover.sourceSize.height,
+                "a square cover was asked for at " + cover.sourceSize.width
+                + "x" + cover.sourceSize.height + ", which stretches it")
+        verify(cover.sourceSize.width >= box,
+               "the cover decodes at " + cover.sourceSize.width
+               + " for a box of " + box + ", which is softer than the screen")
+        verify(cover.sourceSize.width <= 2 * box,
+               "the cover decodes at " + cover.sourceSize.width
+               + " for a box of " + box + ": more than a 2x screen can show")
+    }
+
+    // A card's hover affordances have to survive being put in a row. Hover
+    // delivery stops at the first item that takes it, and the topmost child of
+    // a section covers every card in it, so one stray hoverEnabled MouseArea
+    // over the whole row silently kills the wash, the play button and the
+    // pointing-hand cursor on every card on the home page.
+    function test_a_card_inside_a_row_still_hovers() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 320 })
+        var sec = createTemporaryObject(sectionC, holder, { items: makeAlbums(4) })
+        verify(sec, "the section was not created")
+        settle(holder)
+
+        var art = findByName(sec, "cardArt")
+        verify(art, "the row drew no card")
+        var p = art.mapToItem(holder, art.width / 2, art.height / 2)
+        mouseMove(holder, p.x, p.y)
+        settle(holder)
+
+        var play = findByName(sec, "cardPlayButton")
+        verify(play, "the card has no play button")
+        verify(play.visible,
+               "a card inside a row never sees the hover, so it shows neither "
+               + "its play button nor a pointing hand")
+
+        mouseMove(holder, -20, -20)
+        settle(holder)
+    }
+
     // ── L7: TrackRow columns and the hover jitter ───────────────────────────
 
     function makeRow(w) {

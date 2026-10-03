@@ -1442,6 +1442,38 @@ TestCase {
                   "the chrome row's button did not put the page into the reading view")
     }
 
+    // The reading view is fullscreen *with a panel*, so a panel that closes
+    // itself has to take the reading view with it. Otherwise a track with no
+    // lyrics leaves a fullscreen page laid out around a panel that is not
+    // there any more.
+    function test_a_track_without_lyrics_leaves_the_reading_view_data() {
+        return fullScreenRows()
+    }
+
+    function test_a_track_without_lyrics_leaves_the_reading_view(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = openLyrics(host)
+        enterReading(host)
+        verify(page.readingView, row.tag + ": the reading view did not open")
+
+        page.lyricsState = "unavailable"
+        verify(!page.showLyrics,
+               row.tag + ": the panel stayed open on a track that has no lyrics")
+        verify(!page.readingView,
+               row.tag + ": the page is still in the reading view with no panel open")
+        // Asked before settlePage(), which waits on this among other things.
+        tryVerify(function () { return page.readingness === 0 }, 3000,
+                  row.tag + ": the page is still drawing the reading view")
+        settlePage(page)
+        waitForRendering(host.contentItem)
+
+        // Only the panel closed. Fullscreen is the chrome row's button and
+        // nothing here is allowed to press it.
+        verify(host.fullScreen, row.tag + ": closing the panel also left fullscreen")
+        var art = findChild(page, "nowPlayingArt")
+        verify(art && art.visible, row.tag + ": the artwork did not come back")
+    }
+
     // And it is reversible: leaving fullscreen puts every number back exactly
     // where it was, rather than leaving the page in a third state.
     function test_leaving_fullscreen_puts_the_panel_back_data() { return fullScreenRows() }

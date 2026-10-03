@@ -28,6 +28,16 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_jobs.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id);
 
+    // Where ffmpeg is right now, or empty. See the definition for why this is
+    // asked each time rather than answered once at construction. Public
+    // because the lookup, not the download, is what tst_downloader measures.
+    QString ffmpegPath() const;
+
+    // The two halves of that lookup, pure and public for the same reason:
+    // `extraDirs` is searched after PATH, and the test supplies its own.
+    static QStringList ffmpegFallbackDirs();
+    static QString     resolveFfmpeg(const QStringList &extraDirs);
+
 signals:
     void downloadStarted(qlonglong id);
     void downloadFinished(qlonglong id, const QString &path);
@@ -71,5 +81,4 @@ private:
 
     TidalClient *m_client;
     QHash<qlonglong, DownloadJob*> m_jobs;
-    QString m_ffmpegPath;            // resolved ffmpeg executable, empty if not found
 };

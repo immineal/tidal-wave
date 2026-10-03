@@ -84,6 +84,19 @@ TestCase {
         return null
     }
 
+    // An animation is not a visual child, so it is reachable through `data`
+    // and not through `children`. The spinner's rotation is the one case below
+    // that has to be found this way.
+    function findInData(item, name) {
+        if (item.objectName === name) return item
+        var kids = item.data
+        for (var i = 0; i < kids.length; ++i) {
+            var hit = findInData(kids[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
     function sameColor(a, b) { return String(a) === String(b) }
 
     // ── fixtures ─────────────────────────────────────────────────────────
@@ -532,6 +545,53 @@ TestCase {
                "reduced motion removed the busy indicator instead of stilling it")
         verify(spinner.width > 0 && spinner.height > 0,
                "the spinner was collapsed to nothing")
+
+        // The other half of the contract, read off the animation rather than
+        // timed. A clock is no use here: a zero-length turn and a 900ms one
+        // have both finished by the time anything could look, so "it stopped"
+        // is true either way and says nothing. The two numbers do say it —
+        // reduced motion collapses the turn to zero length, and takes the
+        // endless repeat with it, because a zero duration against
+        // Animation.Infinite is a spin loop rather than a still dial.
+        var rot = findInData(overlay, "loadingSpinnerRotation")
+        verify(rot, "the spinner has no named rotation to check")
+        compare(rot.duration, 0,
+                "reduced motion left the spinner a turn to make")
+        compare(rot.loops, 1,
+                "a zero-length turn repeated forever is a spin loop, not stillness")
+    }
+
+    // Whether the spinner *turns* is what the case above cannot ask, and it
+    // went unasserted for long enough that its `running` binding could sit
+    // broken: a rotation that never stops is indistinguishable from a correct
+    // one until you look at the frames, which this platform has none of (see
+    // the note above). `running` is the honest proxy — with motion allowed it
+    // is on exactly while the overlay is on screen, and off the moment it is
+    // not, because an indefinite animation behind a hidden overlay runs for
+    // the life of the app.
+    function test_the_busy_spinner_runs_only_while_it_is_on_screen() {
+        app.setReducedMotionForTest(false)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 300 })
+        var overlay = createTemporaryObject(loadingOverlayC, holder, { loading: false })
+        verify(overlay, "the loading overlay was not created")
+        settle(holder)
+
+        var rot = findInData(overlay, "loadingSpinnerRotation")
+        verify(rot, "the spinner has no named rotation to check")
+
+        verify(!rot.running,
+               "the spinner is rotating while the overlay is hidden")
+
+        overlay.loading = true
+        settle(holder)
+        verify(rot.running,
+               "the overlay is on screen and its spinner is not rotating")
+
+        overlay.loading = false
+        settle(holder)
+        verify(!rot.running,
+               "the spinner kept rotating after the overlay was hidden")
     }
 
     // The now-playing bars are the other indefinite indicator, and the only

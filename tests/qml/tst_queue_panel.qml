@@ -190,6 +190,29 @@ TestCase {
         return host.panel
     }
 
+    // The same decode budget TrackRow's cover carries, for the same reason: a
+    // 5000-row queue holding a 320px decode per 36px thumbnail is the one
+    // place in the app where that arithmetic really bites. Both dimensions,
+    // because a width-only sourceSize reaches the image provider as 72x0 and
+    // QImageReader scales it away to nothing.
+    function test_a_queue_thumbnail_decodes_at_the_size_it_is_drawn() {
+        seedAll()
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var cover = findByName(entryAt(panel, 0), "queueRowCover")
+        verify(cover, "a queue row has no cover image")
+        var box = cover.width
+        verify(box > 0, "the cover box collapsed")
+
+        compare(cover.sourceSize.width, cover.sourceSize.height,
+                "a square cover was asked for at " + cover.sourceSize.width
+                + "x" + cover.sourceSize.height + ", which stretches it")
+        verify(cover.sourceSize.width >= box && cover.sourceSize.width <= 2 * box,
+               "the cover decodes at " + cover.sourceSize.width
+               + " for a box of " + box)
+    }
+
     // ── the three sections, in order, with their headers ──────────────────
 
     function test_the_sections_render_in_order_with_their_headers() {

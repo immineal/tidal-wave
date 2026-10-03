@@ -729,8 +729,12 @@ Item {
                     color: Theme.surfaceHigh
                     clip: true
                     Image {
+                        objectName: "queueRowCover"
                         anchors.fill: parent
                         source: entry.coverText ? "image://tidal/" + entry.coverText : ""
+                        // 36px box, doubled for a 2x screen. Both dimensions;
+                        // see TrackRow's cover for why one is a trap.
+                        sourceSize: Qt.size(72, 72)
                         fillMode: Image.PreserveAspectCrop
                         smooth: true
                         mipmap: true

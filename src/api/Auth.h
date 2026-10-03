@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QDateTime>
 #include <QTimer>
 #include "TidalApi.h"
 
@@ -40,6 +41,12 @@ public:
     // Pure, and covered by tst_auth: picks what the sidebar shows for the
     // signed-in account. Public so the test can reach it without a session.
     static QString displayNameFrom(const QJsonObject &u);
+
+    // How the token expiry is written to and read from credentials.json.
+    // Public for the same reason: the round trip is the thing worth testing and
+    // it needs no network. See the comments on the definitions.
+    static QString   expiryToString(const QDateTime &when);
+    static QDateTime expiryFromString(const QString &stored);
 
 signals:
     void stateChanged(State state);

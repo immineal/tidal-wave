@@ -18,7 +18,36 @@
 Downloader::Downloader(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
 {
-    m_ffmpegPath = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+}
+
+// Where to look once PATH has come up empty. A process started from a .desktop
+// entry inherits the session's PATH, which on a stock desktop is
+// /usr/bin:/bin:/usr/sbin:/sbin - the user's shell profile never runs - so an
+// ffmpeg anywhere else is invisible to the app while working perfectly from
+// the terminal the user tested it in. These are the three places it then is.
+QStringList Downloader::ffmpegFallbackDirs() {
+    return {
+        QStringLiteral("/usr/local/bin"),                  // built and installed by hand
+        QDir::homePath() + QStringLiteral("/.local/bin"),  // installed for this user only
+        QStringLiteral("/snap/bin"),                       // snap, which exports nothing to PATH
+    };
+}
+
+// PATH first, so a user who deliberately put one ffmpeg in front keeps it.
+QString Downloader::resolveFfmpeg(const QStringList &extraDirs) {
+    const QString onPath = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (!onPath.isEmpty()) return onPath;
+    // findExecutable() with an explicit list searches *only* that list, which
+    // is why this is a second call and not a wider first one.
+    return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"), extraDirs);
+}
+
+// Asked per download rather than answered once in the constructor: "install
+// ffmpeg and downloads will work" should not quietly mean "and then restart
+// the app". Three or four stat() calls against a user pressing a download
+// button is not a cost worth caching.
+QString Downloader::ffmpegPath() const {
+    return resolveFfmpeg(ffmpegFallbackDirs());
 }
 
 Downloader::~Downloader() {
@@ -49,7 +78,7 @@ void Downloader::downloadTrack(const QVariantMap &track) {
     if (id <= 0) return;
     if (m_jobs.contains(id)) return;   // already downloading this track
 
-    if (m_ffmpegPath.isEmpty()) {
+    if (ffmpegPath().isEmpty()) {
         emit downloadError(id, tr("ffmpeg was not found on PATH. Install ffmpeg to enable downloads."));
         return;
     }
@@ -291,7 +320,7 @@ void Downloader::runFfmpeg(DownloadJob *job, bool flacForceEncode) {
             }
         });
 
-    proc->start(m_ffmpegPath, ffmpegArgs(job, flacForceEncode));
+    proc->start(ffmpegPath(), ffmpegArgs(job, flacForceEncode));
 }
 
 void Downloader::finish(DownloadJob *job, const QString &err) {

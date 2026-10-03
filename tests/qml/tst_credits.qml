@@ -407,6 +407,54 @@ TestCase {
         verify(art && art.visible, "the artwork did not come back")
     }
 
+    // A track with no lyrics hides the lyrics chip, so a panel left open over
+    // that track's cover has lost the control that opened it. The slot follows
+    // the words: when the answer comes back "there are none", it goes back to
+    // the artwork rather than sitting on "No lyrics available" until the user
+    // finds the way out through the credits tab.
+    function test_a_track_without_lyrics_closes_the_lyrics_panel() {
+        var host = showHost(nowPlayingHost, 1280, 1000)
+        var page = host.page
+        page.lyricsState = "ready"
+        page.lyricsData  = [{ ms: 0, text: "A line" }]
+        page.showLyrics  = true
+        settlePage(page)
+        verify(page.showLyrics, "the lyrics did not open")
+
+        // What skipping to an instrumental looks like from the page's side.
+        page.lyricsState = "unavailable"
+        settlePage(page)
+
+        verify(!page.showLyrics, "the lyrics panel stayed open on a track that has none")
+        verify(!page.showPanel, "the slot is still a panel with nothing to put in it")
+        compare(page.panelness, 0, "the slot did not go back to the artwork")
+        var art = findChild(page, "nowPlayingArt")
+        verify(art && art.visible, "the artwork did not come back")
+
+        // And the chip that would have closed it really is gone, which is what
+        // made the panel a one-way door.
+        var chip = findChild(page, "nowPlayingLyricsToggle")
+        verify(chip, "the lyrics chip was not found")
+        verify(!chip.visible, "the lyrics chip is still offered for a track with none")
+    }
+
+    // Closing the lyrics must not reach across the tab divide. The credits are
+    // the other half of the same slot and have nothing to do with whether the
+    // words arrived, so a user reading them is not dropped back to the cover.
+    function test_unavailable_lyrics_leave_the_credits_alone() {
+        var host = showHost(nowPlayingHost, 1280, 1000)
+        var page = host.page
+        giveCredits(page)
+        page.showCredits = true
+        settlePage(page)
+        verify(page.showCredits && !page.showLyrics, "the credits did not open")
+
+        page.lyricsState = "unavailable"
+        settlePage(page)
+        verify(page.showCredits, "the credits closed along with the lyrics")
+        compare(page.panelness, 1, "the slot left the panel shape with the credits open")
+    }
+
     // Moving to another track drops what was on screen and keeps the cache.
     //
     // Two halves, and they fail for different reasons. With the tab open the
