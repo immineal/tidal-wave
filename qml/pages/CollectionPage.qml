@@ -186,32 +186,137 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
                 spacing: 4
+
+                // ── the highlight, as one pill that travels ────────────────
+                //
+                // The accent fill used to belong to the chip: the one being
+                // left faded back to the resting surface while the one arriving
+                // faded up to the accent, so the highlight was briefly nowhere
+                // and nothing ever crossed the gap between the two (QA: "not
+                // just fade out in one place and then fade in in the other
+                // place"). There is one pill now and it moves, the same way the
+                // sidebar's bar moves between its three rows and on the same
+                // 140ms, so the two read as one idea.
+                //
+                // Which chip it is leaving, which it is arriving at, and how far
+                // along it is. Only `markT` is animated. The geometry is read
+                // live off the two chips, which matters more here than in the
+                // sidebar: these chips are text-width and their text carries a
+                // count, so typing in the collection's search box rewrites all
+                // five widths while nothing has been selected. An animated width
+                // would spend 140ms per keystroke chasing a pill that is not
+                // going anywhere; a lerp between two live boxes is simply right
+                // in the frame the box changes.
+                property Item markFrom: null
+                property Item markTo:   null
+                property real markT:    1
+                // The reset to 0 that starts a travel is the one write to markT
+                // that must not animate, or the pill would run backwards to the
+                // chip it is already on before setting off.
+                property bool markResetting: false
+                // The first placement is an initialisation, not a move. Without
+                // the gate the pill would grow out of the row's left edge on
+                // every visit to the page.
+                property bool markSettled: false
+
+                Behavior on markT {
+                    enabled: !tabsRow.markResetting
+                    NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+                }
+
+                // The end it set off from - the destination itself when there is
+                // nothing to set off from, which makes the lerp degenerate and
+                // markT unobservable. That is the first placement, and it is
+                // also a model rebuild.
+                readonly property Item markA: markFrom ? markFrom : markTo
+                readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
+                readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
+                readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
+                readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
+
+                function retarget(animate) {
+                    var next = tabsRepeater.itemAt(root.activeTab)
+                    if (next === null || next === tabsRow.markTo) return
+                    tabsRow.markFrom = (animate && tabsRow.markTo !== null) ? tabsRow.markTo : next
+                    tabsRow.markTo   = next
+                    tabsRow.markResetting = true
+                    tabsRow.markT = 0
+                    tabsRow.markResetting = false
+                    tabsRow.markT = 1
+                }
+
+                // Inside the row rather than on the page's root: an id is only
+                // bound once the object exists, and activeTab can be handed to
+                // the page as an initial property, i.e. before this row is here
+                // to answer.
+                Connections {
+                    target: root
+                    function onActiveTabChanged() { tabsRow.retarget(tabsRow.markSettled) }
+                }
+
+                Component.onCompleted: {
+                    retarget(false)
+                    Qt.callLater(function () { tabsRow.markSettled = true })
+                }
+
                 Repeater {
+                    id: tabsRepeater
                     model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+                    // itemAt() is a function call and not a dependency, so the
+                    // pill is aimed again as the chips arrive as well as when
+                    // the tab changes.
+                    onItemAdded: function (index, item) { tabsRow.retarget(false) }
                     Rectangle {
                         id: collectionTab
                         required property string modelData
                         required property int    index
                         height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusChip
-                        color: root.activeTab === index ? Theme.accent : Theme.surfaceHigh
-                        // The chip is what the eye is on when it is clicked, so
-                        // it cannot be the one thing that snaps while the
-                        // content it switches fades. Shorter than the content's
-                        // 170 on purpose: the chip answers, then the page
-                        // follows.
-                        Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
-                        // How far through that fade the fill is. Same length
-                        // and the same curve a ColorAnimation runs on, started by
-                        // the same change in the same turn, so this is the fill's
-                        // own interpolation parameter - which is what the label's
-                        // ink has to be chosen against.
-                        property real filled: root.activeTab === index ? 1 : 0
-                        Behavior on filled { NumberAnimation { duration: Theme.dur(140) } }
+                        // Every chip rests on the same surface now, including
+                        // the current one: what marks it is the pill above,
+                        // which is drawn here in pieces.
+                        color: Theme.surfaceHigh
                         border.width: collectionTab.activeFocus ? 2 : 0
                         border.color: Theme.accent
                         activeFocusOnTab: true
                         Keys.onReturnPressed: { root.activeTab = index }
                         Keys.onSpacePressed:  { root.activeTab = index }
+
+                        // Whether the accent's copy of the label covers every
+                        // pixel the chip's own copy occupies.
+                        readonly property bool labelFullyInked:
+                               inkWindow.visible
+                            && inkWindow.x <= tl.x
+                            && inkWindow.x + inkWindow.width  >= tl.x + tl.width
+                            && inkWindow.y <= tl.y
+                            && inkWindow.y + inkWindow.height >= tl.y + tl.height
+
+                        // This chip's slice of the pill.
+                        //
+                        // One Rectangle per chip rather than one pill over the
+                        // row, because the row is a Flow and anything added to
+                        // it is laid out by it. Each chip draws the whole pill
+                        // and shows the part of it that falls inside this
+                        // window, so the five slices add up to one pill.
+                        //
+                        // The window reaches 2px past the chip, which is half
+                        // the row's 4px gap, so two neighbours' windows meet in
+                        // the middle of the gap and the pill crosses it unbroken
+                        // instead of being cut in two on the way over.
+                        Item {
+                            anchors.fill: parent
+                            anchors.margins: -2
+                            clip: true
+                            Rectangle {
+                                objectName: "collectionTabPillSlice"
+                                x: tabsRow.markX - collectionTab.x + 2
+                                y: tabsRow.markY - collectionTab.y + 2
+                                width:  tabsRow.markW
+                                height: tabsRow.markH
+                                radius: Theme.radiusChip
+                                color: Theme.accent
+                            }
+                        }
+
                         Text {
                             id: tl; objectName: "collectionTabLabel"; anchors.centerIn: parent
                             text: {
@@ -220,30 +325,84 @@ Rectangle {
                                 return qsTr("%1 (%2)").arg(modelData)
                                                       .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                             }
-                            // Stepped at the halfway point of the fill's fade,
-                            // and deliberately not faded with it. The two inks
-                            // are luminance-inverted against the two fills - on
-                            // a light palette the chip goes from dark ink on a
-                            // light fill to white ink on a dark one - so a
-                            // cross-fade of both passes through equal luminance
-                            // and the label disappears. Measured against all six
-                            // palettes in src/ui/ThemePalette.cpp: faded, the
-                            // label sits under 3:1 for 90ms of the 140 and under
-                            // 2:1 for 57 of them, bottoming out at 1.01:1.
-                            // Stepped at the crossover, the worst any palette
-                            // sees is 2.1:1, for the single frame of the step.
-                            //
-                            // There is no third option. The pair inverts, so
-                            // every continuous path between them crosses;
-                            // stepping at the crossover is the best a step can
-                            // do, and a step is the best there is.
-                            color: collectionTab.filled > 0.5 ? Theme.accentInk
-                                                              : Theme.textSec
-                            // The weight is not animatable either - a font
-                            // weight is not a number Qt interpolates - so it
-                            // lands in the frame of the click.
+                            // The ink the resting surface takes, always. The
+                            // accent's ink is the copy below, and which of the
+                            // two is on screen at a given pixel is decided by
+                            // where the pill is rather than by a clock.
+                            color: Theme.textSec
+                            // Not drawn at all where the copy covers every
+                            // pixel of it, which is the resting state of the
+                            // current chip. Two Texts in the same place blend
+                            // at the glyphs' antialiased edge - the ink
+                            // underneath is the resting ink on the accent fill,
+                            // which is the ~2:1 pairing the comment below calls
+                            // invisible, but it is only *nearly* invisible and
+                            // the settled chip is where the eye lives. Measured
+                            // against the fading chip's pixels: identical with
+                            // this, up to 40/255 on the glyph edges without it.
+                            visible: !collectionTab.labelFullyInked
+                            // Not animatable - a font weight is not a number Qt
+                            // interpolates - so it lands in the frame of the
+                            // click.
                             font.pixelSize: 14; font.bold: root.activeTab === index
                         }
+
+                        // The same label again in the ink the accent needs,
+                        // clipped to exactly the part of the pill that is over
+                        // this chip.
+                        //
+                        // This is what lets the fill travel at all. The two inks
+                        // are luminance-inverted against the two fills on the
+                        // three light palettes - dark ink on a light chip
+                        // becomes white ink on a dark one - so a label cannot
+                        // cross-fade between them (measured in 354d460: under
+                        // 2:1 for 57ms of a 140ms fade, bottoming out at
+                        // 1.01:1), and it cannot be stepped either when a hard
+                        // fill edge is sweeping across it: whichever ink it
+                        // steps to, half the glyphs are on the wrong fill for as
+                        // long as the edge takes to cross them. Two copies, each
+                        // clipped to its own fill, means every glyph pixel is on
+                        // the fill its ink was chosen for in every frame of the
+                        // travel - which is better than the single stepped frame
+                        // the fade settled for, rather than a trade against it.
+                        //
+                        // The copy underneath shows through at the glyphs'
+                        // antialiased edge, and that is the one thing that is
+                        // free here: the ink showing through is the resting ink
+                        // on the accent fill, i.e. exactly the pairing the
+                        // measurement above calls invisible.
+                        Item {
+                            id: inkWindow
+                            objectName: "collectionTabInk"
+                            // The pill, in this chip's coordinates, clamped to
+                            // the chip. Vertical as well as horizontal: the row
+                            // wraps at narrow widths, and a pill travelling
+                            // between two lines passes over the chips in
+                            // between, where it covers a band and not a column.
+                            //
+                            // Not `top`/`bottom`: an Item has those as final
+                            // members, and a property that shadows one takes
+                            // the whole type out of the build with it.
+                            readonly property real coveredLeft:   Math.max(0, tabsRow.markX - collectionTab.x)
+                            readonly property real coveredRight:  Math.min(collectionTab.width, tabsRow.markX + tabsRow.markW - collectionTab.x)
+                            readonly property real coveredTop:    Math.max(0, tabsRow.markY - collectionTab.y)
+                            readonly property real coveredBottom: Math.min(collectionTab.height, tabsRow.markY + tabsRow.markH - collectionTab.y)
+                            x: coveredLeft
+                            y: coveredTop
+                            width:  Math.max(0, coveredRight - coveredLeft)
+                            height: Math.max(0, coveredBottom - coveredTop)
+                            clip: true
+                            visible: width > 0 && height > 0
+                            Text {
+                                objectName: "collectionTabInkLabel"
+                                x: tl.x - inkWindow.x
+                                y: tl.y - inkWindow.y
+                                text: tl.text
+                                font: tl.font
+                                color: Theme.accentInk
+                            }
+                        }
+
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor

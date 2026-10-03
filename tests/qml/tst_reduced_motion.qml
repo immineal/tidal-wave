@@ -111,6 +111,11 @@ TestCase {
             height: 700
             color: "black"
             property alias sidebar: sb
+            // The page the sidebar is built on, for the cases about the first
+            // placement: handed in at creation, because a page assigned
+            // afterwards is a move and those cases are about what happens
+            // before there has been one.
+            property string startPage: "home"
 
             RowLayout {
                 anchors.fill: parent
@@ -120,6 +125,7 @@ TestCase {
                 SideBar {
                     id: sb
                     z: 2
+                    currentPage: win.startPage
                     hostWidth: win.width
                     Layout.preferredWidth: sb.reservedWidth
                     Layout.fillHeight: true
@@ -897,19 +903,51 @@ TestCase {
 
     // ── the sidebar's Home / Search / Collection highlight ───────────────
     //
-    // Three things said one thing: a fill, an ink and a 3px bar down the left
-    // edge. All three changed between two frames, and the bar was `visible:
-    // current`, which cannot animate at all - so the one part of the highlight
-    // that reads as a position was the one part that could only blink.
+    // There was a 3px bar per row, each fading its own opacity and growing its
+    // own height. That is three bars cross-fading: the highlight left one row
+    // and appeared on another with nothing travelling between the two (QA: "the
+    // highlighting bar can move up and not just fade out in one place and then
+    // fade in in the other place"). There is one bar now, and it moves.
     //
-    // Measured off the indicator's height as well as off the row's number: the
-    // number arriving is not the same as the bar arriving, and a bar that is
-    // there or not is exactly what this case is about.
+    // So what is measured here is a position, and the reading that tells a
+    // travel from a cross-fade is the one taken *between* the two rows: a
+    // highlight that fades is only ever at one end or the other, whatever its
+    // opacity is doing.
 
     function navItemFor(sb, page) {
         var items = collectByName(sb, "sideNavItem", [])
         for (var i = 0; i < items.length; ++i) if (items[i].page === page) return items[i]
         return null
+    }
+
+    // The bar's centre and a row's centre, in the bar's own parent so the two
+    // are comparable. Centres rather than tops, because the bar is half the
+    // height of a row and its height is part of what travels.
+    function barCentre(bar)       { return bar.y + bar.height / 2 }
+    function rowCentre(bar, item) { return item.mapToItem(bar.parent, 0, 0).y + item.height / 2 }
+
+    // True once the value has been seen strictly between its two ends.
+    //
+    // Sampled in a loop and not read after a fixed wait: one reading can only
+    // catch a travel it happens to land inside, and a 140ms one has about eight
+    // frames on an idle box and fewer on a loaded one. Giving up the moment the
+    // value is at the far end keeps a case that has already failed from costing
+    // the whole loop.
+    //
+    // The ends are read at every sample rather than measured once up front,
+    // which matters wherever they move: a tab chip loses its bold weight in the
+    // frame it is deselected, so the chips after it all shift left, and against
+    // the ends as they were before the click a pill that never moved at all
+    // reads as being between them. Probed - with the travel cut to a single
+    // frame, the version that measured the ends once passed.
+    function sawBetween(read, readA, readB) {
+        for (var i = 0; i < 200; ++i) {
+            var v = read(), a = readA(), b = readB()
+            if (v > Math.min(a, b) + 1 && v < Math.max(a, b) - 1) return true
+            if (i > 2 && Math.abs(v - b) <= 1) return false
+            wait(1)
+        }
+        return false
     }
 
     function test_nav_highlight_travels_data() { return test_rail_expansion_data() }
@@ -929,65 +967,124 @@ TestCase {
         var home   = navItemFor(sb, "home")
         var search = navItemFor(sb, "search")
         verify(home && search, "the nav rows were not found")
-        tryVerify(function () { return home.currentness === 1 && search.currentness === 0 },
-                  settleMs, "the sidebar never settled on Home")
 
-        var bar = findByName(search, "navCurrentIndicator")
-        verify(bar, "the Search row has no current-indicator to measure")
-        verify(!bar.visible, "an indicator on a row that is not current")
+        // One bar for the three rows. One per row is the cross-fade this case
+        // exists to rule out, and it would answer everything below from
+        // whichever row was asked.
+        var bars = collectByName(sb, "navCurrentIndicator", [])
+        compare(bars.length, 1, "the highlight is not one indicator: found " + bars.length)
+        var bar = bars[0]
+
+        tryVerify(function () { return Math.abs(barCentre(bar) - rowCentre(bar, home)) <= 1 },
+                  settleMs, "the bar never settled on Home")
+        compare(Math.round(bar.height), Math.round((home.height - 4) * 0.5),
+                "the settled bar is not half the row's inner box")
+
+        var fromY = rowCentre(bar, home)
+        var toY   = rowCentre(bar, search)
+        verify(Math.abs(toY - fromY) > 8,
+               "the two rows are in the same place, so there is nothing to travel")
 
         sb.currentPage = "search"
 
         if (row.reduced) {
-            oneFrame()
-            compare(search.currentness, 1,
-                    "reduced motion: the highlight must be on Search on the next frame, not travelling")
-            compare(home.currentness, 0, "reduced motion: the old highlight is still leaving")
-            verify(bar.visible && bar.height > 1,
-                   "reduced motion: the indicator never came up")
+            // Sampled rather than read once: "no intermediate position" is a
+            // claim about every frame of the switch, and a single reading taken
+            // after one of them says nothing about the others.
+            for (var i = 0; i < 12; ++i) {
+                verify(Math.abs(barCentre(bar) - toY) <= 1,
+                       "reduced motion: sample " + i + " had the bar at "
+                       + barCentre(bar).toFixed(1) + " and Search at " + toY.toFixed(1))
+                wait(4)
+            }
         } else {
-            // Read with nothing in between, and not after a frame. A Behavior
-            // does not tick in the turn its property is written: measured over
-            // twenty runs, the value had not moved once with nothing elapsed,
-            // and had moved in three of twenty after a single wait(1). So a
-            // reading taken a frame later is a question about the animation
-            // driver's scheduling, and only a reading taken in the same turn is
-            // a question about the thing being measured.
-            verify(search.currentness < 1,
-                   "without reduced motion the highlight jumped to Search instead of arriving")
-            verify(home.currentness > 0, "the highlight it left snapped out instead of fading")
-            // The indicator is the number and not a flag of its own: at every
-            // phase of the travel it is as tall as the number says, and on
-            // screen only while the number is. Asked at whatever phase this
-            // turn caught, so there is no moment to miss - which `visible:
-            // current` and a fixed height cannot satisfy at any phase but the
-            // last one.
-            compare(bar.visible, search.currentness > 0.001,
-                    "the indicator is on screen without the highlight being there")
-            compare(Math.round(bar.height),
-                    Math.round(bar.parent.height * 0.5 * search.currentness),
-                    "the indicator's height does not follow the highlight")
-            tryVerify(function () { return search.currentness === 1 }, settleMs,
-                      "the highlight never finished arriving")
-            tryVerify(function () { return home.currentness === 0 }, settleMs,
-                      "the old highlight never finished leaving")
+            // Read in the turn of the write, before the Behavior's first tick -
+            // see the note in the rail case above. Still on Home means it did
+            // not jump; the sampling below is what says it moved.
+            verify(Math.abs(barCentre(bar) - fromY) <= 1,
+                   "the bar jumped to Search instead of setting off from Home")
+            verify(sawBetween(function () { return barCentre(bar) },
+                              function () { return rowCentre(bar, home) },
+                              function () { return rowCentre(bar, search) }),
+                   "the bar was never between the two rows: it left one and "
+                   + "arrived at the other without travelling")
+            tryVerify(function () { return Math.abs(barCentre(bar) - toY) <= 1 },
+                      settleMs, "the bar never finished arriving on Search")
         }
-        compare(Math.round(bar.height), Math.round(bar.parent.height * 0.5),
-                "the settled indicator is not half the row")
+        compare(Math.round(bar.height), Math.round((search.height - 4) * 0.5),
+                "the arrived bar is not half the row's inner box")
 
-        // And away again, because the indicator leaving is the half that used to
-        // be a blink in the other direction too.
-        sb.currentPage = "collection"
+        // And away: an album is none of the three rows. The bar leaves from
+        // where it is rather than travelling off to nowhere, which is the half
+        // of this that a position alone cannot say.
+        sb.currentPage = "album"
         if (row.reduced) {
             oneFrame()
-            compare(search.currentness, 0, "reduced motion: leaving must be instant too")
-            verify(!bar.visible, "reduced motion left the indicator on a row that is not current")
+            verify(!bar.visible, "reduced motion left the bar on a row that is not current")
         } else {
-            verify(search.currentness > 0, "the highlight snapped off Search")
-            verify(bar.visible, "the indicator vanished instead of leaving")
+            verify(bar.visible, "the bar vanished instead of leaving")
+            for (var j = 0; j < 8 && bar.visible; ++j) {
+                verify(Math.abs(barCentre(bar) - toY) <= 1,
+                       "the bar slid off the row while it was leaving it, to "
+                       + barCentre(bar).toFixed(1))
+                wait(4)
+            }
             tryVerify(function () { return !bar.visible }, settleMs,
-                      "the indicator never finished leaving")
+                      "the bar never finished leaving")
         }
+
+        // And back. From a page that was on no row there is nothing on screen
+        // to move, so the bar belongs on the row that was picked from the first
+        // frame it is visible in - not sliding in from the row it left, which
+        // is where a travel measured from the last target would start it.
+        sb.currentPage = "collection"
+        var coll = navItemFor(sb, "collection")
+        verify(coll, "the Collection row was not found")
+        for (var k = 0; k < 12; ++k) {
+            verify(Math.abs(barCentre(bar) - rowCentre(bar, coll)) <= 1,
+                   "sample " + k + ": the bar travelled back from a page that had "
+                   + "no row, from " + barCentre(bar).toFixed(1) + " with the row at "
+                   + rowCentre(bar, coll).toFixed(1))
+            wait(4)
+        }
+        tryVerify(function () { return bar.visible }, settleMs,
+                  "the bar never came back")
+    }
+
+    // The first placement is not a move. A bar that animates it starts at the
+    // top of the panel and slides down to the row on every launch - and the
+    // sidebar is hidden outright in fullscreen, so a travel started behind that
+    // would come back halfway.
+    function test_nav_highlight_starts_where_it_belongs() {
+        var host = createTemporaryObject(shellHost, testCase, { startPage: "collection" })
+        verify(host, "the sidebar host window was not created")
+        host.width = 1280
+        host.visible = true
+
+        var sb = host.sidebar
+        var bar = findByName(sb, "navCurrentIndicator")
+        verify(bar, "there is no nav indicator")
+        var coll = navItemFor(sb, "collection")
+        var home = navItemFor(sb, "home")
+        verify(coll && home, "the nav rows were not found")
+
+        // Sampled from before the first frame, because that is where a slide
+        // would be. The early readings are taken before the column has laid
+        // anything out, when every row is at 0 and the bar agrees with all of
+        // them - which is why the check at the end is that the rows did get
+        // laid out and the bar is on the right one.
+        for (var i = 0; i < 40; ++i) {
+            verify(Math.abs(barCentre(bar) - rowCentre(bar, coll)) <= 1,
+                   "sample " + i + ": the bar slid into place - it was at "
+                   + barCentre(bar).toFixed(1) + " with the row at "
+                   + rowCentre(bar, coll).toFixed(1))
+            wait(4)
+        }
+        waitForRendering(host.contentItem, settleMs)
+        verify(Math.abs(barCentre(bar) - rowCentre(bar, coll)) <= 1,
+               "the bar is not on Collection")
+        verify(Math.abs(rowCentre(bar, coll) - rowCentre(bar, home)) > 8,
+               "the rows were never laid out, so this case proved nothing")
     }
 
     // ── the tab chips on Collection and Search ───────────────────────────
@@ -1008,6 +1105,13 @@ TestCase {
     // under 2:1 for 57ms of a 140ms fade. The ink steps at the fill's halfway
     // point instead, which is asserted below: every reading of it is one of the
     // two inks and never between them.
+    //
+    // This case is Search's row. Collection's used to be here beside it and is
+    // now in the pair below it: its highlight is one pill that travels between
+    // the chips rather than a fill that fades in each of them, which is a
+    // different contract and a stronger answer to the same measurement - see
+    // the comment there. Nothing about the fading chip has been relaxed; it is
+    // asserted here, on the page that still has one.
 
     // Samples a chip's label ink until its fill has arrived, and returns the
     // first reading that is neither of the two inks, or "" if there was none.
@@ -1027,50 +1131,8 @@ TestCase {
     function test_tab_chip_travels(row) {
         app.setReducedMotionForTest(row.reduced)
 
-        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
-        var page = createTemporaryObject(collectionC, holder)
-        verify(page, "CollectionPage was not created")
-        settle(holder)
-
-        var tabs = findByName(page, "collectionTabsRow")
-        verify(tabs, "the collection tab row was not found")
-        var albums = tabs.children[1]
-        verify(albums, "there is no Albums chip to measure")
-        compare(page.activeTab, 0, "the page did not open on the first tab")
-        tryVerify(function () { return sameColor(albums.color, Theme.surfaceHigh) },
-                  settleMs, "the chip never settled on its resting fill")
-
-        page.activeTab = 1
-
-        if (row.reduced) {
-            oneFrame()
-            verify(sameColor(albums.color, Theme.accent),
-                   "reduced motion: the chip must be filled on the next frame, got " + albums.color)
-        } else {
-            // Not there yet, read in the turn of the write - see the note in
-            // the case above. What is deliberately *not* asked is whether the
-            // fade has already moved off the resting fill: a Behavior holds the
-            // old value until its first tick, so that is a question about the
-            // scheduler and it answered yes in three runs of twenty. The pair
-            // below covers both ways this can be wrong anyway - a chip that
-            // snaps fails here, and a chip that never fades fails the wait.
-            verify(!sameColor(albums.color, Theme.accent),
-                   "without reduced motion the chip snapped to the accent instead of filling")
-            // Sampled all the way through, because a faded ink would be a blend
-            // in almost every one of these and a stepped one can never be in any
-            // of them. Nothing here can miss a violation that lasts the whole
-            // fade, and nothing here can invent one.
-            var blended = inkBlendDuring(albums, findByName(albums, "collectionTabLabel"))
-            compare(blended, "",
-                    "the chip's label faded its ink instead of stepping: " + blended
-                    + " is neither of the two inks, and on a light palette that path "
-                    + "goes through an invisible label")
-            tryVerify(function () { return sameColor(albums.color, Theme.accent) }, settleMs,
-                      "the chip never finished filling")
-        }
-
-        // Search's row is the same change to the same kind of control, and is
-        // the half that would quietly go unanimated: it is a second file.
+        // Search's row is the same kind of control as Collection's and is the
+        // half that would quietly go unanimated: it is a second file.
         var sHolder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
         var sPage = createTemporaryObject(searchC, sHolder)
         verify(sPage, "SearchPage was not created")
@@ -1100,6 +1162,209 @@ TestCase {
             tryVerify(function () { return sameColor(tracksChip.color, Theme.accent) },
                       settleMs, "Search's chip never finished filling")
         }
+    }
+
+
+    // ── Collection's tabs: one pill, travelling ──────────────────────────
+    //
+    // Collection's chips used to do what Search's still does: the one being
+    // left faded back to the resting surface while the one arriving faded up to
+    // the accent. Both halves of that are a highlight that is briefly nowhere,
+    // and nothing ever crosses the gap between the two chips.
+    //
+    // It is one accent pill now and it moves between them, which is the same
+    // thing the sidebar's bar does and on the same 140ms.
+    //
+    // That changes what the ink has to answer, and makes it a stronger answer
+    // rather than a weaker one. The fading chip could not fade its label - the
+    // two inks are luminance-inverted against the two fills on the three light
+    // palettes - so the ink stepped at the fill's halfway point and took one
+    // frame at 2.1:1. A travelling fill cannot step at all: whichever ink a
+    // half-covered label picked, half of its glyphs would be on the wrong fill
+    // for as long as the pill's edge took to cross them, which is far longer
+    // than a frame. So the label is drawn twice, each copy clipped to its own
+    // fill, and what is asserted below is that no accent ink is ever drawn
+    // anywhere but on the accent - at every phase of the travel, not just at
+    // the two ends.
+
+    function chipOf(tabs, i) { return tabs.children[i] }
+
+    // The pill as it is actually drawn, in the row's coordinates.
+    //
+    // Read back out of a chip's slice and not off the row's own markX/markW:
+    // every chip holds the whole pill and shows the part of it over itself, so
+    // the slice is the thing on screen, and a lag put between the row's numbers
+    // and the slice would not show in the row's numbers. The window the slice
+    // sits in starts 2px outside the chip, which is where that 2 comes from.
+    // Probed - against the version that read the row's numbers, a Behavior on
+    // the slice's x passed every case here.
+    function drawnPill(tabs) {
+        var chip = chipOf(tabs, 0)
+        if (!chip) return null
+        var slice = findByName(chip, "collectionTabPillSlice")
+        if (!slice) return null
+        return { x: chip.x + slice.x - 2, y: chip.y + slice.y - 2,
+                 w: slice.width, h: slice.height }
+    }
+
+    // Is the pill exactly on this chip? Both are in the row's coordinates.
+    function pillOn(tabs, chip) {
+        var p = drawnPill(tabs)
+        if (!p) return false
+        return Math.abs(p.x - chip.x) <= 1 && Math.abs(p.w - chip.width)  <= 1
+            && Math.abs(p.y - chip.y) <= 1 && Math.abs(p.h - chip.height) <= 1
+    }
+
+    function pillSays(tabs) {
+        var p = drawnPill(tabs)
+        if (!p) return "there is no pill"
+        return "the pill is at " + p.x.toFixed(1) + "," + p.y.toFixed(1)
+               + " " + p.w.toFixed(1) + "x" + p.h.toFixed(1)
+    }
+
+    // Every chip draws the same pill, or the name of the first that does not.
+    function slicesAgree(tabs) {
+        var p = drawnPill(tabs)
+        for (var i = 1; i < 5; ++i) {
+            var chip = chipOf(tabs, i)
+            var slice = findByName(chip, "collectionTabPillSlice")
+            if (!slice) return "chip " + i + " has no slice"
+            if (Math.abs(chip.x + slice.x - 2 - p.x) > 0.01
+                || Math.abs(slice.width - p.w) > 0.01)
+                return "chip " + i + " draws the pill at " + (chip.x + slice.x - 2).toFixed(1)
+                       + " " + slice.width.toFixed(1) + " wide, while " + pillSays(tabs)
+        }
+        return ""
+    }
+
+    // "" when every chip's accent-ink copy is inside the pill and every chip's
+    // own label is still the resting ink, or what was wrong with the first one
+    // that was not. Both are the same question asked of the two layers: the ink
+    // on screen at any pixel is the one its fill was chosen for.
+    function inkIsOnTheAccent(tabs) {
+        var pill = drawnPill(tabs)
+        if (!pill) return "there is no pill to compare the ink against"
+        for (var i = 0; i < 5; ++i) {
+            var chip = chipOf(tabs, i)
+            if (!chip) return "chip " + i + " is missing"
+            var own = findByName(chip, "collectionTabLabel")
+            if (!own) return "chip " + i + " has no label"
+            if (!sameColor(own.color, Theme.textSec))
+                return "chip " + i + "'s own label is " + own.color + ", not the resting ink"
+            var ink = findByName(chip, "collectionTabInk")
+            if (!ink) return "chip " + i + " has no accent-ink copy"
+            if (!ink.visible || ink.width <= 0 || ink.height <= 0) continue
+            var x0 = chip.x + ink.x, x1 = x0 + ink.width
+            var y0 = chip.y + ink.y, y1 = y0 + ink.height
+            if (x0 < pill.x - 0.5 || x1 > pill.x + pill.w + 0.5
+                || y0 < pill.y - 0.5 || y1 > pill.y + pill.h + 0.5)
+                return "chip " + i + "'s accent ink covers " + x0.toFixed(1) + ".." + x1.toFixed(1)
+                       + " x " + y0.toFixed(1) + ".." + y1.toFixed(1) + " while " + pillSays(tabs)
+        }
+        return ""
+    }
+
+    function test_collection_tab_pill_travels_data() { return test_rail_expansion_data() }
+
+    function test_collection_tab_pill_travels(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(collectionC, holder)
+        verify(page, "CollectionPage was not created")
+        settle(holder)
+
+        var tabs = findByName(page, "collectionTabsRow")
+        verify(tabs, "the collection tab row was not found")
+        var tracks = chipOf(tabs, 0)
+        var albums = chipOf(tabs, 1)
+        verify(tracks && albums, "there are no chips to measure")
+        compare(page.activeTab, 0, "the page did not open on the first tab")
+
+        // The chips no longer carry the highlight themselves - if one of them
+        // still filled, everything below could pass with two highlights on
+        // screen at once.
+        tryVerify(function () { return pillOn(tabs, tracks) }, settleMs,
+                  "the pill never settled on the first chip: " + pillSays(tabs))
+        verify(sameColor(tracks.color, Theme.surfaceHigh),
+               "the current chip is filled as well as marked, got " + tracks.color)
+        verify(sameColor(albums.color, Theme.surfaceHigh),
+               "a chip that is not current is not on the resting fill, got " + albums.color)
+        compare(inkIsOnTheAccent(tabs), "", "the ink is not where the accent is at rest")
+        compare(slicesAgree(tabs), "", "the chips do not draw one pill between them")
+
+        var fromX = tracks.x
+        var toX   = albums.x
+        verify(toX - fromX > 8, "the two chips are in the same place; nothing to travel")
+
+        page.activeTab = 1
+
+        if (row.reduced) {
+            // Every sample, not one: "no intermediate position" is a claim
+            // about all of them.
+            for (var i = 0; i < 12; ++i) {
+                verify(pillOn(tabs, albums),
+                       "reduced motion: sample " + i + " - " + pillSays(tabs)
+                       + " and the chip is at " + albums.x.toFixed(1)
+                       + " " + albums.width.toFixed(1) + " wide")
+                wait(4)
+            }
+        } else {
+            // Read in the turn of the write, before the Behavior's first tick.
+            verify(Math.abs(drawnPill(tabs).x - fromX) <= 1,
+                   "the pill jumped to the new chip instead of setting off: " + pillSays(tabs))
+            verify(sawBetween(function () { return drawnPill(tabs).x },
+                              function () { return tracks.x },
+                              function () { return albums.x }),
+                   "the pill was never between the two chips: the highlight left "
+                   + "one and appeared on the other without travelling")
+            tryVerify(function () { return pillOn(tabs, albums) }, settleMs,
+                      "the pill never finished arriving: " + pillSays(tabs))
+        }
+        compare(inkIsOnTheAccent(tabs), "", "the ink is not where the accent is after the travel")
+        compare(slicesAgree(tabs), "", "the chips do not draw one pill between them")
+
+        // The ink again, this time sampled through a whole travel rather than
+        // at its ends: a half-covered label is exactly the state a stepped ink
+        // gets wrong, and it only exists in the middle.
+        page.activeTab = 4
+        for (var j = 0; j < 60; ++j) {
+            var wrong = inkIsOnTheAccent(tabs)
+            compare(wrong, "", "during the travel, " + wrong)
+            if (pillOn(tabs, chipOf(tabs, 4))) break
+            wait(4)
+        }
+        tryVerify(function () { return pillOn(tabs, chipOf(tabs, 4)) }, settleMs,
+                  "the pill never reached the last chip: " + pillSays(tabs))
+    }
+
+    // Opened on a tab that is not the first: the pill is there, not on its way
+    // there. Same rule as the sidebar's bar, and the one a lerp between two
+    // live boxes gets wrong by sliding out of the row's left edge.
+    function test_collection_tab_pill_starts_where_it_belongs() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(collectionC, holder, { activeTab: 2 })
+        verify(page, "CollectionPage was not created")
+
+        var tabs = findByName(page, "collectionTabsRow")
+        verify(tabs, "the collection tab row was not found")
+
+        // From before the first frame. The early readings are taken before the
+        // Flow has placed anything, when every chip is at 0 and the pill agrees
+        // with all of them - so the end of this checks that they did get placed
+        // and that the pill is on the right one.
+        for (var i = 0; i < 40; ++i) {
+            var chip = chipOf(tabs, 2)
+            verify(chip, "the Artists chip was not built")
+            verify(pillOn(tabs, chip),
+                   "sample " + i + ": the pill slid into place - " + pillSays(tabs)
+                   + " with the chip at " + chip.x.toFixed(1)
+                   + " " + chip.width.toFixed(1) + " wide")
+            wait(4)
+        }
+        settle(holder)
+        verify(pillOn(tabs, chipOf(tabs, 2)), "the pill is not on the third chip")
+        verify(chipOf(tabs, 2).x > 8, "the chips were never laid out, so this proved nothing")
     }
 
     // ── Now Playing rising out of the player bar ─────────────────────────

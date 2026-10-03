@@ -521,7 +521,98 @@ Item {
         function onEntriesChanged() { root.rebuildRows() }
     }
 
-    Component.onCompleted: rebuildRows()
+    Component.onCompleted: {
+        rebuildRows()
+        // The binding below may well have run before navHome existed, so the
+        // first placement is made again from here, where the rows certainly do.
+        retargetNav(false)
+        Qt.callLater(function () { root.navSettled = true })
+    }
+
+    // ── the nav highlight, as one bar that travels ────────────────────────
+    //
+    // There is one indicator for the three rows and it moves between them. It
+    // used to be one per row, fading its own opacity and growing its own
+    // height, which is three indicators cross-fading: the highlight left one
+    // place and appeared in another with nothing travelling between the two
+    // (QA: "the highlighting bar can move up and not just fade out in one
+    // place and then fade in in the other place").
+    //
+    // Which row it is leaving, which it is arriving at, and how far along it
+    // is. Only `navT` is animated. The *geometry* is read live off the two
+    // rows on every frame, which is what makes a layout change - the panel
+    // resizing, the window changing height, a row's height changing - arrive
+    // in the frame it happens instead of being chased for 140ms by a bar that
+    // was told where the row used to be.
+    property Item navFrom: null
+    property Item navTo:   null
+    property real navT:    1
+    // The reset to 0 that every travel starts with is the one write to navT
+    // that must not animate, or the bar would run backwards to the row it is
+    // already on before setting off.
+    property bool navResetting: false
+    Behavior on navT {
+        enabled: !root.navResetting
+        // 140ms is the sidebar's own short end - the rail slide and a row's
+        // travel in the list are 170 - because this is the smallest thing in
+        // the panel that moves and it moves on every click. The chips on
+        // Collection travel on the same number so the two read as one idea.
+        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+    }
+
+    // Which of the three rows the page is, or null: an album, Settings or Now
+    // Playing is none of them, and then the bar has nowhere to be.
+    readonly property Item currentNavItem:
+          currentPage === "home"       ? navHome
+        : currentPage === "search"     ? navSearch
+        : currentPage === "collection" ? navCollection
+        : null
+
+    // On screen at all, as one number: the bar fades and grows out of the row
+    // it is on rather than being there or not. Height as well as opacity,
+    // because at the far end of a fade alone a 3px bar is still a 3px bar,
+    // faintly, and the eye reads that as a smudge rather than as something
+    // leaving.
+    // Not readonly: a Behavior is a write interceptor, and the one on a
+    // read-only property has nothing it is allowed to write through.
+    property real navPresence: currentNavItem !== null ? 1 : 0
+    Behavior on navPresence {
+        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+    }
+
+    // Same gate as `slotSettled` above and for the same reason: the first
+    // placement is an initialisation, not a move, and a bar that animates it
+    // slides in from the top of the panel on every launch.
+    property bool navSettled: false
+
+    // Whether the bar was on a row when the page last changed - i.e. whether
+    // there is anything on screen for the next change to move. An album leaves
+    // it on none, and the row picked after that gets the bar back where it
+    // belongs rather than a bar materialising between two rows and sliding.
+    property bool navOnARow: false
+
+    onCurrentNavItemChanged: {
+        retargetNav(root.navSettled && root.visible && root.navOnARow)
+        root.navOnARow = (root.currentNavItem !== null)
+    }
+
+    // `animate` false leaves navFrom at the destination, so the lerp below is
+    // degenerate and navT's value cannot be seen. That is the first placement,
+    // it is every change made while the sidebar is not on screen - fullscreen
+    // hides it outright, and a bar that travelled behind that would come back
+    // mid-flight - and it is the row picked from a page that was on none.
+    function retargetNav(animate) {
+        var next = root.currentNavItem
+        // Nothing is current: leave navTo where it is and let navPresence fade
+        // the bar out on the row it was on, rather than parking it at the top.
+        if (next === null || next === root.navTo) return
+        root.navFrom = (animate && root.navTo !== null) ? root.navTo : next
+        root.navTo   = next
+        root.navResetting = true
+        root.navT = 0
+        root.navResetting = false
+        root.navT = 1
+    }
 
     // ── the panel ────────────────────────────────────────────────────────
 
@@ -581,19 +672,26 @@ Item {
 
             Item { Layout.fillWidth: true; Layout.preferredHeight: 24 }
 
+            // Named, because the one indicator above has to be able to ask a
+            // row where it is. Three ids and not a Repeater: these are three
+            // different pages with three different glyphs, and a model of them
+            // would be a list of one-offs.
             SideNavItem {
+                id: navHome
                 icon: "home"
                 label: qsTr("Home", "noun, the home page")
                 page: "home"
                 onActivated: root.navigate("home", {})
             }
             SideNavItem {
+                id: navSearch
                 icon: "search"
                 label: qsTr("Search", "noun, the search page")
                 page: "search"
                 onActivated: root.navigate("search", {})
             }
             SideNavItem {
+                id: navCollection
                 icon: "heart"
                 label: qsTr("Collection")
                 page: "collection"
@@ -881,6 +979,45 @@ Item {
                     ToolTip.delay: 450
                 }
             }
+        }
+
+        // ── the one nav indicator (S2) ────────────────────────────────
+        //
+        // A child of the panel and not of a row, because a bar that belongs to
+        // a row can only ever appear and disappear with it. It is the panel
+        // that owns the highlight now, and the rows only say where it goes.
+        //
+        // x is 0: each row insets its own fill by 8 and the bar used to hang
+        // 8 back out of it, which is the panel's left edge in both shapes of
+        // the sidebar. So there is nothing here that changes with the rail,
+        // and nothing to suppress when the panel resizes.
+        Rectangle {
+            id: navMark
+            objectName: "navCurrentIndicator"
+            x: 0
+            width: 3
+            radius: 2
+            color: Theme.accent
+            opacity: root.navPresence
+            visible: opacity > 0.001
+
+            // The two ends of the travel, in the panel's coordinates.
+            //
+            // `body.y` and not mapFromItem(): a function call is read once and
+            // then never again, and this has to follow the rows. body is
+            // anchored to the panel's own edges, so its y is the only step
+            // between a row's coordinates and the panel's.
+            //
+            // Half the row's inner box tall, which is the 0.5 the per-row
+            // marker used, measured off the row rather than off a constant so
+            // three rows of different heights would still be answered.
+            readonly property real fromH: root.navFrom ? Math.round((root.navFrom.height - 4) * 0.5) : 0
+            readonly property real toH:   root.navTo   ? Math.round((root.navTo.height   - 4) * 0.5) : 0
+            readonly property real fromY: root.navFrom ? body.y + root.navFrom.y + root.navFrom.height / 2 : 0
+            readonly property real toY:   root.navTo   ? body.y + root.navTo.y   + root.navTo.height   / 2 : 0
+
+            height: Math.round((fromH + (toH - fromH) * root.navT) * root.navPresence)
+            y: Math.round(fromY + (toY - fromY) * root.navT - height / 2)
         }
     }
 
@@ -1313,21 +1450,12 @@ Item {
 
         readonly property bool current: root.currentPage === page
 
-        // The highlight arriving, as one number the whole row reads. 140ms is
-        // the sidebar's own short end - the rail slide and a row's travel are
-        // 170 - because this is the smallest thing in the panel that moves and
-        // it moves on every click.
-        //
-        // A number and not three Behaviors because of the indicator: it used to
-        // be `visible: current`, and a visible flip has nothing to animate, so
-        // the one part of the highlight that reads as a position had none. The
-        // fills and the inks are Behaviors on their colours, at the same length,
-        // so the row arrives as one thing.
-        property real currentness: current ? 1 : 0
-        Behavior on currentness {
-            NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
-        }
-
+        // The row's own fill and ink cross-fade on the same 140ms the bar
+        // travels on, so the row arrives as one thing. They stay per-row
+        // deliberately: the current fill is the hover fill, and one travelling
+        // fill could not also be under the pointer somewhere else. The *bar* is
+        // what reads as a position, and that is the thing that moves - see
+        // navMark in the panel.
         Layout.fillWidth: true
         Layout.preferredHeight: 44
 
@@ -1348,23 +1476,6 @@ Item {
             Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
-
-            // Grows out of the row's middle and fades with it, rather than
-            // being there or not. Height and opacity together: at the far end
-            // of a fade alone a 3px bar is still a 3px bar, faintly, and the
-            // eye reads it as a smudge rather than as something leaving.
-            Rectangle {
-                objectName: "navCurrentIndicator"
-                visible: navItem.currentness > 0.001
-                opacity: navItem.currentness
-                width: 3
-                height: Math.round(parent.height * 0.5 * navItem.currentness)
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: -8
-                radius: 2
-                color: Theme.accent
-            }
 
             NavIcon {
                 id: navGlyph

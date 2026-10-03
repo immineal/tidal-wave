@@ -158,11 +158,22 @@ TestCase {
         return item.truncated !== undefined && item.elide !== undefined && item.text !== undefined
     }
 
-    // One deliberate overdraw: the ring that rounds an artist's artwork is
-    // wider than the art on purpose and the art box clips it back. Named rather
-    // than inferred from clipping, so nothing else picks the exemption up.
+    // The deliberate overdraws, each named rather than inferred from clipping
+    // so that nothing else picks the exemption up:
+    //
+    //   * the ring that rounds an artist's artwork is wider than the art on
+    //     purpose, and the art box clips it back;
+    //   * Collection's travelling tab highlight is one pill, drawn as a slice
+    //     inside each chip - every chip holds the *whole* pill and shows the
+    //     part of it that is over itself, so the box of a chip that the pill is
+    //     not on sits wherever the pill is, with nothing of it on screen;
+    //   * and the accent-ink copy of a chip's label is positioned inside that
+    //     same clip, so it starts left of its window whenever the pill covers
+    //     the right-hand part of the chip.
     function drawnOutsideOnPurpose(item) {
         return item.objectName === "cardArtCorners"
+            || item.objectName === "collectionTabPillSlice"
+            || item.objectName === "collectionTabInkLabel"
     }
 
     // Recursive: nothing visible leaves its parent's horizontal bounds, and no
@@ -189,6 +200,25 @@ TestCase {
 
             audit(c, label)
         }
+    }
+
+    // The travelling tab highlight as it is drawn, in the tab row's own
+    // coordinates. Every chip holds the whole pill and shows the part of it
+    // that is over itself, in a window that starts 2px outside the chip - which
+    // is where that 2 comes from - so any chip's slice reports the whole pill.
+    function drawnPill(tabs) {
+        var chip = tabs.children[0]
+        if (!chip) return null
+        var slice = findByName(chip, "collectionTabPillSlice")
+        if (!slice) return null
+        return { x: chip.x + slice.x - 2, y: chip.y + slice.y - 2,
+                 w: slice.width, h: slice.height }
+    }
+
+    function pillSays(tabs) {
+        var p = drawnPill(tabs)
+        if (!p) return "there is no pill"
+        return p.x.toFixed(1) + "," + p.y.toFixed(1) + " " + p.w.toFixed(1) + "x" + p.h.toFixed(1)
     }
 
     function findByName(item, name) {
@@ -312,6 +342,68 @@ TestCase {
                    + tabsBottom.toFixed(1) + ", field starts at " + searchTop.toFixed(1) + ")")
             verify(search.width > 220,
                    "@" + w + ": the search field kept a fixed width (" + search.width.toFixed(1) + ")")
+        }
+    }
+
+    // L6: the tab highlight is one pill that travels, and where it comes to
+    // rest is a layout question - the chips are text-width, and at 640 the row
+    // wraps onto a second line, which is the one place a highlight aimed with
+    // an index times a constant would land on nothing.
+    //
+    // The widths are swept because the five chips are five different widths -
+    // each is its label plus its count - and the pill has to be each of them in
+    // turn; 640 is the one that wraps, and the wrap is what makes the pill's y
+    // worth asserting at all.
+    function test_collection_tab_pill_lands_on_the_chip() {
+        for (var i = 0; i < widths.length; ++i) {
+            var w = widths[i]
+            var page = makePane(collectionC, w)
+            fillCollection(page, 0)
+            settle(page)
+
+            var tabs = findByName(page, "collectionTabsRow")
+            verify(tabs, "@" + w + ": the tab row was not found")
+
+            var wrapped = false
+            for (var tab = 0; tab < 5; ++tab) {
+                page.activeTab = tab
+                var chip = tabs.children[tab]
+                verify(chip, "@" + w + ": chip " + tab + " was not built")
+                if (chip.y > 1) wrapped = true
+
+                // tryVerify, because the pill is still travelling when the tab
+                // is set: this case is about where it stops. Exactly on the
+                // chip and not within a pixel of it - a pill that stops a
+                // fraction short leaves a sliver of the resting surface down
+                // one edge of the chip, and it is the ink check below that
+                // would go on to fail by a pixel and read as a different bug.
+                tryVerify(function () {
+                    var c = tabs.children[tab]
+                    var p = drawnPill(tabs)
+                    return p && Math.abs(p.x - c.x) < 0.01 && Math.abs(p.w - c.width)  < 0.01
+                        && Math.abs(p.y - c.y) < 0.01 && Math.abs(p.h - c.height) < 0.01
+                }, 2000,
+                "@" + w + ": the pill stopped at " + pillSays(tabs)
+                + " with chip " + tab + " at "
+                + chip.x.toFixed(1) + "," + chip.y.toFixed(1) + " "
+                + chip.width.toFixed(1) + "x" + chip.height.toFixed(1))
+
+                // The accent's ink copy covers the chip exactly when the pill
+                // does, which is what keeps the label on the fill its ink was
+                // chosen for; off the chip it is not drawn at all.
+                var ink = findByName(chip, "collectionTabInk")
+                verify(ink, "@" + w + ": chip " + tab + " has no accent-ink copy")
+                compare(Math.round(ink.width),  Math.round(chip.width),
+                        "@" + w + ": the ink does not cover the chip the pill is on")
+                compare(Math.round(ink.height), Math.round(chip.height),
+                        "@" + w + ": the ink does not cover the chip the pill is on")
+                var other = tabs.children[(tab + 2) % 5]
+                var otherInk = findByName(other, "collectionTabInk")
+                verify(!otherInk.visible || otherInk.width < 1,
+                       "@" + w + ": a chip the pill is nowhere near is drawing accent ink")
+            }
+            if (w === 640)
+                verify(wrapped, "@640 the tab row no longer wraps, so the second line is untested")
         }
     }
 
