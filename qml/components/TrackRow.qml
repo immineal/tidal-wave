@@ -705,13 +705,17 @@ Item {
                 }
             }
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
+            // No "/browse/" in the link: tidal.com answers a 301 from
+            // /browse/track/<id> to /track/<id>, so the short form is the
+            // canonical one and the longer one only costs the recipient a
+            // redirect.
             ContextMenu.Entry {
                 text: qsTr("Copy link")
                 iconName: "copy"
                 enabled: root.trackId > 0
                 onTriggered: {
                     if (root.trackId > 0)
-                        bridge.copyToClipboard("https://tidal.com/browse/track/" + root.trackId)
+                        bridge.copyToClipboard("https://tidal.com/track/" + root.trackId)
                 }
             }
         }
