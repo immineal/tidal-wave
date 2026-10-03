@@ -152,37 +152,6 @@ Rectangle {
         return panelValue + (reading - panelValue) * root.readingness
     }
 
-    // ─── What the reading view takes the height from ────
-    //
-    // The 560 cap below was not what was holding the words down. Measured at
-    // 1920x1200 with the lyrics open, the text column stands 617px tall and the
-    // page had 387px left to give the panel: the cap never bound at all, and
-    // uncapping it on its own buys nothing. The height has to come out of that
-    // column, and the only question is which of it.
-    //
-    // The user named what has to stay: the chrome row, and the controls, "so
-    // they can skip and scrub without moving the mouse". So the seek bar and
-    // the transport stay, and so does everything that is a control - the
-    // download, the like, the sleep timer - and the title block that says what
-    // is playing.
-    //
-    // Two blocks are neither. The Up Next preview is a list of what comes next,
-    // which is a thing to look at and not a thing to press, and the volume row
-    // is the one control on this page that is entirely on the keyboard already
-    // (Up, Down, Ctrl+M - see Main.qml). Those two fold away, and at 1920x1200
-    // the words go from 387px of the screen to 645.
-    //
-    // Folded, not hidden: the height is lerped off the same clock as everything
-    // else, so the panel grows into the space as the blocks give it up instead of
-    // the page re-forming in a frame.
-    //
-    // Each folded block leaves the column's 24px gap behind it, because a
-    // ColumnLayout keeps the spacing of a zero-height child and only drops it
-    // for an invisible one - and going invisible is a 48px step in the last
-    // frame of an otherwise smooth move. 48px of a 1200px screen is the price of
-    // not having that step.
-    readonly property real foldAway: 1 - readingness
-
     // Stacked, the cover takes the height the rest of the page leaves it,
     // capped at 420 and at the content width and floored at 180 so it stays a
     // cover. Deriving it rather than taking a fixed fraction of the height is
@@ -2194,18 +2163,12 @@ Rectangle {
 
                     RowLayout {
                         objectName: "nowPlayingVolumeRow"
-                        // Folds away in the reading view - see root.foldAway.
-                        // Volume, mute and the output picker are all on the
-                        // keyboard or one Escape away from being back.
+                        // Stays in the reading view, at its own height and full
+                        // strength. It folded away once, for the ~32px of words
+                        // it is worth; shown the trade the user chose the row,
+                        // because the volume slider is something they reach for
+                        // with the mouse rather than with the arrow keys.
                         Layout.fillWidth: true; spacing: 12
-                        Layout.preferredHeight: implicitHeight * root.foldAway
-                        // Without this the fold stops short. A nested Layout
-                        // reports a minimum height off its children's, and a
-                        // parent Layout will not take a child below its minimum
-                        // however small the preferred height asks to be.
-                        Layout.minimumHeight: 0
-                        opacity: root.foldAway
-                        clip: true
                         Item {
                             id: muteBtn
                             width: 18; height: 18
@@ -2256,14 +2219,46 @@ Rectangle {
                         id: upNextCol
                         objectName: "nowPlayingUpNextColumn"
                         Layout.fillWidth: true
-                        // Folds away in the reading view - see root.foldAway.
-                        // The biggest block in this column and the only one with
-                        // nothing in it to press.
-                        Layout.preferredHeight: implicitHeight * root.foldAway
-                        // See the volume row: a nested Layout's own minimum
-                        // height would otherwise stop the fold short.
+
+                        // ─── The one block the reading view folds ──────
+                        //
+                        // Lifting the panel's height cap bought nothing: see
+                        // root.lyricsCap, which never bound. The height has to
+                        // come out of this column, and the only question was
+                        // which of it.
+                        //
+                        // The user named what stays: the chrome row, and the
+                        // controls, "so they can skip and scrub without moving
+                        // the mouse". So the seek bar, the transport, the
+                        // download, the like, the sleep timer and the title
+                        // block all keep their height - and so does the volume
+                        // row above, which the user kept over the ~32px of words
+                        // it costs.
+                        //
+                        // This block is the one thing on the page that is
+                        // neither chrome nor a control: a list of what comes
+                        // next, a thing to look at and not a thing to press. It
+                        // is also the tallest block in the column. Folding it
+                        // takes the words from 387px of a 1200px screen to 607.
+                        //
+                        // Folded, not hidden: the height is lerped off the same
+                        // clock as everything else, so the panel grows into the
+                        // space as this block gives it up instead of the page
+                        // re-forming in a frame.
+                        readonly property real foldAway: 1 - root.readingness
+                        Layout.preferredHeight: implicitHeight * foldAway
+                        // Without this the fold stops short. A nested Layout
+                        // reports a minimum height off its children's, and a
+                        // parent Layout will not take a child below its minimum
+                        // however small the preferred height asks to be.
                         Layout.minimumHeight: 0
-                        opacity: root.foldAway
+                        opacity: foldAway
+                        // The fold leaves the column's 24px gap behind it,
+                        // because a ColumnLayout keeps the spacing of a
+                        // zero-height child and only drops it for an invisible
+                        // one - and going invisible would be a 24px step in the
+                        // last frame of an otherwise smooth move. 24px of a
+                        // 1200px screen is the price of not having that step.
                         clip: true
                         spacing: 12
                         // Reflects the true play order (respects shuffle).

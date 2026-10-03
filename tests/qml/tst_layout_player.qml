@@ -1246,6 +1246,15 @@ TestCase {
         return -1
     }
 
+    // What an item is really drawn at. Opacity is inherited down the tree, so a
+    // parent fading shows here as well as the item itself fading.
+    function effectiveOpacity(item) {
+        var o = item.opacity
+        var p = item.parent
+        while (p) { o *= p.opacity; p = p.parent }
+        return o
+    }
+
     // Everything the panel is at rest, in one object, so a before and an after
     // can be compared field by field.
     function panelShape(page) {
@@ -1307,18 +1316,36 @@ TestCase {
                row.tag + ": the panel lost height entering the reading view, "
                + docked.h.toFixed(1) + " -> " + reading.h.toFixed(1))
 
-        // The two blocks that are neither chrome nor a control have folded, and
-        // that is where the height came from.
+        // Up Next has folded, and that is where the height came from: it is the
+        // one block on the page that is neither chrome nor a control.
         var upNext = findChild(page, "nowPlayingUpNextColumn")
         var volume = findChild(page, "nowPlayingVolumeRow")
-        verify(upNext && volume, "the folding blocks were not found")
-        verify(upNext.height <= 0.5 && volume.height <= 0.5,
+        verify(upNext && volume, "the Up Next and volume blocks were not found")
+        verify(upNext.height <= 0.5,
                row.tag + ": Up Next is " + upNext.height.toFixed(1)
-               + " and the volume row " + volume.height.toFixed(1)
-               + " tall in the reading view, so neither folded")
+               + " tall in the reading view, so it did not fold")
         verify(reading.info < docked.info - 1,
                row.tag + ": the text column still stands " + reading.info.toFixed(1)
                + "px tall, so the words gained nothing from the fold")
+
+        // And the volume row has not folded. It did once; shown what the fold
+        // was worth the user kept the row, because the volume slider is
+        // something they reach for with the mouse rather than with the arrow
+        // keys. This is the assertion that stops it being folded again.
+        verify(volume.implicitHeight > 1,
+               row.tag + ": the volume row asks for "
+               + volume.implicitHeight.toFixed(1)
+               + "px, so this case cannot tell a kept row from a folded one")
+        verify(volume.visible,
+               row.tag + ": the volume row is not visible in the reading view")
+        verify(Math.abs(volume.height - volume.implicitHeight) <= 0.5,
+               row.tag + ": the volume row is " + volume.height.toFixed(1)
+               + "px tall against the " + volume.implicitHeight.toFixed(1)
+               + "px it asks for, so it folded - the user chose to keep it")
+        var volumeOpacity = effectiveOpacity(volume)
+        verify(volumeOpacity > 0.99,
+               row.tag + ": the volume row is drawn at "
+               + volumeOpacity.toFixed(2) + " opacity in the reading view")
 
         // Where the page has the height to give, the words are now the biggest
         // thing on it, which is the whole point and the opposite of the docked
@@ -1352,11 +1379,7 @@ TestCase {
             verify(it, row.tag + ": " + names[i] + " was not found")
             verify(it.visible, row.tag + ": " + names[i]
                    + " is not visible in the reading view")
-            // Opacity is inherited down the tree, so a parent fading would show
-            // here as well as the item itself fading.
-            var o = it.opacity
-            var p = it.parent
-            while (p) { o *= p.opacity; p = p.parent }
+            var o = effectiveOpacity(it)
             verify(o > 0.99, row.tag + ": " + names[i] + " is drawn at "
                    + o.toFixed(2) + " opacity in the reading view")
             // And actually on the screen, not scrolled off the bottom of it.
