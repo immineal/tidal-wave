@@ -1663,6 +1663,111 @@ TestCase {
                   "the popup stayed open after Start was clicked")
     }
 
+    // ── the sleep timer popup's edge behaviour ───────────────────────────
+
+    // The popup hangs off the pill and used to open downwards unconditionally.
+    // At the 600px window minimum there is not that much window under the pill,
+    // so it ran off the bottom of the screen - and 30e519f, which gave it a
+    // Start button, made it taller and so made it worse. It flips above the
+    // pill now when it has to.
+
+    // Where a popup actually sits. Its own x/y are in its `parent`'s
+    // coordinates - the pill's, here - so they say nothing about whether it is
+    // on screen; this is the same rectangle in window coordinates.
+    function popupRectInWindow(host, popup) {
+        var p = popup.parent.mapToItem(host.contentItem, popup.x, popup.y)
+        return { x: p.x, y: p.y, w: popup.width, h: popup.height,
+                 right: p.x + popup.width, bottom: p.y + popup.height }
+    }
+
+    function openSleepTimerPopup(host) {
+        var popup = findChild(host.page, "nowPlayingSleepTimerPopup")
+        verify(popup, "the sleep timer popup was not found")
+        popup.open()
+        tryVerify(function() { return popup.visible }, 2000,
+                  "the sleep timer popup never opened")
+        waitForRendering(host.contentItem)
+        verify(popup.width > 0 && popup.height > 0,
+               "the sleep timer popup measured "
+               + popup.width.toFixed(1) + "x" + popup.height.toFixed(1))
+        return popup
+    }
+
+    function test_sleep_timer_popup_stays_in_the_window_data() { return sizeRows() }
+
+    // The case that encodes the bug: wherever the pill ends up, the whole
+    // popup is inside the window. Which side of the pill it opens on is the
+    // next case down; this one does not care, it only cares that all of it is
+    // reachable.
+    function test_sleep_timer_popup_stays_in_the_window(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var winW = host.contentItem.width
+        var winH = host.contentItem.height
+        var popup = openSleepTimerPopup(host)
+        var r = popupRectInWindow(host, popup)
+        var where = " - the popup is " + r.w.toFixed(1) + "x" + r.h.toFixed(1)
+                  + " and covers y " + r.y.toFixed(1) + " to " + r.bottom.toFixed(1)
+                  + " in a window " + winH.toFixed(1) + "px tall"
+        verify(r.bottom <= winH + 0.5,
+               "the sleep timer popup hangs " + (r.bottom - winH).toFixed(1)
+               + "px off the BOTTOM of the window at " + row.tag + where)
+        // Worse than hanging off the bottom: the title and the rows read first
+        // are the ones that go.
+        verify(r.y >= -0.5,
+               "the sleep timer popup hangs " + (-r.y).toFixed(1)
+               + "px off the TOP of the window at " + row.tag + where)
+        verify(r.x >= -0.5 && r.right <= winW + 0.5,
+               "the sleep timer popup sticks out sideways at " + row.tag
+               + ": it covers x " + r.x.toFixed(1) + " to " + r.right.toFixed(1)
+               + " in a window " + winW.toFixed(1) + "px wide")
+    }
+
+    // Which side, and the gap, in both directions - because it is meant to be
+    // one rule rather than two, and the pill stays the anchor either way.
+    function test_sleep_timer_popup_opens_below_where_there_is_room() {
+        var host = showHost(nowPlayingHost, 960, 1200)
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        verify(pill, "the sleep timer pill was not found")
+        var popup = openSleepTimerPopup(host)
+        var r = popupRectInWindow(host, popup)
+        var p = pill.mapToItem(host.contentItem, 0, 0)
+        var roomBelow = host.contentItem.height - (p.y + pill.height)
+        verify(roomBelow >= popup.height + 6,
+               "960x1200 was picked because the popup fits under the pill "
+               + "there, but there are only " + roomBelow.toFixed(1)
+               + "px under it for a " + popup.height.toFixed(1) + "px popup")
+        verify(r.y >= p.y + pill.height,
+               "with " + roomBelow.toFixed(1) + "px of window under the pill "
+               + "the popup should still open downwards, but its top is at "
+               + r.y.toFixed(1) + " and the pill ends at "
+               + (p.y + pill.height).toFixed(1))
+        fuzzyCompare(r.y - (p.y + pill.height), 6, 0.5,
+                     "the popup opened below the pill but not 6px below it")
+    }
+
+    function test_sleep_timer_popup_flips_above_when_it_must() {
+        var host = showHost(nowPlayingHost, 960, 600)
+        var pill = findChild(host.page, "nowPlayingSleepTimerButton")
+        verify(pill, "the sleep timer pill was not found")
+        var popup = openSleepTimerPopup(host)
+        var r = popupRectInWindow(host, popup)
+        var p = pill.mapToItem(host.contentItem, 0, 0)
+        var roomBelow = host.contentItem.height - (p.y + pill.height)
+        verify(roomBelow < popup.height + 6,
+               "960x600 was picked because the popup does NOT fit under the "
+               + "pill there, but there are " + roomBelow.toFixed(1)
+               + "px under it for a " + popup.height.toFixed(1) + "px popup, "
+               + "so this case no longer measures the flip")
+        verify(r.bottom <= p.y + 0.5,
+               "there are only " + roomBelow.toFixed(1) + "px of window under "
+               + "the pill and the popup is " + popup.height.toFixed(1)
+               + "px tall, so it should open above the pill - but it ends at "
+               + r.bottom.toFixed(1) + " and the pill starts at "
+               + p.y.toFixed(1))
+        fuzzyCompare(p.y - r.bottom, 6, 0.5,
+                     "the popup opened above the pill but not 6px above it")
+    }
+
     // ── queue panel ──────────────────────────────────────────────────────
 
     function test_queue_panel_width_data() { return sizeRows() }

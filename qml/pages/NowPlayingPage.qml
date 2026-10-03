@@ -1305,10 +1305,73 @@ Rectangle {
                         objectName: "nowPlayingSleepTimerPopup"
                         parent: sleepTimerBtn
                         x: sleepTimerBtn.width - width
-                        y: sleepTimerBtn.height + 6
                         width: 260
-                        height: contentCol.implicitHeight + 24
                         padding: 12
+
+                        // ── how tall it is, and which side of the pill it opens on ──
+                        //
+                        // Both numbers come from the CONTENT's implicit height.
+                        // Neither one may be bound to this popup's own `height`.
+                        // `y: -height - 6` is the ordinary way to write "sit
+                        // above the button" and on Qt 6.4 it is a cycle: the
+                        // positioner sets the popup's height while
+                        // repositioning, the Layout inside reacts to that
+                        // geometry change by rearranging, the implicit height
+                        // moves, and it repositions again. On a Qt 6.4.2 box
+                        // that printed 1992 "called polish() inside
+                        // updatePolish()" warnings and hung the test run
+                        // outright (commit 5c1125f; the output picker's popup in
+                        // PlayerBar.qml is written this way for the same
+                        // reason). `width` is a literal, so no term below
+                        // depends on anything the positioner touches.
+                        readonly property real popupHeight:
+                            contentCol.implicitHeight + topPadding + bottomPadding
+                        height: popupHeight
+
+                        // The gap to the pill, whichever side it lands on.
+                        readonly property real pillGap: 6
+
+                        // The pill's top edge in window coordinates, and what is
+                        // left of the window under its bottom edge. Summed along
+                        // the parent chain rather than read off a mapToItem()
+                        // call: every term here is a property read, so these
+                        // re-evaluate whenever anything above the pill moves or
+                        // the window is resized, where mapToItem() reads no QML
+                        // properties and so would be captured once, at
+                        // completion, before the layout has placed anything.
+                        // The chain ends at the window's content item, which is
+                        // what the popup's position is ultimately measured in.
+                        function pillFrame() {
+                            var top = 0
+                            var it = sleepTimerBtn
+                            while (it.parent) { top += it.y; it = it.parent }
+                            return { top: top, windowHeight: it.height }
+                        }
+                        readonly property real pillTopInWindow: pillFrame().top
+                        readonly property real roomBelowPill: {
+                            var f = pillFrame()
+                            return f.windowHeight - (f.top + sleepTimerBtn.height)
+                                   - pillGap
+                        }
+
+                        // Below the pill where the window has room for it, above
+                        // the pill where it does not. `y` is in the pill's own
+                        // coordinates, which is why the question has to be
+                        // asked in the window's.
+                        //
+                        // At the 600px window minimum it does not: the pill ends
+                        // at 513 and the popup is 319 tall, so downwards it
+                        // reached 838 in a 600px window. 1280x600 is what the
+                        // Math.max is for - the layout goes side by side at that
+                        // width and lifts the pill to y=271, which leaves room
+                        // for a 319px popup in neither direction. There the gap
+                        // gives way before the top edge does: a popup hanging
+                        // off the bottom has lost its last rows, one hanging off
+                        // the top has lost its title and the rows that are read
+                        // first.
+                        y: popupHeight <= roomBelowPill
+                           ? sleepTimerBtn.height + pillGap
+                           : Math.max(-pillTopInWindow, -(popupHeight + pillGap))
                         modal: true
                         focus: true
                         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
