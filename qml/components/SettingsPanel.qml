@@ -745,6 +745,73 @@ Popup {
             }
 
 
+            // ── feedback ─────────────────────────────────────────────────
+            //
+            // Directly under Updates, because Updates is the other thing in
+            // this panel that reaches off the machine and both of them end up
+            // at the same repository - and above the shortcuts table, because a
+            // row of buttons under a thirteen-row reference table is a row of
+            // buttons nobody scrolls to. The privacy block stays last;
+            // tst_settings pins the whole order.
+            //
+            // Two routes, side by side, and neither of them sends anything. The
+            // app builds a URL and hands it to a program the user already has:
+            // the browser gets a GitHub issue form with the template filled in,
+            // the mail client gets an addressed, subject-lined draft. What
+            // happens after that is the user's to press.
+            Section {
+                heading: qsTr("Feedback")
+                key: "feedback"
+
+                Text {
+                    objectName: "settingsFeedbackNote"
+                    text: qsTr("Found a bug, or want to ask for something? Either way works.")
+                    color: Theme.textSec; font.pixelSize: 13
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
+                RowLayout {
+                    objectName: "settingsFeedbackRow"
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    PanelButton {
+                        objectName: "settingsIssueButton"
+                        // A globe, for the one of the two that opens a web page.
+                        // There is no GitHub mark and no bug in VectorIcon, and
+                        // neither is drawable at 13px by hand.
+                        icon: "globe"
+                        label: qsTr("Open a GitHub issue", "button that opens the browser at a new issue")
+                        onActivated: app.openUrl(Feedback.issueUrl())
+                    }
+                    PanelButton {
+                        objectName: "settingsEmailButton"
+                        // The pencil-on-a-sheet: there is no envelope in the
+                        // glyph set, and this is the half of the label worth
+                        // drawing anyway - you are about to write something.
+                        icon: "edit"
+                        label: qsTr("Send an email", "button that opens the user's mail client")
+                        onActivated: app.openUrl(Feedback.mailUrl())
+                    }
+                    // Keeps the two buttons at their own width, left-aligned,
+                    // rather than stretching them across the card.
+                    Item { Layout.fillWidth: true }
+                }
+
+                Text {
+                    objectName: "settingsFeedbackPrefillNote"
+                    // The address is printed, not hidden behind the button: the
+                    // user should be able to see where their mail is going
+                    // before their mail client opens. It comes from Feedback so
+                    // there is one copy of it in the project.
+                    text: qsTr("The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.")
+                              .arg(Feedback.mailAddress())
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+            }
+
+
             // ── keyboard shortcuts ───────────────────────────────────────
             Section {
                 heading: qsTr("Keyboard shortcuts")
@@ -836,6 +903,9 @@ Popup {
                 }
                 PrivacyLine {
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
+                }
+                PrivacyLine {
+                    text: qsTr("Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.")
                 }
                 PrivacyLine {
                     text: qsTr("The full version, with the source file behind every line, is at the bottom of the README.")
@@ -997,12 +1067,17 @@ Popup {
     component PanelButton : Item {
         id: btn
         property string label: ""
+        // A VectorIcon name, never a character, the way PillButton takes it.
+        // Empty leaves the plain text button this has always been, and the Row
+        // below skips an invisible child, so nothing moves for the buttons that
+        // do not set it.
+        property string icon: ""
         property bool danger: false
         // Still clickable, drawn as "this will not do much right now".
         property bool muted: false
         signal activated()
 
-        implicitWidth:  btnLabel.implicitWidth + 20
+        implicitWidth:  btnContent.implicitWidth + 20
         implicitHeight: 30
         Layout.preferredWidth: implicitWidth
         activeFocusOnTab: true
@@ -1021,13 +1096,26 @@ Popup {
                         : btn.danger && btnHov.hovered ? Theme.red
                                                        : Theme.border
         }
-        Text {
-            id: btnLabel
+        Row {
+            id: btnContent
             anchors.centerIn: parent
-            text: btn.label
-            color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.red)
-                              : Theme.textPrimary
-            font.pixelSize: 12
+            spacing: 6
+            VectorIcon {
+                name: btn.icon
+                visible: btn.icon !== ""
+                color: btnLabel.color
+                width: 13; height: 13
+                strokeWidth: 1.8
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                id: btnLabel
+                text: btn.label
+                color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.red)
+                                  : Theme.textPrimary
+                font.pixelSize: 12
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
         HoverHandler { id: btnHov; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: btn.activated() }

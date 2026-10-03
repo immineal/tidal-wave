@@ -84,6 +84,11 @@ public:
 
     static QUrl    releasesApiUrl();
     static QString releasesPageUrl();
+    // The "owner/name" this project lives at, which is also where a feedback
+    // issue is filed (src/ui/Feedback.cpp). Published rather than copied: the
+    // slug is written down once, in UpdateCheck.cpp, and a project that changes
+    // hands is still one edit.
+    static QString repoSlug();
     static QByteArray userAgent();
 
 signals:

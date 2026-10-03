@@ -379,6 +379,41 @@
     </message>
 </context>
 <context>
+    <name>Feedback</name>
+    <message>
+        <source>Problem with Tidal Wave %1</source>
+        <translation>Problem mit Tidal Wave %1</translation>
+    </message>
+    <message>
+        <source>Feedback on Tidal Wave %1</source>
+        <translation>Feedback zu Tidal Wave %1</translation>
+    </message>
+    <message>
+        <source>What happened</source>
+        <translation>Was passiert ist</translation>
+    </message>
+    <message>
+        <source>What I expected instead</source>
+        <translation>Was ich stattdessen erwartet habe</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>System</translation>
+    </message>
+    <message>
+        <source>Operating system: %1</source>
+        <translation>Betriebssystem: %1</translation>
+    </message>
+    <message>
+        <source>Qt, compiled against: %1</source>
+        <translation>Qt, kompiliert gegen: %1</translation>
+    </message>
+    <message>
+        <source>Qt, running now: %1</source>
+        <translation>Qt, zur Laufzeit: %1</translation>
+    </message>
+</context>
+<context>
     <name>HomePage</name>
     <message>
         <source>Good morning</source>
@@ -999,6 +1034,28 @@
         <translation>Jetzt suchen</translation>
     </message>
     <message>
+        <source>Feedback</source>
+        <translation>Feedback</translation>
+    </message>
+    <message>
+        <source>Found a bug, or want to ask for something? Either way works.</source>
+        <translation>Einen Fehler gefunden oder einen Wunsch? Beides geht.</translation>
+    </message>
+    <message>
+        <source>Open a GitHub issue</source>
+        <comment>button that opens the browser at a new issue</comment>
+        <translation>GitHub-Issue öffnen</translation>
+    </message>
+    <message>
+        <source>Send an email</source>
+        <comment>button that opens the user's mail client</comment>
+        <translation>E-Mail schreiben</translation>
+    </message>
+    <message>
+        <source>The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.</source>
+        <translation>Das Issue-Formular öffnet sich mit deiner Version, deinem System und beiden Qt-Versionen bereits darin. Die E-Mail öffnet sich adressiert an %1. Gesendet wird beides erst, wenn du es selbst sendest.</translation>
+    </message>
+    <message>
         <source>Privacy</source>
         <translation>Datenschutz</translation>
     </message>
@@ -1084,6 +1141,10 @@
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>
         <translation>Die Updateprüfung lässt sich oben abschalten. Tidal Wave lädt ein Update nie von selbst herunter und installiert auch keines. Es öffnet nur die Release-Seite in deinem Browser.</translation>
+    </message>
+    <message>
+        <source>Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.</source>
+        <translation>Feedback: Die beiden Schaltflächen unter Feedback weiter oben übergeben deinem Browser oder deinem Mailprogramm eine URL und tun sonst nichts. Tidal Wave baut dafür keine eigene Verbindung auf und sendet nichts. Nichts verlässt diesen Rechner, bevor du es in diesem Programm absendest, und dann geht es dorthin, wofür du dich entschieden hast: an ein GitHub-Issue, das öffentlich ist, oder an das Postfach tidal-wave@linu.li. Vorausgefüllt werden die Version der App, das Betriebssystem und die beiden Qt-Versionen – keine Kontodaten und nichts darüber, was du gehört hast.</translation>
     </message>
     <message>
         <source>The full version, with the source file behind every line, is at the bottom of the README.</source>

@@ -11,9 +11,11 @@
 
 namespace {
 
-// The repository the update check reads releases from. One edit here is the
-// whole move if the project ever changes hands or names; CPACK_PACKAGE_HOMEPAGE_URL
-// in CMakeLists.txt has to agree with it.
+// The repository the update check reads releases from, and the one a feedback
+// issue is filed against: Feedback (src/ui/Feedback.cpp) reaches it through
+// repoSlug() rather than writing it down again. One edit here is the whole move
+// if the project ever changes hands or names; CPACK_PACKAGE_HOMEPAGE_URL in
+// CMakeLists.txt has to agree with it.
 constexpr auto kRepoSlug = "immineal/tidal-wave";
 
 constexpr auto kLastCheck = "update/lastCheck";
@@ -110,6 +112,10 @@ UpdateCheck::UpdateCheck(QObject *parent)
     m_updateAvailable = shouldOffer(m_latestVersion,
                                     QStringLiteral(TIDALWAVE_VERSION),
                                     m_skippedVersion) && m_enabled;
+}
+
+QString UpdateCheck::repoSlug() {
+    return QLatin1String(kRepoSlug);
 }
 
 QUrl UpdateCheck::releasesApiUrl() {

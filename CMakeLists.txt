@@ -65,6 +65,7 @@ set(SOURCES
     src/ui/CoverColor.cpp
     src/ui/Prefs.cpp
     src/ui/UpdateCheck.cpp
+    src/ui/Feedback.cpp
     src/ui/ThemePalette.cpp
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
@@ -87,6 +88,7 @@ set(HEADERS
     src/ui/CoverColor.h
     src/ui/Prefs.h
     src/ui/UpdateCheck.h
+    src/ui/Feedback.h
     src/ui/ThemePalette.h
     src/ui/I18n.h
     src/ui/PinStore.h

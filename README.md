@@ -209,6 +209,19 @@ source in a few minutes; the file that does each thing is named.
     sends a `User-Agent` of `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`,
     so GitHub sees your IP address and which version you are running. The reply is a
     version number and a link.
+*   **Nothing, for feedback.** The two buttons in Settings -> Feedback do not talk to
+    anything. "Open a GitHub issue" builds
+    `https://github.com/immineal/tidal-wave/issues/new?title=...&body=...` and "Send an
+    email" builds `mailto:tidal-wave@linu.li?subject=...` (`src/ui/Feedback.cpp`, which takes
+    the repository from `UpdateCheck::repoSlug()` so the slug is written down once). Both are
+    handed to `Application::openUrl` (`src/ui/Application.cpp`), which is `xdg-open`. Tidal
+    Wave opens no connection of its own for either, and sends nothing: your browser or your
+    mail client does the talking, and only when you press send there - at which point your
+    text reaches GitHub, publicly, or that mailbox. The issue body is prefilled with the app
+    version, `QSysInfo::prettyProductName()`, and both the Qt the build was compiled against
+    and the Qt it is running on; no account data and nothing about what you have played.
+    `tidal-wave@linu.li` is a mailbox kept for this and the only address in the app. Tidal
+    Wave never signs in to it and carries no credential for it.
 
 ### What is stored on your machine
 

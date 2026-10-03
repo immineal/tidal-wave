@@ -235,6 +235,16 @@ TestCase {
             && typeof obj.wrapMode === "number"
     }
 
+    // Every Text under an item that says something. The feedback tests read what
+    // the panel puts in front of a person with it.
+    function collectTexts(item, out) {
+        if (!item) return out
+        if (isText(item) && item.text.length > 0) out.push(item)
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) collectTexts(kids[i], out)
+        return out
+    }
+
     // Every visible Text that is cut off. One that elides is allowed to, but
     // not all the way down to nothing.
     function collectClipped(item, path, out) {
@@ -1394,7 +1404,7 @@ TestCase {
     // reference table buried under it is a reference table nobody finds.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,window,playback,performance,updates,shortcuts,privacy"
+        "account,appearance,window,playback,performance,updates,feedback,shortcuts,privacy"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -1445,6 +1455,259 @@ TestCase {
                    || sections[i].mapToItem(h.panel.contentItem, 0, 0).y < py,
                    "\"" + sections[i].heading + "\" sits below the privacy note")
 
+        h.panel.close()
+    }
+
+    // ── the two ways out ─────────────────────────────────────────────────
+    //
+    // The panel can now open a prefilled GitHub issue and a prefilled email.
+    // Neither of those is a thing a test may actually do, so what is asserted
+    // here is the URL each button hands to app.openUrl() - which is where the
+    // app's part of the job ends. Nothing in this file opens a browser, a mail
+    // client, or a connection.
+
+    readonly property string feedbackMailbox: "tidal-wave@linu.li"
+    readonly property string issuePrefix:
+        "https://github.com/immineal/tidal-wave/issues/new?"
+
+    function feedbackSection(panel) {
+        var sections = collectByName(panel.contentItem, "settingsSection", [])
+        for (var i = 0; i < sections.length; ++i)
+            if (sections[i].key === "feedback") return sections[i]
+        return null
+    }
+
+    // The value of one query parameter, still encoded.
+    function paramOf(url, name) {
+        var parts = url.substring(url.indexOf("?") + 1).split("&")
+        for (var i = 0; i < parts.length; ++i) {
+            var eq = parts[i].indexOf("=")
+            if (parts[i].substring(0, eq) === name)
+                return parts[i].substring(eq + 1)
+        }
+        return null
+    }
+
+    // The URL the last click handed to app.openUrl(), or "" if it handed none.
+    function urlFromClick(panel, item) {
+        var before = app.openedUrlsForTest().length
+        clickItem(panel, item)
+        var after = app.openedUrlsForTest()
+        verify(after.length === before + 1,
+               "the button handed " + (after.length - before)
+               + " URLs to app.openUrl(); exactly one was expected")
+        return app.lastOpenedUrlForTest()
+    }
+
+    // Both routes live in a section of their own, between Updates - the other
+    // row here that reaches off this machine - and the shortcuts table.
+    function test_the_feedback_section_sits_between_updates_and_the_shortcuts() {
+        var h = openPanel(1280, 1200)
+        var sections = collectByName(h.panel.contentItem, "settingsSection", [])
+        var y = {}
+        for (var i = 0; i < sections.length; ++i)
+            y[sections[i].key] = sections[i].mapToItem(h.panel.contentItem, 0, 0).y
+
+        var feedback = feedbackSection(h.panel)
+        verify(feedback, "there is no feedback section")
+        verify(feedback.heading.length > 0, "the feedback section has no heading")
+        verify(y["updates"] < y["feedback"],
+               "the feedback section sits above Updates, at y=" + y["feedback"].toFixed(0))
+        verify(y["feedback"] < y["shortcuts"],
+               "the feedback section sits below the shortcuts table, at y="
+               + y["feedback"].toFixed(0))
+        h.panel.close()
+    }
+
+    // Side by side in one row, both of them something a person can actually get
+    // to: visible, inside the card, scrollable into the viewport, and on the tab
+    // ring rather than mouse-only.
+    function test_both_feedback_rows_are_reachable() {
+        var h = openPanel(minWindowW, minWindowH)
+        var section = feedbackSection(h.panel)
+        verify(section, "there is no feedback section")
+
+        var names = ["settingsIssueButton", "settingsEmailButton"]
+        var flick = scrollerOf(h.panel)
+        var seen = []
+        for (var i = 0; i < names.length; ++i) {
+            var btn = findByName(section, names[i])
+            verify(btn, names[i] + " is not in the feedback section")
+            verify(btn.visible, names[i] + " is hidden")
+            verify(btn.width > 0 && btn.height > 0,
+                   names[i] + " is " + btn.width + "x" + btn.height)
+            verify(btn.activeFocusOnTab,
+                   names[i] + " cannot be reached with the keyboard")
+
+            scrollTo(h.panel, btn)
+            var y = btn.mapToItem(flick, 0, 0).y
+            verify(y >= -1 && y + btn.height <= flick.height + 1,
+                   names[i] + " will not scroll into the viewport; it sits at y="
+                   + y.toFixed(0))
+            seen.push({ x: btn.mapToItem(section, 0, 0).x,
+                        y: btn.mapToItem(section, 0, 0).y })
+        }
+        // Side by side, which is what the user asked for: same line, one after
+        // the other.
+        compare(seen[0].y.toFixed(0), seen[1].y.toFixed(0),
+                "the two feedback buttons are stacked, not side by side")
+        verify(seen[0].x < seen[1].x,
+               "the two feedback buttons do not run left to right: the issue "
+               + "button is at x=" + seen[0].x.toFixed(0) + " and the email "
+               + "button at x=" + seen[1].x.toFixed(0))
+        h.panel.close()
+    }
+
+    // The GitHub route: the repository slug, and a template already filled in
+    // with the four things a report always has to be chased for.
+    function test_the_github_route_opens_a_prefilled_issue() {
+        var h = openPanel(1280, 1200)
+        var btn = findByName(h.panel.contentItem, "settingsIssueButton")
+        verify(btn, "there is no \"open an issue\" action")
+        var url = urlFromClick(h.panel, btn)
+
+        verify(url.indexOf(issuePrefix) === 0,
+               "the issue URL is \"" + url + "\", which does not start with "
+               + issuePrefix)
+
+        // Percent-encoded, not merely assembled. A raw space or newline makes an
+        // unusable URL, and a raw "#" - the body is Markdown, so it has several
+        // - cuts everything after it off as a fragment.
+        verify(url.indexOf(" ") === -1, "the issue URL carries a raw space: " + url)
+        verify(url.indexOf("\n") === -1, "the issue URL carries a raw newline")
+        verify(url.indexOf("#") === -1,
+               "the issue URL carries a raw \"#\", so GitHub sees everything "
+               + "after it as a fragment: " + url)
+        verify(url.indexOf("%20") !== -1, "nothing in the issue URL is encoded")
+
+        var title = paramOf(url, "title")
+        var body = paramOf(url, "body")
+        verify(title && title.length > 0, "the issue URL prefills no title")
+        verify(body && body.length > 0, "the issue URL prefills no body")
+
+        var version = Feedback.appVersion()
+        verify(version.length > 0, "Feedback reports no app version at all")
+        verify(decodeURIComponent(title).indexOf(version) !== -1,
+               "the issue title does not name the version: "
+               + decodeURIComponent(title))
+
+        var text = decodeURIComponent(body)
+        var mustSay = [version, Feedback.operatingSystem(),
+                       Feedback.qtCompiledVersion(), Feedback.qtRuntimeVersion()]
+        for (var i = 0; i < mustSay.length; ++i)
+            verify(text.indexOf(mustSay[i]) !== -1,
+                   "the issue body never mentions \"" + mustSay[i] + "\":\n" + text)
+
+        // Compiled against and running now are two different questions, and a
+        // body that answers them with one line cannot tell them apart - which is
+        // the gap four bugs came out of. Both labels have to be there, whether
+        // or not the two numbers happen to be equal on this machine.
+        verify(text.indexOf("compiled against") !== -1,
+               "the issue body does not say which Qt the build was compiled "
+               + "against:\n" + text)
+        verify(text.indexOf("running now") !== -1,
+               "the issue body does not say which Qt is running:\n" + text)
+
+        // And the two blanks the person filling it in is meant to answer.
+        verify(text.indexOf("What happened") !== -1,
+               "the issue body asks nothing about what happened:\n" + text)
+        verify(text.indexOf("expected") !== -1,
+               "the issue body asks nothing about what was expected:\n" + text)
+
+        h.panel.close()
+    }
+
+    // The mail route: one address, the project's own, and a subject naming the
+    // app and the version. No body - and above all no credential, because the
+    // app never signs in to that mailbox.
+    function test_the_email_route_opens_a_prefilled_draft() {
+        var h = openPanel(1280, 1200)
+        var btn = findByName(h.panel.contentItem, "settingsEmailButton")
+        verify(btn, "there is no \"send an email\" action")
+        var url = urlFromClick(h.panel, btn)
+
+        verify(url.indexOf("mailto:" + feedbackMailbox + "?") === 0,
+               "the mail URL is \"" + url + "\"; it has to be a mailto: to "
+               + feedbackMailbox)
+
+        var subject = paramOf(url, "subject")
+        verify(subject && subject.length > 0, "the mail URL prefills no subject")
+        var text = decodeURIComponent(subject)
+        verify(text.indexOf("Tidal Wave") !== -1,
+               "the mail subject does not name the app: " + text)
+        verify(text.indexOf(Feedback.appVersion()) !== -1,
+               "the mail subject does not name the version: " + text)
+
+        verify(url.indexOf(" ") === -1, "the mail URL carries a raw space: " + url)
+        verify(url.indexOf("%20") !== -1, "nothing in the mail URL is encoded")
+        h.panel.close()
+    }
+
+    // One address, and it is the box made for this.
+    //
+    // The user chose their git address first and then explicitly took that back,
+    // so a personal address reaching a shipped binary is the failure this guards:
+    // every "@" the feedback feature puts in front of a user, or into a URL, has
+    // to belong to the project mailbox.
+    function test_only_the_project_mailbox_is_ever_named() {
+        var h = openPanel(1280, 1200)
+        compare(Feedback.mailAddress(), feedbackMailbox,
+                "Feedback hands out " + Feedback.mailAddress())
+
+        var haystack = [Feedback.mailUrl(), Feedback.issueUrl(),
+                        decodeURIComponent(paramOf(Feedback.issueUrl(), "body"))]
+
+        // Everything the panel actually shows, feedback rows and privacy block
+        // alike: the address is printed to the user in both.
+        var texts = collectTexts(h.panel.contentItem, [])
+        for (var i = 0; i < texts.length; ++i) haystack.push(texts[i].text)
+
+        for (var j = 0; j < haystack.length; ++j) {
+            var s = haystack[j]
+            var at = s.indexOf("@")
+            while (at !== -1) {
+                verify(s.substring(at - 10, at + 8) === feedbackMailbox,
+                       "an address other than " + feedbackMailbox
+                       + " is in front of the user: ..."
+                       + s.substring(Math.max(0, at - 30), at + 30) + "...")
+                at = s.indexOf("@", at + 1)
+            }
+            verify(s.indexOf("gmail") === -1,
+                   "a personal address leaked into the app: " + s)
+        }
+        h.panel.close()
+    }
+
+    // The privacy block names every destination and says what each one gets, so
+    // a feature that puts the user's words in front of a third party has to be
+    // in it - and has to be in it accurately. The app sends nothing here: it
+    // hands a URL to a program the user chose, and that program does the
+    // talking, after the user presses send.
+    function test_the_privacy_block_covers_the_two_feedback_routes() {
+        var h = openPanel(1280, 1200)
+        var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
+        var all = ""
+        for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
+
+        // Only wording this feature put there. "browser" and "no account data"
+        // were both already in the block, for the update check, so asserting
+        // either would prove nothing about this paragraph.
+        var mustSay = [
+            // Which program gets handed the URL...
+            "mail client",
+            // ...that the app itself is not the one talking...
+            "sends nothing",
+            // ...where the words end up, and that one of the two is public...
+            feedbackMailbox, "public",
+            // ...that nothing moves until the user moves it...
+            "until you send it",
+            // ...and what is *not* in the part the user did not write.
+            "nothing about what you have played"
+        ]
+        for (var j = 0; j < mustSay.length; j++)
+            verify(all.indexOf(mustSay[j]) !== -1,
+                   "the privacy block never says \"" + mustSay[j]
+                   + "\" about the feedback routes")
         h.panel.close()
     }
 
