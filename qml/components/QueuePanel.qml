@@ -758,6 +758,9 @@ Item {
 
             Menu {
                 id: rowMenu
+                // So a test can reach a per-delegate menu, which is not in
+                // any item's children: a Popup is a QObject, not an Item.
+                objectName: "queueRowMenu"
                 // Insets reset, not inherited. A Menu's insets exist for a style's drop
                 // shadow, and the native macOS style sets all four to -32; this menu
                 // replaces the background with its own Rectangle and never drew that

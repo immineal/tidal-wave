@@ -302,6 +302,17 @@ Item {
             return "M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20"
         case "check":
             return "M 5 12 L 10 17 L 19 7"
+        // A sheet over a sheet, for "Copy link".
+        //
+        // The chain link this replaced is the usual drawing for a link and it
+        // cannot be drawn at this size: two half-rings of 2.8px radius with a
+        // sub-pixel stroke close into one flat oval with a bar through it,
+        // which is what the 16px grab showed. Two offset rounded rectangles
+        // are straight edges and one radius, they survive the same grab, and
+        // the verb is the half of the label worth drawing anyway.
+        case "copy":
+            return "M 10 8.5 H 19.5 A 2 2 0 0 1 21.5 10.5 V 20 A 2 2 0 0 1 19.5 22 H 10 A 2 2 0 0 1 8 20 V 10.5 A 2 2 0 0 1 10 8.5 Z"
+                 + " M 5 15.5 A 2 2 0 0 1 3 13.5 V 4 A 2 2 0 0 1 5 2 H 14.5 A 2 2 0 0 1 16.5 4 V 6"
         // A screen with its bottom left corner opened up, and the signal
         // rising out of that corner: dot, inner arc, outer arc, all centred
         // on (2.5, 19.5).
@@ -320,11 +331,11 @@ Item {
             return "M 2.5 7.5 V 5 A 1.5 1.5 0 0 1 4 3.5 H 20 A 1.5 1.5 0 0 1 21.5 5 V 18 A 1.5 1.5 0 0 1 20 19.5 H 14.5"
                  + " M 2.5 14.7 A 4.8 4.8 0 0 1 7.3 19.5"
                  + " M 2.5 11 A 8.5 8.5 0 0 1 11 19.5"
-        // The only mark any menu in the app carries, so it has to be the one
-        // thing a bin can be and nothing else: lid, handle, tapered body, two
-        // ribs. The ribs are what stop it reading as a cup at 16px, and the
-        // 2-unit body corners are the same radius the home and settings
-        // glyphs are built on.
+        // The mark on the one row of a menu where a misclick costs something,
+        // so it has to be the one thing a bin can be and nothing else: lid,
+        // handle, tapered body, two ribs. The ribs are what stop it reading
+        // as a cup at 16px, and the 2-unit body corners are the same radius
+        // the home and settings glyphs are built on.
         case "trash":
             return "M 4 6.5 H 20"
                  + " M 9.5 6.5 V 4.5 A 1.5 1.5 0 0 1 11 3 H 13 A 1.5 1.5 0 0 1 14.5 4.5 V 6.5"

@@ -261,7 +261,18 @@ TestCase {
         // letting the menu hang that far past the window edge.
         Menu {
             id: probe
-            popupType: Popup.Item
+            // Guarded exactly the way the app guards it, and for the reason
+            // the app states: `popupType` and `Popup.Item` are both Qt 6.8,
+            // and a declarative assignment on an older Qt does not warn -- it
+            // makes this whole type unavailable, and with it every test in
+            // this file. A Debian 12 box on Qt 6.4.2 failed the file that way
+            // ("Cannot assign to non-existent property popupType"). The
+            // `this.` is load-bearing: a bare identifier that names no
+            // property is a ReferenceError, not undefined, and it aborts the
+            // handler. See qml/components/ContextMenu.qml for the long form.
+            Component.onCompleted: {
+                if (this.popupType !== undefined) this.popupType = Popup.Item
+            }
             overlap: 0
             implicitWidth: Theme.menuWidth(probe)
             background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
@@ -551,7 +562,9 @@ TestCase {
         "trash", "play", "pause", "more", "track", "chevron-left", "chevron-right",
         "heart", "heart-filled", "shuffle", "edit", "download", "check", "x",
         "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip",
-        "speaker", "cast", "queue", "volume-high", "volume-mute"
+        "speaker", "cast", "queue", "volume-high", "volume-mute",
+        // The rest of what a context menu asks for.
+        "next", "plus", "waves", "copy"
     ]
 
     function markCases() {
@@ -1002,5 +1015,282 @@ TestCase {
         else
             compare(bad, "",
                     row.tag + ': "' + row.text + '" was rejected, carrying ' + bad)
+    }
+
+    // ── 6. every entry of every menu carries an icon ─────────────────────
+    //
+    // Three menus exist: the shared pin menu (sidebar rows, media cards and
+    // the four page heroes all open this one), the track row's own, and the
+    // queue row's. Each is opened here with every one of its entries visible,
+    // so an entry added later without an icon fails rather than shipping as
+    // the one blank row in a column of marks.
+
+    // A menu's entries, by walking the Menu rather than its item tree: a
+    // MenuSeparator is an item with no iconName and no label, and a hidden
+    // entry is not on screen to be missing anything.
+    function entriesOf(menu) {
+        var out = []
+        for (var i = 0; i < menu.count; ++i) {
+            var it = menu.itemAt(i)
+            if (it && it.visible && it.iconName !== undefined)
+                out.push(it)
+        }
+        return out
+    }
+
+    // The VectorIcon a row actually draws, which is what ties the name on the
+    // entry to the glyph on screen.
+    function iconOf(entry) {
+        var icons = collectIcons(entry, [])
+        return icons.length === 1 ? icons[0] : null
+    }
+
+    function checkEveryEntryCarriesAnIcon(menu, tag, atLeast) {
+        var items = entriesOf(menu)
+        verify(items.length >= atLeast,
+               tag + " offered " + items.length + " visible entries, fewer than the "
+               + atLeast + " this case is about, so it proved nothing")
+
+        var missing = []
+        var undrawn = []
+        var unshown = []
+        for (var i = 0; i < items.length; ++i) {
+            var n = items[i].iconName
+            if (n === "") { missing.push('"' + items[i].text + '"'); continue }
+            var ico = iconOf(items[i])
+            if (!ico) { unshown.push('"' + items[i].text + '" draws no icon at all'); continue }
+            if (ico.name !== n)
+                unshown.push('"' + items[i].text + '" draws ' + ico.name + ', not ' + n)
+            else if (!ico.visible)
+                unshown.push('"' + items[i].text + '" hides its icon')
+            // A name nobody drew is a blank square and nothing else.
+            if (ico._pathFor(n) === "" && ico._accentFor(n) === "" && !ico.isSnappedBars)
+                undrawn.push('"' + items[i].text + '" asks for ' + n)
+        }
+        // verify() rather than compare(): a compare() with a message of its
+        // own prints only that message, and the whole value of this case is
+        // which row is missing its icon.
+        verify(missing.length === 0, tag + ": entries with no icon name: " + missing.join(", "))
+        verify(undrawn.length === 0, tag + ": icon names nobody drew: " + undrawn.join(", "))
+        verify(unshown.length === 0, tag + ": icons not on the row: " + unshown.join(", "))
+    }
+
+    // Every label on one column, and every icon on one column before it,
+    // measured off the opened menu rather than read off the source: a row
+    // that pads itself differently is the regression this is here for.
+    function checkOneColumn(menu, tag) {
+        var items = entriesOf(menu)
+        verify(items.length > 1, tag + ": one entry cannot be out of column with itself")
+
+        var iconX = null, labelX = null
+        var offIcon = [], offLabel = [], narrow = []
+        for (var i = 0; i < items.length; ++i) {
+            var ico = iconOf(items[i])
+            var texts = collectTexts(items[i], [])
+            verify(ico && texts.length === 1,
+                   tag + ': "' + items[i].text + '" is not one icon and one label')
+            var ix = ico.mapToItem(menu.contentItem, 0, 0).x
+            var lx = texts[0].mapToItem(menu.contentItem, 0, 0).x
+            if (iconX === null) { iconX = ix; labelX = lx }
+            if (Math.abs(ix - iconX) > 0.01)
+                offIcon.push('"' + items[i].text + '" at ' + ix.toFixed(2))
+            if (Math.abs(lx - labelX) > 0.01)
+                offLabel.push('"' + items[i].text + '" at ' + lx.toFixed(2))
+            if (ico.width < 16 || ico.height < 16)
+                narrow.push('"' + items[i].text + '" draws into ' + ico.width + "x" + ico.height)
+        }
+        verify(offIcon.length === 0, tag + ": the icon column is at " + iconX.toFixed(2)
+               + " but " + offIcon.join(", "))
+        verify(offLabel.length === 0, tag + ": the label column is at " + labelX.toFixed(2)
+               + " but " + offLabel.join(", "))
+        verify(narrow.length === 0, tag + ": the icon column is not 16x16: " + narrow.join(", "))
+        verify(labelX > iconX, tag + ": the labels do not clear the icon column")
+    }
+
+    // Both menus a track row can show: in a playlist, where the destructive
+    // entry is there, and outside one, where it is not.
+    function openTrackMenu(holder, inPlaylist) {
+        var row = createTemporaryObject(trackRowC, holder, {
+            trackNum: 1, title: "Ein Titel", trackData: makeTrack(),
+            playlistUuid: inPlaylist ? "uuid-1" : "", trackItemIndex: 0
+        })
+        settle(holder)
+        row.openMenu()
+        settle(holder)
+        return row
+    }
+
+    function test_every_entry_of_the_track_menu_carries_an_icon_data() {
+        return [
+            { tag: "in a playlist",  inPlaylist: true,  atLeast: 11 },
+            { tag: "outside one",    inPlaylist: false, atLeast: 10 },
+        ]
+    }
+
+    function test_every_entry_of_the_track_menu_carries_an_icon(data) {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var row = openTrackMenu(holder, data.inPlaylist)
+        checkEveryEntryCarriesAnIcon(row.rowMenu, "the track menu " + data.tag, data.atLeast)
+        checkOneColumn(row.rowMenu, "the track menu " + data.tag)
+        row.rowMenu.close()
+    }
+
+    // The shared menu, with everything it can offer switched on: a card that
+    // can be queued, pinned and removed.
+    function openPinMenu(holder) {
+        var card = createTemporaryObject(mediaCardC, holder, {
+            title: "Ein Album", subtitle: "Eine Band", pinKind: "album", itemId: "42"
+        })
+        card.pinMenu.trackSource = function (cb) { cb([]) }
+        card.pinMenu.removeLabel = "Aus der Mediathek entfernen"
+        settle(holder)
+        card.pinMenu.showPin(0, 0, "album", "42", "Ein Album", "Eine Band", "")
+        settle(holder)
+        return card
+    }
+
+    function test_every_entry_of_the_pin_menu_carries_an_icon() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var card = openPinMenu(holder)
+        checkEveryEntryCarriesAnIcon(card.pinMenu, "the pin menu", 4)
+        checkOneColumn(card.pinMenu, "the pin menu")
+        card.pinMenu.close()
+    }
+
+    // The pin row is the one whose icon is a function of the store, so it is
+    // asserted both ways round.
+    function test_the_pin_row_draws_the_state_it_is_in() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var card = openPinMenu(holder)
+        var pinRow = card.pinMenu.pinItem
+        compare(pinRow.iconName, "pin", "an unpinned album does not offer a plain pin")
+        pins.pin("album", "42", "Ein Album", "Eine Band", "")
+        tryVerify(function () { return card.pinMenu.pinned }, 2000,
+                  "the menu never noticed the pin")
+        compare(pinRow.iconName, "pin-filled", "the Unpin row does not draw a pinned pin")
+        card.pinMenu.close()
+    }
+
+    // The first item of that name in the item tree, which is how a delegate
+    // is reached: a view incubates its delegates with no QObject parent, so
+    // findChild() from the panel walks straight past them.
+    function firstItemNamed(item, objName) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            if (kids[i].objectName === objName) return kids[i]
+            var hit = firstItemNamed(kids[i], objName)
+            if (hit) return hit
+        }
+        return null
+    }
+
+    // The queue row's menu, which is per delegate. Reached through the
+    // delegate rather than from the panel, and with findChild() for the last
+    // step because a Popup is a QObject and not in any item's children.
+    function test_every_entry_of_the_queue_menu_carries_an_icon() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 420, height: 700 })
+        player.setCurrentTrackForTest(makeTrack())
+        player.setQueueForTest([makeTrack()], 0)
+        player.setManualForTest([makeTrack()])
+        var panel = createTemporaryObject(queueC, holder, {})
+        settle(holder)
+
+        var row = firstItemNamed(panel, "queueEntry")
+        verify(row, "the queue drew no rows, so nothing was asserted")
+        var menu = findChild(row, "queueRowMenu")
+        verify(menu, "the queue row menu was not found, so nothing was asserted")
+        menu.popup()
+        settle(holder)
+        checkEveryEntryCarriesAnIcon(menu, "the queue menu", 1)
+        menu.close()
+    }
+
+    // ── 7. the icon takes the row's colour ───────────────────────────────
+    //
+    // Every icon reads entry.ink, the same binding the label reads, so the
+    // destructive row's bin is red and a disabled row's mark dims with its
+    // words. Asserted against the label beside it rather than against a
+    // literal, because the point is that the two cannot drift apart.
+
+    function test_the_destructive_row_draws_a_red_icon() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var row = openTrackMenu(holder, true)
+        var items = entriesOf(row.rowMenu)
+        var found = null
+        for (var i = 0; i < items.length; ++i)
+            if (items[i].danger) found = items[i]
+        verify(found, "the track menu in a playlist offered no destructive row")
+
+        var ico = iconOf(found)
+        var label = collectTexts(found, [])[0]
+        compare("" + ico.color, "" + Theme.red,
+                '"' + found.text + '" draws its icon in ' + ico.color + ', not the danger red')
+        compare("" + ico.color, "" + label.color,
+                "the icon and the label have drifted apart")
+        row.rowMenu.close()
+    }
+
+    function test_a_disabled_row_dims_its_icon_with_its_label() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        // No track data: the rows that act on a track go disabled, and the
+        // menu is still the real one.
+        var row = createTemporaryObject(trackRowC, holder, {
+            trackNum: 1, title: "Ein Titel", trackData: null
+        })
+        settle(holder)
+        row.openMenu()
+        settle(holder)
+
+        var items = entriesOf(row.rowMenu)
+        var dimmed = 0
+        for (var i = 0; i < items.length; ++i) {
+            if (items[i].enabled) continue
+            dimmed++
+            var ico = iconOf(items[i])
+            var label = collectTexts(items[i], [])[0]
+            compare("" + ico.color, "" + Theme.textDim,
+                    '"' + items[i].text + '" is disabled but its icon is ' + ico.color)
+            compare("" + ico.color, "" + label.color,
+                    '"' + items[i].text + '": the icon and the label have drifted apart')
+        }
+        verify(dimmed > 2, "only " + dimmed + " rows went disabled, so this proved nothing")
+        row.rowMenu.close()
+    }
+
+    // ── 8. the icon column does not cost a label ─────────────────────────
+    //
+    // Every row is 26px narrower than it was now that it carries an icon and
+    // the gutter it sits in. These are the longest labels the app ships, in
+    // the language they are longest in, read out of i18n/tidal-wave_de.ts:
+    // none of them may elide, and the menu may not have to reach past
+    // Theme.menuMaxWidth to manage it.
+    function test_the_longest_label_the_app_ships_fits_beside_an_icon_data() {
+        return [
+            { tag: "Add to queue",      label: "Zur Warteschlange hinzufügen" },
+            { tag: "Remove from queue", label: "Aus der Warteschlange entfernen" },
+            { tag: "Remove from library", label: "Aus der Mediathek entfernen" },
+            { tag: "Unfollow artist",   label: "Künstler nicht mehr folgen" },
+            { tag: "Unlike",            label: "Gefällt mir nicht mehr" },
+            { tag: "Remove from playlist", label: "Aus der Playlist entfernen" },
+        ]
+    }
+
+    function test_the_longest_label_the_app_ships_fits_beside_an_icon(data) {
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var menu = createTemporaryObject(probeMenuC, holder,
+                                         { longLabel: data.label, iconName: "trash" })
+        menu.popup()
+        settle(holder)
+
+        var label = collectTexts(menu.longItem, [])[0]
+        verify(label, data.tag + ": the row has no label")
+        verify(!label.truncated,
+               data.tag + ': "' + data.label + '" elides beside its icon: '
+               + label.implicitWidth.toFixed(1) + "px of label in "
+               + label.width.toFixed(1) + "px, menu " + menu.width)
+        verify(menu.width <= Theme.menuMaxWidth,
+               data.tag + ": the menu grew to " + menu.width
+               + ", past the " + Theme.menuMaxWidth + " ceiling")
+        menu.close()
     }
 }

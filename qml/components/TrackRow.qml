@@ -460,6 +460,7 @@ Item {
 
             ContextMenu.Entry {
                 text: qsTr("Play now")
+                iconName: "play"
                 onTriggered: root.playRequested()
             }
             // Above Add to queue: of the two, playing the track next is what
@@ -469,6 +470,7 @@ Item {
                 objectName: "playNextMenuItem"
                 enabled: root.trackData !== null
                 text: qsTr("Play next", "verb, play this right after the current track")
+                iconName: "next"
                 onTriggered: {
                     if (!root.trackData) return
                     player.playNext([root.trackData])
@@ -480,6 +482,7 @@ Item {
                 objectName: "addToQueueMenuItem"
                 enabled: root.trackData !== null
                 text: qsTr("Add to queue", "verb, put this at the end of the queue")
+                iconName: "queue"
                 onTriggered: {
                     if (!root.trackData) return
                     player.addToQueue([root.trackData])
@@ -488,11 +491,16 @@ Item {
             }
             ContextMenu.Entry {
                 text: qsTr("Download…")
+                iconName: "download"
                 enabled: root.trackId > 0 && root.dlState !== "busy"
                 onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
             }
             ContextMenu.Entry {
                 text: qsTr("Add to playlist")
+                // The plus, not a second list glyph. "Add to queue" above it
+                // already draws a list, and two lists one row apart at 16px
+                // are one smudge twice.
+                iconName: "plus"
                 enabled: root.trackId > 0
                 onTriggered: root.openPicker()
             }
@@ -511,6 +519,9 @@ Item {
             }
             ContextMenu.Entry {
                 text: qsTr("Start radio")
+                // What the queue heading already draws for a radio source;
+                // see QueuePanel.contextGlyph.
+                iconName: "waves"
                 enabled: root.trackId > 0
                 onTriggered: {
                     if (root.trackId <= 0) return
@@ -523,6 +534,9 @@ Item {
             ContextMenu.Entry {
                 text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
                                    : qsTr("Like", "verb, add to favourites")
+                // Filled is the state it is in, so it is the row that undoes
+                // it -- the same pairing the pin row uses.
+                iconName: root.isLiked ? "heart-filled" : "heart"
                 enabled: root.trackId > 0
                 onTriggered: {
                     if (root.trackId <= 0) return
@@ -536,6 +550,7 @@ Item {
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
             ContextMenu.Entry {
                 text: qsTr("Go to album")
+                iconName: "album"
                 enabled: root.trackData && Number(root.trackData.albumId) > 0
                 onTriggered: {
                     if (root.trackData && Number(root.trackData.albumId) > 0)
@@ -544,6 +559,7 @@ Item {
             }
             ContextMenu.Entry {
                 text: qsTr("Go to artist")
+                iconName: "artist"
                 enabled: root.trackData && Number(root.trackData.artistId) > 0
                 onTriggered: {
                     if (root.trackData && Number(root.trackData.artistId) > 0)
@@ -553,6 +569,7 @@ Item {
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
             ContextMenu.Entry {
                 text: qsTr("Copy link")
+                iconName: "copy"
                 enabled: root.trackId > 0
                 onTriggered: {
                     if (root.trackId > 0)

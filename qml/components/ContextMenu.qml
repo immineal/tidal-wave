@@ -10,48 +10,42 @@ import TidalWave
 // which player call each one makes.
 //
 // It also owns ContextMenu.Entry, the row every Menu in the app is built from
-// (TrackRow, QueuePanel and CollectionPage all declare their own Menu but
-// borrow the row), so there is exactly one answer to what a menu entry looks
-// like, how wide it is allowed to get and which entries carry a mark.
+// (TrackRow and QueuePanel declare their own Menu but borrow the row), so
+// there is exactly one answer to what a menu entry looks like and how wide it
+// is allowed to get.
 Menu {
     id: root
 
     // ── what a menu entry looks like, once ───────────────────────────────
     //
-    // Which entries get an icon: only the ones that take something away.
-    //
-    // The audit question was whether a mark tells you anything the label does
-    // not. Next to "Play now", "Download", "Copy link" or "Go to artist" it
-    // does not -- it draws the word again -- and a column of five thin
-    // 16px marks turns into texture, which is exactly what stops people
-    // reading the labels. The destructive entry is the one row where a
-    // misclick costs you something, so it is the one row worth catching the
-    // eye before the eye reaches the word. It already turns red; the bin is
-    // the redundant encoding of that, for anyone the red does not reach.
-    //
-    // Entries that merely navigate do not qualify: "Go to album" says it, and
-    // the separator above it already groups them.
+    // Every entry carries an icon.
     component Entry : MenuItem {
         id: entry
 
         // An icon *name* out of VectorIcon's set, not a character. Not called
         // `icon`: AbstractButton already has an `icon` group property.
         property string iconName: ""
-        // Destructive. Tints the label and the mark, and is the only thing
-        // that puts a mark on a row at all.
+        // Destructive. Tints the label and the icon red.
         property bool danger: false
 
         leftPadding: 12
         rightPadding: 12
 
-        // The gutter is reserved on every row of a menu that has any mark in
+        // The gutter is reserved on every row of a menu that has any icon in
         // it, so its labels start on one pixel instead of stepping in and out
-        // around the marked row -- and on none of the rows of a menu that has
-        // no mark, so an all-text menu is not mysteriously indented. The menu
-        // answers that, not the row, which is why this walks its siblings.
+        // around a row that has none -- and on none of the rows of a menu
+        // with no icon at all, so an all-text menu is not mysteriously
+        // indented. The menu answers that, not the row, which is why this
+        // walks its siblings.
+        //
+        // Its own icon is asked first, and not only as a shortcut: the walk
+        // reads `menu.count`, which is 0 while the menu is still being built,
+        // and a row that answered "no gutter" there would sit half a column
+        // left of the rest for as long as the binding stood.
         readonly property bool showsGutter: {
+            if (entry.iconName !== "") return true
             var m = entry.menu
-            if (!m) return entry.iconName !== ""
+            if (!m) return false
             for (var i = 0; i < m.count; ++i) {
                 var it = m.itemAt(i)
                 if (it && it.visible && it.iconName !== undefined && it.iconName !== "")
@@ -225,10 +219,10 @@ Menu {
 
     // ── taking it away ───────────────────────────────────────────────────
     //
-    // The destructive entry, and the only one in the menu that carries a
-    // mark. The host supplies the wording, because only it knows what
-    // removing means: an album leaves the library, an artist is unfollowed.
-    // Empty means the host offers no such action and the row is not there.
+    // The destructive entry. The host supplies the wording, because only it
+    // knows what removing means: an album leaves the library, an artist is
+    // unfollowed. Empty means the host offers no such action and the row is
+    // not there.
     //
     // Collection's album and artist grids are why this exists. Each used to
     // declare a Menu of its own over the top of the tile's, which covered the
@@ -278,6 +272,7 @@ Menu {
         visible: root.trackSource !== null
         height: visible ? implicitHeight : 0
         text: qsTr("Play next", "verb, play this right after the current track")
+        iconName: "next"
         onTriggered: root.playNext()
     }
     Entry {
@@ -286,6 +281,7 @@ Menu {
         visible: root.trackSource !== null
         height: visible ? implicitHeight : 0
         text: qsTr("Add to queue", "verb, put this at the end of the queue")
+        iconName: "queue"
         onTriggered: root.addToQueue()
     }
     MenuSeparator {
@@ -299,10 +295,10 @@ Menu {
         objectName: "pinMenuItem"
         visible: root.canPin
         height: visible ? implicitHeight : 0
-        // No mark. The pin/pin-filled pair that used to sit here said the
-        // same thing as the label flipping between Pin and Unpin, and it was
-        // the only mark in an otherwise plain menu.
         text: root.pinned ? qsTr("Unpin", "verb, remove from the pinned block") : qsTr("Pin", "verb, pin to the sidebar")
+        // The icon follows the label: the filled pin is the one that is
+        // already stuck in, so it is the row that pulls it out.
+        iconName: root.pinned ? "pin-filled" : "pin"
         onTriggered: {
             if (root.pinned) pins.unpin(root.pinKind, root.pinId)
             else             pins.pin(root.pinKind, root.pinId, root.pinTitle,
