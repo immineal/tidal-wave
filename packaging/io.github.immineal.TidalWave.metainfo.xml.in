@@ -116,9 +116,13 @@
     and nothing in the UI filters on it, and TidalClient::fetchLyrics puts the
     lyrics of whatever is playing on screen verbatim. So:
 
-      language-profanity  intense  Strong profanity, frequently, is in the
-                                   catalogue and in the lyrics pane, and the app
-                                   offers no explicit-content filter at all.
+      language-profanity  moderate The owner's decision, taken with the
+                                   comparables in front of them. Note plainly
+                                   that this is softer than the app warrants:
+                                   strong profanity, frequently, is in the
+                                   catalogue and in the lyrics pane, and there
+                                   is no explicit-content filter at all, which
+                                   is OARS's own wording for "intense".
       sex-themes          moderate Sexual references in lyrics and titles.
       sex-nudity          mild     Album artwork, which we neither choose nor
                                    screen, includes artistic nudity.
@@ -138,13 +142,27 @@
     bought on Tidal's own site, outside it. social-chat/-audio/-contacts/
     -location are none because there is no messaging of any kind.
 
-    This set is honest, and it costs something: language-profanity=intense maps
-    to an 18 age rating in the store front-ends, which parental controls act on.
-    Lowering it means either arguing for "moderate" or shipping an
-    explicit-content filter, and both are the owner's call, not ours.
+    What the comparables declare, checked against Flathub's own API rather than
+    assumed, because the first version of this comment got the cost wrong:
+
+      High Tide (io.github.nokse22.high-tide), another Tidal client
+        language=intense, drugs=moderate, sex=moderate, violence=mild
+        -> ESRB Teen, 14.  Not 18.
+      TIDAL Hi-Fi (com.mastermindzh.tidal-hifi)   every category none -> age 3
+      Spotify    (com.spotify.Client)             every category none -> age 3
+
+    So "intense" was never going to cost an 18 on Flathub, and the two biggest
+    comparables declare nothing at all for the same unfiltered catalogues.
+    Shown that, the owner chose "moderate" anyway - a year below the honest
+    reading and a decade above what Spotify claims.
+
+    **Do not "correct" this back to intense.** It is a deliberate decision,
+    taken twice, with the evidence on the table. If it is ever revisited, the
+    thing that would make a lower rating truthful is an explicit-content filter:
+    the `explicit` flag is already parsed on every track and currently unused.
   -->
   <content_rating type="oars-1.1">
-    <content_attribute id="language-profanity">intense</content_attribute>
+    <content_attribute id="language-profanity">moderate</content_attribute>
     <content_attribute id="sex-themes">moderate</content_attribute>
     <content_attribute id="sex-nudity">mild</content_attribute>
     <content_attribute id="drugs-alcohol">mild</content_attribute>
