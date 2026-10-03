@@ -80,3 +80,9 @@ Thumbs.db
 /*.tar.gz
 /*.zip
 /aqtinstall.log
+
+# The working queue. Development notes, not something a user installing the app
+# has any use for - and it is where the only leak of the user's own listening
+# data into a tracked file happened. It stays on disk, untracked, and is read
+# at the start of every session.
+/HANDOFF.md
