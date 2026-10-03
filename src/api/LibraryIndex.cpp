@@ -353,6 +353,10 @@ void LibraryIndex::partFinished(int gen) {
     if (gen != m_loadGen) return;
     if (--m_pending > 0) return;
     rebuildTrackEntries();
+    // The library has just finished loading, so this is the first moment in a
+    // session where "no longer in the library" means anything - a song unliked
+    // on the phone is only visible now.
+    pruneSongPlays();
     rebuild();
     setLoading(false);
     startTrackIndex();
@@ -506,10 +510,12 @@ void LibraryIndex::rebuild() {
         rows.append(&e);
     }
     // Same two tiers, same collation. A song cannot be pinned (PinStore rejects
-    // the kind), cannot be played (markPlayed rejects it too) and carries no
-    // date added - the favourites row a song arrives in is not read this far -
-    // so its recency is 0 and it files at the end, under its title. The Tracks
-    // chip is a different list with a different rule - see entriesForKinds().
+    // the kind) and carries no date added - the favourites row a song arrives
+    // in is not read this far - so its recency is 0 and it files at the end,
+    // under its title. Playing a song does not change that either: a song play
+    // writes Entry::songRecency, which only the Tracks chip reads, precisely so
+    // that this list does not reorder. See markTrackPlayed() and
+    // entriesForKinds().
     std::stable_sort(rows.begin(), rows.end(), [&](const Entry *a, const Entry *b) {
         const int ta = tierOf(*a);
         const int tb = tierOf(*b);
@@ -546,6 +552,10 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     // the only place it can learn that without another round trip.
     if (e.kind == QLatin1String(kKindPlaylist))
         m[QStringLiteral("type")] = e.playlistType;
+    // Songs only, and for the same reason as addedAt/recency above: it is what
+    // makes the Tracks chip's placement inspectable from outside the sort.
+    if (e.kind == QLatin1String(kKindTrack))
+        m[QStringLiteral("songRecency")] = e.songRecency;
     if (e.albumId > 0) m[QStringLiteral("albumId")] = e.albumId;
     if (!e.artistIds.isEmpty()) m[QStringLiteral("artistId")] = e.artistIds.first();
     m[QStringLiteral("score")] = score;
@@ -611,7 +621,17 @@ void LibraryIndex::addTrack(const Track &t) {
     m_favoriteTracks.append(t);
     // Appended, not inserted: the favourites endpoint answers oldest first and
     // the pager keeps that order, so the end of this list is the most recent
-    // like, which is what the Tracks chip orders by.
+    // like - which is the Tracks chip's fallback order.
+    //
+    // Stamped as well, in the same map a song play writes to, because the chip
+    // orders by the most recent of played or liked and those two have to meet
+    // on one axis. likeIndex cannot provide it: it is a position, not an
+    // instant, so it cannot say whether this like is newer than a play from an
+    // hour ago. A like made here can, and this is where it is witnessed.
+    // rebuildTrackEntries() below reads the stamp back out.
+    m_recents.insert(QLatin1String(kKindTrack) + QLatin1Char(':') + QString::number(t.id),
+                     stampNow());
+    saveRecents();
     rebuildTrackEntries();
     // rebuild() because a liked song whose album is not saved now takes a row
     // of the library list as well - see rebuild(). It emits entriesChanged, so
@@ -632,6 +652,7 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
             // left where it is - that is where the disk prune reads it from,
             // and re-saving the album needs no second round trip.
             rebuildTrackEntries();
+            pruneSongPlays();
             rebuild();
             return;
         }
@@ -649,6 +670,10 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
             if (m_favoriteTracks[i].id != trackId) continue;
             m_favoriteTracks.removeAt(i);
             rebuildTrackEntries();
+            // Unliking a song whose album is still saved leaves it in the index
+            // - the album's tracklist holds it - so this only forgets the play
+            // time of a song that has actually gone.
+            pruneSongPlays();
             // rebuild() as in addTrack: unliking a song whose album is not
             // saved also takes its row out of the library list.
             rebuild();
@@ -660,12 +685,60 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
 // ── recently played, kept locally (S4) ──────────────────────────────────────
 
 void LibraryIndex::markPlayed(const QString &kind, const QString &id) {
-    // Only the four things the sidebar lists. A song play reorders nothing.
+    // Only the four things the sidebar lists. A song play does not come
+    // through here, and must not: this calls rebuild(), which re-sorts the
+    // whole library - a thousand rows - and the library list is not allowed to
+    // move because a song played. Song plays go to markTrackPlayed() instead,
+    // and reach the Tracks chip alone.
     if (id.isEmpty() || !PinStore::isValidKind(kind)) return;
 
     m_recents.insert(kind + QLatin1Char(':') + id, stampNow());
     saveRecents();
     rebuild();
+}
+
+// The song half of the same idea, kept apart from it on purpose - see the two
+// comments above, and Entry::songRecency in the header.
+//
+// Three things it deliberately does not do. It does not rebuild(): that is the
+// hot path this separation exists to protect, and the Tracks chip reads its
+// order when it is next asked for it, which is the next time the sidebar
+// rebuilds its rows (every pin, like and save, and the markPlayed() of the
+// album or playlist the song was started from). It does not sort anything: the
+// one entry is patched in place. And it does not record a song that is not in
+// the library.
+void LibraryIndex::markTrackPlayed(const QString &id) {
+    if (id.isEmpty()) return;
+
+    const qint64 trackId = id.toLongLong();
+    if (trackId <= 0) return;
+    // Not in the library, so nothing to reorder and nothing worth keeping. The
+    // user asked for this in so many words: a song played once from somebody
+    // else's playlist does not appear under the chip, which is a library view
+    // and not a play history. Refusing it here rather than storing it and
+    // pruning it later is also what keeps the map from growing with every
+    // stranger's playlist the user passes through.
+    //
+    // "In the library" means "in the song index", which during the first
+    // background index run after a cache has been thrown away is a little
+    // behind the truth: a song on a saved album whose tracklist has not been
+    // pulled in yet loses that one play. It corrects itself on the next one,
+    // and the alternative - storing it and deciding later - is the unbounded
+    // version of this map.
+    if (!m_trackIds.contains(trackId)) return;
+
+    const qint64 stamp = stampNow();
+    m_recents.insert(QLatin1String(kKindTrack) + QLatin1Char(':') + id, stamp);
+    saveRecents();
+
+    // One pass over the song index to patch the one row, rather than calling
+    // rebuildTrackEntries(): that re-folds and re-collates every title in the
+    // library, and this runs once per song played.
+    for (Entry &e : m_trackEntries) {
+        if (e.id != id) continue;
+        e.songRecency = stamp;
+        return;
+    }
 }
 
 // A timestamp for something the user has just done - played it, saved it or
@@ -680,8 +753,12 @@ void LibraryIndex::markPlayed(const QString &kind, const QString &id) {
 // axis, which is also what makes "(re)saving puts it at the top with the same
 // priority as playing" true rather than true most of the time.
 //
-// Linear in the size of the library, which is a thousand or so, and only ever
-// called from something that is about to rebuild() the whole list anyway.
+// Linear in the number of things recorded. That used to be the library alone, a
+// thousand or so; song plays share the map now, so it is that plus the songs
+// this account has played - still bounded by the library (pruneSongPlays), and
+// still a hash walk per user action, which is microseconds. The alternative, a
+// stored high-water mark, would be a second thing to keep correct for no
+// measurable gain.
 qint64 LibraryIndex::stampNow() const {
     qint64 stamp = QDateTime::currentMSecsSinceEpoch();
     const auto after = [&stamp](qint64 t) { if (t >= stamp) stamp = t + 1; };
@@ -724,6 +801,35 @@ void LibraryIndex::saveRecents() const {
                       QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)));
 }
 
+// The bound on what a song play can store. A song's play time is read by one
+// thing, the Tracks chip, and the chip lists the library's songs - so there is
+// no reason to remember one for a song that is no longer in the library. With
+// markTrackPlayed() refusing songs that were never in it, that makes the map
+// grow with the library rather than with how much the user listens, which is
+// the same size the song index is already carrying.
+//
+// Called only where "in the library" is settled: when a load finishes, and when
+// the user unlikes a song or unsaves an album. Not from rebuildTrackEntries(),
+// which also runs at sign-in with the disk cache alone and no favourites yet,
+// and would take every liked song's play time with it.
+//
+// The four library kinds are left alone. That list is a thousand rows at most,
+// it has never needed a bound, and an album unsaved on the phone is something
+// the user may well save again - its place in the order is worth keeping.
+void LibraryIndex::pruneSongPlays() {
+    if (m_userId <= 0) return;
+
+    const QString prefix = QLatin1String(kKindTrack) + QLatin1Char(':');
+    bool dropped = false;
+    for (auto it = m_recents.begin(); it != m_recents.end(); ) {
+        if (!it.key().startsWith(prefix)) { ++it; continue; }
+        if (m_trackIds.contains(it.key().mid(prefix.size()).toLongLong())) { ++it; continue; }
+        it = m_recents.erase(it);
+        dropped = true;
+    }
+    if (dropped) saveRecents();
+}
+
 // ── the lazy album tracklist index (S6) ─────────────────────────────────────
 
 void LibraryIndex::rebuildTrackEntries() {
@@ -740,6 +846,10 @@ void LibraryIndex::rebuildTrackEntries() {
         Entry e = entryFor(t, 0);
         e.liked     = true;
         e.likeIndex = int(i);
+        // Computed here, once per song, and not in entriesForKinds's
+        // comparator: the chip sorts tens of thousands of rows, and this is the
+        // same reason rebuild() precomputes Entry::recency.
+        e.songRecency = m_recents.value(e.key(), 0);
         m_trackEntries.append(e);
     }
 
@@ -764,7 +874,9 @@ void LibraryIndex::rebuildTrackEntries() {
             const qint64 trackId = e.id.toLongLong();
             if (m_trackIds.contains(trackId)) continue;
             m_trackIds.insert(trackId);
-            m_trackEntries.append(e);
+            Entry copy = e;
+            copy.songRecency = m_recents.value(copy.key(), 0);
+            m_trackEntries.append(copy);
         }
     }
 }
@@ -996,23 +1108,36 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
         if (kinds.contains(e.kind)) picked.append(&e);
 
     // Songs get a tier to themselves, below the two the library kinds use.
-    // They carry neither a pin index nor a play time nor a date added - nothing
-    // pins a song, markPlayed() rejects the kind, and the favourites row a song
-    // arrives in is not read this far - so they have no business among the dated
-    // rows, and thousands of them mixed in would push the albums and playlists
-    // that *do* have an ordering out of sight. That part has not changed.
+    // They carry neither a pin index nor a date added - nothing pins a song,
+    // and the favourites row a song arrives in is not read this far - so they
+    // have no business among the dated rows, and thousands of them mixed in
+    // would push the albums and playlists that *do* have an ordering out of
+    // sight. That part has not changed.
     //
-    // What has changed is the order *within* their tier: newest liked first,
-    // not A-Z. Alphabetical made the chip useless for the thing it is for -
-    // finding the song you just liked - and the ordering costs nothing to
-    // produce, because the favourites endpoint returns likes oldest first and
-    // likeIndex is simply where the song sat in that list. It therefore covers
-    // likes made on the phone too, which a local play time never could; Tidal
-    // exposes no cross-device play history at all.
+    // The order *within* their tier is the rule the rest of the sidebar
+    // follows: the most recent of played or liked, newest first. It was A-Z
+    // once, and then liked-first; "isn't the sidebar with song filter pill
+    // selected supposed to show all the latest played songs?" is what moved it
+    // here. Same songs, same tier, one more signal.
     //
-    // A song found on a saved album's tracklist has no liking date (likeIndex
-    // -1) and goes after the liked ones, by title, which is also the order it
-    // was in before.
+    // The two signals do not arrive in the same form, and that is a constraint,
+    // not an oversight. Tidal exposes no cross-device play history at all, so a
+    // play is only ever something this app watched, with a real instant on it
+    // (Entry::songRecency). A like has no date that reaches here; the
+    // favourites endpoint gives an order, and likeIndex is a song's position in
+    // it. So a like made in this app is stamped like a play - see addTrack -
+    // and everything else falls back to likeIndex.
+    //
+    // What that costs: a song liked on the phone and never played here ranks
+    // below a song played here long ago, because the phone like has no instant
+    // to beat it with. Nothing in the API can fix that. What it buys is that
+    // the chip answers "what have I been listening to" from the first play,
+    // and that an account's whole backlog of likes keeps exactly the order it
+    // had before, since none of it carries a stamp.
+    //
+    // A song found on a saved album's tracklist, never played and never liked,
+    // has neither signal (likeIndex -1) and goes after the liked ones, by
+    // title, which is also the order it was in before.
     if (wantsTracks)
         for (const Entry &e : m_trackEntries) picked.append(&e);
 
@@ -1029,8 +1154,12 @@ QVariantList LibraryIndex::entriesForKinds(const QStringList &kinds) const {
         const int tb = tierOf(*b);
         if (ta != tb) return ta < tb;
         if (ta == 0)  return a->pinIndex < b->pinIndex;
-        if (ta == 2 && a->likeIndex != b->likeIndex) return a->likeIndex > b->likeIndex;
-        if (ta != 2 && a->recency != b->recency) return a->recency > b->recency;
+        if (ta == 2) {
+            if (a->songRecency != b->songRecency) return a->songRecency > b->songRecency;
+            if (a->likeIndex   != b->likeIndex)   return a->likeIndex   > b->likeIndex;
+        } else if (a->recency != b->recency) {
+            return a->recency > b->recency;
+        }
         return collator.compare(a->sortKey, b->sortKey) < 0;
     });
 

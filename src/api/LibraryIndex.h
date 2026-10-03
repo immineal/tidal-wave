@@ -83,6 +83,16 @@ public:
     // Records a play so the entry floats to the top of the library list.
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id);
 
+    // Records that a song was played. Deliberately a second door rather than a
+    // kind markPlayed() accepts: a song play must reach the Tracks chip and
+    // nothing else. See markPlayed() and entriesForKinds() in the .cpp.
+    //
+    // Ignored for a song that is not in the library. The chip lists the
+    // library's songs, not a play history, so a song played once from somebody
+    // else's playlist has nothing to float to the top of - and not recording it
+    // is what keeps the stored play times bounded by the library.
+    Q_INVOKABLE void markTrackPlayed(const QString &id);
+
     // One row the user just added to, or removed from, their library.
     //
     // The sidebar is a *second* copy of the account's favourites - TidalBridge
@@ -201,9 +211,29 @@ private:
         // favourites list. The endpoint answers order=DATE oldest first and the
         // pager keeps that order, so a higher number is a more recent like.
         // That is the only record of when a song was liked that reaches this
-        // far, and it covers likes made on another device, which is why the
-        // Tracks chip is ordered by it rather than by a local play time.
+        // far, and it covers likes made on another device - which is why it is
+        // still the Tracks chip's order for every song this app has not seen
+        // happen to, under songRecency below.
         int     likeIndex  = -1;
+        // Tracks only: the most recent of (played here, liked here), in ms
+        // since epoch, 0 when this app has witnessed neither. The Tracks chip's
+        // first sort key; see entriesForKinds().
+        //
+        // Deliberately not `recency`, and deliberately not `lastPlayed`. Those
+        // two order the library list, which must not move because a song
+        // played: rebuild() sorts a thousand rows and runs on every pin, play
+        // and like. `lastPlayed` is also what search() reads for its
+        // familiarity bonus, and a song play is not meant to re-rank search
+        // results either. So this is a third field rather than a reuse, and the
+        // separation is the point.
+        //
+        // The two halves are not the same kind of fact and cannot be. A play
+        // happened at a known instant, because this app watched it; a like has
+        // only an order, because Tidal exposes no date per favourite that
+        // reaches here - which is why a like made in this app is stamped where
+        // it happens (addTrack) and a like made on the phone falls back to
+        // likeIndex.
+        qint64  songRecency = 0;
 
         QString key() const { return kind + QLatin1Char(':') + id; }
     };
@@ -237,6 +267,9 @@ private:
 
     void loadRecents();
     void saveRecents() const;
+    // Drops the play times of songs that have left the library. See the .cpp:
+    // this is the bound on how much a song play can ever store.
+    void pruneSongPlays();
     void loadTrackCache();
     void saveTrackCache() const;
     QString trackCachePath() const;

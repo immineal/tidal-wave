@@ -156,6 +156,25 @@ Rectangle {
             library.markPlayed(player.sourceType, player.sourceId)
         }
     }
+
+    // The song itself, which is a different list: the sidebar's Tracks pill is
+    // ordered by the most recent of played or liked, and markPlayed() above
+    // records the album or playlist the play came from, not what is playing.
+    // markTrackPlayed() drops a song that is not in the library, so a song
+    // started from a stranger's playlist needs no filtering here either.
+    //
+    // The same listener as updateLikedState() would do, but kept apart from it:
+    // one is about what the heart button draws and the other about what the
+    // sidebar remembers, and bundling them makes the next person think the
+    // heart has something to do with the ordering.
+    Connections {
+        target: player
+        function onCurrentTrackChanged() {
+            const t = player.currentTrack
+            if (t && t.id > 0)
+                library.markTrackPlayed("" + t.id)
+        }
+    }
     Component.onCompleted: updateLikedState()
 
     RowLayout {

@@ -353,29 +353,37 @@ private slots:
         QVERIFY(p.items().isEmpty());
     }
 
-    // ── the one-shot default pin ─────────────────────────────────────────
+    // ── the one-shot default pins ────────────────────────────────────────
     //
     // Pinning has nothing on screen that announces it: a library row's context
     // menu is the only door, and there is no way to guess it is there. So an
-    // account that has never had a pin is handed one. The rules below are all
-    // about not being rude about it - once, to an account that has not curated
-    // anything, and never again afterwards.
+    // account that has never had a pin is handed the two personalised mixes,
+    // Daily Discovery and New Arrivals. The rules below are all about not being
+    // rude about it - once, to an account that has not curated anything, and
+    // never again afterwards.
 
-    void aFreshAccountIsGivenTheDailyDiscoveryPin() {
+    void aFreshAccountIsGivenBothPersonalisedMixes() {
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
         QSignalSpy spy(&p, &PinStore::changed);
         p.setUserId(1001);
 
-        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco")}));
-        const QVariantMap seeded = p.items().first().toMap();
-        QCOMPARE(seeded.value(QStringLiteral("title")).toString(), QStringLiteral("My Daily Discovery"));
-        QCOMPARE(seeded.value(QStringLiteral("subtitle")).toString(),
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                 QStringLiteral("mix:011new")}));
+        const QVariantMap discovery = p.items().at(0).toMap();
+        QCOMPARE(discovery.value(QStringLiteral("title")).toString(), QStringLiteral("My Daily Discovery"));
+        QCOMPARE(discovery.value(QStringLiteral("subtitle")).toString(),
                  QStringLiteral("subtitle of My Daily Discovery"));
-        QCOMPARE(seeded.value(QStringLiteral("imageUrl")).toString(),
+        QCOMPARE(discovery.value(QStringLiteral("imageUrl")).toString(),
                  QStringLiteral("http://art/016disco.jpg"));
+        const QVariantMap arrivals = p.items().at(1).toMap();
+        QCOMPARE(arrivals.value(QStringLiteral("title")).toString(), QStringLiteral("My New Arrivals"));
+        QCOMPARE(arrivals.value(QStringLiteral("subtitle")).toString(),
+                 QStringLiteral("subtitle of My New Arrivals"));
+        QCOMPARE(arrivals.value(QStringLiteral("imageUrl")).toString(),
+                 QStringLiteral("http://art/011new.jpg"));
         QVERIFY(p.wasSeeded());
-        // The sidebar has to hear about it, or the row appears only on the next
+        // The sidebar has to hear about it, or the rows appear only on the next
         // restart.
         QVERIFY(spy.count() >= 1);
 
@@ -383,10 +391,29 @@ private slots:
         PinStore reopened;
         reopened.setMixSource(answering(cannedMixes()));
         reopened.setUserId(1001);
-        QCOMPARE(keysOf(reopened.items()), QStringList({QStringLiteral("mix:016disco")}));
+        QCOMPARE(keysOf(reopened.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                        QStringLiteral("mix:011new")}));
     }
 
-    // The mix is picked by mixType. Every one of these titles arrives in the
+    // Daily Discovery first, then New Arrivals, whatever order the mix list
+    // happens to arrive in - the seeding walks the two types it wants rather
+    // than the list it was handed, because `pages/my_collection_my_mixes` makes
+    // no promise about the order and the pinned block is the first thing on
+    // screen.
+    void theSeededPairIsAlwaysDiscoveryThenArrivals() {
+        QList<Tidal::Mix> reversed = {
+            mkMix(QStringLiteral("002one"),   QStringLiteral("My Mix 1"),        QStringLiteral("DAILY_MIX")),
+            mkMix(QStringLiteral("011new"),   QStringLiteral("My New Arrivals"), QStringLiteral("NEW_RELEASE_MIX")),
+            mkMix(QStringLiteral("016disco"), QStringLiteral("My Daily Discovery"), QStringLiteral("DISCOVERY_MIX")),
+        };
+        PinStore p;
+        p.setMixSource(answering(reversed));
+        p.setUserId(1001);
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                 QStringLiteral("mix:011new")}));
+    }
+
+    // The mixes are picked by mixType. Every one of these titles arrives in the
     // account's own language, so a title match would seed nothing at all for
     // most users - or, worse, the wrong mix.
     void theSeedIsPickedByTypeNotByTitle() {
@@ -402,9 +429,12 @@ private slots:
         p.setMixSource(answering(german));
         p.setUserId(1001);
 
-        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco")}));
-        QCOMPARE(p.items().first().toMap().value(QStringLiteral("title")).toString(),
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                 QStringLiteral("mix:011new")}));
+        QCOMPARE(p.items().at(0).toMap().value(QStringLiteral("title")).toString(),
                  QStringLiteral("Meine taegliche Entdeckung"));
+        QCOMPARE(p.items().at(1).toMap().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Meine Neuheiten"));
     }
 
     // Someone who has pinned anything at all has found the feature. Nothing is
@@ -424,16 +454,24 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // Unpinning it is an answer, and it is final. The list is empty again at
-    // that point, so without the marker the next sign-in would put it straight
+    // Unpinning them is an answer, and it is final. The list is empty again at
+    // that point, so without the marker the next sign-in would put them straight
     // back.
-    void unpinningTheSeededRowIsFinal() {
+    void unpinningTheSeededRowsIsFinal() {
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
         p.setUserId(1001);
-        QCOMPARE(p.items().size(), 1);
+        QCOMPARE(p.items().size(), 2);
 
+        // Throwing one of the pair away must not bring it back either: the
+        // marker is one per account, not one per seeded row.
         p.unpin(QStringLiteral("mix"), QStringLiteral("016disco"));
+        PinStore halfWay;
+        halfWay.setMixSource(answering(cannedMixes()));
+        halfWay.setUserId(1001);
+        QCOMPARE(keysOf(halfWay.items()), QStringList({QStringLiteral("mix:011new")}));
+
+        p.unpin(QStringLiteral("mix"), QStringLiteral("011new"));
         QVERIFY(p.items().isEmpty());
 
         // Away and back, which is what a restart looks like from here.
@@ -457,11 +495,12 @@ private slots:
         QVERIFY(first.items().isEmpty());
         QVERIFY(!first.wasSeeded());
 
-        // Once Tidal has generated them, the pin arrives.
+        // Once Tidal has generated them, the pins arrive.
         PinStore later;
         later.setMixSource(answering(cannedMixes()));
         later.setUserId(1001);
-        QCOMPARE(keysOf(later.items()), QStringList({QStringLiteral("mix:016disco")}));
+        QCOMPARE(keysOf(later.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                     QStringLiteral("mix:011new")}));
     }
 
     void aFailedRequestIsNotSpent() {
@@ -474,13 +513,14 @@ private slots:
         PinStore later;
         later.setMixSource(answering(cannedMixes()));
         later.setUserId(1001);
-        QCOMPARE(keysOf(later.items()), QStringList({QStringLiteral("mix:016disco")}));
+        QCOMPARE(keysOf(later.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                     QStringLiteral("mix:011new")}));
     }
 
-    // An account with mixes but no Daily Discovery gets nothing rather than
-    // whatever happened to be first - but the shot is spent, because the list
-    // came back and that is the real answer.
-    void anAccountWithoutADailyDiscoveryIsGivenNothing() {
+    // An account with mixes but neither personalised one gets nothing rather
+    // than whatever happened to be first - but the shot is spent, because the
+    // list came back and that is the real answer.
+    void anAccountWithNeitherPersonalisedMixIsGivenNothing() {
         PinStore p;
         p.setMixSource(answering({
             mkMix(QStringLiteral("002one"), QStringLiteral("My Mix 1"), QStringLiteral("DAILY_MIX")),
@@ -492,12 +532,46 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // Exactly one row, even though two personalised mixes come back.
-    void onlyOneRowIsSeeded() {
+    // An account with one of the two and not the other gets the one it has.
+    // Half a pair is still the thing the seeding is for - a destination worth
+    // having pinned, which announces that the block exists - and waiting for
+    // the other half would mean an account that never generates a Daily
+    // Discovery is never told about pinning at all. The shot is spent either
+    // way, for the same reason as above: the list came back.
+    void anAccountWithOnlyOneOfThePairGetsThatOne_data() {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("id");
+        QTest::newRow("only discovery") << QStringLiteral("DISCOVERY_MIX")   << QStringLiteral("016disco");
+        QTest::newRow("only arrivals")  << QStringLiteral("NEW_RELEASE_MIX") << QStringLiteral("011new");
+    }
+
+    void anAccountWithOnlyOneOfThePairGetsThatOne() {
+        QFETCH(QString, type);
+        QFETCH(QString, id);
+
+        PinStore p;
+        p.setMixSource(answering({
+            mkMix(QStringLiteral("002one"), QStringLiteral("My Mix 1"), QStringLiteral("DAILY_MIX")),
+            mkMix(id, QStringLiteral("The one it has"), type),
+        }));
+        p.setUserId(1001);
+
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:") + id}));
+        QVERIFY(p.wasSeeded());
+    }
+
+    // The two personalised mixes and nothing else, though four mixes come back:
+    // the block is seeded, not filled.
+    void onlyThePersonalisedMixesAreSeeded() {
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
         p.setUserId(1001);
-        QCOMPARE(p.items().size(), 1);
+        QCOMPARE(p.items().size(), 2);
+        const QStringList keys = keysOf(p.items());
+        QVERIFY2(!keys.contains(QStringLiteral("mix:002one"))
+                     && !keys.contains(QStringLiteral("mix:002two")),
+                 qPrintable(QStringLiteral("a plain daily mix was seeded too: %1")
+                                .arg(keys.join(QLatin1String(", ")))));
     }
 
     // The request is out while the user carries on, so its answer has to be
@@ -554,17 +628,19 @@ private slots:
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
         p.setUserId(1001);
-        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco")}));
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                 QStringLiteral("mix:011new")}));
 
         p.setUserId(2002);
-        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco")}));
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("mix:016disco"),
+                                                 QStringLiteral("mix:011new")}));
         QVERIFY(p.wasSeeded());
 
-        // Neither account's row leaked into the other's list.
+        // Neither account's rows leaked into the other's list.
         PinStore one;  one.setUserId(1001);
         PinStore two;  two.setUserId(2002);
-        QCOMPARE(one.items().size(), 1);
-        QCOMPARE(two.items().size(), 1);
+        QCOMPARE(one.items().size(), 2);
+        QCOMPARE(two.items().size(), 2);
     }
 
 private:

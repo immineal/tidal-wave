@@ -27,15 +27,17 @@ public:
     void setUserId(qint64 uid);
     qint64 userId() const { return m_userId; }
 
-    // Where the one-shot default pin finds something to point at. Pinning is
+    // Where the one-shot default pins find something to point at. Pinning is
     // the one feature in the sidebar with nothing on screen to announce it: the
     // only way to find it is to guess that a library row has a context menu. So
-    // an account that has never had a pin is given one - "My Daily Discovery",
-    // which is a destination worth having there in its own right - and from then
-    // on the block, and the fact that rows go into it, are simply visible.
+    // an account that has never had a pin is given the two personalised mixes -
+    // Daily Discovery and New Arrivals, both destinations worth having there in
+    // their own right - and from then on the block, and the fact that rows go
+    // into it, are simply visible. It used to be Daily Discovery alone, because
+    // New Arrivals could not be opened at all when this was written (39b1465).
     //
-    // It cannot be written down, because a mix id is minted per account, so the
-    // mix list has to be fetched first. Application hands in the client's
+    // They cannot be written down, because a mix id is minted per account, so
+    // the mix list has to be fetched first. Application hands in the client's
     // fetch; a test hands in a canned list and the store never goes near a
     // network. Set this before setUserId(), which is what starts the one shot.
     using MixesHandler = std::function<void(QList<Tidal::Mix>, QString)>;
@@ -72,7 +74,7 @@ private:
     void load();
     void save() const;
 
-    // The one shot, run from setUserId().
+    // The one shot, run from setUserId(). Pins both personalised mixes.
     void seedDefaultPin();
     void markSeeded() const;
 

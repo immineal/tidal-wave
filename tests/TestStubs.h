@@ -1421,6 +1421,12 @@ public:
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id) {
         m_lastPlayed = kind + QLatin1Char(':') + id;
     }
+    // The song half of the same thing - see LibraryIndex::markTrackPlayed. It
+    // has to exist here or PlayerBar throws a TypeError on every track change
+    // in a QML test.
+    Q_INVOKABLE void markTrackPlayed(const QString &id) {
+        m_lastTrackPlayed = id;
+    }
     Q_INVOKABLE void cancelIndexing() { m_indexing = false; emit indexingChanged(); }
     Q_INVOKABLE int  indexedAlbumCount() const { return 0; }
 
@@ -1481,12 +1487,14 @@ public:
     Q_INVOKABLE QString     lastQueryForTest() const { return m_lastQuery; }
     Q_INVOKABLE QStringList lastKindsForTest() const { return m_lastKinds; }
     Q_INVOKABLE QString     lastPlayedForTest() const { return m_lastPlayed; }
+    Q_INVOKABLE QString     lastTrackPlayedForTest() const { return m_lastTrackPlayed; }
     Q_INVOKABLE int         refreshCountForTest() const { return m_refreshes; }
     Q_INVOKABLE int         searchCountForTest() const { return m_searches; }
     Q_INVOKABLE void resetCallsForTest() {
         m_lastQuery.clear();
         m_lastKinds.clear();
         m_lastPlayed.clear();
+        m_lastTrackPlayed.clear();
         m_refreshes = 0;
         m_searches  = 0;
     }
@@ -1504,6 +1512,7 @@ private:
     QString      m_lastQuery;
     QStringList  m_lastKinds;
     QString      m_lastPlayed;
+    QString      m_lastTrackPlayed;
     int          m_refreshes = 0;
     int          m_searches  = 0;
 };

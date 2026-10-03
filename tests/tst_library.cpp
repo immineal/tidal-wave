@@ -23,6 +23,8 @@
 
 #include <QTest>
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QSettings>
 #include <QStandardPaths>
@@ -97,6 +99,15 @@ QStringList titlesOf(const QVariantList &rows) {
 
 int indexOfKey(const QVariantList &rows, const QString &key) {
     return keysOf(rows).indexOf(key);
+}
+
+// What LibraryIndex has actually written down for this account, so a test can
+// say "and nothing was stored" as well as "and the order changed".
+QVariantMap storedRecents(qint64 uid) {
+    QSettings settings;
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        settings.value(QStringLiteral("user_%1/library/lastPlayed").arg(uid)).toString().toUtf8());
+    return doc.object().toVariantMap();
 }
 
 QVariantMap rowFor(const QVariantList &rows, const QString &key) {
@@ -1457,6 +1468,225 @@ private slots:
                                 .arg(after.join(QLatin1String(", ")))));
         QCOMPARE(after, QStringList({QStringLiteral("Zulu"), QStringLiteral("Charlie"),
                                      QStringLiteral("Bravo"), QStringLiteral("Alpha")}));
+    }
+
+    // ── ...and by when it was played, which is the same rule ────────────
+    //
+    // "isn't the sidebar with song filter pill selected supposed to show all
+    // the latest played songs?" It was not: liking was the only thing the chip
+    // ordered by. It is the same list of songs as before - liked songs, plus
+    // the saved albums' tracklists - and the same tier under the library kinds;
+    // only the order changed, to the most recent of played or liked, which is
+    // the rule the rest of the sidebar already follows.
+
+    void theTracksChipPutsTheSongJustPlayedFirst() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"),   host, {various}),
+                              mkTrack(802, QStringLiteral("Bravo"),   host, {various}),
+                              mkTrack(803, QStringLiteral("Charlie"), host, {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList chip{QStringLiteral("track")};
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
+            QStringLiteral("Charlie"), QStringLiteral("Bravo"), QStringLiteral("Alpha")}));
+
+        // The oldest like of the three, played: it goes to the top, and the
+        // two that were not played keep their order under it.
+        lib.markTrackPlayed(QStringLiteral("801"));
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
+            QStringLiteral("Alpha"), QStringLiteral("Charlie"), QStringLiteral("Bravo")}));
+
+        // A second play stacks on the first rather than replacing it.
+        lib.markTrackPlayed(QStringLiteral("803"));
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
+            QStringLiteral("Charlie"), QStringLiteral("Alpha"), QStringLiteral("Bravo")}));
+    }
+
+    // Playing and liking are one axis, as they are for the four library kinds:
+    // a song liked now sits above one played an hour ago. Liking is the half of
+    // it that has no date from Tidal, so the like has to be stamped where it
+    // happens - the favourites endpoint only gives an order, not an instant.
+    void aSongJustLikedOutranksOneAlreadyPlayed() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"), host, {various}),
+                              mkTrack(802, QStringLiteral("Bravo"), host, {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList chip{QStringLiteral("track")};
+        lib.markTrackPlayed(QStringLiteral("801"));
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)).first(), QStringLiteral("Alpha"));
+
+        lib.addTrack(mkTrack(804, QStringLiteral("Zulu"), host, {various}));
+        QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
+            QStringLiteral("Zulu"), QStringLiteral("Alpha"), QStringLiteral("Bravo")}));
+    }
+
+    // The separation that makes the whole thing affordable: a song play feeds
+    // the chip and nothing else. The library list must not reorder because a
+    // song played - rebuild() sorts a thousand rows and runs on every pin, play
+    // and like - and a liked song whose album is not saved does have a row down
+    // there, so there is something to get wrong.
+    void aSongPlayDoesNotReorderTheLibraryList() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  saved   = mkAlbum(10,  QStringLiteral("Blue Train"), {various}, 2, daysAfterJan(1));
+        const Album  wall    = mkAlbum(11,  QStringLiteral("The Wall"),   {various}, 2, daysAfterJan(2));
+        const Album  unsaved = mkAlbum(900, QStringLiteral("Host"),       {various});
+        lib.albums = {saved, wall};
+        // 810's album is not saved, so it earns a row of its own in the library
+        // list; 811's is, so it only ever appears under the chip.
+        lib.favoriteTracks = {mkTrack(810, QStringLiteral("Orphan Song"), unsaved, {various}),
+                              mkTrack(811, QStringLiteral("Album Song"),  saved,   {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList before = keysOf(lib.entries());
+        QVERIFY2(before.contains(QStringLiteral("track:810")),
+                 qPrintable(QStringLiteral("the fixture has no orphan song row: %1")
+                                .arg(before.join(QLatin1String(", ")))));
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.markTrackPlayed(QStringLiteral("810"));
+
+        QCOMPARE(keysOf(lib.entries()), before);
+        // Not even a rebuild: the sort it would run is the cost this is about.
+        QCOMPARE(spy.count(), 0);
+        const QVariantMap row = rowFor(lib.entries(), QStringLiteral("track:810"));
+        QCOMPARE(row.value(QStringLiteral("lastPlayed")).toLongLong(), 0LL);
+        QCOMPARE(row.value(QStringLiteral("recency")).toLongLong(), 0LL);
+
+        // The chip is the one list that did change.
+        QCOMPARE(titlesOf(lib.entriesForKinds({QStringLiteral("track")})), QStringList({
+            QStringLiteral("Orphan Song"), QStringLiteral("Album Song")}));
+    }
+
+    void songPlayTimesSurviveARestart() {
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        const QList<Track> liked = {mkTrack(821, QStringLiteral("Alpha"),   host, {various}),
+                                    mkTrack(822, QStringLiteral("Bravo"),   host, {various}),
+                                    mkTrack(823, QStringLiteral("Charlie"), host, {various})};
+        {
+            PinStore pins; pins.setUserId(kUser);
+            TestLibrary lib(&pins);
+            lib.favoriteTracks = liked;
+            lib.setUserId(kUser);
+            lib.refresh();
+            lib.markTrackPlayed(QStringLiteral("821"));
+        }
+
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary again(&pins);
+        again.favoriteTracks = liked;
+        again.setUserId(kUser);
+        again.refresh();
+        QCOMPARE(titlesOf(again.entriesForKinds({QStringLiteral("track")})), QStringList({
+            QStringLiteral("Alpha"), QStringLiteral("Charlie"), QStringLiteral("Bravo")}));
+    }
+
+    // The chip is the library's songs, not a play history. A song played once
+    // from somebody else's playlist is not in the library and must not turn up
+    // in it - the user asked for exactly that - so its play is not recorded at
+    // all, which is also what keeps the stored play times bounded by the
+    // library rather than by how much the user listens to.
+    void aSongPlayedFromOutsideTheLibraryIsNotRemembered() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"), host, {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList chip{QStringLiteral("track")};
+        const QStringList before = keysOf(lib.entriesForKinds(chip));
+        lib.markTrackPlayed(QStringLiteral("99999"));
+
+        QCOMPARE(keysOf(lib.entriesForKinds(chip)), before);
+        QVERIFY2(!storedRecents(kUser).contains(QStringLiteral("track:99999")),
+                 qPrintable(QStringLiteral("a play from outside the library was written down: %1")
+                                .arg(QStringList(storedRecents(kUser).keys())
+                                         .join(QLatin1String(", ")))));
+    }
+
+    // The bound on what is stored: a play time is worth keeping only while the
+    // song is still in the library, because the chip is the only thing that
+    // reads it. Unliking a song, and unsaving the album a song came in on, both
+    // drop it.
+    void playTimesAreForgottenWhenTheSongLeavesTheLibrary() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillSearchLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        waitForIndex(lib);
+
+        lib.markTrackPlayed(QStringLiteral("500"));   // liked, on saved album 100
+        lib.markTrackPlayed(QStringLiteral("504"));   // only on saved album 101
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:500")));
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:504")));
+
+        // Unliking song 500 does not take it out of the index - album 100 is
+        // saved and its tracklist holds it - so its play time stays.
+        lib.removeEntry(QStringLiteral("track"), QStringLiteral("500"));
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:500")));
+
+        // Unsaving the album takes both the song and its play time.
+        lib.removeEntry(QStringLiteral("album"), QStringLiteral("100"));
+        QVERIFY2(!storedRecents(kUser).contains(QStringLiteral("track:500")),
+                 qPrintable(QStringLiteral("a song no longer in the library kept its play time: %1")
+                                .arg(QStringList(storedRecents(kUser).keys())
+                                         .join(QLatin1String(", ")))));
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:504")));
+
+        // And the four library kinds are not pruned with them: they are the
+        // list this file is mostly about, and an album keeps its play time
+        // whether or not it is still saved.
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("101"));
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("album:101")));
+    }
+
+    // Signing in is the other place the bound is applied: a stored play time
+    // for a song that is no longer anywhere in the library - unliked on the
+    // phone, say - is dropped once the library has finished loading and it is
+    // clear what "in the library" means.
+    void staleSongPlayTimesAreDroppedOnSignIn() {
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("user_%1/library/lastPlayed").arg(kUser),
+                       QStringLiteral("{\"track:777\":1700000000000,\"album:10\":1700000000000}"));
+        }
+
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        const Album  host    = mkAlbum(900, QStringLiteral("Host"), {various});
+        lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"), host, {various})};
+        lib.setUserId(kUser);
+        lib.refresh();
+        // A play of a song that *is* in the library, to show that the prune is
+        // a different question from the write and does not take this one with
+        // it.
+        lib.markTrackPlayed(QStringLiteral("801"));
+
+        const QVariantMap stored = storedRecents(kUser);
+        QVERIFY2(!stored.contains(QStringLiteral("track:777")),
+                 qPrintable(QStringLiteral("a song that left the library kept its play time: %1")
+                                .arg(QStringList(stored.keys()).join(QLatin1String(", ")))));
+        // The library kinds are left alone: an album the user unsaved on the
+        // phone is still something they may re-save, and the list of four kinds
+        // is small enough that it has never needed a bound.
+        QVERIFY(stored.contains(QStringLiteral("album:10")));
+        QVERIFY(stored.contains(QStringLiteral("track:801")));
     }
 
     // A song the background indexer merely found on a saved album has no liking

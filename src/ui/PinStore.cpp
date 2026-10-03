@@ -80,16 +80,35 @@ void PinStore::seedDefaultPin() {
         // as finding the feature.
         if (!m_items.isEmpty()) { markSeeded(); return; }
 
-        // Spent whether or not this account has a Daily Discovery, because the
-        // list came back and that is the authoritative answer. Without it, a
-        // user who unpins the seeded row would be handed it again on the next
-        // launch, for ever.
+        // Spent whether or not this account has either mix, because the list
+        // came back and that is the authoritative answer. Without it, a user
+        // who unpins a seeded row would be handed it again on the next launch,
+        // for ever - and that holds for unpinning one of the two as much as for
+        // unpinning both, which is why the marker is per account and not per
+        // seeded row.
         markSeeded();
 
-        for (const Tidal::Mix &m : mixes) {
-            if (!m.isDailyDiscovery()) continue;
-            pin(QStringLiteral("mix"), m.id, m.title, m.subTitle, m.coverUrl(320));
-            return;
+        // Daily Discovery first, then New Arrivals. The wanted types are walked
+        // in that order rather than the list being walked once, because
+        // `pages/my_collection_my_mixes` makes no promise about the order it
+        // answers in and this is the first thing on screen.
+        //
+        // By mixType, never by title: every one of these titles arrives in the
+        // account's own language ("Meine Neuheiten"), so a title match would
+        // seed nothing at all for most users.
+        //
+        // An account that has one of the two and not the other gets the one it
+        // has. Half a pair is still a destination worth having pinned, and it
+        // still announces that the block exists - which is the whole point -
+        // whereas insisting on both would leave an account that never generates
+        // a Daily Discovery never told about pinning at all.
+        for (const char *wanted : {Tidal::MixTypes::DailyDiscovery,
+                                   Tidal::MixTypes::NewArrivals}) {
+            for (const Tidal::Mix &m : mixes) {
+                if (m.mixType != QLatin1String(wanted)) continue;
+                pin(QStringLiteral("mix"), m.id, m.title, m.subTitle, m.coverUrl(320));
+                break;
+            }
         }
     });
 }
