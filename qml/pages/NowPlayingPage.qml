@@ -1060,24 +1060,59 @@ Rectangle {
                         Rectangle {
                             id: sleepTimerBtn
                             objectName: "nowPlayingSleepTimerButton"
-                            height: 28
+                            // 30, where it was 28, and it grew for the clock
+                            // below rather than for itself. The ring of air
+                            // round the glyph is (height - glyphSize) / 2, and
+                            // the bigger clock eats it: at 28 a 20px glyph
+                            // leaves exactly the 4px floor
+                            // tests/qml/tst_layout_player.qml holds and exactly
+                            // the pill.height - 8 that case uses to catch
+                            // VectorIcon's implicit 24 being imposed. Both
+                            // guards would still be true and neither would have
+                            // any room left. 30 keeps 5px of ring and 2px of
+                            // margin under both.
+                            //
+                            // The difference has to stay EVEN. The content row
+                            // is centred with anchors.verticalCenter, and anchor
+                            // centring rounds to whole pixels: at 30 against a
+                            // 21px glyph the row landed at y=4 with 5 below it,
+                            // measured, so the ring the whole geometry is built
+                            // to stopped being a ring. 30 - 20 = 10 splits
+                            // exactly.
+                            //
+                            // The quality badge at the other end of the row
+                            // stays 24. These two were never the same height
+                            // and are not meant to be; the row centres them.
+                            height: 30
                             // What the pill actually draws: Theme.radiusChip is
                             // a "round it all the way" sentinel, and Qt clamps
                             // it to half the shorter side.
                             readonly property real cornerRadius:
                                 Math.min(Theme.radiusChip, height / 2)
                             // The clock's box. Everything below is derived from
-                            // it and the height, so this is the one number to
-                            // turn.
+                            // it and the height, so this and the height are the
+                            // only two numbers here to turn.
                             //
-                            // 14, measured rather than picked: VectorIcon paints
-                            // its glyph at 85% of its box, so a 14px box puts a
-                            // 12px rim on screen, against a label that measures
-                            // 11px from the top of its "S" to the foot of its
-                            // "p". The 24px box this was painting at before put
-                            // a 20px rim in a 28px pill, which is what left 4px
-                            // of air above a clock with 16px beside it.
-                            readonly property real glyphSize: 14
+                            // 20: the user looked at this pill at 14 and asked
+                            // for the clock at about half again. 21 is what half
+                            // again comes to and it is not a size this pill can
+                            // centre - see the parity note on the height - so
+                            // the clock takes the nearest size that splits
+                            // evenly. VectorIcon paints its glyph at 85% of its
+                            // box, so 20 puts a 17px rim on screen where 14 put
+                            // 11.9, beside a label that still measures 11px from
+                            // the top of its "S" to the foot of its "p".
+                            //
+                            // This is not a return to the 24 the pill painted
+                            // before f8aa785. That 24 was never asked for: it
+                            // was VectorIcon's implicit size being imposed over
+                            // a declared 12, in a 28px pill, which left 4px of
+                            // air above a clock with 16px beside it. 20 is
+                            // chosen, derived through everything below, and the
+                            // ring around it is the same width the whole way
+                            // round the cap - 5px on the box, and 6.5 on the
+                            // paint against the 8 the smaller clock had.
+                            readonly property real glyphSize: 20
                             // Concentric with the left cap: the glyph's centre on
                             // the centre of the cap's arc. Derived from the two
                             // numbers above rather than typed, so it survives a
@@ -1169,15 +1204,19 @@ Rectangle {
                                     name: "clock"
                                     color: root.sleepTimerActive ? Theme.accent : Theme.textSec
 
-                                    // Heavier than VectorIcon's 1.8 default, to
-                                    // keep the weight the glyph had when it was
-                                    // being painted at 24. The stroke scales
-                                    // with the box, so at 14 the default draws a
-                                    // 0.89px line that antialiases to a grey
-                                    // ghost - visibly fainter than the label
-                                    // beside it in a grab of the two at 16x.
-                                    // 2.4 puts 1.19px on screen, which matches
-                                    // the type.
+                                    // Heavier than VectorIcon's 1.8 default, and
+                                    // left alone while the box grew, so the
+                                    // clock is the same drawing at a bigger
+                                    // size rather than a thinner one. The stroke
+                                    // scales with the box: at 14 the default
+                                    // drew a 0.89px line that antialiased to a
+                                    // grey ghost and 2.4 put 1.19px on screen,
+                                    // matching the label's stems; at 20 the same
+                                    // 2.4 draws 1.70px, against 1.28 from the
+                                    // default. Both were grabbed at 6x and the
+                                    // heavier one is the one that still looks
+                                    // like the clock the pill had, which is what
+                                    // "make it bigger" asked for.
                                     strokeWidth: 2.4
 
                                     // Layout.preferredWidth/Height, NOT
@@ -1190,11 +1229,15 @@ Rectangle {
                                     // level down.
                                     //
                                     // Both dimensions, and the same number in
-                                    // each: the row around this is 15 tall and
-                                    // the glyph is 14, so a Layout.fillHeight
-                                    // anywhere near here would stretch the clock
-                                    // to 14 by 15 - round in the source and an
-                                    // oval on screen.
+                                    // each: a clock that is not square has no
+                                    // circular outline to sit concentric inside
+                                    // the cap's. A RowLayout is as tall as its
+                                    // tallest child - the glyph now, at 20,
+                                    // against the label's 15 - so a
+                                    // Layout.fillHeight here is harmless today
+                                    // and an oval the day the label grows past
+                                    // the clock. Asking for both is what makes
+                                    // that not a question.
                                     Layout.preferredWidth:  sleepTimerBtn.glyphSize
                                     Layout.preferredHeight: sleepTimerBtn.glyphSize
                                 }
@@ -1259,6 +1302,7 @@ Rectangle {
 
                     Popup {
                         id: sleepTimerPopup
+                        objectName: "nowPlayingSleepTimerPopup"
                         parent: sleepTimerBtn
                         x: sleepTimerBtn.width - width
                         y: sleepTimerBtn.height + 6
@@ -1365,29 +1409,10 @@ Rectangle {
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 4
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            text: qsTr("Custom: %1 min").arg(customSlider.value)
-                                            color: Theme.textSec
-                                            font.pixelSize: 12
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        Text {
-                                            text: qsTr("Start", "verb, begins the sleep timer")
-                                            color: Theme.accent
-                                            font.pixelSize: 12
-                                            font.bold: true
-                                        
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    root.startSleepTimer(customSlider.value, false)
-                                                    sleepTimerPopup.close()
-                                                }
-                                            }
-                                        }
+                                    Text {
+                                        text: qsTr("Custom: %1 min").arg(customSlider.value)
+                                        color: Theme.textSec
+                                        font.pixelSize: 12
                                     }
                                 
                                     Item {
@@ -1431,6 +1456,55 @@ Rectangle {
                                                 }
                                             }
                                             cursorShape: Qt.PointingHandCursor
+                                        }
+                                    }
+
+                                    // The popup's primary action, and until now
+                                    // the only thing in it that did not look
+                                    // like a control: "Start" was a 12px accent
+                                    // word at the end of the slider's label row,
+                                    // with a MouseArea the size of the word, in
+                                    // a popup where six duration chips, "Stop at
+                                    // End of Track" and "Cancel Sleep Timer" are
+                                    // all full-width boxes. The user: "make the
+                                    // start button in the menu a little bit more
+                                    // present and maybe with a play icon or
+                                    // something and bigger and more prominent."
+                                    //
+                                    // PillButton is the app's primary action -
+                                    // Play and Shuffle on Album, Artist,
+                                    // Playlist, Mix and Radio - so this is the
+                                    // same button those pages use rather than a
+                                    // new style: accent fill, 40 tall against
+                                    // the chips' 28 and the two full-width rows'
+                                    // 32, and fully round where every other row
+                                    // in here takes the 8px button radius. It is
+                                    // also the only control in the popup that
+                                    // can be reached with Tab and fired with
+                                    // Enter, which the bare Text could not.
+                                    //
+                                    // Under the slider rather than beside its
+                                    // label, because it commits what the slider
+                                    // says: label, slider, then the button that
+                                    // acts on them, in that order.
+                                    //
+                                    // "play": the user's own suggestion. In this
+                                    // app a filled triangle starts playback
+                                    // everywhere else it appears, and this one
+                                    // starts a countdown that ends it; the label
+                                    // beside it says "Start" and the popup is
+                                    // titled "Sleep Timer", which is what keeps
+                                    // the two apart.
+                                    PillButton {
+                                        objectName: "nowPlayingSleepTimerStart"
+                                        Layout.fillWidth: true
+                                        Layout.topMargin: 8
+                                        text: qsTr("Start", "verb, begins the sleep timer")
+                                        icon: "play"
+                                        accent: true
+                                        onClicked: {
+                                            root.startSleepTimer(customSlider.value, false)
+                                            sleepTimerPopup.close()
                                         }
                                     }
                                 }
@@ -1754,6 +1828,7 @@ Rectangle {
 
     component SleepOptionBtn : Rectangle {
         id: optBtn
+        objectName: "nowPlayingSleepOption"
         property int minutes
         // Derived, so the unit suffix is one translatable string instead of six
         property string label: qsTr("%1m", "compact duration in minutes").arg(optBtn.minutes)

@@ -738,6 +738,92 @@ TestCase {
                   "F11 did not bring the window out of fullscreen")
     }
 
+    // ── the chevron while the window is fullscreen ───────────────────────
+    //
+    // The chevron is goBack() and nothing else, and it is correct as it
+    // stands: the user's rule is that it "should always close full screen and
+    // close now playing", however fullscreen was entered, and that is what it
+    // does.
+    //
+    // It does it by accident of distance, though, which is why these two cases
+    // exist. Nothing in the button mentions fullscreen. What leaves fullscreen
+    // is one line at the top of Main.qml's navigate():
+    //
+    //     if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
+    //
+    // Delete that line and the chevron still closes the page, so every test
+    // about where the user lands still passes - and the window stays
+    // fullscreen on a page that draws no chrome and no sidebar, with the way
+    // back out gone with the page it belonged to. Verified by deleting it.
+    //
+    // Both ways into fullscreen, because they record different things on the
+    // way in: the page's own button, pressed from inside Now Playing, records
+    // "was already here"; F11 from another page records that page and
+    // navigates here.
+
+    function chevronIn(win) {
+        var c = findChild(win.contentItem, "nowPlayingCollapse")
+        verify(c, "the Now Playing chevron was not found in the application window")
+        verify(c.visible, "the chevron is not on screen, so the user cannot press it")
+        return c
+    }
+
+    function fullscreenButtonIn(win) {
+        var b = findChild(win.contentItem, "nowPlayingFullscreen")
+        verify(b, "the fullscreen button was not found in the application window")
+        return b
+    }
+
+    function test_the_chevron_closes_a_fullscreen_opened_from_now_playing() {
+        var win = showApp()
+        win.navigate("album", { albumId: 4242 })
+        win.navigate("nowplaying")
+        compare(win.currentPage, "nowplaying", "the fixture never reached Now Playing")
+
+        centerClick(fullscreenButtonIn(win))
+        tryVerify(function () { return win.fullScreen }, 2000,
+                  "the fullscreen button did not take the window fullscreen")
+        compare(win.currentPage, "nowplaying",
+                "the fullscreen button navigated somewhere of its own")
+
+        centerClick(chevronIn(win))
+        compare(win.currentPage, "album",
+                "the chevron did not close Now Playing")
+        tryVerify(function () { return !win.fullScreen }, 2000,
+                  "the chevron closed Now Playing but left the window fullscreen, so the "
+                  + "user is on the album page with no chrome and no sidebar")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
+                  "the window itself stayed fullscreen after the chevron")
+    }
+
+    function test_the_chevron_closes_a_fullscreen_f11_opened() {
+        var win = showApp()
+        win.navigate("album", { albumId: 4242 })
+        compare(win.currentPage, "album", "the fixture never reached the album page")
+
+        win.toggleFullScreen()
+        compare(win.currentPage, "nowplaying",
+                "F11 should open Now Playing on the way into fullscreen")
+        tryVerify(function () { return win.visibility === Window.FullScreen }, 2000,
+                  "F11 did not take the window fullscreen")
+
+        centerClick(chevronIn(win))
+        compare(win.currentPage, "album",
+                "the chevron did not close Now Playing")
+        tryVerify(function () { return !win.fullScreen }, 2000,
+                  "the chevron closed Now Playing but left the window fullscreen, so the "
+                  + "user is on the album page with no chrome and no sidebar")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
+                  "the window itself stayed fullscreen after the chevron")
+
+        // That album, not just an album page: closing has to hand the
+        // parameters back with the page.
+        tryVerify(function () {
+            var item = findByType(win.contentItem, "AlbumPage")
+            return item && item.albumId === 4242
+        }, 2000, "the user came back to an album page, but not the one they left")
+    }
+
     // The queue panel is an overlay on top of everything, so it is still the
     // innermost thing Escape closes.
     function test_escape_closes_the_queue_before_leaving_fullscreen() {

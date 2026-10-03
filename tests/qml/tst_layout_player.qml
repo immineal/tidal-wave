@@ -179,7 +179,17 @@ TestCase {
             property int    sleepTimeLeft: 0
             property bool   sleepIsFading: false
             property bool   sleepFadeOut: true
-            function startSleepTimer(minutes, stopAtEnd) { sleepTimerActive = true }
+            // What the popup asked for, not just that it asked: the Start
+            // button below moved out of the slider's label row and a button
+            // that looks right and starts the wrong timer would otherwise
+            // read as a pass.
+            property int  lastSleepMinutes: -1
+            property bool lastSleepAtEnd: false
+            function startSleepTimer(minutes, stopAtEnd) {
+                sleepTimerActive = true
+                lastSleepMinutes = minutes
+                lastSleepAtEnd = stopAtEnd === true
+            }
             function cancelSleepTimer() { sleepTimerActive = false }
             // Main.qml's own formatter, not a constant: one case below counts
             // the pill down and a fixed string would have hidden the thing it
@@ -1568,6 +1578,89 @@ TestCase {
         compare(colorDelta(pill.border.color, restBorder), 0,
                 row.tag + ": the border kept " + pill.border.color
                 + " after the pointer left, against a resting " + restBorder)
+    }
+
+    // The one glyph in a control, if it has one: VectorIcon is the only thing
+    // in this app that carries a _pathFor, which is how collectOverflow above
+    // recognises one too.
+    function findGlyph(item) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i]
+            if (!c || c.visible === false || typeof c.width !== "number") continue
+            if (typeof c._pathFor === "function") return c
+            var found = findGlyph(c)
+            if (found) return found
+        }
+        return null
+    }
+
+    // The sleep timer popup's primary action. "Start" was a 12px accent word
+    // at the end of the custom slider's label row, with a hit target the size
+    // of the word, in a popup where every other action - six duration chips,
+    // "Stop at End of Track", "Cancel Sleep Timer" - is a full-width box. The
+    // user: "make the start button in the menu a little bit more present and
+    // maybe with a play icon or something and bigger and more prominent."
+    //
+    // "Primary" is not a thing a layout test can read, so this asks the three
+    // questions it stands for here: is it as wide as the popup lets anything
+    // be, is it taller than the options it is the primary among, and does it
+    // carry a mark rather than being bare type. The old word failed all three,
+    // measured by putting it back: 30px wide where the popup offers 236, 17px
+    // tall against a 28px duration chip, and no glyph at all.
+    function test_sleep_timer_start_is_the_primary_action_in_the_popup() {
+        var host = showHost(nowPlayingHost, 960, 1200)
+        var popup = findChild(host.page, "nowPlayingSleepTimerPopup")
+        verify(popup, "the sleep timer popup was not found")
+        popup.open()
+        tryVerify(function() { return popup.visible }, 2000,
+                  "the sleep timer popup never opened")
+        waitForRendering(host.contentItem)
+
+        var start = findChild(host.page, "nowPlayingSleepTimerStart")
+        verify(start, "the popup has no Start control to find")
+        verify(start.visible && start.width > 0 && start.height > 0,
+               "the Start control is not on screen")
+
+        var option = findChild(host.page, "nowPlayingSleepOption")
+        verify(option, "the duration options were not found")
+
+        // Full width, which in a Popup is availableWidth: the padding is the
+        // popup's and nothing in it is meant to be inset further.
+        verify(start.width >= popup.availableWidth - 0.5,
+               "Start is " + start.width.toFixed(1) + "px wide in a popup that "
+               + "offers " + popup.availableWidth.toFixed(1)
+               + ", so it is not the full-width action every other row is")
+
+        // Taller than what it is primary among, by enough to see. The chips
+        // are 28 and the two full-width rows 32; a button that merely matched
+        // them would be one more row.
+        verify(start.height >= option.height + 8,
+               "Start is " + start.height.toFixed(1) + "px tall against a "
+               + option.height.toFixed(1) + "px duration chip, which is not a "
+               + "button that stands out from the options above it")
+
+        var glyph = findGlyph(start)
+        verify(glyph, "Start carries no glyph, and the user asked for one")
+        verify(glyph.name.length > 0 && glyph.width > 0 && glyph.height > 0,
+               "Start's glyph is \"" + glyph.name + "\" at "
+               + glyph.width.toFixed(1) + "x" + glyph.height.toFixed(1)
+               + ", which draws nothing")
+
+        // And it still starts the timer the slider is showing. The control
+        // moved out of that row, so the wiring is worth re-asking.
+        compare(host.lastSleepMinutes, -1, "nothing should have started yet")
+        mouseClick(start, Math.round(start.width / 2),
+                   Math.round(start.height / 2))
+        tryVerify(function() { return host.sleepTimerActive }, 2000,
+                  "clicking Start did not start the sleep timer")
+        compare(host.lastSleepMinutes, 20,
+                "Start asked for " + host.lastSleepMinutes
+                + " minutes, not the 20 the custom slider was showing")
+        compare(host.lastSleepAtEnd, false,
+                "Start asked for the end-of-track timer, which is the row above it")
+        tryVerify(function() { return !popup.visible }, 2000,
+                  "the popup stayed open after Start was clicked")
     }
 
     // ── queue panel ──────────────────────────────────────────────────────
