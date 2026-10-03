@@ -149,3 +149,31 @@ jobs:
           echo "ctest sees ${n:-0} tests"
           test "${n:-0}" -ge 1
           ctest --test-dir build-deb12 --output-on-failure
+
+  # Ten seconds, no Qt, no build: catches a private address being committed
+  # before anything slow runs. An allowlist and not a blocklist on purpose -
+  # the address this exists to keep out never has to be written down here, and
+  # the next one is caught too.
+  addresses:
+    name: Only addresses we mean to publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan the tracked tree
+        run: |
+          allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com'
+          # tidal-wave@linu.li is the project mailbox (src/ui/Feedback.cpp, the
+          # .deb Maintainer field). someone@example.com is the fake username in
+          # tests/tst_auth.cpp. Anything else is a mistake until it is added here.
+          found=$(git grep -hoIE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- . \
+                  | sort -u | grep -ivE "^($allowed)$" || true)
+          if [ -n "$found" ]; then
+            echo "Addresses in the tree that are not on the allowlist:"
+            echo "$found"
+            echo
+            echo "Either take it out, or add it to \$allowed in this job."
+            exit 1
+          fi
+          echo "clean"

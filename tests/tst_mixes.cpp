@@ -67,23 +67,23 @@ constexpr auto kGeneratedPage = R"json({
     { "modules": [
       { "type": "MIX_LIST", "title": "", "supportsPaging": false, "scroll": null,
         "pagedList": { "limit": 50, "offset": 0, "totalNumberOfItems": 17, "items": [
-        {"id":"016e5b32dafd59b9749297f12f5483","title":"My Daily Discovery","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/016e5b/1500x1500?token=t"}},"mixType":"DISCOVERY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0023ebda7f49d7922a56d1eed33cc7","title":"My Mix 1","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0023eb/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0024635f41a16fe8266c9f49355602","title":"My Mix 2","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/002463/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0024dfcc0bd8537e5683aed3d7163e","title":"My Mix 3","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0024df/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0022790c534ae65144190d40fb3d9e","title":"My Mix 4","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/002279/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0029d7ffb714ea55e8c8cb040d6d85","title":"My Mix 5","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0029d7/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"002a201b9dab85f97e92ef25b22859","title":"My Mix 6","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/002a20/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0022828ffe6b173050b807b3c295fd","title":"My Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/002282/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"00236288332c3b170a20f4ccbe32df","title":"My Mix 8","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/002362/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0046e76c10f596d59eaa6fe0eae7dc","title":"My Video Mix 1","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0046e7/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"004af38c0f55acc562bf3410c78427","title":"My Video Mix 2","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/004af3/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"004f2d2996daebc26bbbeed8f5c892","title":"My Video Mix 3","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/004f2d/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0042f62404270cbf153d9c47b4ec8a","title":"My Video Mix 4","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0042f6/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"00464c28544881d6d8783aaba39c7e","title":"My Video Mix 5","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/00464c/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"004cca56377cd01ef0e7cb5de12a9c","title":"My Video Mix 6","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/004cca/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"00402747bd40719d37376f8bf3b21f","title":"My Video Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/004027/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
-        {"id":"0048d4aa32ff5382d4924bfb0bfb37","title":"My Video Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"@https@images.tidal.com/0/0048d4/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"}
+        {"id":"016e5b32dafd59b9749297f12f5483","title":"My Daily Discovery","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/016e5b/1500x1500?token=t"}},"mixType":"DISCOVERY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0023ebda7f49d7922a56d1eed33cc7","title":"My Mix 1","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0023eb/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0024635f41a16fe8266c9f49355602","title":"My Mix 2","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/002463/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0024dfcc0bd8537e5683aed3d7163e","title":"My Mix 3","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0024df/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0022790c534ae65144190d40fb3d9e","title":"My Mix 4","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/002279/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0029d7ffb714ea55e8c8cb040d6d85","title":"My Mix 5","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0029d7/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"002a201b9dab85f97e92ef25b22859","title":"My Mix 6","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/002a20/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0022828ffe6b173050b807b3c295fd","title":"My Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/002282/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"00236288332c3b170a20f4ccbe32df","title":"My Mix 8","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/002362/1500x1500?token=t"}},"mixType":"DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0046e76c10f596d59eaa6fe0eae7dc","title":"My Video Mix 1","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0046e7/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"004af38c0f55acc562bf3410c78427","title":"My Video Mix 2","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/004af3/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"004f2d2996daebc26bbbeed8f5c892","title":"My Video Mix 3","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/004f2d/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0042f62404270cbf153d9c47b4ec8a","title":"My Video Mix 4","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0042f6/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"00464c28544881d6d8783aaba39c7e","title":"My Video Mix 5","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/00464c/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"004cca56377cd01ef0e7cb5de12a9c","title":"My Video Mix 6","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/004cca/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"00402747bd40719d37376f8bf3b21f","title":"My Video Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/004027/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"},
+        {"id":"0048d4aa32ff5382d4924bfb0bfb37","title":"My Video Mix 7","subTitle":"placeholder subtitle","images":{"LARGE":{"url":"https://images.tidal.com/0/0048d4/1500x1500?token=t"}},"mixType":"VIDEO_DAILY_MIX","shortSubtitle":"Created by TIDAL"}
       ] } } ] }
   ]
 })json";
@@ -94,21 +94,21 @@ constexpr auto kSavedMixes = R"json({
   "cursor": null,
   "lastModifiedAt": "2026-10-03T11:09:34.062893Z",
   "items": [
-        {"dateAdded":"2026-06-08T19:33:03.142667Z","id":"016e5b32dafd59b9749297f12f5483","mixType":"DISCOVERY_MIX","updated":"2026-10-02T09:28:24.259Z","images":{"LARGE":{"url":"@https@images.tidal.com/0/016e5b/1500x1500?token=t"}},"master":false,"title":"My Daily Discovery","subTitle":"placeholder subtitle"},
-        {"dateAdded":"2026-06-20T14:33:02.868689Z","id":"011881f03495a3b81fe3c1dac0cde4","mixType":"NEW_RELEASE_MIX","updated":"2026-10-02T10:43:59.229Z","images":{"LARGE":{"url":"@https@images.tidal.com/0/011881/1500x1500?token=t"}},"master":false,"title":"My New Arrivals","subTitle":"placeholder subtitle"},
-        {"dateAdded":"2026-09-27T19:44:46.754991Z","id":"0023ebda7f49d7922a56d1eed33cc7","mixType":"DAILY_MIX","updated":"2026-10-02T08:13:52.363Z","images":{"LARGE":{"url":"@https@images.tidal.com/0/0023eb/1500x1500?token=t"}},"master":false,"title":"My Mix 1","subTitle":"placeholder subtitle"},
-        {"dateAdded":"2026-10-03T11:09:34.058841Z","id":"0017c8f6cd2a860351ed705e4aec15","mixType":"TRACK_MIX","updated":"2026-10-03T11:20:37.358Z","images":{"LARGE":{"url":"@https@images.tidal.com/0/0017c8/1500x1500?token=t"}},"master":false,"title":"Saved Radio","subTitle":"placeholder subtitle"}
+        {"dateAdded":"2026-06-08T19:33:03.142667Z","id":"016e5b32dafd59b9749297f12f5483","mixType":"DISCOVERY_MIX","updated":"2026-10-02T09:28:24.259Z","images":{"LARGE":{"url":"https://images.tidal.com/0/016e5b/1500x1500?token=t"}},"master":false,"title":"My Daily Discovery","subTitle":"placeholder subtitle"},
+        {"dateAdded":"2026-06-20T14:33:02.868689Z","id":"011881f03495a3b81fe3c1dac0cde4","mixType":"NEW_RELEASE_MIX","updated":"2026-10-02T10:43:59.229Z","images":{"LARGE":{"url":"https://images.tidal.com/0/011881/1500x1500?token=t"}},"master":false,"title":"My New Arrivals","subTitle":"placeholder subtitle"},
+        {"dateAdded":"2026-09-27T19:44:46.754991Z","id":"0023ebda7f49d7922a56d1eed33cc7","mixType":"DAILY_MIX","updated":"2026-10-02T08:13:52.363Z","images":{"LARGE":{"url":"https://images.tidal.com/0/0023eb/1500x1500?token=t"}},"master":false,"title":"My Mix 1","subTitle":"placeholder subtitle"},
+        {"dateAdded":"2026-10-03T11:09:34.058841Z","id":"0017c8f6cd2a860351ed705e4aec15","mixType":"TRACK_MIX","updated":"2026-10-03T11:20:37.358Z","images":{"LARGE":{"url":"https://images.tidal.com/0/0017c8/1500x1500?token=t"}},"master":false,"title":"Saved Radio","subTitle":"placeholder subtitle"}
   ]
 })json";
 
-// The fixtures write "@https@host/path" where the response has
+// The fixtures write "https://host/path" where the response has
 // "https://host/path", and this puts the scheme back. moc strips // comments
 // line by line and does it inside a multi-line raw string too, so a URL written
 // out in full truncates the literal it sits in - and then swallows the Q_OBJECT
 // below it, leaving the test binary to fail at link time with a missing vtable.
 QJsonObject pageOf(const char *json) {
     QByteArray raw(json);
-    raw.replace("@https@", "https://");
+    raw.replace("https://", "https://");
     raw.replace("@http@",  "http://");
 
     QJsonParseError err{};

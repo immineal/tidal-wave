@@ -403,6 +403,9 @@ if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGE_NAME "tidal-wave")
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A native desktop client for Tidal")
+    # The Maintainer field of every .deb this produces, which `dpkg -I` prints
+    # for anyone who downloads one. It carried a private address until now;
+    # the project has a mailbox, and that is the only address that ships.
     set(CPACK_PACKAGE_CONTACT "Linus Linhof <tidal-wave@linu.li>")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/immineal/tidal-wave")
 
