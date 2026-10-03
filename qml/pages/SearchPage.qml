@@ -66,6 +66,7 @@ Rectangle {
 
         // Tab bar
         Row {
+            objectName: "searchTabsRow"
             visible: root.query.length >= 2
             Layout.leftMargin: 24
             spacing: 4
@@ -78,15 +79,30 @@ Rectangle {
                     height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
                     color: root.activeTab === index ? Theme.accent
                            : tabMA.containsMouse ? Theme.surfaceHov : "transparent"
+                    // Same as Collection's row, and for the same reason: the
+                    // chip is what was clicked, so it must not be the one thing
+                    // that snaps while the results below it fade. The hover gets
+                    // the fade too, which is what the rest of the app does.
+                    Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+                    // The fill's own progress, so the label's ink can be chosen
+                    // against what is actually painted under it. See the long
+                    // note on CollectionPage's chip: the ink steps rather than
+                    // fading, because the two inks and the two fills are
+                    // luminance-inverted on the light palettes and every
+                    // continuous path between them goes through an invisible
+                    // label. This row inverts harder than Collection's - its
+                    // resting fill is the page itself - so it needs it more.
+                    property real filled: root.activeTab === index ? 1 : 0
+                    Behavior on filled { NumberAnimation { duration: Theme.dur(140) } }
                     border.width: searchTab.activeFocus ? 2 : 0
                     border.color: Theme.accent
                     activeFocusOnTab: true
                     Keys.onReturnPressed: root.activeTab = index
                     Keys.onSpacePressed:  root.activeTab = index
                     Text {
-                        id: tabLabel; anchors.centerIn: parent
+                        id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
                         text: modelData
-                        color: root.activeTab === index ? Theme.accentInk : Theme.textSec
+                        color: searchTab.filled > 0.5 ? Theme.accentInk : Theme.textSec
                         font.pixelSize: 13
                     }
                     MouseArea {

@@ -237,7 +237,30 @@ Item {
             libModel.append({ key: newKeys[i], entry: next[i] })
     }
 
+    // Rows that arrived while a pin was being dragged, held until the pointer
+    // is up. `null` when there are none.
+    //
+    // The library arrives in pages over several seconds, and a page landing
+    // under a live drag is a refill and not a handful of moves: past the diff's
+    // cap above, syncRows() gives up and rebuilds the model wholesale, which is
+    // libModel.clear(). That releases every delegate, including the one holding
+    // the pointer grab, and a broken grab is onCanceled - so the drag the user
+    // is in the middle of ends with nothing said and nothing moved.
+    //
+    // Found under load and not before it. Unloaded, the released delegates are
+    // still waiting on deleteLater when the drop arrives and the gesture
+    // survives by luck, which is why the test for this passes either way on an
+    // idle box; with eight spinners on twelve cores, and a drag already made in
+    // the same process, it failed ten times out of ten. Held for the length of a
+    // drag instead, which is well under a second, and applied the moment the
+    // pointer comes up.
+    property var deferredRows: null
+
     function syncRows(next) {
+        if (root.pinDragging) {
+            root.deferredRows = next
+            return
+        }
         root.rows = next
 
         var i
@@ -398,17 +421,26 @@ Item {
         root.pinDragTo     = -1
         root.pinDragOffset = 0
         root.pinDropValid  = false
+        // Whatever the library did while the pointer was down.
+        if (root.deferredRows !== null) {
+            var held = root.deferredRows
+            root.deferredRows = null
+            syncRows(held)
+        }
     }
 
     function endPinDrag() {
         var from = root.pinDragFrom
         var to   = root.pinDragTo
         var ok   = root.pinDropValid
-        cancelPinDrag()
-        if (!ok || from < 0 || to < 0 || from === to) return
-
+        // Read before the drag state is cleared, because clearing it releases
+        // any rows held during the drag and `rows` is what that rewrites. These
+        // two are the rows the gesture was made over, which is what it has to be
+        // answered in.
         var a = root.rows[from]
         var b = root.rows[to]
+        cancelPinDrag()
+        if (!ok || from < 0 || to < 0 || from === to) return
         if (!a || !b) return
         // Row index and pin index line up today, but it is PinStore that is
         // being reordered, so the move is expressed in its indices and not in
@@ -1200,8 +1232,37 @@ Item {
                     // coordinates, which do not move when the list scrolls.
                     property real pressY: 0
 
+                    // The same press, in the pinned block's own grid: whole
+                    // rows down from the top of the list, which is what
+                    // pinSlotAt() counts in and what the bounds below are
+                    // measured against.
+                    //
+                    // The two are the same number at rest and not during a
+                    // reorder. The move and displaced transitions on the list
+                    // take libraryTravelMs to carry a row to its new place, and
+                    // for that long a row's `index` is already the new one while
+                    // its `y` is still the old one. Everything else here works
+                    // in indices -- `pinDragFrom` is an index, pinSlotAt()
+                    // returns one -- so taking the bounds from the drawn
+                    // position alone mixed the two frames, and a drag begun
+                    // inside that window was measured as travelling out of the
+                    // block and abandoned on release. Which is every drag made
+                    // in the moment after the last one: one drop starts the
+                    // travel that breaks the next.
+                    property real pressSlotY: 0
+
                     onPressed: function (mouse) {
-                        dragArea.pressY = mapToItem(libList.contentItem, mouse.x, mouse.y).y
+                        var p = mapToItem(libList.contentItem, mouse.x, mouse.y)
+                        dragArea.pressY = p.y
+                        // Where in the row the press landed -- which is a
+                        // reading off the row as *drawn*, and the only one of
+                        // the two that is -- carried over to the slot the row's
+                        // index says it occupies. Every pinned row is
+                        // libRowHeight tall: only the first unpinned row carries
+                        // the block break, and nothing outside the block is
+                        // draggable.
+                        dragArea.pressSlotY = rowItem.index * root.libRowHeight
+                                              + (p.y - rowItem.y)
                         root.beginPinDrag(rowItem.index)
                     }
                     onPositionChanged: function (mouse) {
@@ -1215,8 +1276,9 @@ Item {
                         root.pinDragTo     = root.pinSlotAt(rowItem.index, root.pinDragOffset)
                         // Confined to the pinned block, in both directions:
                         // the list below it and the page beside it.
-                        root.pinDropValid  = p.y >= 0
-                            && p.y < root.pinnedCount * root.libRowHeight
+                        var slotY = dragArea.pressSlotY + root.pinDragOffset
+                        root.pinDropValid  = slotY >= 0
+                            && slotY < root.pinnedCount * root.libRowHeight
                             && p.x >= 0 && p.x <= libList.width
                     }
                     onReleased: root.endPinDrag()
@@ -1239,12 +1301,28 @@ Item {
     // its label. Same item either way, so the switch is a slide, not a swap.
     component SideNavItem : Item {
         id: navItem
+        objectName: "sideNavItem"
         property string icon: ""
         property string label: ""
         property string page: ""
         signal activated()
 
         readonly property bool current: root.currentPage === page
+
+        // The highlight arriving, as one number the whole row reads. 140ms is
+        // the sidebar's own short end - the rail slide and a row's travel are
+        // 170 - because this is the smallest thing in the panel that moves and
+        // it moves on every click.
+        //
+        // A number and not three Behaviors because of the indicator: it used to
+        // be `visible: current`, and a visible flip has nothing to animate, so
+        // the one part of the highlight that reads as a position had none. The
+        // fills and the inks are Behaviors on their colours, at the same length,
+        // so the row arrives as one thing.
+        property real currentness: current ? 1 : 0
+        Behavior on currentness {
+            NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+        }
 
         Layout.fillWidth: true
         Layout.preferredHeight: 44
@@ -1263,13 +1341,20 @@ Item {
             color: navItem.current
                    ? Theme.surfaceHov
                    : sideHov.hovered ? Theme.hoverFill : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 
+            // Grows out of the row's middle and fades with it, rather than
+            // being there or not. Height and opacity together: at the far end
+            // of a fade alone a 3px bar is still a 3px bar, faintly, and the
+            // eye reads it as a smudge rather than as something leaving.
             Rectangle {
-                visible: navItem.current
+                objectName: "navCurrentIndicator"
+                visible: navItem.currentness > 0.001
+                opacity: navItem.currentness
                 width: 3
-                height: parent.height * 0.5
+                height: Math.round(parent.height * 0.5 * navItem.currentness)
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: -8
@@ -1282,6 +1367,7 @@ Item {
                 objectName: "navIcon"
                 name: navItem.icon
                 color: navItem.current ? Theme.accent : Theme.textSec
+                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
                 anchors.verticalCenter: parent.verticalCenter
                 // 16 from the panel edge in the sidebar (8 here, inside the
                 // row's 8px inset), centred in the rail, and travelling
@@ -1301,7 +1387,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: navItem.label
                 color: navItem.current ? Theme.textPrimary : Theme.textSec
+                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
                 font.pixelSize: 14
+                // Not animatable: a font weight is not a number Qt interpolates.
                 font.bold: navItem.current
                 elide: Text.ElideRight
             }

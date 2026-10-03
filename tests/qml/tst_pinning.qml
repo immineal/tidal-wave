@@ -660,6 +660,158 @@ TestCase {
         verify(!grip || !grip.enabled, "an unpinned row can be dragged")
     }
 
+    // Two drops in a row, with nothing in between - which is what arranging a
+    // pinned block actually looks like: one drag, then the next, as fast as the
+    // pointer can be aimed.
+    //
+    // The first drop is what breaks the second. It reorders the pins, the list
+    // animates the reorder (SideBar's move/displaced transitions), and for the
+    // length of that travel a row's `index` is already its new one while its `y`
+    // is still its old one. The drag is written in indices - `pinDragFrom` is one
+    // and pinSlotAt() returns one - so a press read off the drawn position alone
+    // put the gesture in the wrong frame by as much as the whole travel, and the
+    // release was abandoned as "outside the block". Nothing said so: the pins
+    // simply did not move.
+    //
+    // Deliberately no settle() between the two drags, and that is not a race:
+    // the model moves the row synchronously inside the first release, while the
+    // view repositions it on its next polish, so the press below always lands on
+    // a row whose index and drawn place disagree. Waiting is exactly what hid
+    // this - test_drag_reorders_the_pinned_block waits, and passes either way.
+    function test_a_second_drag_lands_while_the_first_is_still_travelling() {
+        setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
+                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("mix",      "mix-1",   "Daily Discovery")])
+
+        var host = showHost(1280)
+        var sb = host.sidebar
+        settle(host.contentItem)
+        var rowHeight = rowHeightOf(sb)
+
+        // One drag of the top row, two slots down, in the shape the passing
+        // test uses.
+        function dragBy(id, slots) {
+            var row = rowFor(sb, id)
+            verify(row, "the row \"" + id + "\" was never drawn")
+            var grip = findByName(row, "pinDragArea")
+            verify(grip && grip.enabled, "the row \"" + id + "\" has no live drag handle")
+            var at = pointIn(host, grip, grip.width / 2, grip.height / 2)
+            // Where the row was drawn and which slot it says it is in, as the
+            // press sees them. Kept for the failure message below, which is
+            // about the two disagreeing.
+            var drawnY = row.y
+            var index = row.index
+            mousePress(host.contentItem, at.x, at.y)
+            mouseMove(host.contentItem, at.x, at.y + slots * rowHeight)
+            wait(1)
+            var landed = sb.pinDragTo
+            var ok = sb.pinDropValid
+            mouseRelease(host.contentItem, at.x, at.y + slots * rowHeight)
+            return { to: landed, valid: ok, drawnY: drawnY, index: index }
+        }
+
+        var first = dragBy("uuid-p1", 2)
+        compare(first.to, 2, "the first drag did not reach the bottom of the block")
+        compare(pinIds().join(","), "43,mix-1,uuid-p1", "the first drop did not reorder the pins")
+
+        // The state the second drag begins in: the row is at index 2 and still
+        // drawn at the top. Recorded rather than waited out - this is the whole
+        // point of the case, so if it ever stops being true the message below
+        // says which half changed.
+        var moved = rowFor(sb, "uuid-p1")
+        verify(moved, "the row that was just dropped is no longer drawn")
+        compare(moved.index, 2, "the model did not move the row inside the release")
+
+        // Straight back up, two slots, with the travel still in flight.
+        var second = dragBy("uuid-p1", -2)
+        verify(second.valid,
+               "the second drop was read as outside the pinned block: the row is at "
+               + "index " + second.index + ", which is slot " + (second.index * rowHeight)
+               + ", but it was drawn at y " + second.drawnY.toFixed(1)
+               + " and the drag was measured against that")
+        compare(second.to, 0, "the second drag did not reach the top of the block")
+        settle(host.contentItem)
+        compare(pinIds().join(","), "uuid-p1,43,mix-1",
+                "the second drop did nothing: a drag begun while the list is still "
+                + "travelling is silently abandoned")
+        compare(pinsSpy.count, 2, "two drops are two writes")
+    }
+
+    // The library arriving under a live drag. It arrives in pages over several
+    // seconds in the app, so this is ordinary: a page lands while the pointer is
+    // down, and past the keyed diff's cap SideBar refills the model wholesale
+    // rather than moving rows one at a time. A refill is libModel.clear(), which
+    // releases every delegate - including the one holding the pointer grab - and
+    // a broken grab is onCanceled, so the drag ended with nothing said and
+    // nothing moved.
+    //
+    // This one only tells the truth when the machine is busy, which is worth
+    // knowing before trusting its green. Run on an idle box it passes either
+    // way: the released delegates are still waiting on deleteLater when the drop
+    // arrives, so the gesture survives by luck. Run with eight spinners on
+    // twelve cores, and with another of this file's drags having been through the
+    // same process first, it failed ten times out of ten without SideBar's hold
+    // and passed ten times out of ten with it.
+    function test_the_library_arriving_mid_drag_does_not_lose_the_drop() {
+        setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
+                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("mix",      "mix-1",   "Daily Discovery")])
+
+        var host = showHost(1280)
+        var sb = host.sidebar
+        settle(host.contentItem)
+        var rowHeight = rowHeightOf(sb)
+
+        var grip = findByName(rowFor(sb, "uuid-p1"), "pinDragArea")
+        var from = pointIn(host, grip, grip.width / 2, grip.height / 2)
+        mousePress(host.contentItem, from.x, from.y)
+        mouseMove(host.contentItem, from.x, from.y + 2 * rowHeight)
+        wait(1)
+        compare(sb.pinDragTo, 2, "the drag never reached the bottom of the block")
+
+        // A whole page of the library lands. Far more than the diff's cap, so
+        // this is the wholesale refill and not a handful of moves.
+        var flood = baseEntries()
+        for (var i = 0; i < 60; ++i)
+            flood.push({ kind: "album", id: "flood-" + i, title: "Flood " + i,
+                         subtitle: "", imageUrl: "", trackCount: 1 })
+        var pinned = []
+        var rest = []
+        for (i = 0; i < flood.length; ++i) {
+            var at = pins.indexOf(flood[i].kind, flood[i].id)
+            flood[i].pinned = at >= 0
+            if (at >= 0) { flood[i].pinAt = at; pinned.push(flood[i]) }
+            else                              rest.push(flood[i])
+        }
+        pinned.sort(function (a, b) { return a.pinAt - b.pinAt })
+        library.setEntriesForTest(pinned.concat(rest))
+        wait(1)
+
+        verify(sb.pinDragging, "the library arriving cancelled the drag outright")
+        compare(sb.pinnedCount, 3, "the block changed size under the pointer")
+
+        mouseRelease(host.contentItem, from.x, from.y + 2 * rowHeight)
+        settle(host.contentItem)
+
+        compare(pinIds().join(","), "43,mix-1,uuid-p1",
+                "the drop was lost because the library arrived while it was being made")
+        verify(!sb.pinDragging, "the sidebar still thinks a drag is in progress")
+        verify(!findByName(sb, "pinDropIndicator").visible,
+               "the drop indicator outlived the drag")
+        tryVerify(function () { return rowIds(sb).join(",") === "43,mix-1,uuid-p1,7,42,uuid-p2" },
+                  2000, "the visible order did not follow the drop")
+
+        // And the list is listening again: what is held for the length of a drag
+        // is held for the length of a drag and no longer.
+        var more = baseEntries()
+        for (i = 0; i < 60; ++i)
+            more.push({ kind: "album", id: "late-" + i, title: "Late " + i,
+                        subtitle: "", imageUrl: "", trackCount: 1 })
+        library.setEntriesForTest(more)
+        tryVerify(function () { return sb.rows.length === 66 }, 2000,
+                  "the sidebar stopped taking rows after a drag")
+    }
+
     // ── S9: the rail ─────────────────────────────────────────────────────
 
     // The rail shows the pinned covers and nothing else of the library, so a

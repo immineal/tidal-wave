@@ -48,8 +48,16 @@ Item {
     property real openness: open ? 1 : 0
     // A Behavior does not run on a binding's first evaluation, so a panel that
     // starts open is open in its first frame and only later changes slide.
+    //
+    // 150, down from 190. The user: "which has a little bit too long of a
+    // delay". OutCubic front-loads the travel, so what is left at the end of a
+    // long one is the tail - the panel is all but arrived and still arriving -
+    // and that is the part that reads as a delay. Shortened rather than
+    // re-eased: the easing is the app's one easing. Not the 140 of a chip
+    // either, because this is the widest surface that moves, and the same
+    // length on 340px as on a 60px pill would read as a snap.
     Behavior on openness {
-        NumberAnimation { duration: Theme.dur(190); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(150); easing.type: Easing.OutCubic }
     }
     visible: open || openness > 0.001
 

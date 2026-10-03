@@ -761,7 +761,19 @@ TestCase {
     // "was already here"; F11 from another page records that page and
     // navigates here.
 
+    // Now Playing rises out of the player bar, so in the application window
+    // there is a slide between asking for the page and the page being where it
+    // will be. Both helpers below are aimed at by a synthesized click, which is
+    // delivered at a position, so both wait for it to arrive first. A real
+    // pointer cannot press a button that has not finished coming up either.
+    function arrivedNowPlaying(win) {
+        tryVerify(function () { return win.nowPlayingness === 1 }, 2000,
+                  "Now Playing never finished sliding up, so nothing on it can be aimed at")
+        waitForRendering(win.contentItem, 2000)
+    }
+
     function chevronIn(win) {
+        arrivedNowPlaying(win)
         var c = findChild(win.contentItem, "nowPlayingCollapse")
         verify(c, "the Now Playing chevron was not found in the application window")
         verify(c.visible, "the chevron is not on screen, so the user cannot press it")
@@ -769,6 +781,7 @@ TestCase {
     }
 
     function fullscreenButtonIn(win) {
+        arrivedNowPlaying(win)
         var b = findChild(win.contentItem, "nowPlayingFullscreen")
         verify(b, "the fullscreen button was not found in the application window")
         return b

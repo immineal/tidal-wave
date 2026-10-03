@@ -37,6 +37,35 @@ ApplicationWindow {
     property var    previousPageParams: ({})
     property var    _currentNavParams: ({})
 
+    // ─── Now Playing's way in and out ──────────────────────────────────
+    // It rises out of the player bar and sinks back into it. The bar is the
+    // control that opens it and the direction is the one the bar's chevron
+    // already points, so the page comes from the edge it was asked for from -
+    // the same vocabulary as the queue panel, which slides from the edge it is
+    // anchored to.
+    //
+    // Hosted here rather than in the page, because what has to outlive
+    // `currentPage` is the Loader: the page is on screen for the length of the
+    // slide out, after the window has already moved on. That is also why this is
+    // a number and not a state on the page - nothing inside Now Playing can know
+    // it is leaving.
+    //
+    // 190ms, where the queue's slide is 150. Same easing, and longer because the
+    // travel is longer: the queue crosses its own 340px of width and this crosses
+    // the whole height of the content area, which is more than twice as far.
+    //
+    // The player bar itself still goes and comes between two frames - it is a
+    // row of the window's layout, and collapsing it would move the page's own
+    // bottom edge while the page was sliding against it. So on the way in the bar
+    // is gone before the page has risen over where it was; on the way out the bar
+    // is already back, and the page sinks into its top edge.
+    property real nowPlayingness: currentPage === "nowplaying" ? 1 : 0
+    // A Behavior does not run on a binding's first evaluation, so a window that
+    // somehow starts on Now Playing starts with it up rather than sliding it in.
+    Behavior on nowPlayingness {
+        NumberAnimation { duration: Theme.dur(190); easing.type: Easing.OutCubic }
+    }
+
     // ─── Fullscreen ────────────────────────────────────
     // Now Playing can take the whole screen: the window drops its chrome and
     // the sidebar steps aside. Only the window can do either, so the page asks
@@ -283,7 +312,8 @@ ApplicationWindow {
         if (page === "home") return homeLoader
         if (page === "search") return searchLoader
         if (page === "collection") return collectionLoader
-        if (["album", "artist", "playlist", "mix", "nowplaying"].indexOf(page) !== -1) return detailLoader
+        if (page === "nowplaying") return nowPlayingLoader
+        if (["album", "artist", "playlist", "mix"].indexOf(page) !== -1) return detailLoader
         return null
     }
 
@@ -309,7 +339,8 @@ ApplicationWindow {
         
         var targetLoader = getLoader(page)
         if (targetLoader) {
-            if (currentPage === page && ["home", "search", "collection"].indexOf(page) === -1) {
+            if (currentPage === page
+                && ["home", "search", "collection", "nowplaying"].indexOf(page) === -1) {
                 // Force reload of the same detail page type by toggling state
                 var savedPage = currentPage
                 currentPage = ""
@@ -542,7 +573,8 @@ ApplicationWindow {
                     Loader {
                         id: detailLoader
                         anchors.fill: parent
-                        visible: ["home", "search", "collection"].indexOf(root.currentPage) === -1
+                        visible: ["home", "search", "collection",
+                                  "nowplaying"].indexOf(root.currentPage) === -1
                         active: auth.state === 2
                         source: {
                             if (!active) return ""
@@ -551,10 +583,42 @@ ApplicationWindow {
                                 case "artist":     return "pages/ArtistPage.qml"
                                 case "playlist":   return "pages/PlaylistPage.qml"
                                 case "mix":        return "pages/MixPage.qml"
-                                case "nowplaying": return "pages/NowPlayingPage.qml"
                                 case "radio":      return "pages/RadioPage.qml"
                                 default:           return ""
                             }
+                        }
+                        onLoaded: {
+                            if (item && root.pageParams) {
+                                var params = root.pageParams
+                                root.pageParams = {}
+                                root.applyParams(item, params)
+                            }
+                        }
+                    }
+
+                    // Now Playing, and only Now Playing, because it is the one
+                    // page that has to stay on screen after the window has
+                    // navigated away from it: `active` follows the slide rather
+                    // than `currentPage`, so the page is still there to sink
+                    // back into the bar, and is freed the moment it is gone.
+                    //
+                    // Declared last, so it rises over whichever page it was
+                    // opened from instead of under it.
+                    Loader {
+                        id: nowPlayingLoader
+                        anchors.fill: parent
+                        source: "pages/NowPlayingPage.qml"
+                        active: auth.state === 2
+                                && (root.currentPage === "nowplaying"
+                                    || root.nowPlayingness > 0.001)
+                        visible: active
+                        // A transform and not a y offset, for the reason
+                        // QueuePanel's slide is one: the page's geometry - which
+                        // its own breakpoint reads, and which the layout guard
+                        // in tests/qml/tst_layout_player.qml measures - is the
+                        // same mid-slide as it is at rest.
+                        transform: Translate {
+                            y: (1 - root.nowPlayingness) * nowPlayingLoader.height
                         }
                         onLoaded: {
                             if (item && root.pageParams) {

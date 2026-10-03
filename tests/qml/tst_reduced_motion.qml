@@ -605,7 +605,13 @@ TestCase {
 
     Component { id: queuePanelC;   QueuePanel   { open: false } }
     Component { id: collectionC;   CollectionPage { anchors.fill: parent } }
+    Component { id: searchC;       SearchPage   { anchors.fill: parent } }
     Component { id: trackRowC;     TrackRow     { } }
+
+    // Now Playing's way in and out belongs to the window and not to the page -
+    // what has to outlive the navigation is the Loader - so this one case needs
+    // the real Main.qml, as tst_nowplaying_access.qml's window tests do.
+    Component { id: appHostC; Main { } }
 
     function collectByName(item, name, out) {
         if (item.objectName === name) out.push(item)
@@ -827,6 +833,303 @@ TestCase {
             compare(page.contentIn, 1, "reduced motion: a re-sort must land on the next frame")
         else
             verify(page.contentIn < 1, "a re-sort replaced the grid without a word")
+    }
+
+    // ── the sidebar's Home / Search / Collection highlight ───────────────
+    //
+    // Three things said one thing: a fill, an ink and a 3px bar down the left
+    // edge. All three changed between two frames, and the bar was `visible:
+    // current`, which cannot animate at all - so the one part of the highlight
+    // that reads as a position was the one part that could only blink.
+    //
+    // Measured off the indicator's height as well as off the row's number: the
+    // number arriving is not the same as the bar arriving, and a bar that is
+    // there or not is exactly what this case is about.
+
+    function navItemFor(sb, page) {
+        var items = collectByName(sb, "sideNavItem", [])
+        for (var i = 0; i < items.length; ++i) if (items[i].page === page) return items[i]
+        return null
+    }
+
+    function test_nav_highlight_travels_data() { return test_rail_expansion_data() }
+
+    function test_nav_highlight_travels(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var host = createTemporaryObject(shellHost, testCase)
+        verify(host, "the sidebar host window was not created")
+        host.width = 1280
+        host.visible = true
+        waitForRendering(host.contentItem, settleMs)
+
+        var sb = host.sidebar
+        verify(!sb.compact, "1280px must give the full sidebar, not the rail")
+        sb.currentPage = "home"
+        var home   = navItemFor(sb, "home")
+        var search = navItemFor(sb, "search")
+        verify(home && search, "the nav rows were not found")
+        tryVerify(function () { return home.currentness === 1 && search.currentness === 0 },
+                  settleMs, "the sidebar never settled on Home")
+
+        var bar = findByName(search, "navCurrentIndicator")
+        verify(bar, "the Search row has no current-indicator to measure")
+        verify(!bar.visible, "an indicator on a row that is not current")
+
+        sb.currentPage = "search"
+
+        if (row.reduced) {
+            oneFrame()
+            compare(search.currentness, 1,
+                    "reduced motion: the highlight must be on Search on the next frame, not travelling")
+            compare(home.currentness, 0, "reduced motion: the old highlight is still leaving")
+            verify(bar.visible && bar.height > 1,
+                   "reduced motion: the indicator never came up")
+        } else {
+            // Read with nothing in between, and not after a frame. A Behavior
+            // does not tick in the turn its property is written: measured over
+            // twenty runs, the value had not moved once with nothing elapsed,
+            // and had moved in three of twenty after a single wait(1). So a
+            // reading taken a frame later is a question about the animation
+            // driver's scheduling, and only a reading taken in the same turn is
+            // a question about the thing being measured.
+            verify(search.currentness < 1,
+                   "without reduced motion the highlight jumped to Search instead of arriving")
+            verify(home.currentness > 0, "the highlight it left snapped out instead of fading")
+            // The indicator is the number and not a flag of its own: at every
+            // phase of the travel it is as tall as the number says, and on
+            // screen only while the number is. Asked at whatever phase this
+            // turn caught, so there is no moment to miss - which `visible:
+            // current` and a fixed height cannot satisfy at any phase but the
+            // last one.
+            compare(bar.visible, search.currentness > 0.001,
+                    "the indicator is on screen without the highlight being there")
+            compare(Math.round(bar.height),
+                    Math.round(bar.parent.height * 0.5 * search.currentness),
+                    "the indicator's height does not follow the highlight")
+            tryVerify(function () { return search.currentness === 1 }, settleMs,
+                      "the highlight never finished arriving")
+            tryVerify(function () { return home.currentness === 0 }, settleMs,
+                      "the old highlight never finished leaving")
+        }
+        compare(Math.round(bar.height), Math.round(bar.parent.height * 0.5),
+                "the settled indicator is not half the row")
+
+        // And away again, because the indicator leaving is the half that used to
+        // be a blink in the other direction too.
+        sb.currentPage = "collection"
+        if (row.reduced) {
+            oneFrame()
+            compare(search.currentness, 0, "reduced motion: leaving must be instant too")
+            verify(!bar.visible, "reduced motion left the indicator on a row that is not current")
+        } else {
+            verify(search.currentness > 0, "the highlight snapped off Search")
+            verify(bar.visible, "the indicator vanished instead of leaving")
+            tryVerify(function () { return !bar.visible }, settleMs,
+                      "the indicator never finished leaving")
+        }
+    }
+
+    // ── the tab chips on Collection and Search ───────────────────────────
+    //
+    // The content area already faded on a switch and the chip that switched it
+    // did not, which is the wrong way round: the chip is what the eye is on when
+    // it is clicked. The chip's own fill and ink travel now, a little shorter
+    // than the content, so the chip answers and the page follows.
+    //
+    // The label's weight does not travel. A font weight is not a number Qt
+    // interpolates, so `font.bold` lands in the frame of the click whatever this
+    // says; the fill around it is what carries the change.
+    //
+    // Nor does the label's ink, and that one is deliberate rather than a
+    // limitation. The two inks are luminance-inverted against the two fills on
+    // the three light palettes - dark ink on a light chip becomes white ink on a
+    // dark one - so fading both at once walks the label down to 1.01:1 and back,
+    // under 2:1 for 57ms of a 140ms fade. The ink steps at the fill's halfway
+    // point instead, which is asserted below: every reading of it is one of the
+    // two inks and never between them.
+
+    // Samples a chip's label ink until its fill has arrived, and returns the
+    // first reading that is neither of the two inks, or "" if there was none.
+    function inkBlendDuring(chip, label) {
+        if (!label) return "no label to read"
+        for (var i = 0; i < 60; ++i) {
+            var c = String(label.color)
+            if (c !== String(Theme.textSec) && c !== String(Theme.accentInk)) return c
+            if (sameColor(chip.color, Theme.accent)) break
+            wait(4)
+        }
+        return ""
+    }
+
+    function test_tab_chip_travels_data() { return test_rail_expansion_data() }
+
+    function test_tab_chip_travels(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(collectionC, holder)
+        verify(page, "CollectionPage was not created")
+        settle(holder)
+
+        var tabs = findByName(page, "collectionTabsRow")
+        verify(tabs, "the collection tab row was not found")
+        var albums = tabs.children[1]
+        verify(albums, "there is no Albums chip to measure")
+        compare(page.activeTab, 0, "the page did not open on the first tab")
+        tryVerify(function () { return sameColor(albums.color, Theme.surfaceHigh) },
+                  settleMs, "the chip never settled on its resting fill")
+
+        page.activeTab = 1
+
+        if (row.reduced) {
+            oneFrame()
+            verify(sameColor(albums.color, Theme.accent),
+                   "reduced motion: the chip must be filled on the next frame, got " + albums.color)
+        } else {
+            // Not there yet, read in the turn of the write - see the note in
+            // the case above. What is deliberately *not* asked is whether the
+            // fade has already moved off the resting fill: a Behavior holds the
+            // old value until its first tick, so that is a question about the
+            // scheduler and it answered yes in three runs of twenty. The pair
+            // below covers both ways this can be wrong anyway - a chip that
+            // snaps fails here, and a chip that never fades fails the wait.
+            verify(!sameColor(albums.color, Theme.accent),
+                   "without reduced motion the chip snapped to the accent instead of filling")
+            // Sampled all the way through, because a faded ink would be a blend
+            // in almost every one of these and a stepped one can never be in any
+            // of them. Nothing here can miss a violation that lasts the whole
+            // fade, and nothing here can invent one.
+            var blended = inkBlendDuring(albums, findByName(albums, "collectionTabLabel"))
+            compare(blended, "",
+                    "the chip's label faded its ink instead of stepping: " + blended
+                    + " is neither of the two inks, and on a light palette that path "
+                    + "goes through an invisible label")
+            tryVerify(function () { return sameColor(albums.color, Theme.accent) }, settleMs,
+                      "the chip never finished filling")
+        }
+
+        // Search's row is the same change to the same kind of control, and is
+        // the half that would quietly go unanimated: it is a second file.
+        var sHolder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var sPage = createTemporaryObject(searchC, sHolder)
+        verify(sPage, "SearchPage was not created")
+        sPage.query = "te"                 // the tab row only exists with a query
+        settle(sHolder)
+
+        var sTabs = findByName(sPage, "searchTabsRow")
+        verify(sTabs, "the search tab row was not found")
+        var tracksChip = sTabs.children[1]
+        verify(tracksChip, "there is no Tracks chip to measure")
+        tryVerify(function () { return !sameColor(tracksChip.color, Theme.accent) },
+                  settleMs, "the search chip never settled off the accent")
+
+        sPage.activeTab = 1
+
+        if (row.reduced) {
+            oneFrame()
+            verify(sameColor(tracksChip.color, Theme.accent),
+                   "reduced motion: Search's chip must be filled on the next frame, got "
+                   + tracksChip.color)
+        } else {
+            verify(!sameColor(tracksChip.color, Theme.accent),
+                   "Search's chip snapped to the accent instead of filling")
+            var sBlended = inkBlendDuring(tracksChip, findByName(tracksChip, "searchTabLabel"))
+            compare(sBlended, "",
+                    "Search's chip faded its label ink instead of stepping: " + sBlended)
+            tryVerify(function () { return sameColor(tracksChip.color, Theme.accent) },
+                      settleMs, "Search's chip never finished filling")
+        }
+    }
+
+    // ── Now Playing rising out of the player bar ─────────────────────────
+    //
+    // It appeared and disappeared outright, both ways. It travels up out of the
+    // bar that opened it and sinks back down into it, which is the direction the
+    // bar's chevron already points.
+    //
+    // The number is read off the window and the position off the page, because
+    // the number alone would pass with the transform unwired - the same pair the
+    // queue panel's case reads.
+
+    function test_now_playing_rises_from_the_player_bar_data() {
+        return test_rail_expansion_data()
+    }
+
+    function nowPlayingIn(win) {
+        var hit = null
+        function walk(item) {
+            if (hit) return
+            if (item.hasOwnProperty("lyricsness") && item.hasOwnProperty("stackness")) {
+                hit = item
+                return
+            }
+            var kids = item.children
+            for (var i = 0; i < kids.length; ++i) walk(kids[i])
+        }
+        walk(win.contentItem)
+        return hit
+    }
+
+    function test_now_playing_rises_from_the_player_bar(row) {
+        app.setReducedMotionForTest(row.reduced)
+
+        var win = createTemporaryObject(appHostC, testCase)
+        verify(win, "the application window was not created")
+        win.width = 1280
+        win.height = 900
+        win.visible = true
+        waitForRendering(win.contentItem, settleMs)
+
+        compare(win.currentPage, "home", "the window did not start on Home")
+        compare(win.nowPlayingness, 0, "Now Playing is up with nothing asking for it")
+        verify(!nowPlayingIn(win), "Now Playing is built before anyone asked for it")
+
+        win.navigate("nowplaying")
+        var page = nowPlayingIn(win)
+        verify(page, "navigating to Now Playing did not build the page")
+
+        // How far down the page is drawn from where it comes to rest. Measured
+        // off the page and not off the number: the slide is a transform, and this
+        // is the only reading that proves the transform is wired to it.
+        function drop() { return page.mapToItem(win.contentItem, 0, 0).y }
+
+        if (row.reduced) {
+            oneFrame()
+            compare(win.nowPlayingness, 1,
+                    "reduced motion: the page must be up on the next frame, not rising")
+            compare(Math.round(drop()), 0,
+                    "reduced motion: the page is still down at the player bar")
+        } else {
+            // Read with nothing in between: the Behavior has already started, so
+            // there is no frame to wait for and no window for the slide to finish
+            // inside.
+            verify(win.nowPlayingness < 1, "the page jumped up instead of rising")
+            verify(drop() > 1, "the page was drawn at its resting place before it had risen")
+            tryVerify(function () { return win.nowPlayingness === 1 }, settleMs,
+                      "the rise never finished")
+            compare(Math.round(drop()), 0, "the page did not come to rest filling the area")
+        }
+
+        // And back down into the bar. The page has to outlive the navigation for
+        // that, which is the whole reason this is hosted on the window.
+        win.goBack()
+        compare(win.currentPage, "home", "going back did not leave Now Playing")
+
+        if (row.reduced) {
+            oneFrame()
+            compare(win.nowPlayingness, 0,
+                    "reduced motion: the page must be gone on the next frame")
+            verify(!nowPlayingIn(win), "reduced motion left the closed page built")
+        } else {
+            verify(nowPlayingIn(win) === page,
+                   "the page was thrown away instead of sinking back into the bar")
+            verify(win.nowPlayingness > 0, "the page vanished instead of sinking")
+            tryVerify(function () { return win.nowPlayingness === 0 }, settleMs,
+                      "the page never finished sinking")
+            tryVerify(function () { return !nowPlayingIn(win) }, settleMs,
+                      "the page was never freed after it left")
+        }
     }
 
     // The lyric being sung is kept in the middle of the panel. Every line
