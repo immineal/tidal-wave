@@ -901,6 +901,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No tracks for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No albums for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No artists for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No playlists for &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation type="unfinished"></translation>
     </message>

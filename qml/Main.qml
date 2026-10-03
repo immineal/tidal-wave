@@ -365,6 +365,15 @@ ApplicationWindow {
         currentPage = page
         if (page === "search") {
             searchLoader.forceActiveFocus()
+            // ...and then the field inside it, which is a second step and not
+            // the same one: the Loader, the page root and the bar's input share
+            // one focus scope, so the line above makes the *Loader* the focus
+            // item and typing went nowhere. Leaving the page releases the
+            // field's focus (see the Loader's onVisibleChanged below), which is
+            // why nothing inside is holding it on the way back in.
+            if (searchLoader.item && typeof searchLoader.item.takeFocus === "function") {
+                searchLoader.item.takeFocus()
+            }
         } else {
             focusStealer.forceActiveFocus()
         }

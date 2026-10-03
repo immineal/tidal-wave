@@ -18,8 +18,51 @@ Rectangle {
     property int    activeTab: 0
     property int    _searchGen: 0
 
+    // The query the four arrays and `errorText` below describe, and the reason
+    // the last reply failed (empty when it did not).
+    //
+    // A search has three outcomes and the page only had two of them. "I have
+    // results" and "I have none" leaves no way to say *not yet*, so the
+    // no-results strip - which asked nothing more than whether the four arrays
+    // were empty - was up for the whole 400ms the debounce was still waiting,
+    // on every keystroke, naming a query nothing had been asked about. Four
+    // empty arrays are the state the page starts in, not an answer.
+    //
+    // Nothing may be said about a query until a reply for *that* query has
+    // landed, which is what `replied` below is.
+    property string repliedFor: ""
+    property string errorText:  ""
+
+    readonly property bool replied: query.length >= 2 && repliedFor === query
+
+    // Hits of the kind the active tab shows. The strip used to ask whether all
+    // four arrays were empty while each section showed itself only when its own
+    // array was not, so the Albums tab for a query that matched only tracks hid
+    // every section *and* suppressed the strip: a pane with nothing in it at
+    // all and no way to tell that from a page still loading.
+    readonly property int tabHits:
+          activeTab === 1 ? tracks.length
+        : activeTab === 2 ? albums.length
+        : activeTab === 3 ? artists.length
+        : activeTab === 4 ? playlists.length
+        : totalHits
+
+    readonly property int totalHits:
+        tracks.length + albums.length + artists.length + playlists.length
+
     function releaseFocus() {
         searchBar.releaseFocus()
+    }
+
+    // Arriving at the page. The router gives the Loader active focus, which is
+    // not the same as giving it to the field: the Loader, this page's root and
+    // the bar's input all sit in one focus scope, so whichever of them asked
+    // last owns it and the field was never the one asking. Nothing typed
+    // reached it, and leaving the page (releaseFocus above) left the scope with
+    // no focus item at all, so a second visit had nothing to hand focus back
+    // to either.
+    function takeFocus() {
+        searchBar.takeFocus()
     }
 
     // The results change shape on a tab switch: "All" shows four sections and
@@ -49,6 +92,7 @@ Rectangle {
 
         SearchBar {
             id: searchBar
+            objectName: "searchPageBar"
             focus: true
             Layout.fillWidth: true
             Layout.leftMargin: 24
@@ -149,6 +193,7 @@ Rectangle {
             opacity: root.resultsIn
 
             ColumnLayout {
+                objectName: "searchResults"
                 width: parent.width
                 spacing: 0
 
@@ -197,16 +242,60 @@ Rectangle {
                     Item { height: 16 }
                 }
 
-                // No results indicator
+                // No results indicator — only ever about a query that has an
+                // answer of its own (see `replied`), and only about the kind of
+                // thing the tab in front of the user is showing.
                 Item {
+                    objectName: "searchEmptyStrip"
                     Layout.fillWidth: true
                     height: 80
-                    visible: root.tracks.length === 0 && root.albums.length === 0 && root.artists.length === 0 && root.playlists.length === 0 && !root.loading
+                    visible: root.replied && root.errorText.length === 0
+                             && root.tabHits === 0 && !root.loading
                     Text {
+                        objectName: "searchEmptyLabel"
                         anchors.centerIn: parent
-                        text: qsTr("No results for \"%1\"").arg(root.query)
+                        // Two different facts, and the strip used to have only
+                        // the first: the search found nothing, or it found
+                        // nothing *of this kind*. On a type tab whose own kind
+                        // came back empty while another did not, "No results"
+                        // is simply false - the tab row above is offering those
+                        // other kinds one click away - so the line names the
+                        // kind it is actually talking about. When nothing
+                        // matched anywhere it is about the search again,
+                        // whichever tab the user happens to be standing on.
+                        text: root.totalHits > 0
+                            ? (root.activeTab === 1 ? qsTr("No tracks for \"%1\"").arg(root.query)
+                             : root.activeTab === 2 ? qsTr("No albums for \"%1\"").arg(root.query)
+                             : root.activeTab === 3 ? qsTr("No artists for \"%1\"").arg(root.query)
+                             : root.activeTab === 4 ? qsTr("No playlists for \"%1\"").arg(root.query)
+                             : qsTr("No results for \"%1\"").arg(root.query))
+                            : qsTr("No results for \"%1\"").arg(root.query)
                         color: Theme.textSec
                         font.pixelSize: 15
+                    }
+                }
+
+                // A failed search used to look exactly like a successful one:
+                // the spinner went away, the previous query's results stayed on
+                // screen under the new text, and nothing said the request had
+                // failed. There is no banner, toast or retry anywhere in this
+                // app - LoginPage reports a failed sign-in as one line of
+                // Theme.red text and that is the whole precedent - so this is
+                // that line, in the slot the strip above uses.
+                Item {
+                    objectName: "searchErrorStrip"
+                    Layout.fillWidth: true
+                    height: 80
+                    visible: root.replied && root.errorText.length > 0
+                    Text {
+                        objectName: "searchErrorLabel"
+                        anchors.centerIn: parent
+                        width: parent.width - 48
+                        text: qsTr("Search failed: %1").arg(root.errorText)
+                        color: Theme.red
+                        font.pixelSize: 15
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
 
@@ -290,7 +379,18 @@ Rectangle {
             // dispatched request may update the UI.
             if (gen !== root._searchGen) return
             loading = false
-            if (err.length > 0) return
+            // Whatever came back came back for *this* query. Recording it is
+            // what lets the two strips above speak at all.
+            root.repliedFor = q
+            if (err.length > 0) {
+                root.errorText = err
+                // The arrays still hold the hits of whatever query last
+                // succeeded. Leaving them under the text the user is looking at
+                // is the page claiming a result it does not have, so they go.
+                root.tracks = []; root.albums = []; root.artists = []; root.playlists = []
+                return
+            }
+            root.errorText = ""
             root.tracks    = results.tracks    || []
             root.albums    = results.albums    || []
             root.artists   = results.artists   || []
@@ -298,7 +398,12 @@ Rectangle {
         }, 20)
     }
 
-    function clearResults() { tracks = []; albums = []; artists = []; playlists = []; _searchGen++; loading = false }
+    function clearResults() {
+        tracks = []; albums = []; artists = []; playlists = []
+        _searchGen++; loading = false
+        // Back below the threshold: there is no query to have an answer about.
+        repliedFor = ""; errorText = ""
+    }
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params)

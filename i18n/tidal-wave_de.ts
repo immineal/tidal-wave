@@ -972,6 +972,26 @@
         <translation>Keine Ergebnisse für „%1“</translation>
     </message>
     <message>
+        <source>No tracks for &quot;%1&quot;</source>
+        <translation>Keine Titel für „%1“</translation>
+    </message>
+    <message>
+        <source>No albums for &quot;%1&quot;</source>
+        <translation>Keine Alben für „%1“</translation>
+    </message>
+    <message>
+        <source>No artists for &quot;%1&quot;</source>
+        <translation>Keine Künstler für „%1“</translation>
+    </message>
+    <message>
+        <source>No playlists for &quot;%1&quot;</source>
+        <translation>Keine Playlists für „%1“</translation>
+    </message>
+    <message>
+        <source>Search failed: %1</source>
+        <translation>Suche fehlgeschlagen: %1</translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation>Künstler</translation>
     </message>

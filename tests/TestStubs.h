@@ -221,16 +221,31 @@ public:
     }
 
     // Search answers with the real result shape: {tracks, albums, artists, playlists}.
+    //
+    // The four lists are whatever setSearchResultsForTest() put there, empty
+    // until a test says otherwise. They used to be the only answer this could
+    // ever give: the query and the limit went straight to Q_UNUSED and all four
+    // lists were built empty, so no test had ever seen a non-empty remote
+    // search result. That blinded the whole results page at once - "no
+    // results", a type tab with no hits of its own kind, a failed request - and
+    // every assertion about any of it would have passed against nothing.
+    //
+    // The query is still ignored. What is under test is what the page does with
+    // a reply; how Tidal matches text is not this stub's business, and a stub
+    // that guessed at it would be asserting its own guess.
     Q_INVOKABLE void search(const QString &q, QJSValue cb, int limit = 20) {
-        Q_UNUSED(q); Q_UNUSED(limit);
-        QJSValue res = emptyObject();
-        if (res.isObject()) {
-            res.setProperty(QStringLiteral("tracks"), emptyArray());
-            res.setProperty(QStringLiteral("albums"), emptyArray());
-            res.setProperty(QStringLiteral("artists"), emptyArray());
-            res.setProperty(QStringLiteral("playlists"), emptyArray());
-        }
-        resolve(cb, res);
+        m_lastSearchQuery = q;
+        m_lastSearchLimit = limit;
+        m_searchCount++;
+        if (!cb.isCallable()) return;
+        // The real bridge builds the map from a default-constructed
+        // SearchResults on the error path, so the shape is there either way and
+        // the lists are empty - mirrored here, because a page that reads
+        // results.tracks before checking err must fail the same way in a test
+        // as it would in the app.
+        QJSValueList args;
+        args << searchPayload(m_searchError.isEmpty()) << QJSValue(m_searchError);
+        cb.call(args);
     }
 
     Q_INVOKABLE void copyToClipboard(const QString &text) { m_lastClipboardText = text; }
@@ -352,6 +367,37 @@ public:
         m_favoriteTracks[trackId] = fav;
         emit favoriteTracksChanged();
     }
+
+    // The canned remote search reply. Four lists because the page reads four
+    // and reacts differently to each: a result set with tracks and no albums is
+    // exactly what makes the Albums tab say something rather than nothing.
+    Q_INVOKABLE void setSearchResultsForTest(const QVariantList &tracks,
+                                            const QVariantList &albums,
+                                            const QVariantList &artists,
+                                            const QVariantList &playlists) {
+        m_searchTracks    = tracks;
+        m_searchAlbums    = albums;
+        m_searchArtists   = artists;
+        m_searchPlaylists = playlists;
+        m_searchError.clear();   // a filled reply is a successful one
+    }
+    // Non-empty makes every later search fail with this reason, the way a lost
+    // network does: errorString() reaches the callback and nothing else does.
+    Q_INVOKABLE void setSearchErrorForTest(const QString &err) { m_searchError = err; }
+    Q_INVOKABLE QString lastSearchQueryForTest() const { return m_lastSearchQuery; }
+    Q_INVOKABLE int     lastSearchLimitForTest() const { return m_lastSearchLimit; }
+    Q_INVOKABLE int     searchCountForTest() const { return m_searchCount; }
+    Q_INVOKABLE void    resetSearchForTest() {
+        m_searchTracks.clear();
+        m_searchAlbums.clear();
+        m_searchArtists.clear();
+        m_searchPlaylists.clear();
+        m_searchError.clear();
+        m_lastSearchQuery.clear();
+        m_lastSearchLimit = 0;
+        m_searchCount = 0;
+    }
+
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
     Q_INVOKABLE QString lastPlaylistPlayedForTest() const { return m_lastPlaylistPlayed; }
     Q_INVOKABLE int  userPlaylistFetchCountForTest() const { return m_userPlaylistFetches; }
@@ -362,6 +408,7 @@ public:
         m_trackCreditsFetches = 0;
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
+        resetSearchForTest();
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -405,6 +452,31 @@ private:
     QString m_lastPlaylistPlayed;
     int     m_userPlaylistFetches = 0;
     int     m_trackCreditsFetches = 0;
+    // The canned search reply and what was asked of it.
+    QVariantList m_searchTracks;
+    QVariantList m_searchAlbums;
+    QVariantList m_searchArtists;
+    QVariantList m_searchPlaylists;
+    QString      m_searchError;
+    QString      m_lastSearchQuery;
+    int          m_lastSearchLimit = 0;
+    int          m_searchCount = 0;
+
+    // {tracks, albums, artists, playlists}; `filled` false gives the same map
+    // with four empty lists, which is what the real bridge sends on an error.
+    QJSValue searchPayload(bool filled) const {
+        QJSEngine *e = jsEngine();
+        QJSValue res = e ? e->newObject() : QJSValue();
+        if (!res.isObject() || !e) return res;
+        const auto list = [&](const QVariantList &l) {
+            return filled ? e->toScriptValue(l) : e->newArray(0);
+        };
+        res.setProperty(QStringLiteral("tracks"),    list(m_searchTracks));
+        res.setProperty(QStringLiteral("albums"),    list(m_searchAlbums));
+        res.setProperty(QStringLiteral("artists"),   list(m_searchArtists));
+        res.setProperty(QStringLiteral("playlists"), list(m_searchPlaylists));
+        return res;
+    }
 };
 
 // ─── player ─────────────────────────────────────────────────────────────────
