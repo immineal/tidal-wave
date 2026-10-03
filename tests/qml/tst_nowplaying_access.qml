@@ -629,6 +629,115 @@ TestCase {
                   "the second Escape should navigate back")
     }
 
+    // ── F11 is a toggle, so it puts the view back as well ────────────────
+    //
+    // F11 opens Now Playing on its way into fullscreen, and leaving used to
+    // undo only the window: the user who pressed it inside a playlist came
+    // back to a windowed Now Playing instead of to the playlist they were in.
+    // The page fullscreen covered is recorded on the way in, the same way the
+    // window state it replaces is.
+    //
+    // Both pages the complaint named, and they are not the same case:
+    // getLoader() has an entry for the playlist and none for radio, so the two
+    // take different branches through navigate() on the way back.
+    function test_fullscreen_from_another_page_collapses_now_playing_again_data() {
+        return [
+            { tag: "playlist", page: "playlist", type: "PlaylistPage",
+              params: { playlistUuid: "spaetschicht-1", playlistTitle: "Spätschicht" },
+              key: "playlistUuid", value: "spaetschicht-1" },
+            { tag: "radio", page: "radio", type: "RadioPage",
+              params: { trackId: 4242, radioTitle: "Weit hinter dem Horizont" },
+              key: "trackId", value: 4242 }
+        ]
+    }
+
+    function test_fullscreen_from_another_page_collapses_now_playing_again(row) {
+        var win = showApp()
+        win.navigate(row.page, row.params)
+        compare(win.currentPage, row.page, "the fixture never reached the " + row.tag)
+
+        win.toggleFullScreen()
+        compare(win.currentPage, "nowplaying",
+                "F11 should open Now Playing on the way into fullscreen")
+        tryVerify(function () { return win.visibility === Window.FullScreen }, 2000,
+                  "the toggle did not take the window fullscreen")
+
+        win.toggleFullScreen()
+        compare(win.currentPage, row.page,
+                "leaving fullscreen left the user in a windowed Now Playing instead of"
+                + " back in the " + row.tag + " F11 was pressed from")
+        verify(!win.fullScreen, "the window stayed fullscreen")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
+                  "the window stayed fullscreen")
+
+        // That page, not just a page of the same kind: collapsing has to hand
+        // back the parameters it was opened with.
+        tryVerify(function () {
+            var item = findByType(win.contentItem, row.type)
+            return item && item[row.key] === row.value
+        }, 2000, "the user came back to a " + row.tag + ", but not the one they left")
+    }
+
+    // Both presses inside one turn, which is the shape of the Qt 6.4 bug
+    // a2f03de fixed: deciding what to restore may not wait on
+    // visibilityChanged, which does not arrive until later on 6.4.
+    function test_two_presses_in_one_turn_still_land_back_on_the_playlist() {
+        var win = showApp()
+        win.navigate("playlist", { playlistUuid: "spaetschicht-2" })
+        compare(win.currentPage, "playlist")
+
+        win.toggleFullScreen()
+        win.toggleFullScreen()
+        compare(win.currentPage, "playlist",
+                "two F11s in one turn left the user in Now Playing")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
+                  "two F11s in one turn left the window fullscreen")
+    }
+
+    // The other half of the toggle: pressed from inside Now Playing it has no
+    // navigation to undo, so it must not close the page the user was already
+    // on.
+    function test_fullscreen_from_now_playing_stays_in_now_playing() {
+        var win = showApp()
+        win.navigate("playlist", { playlistUuid: "spaetschicht-3" })
+        win.navigate("nowplaying")
+        compare(win.currentPage, "nowplaying", "the fixture never reached Now Playing")
+
+        win.toggleFullScreen()
+        tryVerify(function () { return win.visibility === Window.FullScreen }, 2000)
+        win.toggleFullScreen()
+        compare(win.currentPage, "nowplaying",
+                "F11 pressed from inside Now Playing collapsed the page the user was on")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000)
+    }
+
+    // What comes back is this toggle's own navigation and nothing else. A
+    // window that reached fullscreen some other way - the window manager has
+    // its own keybinding - while showing some other page has nothing for F11
+    // to put back, so F11 only brings the window home.
+    function test_leaving_fullscreen_does_not_navigate_off_another_page() {
+        var win = showApp()
+        win.navigate("playlist", { playlistUuid: "spaetschicht-4" })
+        // Through the toggle once, so the recorded page is a stale "not Now
+        // Playing" by the time the window goes fullscreen on its own.
+        win.toggleFullScreen()
+        win.toggleFullScreen()
+        compare(win.currentPage, "playlist",
+                "the fixture needs the toggle's own round trip to work first")
+
+        win.visibility = Window.FullScreen
+        tryVerify(function () { return win.fullScreen }, 2000,
+                  "the window never went fullscreen on its own")
+        compare(win.currentPage, "playlist",
+                "the window manager's route in should not navigate anywhere")
+
+        win.toggleFullScreen()
+        compare(win.currentPage, "playlist",
+                "F11 navigated away from the page it was pressed on")
+        tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
+                  "F11 did not bring the window out of fullscreen")
+    }
+
     // The queue panel is an overlay on top of everything, so it is still the
     // innermost thing Escape closes.
     function test_escape_closes_the_queue_before_leaving_fullscreen() {

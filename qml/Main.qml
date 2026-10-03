@@ -47,6 +47,13 @@ ApplicationWindow {
     // when the user went fullscreen.
     property int preFullScreenVisibility: Window.Windowed
 
+    // The view is remembered the same way, and for the same reason: going
+    // fullscreen also opens Now Playing (see toggleFullScreen), so coming back
+    // has to know whether the page was already open or whether fullscreen put
+    // it there. Defaults to "it was already open", which is the value that
+    // makes this window navigate nowhere on its own.
+    property bool preFullScreenNowPlaying: true
+
     // Written where the state changes, not derived from `visibility`.
     //
     // This used to be `readonly property bool fullScreen: visibility ===
@@ -84,6 +91,7 @@ ApplicationWindow {
         // back to; anything but Maximized returns to a normal window.
         root.preFullScreenVisibility =
             (root.visibility === Window.Maximized) ? Window.Maximized : Window.Windowed
+        root.preFullScreenNowPlaying = (root.currentPage === "nowplaying")
         root.visibility = Window.FullScreen
         root.fullScreen = true
     }
@@ -97,13 +105,26 @@ ApplicationWindow {
     // Also the F11 handler, which is why it navigates: F11 anywhere in the app
     // means "give me the player, big", not "do nothing unless you are already
     // looking at it".
+    //
+    // And why it navigates back. Pressed twice it has to leave the user where
+    // they started, so the second press undoes the first one's navigation as
+    // well as its window change - but only the navigation the first press
+    // actually made (F11 from inside Now Playing stays in Now Playing), and
+    // only while Now Playing is still what is on screen, because a page the
+    // user walked to in the meantime is not this toggle's to close.
     function toggleFullScreen() {
         if (root.fullScreen) {
             root.leaveFullScreen()
+            if (!root.preFullScreenNowPlaying && root.currentPage === "nowplaying")
+                root.goBack()
             return
         }
-        if (root.currentPage !== "nowplaying") root.navigate("nowplaying")
+        // The window first: enterFullScreen() records the page fullscreen is
+        // covering, and after the navigation below that is always Now Playing.
+        // Navigating to Now Playing is the one navigation that keeps
+        // fullscreen, so the order makes no difference to the window.
         root.enterFullScreen()
+        if (root.currentPage !== "nowplaying") root.navigate("nowplaying")
     }
 
     // ─── Sleep Timer Core State & Logic ──────────────────
