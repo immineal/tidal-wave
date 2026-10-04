@@ -560,8 +560,15 @@ by or affiliated with Tidal.")
     endif()
     # Not Qt, and versioned by the distro rather than by us.
     list(APPEND TW_DEB_DEPENDS libasound2 libavahi-client3)
+    # qt6-wayland is a hard dependency by the owner's decision, 2026-10-04.
+    # It was a Recommends, and `apt --no-install-recommends` then leaves a
+    # Wayland-only desktop with no platform plugin: Qt falls back to xcb
+    # through XWayland, so the app still starts and nothing says why it is
+    # running translated. Degrading silently is the outcome the version
+    # floors above exist to prevent, so this is a Depends.
+    list(APPEND TW_DEB_DEPENDS qt6-wayland)
     list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg, qt6-wayland")
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg")
     # Left on so it can still add anything it *can* resolve on a machine where
     # Qt does come from apt. It cannot weaken the floors above.
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)

@@ -60,7 +60,21 @@ public:
 
     // Position in the pinned block, or -1. LibraryIndex reads this to order
     // the pinned rows and to keep them out of the list below (P5).
-    int indexOf(const QString &kind, const QString &id) const;
+    //
+    // Q_INVOKABLE because SideBar.qml's endPinDrag() calls it to turn the two
+    // row indices the gesture was made in into PinStore indices before asking
+    // for the move. It was not invokable for three rounds of "the pins still do
+    // not move": QML got `undefined` for both, `undefined === undefined` passed
+    // the `fromPin === toPin` guard, and the function returned before move().
+    // The indicator was always right; the commit never happened. No warning is
+    // printed anywhere a user would see.
+    //
+    // It survived because tests/TestStubs.h declares its own indexOf
+    // Q_INVOKABLE, so every QML test drove a stub that was *more* capable than
+    // the real class. tests/tst_qml_cpp_calls.cpp now compares what qml/ calls
+    // against these meta-objects, so the stub cannot cover for the real type
+    // again.
+    Q_INVOKABLE int indexOf(const QString &kind, const QString &id) const;
 
     // The four things that can be pinned. Anything else is dropped on the way
     // in and on the way out of storage, so neither a stale settings file nor a

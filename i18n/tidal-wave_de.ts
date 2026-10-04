@@ -341,7 +341,7 @@
     <message>
         <source>Could not unfollow the artist</source>
         <comment>shown when unfollowing an artist failed</comment>
-        <translation>Das Folgen konnte nicht beendet werden</translation>
+        <translation>Künstler konnte nicht entfolgt werden</translation>
     </message>
     <message>
         <source>Could not follow the artist</source>

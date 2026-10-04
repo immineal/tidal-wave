@@ -51,7 +51,11 @@ endforeach()
 # tst_startup needs it for the same kind of guard: the high-DPI rule has to know
 # Main.qml's default window size before any QML is loaded, so the number is
 # written down in C++ too, and the test reads the file to prove they still agree.
-foreach(reads_qml_as_text tst_shortcuts tst_startup)
+# tst_qml_cpp_calls reads every .qml file and checks each `obj.method(` call it
+# makes against the real type's meta-object. It has to be the source tree and
+# not the module's resources, because the point is to name the file a bad call
+# is in.
+foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls)
     if(TARGET ${reads_qml_as_text})
         target_compile_definitions(${reads_qml_as_text} PRIVATE
             TIDALWAVE_QML_DIR="${CMAKE_SOURCE_DIR}/qml")
