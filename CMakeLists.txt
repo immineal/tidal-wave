@@ -350,6 +350,20 @@ endif()
 # is optional: without it the app builds and runs in English.
 find_package(Qt6 QUIET COMPONENTS LinguistTools)
 if(Qt6LinguistTools_FOUND)
+    # Before adding LRELEASE_OPTIONS here, read
+    # tests/tst_shortcuts.cpp::theUnfinishedFlagIsNotLoadBearing().
+    #
+    # The catalogue guard in that file accepts an entry that carries German but
+    # is still marked unfinished, because lrelease ships its text by default -
+    # measured against a compiled .qm, not assumed. There is an lrelease option
+    # that drops unfinished entries instead, and passing it here would make that
+    # flag load-bearing and the guard wrong, silently, with the first evidence
+    # being a German screenshot with English in it. That test fails if the option
+    # appears in this file, so it will tell you rather than letting you find out.
+    #
+    # The option is deliberately not spelled out in this comment: the test looks
+    # for its name as a plain substring anywhere in this file, so writing it here
+    # - even to warn about it - would fail the build.
     qt_add_translations(tidalwave_qml
         TS_FILES
             i18n/tidal-wave_en.ts
