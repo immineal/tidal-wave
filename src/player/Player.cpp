@@ -64,7 +64,11 @@ void Player::initAudio() {
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
         if (m_rebinding) return;   // a swap's transient positions are not seeks
         qint64 dur = m_player->duration();
-        if (dur > 10000 && pos > 0 && (dur - pos) <= 10000)
+        // From kPreloadAfterMs into the track, not from ten seconds before its
+        // end: the whole track is downloaded before the first note, and a
+        // hi-res join measured up to 69.7 s on this link, so ten seconds was
+        // never enough for anything but 24/44.1. See kPreloadAfterMs.
+        if (dur > 0 && pos >= kPreloadAfterMs)
             preloadNext();
         emit positionChanged(pos);
     });
@@ -950,12 +954,21 @@ void Player::loadAndPlay(int index) {
         return;
     }
 
-    // Use preloaded file if it's ready for this exact index
-    if (m_preloadIndex == index && m_preloadReady && m_preloadTempFile) {
+    // A new track is starting, so whatever was given up on last time deserves
+    // another go.
+    m_preloadFailedIndex = -1;
+
+    // Use the preloaded file if it is for this exact *track*. Not for this
+    // index: the queue can be reordered, inserted into and reshuffled while a
+    // preload is in flight, and none of those cancel it, so an index match can
+    // mean a different track's bytes. See m_preloadTrackId.
+    if (m_preloadReady && m_preloadTempFile && m_preloadTrackId != 0
+        && m_preloadTrackId == m_currentTrack.id) {
         m_mpdTempFile     = m_preloadTempFile;
         m_preloadTempFile = nullptr;
         m_streamedQuality = m_preloadQuality;
         m_preloadIndex    = -1;
+        m_preloadTrackId  = 0;
         m_preloadReady    = false;
         m_preloadQuality  = {};
         emit currentTrackChanged();
@@ -1136,36 +1149,56 @@ void Player::cancelPreload() {
         m_preloadTempFile = nullptr;
     }
     m_preloadIndex   = -1;
+    m_preloadTrackId = 0;
     m_preloadReady   = false;
     m_preloadQuality = {};
 }
 
+void Player::preloadGaveUp(int next) {
+    if (m_preloadIndex == next) m_preloadIndex = -1;
+    m_preloadTrackId     = 0;
+    m_preloadFailedIndex = next;
+}
+
 void Player::preloadNext() {
     int next = nextIndex();
-    if (next < 0 || next == m_preloadIndex) return;
+    if (next < 0 || next == m_preloadIndex || next == m_preloadFailedIndex) return;
+    // Repeat-one names the row that is already playing, and its bytes are
+    // already on disk in m_mpdTempFile. Downloading the same track again is up
+    // to a few hundred megabytes a loop for nothing. The win there is to re-open
+    // the file that is already here, which is a change to loadAndPlay()'s
+    // temp-file ownership and is left for its own change.
+    if (next == m_index) return;
 
     cancelPreload();
     m_preloadIndex = next;
 
     qlonglong trackId = m_queue[next].track.value("id").toLongLong();
 
-    m_client->fetchStreamManifest(trackId, [this, next](StreamManifest manifest, QString err) {
-        if (m_preloadIndex != next || !err.isEmpty()) return;
+    m_client->fetchStreamManifest(trackId, [this, next, trackId](StreamManifest manifest, QString err) {
+        if (m_preloadIndex != next) return;
+        if (!err.isEmpty()) { preloadGaveUp(next); return; }
 
         m_preloadQuality = manifest.codec;
 
         if (manifest.type == StreamManifest::BTS) {
-            m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, next](QByteArray data, QString dlErr) {
+            m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, next, trackId](QByteArray data, QString dlErr) {
                 m_preloadDownload = nullptr;
-                if (m_preloadIndex != next || !dlErr.isEmpty() || data.isEmpty()) return;
+                if (m_preloadIndex != next) return;
+                if (!dlErr.isEmpty() || data.isEmpty()) { preloadGaveUp(next); return; }
                 auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
                 f->setAutoRemove(false);
                 if (f->open()) {
                     f->write(data); f->flush(); f->close();
                     m_preloadTempFile = f;
+                    m_preloadTrackId  = trackId;
                     m_preloadReady    = true;
                 } else {
+                    // A full /tmp lands here. Nothing is said to the user: a
+                    // preload failing costs them a wait, not a track, and the
+                    // live load reports the disk itself.
                     delete f;
+                    preloadGaveUp(next);
                 }
             });
         } else {
@@ -1174,11 +1207,11 @@ void Player::preloadNext() {
             auto *fetcher = new DashFetcher(m_client, manifest.url);
             if (!fetcher->isValid() || !fetcher->openedTempFile()) {
                 delete fetcher;
-                m_preloadIndex = -1;
+                preloadGaveUp(next);
                 return;
             }
             m_preloadDash = fetcher;
-            fetcher->start([this, fetcher, next](QTemporaryFile *file, const QString &) {
+            fetcher->start([this, fetcher, next, trackId](QTemporaryFile *file, const QString &) {
                 if (m_preloadDash == fetcher) m_preloadDash = nullptr;
                 disposeDash(fetcher, this);
                 if (m_preloadIndex != next || !file) {
@@ -1186,10 +1219,11 @@ void Player::preloadNext() {
                     // Nothing is preloaded, so leave no index claiming there is:
                     // the trigger guards on it, and a stale one would stop this
                     // track ever being tried again.
-                    if (m_preloadIndex == next) m_preloadIndex = -1;
+                    if (m_preloadIndex == next) preloadGaveUp(next);
                     return;
                 }
                 m_preloadTempFile = file;
+                m_preloadTrackId  = trackId;
                 m_preloadReady    = true;
             });
         }

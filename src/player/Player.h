@@ -304,6 +304,11 @@ private:
     int  firstContextRow() const;
     void preloadNext();
     void cancelPreload();
+    // One preload attempt for the row at `next` has given up. Clears the
+    // in-progress index so nothing claims there is a file waiting, and records
+    // the row so the trigger does not start the same doomed attempt again on
+    // every position update for the rest of the track.
+    void preloadGaveUp(int next);
     // Puts the manual queue back in the order the user gave it, directly after
     // whatever is playing. Returns true if the list itself changed, which is
     // the only case a queue view has to hear about.
@@ -401,8 +406,36 @@ private:
     // Joining the current track's DASH segments (lossless); see DashFetcher.h.
     DashFetcher         *m_dash           = nullptr;
 
+    // How far into a track the preload of the next one starts. It used to be
+    // ten seconds before the *end*, which the measurement of the DASH join
+    // showed cannot work: a whole track is downloaded before the first note, and
+    // on this link (6.1-6.4 MB/s, the link and not the code) a join runs a median
+    // 7.6 s for 24/44.1, 15.2 s for 24/96 and 30.4 s for 24/192, worst case
+    // 69.7 s. So outside 24/44.1 the preload never finished, loadAndPlay() took
+    // its "still in progress" path, cancelPreload() threw away up to ~64 MB of
+    // segments, and the gap between tracks was the full join time - fifteen to
+    // seventy seconds of silence - rather than the 29.5 ms tst_gapless reports
+    // from a file already on disk.
+    //
+    // Five seconds in rather than zero: a track the user skips past while
+    // auditioning the queue never spends a byte on a preload, and five seconds
+    // is longer than anyone spends deciding. Everything after that is headroom -
+    // even a short hi-res track leaves minutes for a worst-case join.
+    static constexpr qint64 kPreloadAfterMs = 5000;
+
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;
+    // Which track the bytes on disk are *for*. m_preloadIndex is a position in
+    // the queue, and every one of playNext(), addToQueue(), moveQueueItem(),
+    // removeManual(), setShuffle() and setRepeatMode() can change which track
+    // sits at a given position without cancelling anything. Matching on the id
+    // is what stops the file preloaded for one track being played as another -
+    // a window the earlier trigger widens from ten seconds to a whole track -
+    // and it also lets a preload survive a reorder instead of being wasted.
+    qlonglong            m_preloadTrackId  = 0;
+    // The row whose preload has already been attempted and given up on, so it
+    // is not retried on every position update. Cleared on each track change.
+    int                  m_preloadFailedIndex = -1;
     bool                 m_preloadReady    = false;
     QString              m_preloadQuality;
     QTemporaryFile      *m_preloadTempFile = nullptr;

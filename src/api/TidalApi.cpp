@@ -2,10 +2,27 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <chrono>
 
 TidalApi::TidalApi(QObject *parent) : QObject(parent) {
     m_nam = new QNetworkAccessManager(this);
     m_nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    // On the manager rather than on each request, so there is no second place
+    // to forget: it reaches makeRequest()'s GETs, postApiForm()'s POSTs and the
+    // OAuth host requests in post(), which builds a QNetworkRequest of its own.
+    // Measured, not assumed - a manager-level timeout does apply to a request
+    // that sets none of its own, GET and POST alike. See kTransferTimeoutMs for
+    // why the number is what it is, and why an idle timeout is the instrument.
+    //
+    // Note what this does not cover: QMediaPlayer streams through the FFmpeg
+    // backend, which does its own HTTP. On this app's path that no longer
+    // matters, because DashFetcher fetches every byte through here and hands
+    // the backend a local file.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+    m_nam->setTransferTimeout(std::chrono::milliseconds(kTransferTimeoutMs));
+#else
+    m_nam->setTransferTimeout(kTransferTimeoutMs);
+#endif
 }
 
 void TidalApi::setAccessToken(const QString &token) { m_accessToken = token; }

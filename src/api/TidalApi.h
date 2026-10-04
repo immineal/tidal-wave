@@ -60,6 +60,29 @@ public:
     static constexpr auto kAuthBase   = "https://auth.tidal.com/v1/";
     static constexpr auto kOpenApiBase = "https://openapi.tidal.com/v2/";
 
+    // How long a request may go without a single byte arriving before it is
+    // given up on. Nothing on the playback path had one, so a manifest or a
+    // segment request that connected and then went quiet never finished: the
+    // callback that clears Player::loading() was never called, the player
+    // reported a load for the life of the process, and because the now-playing
+    // spinner is an indefinite animation one stuck row kept the render loop at
+    // 60 fps for as long as the window was up.
+    //
+    // It is an *idle* timeout and not a budget for the transfer, which is what
+    // makes it safe on the lossless path, where DashFetcher downloads a whole
+    // track before the first note and a long hi-res one legitimately takes
+    // minutes. Measured on Qt 6.12 rather than taken from the documentation: a
+    // body delivered in 64-byte chunks 400 ms apart ran 4021 ms to completion
+    // under a 1000 ms timeout and lost none of it. So the number only has to
+    // exceed the longest silence a *working* server leaves in the middle of
+    // answering, not the longest transfer anyone might ask for.
+    //
+    // 15 s because Tidal's API and CDN answer in well under a second, so this
+    // is two orders of magnitude of headroom, and because it is the same number
+    // UpdateCheck already waits on GitHub - one answer in the tree to "how long
+    // do we wait on a server that has stopped talking" rather than two.
+    static constexpr int kTransferTimeoutMs = 15000;
+
 private:
     QNetworkAccessManager *m_nam;
     QString m_accessToken;
