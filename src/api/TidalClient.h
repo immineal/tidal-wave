@@ -128,6 +128,16 @@ public:
 
     // Playlist management
     void createPlaylist          (const QString &title, std::function<void(Playlist,QString)> cb);
+    // Rename a playlist and rewrite its description, in one POST back to
+    // `playlists/<uuid>`. Behind the same etag dance the two item calls below
+    // use: the endpoint rejects a write that is not made against the version
+    // the caller last read, so the GET for the tag is not optional.
+    //
+    // Answers a plain bool, like the two below and unlike createPlaylist: the
+    // success reply carries no body, so there is no Playlist to hand back and
+    // the caller already knows what it asked for.
+    void editPlaylist            (const QString &uuid,  const QString &title,
+                                  const QString &description, std::function<void(bool)> cb);
     void addTrackToPlaylist      (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
     void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
 

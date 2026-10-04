@@ -117,6 +117,14 @@ public:
     // reached neither its own list nor this one, so a new playlist would have
     // been missing from the sidebar until the next launch.
     void addPlaylist(const Tidal::Playlist &p);
+    // A playlist the user just renamed from its own page. Only `uuid`, `title`
+    // and `description` are read: an edit answers with no body, so the bridge
+    // has no artwork or track count to send and replacing the row wholesale
+    // would blank both. Nothing else about the row moves either - in
+    // particular `addedAt` is left alone, because a rename is not an
+    // acquisition and re-stamping it would send the playlist to the top of the
+    // sidebar for having been given a new name.
+    void updatePlaylist(const Tidal::Playlist &p);
     // `kind` is album/artist/track; mixes and playlists cannot be unfavourited
     // from anywhere in the interface.
     void removeEntry(const QString &kind, const QString &id);

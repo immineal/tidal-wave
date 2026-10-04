@@ -922,6 +922,14 @@ int Application::run(int argc, char **argv) {
     // playlists anywhere, so creating one is the only way a playlist row
     // appears, and createPlaylist reached neither list.
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
+    // A rename is the same gap a third time. The sidebar's copy of the library
+    // is a different list from the bridge's favourites cache, and
+    // favoritePlaylistsChanged does not reach it - so without this line a
+    // rename shows on the Collection grid and on the page it was typed on, and
+    // the sidebar keeps the old name until the next launch. Deliberately not
+    // routed through addPlaylist: that stamps addedAt, which would lift a
+    // playlist to the top of the sidebar for the crime of being renamed.
+    connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
     m_cast = new CastManager(m_client, m_player, this);

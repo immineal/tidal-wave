@@ -1857,6 +1857,138 @@ private slots:
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
+    // ── a playlist the user renames ───────────────────────────────────────
+    //
+    // The sidebar keeps its own copy of the library, so a rename made on a
+    // playlist's own page reached TidalBridge and stopped there: the page
+    // relabelled itself and the sidebar went on showing the old name until the
+    // next launch. This is the hand-across, and it is deliberately *not*
+    // addPlaylist: the uuid is already here, so addPlaylist would be a no-op.
+    void renamingAPlaylistRelabelsTheSidebarRow() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("playlist:p-morning");
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Morning"));
+        const int before = lib.playlistRequests;
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        Playlist renamed;
+        renamed.uuid  = QStringLiteral("p-morning");
+        renamed.title = QStringLiteral("Früh am Tag");
+        lib.updatePlaylist(renamed);
+
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Früh am Tag"));
+        QCOMPARE(spy.count(), 1);
+        // Handed across, not re-paged. A rename that went back to the account
+        // would show the right thing for the wrong reason.
+        QCOMPARE(lib.playlistRequests, before);
+        // One row, not two: a rename must not leave the old name behind, and
+        // it must certainly not add a second row for the same uuid.
+        QCOMPARE(keysOf(lib.entries()).count(key), 1);
+    }
+
+    // ...and the row must not move.
+    //
+    // This is the whole reason updatePlaylist exists beside addPlaylist rather
+    // than reusing it. addPlaylist() stamps `addedAt = stampNow()`, and
+    // rebuild() orders the unpinned tier by max(last played, addedAt) and
+    // falls through to collation for rows with no date - so a rename that
+    // re-stamped would send the playlist to the top of the sidebar for having
+    // been given a new name.
+    //
+    // The fixture is built here rather than from fillMixedLibrary() for the
+    // reason that one is called out above: its rows all carry addedAt == 0, so
+    // the list is in pure collation order and a re-stamp would be invisible.
+    // Here the rows carry real dates, a pinned album makes "top of the
+    // unpinned block" different from "top of the list", and the *new* title
+    // sorts first alphabetically - so a re-collation would move the row too,
+    // and renaming the older of the two playlists is the only case where a
+    // re-stamp shows.
+    void renamingAPlaylistDoesNotMoveIt() {
+        PinStore pins; pins.setUserId(kUser);
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+                 QString(), QString());
+
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.playlists = {mkPlaylist(QStringLiteral("p-jan"), QStringLiteral("Morgenrot"), 10,
+                                    daysAfterJan(1)),
+                         mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Zugfahrt"), 10,
+                                    daysAfterJan(20))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList before = keysOf(lib.entries());
+        QCOMPARE(before, QStringList({QStringLiteral("album:12"),
+                                      QStringLiteral("playlist:p-feb"),
+                                      QStringLiteral("playlist:p-jan")}));
+
+        // The *last* row, renamed to a title that sorts first.
+        Playlist renamed;
+        renamed.uuid  = QStringLiteral("p-jan");
+        renamed.title = QStringLiteral("Abends am Fluss");
+        lib.updatePlaylist(renamed);
+
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-jan"))
+                     .value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Abends am Fluss"));
+        QVERIFY2(keysOf(lib.entries()) == before,
+                 qPrintable(QStringLiteral("renaming a playlist moved it: the list was %1 "
+                                           "and is now %2")
+                                .arg(before.join(QLatin1String(", ")),
+                                     keysOf(lib.entries()).join(QLatin1String(", ")))));
+    }
+
+    // A uuid the sidebar has never listed is ignored rather than added. The
+    // signal that carries a rename has no artwork and no track count on it -
+    // an edit answers with no body - so there is nothing here to build a row
+    // out of, and a row built anyway would be a blank tile with a name.
+    void renamingAPlaylistTheSidebarDoesNotHaveAddsNothing() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList before = keysOf(lib.entries());
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+
+        Playlist renamed;
+        renamed.uuid  = QStringLiteral("p-never-seen");
+        renamed.title = QStringLiteral("Abends am Fluss");
+        lib.updatePlaylist(renamed);
+
+        QCOMPARE(keysOf(lib.entries()), before);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    // Saving the dialog without having changed anything is a rename the server
+    // accepts and the sidebar has nothing to do about. Rebuilding anyway is
+    // not wrong, but it is an entriesChanged every list in the app reacts to,
+    // for nothing.
+    void renamingToTheNameItAlreadyHasRebuildsNothing() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        Playlist same;
+        same.uuid  = QStringLiteral("p-morning");
+        same.title = QStringLiteral("Morning");
+        lib.updatePlaylist(same);
+
+        QCOMPARE(spy.count(), 0);
+    }
+
 private:
     static constexpr qint64 kUser      = 1001;
     static constexpr qint64 kOtherUser = 2002;

@@ -596,7 +596,7 @@
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished">Abbrechen</translation>
+        <translation>Abbrechen</translation>
     </message>
     <message>
         <source>Creating…</source>
@@ -874,6 +874,14 @@
         <translation>Bearbeiten</translation>
     </message>
     <message>
+        <source>Enter a name for the playlist.</source>
+        <translation>Gib der Playlist einen Namen.</translation>
+    </message>
+    <message>
+        <source>Could not save the changes.</source>
+        <translation>Änderungen konnten nicht gespeichert werden.</translation>
+    </message>
+    <message>
         <source>Edit Playlist</source>
         <translation>Playlist bearbeiten</translation>
     </message>
@@ -888,6 +896,10 @@
     <message>
         <source>Cancel</source>
         <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Saving…</source>
+        <translation>Wird gespeichert…</translation>
     </message>
     <message>
         <source>Save</source>

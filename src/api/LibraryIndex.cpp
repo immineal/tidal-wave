@@ -614,6 +614,33 @@ void LibraryIndex::addPlaylist(const Playlist &p) {
     rebuild();
 }
 
+void LibraryIndex::updatePlaylist(const Playlist &p) {
+    // Mirrors addPlaylist's first line, and like it this is belt and braces
+    // rather than a live guard: the pager drops every row whose key is empty
+    // (see the `k.isEmpty()` skip in the page accumulator above), and
+    // addPlaylist refuses one too, so m_playlists cannot hold a uuid-less
+    // playlist for an empty uuid to match. Deleting the line changes no
+    // behaviour - a test written for it passed with it gone, which is why
+    // there is no test for it. It stays because the two functions should not
+    // have to be read differently.
+    if (p.uuid.isEmpty()) return;
+    for (int i = 0; i < m_playlists.size(); ++i) {
+        if (m_playlists[i].uuid != p.uuid) continue;
+        if (m_playlists[i].title == p.title && m_playlists[i].description == p.description)
+            return;   // nothing to redraw
+        m_playlists[i].title       = p.title;
+        m_playlists[i].description = p.description;
+        // rebuild() and not rebuildTrackEntries(): the row's label is what the
+        // list and every search read, and the title is part of the match key.
+        rebuild();
+        return;
+    }
+    // Not here: a playlist the sidebar has never listed. Adding it would be
+    // guessing - this signal carries no artwork and no track count - and the
+    // next full page of the library will bring the row in with its new name
+    // anyway.
+}
+
 void LibraryIndex::addTrack(const Track &t) {
     if (t.id <= 0) return;
     for (const Track &x : m_favoriteTracks)

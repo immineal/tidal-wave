@@ -656,6 +656,23 @@ void TidalClient::createPlaylist(const QString &title,
         });
 }
 
+void TidalClient::editPlaylist(const QString &uuid, const QString &title,
+    const QString &description, std::function<void(bool)> cb)
+{
+    // Both fields go every time, even the one the dialog did not touch. The
+    // endpoint replaces what it is sent rather than merging it, so posting
+    // only the title would clear the description.
+    m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
+        [this, uuid, title, description, cb](QString etag, QString err) {
+            if (!err.isEmpty()) { cb(false); return; }
+            QUrlQuery form;
+            form.addQueryItem("title",       title);
+            form.addQueryItem("description", description);
+            m_api->postApiFormEtag(QStringLiteral("playlists/%1").arg(uuid), form, etag,
+                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+        });
+}
+
 void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
     std::function<void(bool)> cb)
 {

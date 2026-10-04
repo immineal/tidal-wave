@@ -212,13 +212,46 @@ public:
     Q_INVOKABLE void fetchFavoriteArtists(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
+    // Answers the page of m_userPlaylists that was asked for, and not an
+    // empty array.
+    //
+    // It used to answer empty for every input, even after
+    // setUserPlaylistsForTest() had filled the list that getUserPlaylists()
+    // and searchFavoritePlaylists() both read. That is the shape of stub the
+    // Tracks-filter comment further down warns about: TrackRow's "Add to
+    // playlist" picker fills its ListView from this call, so the *list* in
+    // that picker could not be driven from a test at all - only its first row,
+    // the one that is declared rather than modelled. A picker that showed
+    // nothing and a picker that showed everything were the same green.
+    //
+    // Backed by the same list as the two local filters by default,
+    // deliberately: two lists that always disagreed would let a page that read
+    // both see a library that cannot exist.
+    //
+    // setFetchedUserPlaylistsForTest() is the one exception, and it is not a
+    // second opinion about the same thing - it is the one state the app really
+    // does have two answers in. Between sign-in and the end of the favourites
+    // paging the bridge's in-memory cache is empty while the account is not,
+    // and that gap is exactly when the first "Add to playlist" picker of a
+    // session opens. A single list cannot express it.
     Q_INVOKABLE void fetchUserPlaylists(QJSValue cb, int limit = 50, int offset = 0) {
-        Q_UNUSED(limit); Q_UNUSED(offset);
         // Counted: the sidebar used to call this with limit 30, which is the
         // reported "new playlists don't show up" bug (SPEC S3). It reads
         // library.entries now, so tst_sidebar asserts the count stays at zero.
         m_userPlaylistFetches++;
-        resolve(cb, emptyArray());
+        m_lastUserPlaylistLimit  = limit;
+        m_lastUserPlaylistOffset = offset;
+        // The slice the caller asked for, as the real endpoint pages. A stub
+        // that ignored `limit` would let a caller that asks for 30 of 50 pass
+        // - which is the bug above, in the one call it was reported against.
+        const QVariantList &source = m_fetchedSet ? m_fetchedPlaylists : m_userPlaylists;
+        QVariantList page;
+        for (int i = qMax(0, offset);
+             i < source.size() && (limit <= 0 || page.size() < limit); ++i)
+            page.append(source.at(i));
+        QJSEngine *e = jsEngine();
+        QJSValue data = e ? e->toScriptValue(page) : emptyArray();
+        resolve(cb, data);
     }
 
     // Detail pages — these return maps, not lists.
@@ -416,6 +449,29 @@ public:
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         Q_UNUSED(uuid); Q_UNUSED(itemIndex); resolveOk(cb);
     }
+
+    // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
+    //
+    // Mirrors the real one down to the two effects and the guard around them,
+    // for the same reason createPlaylist above does: the half of a rename
+    // that matters is the new name reaching the sidebar and the Collection
+    // grid without a refresh, and a stub that only answered `true` would let
+    // a version that updated neither of them pass.
+    //
+    // On a success the row in the favourites cache is *edited in place* -
+    // not removed and re-appended - because the real list must not reorder on
+    // a rename, and playlistUpdated separately carries uuid/title/description
+    // to the sidebar's own copy. On a failure neither happens, because a POST
+    // the server refused must not leave a renamed row behind.
+    Q_INVOKABLE void editPlaylist(const QString &uuid, const QString &title,
+                                  const QString &description, QJSValue cb) {
+        m_editCalls++;
+        m_lastEditedUuid        = uuid;
+        m_lastEditedTitle       = title;
+        m_lastEditedDescription = description;
+        if (m_deferEdits) { m_pendingEdits.append({cb, uuid, title, description}); return; }
+        deliverEdit(cb, uuid, title, description);
+    }
     Q_INVOKABLE QVariantList getUserPlaylists() const { return m_userPlaylists; }
     Q_INVOKABLE void markPlaylistPlayed(const QString &uuid) { m_lastPlaylistPlayed = uuid; }
 
@@ -498,6 +554,29 @@ public:
     // out — the in-flight state has no other way in, and it is the one state
     // a synchronous stub would otherwise make unreachable.
     Q_INVOKABLE void setDeferCreatePlaylistForTest(bool on) { m_deferCreates = on; }
+
+    // ── what the next editPlaylist() answers ────────────────────────────
+    //
+    // Two outcomes only, because the call answers a bool: the server took the
+    // rename, or it refused it. The refusal is the case the dialog used to be
+    // unable to have - it never made a call - and it is the one where writing
+    // the new name onto the page would be a lie.
+    Q_INVOKABLE void setEditPlaylistOkForTest(bool ok) { m_editOk = ok; }
+    // Hold the reply, so a test can look at the dialog while the POST is out.
+    Q_INVOKABLE void setDeferEditPlaylistForTest(bool on) { m_deferEdits = on; }
+    Q_INVOKABLE int  pendingEditPlaylistsForTest() const { return int(m_pendingEdits.size()); }
+    Q_INVOKABLE void flushEditPlaylistRepliesForTest() {
+        auto held = m_pendingEdits;
+        m_pendingEdits.clear();
+        const bool wasDeferring = m_deferEdits;
+        m_deferEdits = false;
+        for (auto &e : held) deliverEdit(e.cb, e.uuid, e.title, e.description);
+        m_deferEdits = wasDeferring;
+    }
+    Q_INVOKABLE int     editPlaylistCallsForTest() const { return m_editCalls; }
+    Q_INVOKABLE QString lastEditedUuidForTest() const { return m_lastEditedUuid; }
+    Q_INVOKABLE QString lastEditedTitleForTest() const { return m_lastEditedTitle; }
+    Q_INVOKABLE QString lastEditedDescriptionForTest() const { return m_lastEditedDescription; }
     Q_INVOKABLE int  pendingCreatePlaylistsForTest() const {
         return int(m_pendingCreates.size());
     }
@@ -530,11 +609,27 @@ public:
         m_addToPlaylistCalls = 0;
         m_addToPlaylistOk    = true;
     }
+    Q_INVOKABLE void    resetEditPlaylistForTest() {
+        m_editOk     = true;
+        m_deferEdits = false;
+        m_editCalls  = 0;
+        m_pendingEdits.clear();
+        m_lastEditedUuid.clear();
+        m_lastEditedTitle.clear();
+        m_lastEditedDescription.clear();
+    }
 
     // test hooks
     Q_INVOKABLE void setUserPlaylistsForTest(const QVariantList &playlists) {
         m_userPlaylists = playlists;
         emit favoritePlaylistsChanged();
+    }
+    // What the *account* answers, when that has to differ from what the
+    // in-memory cache holds - see fetchUserPlaylists above. Unset by default,
+    // and then the fetch answers the same list as getUserPlaylists().
+    Q_INVOKABLE void setFetchedUserPlaylistsForTest(const QVariantList &playlists) {
+        m_fetchedPlaylists = playlists;
+        m_fetchedSet       = true;
     }
     // What fetchMixPage() answers: the MIX_HEADER half and the TRACK_LIST half,
     // settable apart, because the response that started all of this had one and
@@ -643,6 +738,11 @@ public:
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
     Q_INVOKABLE QString lastPlaylistPlayedForTest() const { return m_lastPlaylistPlayed; }
     Q_INVOKABLE int  userPlaylistFetchCountForTest() const { return m_userPlaylistFetches; }
+    // What the last fetchUserPlaylists() was asked for. The sidebar's old
+    // 30-item cap is the reported bug behind the count above; these two say
+    // *what* was asked when something does ask.
+    Q_INVOKABLE int  lastUserPlaylistLimitForTest() const { return m_lastUserPlaylistLimit; }
+    Q_INVOKABLE int  lastUserPlaylistOffsetForTest() const { return m_lastUserPlaylistOffset; }
     Q_INVOKABLE int  trackCreditsFetchCountForTest() const { return m_trackCreditsFetches; }
     Q_INVOKABLE void resetTrackCreditsFetchCountForTest() { m_trackCreditsFetches = 0; }
     Q_INVOKABLE void resetForTest() {
@@ -653,6 +753,11 @@ public:
         resetSearchForTest();
         resetHeadersForTest();
         resetCreatePlaylistForTest();
+        resetEditPlaylistForTest();
+        m_lastUserPlaylistLimit  = -1;
+        m_lastUserPlaylistOffset = -1;
+        m_fetchedPlaylists.clear();
+        m_fetchedSet = false;
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -687,6 +792,10 @@ signals:
     // one to LibraryIndex::addPlaylist. A QVariantMap and not a Tidal::Playlist
     // because that is what the stub library deals in.
     void playlistCreated(const QVariantMap &playlist);
+    // The rename's hand-across, mirroring TidalBridge::playlistUpdated;
+    // installTestStubs() wires it to StubLibrary::updatePlaylist the way
+    // Application::run() must wire the real pair.
+    void playlistUpdated(const QVariantMap &playlist);
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
@@ -758,6 +867,46 @@ private:
         cb.call(args);
     }
 
+    // The body of an editPlaylist reply, inline or when a held one is let go.
+    void deliverEdit(QJSValue &cb, const QString &uuid, const QString &title,
+                     const QString &description) {
+        const bool ok = m_editOk;
+        if (ok) {
+            // In place: a rename must not move the row. A stub that removed
+            // and re-appended would hide a bridge that did the same, and the
+            // Collection grid would then shuffle every time a name changed.
+            for (int i = 0; i < m_userPlaylists.size(); ++i) {
+                QVariantMap m = m_userPlaylists.at(i).toMap();
+                if (m.value(QStringLiteral("uuid")).toString() != uuid) continue;
+                m.insert(QStringLiteral("title"), title);
+                m.insert(QStringLiteral("description"), description);
+                m_userPlaylists[i] = m;
+                emit favoritePlaylistsChanged();
+                break;
+            }
+            // Outside the loop, as in the real bridge: the sidebar's copy is
+            // a different list and may hold the row when this one does not.
+            QVariantMap renamed;
+            renamed.insert(QStringLiteral("uuid"), uuid);
+            renamed.insert(QStringLiteral("title"), title);
+            renamed.insert(QStringLiteral("description"), description);
+            emit playlistUpdated(renamed);
+        }
+        if (!cb.isCallable()) return;
+        QJSValueList args;
+        args << QJSValue(ok);
+        cb.call(args);
+    }
+
+    struct PendingEdit { QJSValue cb; QString uuid, title, description; };
+    bool    m_editOk     = true;
+    bool    m_deferEdits = false;
+    int     m_editCalls  = 0;
+    QString m_lastEditedUuid;
+    QString m_lastEditedTitle;
+    QString m_lastEditedDescription;
+    QList<PendingEdit> m_pendingEdits;
+
     QString m_createError;
     QString m_createUuid;
     bool    m_createUuidSet = false;
@@ -770,6 +919,10 @@ private:
     int       m_addToPlaylistCalls = 0;
     bool      m_addToPlaylistOk    = true;
     int     m_userPlaylistFetches = 0;
+    int     m_lastUserPlaylistLimit  = -1;
+    int     m_lastUserPlaylistOffset = -1;
+    QVariantList m_fetchedPlaylists;
+    bool         m_fetchedSet = false;
     int     m_trackCreditsFetches = 0;
     // The canned search reply and what was asked of it.
     QVariantList m_searchTracks;
@@ -1755,6 +1908,32 @@ public:
         emit entriesChanged();
     }
 
+    // The one row the user just renamed, mirroring LibraryIndex::updatePlaylist.
+    //
+    // Edits the label on the row that is already there and moves nothing
+    // else. In particular the row keeps its position: the real index leaves
+    // `addedAt` alone and rebuild() orders on it, so a rename cannot send a
+    // playlist to the top of the sidebar. A stub that re-inserted at the head
+    // of the unpinned block - which is what addPlaylist above does - would
+    // hide exactly that.
+    //
+    // A uuid the list has never held is ignored rather than added: the signal
+    // carries no artwork and no track count, so there is no row to build.
+    void updatePlaylist(const QVariantMap &p) {
+        const QString uuid = p.value(QStringLiteral("uuid")).toString();
+        if (uuid.isEmpty()) return;
+        for (int i = 0; i < m_entries.size(); ++i) {
+            QVariantMap m = m_entries.at(i).toMap();
+            if (m.value(QStringLiteral("kind")).toString() != QLatin1String("playlist")
+                || m.value(QStringLiteral("id")).toString() != uuid)
+                continue;
+            m.insert(QStringLiteral("title"), p.value(QStringLiteral("title")).toString());
+            m_entries[i] = m;
+            emit entriesChanged();
+            return;
+        }
+    }
+
     // test hooks
     Q_INVOKABLE void setEntriesForTest(const QVariantList &rows) {
         m_entries = rows;
@@ -1931,6 +2110,12 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     // "it appears without a refresh" would be untestable.
     QObject::connect(s.bridge, &StubBridge::playlistCreated,
                      s.library, &StubLibrary::addPlaylist);
+    // And the same for a rename, which has the same two-copies problem:
+    // without this the sidebar would go on showing the old name until the
+    // next launch. Application::run() needs the matching line between the
+    // real TidalBridge::playlistUpdated and LibraryIndex::updatePlaylist.
+    QObject::connect(s.bridge, &StubBridge::playlistUpdated,
+                     s.library, &StubLibrary::updatePlaylist);
 
     if (!engine->imageProvider(QStringLiteral("tidal")))
         engine->addImageProvider(QStringLiteral("tidal"), new StubImageProvider());

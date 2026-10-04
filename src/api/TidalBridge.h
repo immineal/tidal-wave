@@ -124,6 +124,15 @@ public:
 
     // Playlist management
     Q_INVOKABLE void createPlaylist         (const QString &title, QJSValue cb);
+    // Rename a playlist and rewrite its description. function(ok) - there is
+    // no body in the reply to hand back.
+    //
+    // PlaylistPage's Edit dialog had been writing the new title into its own
+    // two properties and stopping there, so the rename was gone the moment the
+    // page was left: the dialog accepted the edit, said nothing was wrong, and
+    // the account never heard about it. This is what it calls instead.
+    Q_INVOKABLE void editPlaylist           (const QString &uuid, const QString &title,
+                                             const QString &description, QJSValue cb);
     Q_INVOKABLE void addTracksToPlaylist    (const QString &uuid, qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
@@ -166,10 +175,22 @@ signals:
     void favoriteTrackAdded (const Track  &track);
     // A playlist the user just created, which is the only way a playlist can
     // enter the account from in here: nothing in the interface favourites or
-    // unfavourites one. Nothing in qml/ calls createPlaylist yet either, so
-    // this carries the row to the sidebar for when that button lands rather
-    // than fixing something a user can reach today.
+    // unfavourites one. Carries the row to the sidebar, which keeps a second
+    // copy of the library that favoritePlaylistsChanged above does not reach.
     void playlistCreated(const Playlist &playlist);
+    // The same hand-across for a playlist the user just renamed. Only `uuid`,
+    // `title` and `description` are meant to be read off it: the far end
+    // writes those two fields onto the row it already has rather than
+    // replacing it, because an edit answers with no body and nothing here can
+    // supply the artwork or the track count a replacement would blank out.
+    //
+    // A separate signal from playlistCreated, not a reuse of it, because the
+    // two mean opposite things to a list: one appends a row and stamps it as
+    // of now, the other must leave the row exactly where it is. A rename that
+    // went through addPlaylist would be a no-op (the uuid is already there);
+    // one that re-stamped would jump the playlist to the top of the sidebar
+    // for having been given a new name.
+    void playlistUpdated(const Playlist &playlist);
     // `kind` is "album", "artist" or "track", spelled the way LibraryIndex
     // spells it.
     void favoriteRemoved(const QString &kind, const QString &id);

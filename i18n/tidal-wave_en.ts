@@ -874,6 +874,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Enter a name for the playlist.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save the changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Edit Playlist</source>
         <translation type="unfinished"></translation>
     </message>
@@ -887,6 +895,10 @@
     </message>
     <message>
         <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

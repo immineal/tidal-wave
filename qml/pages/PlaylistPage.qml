@@ -274,13 +274,16 @@ Rectangle {
                         }
 
                         PillButton {
+                            objectName: "playlistEditButton"
                             visible: root.isUserPlaylist
                             text: qsTr("Edit")
                             icon: "edit"
                             accent: false
                             onClicked: {
-                                editTitleField.text   = root.playlistTitle
-                                editDescField.text    = root.playlistDescription
+                                editTitleField.text         = root.playlistTitle
+                                editDescField.text          = root.playlistDescription
+                                editPlaylistPopup.errorText = ""
+                                editPlaylistPopup.busy      = false
                                 editPlaylistPopup.open()
                             }
                         }
@@ -364,16 +367,86 @@ Rectangle {
         trackSource: root.allTracks
     }
 
-    // Edit playlist popup
+    // ── Edit playlist ────────────────────────────────────────────────────
+    //
+    // A test's handle on the dialog; a Popup reparents itself to the window
+    // overlay, so it is not reachable by walking this page's children.
+    readonly property alias editPopup: editPlaylistPopup
+
+    // What the dialog does with what was typed.
+    //
+    // It used to write the two fields straight into root.playlistTitle and
+    // root.playlistDescription and stop - no call, no error, no sign that
+    // anything was missing. Navigating away threw the rename away, and from
+    // the user's seat that is data loss with a confirmation attached: the
+    // dialog had accepted the edit and reported nothing wrong.
+    //
+    // So the page's own two properties are written on the *answer* and only
+    // on a success. A page that renamed itself optimistically would be the
+    // same lie one frame later.
+    function saveEdits() {
+        if (editPlaylistPopup.busy) return
+
+        var newTitle = editTitleField.text.trim()
+        var newDesc  = editDescField.text.trim()
+        // Reachable: the Save button is dark for an empty name, but Return in
+        // the field is not, and a key that silently does nothing reads as a
+        // broken dialog. Same wording as NewPlaylistDialog's.
+        if (newTitle.length === 0) {
+            editPlaylistPopup.errorText = qsTr("Enter a name for the playlist.")
+            return
+        }
+        if (root.playlistUuid.length === 0) {
+            editPlaylistPopup.errorText = qsTr("Could not save the changes.")
+            return
+        }
+
+        // Which playlist this reply is about; see loadPlaylist(). The dialog
+        // can be left open across a navigation, and writing a name onto
+        // whatever page is showing when the answer lands would rename the
+        // wrong playlist in the interface.
+        var requested = root.playlistUuid
+        editPlaylistPopup.busy      = true
+        editPlaylistPopup.errorText = ""
+        bridge.editPlaylist(requested, newTitle, newDesc, function (ok) {
+            editPlaylistPopup.busy = false
+            if (ok !== true) {
+                editPlaylistPopup.errorText = qsTr("Could not save the changes.")
+                return
+            }
+            if (requested === root.playlistUuid) {
+                root.playlistTitle       = newTitle
+                root.playlistDescription = newDesc
+            }
+            editPlaylistPopup.close()
+        })
+    }
+
     Popup {
         id: editPlaylistPopup
+        objectName: "editPlaylistPopup"
         anchors.centerIn: Overlay.overlay
         width: 400
         modal: true
         focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        // A request is out: no way out of the dialog until it answers. Leaving
+        // under a call that is still going to reply means the user cannot tell
+        // whether the rename took, which is the state this whole dialog was in
+        // before it had a call at all.
+        closePolicy: editPlaylistPopup.busy
+                     ? Popup.NoAutoClose
+                     : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
         padding: 20
         background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+
+        // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
+        // go quiet while the POST is out...
+        property bool busy: false
+        // ...and a failure keeps the dialog up with the text still in it, so
+        // the answer to a failed save is one click rather than retyping.
+        property string errorText: ""
+
+        onOpened: editTitleField.forceActiveFocus()
 
         Column {
             width: parent.width
@@ -386,44 +459,90 @@ Rectangle {
             Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
                 width: parent.width; height: 36; radius: Theme.radiusField
-                color: Theme.surface; border.color: titleFocus.activeFocus ? Theme.accent : Theme.border
+                // The field's own activeFocus, not a FocusScope parked inside
+                // it. A FocusScope that is a *child* of the TextInput never
+                // gains activeFocus when the TextInput does, so this border
+                // never lit: the ring was unreachable rather than subtle.
+                color: Theme.surface
+                border.color: editTitleField.activeFocus ? Theme.accent : Theme.border
                 TextInput {
                     id: editTitleField
+                    objectName: "editPlaylistTitleField"
                     anchors.fill: parent; anchors.margins: 8
                     color: Theme.textPrimary; font.pixelSize: 14
+                    selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
-                    FocusScope { id: titleFocus; anchors.fill: parent }
+                    // The same cap the create dialog applies, so a title the
+                    // server would refuse cannot be typed in either place.
+                    maximumLength: 100
+                    readOnly: editPlaylistPopup.busy
+                    // Typing is the user answering the complaint.
+                    onTextChanged: if (editPlaylistPopup.errorText.length > 0)
+                                       editPlaylistPopup.errorText = ""
+                    Keys.onReturnPressed: root.saveEdits()
+                    Keys.onEnterPressed:  root.saveEdits()
                 }
             }
 
             Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
                 width: parent.width; height: 72; radius: Theme.radiusField
-                color: Theme.surface; border.color: descFocus.activeFocus ? Theme.accent : Theme.border
+                // See the title field for why this is not a FocusScope.
+                color: Theme.surface
+                border.color: editDescField.activeFocus ? Theme.accent : Theme.border
                 TextEdit {
                     id: editDescField
+                    objectName: "editPlaylistDescField"
                     anchors.fill: parent; anchors.margins: 8
                     color: Theme.textPrimary; font.pixelSize: 14
                     wrapMode: TextEdit.WordWrap
+                    selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
-                    FocusScope { id: descFocus; anchors.fill: parent }
+                    readOnly: editPlaylistPopup.busy
+                    onTextChanged: if (editPlaylistPopup.errorText.length > 0)
+                                       editPlaylistPopup.errorText = ""
                 }
+            }
+
+            // Only ever drawn when something went wrong, and it keeps the
+            // dialog up: a toast would lose the text that is still in the two
+            // fields. Deliberately not a line that is always present - the
+            // dialog is tall enough already.
+            Text {
+                objectName: "editPlaylistError"
+                width: parent.width
+                // No explicit height. A Column skips an invisible child
+                // entirely, and `height: visible ? implicitHeight : 0` on a
+                // wrapping Text is a binding loop - which tst_firstrun turns
+                // into a failure, because it fails on any QML warning.
+                visible: editPlaylistPopup.errorText.length > 0
+                text: editPlaylistPopup.errorText
+                color: Theme.red
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
             }
 
             Row {
                 spacing: 10; anchors.right: parent.right
                 PillButton {
+                    objectName: "editPlaylistCancel"
                     text: qsTr("Cancel"); accent: false
+                    // PillButton draws no disabled state of its own; see
+                    // NewPlaylistDialog's pair.
+                    enabled: !editPlaylistPopup.busy
+                    opacity: enabled ? 1 : 0.45
                     onClicked: editPlaylistPopup.close()
                 }
                 PillButton {
-                    text: qsTr("Save", "verb, confirm the edits in this dialog"); accent: true
-                    onClicked: {
-                        var newTitle = editTitleField.text.trim()
-                        if (newTitle.length > 0) root.playlistTitle = newTitle
-                        root.playlistDescription = editDescField.text.trim()
-                        editPlaylistPopup.close()
-                    }
+                    objectName: "editPlaylistSave"
+                    text: editPlaylistPopup.busy
+                          ? qsTr("Saving…")
+                          : qsTr("Save", "verb, confirm the edits in this dialog")
+                    accent: true
+                    enabled: !editPlaylistPopup.busy
+                             && editTitleField.text.trim().length > 0
+                    opacity: enabled ? 1 : 0.45
+                    onClicked: root.saveEdits()
                 }
             }
         }

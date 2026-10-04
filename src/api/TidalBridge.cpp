@@ -602,6 +602,45 @@ void TidalBridge::createPlaylist(const QString &title, QJSValue cb) {
     });
 }
 
+void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
+                               const QString &description, QJSValue cb)
+{
+    m_client->editPlaylist(uuid, title, description,
+        [this, uuid, title, description, cb](bool success) mutable {
+        // The same two caches createPlaylist above updates, and for the same
+        // reason: the dialog's own page already shows the new name, and
+        // without these the sidebar and the Collection grid would go on
+        // showing the old one until the next launch.
+        if (success) {
+            bool found = false;
+            for (int i = 0; i < m_favoritePlaylists.size(); ++i) {
+                if (m_favoritePlaylists[i].uuid != uuid) continue;
+                m_favoritePlaylists[i].title       = title;
+                m_favoritePlaylists[i].description = description;
+                found = true;
+                break;
+            }
+            // Gated on the row being there. A rename reorders nothing - every
+            // reader sorts by max(last played, addedAt) and neither moved - so
+            // this is purely "redraw the label", and saying so about a
+            // playlist this list has never heard of would be a lie the grid
+            // would have to resolve by refetching.
+            if (found) emit favoritePlaylistsChanged();
+
+            // Outside the guard, as playlistCreated is: the sidebar's copy of
+            // the library is a different list, filled from a different call,
+            // and whether this one happens to hold the row says nothing about
+            // whether that one does.
+            Playlist renamed;
+            renamed.uuid        = uuid;
+            renamed.title       = title;
+            renamed.description = description;
+            emit playlistUpdated(renamed);
+        }
+        call(cb, { success });
+    });
+}
+
 void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
     m_client->addTrackToPlaylist(uuid, trackId, [this, cb](bool success) mutable {
         call(cb, { success });

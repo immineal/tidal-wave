@@ -483,6 +483,11 @@ Item {
     // `rowMenu` above exists. Null until the row has been asked for one.
     readonly property alias newPlaylistPopup: newPlaylistLoader.item
 
+    // The picker itself, for the same reason and in the same shape: it
+    // reparents to the window overlay, so this is a test's only handle on it.
+    // Null until the row has been asked for one.
+    readonly property alias playlistPicker: pickerLoader.item
+
     Loader {
         id: newPlaylistLoader
         active: false
@@ -816,15 +821,37 @@ Item {
             padding: 0
             property var pendingTrackId: 0
 
+            function fillFrom(pls) {
+                plPickerModel.clear()
+                for (var i = 0; i < pls.length; i++)
+                    plPickerModel.append(pls[i])
+            }
+
+            // Opening this used to go back to the network every single time,
+            // and the list sat empty until the round trip answered. The bridge
+            // already holds the account's playlists - it pages them in at
+            // sign-in, keeps them current on every create, and sorts them the
+            // way every other list in the app is sorted - so the picker was
+            // asking the server for something it was standing next to. Worse,
+            // a playlist made a second ago in the sidebar was *missing* here
+            // until the fetch came back, which is the one list where it most
+            // needs to be.
+            //
+            // The fetch is kept for the empty case only. An empty cache cannot
+            // be told apart from a cache the login paging has not reached yet,
+            // which is exactly the state the first picker of a session opens
+            // in; a genuinely empty account then pays one round trip that
+            // answers nothing, and that is the cheap side of the trade.
             function openFor(trackId) {
                 pendingTrackId = trackId
                 plPickerModel.clear()
                 open()
+
+                var cached = bridge.getUserPlaylists()
+                if (cached && cached.length > 0) { fillFrom(cached); return }
+
                 bridge.fetchUserPlaylists(function(pls, err) {
-                    plPickerModel.clear()
-                    for (var i = 0; i < pls.length; i++) {
-                        plPickerModel.append(pls[i])
-                    }
+                    fillFrom(pls)
                 }, 50, 0)
             }
 
@@ -921,6 +948,11 @@ Item {
 
                 ListView {
                     id: plPickerList
+                    // A test's handle on the list itself. Until the stub's
+                    // fetchUserPlaylists stopped answering an empty array,
+                    // nothing in here could be driven at all and the only
+                    // reachable row was the declared "New playlist…" one above.
+                    objectName: "pickerPlaylistList"
                     width: parent.width
                     height: Math.min(contentHeight, 300)
                     clip: true
