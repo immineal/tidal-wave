@@ -36,17 +36,41 @@ Rectangle {
     //
     // What the inline slider leaving takes with it is the whole slot-and-lerp
     // apparatus that used to animate it out: there is no longer anything in
-    // the right-hand group whose width depends on the bar's. The group is 204px
-    // at every width it is drawn at - five controls of 32, 36 and the five 8px
-    // gaps - against the 258 the wide bar used to need, so the 720px
-    // breakpoint that existed to buy back 98 of those pixels has nothing left
-    // to buy.
+    // the right-hand group whose width depends on the bar's. The group is one
+    // width at every width the bar is drawn at - against the 258 the wide bar
+    // used to need, so the 720px breakpoint that existed to buy back 98 of
+    // those pixels has nothing left to buy.
+    //
+    // And the speaker now sits *over* the readout rather than beside it:
+    // "it makes more sense to put the speaker at the top and the percentage at
+    // the bottom [...] so that when you hover it, the bar is over both of them
+    // and not just over one of them. Over the middle would also look weird,
+    // and there is enough vertical space".
+    //
+    // The flyout is parented to the stack: 40px of upright slider centred on a
+    // 36px stack stands over both rows of it, where centred on the speaker of a
+    // horizontal row it stood over the glyph and left the number out in the
+    // cold. With the speaker on top the two parents happen to give the same
+    // geometry - the speaker is centred in the stack and is its first row, so
+    // "centred above the speaker" and "centred above the stack" are the same
+    // rectangle - and that is an argument for this order rather than the other
+    // one: whichever of the two a later reader parents it to, the popup still
+    // clears both rows. Put the readout on top instead and parenting to the
+    // speaker would open the slider on top of the number.
+    //
+    // The group measures 164px now - the 36px stack, the 32px picker, the two
+    // 32px view buttons and the four 8px gaps - where it measured 204 with the
+    // speaker and the readout side by side. Both numbers are measured in
+    // tests/qml/tst_layout_player.qml rather than trusted from here.
     readonly property int volumePercentWidth: 36
-    // The gap between the speaker and the readout, spent inside the readout
-    // rather than as a layout margin. The two are one hover target and a dead
-    // 8px strip between them is where a pointer travelling along the row would
-    // drop the flyout; paying it as padding means the target is continuous.
-    readonly property int volumePercentGap: 8
+    // The vertical gap between the speaker and the readout under it, spent
+    // inside the readout as top padding rather than as the column's spacing.
+    // The two are one hover target and a dead strip between them is where a
+    // pointer travelling down from the glyph to the number would drop the
+    // flyout; paying it as padding means the target is continuous. It was the
+    // same 8px trick when the gap was horizontal, at half the length: 4px
+    // reads as a caption under a glyph where 8 reads as two separate things.
+    readonly property int volumeStackGap: 4
 
     // ─── Exposed for the suites ────────────────────────
     // tests/qml/tst_layout_player.qml checks the queue button stays on screen;
@@ -55,6 +79,11 @@ Rectangle {
     readonly property alias queueButton:  queueBtn
     readonly property alias volumeButton:      volBtn
     readonly property alias volumePercentText: volPct
+    // The two of them as one object. The group's width is measured from here
+    // and not from the speaker's left edge: the speaker is 32 wide and centred
+    // in a 36px stack, so measuring from the glyph would under-report the group
+    // by the two pixels the readout is wider.
+    readonly property alias volumeStack:       volStack
     readonly property var   hoverVolumeSlider: volumeFlyout.slider
     readonly property alias hoverVolumePopup:  volumeFlyout
     // The one picker for "where is this playing". tst_output_picker.qml reads
@@ -332,43 +361,68 @@ Rectangle {
             // give back in the frame it went invisible and the speaker hopped
             // that far sideways at the end of an animation whose whole point
             // was that nothing hops. The slot is gone, but the margins stay:
-            // the readout spends its own leading gap as padding instead, so
-            // that it and the speaker are one unbroken hover target, and that
-            // is not something a group-wide spacing can express.
+            // the speaker and the readout are one item in this row now - a
+            // two-row stack whose own gap is paid as the readout's top padding,
+            // so that the two are one unbroken hover target - and a group-wide
+            // spacing cannot express a gap spent inside a child.
             spacing: 0
 
             Item { Layout.fillWidth: true }
 
-            IconButton {
-                id: volBtn
-                objectName: "playerBarVolumeButton"
-                Layout.leftMargin: 8
-                icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
-                size: 18; iconColor: Theme.textSec
-                onClicked: player.setMuted(!player.muted)
-            }
-
-            // The level, in words, at rest. It is a second place the volume is
-            // drawn - the flyout draws it too - and the user chose that over
-            // the shorter speaker-and-picker cluster, knowing it.
+            // The speaker over the readout, as one object. Two rows and not one,
+            // so the flyout parented to this stands over both of them.
             //
-            // Layout.preferredWidth and not width: a Layout owns its children's
-            // size and reads a Text's implicit width over anything else it was
-            // given. The label runs "0%" to "100%", about twelve pixels apart,
-            // and the group is right-aligned, so a label that measured itself
-            // would walk every control left of it sideways as the volume moved.
-            // That exact bug was just fixed in Now Playing's copy of this.
-            Text {
-                id: volPct
-                objectName: "playerBarVolumePercent"
-                Layout.preferredWidth: root.volumePercentWidth + root.volumePercentGap
-                leftPadding: root.volumePercentGap
+            // The stack's width is the readout's 36 and not the speaker's 32,
+            // because the readout is the wider of the two; the speaker is
+            // centred in it. Nothing here is given a `width` or a `height`: a
+            // Layout owns its children's size, and IconButton's own
+            // `Math.max(size + 12, 32)` is what the column reads as its
+            // preferred size because a plain Item has no implicit one.
+            ColumnLayout {
+                id: volStack
+                Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
-                text: qsTr("%1%").arg(
-                    Math.round((player.muted ? 0 : player.volume) * 100)
-                        .toLocaleString(Qt.locale(), 'f', 0))
-                color: Theme.textDim; font.pixelSize: 12
-                HoverHandler { id: volPctHov }
+                // Zero, on purpose: the gap is the readout's own top padding
+                // (see volumeStackGap), so the speaker and the number are one
+                // unbroken hover target with no dead strip between them for a
+                // pointer to fall through.
+                spacing: 0
+
+                IconButton {
+                    id: volBtn
+                    objectName: "playerBarVolumeButton"
+                    Layout.alignment: Qt.AlignHCenter
+                    icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
+                    size: 18; iconColor: Theme.textSec
+                    onClicked: player.setMuted(!player.muted)
+                }
+
+                // The level, in words, at rest. It is a second place the volume
+                // is drawn - the flyout draws it too - and the user chose that
+                // over the shorter speaker-and-picker cluster, knowing it.
+                //
+                // Layout.preferredWidth and not width: a Layout owns its
+                // children's size and reads a Text's implicit width over
+                // anything else it was given. The label runs "0%" to "100%",
+                // about twelve pixels apart, and the group is right-aligned, so
+                // a label that measured itself would walk every control left of
+                // it sideways as the volume moved - and, stacked, would walk the
+                // speaker above it sideways too, because the speaker is centred
+                // on this. That exact bug was fixed in Now Playing's copy of
+                // this once already.
+                Text {
+                    id: volPct
+                    objectName: "playerBarVolumePercent"
+                    Layout.preferredWidth: root.volumePercentWidth
+                    Layout.alignment: Qt.AlignHCenter
+                    topPadding: root.volumeStackGap
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("%1%").arg(
+                        Math.round((player.muted ? 0 : player.volume) * 100)
+                            .toLocaleString(Qt.locale(), 'f', 0))
+                    color: Theme.textDim; font.pixelSize: 12
+                    HoverHandler { id: volPctHov }
+                }
             }
 
             // Where the sound is going: this computer's outputs and any
@@ -424,7 +478,7 @@ Rectangle {
     // withdraws while it is open. Both draw upwards out of an 82px bar, so
     // without that last rule they would be drawn over each other.
     //
-    // The speaker and the readout are one target: they sit against each other
+    // The speaker and the readout are one target: they sit one above the other
     // with the gap paid as the readout's own padding, and either one asking
     // is the flyout open.
     readonly property bool wantVolumeFlyout:
@@ -433,7 +487,10 @@ Rectangle {
     VolumeFlyout {
         id: volumeFlyout
         objectName: "playerBarVolumeFlyout"
-        parent: volBtn
+        // The stack, not the speaker in it. The popup centres itself on its
+        // parent, so parented to the 32px speaker it stood over the glyph and
+        // beside the number; parented to the 36px stack it stands over both.
+        parent: volStack
         pointedAt: root.wantVolumeFlyout
     }
 

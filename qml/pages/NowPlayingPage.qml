@@ -302,9 +302,33 @@ Rectangle {
     // horizontal". At rest the cluster is three things - the 18px mute/level
     // speaker, a 36px percentage, and the output picker, which measures 32
     // square at size 20 because PlayerBar.OutputPicker rounds `size + 12` up to
-    // 32. Two 10px gaps between the three, tighter than the 12 the old
-    // full-width row used, so they read as one object parked at the end of a
-    // row of buttons rather than as three more controls in it. 106px.
+    // 32.
+    //
+    // Two of those three are now stacked, the speaker over the percentage:
+    // "it makes more sense to put the speaker at the top and the percentage at
+    // the bottom [...] so that when you hover it, the bar is over both of them
+    // and not just over one of them. Over the middle would also look weird, and
+    // there is enough vertical space, also in full screen now playing and in
+    // full screen." The flyout is parented to the stack, so the upright slider
+    // it brings up stands over both rows rather than over the glyph alone.
+    //
+    // The picker does NOT join the stack, and that is measured rather than
+    // preferred: the transport row this cluster rides is 64 tall because the
+    // play button in the middle of it is, and a three-high column - 18px
+    // speaker, 21px readout, 32px picker - measures 71 and takes the row to 71
+    // with it. Measured, by putting the picker in the stack and reading the row
+    // back: "the transport row is 71.0px around a 64px play button". That moves
+    // the seek bar and the Up Next list under it at every width that carries the
+    // volume. Two-high is 39 and fits inside the 64 with 25 to spare.
+    //
+    // It is also a different control with a different glyph and a menu that
+    // draws into the same space the flyout does: inside the stack the flyout
+    // would be drawn over it, which is the one collision the three rules around
+    // VolumeFlyout exist to prevent.
+    //
+    // One 10px gap now rather than two, tighter than the 12 the old full-width
+    // row used, so the stack and the picker read as one object parked at the end
+    // of a row of buttons. 78px, where the single row measured 106.
     //
     // The percentage stays at rest although the flyout draws the level too.
     // Shown the two-item version without it, the user kept it.
@@ -312,9 +336,17 @@ Rectangle {
     readonly property int volumePercentWidth:   36
     readonly property int volumeOutputWidth:    32
     readonly property int volumeClusterSpacing: 10
+    // The gap between the speaker and the readout under it, paid as the
+    // readout's own top padding rather than as the column's spacing: the two
+    // are one hover target and a dead strip between them is where a pointer on
+    // its way from one to the other drops the flyout.
+    readonly property int volumeStackGap:        4
+    // As wide as the wider of the two it holds, which is the readout. The
+    // speaker is centred in it, and so is the flyout above it.
+    readonly property int volumeStackWidth:
+        Math.max(volumeIconSize, volumePercentWidth)
     readonly property int volumeClusterWidth:
-        volumeIconSize + volumePercentWidth + volumeOutputWidth
-        + 2 * volumeClusterSpacing
+        volumeStackWidth + volumeOutputWidth + volumeClusterSpacing
 
     // The slider the speaker reveals, which costs the row nothing: it is drawn
     // over the page in a popup and never in the layout. Upright, so the numbers
@@ -326,8 +358,8 @@ Rectangle {
     // and a gap: the play button is in the middle of this column and it stays
     // there, so a cluster at the right-hand end buys a counterweight of its own
     // width at the left-hand one. That is the 248px of buttons, the cluster
-    // twice over and eight gaps instead of six - 588 at the 16px spacing, where
-    // the 226px cluster needed 828.
+    // twice over and eight gaps instead of six - 532 at the 16px spacing, where
+    // the 106px single-row cluster needed 588 and the 226px bar before it 828.
     //
     // The counterweight sits *after* the shuffle button rather than before it,
     // which is the whole reason this works: shuffle stays flush with the left
@@ -338,12 +370,13 @@ Rectangle {
     // in the middle, the volume at the other - and the volume is the only thing
     // that moved.
     //
-    // 588 is still more than a narrow column has, and asking it is the point:
+    // 532 is still more than a narrow column has, and asking it is the point:
     // where the column cannot pay, the volume goes to a short row of its own
     // rather than the play button coming off the middle. Both answers fix what
     // the user complained about, because the fallback row is the same short
-    // cluster and not the full-width bar it replaced. Dropping 240px off this
-    // figure moves the band where that happens; the band is measured in
+    // cluster and not the full-width bar it replaced. Dropping 56px off this
+    // figure - twice the 28 the cluster lost by stacking, once at each end of
+    // the row - moves the band where that happens; the band is measured in
     // tests/qml/tst_layout_player.qml rather than reasoned about here.
     readonly property int transportWithVolumeWidth:
         transportFixedWidth + 2 * volumeClusterWidth
@@ -1021,7 +1054,27 @@ Rectangle {
                                 readonly property bool hovered: root.lyricsIsTimed && hoverHandler.hovered
                                 width: lyricsView.width
                                 text: modelData.text
-                                color: active ? Theme.accent : (hovered ? Theme.textPrimary : Theme.textSec)
+                                // The line you are on is the brightest ink the
+                                // palette has, not the accent: "the highlighted
+                                // lyrics line should really be white on black
+                                // and black on white instead of the accent
+                                // colour, just to make it more readable". Which
+                                // is what Theme.textPrimary already means - near
+                                // white on the three dark palettes, near black
+                                // on the three light ones - so there is no new
+                                // token for it. Measured, it takes the active
+                                // line from 3.2-5.6:1 against the panel to
+                                // 19.6:1 on the dark side and 18.3:1 on the
+                                // light; see tests/qml/tst_lyrics_contrast.qml,
+                                // which holds every palette to it.
+                                //
+                                // Colour was never the only thing marking the
+                                // line and still is not: it is the only bold
+                                // one and the only one at full opacity, so the
+                                // hovered line below - which now shares this
+                                // colour - is still told apart by both.
+                                color: (active || hovered) ? Theme.textPrimary
+                                                           : Theme.textSec
                                 font.pixelSize: root.lyricLineSize
                                 font.bold: active
                                 // Left in a panel, centred when the panel is the
@@ -2580,6 +2633,10 @@ Rectangle {
     // Three controls, not four. The slider lives in the flyout the speaker
     // reveals and is the same PlayerBar.VolumeFlyout the bottom bar reveals,
     // so the two places are one control with one behaviour.
+    //
+    // Two columns, not three: the speaker over the readout, and the picker
+    // beside the pair. See volumeClusterWidth for why the picker stays out of
+    // the stack, which is a measurement and not a preference.
     component VolumeControls : RowLayout {
         id: vol
         spacing: root.volumeClusterSpacing
@@ -2587,8 +2644,9 @@ Rectangle {
         // The speaker and the percentage are one hover target. They are two
         // items because one of them is the keyboard control and the other is
         // a label, but either of them being pointed at is a request for the
-        // slider, and the flyout's own close delay carries the pointer over
-        // the 10px between them and up into the popup.
+        // slider, and the gap between them is paid inside the readout rather
+        // than as the column's spacing, so there is no dead strip between the
+        // two for a pointer to fall through on its way from one to the other.
         //
         // The output picker is deliberately not part of it: it is a different
         // control with a different glyph, and its menu draws into the same
@@ -2603,54 +2661,74 @@ Rectangle {
         // which is also the only way to tell the live one from the offstage
         // copy.
         readonly property alias flyout: volFlyout
+        // The two-row half of the cluster, which is what the flyout is
+        // parented to and what the suites measure the stack by.
+        readonly property alias stack: volStack
 
-        Item {
-            id: muteBtn
-            // Named like the picker below, and for the same reason: two of
-            // these exist and the name belongs to the one on screen.
-            objectName: vol.visible ? "nowPlayingMuteButton"
-                                    : "nowPlayingMuteButtonOffstage"
-            Layout.preferredWidth:  root.volumeIconSize
-            Layout.preferredHeight: root.volumeIconSize
+        ColumnLayout {
+            id: volStack
+            objectName: vol.visible ? "nowPlayingVolumeStack"
+                                    : "nowPlayingVolumeStackOffstage"
             Layout.alignment: Qt.AlignVCenter
-            activeFocusOnTab: true
-            Keys.onReturnPressed: player.setMuted(!player.muted)
-            Keys.onSpacePressed:  player.setMuted(!player.muted)
-            Rectangle {
-                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
-                border.width: muteBtn.activeFocus ? 2 : 0
-                border.color: Theme.accent
-            }
-            VectorIcon {
-                anchors.fill: parent
-                name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
-                color: muteHov.hovered ? Theme.textPrimary : Theme.textSec
-                strokeWidth: 1.5
-            }
-            // A click still mutes, and the hover is what the flyout reads.
-            // Two handlers rather than a hoverEnabled MouseArea, because the
-            // flyout is not a child of this item and cannot see a MouseArea's
-            // containsMouse from outside it.
-            HoverHandler { id: muteHov; cursorShape: Qt.PointingHandCursor }
-            MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
-        }
+            // Zero: the gap is the readout's own top padding (volumeStackGap),
+            // so the two rows are one unbroken hover target.
+            spacing: 0
 
-        Text {
-            objectName: vol.visible ? "nowPlayingVolumePercent"
-                                    : "nowPlayingVolumePercentOffstage"
-            // The label runs from "0%" to "100%", about twelve pixels apart,
-            // and the cluster is a fixed object that the transport buttons are
-            // placed against - so a label that measured itself would walk them
-            // sideways as the volume moved. It carried `width: 36` for that
-            // once and the 36 never took: a Text has an implicit width of its
-            // own, the layout reads that and overwrites the width it was
-            // given. Layout.preferredWidth is the one a layout listens to.
-            Layout.preferredWidth: root.volumePercentWidth
-            Layout.alignment: Qt.AlignVCenter
-            text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
-                                      .toLocaleString(Qt.locale(), 'f', 0))
-            color: Theme.textDim; font.pixelSize: 12
-            HoverHandler { id: pctHov }
+            Item {
+                id: muteBtn
+                // Named like the picker below, and for the same reason: two of
+                // these exist and the name belongs to the one on screen.
+                objectName: vol.visible ? "nowPlayingMuteButton"
+                                        : "nowPlayingMuteButtonOffstage"
+                Layout.preferredWidth:  root.volumeIconSize
+                Layout.preferredHeight: root.volumeIconSize
+                // Centred in the stack, which is as wide as the readout under
+                // it rather than as wide as this.
+                Layout.alignment: Qt.AlignHCenter
+                activeFocusOnTab: true
+                Keys.onReturnPressed: player.setMuted(!player.muted)
+                Keys.onSpacePressed:  player.setMuted(!player.muted)
+                Rectangle {
+                    anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                    border.width: muteBtn.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
+                VectorIcon {
+                    anchors.fill: parent
+                    name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
+                    color: muteHov.hovered ? Theme.textPrimary : Theme.textSec
+                    strokeWidth: 1.5
+                }
+                // A click still mutes, and the hover is what the flyout reads.
+                // Two handlers rather than a hoverEnabled MouseArea, because the
+                // flyout is not a child of this item and cannot see a MouseArea's
+                // containsMouse from outside it.
+                HoverHandler { id: muteHov; cursorShape: Qt.PointingHandCursor }
+                MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
+            }
+
+            Text {
+                objectName: vol.visible ? "nowPlayingVolumePercent"
+                                        : "nowPlayingVolumePercentOffstage"
+                // The label runs from "0%" to "100%", about twelve pixels apart,
+                // and the cluster is a fixed object that the transport buttons are
+                // placed against - so a label that measured itself would walk them
+                // sideways as the volume moved. It carried `width: 36` for that
+                // once and the 36 never took: a Text has an implicit width of its
+                // own, the layout reads that and overwrites the width it was
+                // given. Layout.preferredWidth is the one a layout listens to.
+                //
+                // Stacked, it is also what the stack's width is, so a label that
+                // measured itself would walk the speaker above it sideways too.
+                Layout.preferredWidth: root.volumePercentWidth
+                Layout.alignment: Qt.AlignHCenter
+                topPadding: root.volumeStackGap
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
+                                          .toLocaleString(Qt.locale(), 'f', 0))
+                color: Theme.textDim; font.pixelSize: 12
+                HoverHandler { id: pctHov }
+            }
         }
 
         // The output picker, the same component the player bar puts next to its
@@ -2670,10 +2748,12 @@ Rectangle {
             size: 20
         }
 
-        // The slider, over the page rather than in it. Parented to the speaker
-        // so it comes up centred on the thing that was pointed at, and upward,
-        // which in this column puts it over the seek bar rather than over the
-        // Up Next list the user is more likely to be reading.
+        // The slider, over the page rather than in it. Parented to the stack
+        // and not to the speaker in it, so that it comes up centred on both
+        // rows of the thing that was pointed at rather than on the glyph alone
+        // - which is the whole reason the two are stacked. Upward, which in
+        // this column puts it over the seek bar rather than over the Up Next
+        // list the user is more likely to be reading.
         //
         // `vol.visible &&` is belt and braces, and measured to be: both
         // clusters exist at all times and only one is drawn, and taking the
@@ -2687,7 +2767,7 @@ Rectangle {
             id: volFlyout
             objectName: vol.visible ? "nowPlayingVolumeFlyout"
                                     : "nowPlayingVolumeFlyoutOffstage"
-            parent: muteBtn
+            parent: volStack
             pointedAt: vol.visible && vol.wantFlyout
             sliderLength:    root.volumeSliderLength
             sliderThickness: root.volumeSliderThickness

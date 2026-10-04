@@ -552,18 +552,29 @@ TestCase {
 
     // The gap between the two halves is paid inside the readout rather than as
     // a layout margin, so there is no dead strip between them for the pointer
-    // to fall into.
+    // to fall into. Downwards now, not sideways: the readout sits under the
+    // speaker, so the strip to keep shut is between the glyph's bottom edge and
+    // the top of the number's box.
     function test_the_speaker_and_the_readout_touch() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
         var btn = bar.volumeButton
         var pct = bar.volumePercentText
-        var btnRight = btn.mapToItem(bar, btn.width, 0).x
-        var pctLeft  = pct.mapToItem(bar, 0, 0).x
-        verify(Math.abs(pctLeft - btnRight) <= 0.5,
-               "the readout starts at " + pctLeft.toFixed(1)
-               + " where the speaker ends at " + btnRight.toFixed(1)
+        var btnBottom = btn.mapToItem(bar, 0, btn.height).y
+        var pctTop    = pct.mapToItem(bar, 0, 0).y
+        verify(Math.abs(pctTop - btnBottom) <= 0.5,
+               "the readout starts at y=" + pctTop.toFixed(1)
+               + " where the speaker ends at " + btnBottom.toFixed(1)
                + ", leaving a strip that belongs to neither")
+        // And the pointer really can cross it: a hover at the seam opens the
+        // flyout, which is the thing the arithmetic above is for. Aimed at the
+        // readout's first row of pixels, which is the padding the gap is paid
+        // out of and the half of it nothing draws into.
+        verify(!bar.hoverVolumePopup.visible, "the flyout is up unprompted")
+        var seam = pct.mapToItem(host.contentItem, pct.width / 2, 1)
+        mouseMove(host.contentItem, seam.x, seam.y)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "the seam between the speaker and the readout dropped the hover")
     }
 
     // Pointing somewhere else puts it away again.
