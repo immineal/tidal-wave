@@ -22,7 +22,28 @@ Item {
     // An artist tile's subtitle is the word "Artist", a type label rather than
     // data, and a pin outlives the session it was made in, so the stored
     // subtitle would be a translated word frozen at pin time.
-    readonly property string pinSubtitle: mediaType === "artist" ? "" : subtitle
+    //
+    // A playlist tile's is the same mistake with a number in it: the translated
+    // "%n track(s)" plural, rendered over a cached count. Frozen, it is wrong
+    // twice - "31 Titel" in an English run, and still 31 once a track is added -
+    // and nothing in a stored pin could ever correct either. So a playlist hands
+    // over nothing either, which is also what PlaylistPage's hero pin and the
+    // sidebar's own pin menu have always passed. The count a pinned row would
+    // want is live on LibraryIndex's `trackCount` role, to be rendered where it
+    // is drawn.
+    //
+    // PinStore drops a playlist subtitle on the way in regardless - it is the
+    // authority on what a row may hold, the way isValidKind is on what a row may
+    // be. This says the same thing where the string is picked, so the tile does
+    // not hand over text it already knows is wrong.
+    //
+    // The plural form is named above without its call on purpose:
+    // tests/tst_shortcuts.cpp scans every .qml file for translation call sites
+    // with a regex and does not strip comments, so writing one in a comment here
+    // puts MediaCard in a catalogue context it has no strings in, and that test
+    // fails with a message about lupdate.
+    readonly property string pinSubtitle:
+        (mediaType === "artist" || mediaType === "playlist") ? "" : subtitle
 
     readonly property alias pinMenu: cardMenu
 

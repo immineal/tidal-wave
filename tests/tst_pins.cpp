@@ -322,6 +322,132 @@ private slots:
                  QStringLiteral("Three"));
     }
 
+    // ── a pin stores facts, never rendered text ──────────────────────────
+    //
+    // A pin's subtitle is a datum Tidal sent - an album's artists, a mix's own
+    // subtitle - and never a string this app rendered. A row in QSettings
+    // outlives the locale it was written in and outlives whatever a number in
+    // it counted, and there is no pass over storage that could refresh either.
+    //
+    // A playlist is the one kind with no such datum: every tile that draws one
+    // puts qsTr("%n track(s)") over a cached count under the title, and that
+    // string used to be handed to pin() and written down. So the rule is
+    // enforced here rather than trusted to five call sites, on the way in and
+    // on the way back out.
+
+    void aPlaylistPinKeepsNoRenderedSubtitle() {
+        PinStore p;
+        p.setUserId(1001);
+
+        // What MediaCard used to hand over for a playlist tile: the rendered,
+        // translated, count-bearing text that was on screen.
+        p.pin(QStringLiteral("playlist"), QStringLiteral("uuid-evening"),
+              QStringLiteral("Evening Drive"), QStringLiteral("31 Titel"),
+              QStringLiteral("http://art/evening.jpg"));
+
+        const QVariantMap m = p.items().first().toMap();
+        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QString());
+        // Everything else about the row is untouched: this drops one field, it
+        // does not refuse the pin.
+        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Evening Drive"));
+        QCOMPARE(m.value(QStringLiteral("id")).toString(), QStringLiteral("uuid-evening"));
+        QCOMPARE(m.value(QStringLiteral("imageUrl")).toString(),
+                 QStringLiteral("http://art/evening.jpg"));
+
+        // ...and it is gone on disk too, not merely out of the live list.
+        PinStore reopened;
+        reopened.setUserId(1001);
+        QCOMPARE(reopened.items().first().toMap().value(QStringLiteral("subtitle")).toString(),
+                 QString());
+    }
+
+    // The other three keep theirs, because theirs are facts: an album's
+    // artists and a mix's own subtitle came from Tidal in the account's
+    // language and mean the same thing next year. An artist pin is handed ""
+    // by every call site already - the word "Artist" is a type label, not data
+    // - so there is nothing to drop.
+    void theOtherKindsKeepTheirSubtitle_data() {
+        QTest::addColumn<QString>("kind");
+        QTest::addColumn<QString>("subtitle");
+        QTest::newRow("album: its artists")  << QStringLiteral("album")  << QStringLiteral("Miles Davis");
+        QTest::newRow("mix: Tidal's own")    << QStringLiteral("mix")    << QStringLiteral("Based on Portishead");
+        QTest::newRow("artist: nothing")     << QStringLiteral("artist") << QString();
+    }
+
+    void theOtherKindsKeepTheirSubtitle() {
+        QFETCH(QString, kind);
+        QFETCH(QString, subtitle);
+
+        PinStore p;
+        p.setUserId(1001);
+        p.pin(kind, QStringLiteral("9"), QStringLiteral("Whatever"), subtitle, QString());
+        QCOMPARE(p.items().first().toMap().value(QStringLiteral("subtitle")).toString(), subtitle);
+
+        PinStore reopened;
+        reopened.setUserId(1001);
+        QCOMPARE(reopened.items().first().toMap().value(QStringLiteral("subtitle")).toString(),
+                 subtitle);
+    }
+
+    // The migration, and the whole of it: a row written by a build that did
+    // store the count keeps its kind, id, title, artwork and place, and loses
+    // the one field that was never a fact. Nothing is rewritten on disk until
+    // the next edit, so a downgrade finds its own data where it left it.
+    void aRowWrittenBeforeThisRuleLosesOnlyItsFrozenCount() {
+        { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
+            QStringLiteral("[{\"kind\":\"playlist\",\"id\":\"uuid-evening\","
+                           "\"title\":\"Evening Drive\",\"subtitle\":\"31 Titel\","
+                           "\"imageUrl\":\"http://art/evening.jpg\"},"
+                           "{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\","
+                           "\"subtitle\":\"Miles Davis\","
+                           "\"imageUrl\":\"http://art/42.jpg\"}]")); }
+
+        PinStore p;
+        p.setUserId(1001);
+
+        // Both rows, in the order they were written: a migration that reordered
+        // the block would be a worse bug than the one it fixed.
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("playlist:uuid-evening"),
+                                                 QStringLiteral("album:42")}));
+
+        const QVariantMap list = p.items().at(0).toMap();
+        QCOMPARE(list.value(QStringLiteral("subtitle")).toString(), QString());
+        QCOMPARE(list.value(QStringLiteral("title")).toString(), QStringLiteral("Evening Drive"));
+        QCOMPARE(list.value(QStringLiteral("imageUrl")).toString(),
+                 QStringLiteral("http://art/evening.jpg"));
+
+        // The album row is not touched by any of this.
+        const QVariantMap album = p.items().at(1).toMap();
+        QCOMPARE(album.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Miles Davis"));
+        QCOMPARE(album.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
+    }
+
+    // What load() does with a row it does not fully recognise, written down
+    // because the answer is a constraint on anything that ever changes the
+    // shape of these rows: the row itself survives, and the fields it carries
+    // beyond the five do not. So the next save() - any pin, unpin or drag -
+    // writes the unknown field away, which is why a new field cannot simply be
+    // added here and expected to survive an older build.
+    //
+    // This states existing behaviour rather than fixing it; it is here so the
+    // trade is visible to whoever is tempted to add a key.
+    void anUnknownFieldDoesNotCostTheRow() {
+        { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
+            QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\","
+                           "\"subtitle\":\"Miles Davis\",\"imageUrl\":\"http://art/42.jpg\","
+                           "\"trackCount\":5,\"somethingNewer\":{\"a\":1}}]")); }
+
+        PinStore p;
+        p.setUserId(1001);
+        QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("album:42")}));
+        const QVariantMap m = p.items().first().toMap();
+        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
+        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Miles Davis"));
+        QVERIFY2(!m.contains(QStringLiteral("somethingNewer")),
+                 "an unknown field is dropped on load - see the comment above");
+        QVERIFY(!m.contains(QStringLiteral("trackCount")));
+    }
+
     // LibraryIndex asks for this to keep a pinned entry out of the list below
     // the pinned block (P5), so it has to agree with items().
     void indexOfMatchesTheVisibleOrder() {

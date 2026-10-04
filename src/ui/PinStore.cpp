@@ -23,6 +23,30 @@ constexpr auto kTitle    = "title";
 constexpr auto kSubtitle = "subtitle";
 constexpr auto kImageUrl = "imageUrl";
 
+// A pin's subtitle is only ever a datum that came from Tidal - an album's
+// artists, a mix's own subtitle - and never a string this app rendered. A row
+// here is written to QSettings and read back in some later session, so anything
+// in it has to still be true then: a translation outlives the locale it was
+// made in, and a number outlives whatever it counted. There is no pass over
+// storage that could refresh either, because there is nothing in the row to
+// recompute them from.
+//
+// A playlist is the one kind with no such datum. What every playlist tile draws
+// under the title is qsTr("%n track(s)") over a cached count, and that rendered
+// text is what used to be handed to pin() and written down - so a playlist
+// pinned in German read back "31 Titel" in an English run, and said 31 for ever
+// after a track was added. The count the UI wants is already live on
+// LibraryIndex's `trackCount` role, which qml formats at draw time (see
+// Entry::trackCount), so the honest thing to keep here is nothing.
+//
+// Applied on the way in and on the way back out, so a row written by a build
+// that did store the count stops carrying it as well. Nothing is rewritten on
+// disk by loading it: save() runs on the next pin, unpin or drag, which is also
+// when the row would next have been wrong.
+QString storableSubtitle(const QString &kind, const QString &subtitle) {
+    return kind == QLatin1String("playlist") ? QString() : subtitle;
+}
+
 } // namespace
 
 PinStore::PinStore(QObject *parent) : QObject(parent) {}
@@ -137,7 +161,7 @@ void PinStore::pin(const QString &kind, const QString &id, const QString &title,
     row[QLatin1String(kKind)]     = kind;
     row[QLatin1String(kId)]       = id;
     row[QLatin1String(kTitle)]    = title;
-    row[QLatin1String(kSubtitle)] = subtitle;
+    row[QLatin1String(kSubtitle)] = storableSubtitle(kind, subtitle);
     row[QLatin1String(kImageUrl)] = imageUrl;
 
     const int at = indexOf(kind, id);
@@ -204,7 +228,8 @@ void PinStore::load() {
         row[QLatin1String(kKind)]     = kind;
         row[QLatin1String(kId)]       = id;
         row[QLatin1String(kTitle)]    = o.value(QLatin1String(kTitle)).toString();
-        row[QLatin1String(kSubtitle)] = o.value(QLatin1String(kSubtitle)).toString();
+        row[QLatin1String(kSubtitle)] =
+            storableSubtitle(kind, o.value(QLatin1String(kSubtitle)).toString());
         row[QLatin1String(kImageUrl)] = o.value(QLatin1String(kImageUrl)).toString();
         m_items.append(row);
     }

@@ -11,6 +11,14 @@
 // A pin is {kind, id, title, subtitle, imageUrl}; kind is one of
 // "album" | "playlist" | "artist" | "mix". Order is user-defined (drag).
 //
+// The subtitle holds a datum Tidal sent and never a string this app rendered,
+// because the row is read back in a later session: a translation would be in
+// the wrong language and a count would be the wrong number, and neither is
+// recomputable from what the row holds. A playlist has no such datum - its
+// tiles draw qsTr("%n track(s)") over LibraryIndex's live `trackCount` - so a
+// playlist pin carries no subtitle at all, and a row written by a build that
+// stored one loses it on load. See storableSubtitle() in the .cpp.
+//
 // The list goes into QSettings as a JSON array under a per-account key, so
 // signing into a second account swaps the whole block rather than merging it,
 // and a value written by some other build can be rejected outright instead of

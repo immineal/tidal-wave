@@ -329,6 +329,108 @@ TestCase {
         menu.close()
     }
 
+    // ── what a tile hands the store, per kind ────────────────────────────
+    //
+    // A pin row is written to QSettings and read back in some later session, so
+    // the only thing worth putting in its subtitle is a datum Tidal sent. An
+    // album tile's subtitle is its artists and a mix tile's is Tidal's own:
+    // both are facts, both keep. An artist tile's is the word qsTr("Artist"),
+    // and a playlist tile's is qsTr("%n track(s)") over a cached count - app
+    // text, not data - so neither may be stored. Frozen, the playlist one is
+    // wrong twice over: the wrong language after the app's locale changes, and
+    // the wrong number as soon as a track is added to the playlist.
+    //
+    // MediaCard.pinSubtitle is the property that draws this line, and until
+    // this test nothing asserted it for any kind - which is how the playlist
+    // case got in. Driven through the tile's real right-click area and the real
+    // menu entry, so what is asserted is what the app stores, not what this
+    // file passes along.
+    function test_a_tile_pins_data_and_not_app_text_data() {
+        return [
+            { tag: "album keeps its artists",
+              kind: "album",    id: "42",      drawn: "The Band",
+              stored: "The Band" },
+            { tag: "mix keeps Tidal's own subtitle",
+              kind: "mix",      id: "mix-1",   drawn: "Your mix",
+              stored: "Your mix" },
+            { tag: "artist stores no type label",
+              kind: "artist",   id: "7",       drawn: qsTr("Artist"),
+              stored: "" },
+            { tag: "playlist stores no track count",
+              kind: "playlist", id: "uuid-p1", drawn: qsTr("%n track(s)", "", 31),
+              stored: "" }
+        ]
+    }
+
+    function test_a_tile_pins_data_and_not_app_text(data) {
+        var host = showHost(1280)
+        var card = createTemporaryObject(mediaCardC, host.pane, {
+            mediaType: data.kind, itemId: data.id, title: "Whatever",
+            subtitle: data.drawn, coverUrl: "cdn/" + data.id + ".jpg"
+        })
+        verify(card, "the card was not created")
+        settle(host.contentItem)
+
+        // The tile still draws what it was given; this is about what it stores.
+        compare(card.subtitle, data.drawn, "the tile stopped drawing its subtitle")
+
+        rightClickItem(host, card)
+        var menu = card.pinMenu
+        tryVerify(function () { return menu.visible }, 2000, "a card offers no context menu")
+        menu.pinItem.triggered()
+        verify(pins.isPinned(data.kind, data.id), "pinning from a card did not reach PinStore")
+
+        compare(pins.items[0].subtitle, data.stored,
+                "a " + data.kind + " tile stored the wrong subtitle")
+        // The fields that are facts are still there, so this is a rule about
+        // one field and not a tile that stopped describing itself.
+        compare(pins.items[0].title, "Whatever", "the card pinned the wrong title")
+        compare(pins.items[0].imageUrl, "cdn/" + data.id + ".jpg",
+                "the card pinned no artwork")
+        menu.close()
+    }
+
+    // Where a pinned row's text actually comes from, written down because the
+    // repo has guessed it wrong twice in two days and in both directions.
+    //
+    // A pinned row is a *library* row that PinStore moved to the front of the
+    // list. The model is `library.entriesForKinds()`, the delegate reads it
+    // through `modelData`, and nothing in qml/ reads `pins.items` at all - so a
+    // pin's stored title, subtitle and artwork are never drawn anywhere,
+    // including in the hover tooltip that is the only place a row's subtitle
+    // reaches the screen.
+    //
+    // That is what makes the frozen track count the test above is about a latent
+    // defect rather than a visible one, and it is also why nothing had to be
+    // migrated to make the pinned block read correctly. Asserted with the two
+    // sources deliberately disagreeing: this pin carries a title, a subtitle and
+    // an artwork url that no library row has.
+    function test_a_pinned_row_draws_the_library_row_not_the_pin() {
+        setPins([{ kind: "album", id: "42", title: "A title only the pin has",
+                   subtitle: "A subtitle only the pin has",
+                   imageUrl: "cdn/only-the-pin.jpg" }])
+
+        var host = showHost(1280)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        var row = rowFor(sb, "42")
+        verify(row, "the pinned album has no sidebar row")
+        verify(row.pinned, "the row did not come through as pinned")
+
+        compare(row.title, "Fever Dream", "the row drew the pin's title")
+        compare(row.modelData.subtitle, "The Band", "the row drew the pin's subtitle")
+        compare(row.modelData.imageUrl, "cdn/42.jpg", "the row drew the pin's artwork")
+
+        // The tooltip is on every row deliberately - in the collapsed rail the
+        // title is not on screen at all - so it is the one draw site a stored
+        // pin subtitle could ever have reached, and it does not read it.
+        var box = findByName(row, "libraryRowTitle").parent
+        verify(box, "the row has no content box to carry the tooltip")
+        compare(box.ToolTip.text, "Fever Dream · The Band",
+                "the row tooltip is not built from the library row")
+    }
+
     // ── Collection's grids, which could not pin at all ───────────────────
     //
     // The album and the artist delegate each declared a right-click MouseArea
