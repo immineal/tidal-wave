@@ -76,6 +76,14 @@
 <context>
     <name>ArtistPage</name>
     <message>
+        <source>This artist is not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play</source>
         <comment>verb, button label</comment>
         <translation type="unfinished"></translation>
@@ -595,6 +603,14 @@
 <context>
     <name>MixPage</name>
     <message>
+        <source>This mix could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Mix</source>
         <comment>noun, a Tidal mix</comment>
         <translation type="unfinished"></translation>
@@ -881,6 +897,14 @@
 <context>
     <name>PlaylistPage</name>
     <message>
+        <source>This playlist could not be loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 hr %2 min</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1011,6 +1035,14 @@
 </context>
 <context>
     <name>RadioPage</name>
+    <message>
+        <source>No radio for this track</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Radio</source>
         <translation type="unfinished"></translation>

@@ -31,6 +31,24 @@ Rectangle {
     property var    tracks: []
     property bool   loading: false
 
+    // What the last load was told, "" when it was served. The one callback used
+    // to read `if (err) return` and drop it, which is AlbumPage's bug from
+    // 8ec30ed: a mix that has rotated out of the user's set, or one pinned to
+    // the sidebar months ago, answers nothing for `pages/mix` - and the page
+    // kept the title the caller handed it over an empty list, saying nothing
+    // about why the list was empty.
+    property string loadError: ""
+
+    // Nothing came back at all. Milder than AlbumPage's and ArtistPage's case
+    // on purpose: this page is *not* blank when it fails, because the title, the
+    // subtitle and the artwork the caller passed are still correct and still on
+    // screen. So the hero stays and only the empty half of the page says why.
+    // Gated on what the server said and not on the list being empty, because a
+    // mix still in flight, and a video mix whose track module this app cannot
+    // read, both legitimately have nothing in them.
+    readonly property bool loadFailed:
+        loadError.length > 0 && !loading && tracks.length === 0
+
     // Records this mix as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("mix", root.mixId, root.title)
@@ -63,14 +81,21 @@ Rectangle {
     // at all, leaves the caller's standing rather than blanking it.
     function loadMix() {
         loading = true
+        loadError = ""
         // Which mix this reply is about. The loader is reused when one mix
         // navigates to another, so a slow reply for the mix just left would
         // otherwise retitle the one now on screen.
         var requested = mixId
         bridge.fetchMixPage(requested, function (header, t, err) {
+            // Two checks that must never become one. This one says the reply is
+            // about a mix the user has already left, which is not a failure and
+            // must draw nothing; the one below says the mix on screen was
+            // refused, which must. Folded together - as PlaylistPage's two
+            // callbacks had them - fast navigation would draw error panels over
+            // pages that are loading perfectly well.
             if (requested !== root.mixId) return
             loading = false
-            if (err) return
+            if (err) { root.loadError = err; return }
             if (header) {
                 if (header.title)    root.title    = header.title
                 if (header.subtitle) root.subtitle = header.subtitle
@@ -241,7 +266,61 @@ Rectangle {
             onPlayRequested: root.playFrom(root.tracks, index)
         }
 
-        footer: Item { height: 32; width: tracksList.width }
+        // The footer, not an overlay anchored under the hero. On a mix with no
+        // tracks the footer sits directly beneath the header, which is exactly
+        // where the missing list is, and it scrolls with the hero instead of
+        // floating over it. The hero itself is left alone: its title is the
+        // caller's and still true, and its Play and Shuffle pills already do
+        // nothing on an empty list.
+        footer: Item {
+            width: tracksList.width
+            height: root.loadFailed ? 200 : 32
+
+            ColumnLayout {
+                objectName: "mixLoadError"
+                visible: root.loadFailed
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: 10
+
+                VectorIcon {
+                    Layout.alignment: Qt.AlignHCenter
+                    // Layout.preferredWidth/Height and not width/height: a
+                    // Layout owns the size of its direct children, and a plain
+                    // width is overwritten - see the hero's own glyph above,
+                    // which is anchored and so may use width.
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    name: "mix"
+                    color: Theme.textDim
+                    strokeWidth: 1.5
+                }
+
+                Text {
+                    objectName: "mixLoadErrorText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("This mix could not be loaded")
+                    color: Theme.textPrimary
+                    font.pixelSize: 18
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                // Not the server's own string; see AlbumPage's panel for why.
+                // One long literal and not a concatenation, so lupdate can read
+                // it.
+                Text {
+                    objectName: "mixLoadErrorDetail"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.")
+                    color: Theme.textSec
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
 
         ScrollBar.vertical: ScrollBar {
             active: true

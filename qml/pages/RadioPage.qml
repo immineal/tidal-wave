@@ -13,6 +13,22 @@ Rectangle {
     property var    tracks:     []
     property bool   loading:    false
 
+    // What the last load was told, "" when it was served. The one callback used
+    // to read `if (!err)` and drop it, which is AlbumPage's bug from 8ec30ed on
+    // the page with the least left over: a station Tidal will not build - ask
+    // for one from a track that has since been delisted and `tracks/<id>/radio`
+    // answers 404 the same way `albums/<id>` does - left `tracks` empty and
+    // `loading` false, which is this page's empty initial state.
+    property string loadError: ""
+
+    // Nothing came back at all. The list *is* this page: there is no artwork, no
+    // description and the one pill hides itself when there is nothing to play,
+    // so a refusal leaves a correct heading over an empty rectangle. The heading
+    // is kept - it says which track the station was asked for, and it carries
+    // the way back - and the message goes where the list would have been.
+    readonly property bool loadFailed:
+        loadError.length > 0 && !loading && tracks.length === 0
+
     // Records this radio station as the "playing from" source, then plays.
     function playFrom(list, i) {
         player.setPlaybackSource("radio", "" + root.trackId, root.radioTitle)
@@ -23,10 +39,19 @@ Rectangle {
 
     function loadRadio() {
         loading = true
+        loadError = ""
         tracks  = []
+        // Which track this reply is about; see MixPage.loadMix(). A row's
+        // "Start radio" can be used again from inside the station it opened,
+        // and the page item is reused - so a reply for the station just left
+        // must not empty, fill or condemn the one now on screen. A superseded
+        // request is not a failure: checked first, and on its own.
+        var requested = trackId
         bridge.fetchTrackRadio(trackId, function(t, err) {
-            loading = false
-            if (!err) tracks = t
+            if (requested !== root.trackId) return
+            root.loading = false
+            if (err) { root.loadError = err; return }
+            root.tracks = t
         })
     }
 
@@ -88,10 +113,64 @@ Rectangle {
 
         Item { height: 8 }
 
+        // Where the list would have been. The heading above stays, because it is
+        // still true and still the way out; only the empty half is replaced.
+        // A sibling in the same ColumnLayout rather than an overlay: a Layout
+        // skips an invisible child outright, so the one of these two that is
+        // drawn gets the whole remaining height either way.
+        Item {
+            objectName: "radioLoadError"
+            visible: root.loadFailed
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: 10
+
+                VectorIcon {
+                    Layout.alignment: Qt.AlignHCenter
+                    // See the note on the chevron above: in a Layout the size
+                    // has to be asked for, or the implicit 24 is what draws.
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    name: "waves"
+                    color: Theme.textDim
+                    strokeWidth: 1.5
+                }
+
+                Text {
+                    objectName: "radioLoadErrorText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("No radio for this track")
+                    color: Theme.textPrimary
+                    font.pixelSize: 18
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                // Not the server's own string; see AlbumPage's panel for why.
+                // One long literal and not a concatenation, so lupdate can read
+                // it.
+                Text {
+                    objectName: "radioLoadErrorDetail"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.")
+                    color: Theme.textSec
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
         ListView {
             id: trackList
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: !root.loadFailed
             clip: true
             model: root.tracks
             boundsBehavior: Flickable.StopAtBounds

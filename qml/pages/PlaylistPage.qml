@@ -35,6 +35,29 @@ Rectangle {
 
     readonly property bool isUserPlaylist: playlistType === "USER"
 
+    // What the last load was told, "" when it was served. Both of loadPlaylist's
+    // callbacks dropped it - the tracks half as `if (!err)`, the header half
+    // folded into `if (err || !p || requested !== root.playlistUuid)` - which is
+    // AlbumPage's bug from 8ec30ed: a playlist that has been deleted or made
+    // private by its owner is still in the favourites list and answers 404 for
+    // both `playlists/<uuid>` and `playlists/<uuid>/tracks`, and the page kept
+    // the title the caller handed it over an empty list, saying nothing.
+    property string loadError: ""
+
+    // Nothing came back at all. Milder than AlbumPage's and ArtistPage's case,
+    // for MixPage's reason: the title and the artwork the caller passed are
+    // still correct and still on screen, so the hero stays and only the empty
+    // half says why. Gated on what the server said and not on the list being
+    // empty - a playlist with no songs in it is an ordinary thing to own, and
+    // calling it unavailable would be a new lie in place of the old silence.
+    readonly property bool loadFailed:
+        loadError.length > 0 && !loading && tracks.length === 0
+
+    // The first reason and not the last; see ArtistPage.noteLoadError().
+    function noteLoadError(err) {
+        if (root.loadError.length === 0) root.loadError = err
+    }
+
     // Records this playlist as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("playlist", root.playlistUuid, root.playlistTitle)
@@ -149,19 +172,32 @@ Rectangle {
         if (root.playlistUuid.length === 0) return
         var requested = root.playlistUuid
         bridge.fetchPlaylistTracks(requested, function (t, err) {
-            if (err || requested !== root.playlistUuid) return
+            // Two conditions, written as two, and they used to be one `||`.
+            // A reply for the playlist the user has already left says nothing
+            // about the one on screen; a reply that failed does.
+            if (requested !== root.playlistUuid) return
+            // And here the reason is deliberately *not* kept. This is the
+            // top-up for a song added from a row on this very page: the list
+            // being drawn is already right apart from one row, so a failed
+            // top-up leaves a correct page, and the panel below is for a page
+            // with nothing on it. Recording it here would put "this playlist is
+            // unavailable" over a playlist the user can see - and over an empty
+            // one they had just added their first song to.
+            if (err) return
             root.tracks = t
         })
     }
 
     function loadPlaylist() {
         loading = true
+        loadError = ""
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
         bridge.fetchPlaylistTracks(requested, function (t, err) {
             if (requested !== root.playlistUuid) return
-            loading = false
-            if (!err) tracks = t
+            root.loading = false
+            if (err) { root.noteLoadError(err); return }
+            root.tracks = t
         })
         loadPlaylistHeader(requested)
     }
@@ -182,7 +218,22 @@ Rectangle {
     // reply that never comes overwrites nothing at all.
     function loadPlaylistHeader(requested) {
         bridge.fetchPlaylist(requested, function (p, err) {
-            if (err || !p || requested !== root.playlistUuid) return
+            // Three conditions that used to be one `||`, and only one of them
+            // is a failure.
+            //
+            // Superseded first, and on its own: a reply about the playlist the
+            // user has already left must change nothing on the one now open,
+            // *including* whether it is reported as refused. Folded in with the
+            // error, the page would draw "not available" over whatever happened
+            // to be on screen when a slow 404 landed, which turns fast
+            // navigation into spurious error panels.
+            if (requested !== root.playlistUuid) return
+            // Then the refusal, which is the one worth keeping.
+            if (err) { root.noteLoadError(err); return }
+            // And an answer with no body is neither: nothing to apply, nothing
+            // to complain about. Same rule as MixPage's headerless reply -
+            // what the caller passed stays standing.
+            if (!p) return
             if (p.title)       root.playlistTitle       = p.title
             if (p.coverUrl)    root.coverUrl            = p.coverUrl
             if (p.description) root.playlistDescription = p.description
@@ -447,7 +498,59 @@ Rectangle {
             }
         }
 
-        footer: Item { height: 32; width: tracksList.width }
+        // The footer, not an overlay anchored under the hero; see MixPage's
+        // twin for why. The hero itself is left alone: its title is the
+        // caller's and still true, and Play, Shuffle and Edit already do
+        // nothing on an empty list.
+        footer: Item {
+            width: tracksList.width
+            height: root.loadFailed ? 200 : 32
+
+            ColumnLayout {
+                objectName: "playlistLoadError"
+                visible: root.loadFailed
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 96, 420)
+                spacing: 10
+
+                VectorIcon {
+                    Layout.alignment: Qt.AlignHCenter
+                    // Layout.preferredWidth/Height and not width/height: a
+                    // Layout owns the size of its direct children, and a plain
+                    // width is overwritten - unlike the hero's own glyph above,
+                    // which is anchored and so may use width.
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    name: "playlist"
+                    color: Theme.textDim
+                    strokeWidth: 1.5
+                }
+
+                Text {
+                    objectName: "playlistLoadErrorText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("This playlist could not be loaded")
+                    color: Theme.textPrimary
+                    font.pixelSize: 18
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                // Not the server's own string; see AlbumPage's panel for why.
+                // One long literal and not a concatenation, so lupdate can read
+                // it.
+                Text {
+                    objectName: "playlistLoadErrorDetail"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.")
+                    color: Theme.textSec
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
 
         ScrollBar.vertical: ScrollBar {
             active: true

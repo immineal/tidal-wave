@@ -756,7 +756,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "playlist"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
                 // An empty state that only describes the emptiness is a dead
@@ -838,7 +838,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "mix"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { objectName: "collectionEmptyMixesIcon"; Layout.alignment: Qt.AlignHCenter; name: "mix"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No mixes"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your Tidal mixes will appear here"); color: Theme.textSec; font.pixelSize: 13 }
             }
@@ -852,7 +852,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "heart"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { objectName: "collectionEmptyTracksIcon"; Layout.alignment: Qt.AlignHCenter; name: "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved tracks"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Like tracks to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }
@@ -866,7 +866,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "album"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { objectName: "collectionEmptyAlbumsIcon"; Layout.alignment: Qt.AlignHCenter; name: "album"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No saved albums"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Save albums to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }
@@ -880,7 +880,7 @@ Rectangle {
             ColumnLayout {
                 anchors.centerIn: parent
                 spacing: 12
-                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "artist"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                VectorIcon { objectName: "collectionEmptyArtistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "artist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No followed artists"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Follow artists to see them here"); color: Theme.textSec; font.pixelSize: 13 }
             }

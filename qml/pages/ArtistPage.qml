@@ -32,6 +32,33 @@ Rectangle {
     property bool showAllTracks: false
     property bool isFollowing: false
 
+    // What the last load was told, "" when it was served. All three fetches
+    // used to read `if (!err)` and drop this, which is the same bug AlbumPage
+    // had in 8ec30ed: an artist the API refuses - a followed artist whose page
+    // has since been withdrawn answers 404 for the detail, the top tracks and
+    // the discography alike - left every one of this page's sections invisible
+    // behind a hero with an empty 36px name in it. That is the page's empty
+    // initial state, so a dead record and a broken app looked identical.
+    property string loadError: ""
+
+    // Nothing came back at all. This page draws nothing of its own: the hero is
+    // artistData, and the Popular rows, both discography sections, About and
+    // Related Artists each hide themselves when their list is empty - so unlike
+    // MixPage and PlaylistPage there is no caller-supplied title left standing
+    // to say what the user is looking at. Gated on what the server said rather
+    // than on the page being bare, so an artist still in flight, or one Tidal
+    // really has nothing filed under, is not accused of being gone.
+    readonly property bool loadFailed:
+        loadError.length > 0 && !loading && !artistData.name
+        && topTracks.length === 0 && albums.length === 0
+
+    // The first reason and not the last. The three calls fail together on an
+    // artist the API no longer answers for, and the three strings say the same
+    // thing; whichever lands first is the one worth keeping.
+    function noteLoadError(err) {
+        if (root.loadError.length === 0) root.loadError = err
+    }
+
     // Records this artist as the "playing from" source, then plays.
     function playFrom(list, i) {
         player.setPlaybackSource("artist", "" + root.artistId, root.artistData.name || "")
@@ -58,21 +85,37 @@ Rectangle {
 
     function loadArtist() {
         loading = true
+        loadError = ""
+        // Which artist these three replies are about; see MixPage.loadMix().
+        // Main.qml reuses this page item when one artist navigates to another -
+        // Related Artists is a whole row of exactly that - so a slow reply for
+        // the artist just left used to overwrite the one now on screen. It
+        // matters more now than it did: a *failed* reply for the artist the user
+        // has already left would otherwise put the panel below over a page that
+        // is loading perfectly well. A superseded request is not a failure, so
+        // it is checked first and on its own.
+        var requested = artistId
         bridge.fetchArtistDetail(artistId, function(d, err) {
-            if (!err) artistData = d
+            if (requested !== root.artistId) return
+            if (err) { root.noteLoadError(err); return }
+            root.artistData = d
         })
         bridge.fetchArtistTopTracks(artistId, function(t, err) {
-            if (!err) topTracks = t
+            if (requested !== root.artistId) return
+            if (err) { root.noteLoadError(err); return }
+            root.topTracks = t
         })
         bridge.fetchArtistAlbums(artistId, function(a, err) {
-            loading = false
+            if (requested !== root.artistId) return
+            root.loading = false
+            if (err) { root.noteLoadError(err); return }
             // Tidal's artist/albums endpoint lists every edition of a release
             // (Standard, Deluxe, Explicit, retailer-exclusives …) as separate ids,
             // so the discography shows the same cover many times. Collapse them by
             // artwork + base title (title minus trailing "(…)"/"[…]" qualifiers).
             // Different covers are kept apart, so genuinely distinct releases like
             // "Fearless" vs "Fearless (Taylor's Version)" still both show.
-            if (!err) albums = root.dedupeEditions(a)
+            root.albums = root.dedupeEditions(a)
         })
     }
 
@@ -104,9 +147,16 @@ Rectangle {
     }
 
     ScrollView {
+        objectName: "artistContent"
         anchors.fill: parent
         rightPadding: 14
         contentWidth: availableWidth
+        // A blank hero is not worth leaving behind the panel below: its Play
+        // and Follow pills would still be hit targets and tab stops over an
+        // artist that does not exist, and Follow would post a favourite for an
+        // id the API will not answer for. Hidden rather than covered, because
+        // an invisible item is neither. Same call as AlbumPage's tracklist.
+        visible: !root.loadFailed
 
         ColumnLayout {
             width: parent.width
@@ -397,6 +447,68 @@ Rectangle {
 
         // The hero's action row, which has the page above it to draw over.
         confirmAnchor: heroActions
+    }
+
+    // What the page says when there is nothing to draw and a reason for it.
+    // Persistent, not a tool tip, for the reason AlbumPage's twin gives: this
+    // *is* the page, and it is wrong for as long as the user is looking at it.
+    //
+    // Declared before the back-button bar below so the bar stays on top of it -
+    // the one control that still means something here is the way out.
+    Rectangle {
+        objectName: "artistLoadError"
+        anchors.fill: parent
+        visible: root.loadFailed
+        color: Theme.bg
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 96, 420)
+            spacing: 10
+
+            VectorIcon {
+                Layout.alignment: Qt.AlignHCenter
+                // Layout.preferredWidth/Height and not width/height: a direct
+                // child of a Layout is sized by the Layout, and a plain width
+                // is simply overwritten - which is how five of these on
+                // CollectionPage drew at VectorIcon's implicit 24.
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 40
+                name: "artist"
+                color: Theme.textDim
+                strokeWidth: 1.5
+            }
+
+            Text {
+                objectName: "artistLoadErrorText"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("This artist is not available")
+                color: Theme.textPrimary
+                font.pixelSize: 18
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            // Deliberately not the server's own string, which is a Qt network
+            // error with the whole request URL in it. What the user can act on
+            // is that the page is gone, not that a GET returned 404 - and the
+            // reason the artist is still in their library is that Tidal keeps
+            // answering for them in the favourites list and nowhere else.
+            Text {
+                objectName: "artistLoadErrorDetail"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                // One long literal and not a concatenation: lupdate extracts
+                // the source text, and two literals joined by a plus are an
+                // expression it cannot read, so the string would ship
+                // untranslatable in every language.
+                text: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
+                color: Theme.textSec
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+        }
     }
 
     Rectangle {

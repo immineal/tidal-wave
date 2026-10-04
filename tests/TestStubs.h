@@ -282,11 +282,30 @@ public:
     // QML test. That path had been discarding the server's answer since it was
     // written: a refused removal left the song in the list and said nothing, and
     // no test could have seen it.
+    //
+    // It reports m_headerError too, and used to report `no error` for every
+    // input. `playlists/<uuid>/tracks` answers 404 alongside
+    // `playlists/<uuid>` for a playlist its owner has deleted or made private,
+    // and PlaylistPage's `if (!err) tracks = t` could therefore drop that
+    // reason for ever with no fixture in the repo able to notice - the same
+    // blind spot as the two album fetches below.
+    //
+    // Held by its *own* switch rather than the header one. The two races are
+    // different requests - PlaylistPage.reloadTracks() asks only for tracks,
+    // with no header request beside it - and the header hold is counted by
+    // pendingHeaderRepliesForTest(), which two tests in tst_hero_from_id assert
+    // is exactly one per page opened. Folding this into that queue would change
+    // what those count rather than what they mean.
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
         m_lastPlaylistTracksFetched = uuid;
         ++m_playlistTracksFetches;
+        if (!cb.isCallable()) return;
         QJSEngine *e = jsEngine();
-        resolve(cb, e ? e->toScriptValue(m_playlistTracks) : emptyArray());
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_playlistTracks) : emptyArray())
+             << QJSValue(m_headerError);
+        if (m_deferTracks) { m_pendingTracks.append({cb, args}); return; }
+        cb.call(args);
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
     // coverUrl, type}. PlaylistPage's hero reads it, and `type` is the one
@@ -311,14 +330,50 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+    // The three artist fetches, which ArtistPage opens together.
+    //
+    // They answer what setArtistForTest() put there plus m_headerError, and
+    // record which artist was asked for. All three used to answer an empty
+    // payload and `no error` for every input, with no way to say otherwise - so
+    // an artist whose page the API refuses, which is what a followed artist
+    // withdrawn from the catalogue looks like, was a state no fixture in this
+    // repo could reach. ArtistPage's three `if (!err)` callbacks could drop the
+    // reason for ever without a single test going red, and the page they left
+    // behind is blank from edge to edge: the hero is artistData and every
+    // section below hides itself on an empty list.
+    //
+    // Through deliver(), like the album, mix and playlist headers: three held
+    // replies per artist page, so a reply for the artist the user has already
+    // left can be made to land after the next one.
     Q_INVOKABLE void fetchArtistDetail(qlonglong artistId, QJSValue cb) {
-        Q_UNUSED(artistId); resolve(cb, emptyObject());
+        m_lastArtistFetched = artistId;
+        m_artistFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_artistDetail) : emptyObject())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     Q_INVOKABLE void fetchArtistAlbums(qlonglong artistId, QJSValue cb) {
-        Q_UNUSED(artistId); resolve(cb, emptyArray());
+        m_lastArtistAlbumsFetched = artistId;
+        m_artistAlbumsFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_artistAlbums) : emptyArray())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     Q_INVOKABLE void fetchArtistTopTracks(qlonglong artistId, QJSValue cb) {
-        Q_UNUSED(artistId); resolve(cb, emptyArray());
+        m_lastArtistTopTracksFetched = artistId;
+        m_artistTopTracksFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_artistTopTracks) : emptyArray())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
 
     // Search answers with the real result shape: {tracks, albums, artists, playlists}.
@@ -591,8 +646,27 @@ public:
     Q_INVOKABLE void markPlaylistPlayed(const QString &uuid) { m_lastPlaylistPlayed = uuid; }
 
     // Track features
+    // The one fetch RadioPage makes. Answers setTrackRadioForTest()'s tracks
+    // plus m_headerError, and records which track the station was asked for.
+    //
+    // It used to answer an empty array and `no error` for every input - so
+    // "Tidal would not build a station from this track", which is what
+    // `tracks/<id>/radio` says for a track that has been delisted, was a state
+    // no fixture in this repo could reach, and RadioPage's `if (!err)` could
+    // drop the reason for ever. The page it left behind is a correct heading
+    // over an empty rectangle: the list is the whole of that page.
+    //
+    // Through deliver(), so a reply for the station just left can be made to
+    // land after the next one.
     Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb) {
-        Q_UNUSED(trackId); resolve(cb, emptyArray());
+        m_lastTrackRadioFetched = trackId;
+        m_trackRadioFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_trackRadio) : emptyArray())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     // NowPlayingPage reads .text and .timed off the result.
     Q_INVOKABLE void fetchLyrics(qlonglong trackId, QJSValue cb) {
@@ -809,10 +883,35 @@ public:
     Q_INVOKABLE qlonglong lastAlbumFetchedForTest() const { return m_lastAlbumFetched; }
     Q_INVOKABLE int       albumTracksFetchesForTest() const { return m_albumTracksFetches; }
     Q_INVOKABLE qlonglong lastAlbumTracksFetchedForTest() const { return m_lastAlbumTracksFetched; }
+    // What the three artist fetches answer: `artists/<id>`,
+    // `artists/<id>/toptracks` and `artists/<id>/albums`. One call for all
+    // three, because ArtistPage opens all three at once and the failure that
+    // matters takes all three down together.
+    Q_INVOKABLE void setArtistForTest(const QVariantMap &detail,
+                                      const QVariantList &topTracks,
+                                      const QVariantList &albums) {
+        m_artistDetail    = detail;
+        m_artistTopTracks = topTracks;
+        m_artistAlbums    = albums;
+    }
+    Q_INVOKABLE qlonglong lastArtistFetchedForTest() const { return m_lastArtistFetched; }
+    Q_INVOKABLE qlonglong lastArtistTopTracksFetchedForTest() const { return m_lastArtistTopTracksFetched; }
+    Q_INVOKABLE qlonglong lastArtistAlbumsFetchedForTest() const { return m_lastArtistAlbumsFetched; }
+    Q_INVOKABLE int       artistFetchesForTest() const { return m_artistFetches; }
+    // What `tracks/<id>/radio` answers.
+    Q_INVOKABLE void setTrackRadioForTest(const QVariantList &tracks) {
+        m_trackRadio = tracks;
+    }
+    Q_INVOKABLE qlonglong lastTrackRadioFetchedForTest() const { return m_lastTrackRadioFetched; }
+    Q_INVOKABLE int       trackRadioFetchesForTest() const { return m_trackRadioFetches; }
     // Non-empty makes every header fetch fail with this reason - mix, playlist
     // and album. A page that was handed a title by its caller has to keep it
     // when the fetch that would have confirmed it never answers; a page that
     // was handed nothing but an id has to say that nothing came back.
+    // ...and, since this change, the artist trio, the track radio and the
+    // playlist *tracks* half as well - every fetch the five detail pages make to
+    // find out what they are showing. A delisted record answers 404 for all of
+    // its endpoints at once, so one knob is what that looks like.
     Q_INVOKABLE void setHeaderErrorForTest(const QString &err) { m_headerError = err; }
     // Holds the two header replies instead of answering them, so a test can
     // let a second page open before the first one's reply lands. Everything
@@ -822,6 +921,19 @@ public:
     // reach. The payload is frozen when the call is made, so each held reply
     // carries what the fetch would really have answered.
     Q_INVOKABLE void setDeferHeaderRepliesForTest(bool on) { m_deferHeaders = on; }
+    // The same for the playlist *tracks* reply, on its own queue; see
+    // fetchPlaylistTracks(). Without it reloadTracks()'s staleness guard was
+    // unreachable from a test: that function captures the uuid and then gets a
+    // synchronous answer, so `requested` could never differ from the uuid on
+    // screen and the guard it has could not be probed either way.
+    Q_INVOKABLE void setDeferTrackRepliesForTest(bool on) { m_deferTracks = on; }
+    Q_INVOKABLE int  pendingTrackRepliesForTest() const { return int(m_pendingTracks.size()); }
+    Q_INVOKABLE void flushTrackRepliesForTest() {
+        QList<std::pair<QJSValue, QJSValueList>> pending;
+        pending.swap(m_pendingTracks);
+        for (auto &p : pending)
+            if (p.first.isCallable()) p.first.call(p.second);
+    }
     Q_INVOKABLE int  pendingHeaderRepliesForTest() const { return int(m_pendingHeaders.size()); }
     // In the order they were asked, which is the order that makes the first
     // reply the stale one.
@@ -848,6 +960,18 @@ public:
         m_albumTracksFetches = 0;
         m_lastAlbumFetched = 0;
         m_lastAlbumTracksFetched = 0;
+        m_artistDetail.clear();
+        m_artistTopTracks.clear();
+        m_artistAlbums.clear();
+        m_artistFetches = 0;
+        m_artistTopTracksFetches = 0;
+        m_artistAlbumsFetches = 0;
+        m_lastArtistFetched = 0;
+        m_lastArtistTopTracksFetched = 0;
+        m_lastArtistAlbumsFetched = 0;
+        m_trackRadio.clear();
+        m_trackRadioFetches = 0;
+        m_lastTrackRadioFetched = 0;
         m_headerError.clear();
         m_lastMixPageId.clear();
         m_lastPlaylistFetched.clear();
@@ -855,6 +979,8 @@ public:
         m_playlistFetches = 0;
         m_deferHeaders = false;
         m_pendingHeaders.clear();
+        m_deferTracks = false;
+        m_pendingTracks.clear();
     }
 
     Q_INVOKABLE void setTrackFavoriteForTest(qlonglong trackId, bool fav) {
@@ -1056,6 +1182,18 @@ private:
     int          m_albumTracksFetches = 0;
     qlonglong    m_lastAlbumFetched = 0;
     qlonglong    m_lastAlbumTracksFetched = 0;
+    QVariantMap  m_artistDetail;
+    QVariantList m_artistTopTracks;
+    QVariantList m_artistAlbums;
+    int          m_artistFetches = 0;
+    int          m_artistTopTracksFetches = 0;
+    int          m_artistAlbumsFetches = 0;
+    qlonglong    m_lastArtistFetched = 0;
+    qlonglong    m_lastArtistTopTracksFetched = 0;
+    qlonglong    m_lastArtistAlbumsFetched = 0;
+    QVariantList m_trackRadio;
+    int          m_trackRadioFetches = 0;
+    qlonglong    m_lastTrackRadioFetched = 0;
     QString      m_headerError;
     QString      m_lastMixPageId;
     QString      m_lastPlaylistFetched;
@@ -1063,6 +1201,8 @@ private:
     int          m_playlistFetches = 0;
     bool         m_deferHeaders = false;
     QList<std::pair<QJSValue, QJSValueList>> m_pendingHeaders;
+    bool         m_deferTracks = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingTracks;
 
     // Answer now, or hold the reply for flushHeaderRepliesForTest().
     void deliver(QJSValue &cb, const QJSValueList &args) {
