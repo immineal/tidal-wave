@@ -98,7 +98,10 @@ public:
     // The playlist itself - title, artwork, description, duration and the
     // USER/EDITORIAL type. `playlists/<uuid>/tracks` answers tracks and nothing
     // else, so a page handed only a uuid has no other way to label itself.
-    void fetchPlaylist     (const QString &uuid,  std::function<void(Playlist,QString)> cb);
+    // Also the authoritative answer to "how long is this playlist now" after a
+    // track went on or came off it; `virtual` for the test seam explained on
+    // addTrackToPlaylist below.
+    virtual void fetchPlaylist(const QString &uuid,  std::function<void(Playlist,QString)> cb);
     void fetchArtistDetail (qint64 artistId,       std::function<void(ArtistDetail,QString)> cb);
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
@@ -127,7 +130,11 @@ public:
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
 
     // Playlist management
-    void createPlaylist          (const QString &title, std::function<void(Playlist,QString)> cb);
+    // `virtual` for the same test seam as the three below: creating one is the
+    // only way a playlist row enters TidalBridge's favourites cache without the
+    // sign-in paging, so it is how a test gets a row in there to then add a
+    // track to.
+    virtual void createPlaylist  (const QString &title, std::function<void(Playlist,QString)> cb);
     // Rename a playlist and rewrite its description, in one POST back to
     // `playlists/<uuid>`. Behind the same etag dance the two item calls below
     // use: the endpoint rejects a write that is not made against the version
@@ -138,8 +145,22 @@ public:
     // the caller already knows what it asked for.
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
-    void addTrackToPlaylist      (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
-    void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
+    // ── the three calls TidalBridge's cache repair is built out of ───────────
+    //
+    // `virtual` for one reason: a test seam, the same one LibraryIndex has had
+    // all along behind its six protected virtuals. Without it nothing could
+    // reach the real TidalBridge at all - every one of its methods ends in a
+    // client call and there was no way to answer one - so the bridge's own
+    // caches were only ever tested through a QML stub that re-implemented them.
+    // That is how a playlist could read "0 tracks" after two songs went into it
+    // while the suite stayed green: the thing under test was the stub.
+    //
+    // These three, and not the whole class, because these are the three the
+    // add/remove/re-read path uses. Overriding one costs a subclass in a test
+    // and changes nothing about the shipping call, which is still the only
+    // implementation.
+    virtual void addTrackToPlaylist      (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
 
     // Track features
     void fetchTrackRadio(qint64 trackId, TracksCallback cb);

@@ -1456,6 +1456,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Could not remove the song from the playlist</source>
+        <comment>shown when removing a track from a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play now</source>
         <translation type="unfinished"></translation>
     </message>

@@ -54,6 +54,77 @@ Rectangle {
 
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
+    // ── the one number on this page with no live source ──────────────────
+    //
+    // The hero's track count is live: it reads `tracks.length`, and the removal
+    // handler below splices the array. The *length* beside it is not - it arrives
+    // once, from fetchPlaylist() when the page loads, so taking a song off left
+    // the line reading "4 tracks • 25 min" where 25 minutes was the five-track
+    // figure. The same family of staleness as the cached counts, on the one page
+    // that otherwise counts for itself.
+    //
+    // Taken from the bridge's cache rather than by asking again. The bridge
+    // re-reads this playlist's header after every accepted add or removal and has
+    // merged the answer into that cache before it says so, so the fresh figure is
+    // already in memory by the time this runs; a second request for the same URL
+    // would be the round trip the picker had removed, reintroduced one page over.
+    //
+    // The duration and nothing else. The title and the artwork have owners - the
+    // rename dialog writes the first on its own answer, and the caller that
+    // navigated here passed both - and a page that also pulled those from the
+    // cache would fight them.
+    //
+    // On playlistStatsRefreshed and deliberately not on favoritePlaylistsChanged.
+    // That one says only "the playlist list moved" and it also fires on every page
+    // of the sign-in paging and on every markPlaylistPlayed - so taking it as "my
+    // playlist changed" would mean that pressing Play on a playlist edited from
+    // another device overwrote the header this page had just fetched with the
+    // stale cached figure. It has to be this playlist, and because of a change to
+    // its contents.
+    Connections {
+        target: bridge
+        function onPlaylistStatsRefreshed(uuid) {
+            if (uuid !== root.playlistUuid || root.playlistUuid.length === 0) return
+            var cached = bridge.getUserPlaylists()
+            for (var i = 0; i < cached.length; i++) {
+                if (cached[i].uuid !== root.playlistUuid) continue
+                // Either the cache has a real length, or it says the playlist is
+                // empty - and then zero is the truth rather than a gap in the
+                // cache. A row that reports no length and some tracks is a row
+                // the sign-in paging has not filled in, and that is not grounds
+                // for blanking a figure the page was handed.
+                if (cached[i].duration > 0 || cached[i].numTracks === 0)
+                    root.playlistDuration = cached[i].duration
+
+                // ── and the one case where the tracklist itself is behind ──
+                //
+                // Every row on this page carries the shared "Add to playlist"
+                // picker, so the playlist a song can be added to includes the one
+                // being looked at. That path updates no tracklist - only the
+                // removal handler splices - so the song went in and the page did
+                // not show it, with the count beside the title one short.
+                //
+                // Asked for only when the two genuinely disagree, which is why
+                // this hangs off playlistStatsRefreshed rather than
+                // favoritePlaylistsChanged: that signal would also arrive on the
+                // sign-in paging, when the cache is behind the page for perfectly
+                // ordinary reasons, and every playlist opened in the first second
+                // of a session would re-fetch its own tracks. A removal leaves the
+                // two in agreement already - the splice has run by the time this
+                // does - so the ordinary case asks for nothing.
+                //
+                // Bounded, not a loop: the reload raises none of these signals. A
+                // playlist whose declared count the tracks endpoint cannot match -
+                // one holding a track unavailable in this region, say - therefore
+                // costs one extra request per change to it and never settles into
+                // more than that.
+                if (cached[i].numTracks !== root.tracks.length)
+                    root.reloadTracks()
+                return
+            }
+        }
+    }
+
     // What the hero's queue actions act on: every track on the playlist,
     // not the page of it that happens to be drawn. The menu can be opened
     // before fetchPlaylistTracks() has answered, so an empty page asks again.
@@ -62,6 +133,24 @@ Rectangle {
         if (root.playlistUuid.length === 0) return
         bridge.fetchPlaylistTracks(root.playlistUuid, function (t, err) {
             if (!err && t.length > 0) cb(t)
+        })
+    }
+
+    // The tracklist again, without the header request or the loading overlay.
+    //
+    // For the one case the page cannot work out for itself: a song added to this
+    // playlist from a row on this very page. The header the bridge has just read
+    // says the playlist is one longer than the list being drawn, and only the
+    // tracks endpoint can say which song it is.
+    //
+    // No `loading = true`: the page is already full and correct apart from one row,
+    // and throwing the overlay over it would make an addition look like a reload.
+    function reloadTracks() {
+        if (root.playlistUuid.length === 0) return
+        var requested = root.playlistUuid
+        bridge.fetchPlaylistTracks(requested, function (t, err) {
+            if (err || requested !== root.playlistUuid) return
+            root.tracks = t
         })
     }
 
@@ -304,6 +393,7 @@ Rectangle {
         }
 
         delegate: TrackRow {
+            id: playlistTrackRow
             width: tracksList.width - 32
             x: 16
             // Against the width this row would have with the sidebar out, so
@@ -324,8 +414,30 @@ Rectangle {
                 bridge.markPlaylistPlayed(root.playlistUuid)
                 root.playFrom(root.tracks, index)
             }
+            // The row leaves the page only on the server's word, and a refusal
+            // now says so. It used to do neither half of that out loud: the
+            // `if (ok)` was already right, so a refused removal left the song in
+            // the list - correctly - and left no word either, which is
+            // indistinguishable from a click that missed.
+            //
+            // The count beside the title needs no help here. It reads
+            // root.tracks.length, so splicing the array is what redraws it; the
+            // cached counts the sidebar, the Home row, the Collection grid and
+            // the picker draw are repaired by the bridge, which re-reads the
+            // playlist header on a successful removal.
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
+                    // Asked before the list is touched, deliberately: a successful
+                    // removal takes this delegate's row out of the model, and a
+                    // method called on a delegate that has gone is a TypeError
+                    // thrown inside the one callback that must not throw.
+                    //
+                    // Recorded honestly, because a mutation that reversed the two
+                    // lines passed: ListView destroys a delegate lazily rather than
+                    // inside the model assignment, so today the call still lands.
+                    // The order stays because it does not rely on that timing, and
+                    // the function says nothing on a success, so it costs nothing.
+                    playlistTrackRow.confirmRemovedFromPlaylist(ok === true)
                     if (ok) {
                         var arr = root.tracks.slice()
                         arr.splice(itemIndex, 1)

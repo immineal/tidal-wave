@@ -1989,6 +1989,205 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
+    // ── a playlist the user puts a track on ───────────────────────────────
+    //
+    // The fourth hand-across this split between two caches has needed, and the
+    // one a user reported: a playlist they had just put two songs into still
+    // called itself empty. The bridge re-reads the playlist's header after an
+    // accepted add and this is the far end of it.
+    //
+    // Deliberately not routed through updatePlaylist. That one returns early when
+    // the title and description already match, which after a track add they
+    // always do, so the count would never be written - see
+    // theCountSurvivesAnOtherwiseIdenticalHeader below, which is that mutation as
+    // a test.
+    void aTrackAddedMovesTheSidebarRowsCount() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        // Distinct counts across the three rows, so an assertion cannot pass by
+        // reading the wrong one.
+        lib.playlists = {mkPlaylist(QStringLiteral("p-zebra"),   QStringLiteral("Zebra Nights"), 41),
+                         mkPlaylist(QStringLiteral("p-morning"), QStringLiteral("Morning"),      0),
+                         mkPlaylist(QStringLiteral("p-dusk"),    QStringLiteral("Dusk"),         7)};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("playlist:p-morning");
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 0);
+        const int before = lib.playlistRequests;
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        Playlist fresh;
+        fresh.uuid      = QStringLiteral("p-morning");
+        fresh.title     = QStringLiteral("Morning");
+        fresh.numTracks = 2;
+        fresh.image     = QStringLiteral("mosaic-two");
+        lib.refreshPlaylistMeta(fresh);
+
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 2);
+        QCOMPARE(spy.count(), 1);
+        // The two neighbours are untouched: this writes one row, not the list.
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-zebra"))
+                     .value(QStringLiteral("trackCount")).toInt(), 41);
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-dusk"))
+                     .value(QStringLiteral("trackCount")).toInt(), 7);
+        // Handed across, not re-paged. The whole argument for the header read is
+        // that it is one request on a mutation; a sidebar that re-paged the
+        // account on top of it would give the right answer at the wrong price.
+        QCOMPARE(lib.playlistRequests, before);
+        QCOMPARE(keysOf(lib.entries()).count(key), 1);
+    }
+
+    // ...and the row must not move. This is the trap, and it has a rejected fork
+    // patch behind it.
+    //
+    // `playlists/<uuid>` carries no favourites wrapper, so Playlist::fromJson
+    // falls back to the playlist's own `created` - the *original author's* date,
+    // which on a playlist the user merely follows can be years old. Half of
+    // rebuild()'s ordering key is max(last played, addedAt), so a merge that
+    // copied it would sink a playlist to the bottom of the library for the crime
+    // of having a song dropped on it.
+    //
+    // The fixture is shaped the way renamingAPlaylistDoesNotMoveIt is, and for
+    // the same reason: real dates, so a re-stamp is visible at all, and a pinned
+    // album above so "top of the unpinned block" is not "top of the list". The
+    // row refreshed is the *newer* of the two playlists and the payload carries a
+    // 2019 date, so copying it would push that row below the other one - the only
+    // direction the mistake actually goes.
+    void aTrackAddedDoesNotMoveTheSidebarRow() {
+        PinStore pins; pins.setUserId(kUser);
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+                 QString(), QString());
+
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.playlists = {mkPlaylist(QStringLiteral("p-jan"), QStringLiteral("Morgenrot"), 10,
+                                    daysAfterJan(1)),
+                         mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Zugfahrt"), 10,
+                                    daysAfterJan(20))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList before = keysOf(lib.entries());
+        QCOMPARE(before, QStringList({QStringLiteral("album:12"),
+                                      QStringLiteral("playlist:p-feb"),
+                                      QStringLiteral("playlist:p-jan")}));
+
+        Playlist fresh;
+        fresh.uuid      = QStringLiteral("p-feb");
+        fresh.title     = QStringLiteral("Zugfahrt");
+        fresh.numTracks = 11;
+        // 2019-01-01, the shape of date the endpoint really does answer for a
+        // followed playlist.
+        fresh.addedAt   = 1546300800000LL;
+        lib.refreshPlaylistMeta(fresh);
+
+        QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-feb"))
+                     .value(QStringLiteral("trackCount")).toInt(), 11);
+        QVERIFY2(keysOf(lib.entries()) == before,
+                 qPrintable(QStringLiteral("a track added to a playlist moved its row: the "
+                                           "list was %1 and is now %2")
+                                .arg(before.join(QLatin1String(", ")),
+                                     keysOf(lib.entries()).join(QLatin1String(", ")))));
+    }
+
+    // The count moves even though the title and description are exactly what the
+    // row already carries, which is the whole reason this is not updatePlaylist:
+    // that one reads those two fields, finds them unchanged and returns before
+    // writing anything.
+    void theCountSurvivesAnOtherwiseIdenticalHeader() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("playlist:p-morning");
+        const int was = rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt();
+        QCOMPARE(was, 10);   // fillMixedLibrary's default
+
+        Playlist fresh;
+        fresh.uuid      = QStringLiteral("p-morning");
+        fresh.title     = QStringLiteral("Morning");   // byte for byte what is there
+        fresh.numTracks = 12;
+        fresh.image     = QStringLiteral("img-p-morning");  // also unchanged
+        lib.refreshPlaylistMeta(fresh);
+
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 12);
+    }
+
+    // A header read whose answer the row already agrees with is not a redraw.
+    // rebuild() collates and re-tiers every row in the library and runs on every
+    // pin, play and like; entriesChanged is what the sidebar rebuilds on.
+    void aHeaderThatSaysNothingNewRebuildsNothing() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        Playlist same;
+        same.uuid      = QStringLiteral("p-morning");
+        same.title     = QStringLiteral("Morning");
+        same.numTracks = 10;
+        same.image     = QStringLiteral("img-p-morning");
+        lib.refreshPlaylistMeta(same);
+
+        QCOMPARE(spy.count(), 0);
+    }
+
+    // A uuid this list has never carried is ignored rather than added, the same
+    // answer the rename path gives: a header carries no pin state and no
+    // acquisition date, so a row built out of one would be a guess, and the next
+    // full page brings the real row in.
+    void aHeaderForAPlaylistTheSidebarDoesNotHaveAddsNothing() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QStringList before = keysOf(lib.entries());
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+
+        Playlist fresh;
+        fresh.uuid      = QStringLiteral("p-never-seen");
+        fresh.title     = QStringLiteral("Somewhere Else");
+        fresh.numTracks = 4;
+        lib.refreshPlaylistMeta(fresh);
+
+        QCOMPARE(keysOf(lib.entries()), before);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    // Emptying a playlist takes the row back to no tracks. The add direction is
+    // the reported bug, but the remove direction left every cached count one too
+    // high and is the same single line of code.
+    void aTrackRemovedMovesTheSidebarRowsCountDown() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        lib.playlists = {mkPlaylist(QStringLiteral("p-morning"), QStringLiteral("Morning"), 1)};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        const QString key = QStringLiteral("playlist:p-morning");
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 1);
+
+        Playlist fresh;
+        fresh.uuid      = QStringLiteral("p-morning");
+        fresh.title     = QStringLiteral("Morning");
+        fresh.numTracks = 0;
+        // Tidal takes the mosaic away with the last track, so the empty string
+        // here is a fact about the playlist and not a failed parse.
+        fresh.image     = QString();
+        lib.refreshPlaylistMeta(fresh);
+
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 0);
+        QVERIFY(rowFor(lib.entries(), key).value(QStringLiteral("imageUrl")).toString().isEmpty());
+    }
+
 private:
     static constexpr qint64 kUser      = 1001;
     static constexpr qint64 kOtherUser = 2002;

@@ -930,6 +930,17 @@ int Application::run(int argc, char **argv) {
     // routed through addPlaylist: that stamps addedAt, which would lift a
     // playlist to the top of the sidebar for the crime of being renamed.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
+    // And a fourth time, for a playlist that gained or lost a track. This is the
+    // one the user reported: two songs went onto a new playlist and the picker
+    // still called it empty, because the count is cached in both of these lists
+    // and the add path wrote to neither.
+    //
+    // Deliberately not routed through updatePlaylist either. That one returns
+    // early when the title and description already match, which after a track
+    // add they always do, so the count would be dropped on the floor by the
+    // consumer rather than by the missing connect.
+    connect(m_bridge, &TidalBridge::playlistStatsChanged, m_library,
+            &LibraryIndex::refreshPlaylistMeta);
 #ifdef Q_OS_LINUX
     // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
     m_cast = new CastManager(m_client, m_player, this);

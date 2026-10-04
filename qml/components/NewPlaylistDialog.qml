@@ -147,14 +147,67 @@ Popup {
     contentItem: ColumnLayout {
         spacing: 12
 
-        Text {
-            objectName: "newPlaylistTitle"
+        // The heading and the way out, on one line.
+        //
+        // There was no visible way to leave this except the Cancel button and a
+        // click on the overlay, so a dialog that is plainly a dialog had no close
+        // affordance where every other panel in the app has one. The button is
+        // SettingsPanel's - a 26px target around a 14px glyph that lights on
+        // hover - with SearchBar's keyboard treatment on it: a Tab stop, a focus
+        // ring, Return and Space.
+        RowLayout {
             Layout.fillWidth: true
-            text: qsTr("New playlist")
-            color: Theme.textPrimary
-            font.pixelSize: 16
-            font.bold: true
-            elide: Text.ElideRight
+            spacing: 8
+
+            Text {
+                objectName: "newPlaylistTitle"
+                Layout.fillWidth: true
+                text: qsTr("New playlist")
+                color: Theme.textPrimary
+                font.pixelSize: 16
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            Item {
+                id: dialogClose
+                objectName: "newPlaylistClose"
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                Layout.alignment: Qt.AlignVCenter
+                // Disabled under a create that is still going to answer, for the
+                // same reason Cancel is and Escape is: a dialog dismissed
+                // mid-flight leaves the callback writing into a dialog the user
+                // has left, and leaves them unable to tell whether the playlist
+                // was made. `enabled: false` is what actually stops the handlers
+                // and takes the item out of the tab order; the opacity only says
+                // so, the same split PillButton documents.
+                enabled: !root.busy
+                opacity: enabled ? 1 : 0.45
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                activeFocusOnTab: enabled
+                Keys.onReturnPressed: root.close()
+                Keys.onEnterPressed:  root.close()
+                Keys.onSpacePressed:  root.close()
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusButton
+                    color: "transparent"
+                    border.width: dialogClose.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
+                VectorIcon {
+                    anchors.centerIn: parent
+                    name: "x"
+                    width: 14; height: 14; strokeWidth: 1.8
+                    color: dialogClose.activeFocus ? Theme.accent
+                         : dialogCloseHov.hovered ? Theme.textPrimary
+                         : Theme.textSec
+                }
+                HoverHandler { id: dialogCloseHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: root.close() }
+            }
         }
 
         Rectangle {

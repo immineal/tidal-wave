@@ -1456,6 +1456,11 @@
         <translation>Titel konnte nicht zu „%1“ hinzugefügt werden</translation>
     </message>
     <message>
+        <source>Could not remove the song from the playlist</source>
+        <comment>shown when removing a track from a playlist failed</comment>
+        <translation>Titel konnte nicht aus der Playlist entfernt werden</translation>
+    </message>
+    <message>
         <source>Play now</source>
         <translation>Jetzt abspielen</translation>
     </message>

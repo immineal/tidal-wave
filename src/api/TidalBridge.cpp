@@ -641,15 +641,95 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
     });
 }
 
+// ── a playlist's own numbers, after its contents changed ────────────────────
+//
+// Re-reads `playlists/<uuid>` and merges the fields a contents change moves into
+// the favourites cache here and, through playlistStatsChanged, into the
+// sidebar's separate copy. Both ends run mergePlaylistMeta(), which is where the
+// field list and the exclusions live.
+//
+// **Why a round trip and not arithmetic.** A count this already holds plus one
+// looks cheaper, and it is wrong:
+//
+//   * TidalClient::addTrackToPlaylist posts `onDuplicateFound=SKIP`. A song
+//     already on the playlist is accepted by the server and added to nothing, so
+//     a successful reply does not mean the playlist grew. The picker does not
+//     hide playlists that already hold the track, so this is one click away, and
+//     "+1 every time" would trade a count that is always 0 for a count that
+//     drifts upward and can never be reconciled from the interface.
+//   * `duration` cannot be computed at all. This method is handed a track id,
+//     not a length.
+//   * nor can `image`, which Tidal regenerates from the playlist's first tracks.
+//
+// **Why this is not the round trip that was deliberately removed.** That one was
+// per *picker open* - a read on the hot path, which left the list blank until it
+// answered, every single time the menu was used. This is per accepted *mutation*:
+// the mutation has already cost two requests (the etag, then the post), the user
+// asked for it by hand, and it runs after the callback has already reported the
+// result, so nothing on screen is waiting for it.
+void TidalBridge::refreshPlaylistMeta(const QString &uuid) {
+    if (uuid.isEmpty()) return;
+    m_client->fetchPlaylist(uuid, [this, uuid](Playlist fresh, QString err) {
+        // A reply that failed or came back about something else is not news
+        // about this playlist, and writing it in would blank the row with the
+        // parse of an error body.
+        //
+        // The first half is belt and braces rather than a live guard, and is
+        // recorded as such because a mutation proved it: TidalClient::fetchPlaylist
+        // answers `cb({}, err)` on every failure, so an error always arrives with
+        // a default-constructed Playlist whose uuid is empty, and the second half
+        // already refuses that. Removing the `err` test changes no behaviour and
+        // no fixture can be built that says otherwise - the state it guards
+        // against cannot be produced by the only implementation. It stays because
+        // "the reply failed" and "the reply is about something else" are two
+        // different reasons to walk away and a reader should not have to derive
+        // one from the other.
+        if (!err.isEmpty() || fresh.uuid != uuid) return;
+
+        bool changed = false;
+        for (int i = 0; i < m_favoritePlaylists.size(); ++i) {
+            if (m_favoritePlaylists[i].uuid != uuid) continue;
+            changed = mergePlaylistMeta(m_favoritePlaylists[i], fresh);
+            break;
+        }
+        // Gated on something having moved, as the rename path is: the four
+        // readers of this list each rebuild a grid or a row off the signal, and
+        // a playlist whose numbers the server confirmed unchanged is not a
+        // redraw.
+        if (changed) emit favoritePlaylistsChanged();
+
+        // Outside the guard, as playlistCreated and playlistUpdated are: the
+        // sidebar keeps its own list, filled from its own paging, and whether
+        // this one happens to hold the row says nothing about whether that one
+        // does.
+        emit playlistStatsChanged(fresh);
+        // And the QML-facing half of the same news, which says which playlist it
+        // was. Also outside the `changed` guard: a page that is showing this
+        // playlist wants the confirmation even when the cache had nothing to
+        // learn, because its own figure may be the stale one.
+        emit playlistStatsRefreshed(uuid);
+    });
+}
+
 void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
-    m_client->addTrackToPlaylist(uuid, trackId, [this, cb](bool success) mutable {
+    m_client->addTrackToPlaylist(uuid, trackId, [this, uuid, cb](bool success) mutable {
+        // The caller is answered first and the refresh goes out behind it. A
+        // picker that waited for the second request before saying "Added" would
+        // be slower than the one that said nothing.
         call(cb, { success });
+        // Gated on the server having accepted it. A refused post must not move
+        // a count, and re-reading the header after one would at best confirm
+        // what is already cached and at worst cost a request per failure.
+        if (success) refreshPlaylistMeta(uuid);
     });
 }
 
 void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
-    m_client->removeTrackFromPlaylist(uuid, itemIndex, [this, cb](bool success) mutable {
+    m_client->removeTrackFromPlaylist(uuid, itemIndex, [this, uuid, cb](bool success) mutable {
+        // The mirror of the add above, and the same bug: taking a song off a
+        // playlist left every cached count one too high.
         call(cb, { success });
+        if (success) refreshPlaylistMeta(uuid);
     });
 }
 

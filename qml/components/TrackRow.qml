@@ -561,6 +561,20 @@ Item {
                                "shown when adding a track to a playlist failed").arg(title))
     }
 
+    // The removal side of the same thing, and the refusal only.
+    //
+    // "Remove from this playlist" discarded its answer: on a refusal the row
+    // stayed exactly where it was and nothing was said, which reads as a click
+    // that missed - the same defect the eleven favourite callbacks had. A
+    // success needs no words, because the row leaving the list *is* the
+    // confirmation; announcing it as well would put a tool tip over the gap the
+    // row used to occupy every time anyone tidied a playlist.
+    function confirmRemovedFromPlaylist(ok) {
+        if (ok === true) return
+        root.confirm(qsTr("Could not remove the song from the playlist",
+                          "shown when removing a track from a playlist failed"))
+    }
+
     Loader {
         id: menuLoader
         active: false
@@ -878,11 +892,46 @@ Item {
                         text: qsTr("Add to playlist")
                         color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
                     }
-                    VectorIcon {
+                    // ── the way out ──────────────────────────────────────
+                    //
+                    // Was a 12px glyph in Theme.textSec with a MouseArea grown
+                    // by anchors.margins: -6, which is the pattern SettingsPanel
+                    // was moved off: the area hangs outside its own parent, the
+                    // target is 24px, and the whole thing was unreachable from
+                    // the keyboard. This is the two idioms the tree already has,
+                    // joined rather than a third one invented - SettingsPanel's
+                    // 26px target around a 14px glyph that lights on hover, and
+                    // SearchBar's clear button for the Tab stop, the focus ring
+                    // and Return/Space.
+                    Item {
+                        id: pickerClose
+                        objectName: "pickerCloseButton"
                         anchors.right: parent.right; anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        name: "x"; color: Theme.textSec; width: 12; height: 12; strokeWidth: 2
-                        MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: trackPicker.close() }
+                        width: 26
+                        height: 26
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: trackPicker.close()
+                        Keys.onEnterPressed:  trackPicker.close()
+                        Keys.onSpacePressed:  trackPicker.close()
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: "transparent"
+                            border.width: pickerClose.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: "x"
+                            width: 14; height: 14; strokeWidth: 1.8
+                            color: pickerClose.activeFocus ? Theme.accent
+                                 : pickerCloseHov.hovered ? Theme.textPrimary
+                                 : Theme.textSec
+                        }
+                        HoverHandler { id: pickerCloseHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: trackPicker.close() }
                     }
                 }
                 Rectangle { width: parent.width; height: 1; color: Theme.border }
@@ -1004,8 +1053,20 @@ Item {
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 1
-                                    Text { text: model.title; color: Theme.textPrimary; font.pixelSize: 13 }
-                                    Text { text: qsTr("%n track(s)", "", model.numTracks); color: Theme.textSec; font.pixelSize: 11 }
+                                    Text {
+                                        objectName: "pickerRowTitle"
+                                        text: model.title; color: Theme.textPrimary; font.pixelSize: 13
+                                    }
+                                    // The number the reported bug was about. Named
+                                    // so a test can read what the row actually
+                                    // draws rather than what the model holds: the
+                                    // two were the same for a cache nobody
+                                    // updated, which is how "0 tracks" survived.
+                                    Text {
+                                        objectName: "pickerRowTrackCount"
+                                        text: qsTr("%n track(s)", "", model.numTracks)
+                                        color: Theme.textSec; font.pixelSize: 11
+                                    }
                                 }
                             }
                         }

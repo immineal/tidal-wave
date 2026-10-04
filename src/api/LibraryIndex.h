@@ -125,6 +125,19 @@ public:
     // acquisition and re-stamping it would send the playlist to the top of the
     // sidebar for having been given a new name.
     void updatePlaylist(const Tidal::Playlist &p);
+    // A playlist that just gained or lost a track, carrying the header the
+    // server answered with. The counterpart of TidalBridge's own merge into its
+    // own list, and the fourth hand-across this split between the two caches has
+    // needed: without it this copy of the row would keep the old count while the
+    // bridge's copy carried the new one.
+    //
+    // Separate from updatePlaylist above because that one is about a rename and
+    // would refuse this outright - it returns early when the title and the
+    // description already match, which after a track add they do. The field list
+    // and, more importantly, the fields that must *not* be written live in
+    // mergePlaylistMeta(), which both ends call rather than each keeping its own
+    // idea of them.
+    void refreshPlaylistMeta(const Tidal::Playlist &p);
     // `kind` is album/artist/track; mixes and playlists cannot be unfavourited
     // from anywhere in the interface.
     void removeEntry(const QString &kind, const QString &id);

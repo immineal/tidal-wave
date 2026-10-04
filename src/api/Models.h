@@ -245,6 +245,63 @@ struct Playlist {
     }
 };
 
+// Writes onto `dst` the fields that a change to a playlist's *contents* moves,
+// and nothing else. Answers whether any of them actually changed, so a caller
+// can skip the redraw when the reply said what it already knew.
+//
+// This exists because adding or removing a track moves three fields at once and
+// the app keeps the playlist row in two places. `TidalBridge::m_favoritePlaylists`
+// feeds the Home row, the Collection grid and the "Add to playlist" picker;
+// `LibraryIndex::m_playlists` feeds the sidebar. Every earlier fix to that split
+// - favourites, create, rename - was written twice and had to agree twice. This
+// one is written once and both ends call it, so the two caches cannot drift on
+// these fields and the exclusions below cannot be honoured in one place and
+// forgotten in the other.
+//
+// What moves, and why each one:
+//
+//   * numTracks - the reported bug. A playlist the user had just put two songs
+//     into still read "0 tracks" in the picker.
+//   * duration  - moves by the length of the song on the same event, and no
+//     caller can supply it: the bridge is handed a track *id*.
+//   * image     - a USER playlist's cover is a mosaic Tidal regenerates from the
+//     first few tracks, so filling an empty playlist gives it artwork and
+//     emptying one takes it away.
+//   * title     - free with the same reply, and it self-heals a rename made on
+//     another device.
+//
+// What is deliberately left alone:
+//
+//   * addedAt. This is the trap, and it has a commit behind it: `playlists/<uuid>`
+//     carries no favourites wrapper, so `fromJson` falls back to the playlist's
+//     own `created` - the *original author's* date, which on a followed playlist
+//     can be years old. Half the sidebar's ordering key is max(last played,
+//     addedAt), so copying it would sink a playlist to the bottom of the library
+//     for the crime of having a song dropped on it. A rejected fork patch did
+//     exactly that by replacing the whole cached row.
+//   * uuid, which is the identity the caller matched on, and type, which cannot
+//     change.
+//   * description, which the rename path owns. A reply fetched around a rename
+//     that has been accepted locally but not yet acknowledged would put the old
+//     text back.
+inline bool mergePlaylistMeta(Playlist &dst, const Playlist &fresh) {
+    bool changed = false;
+    if (dst.numTracks != fresh.numTracks) { dst.numTracks = fresh.numTracks; changed = true; }
+    if (dst.duration  != fresh.duration)  { dst.duration  = fresh.duration;  changed = true; }
+    if (dst.image     != fresh.image)     { dst.image     = fresh.image;     changed = true; }
+    if (!fresh.title.isEmpty() && dst.title != fresh.title) {
+        // Guarded where the other three are not: a title is the one field whose
+        // empty value is never a fact about the playlist. Tidal will not hold a
+        // nameless playlist, so "" here means the reply did not parse, and
+        // blanking the label would leave an unidentifiable row. An empty
+        // numTracks, duration or image each really do describe a playlist that
+        // has just had its last track taken out.
+        dst.title = fresh.title;
+        changed = true;
+    }
+    return changed;
+}
+
 // The `mixType` constants the app acts on. Every other value is carried through
 // as whatever string the page sent; the ones seen in the captured responses the
 // tests are built from are DAILY_MIX ("My Mix 1".."My Mix 8") and ARTIST_MIX

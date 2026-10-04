@@ -710,6 +710,10 @@ Rectangle {
                 width: playlistsGrid.cellWidth
                 height: playlistsGrid.cellHeight
                 MediaCard {
+                    // The second of the three places a cached playlist count is
+                    // drawn, and so one of the three the reported bug reached.
+                    // Named so a test can read the tile rather than the model.
+                    objectName: "collectionPlaylistCard"
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(playlistsGrid.cellWidth)
                     title: modelData.title

@@ -133,6 +133,14 @@ public:
     // the account never heard about it. This is what it calls instead.
     Q_INVOKABLE void editPlaylist           (const QString &uuid, const QString &title,
                                              const QString &description, QJSValue cb);
+    // Put a track on a playlist, and bring the playlist's own numbers back into
+    // line. function(ok).
+    //
+    // The second half is what was missing. Neither of these two touched a cache,
+    // so a playlist the user had just filled went on reading "0 tracks"
+    // everywhere the number is drawn off the cache - which the picker joined when
+    // it stopped round-tripping on every open. Both now re-read the playlist's
+    // header on a success and merge it into both caches; see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist    (const QString &uuid, qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
@@ -191,12 +199,41 @@ signals:
     // one that re-stamped would jump the playlist to the top of the sidebar
     // for having been given a new name.
     void playlistUpdated(const Playlist &playlist);
+    // A playlist whose *contents* just changed, carrying the header the server
+    // answered with. Raised after a track was added or removed, and consumed by
+    // LibraryIndex::refreshPlaylistMeta at the far end.
+    //
+    // The third playlist signal rather than a reuse of playlistUpdated, because
+    // that one means something narrower and would drop this on the floor: its
+    // consumer writes `title` and `description` and returns early when both
+    // already match, which on a track add they always do. The count would never
+    // be written.
+    //
+    // Only the fields mergePlaylistMeta() copies are meant to be read off this -
+    // in particular NOT `addedAt`, which on this payload is the playlist's own
+    // creation date and not the day the user acquired it. Both ends go through
+    // that one function so neither can get the exclusion wrong on its own.
+    void playlistStatsChanged(const Playlist &playlist);
+    // The same event, named for QML: *which* playlist's numbers just moved.
+    //
+    // playlistStatsChanged above cannot serve, because a QML handler cannot be
+    // given a Tidal::Playlist. Nor can favoritePlaylistsChanged, and that one is
+    // worth spelling out because using it would be a regression rather than
+    // merely imprecise: it says only "the playlist list moved", and it also fires
+    // on every page of the sign-in paging and on every markPlaylistPlayed - so a
+    // page that took it as "my playlist changed" would, the moment the user
+    // pressed Play, overwrite the header it had just fetched with whatever the
+    // cache happened to hold. PlaylistPage reads its own length off this.
+    void playlistStatsRefreshed(const QString &uuid);
     // `kind` is "album", "artist" or "track", spelled the way LibraryIndex
     // spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
 
 private:
     void call(QJSValue &cb, const QJSValueList &args);
+    // Re-read one playlist's header and merge what a contents change moves into
+    // both caches. See the .cpp for why this is a round trip and not arithmetic.
+    void refreshPlaylistMeta(const QString &uuid);
     void sortPlaylists(QList<Playlist> &playlists) const;
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);

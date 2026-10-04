@@ -641,6 +641,31 @@ void LibraryIndex::updatePlaylist(const Playlist &p) {
     // anyway.
 }
 
+void LibraryIndex::refreshPlaylistMeta(const Playlist &p) {
+    if (p.uuid.isEmpty()) return;
+    for (int i = 0; i < m_playlists.size(); ++i) {
+        if (m_playlists[i].uuid != p.uuid) continue;
+        // mergePlaylistMeta answers false when the reply said what this already
+        // knew, and then there is nothing to redraw. rebuild() collates and
+        // re-tiers every row in the library and runs on every pin, play and
+        // like; it is not free enough to run for a confirmation.
+        if (!mergePlaylistMeta(m_playlists[i], p)) return;
+        // rebuild() and not rebuildTrackEntries(), for the same reason the
+        // rename path gives: this writes the row the library list draws, and one
+        // of the fields is the title the search matches on.
+        //
+        // The row must not *move*. rebuild() orders by max(last played,
+        // addedAt), and mergePlaylistMeta refuses to touch addedAt precisely so
+        // that it cannot - see the note on that function about the author's
+        // creation date arriving on this payload.
+        rebuild();
+        return;
+    }
+    // Not here: a playlist this list has never carried. Same answer as the
+    // rename path - inventing a row out of a header is guessing at the pin
+    // state and the acquisition date, and the next full page brings it in.
+}
+
 void LibraryIndex::addTrack(const Track &t) {
     if (t.id <= 0) return;
     for (const Track &x : m_favoriteTracks)

@@ -258,8 +258,19 @@ public:
     Q_INVOKABLE void fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
         Q_UNUSED(albumId); resolve(cb, emptyArray());
     }
+    // Answers the tracks the test put there, and not an empty array.
+    //
+    // It used to answer empty for every input, which meant PlaylistPage could be
+    // shown but its track *rows* could never be built - so "Remove from playlist",
+    // the one caller of removeTrackFromPlaylist in the app, was unreachable from a
+    // QML test. That path had been discarding the server's answer since it was
+    // written: a refused removal left the song in the list and said nothing, and
+    // no test could have seen it.
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
-        Q_UNUSED(uuid); resolve(cb, emptyArray());
+        m_lastPlaylistTracksFetched = uuid;
+        ++m_playlistTracksFetches;
+        QJSEngine *e = jsEngine();
+        resolve(cb, e ? e->toScriptValue(m_playlistTracks) : emptyArray());
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
     // coverUrl, type}. PlaylistPage's hero reads it, and `type` is the one
@@ -504,14 +515,31 @@ public:
     // goes into it" is the whole point of that row, and a stub that threw the
     // arguments away would let a version that created an empty playlist and
     // dropped the track pass.
+    //
+    // It also repairs the cached counts on a success, as the real bridge does.
+    // That is not decoration: this used to record the call and stop, so a
+    // playlist the test had just filled still answered 0 from getUserPlaylists()
+    // - and the picker that draws that number stayed green while the shipping
+    // app showed the user "0 tracks" after they had put two songs in. The stub
+    // was the only thing being tested.
     Q_INVOKABLE void addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
         m_lastAddedPlaylist = uuid;
         m_lastAddedTrackId  = trackId;
         m_addToPlaylistCalls++;
         resolveOk(cb, m_addToPlaylistOk);
+        // After the callback, and only on a success, exactly as the real one
+        // orders it: the caller is told before the second request goes out.
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
+    // The mirror, with a settable answer it did not have: `resolveOk(cb)` took
+    // the default `true`, so there was no way to express a removal the server
+    // refuses - which is the case PlaylistPage used to drop on the floor.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
-        Q_UNUSED(uuid); Q_UNUSED(itemIndex); resolveOk(cb);
+        m_lastRemovedPlaylist = uuid;
+        m_lastRemovedIndex    = itemIndex;
+        m_removeFromPlaylistCalls++;
+        resolveOk(cb, m_removeFromPlaylistOk);
+        if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
     }
 
     // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
@@ -656,6 +684,36 @@ public:
     // Whether the add succeeds. The real call answers a plain bool and every
     // caller in the app used to throw it away, so the failing branch has to be
     // reachable or "it says so when it worked" is a claim about one case only.
+    // ── what the header re-read answers, per playlist ───────────────────────
+    //
+    // The real bridge does not compute the new count: it re-reads
+    // `playlists/<uuid>` after an accepted add or removal and merges what came
+    // back, because the post sends onDuplicateFound=SKIP and so a success does
+    // not mean the playlist grew. This is that reply, and a uuid with nothing set
+    // answers nothing - which models the server confirming the row unchanged and
+    // keeps every test written before this one behaving exactly as it did.
+    //
+    // Only the four fields mergePlaylistMeta() copies are read off the map, and
+    // `addedAt` is deliberately not among them: see that function for the
+    // ordering key a header read must never overwrite.
+    Q_INVOKABLE void setPlaylistHeaderForTest(const QString &uuid, const QVariantMap &header) {
+        m_playlistHeaders.insert(uuid, header);
+    }
+    Q_INVOKABLE int  playlistHeaderReadsForTest() const { return m_playlistHeaderReads; }
+
+    Q_INVOKABLE void    setRemoveFromPlaylistOkForTest(bool ok) { m_removeFromPlaylistOk = ok; }
+    Q_INVOKABLE int     removeFromPlaylistCallsForTest() const { return m_removeFromPlaylistCalls; }
+    Q_INVOKABLE QString lastRemovedPlaylistForTest() const { return m_lastRemovedPlaylist; }
+    Q_INVOKABLE int     lastRemovedIndexForTest() const { return m_lastRemovedIndex; }
+    Q_INVOKABLE void    resetRemoveFromPlaylistForTest() {
+        m_lastRemovedPlaylist.clear();
+        m_lastRemovedIndex        = -1;
+        m_removeFromPlaylistCalls = 0;
+        m_removeFromPlaylistOk    = true;
+        m_playlistHeaders.clear();
+        m_playlistHeaderReads     = 0;
+    }
+
     Q_INVOKABLE void      setAddToPlaylistOkForTest(bool ok) { m_addToPlaylistOk = ok; }
     Q_INVOKABLE QString   lastAddedPlaylistForTest() const { return m_lastAddedPlaylist; }
     Q_INVOKABLE qlonglong lastAddedTrackIdForTest() const { return m_lastAddedTrackId; }
@@ -704,6 +762,14 @@ public:
         m_mixTracks = tracks;
     }
     // What fetchPlaylist() answers.
+    // The tracks `playlists/<uuid>/tracks` answers. Empty by default, which is
+    // exactly what this stub used to answer unconditionally.
+    Q_INVOKABLE void setPlaylistTracksForTest(const QVariantList &tracks) {
+        m_playlistTracks = tracks;
+    }
+    Q_INVOKABLE int     playlistTracksFetchesForTest() const { return m_playlistTracksFetches; }
+    Q_INVOKABLE QString lastPlaylistTracksFetchedForTest() const { return m_lastPlaylistTracksFetched; }
+
     Q_INVOKABLE void setPlaylistForTest(const QVariantMap &playlist) {
         m_playlist = playlist;
     }
@@ -735,6 +801,9 @@ public:
     Q_INVOKABLE void    resetHeadersForTest() {
         m_mixHeader.clear();
         m_mixTracks.clear();
+        m_playlistTracks.clear();
+        m_playlistTracksFetches = 0;
+        m_lastPlaylistTracksFetched.clear();
         m_playlist.clear();
         m_headerError.clear();
         m_lastMixPageId.clear();
@@ -868,10 +937,30 @@ signals:
     // installTestStubs() wires it to StubLibrary::updatePlaylist the way
     // Application::run() must wire the real pair.
     void playlistUpdated(const QVariantMap &playlist);
+    // A playlist whose contents just changed, mirroring
+    // TidalBridge::playlistStatsChanged, wired to StubLibrary::refreshPlaylistMeta.
+    // The third of these and not a reuse of playlistUpdated for the same reason
+    // the real pair are separate: updatePlaylist writes the title and returns
+    // early when it already matches, which after a track add it does.
+    void playlistStatsChanged(const QVariantMap &playlist);
+    // The QML-facing half, mirroring TidalBridge::playlistStatsRefreshed: which
+    // playlist's numbers moved. PlaylistPage reads its own length off this rather
+    // than off favoritePlaylistsChanged, which also fires on the sign-in paging
+    // and on every playlist play.
+    void playlistStatsRefreshed(const QString &uuid);
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
+    // What `playlists/<uuid>` answers after a contents change, per playlist, and
+    // how many times it was asked. The count is what pins the cost of the fix:
+    // one read per accepted mutation and none per refused one.
+    QHash<QString, QVariantMap> m_playlistHeaders;
+    int     m_playlistHeaderReads     = 0;
+    QString m_lastRemovedPlaylist;
+    int     m_lastRemovedIndex        = -1;
+    int     m_removeFromPlaylistCalls = 0;
+    bool    m_removeFromPlaylistOk    = true;
     // The removals take the row out of the *list* too, the way TidalBridge does:
     // the three searchFavorite* lists are what Collection's grids draw from, so
     // a stub that only flipped the id -> bool map above left the tile on screen
@@ -914,6 +1003,9 @@ private:
     // The canned hero replies and what was asked for them.
     QVariantMap  m_mixHeader;
     QVariantList m_mixTracks;
+    QVariantList m_playlistTracks;
+    int          m_playlistTracksFetches = 0;
+    QString      m_lastPlaylistTracksFetched;
     QVariantMap  m_playlist;
     QString      m_headerError;
     QString      m_lastMixPageId;
@@ -933,6 +1025,66 @@ private:
     // is released. Built here rather than at call time because the two effects
     // below are what the *server answering* does, and a test that holds a
     // reply is asking for exactly that gap.
+    // ── the header re-read, as TidalBridge::refreshPlaylistMeta behaves ──────
+    //
+    // Mirrors the real one down to the field list, the two signals and the guard
+    // between them. On a header that says something new the row in the favourites
+    // cache is edited in place and favoritePlaylistsChanged goes out; on one that
+    // confirms what is already there, neither. playlistStatsChanged goes out
+    // either way, outside that guard, because the sidebar keeps a different list
+    // and may well be behind this one.
+    //
+    // `addedAt` is not in the field list, and that is the point of writing it out
+    // here rather than letting the stub replace the row: the real payload carries
+    // the playlist author's creation date, and copying it would re-order the
+    // library. A stub that swapped the whole row would hide that.
+    void refreshPlaylistMeta(const QString &uuid) {
+        if (uuid.isEmpty()) return;
+        ++m_playlistHeaderReads;
+
+        // No fixture means "the header answered with exactly what is cached", not
+        // "no reply came". The real bridge raises both hand-across signals on every
+        // successful read and only gates favoritePlaylistsChanged on something
+        // having moved, so a stub that stayed silent here would be *less* capable
+        // than the shipping class - and a page relying on the confirmation would be
+        // untestable rather than broken, which is the harder failure to notice.
+        QVariantMap fresh = m_playlistHeaders.value(uuid);
+        if (!m_playlistHeaders.contains(uuid)) {
+            for (const QVariant &v : std::as_const(m_userPlaylists)) {
+                const QVariantMap m = v.toMap();
+                if (m.value(QStringLiteral("uuid")).toString() != uuid) continue;
+                fresh = m;
+                break;
+            }
+        }
+
+        bool changed = false;
+        for (int i = 0; i < m_userPlaylists.size(); ++i) {
+            QVariantMap m = m_userPlaylists.at(i).toMap();
+            if (m.value(QStringLiteral("uuid")).toString() != uuid) continue;
+            const auto take = [&](const char *key) {
+                if (!fresh.contains(QLatin1String(key))) return;
+                if (m.value(QLatin1String(key)) == fresh.value(QLatin1String(key))) return;
+                m.insert(QLatin1String(key), fresh.value(QLatin1String(key)));
+                changed = true;
+            };
+            take("numTracks");
+            take("duration");
+            take("coverUrl");
+            take("title");
+            if (changed) m_userPlaylists[i] = m;
+            break;
+        }
+        if (changed) emit favoritePlaylistsChanged();
+
+        QVariantMap payload = fresh;
+        payload.insert(QStringLiteral("uuid"), uuid);
+        emit playlistStatsChanged(payload);
+        // Outside the `changed` guard, as in the real bridge: a page showing this
+        // playlist wants the confirmation even when the cache had nothing to learn.
+        emit playlistStatsRefreshed(uuid);
+    }
+
     void deliverCreate(QJSValue &cb, const QString &title) {
         QVariantMap p;
         const QString uuid = m_createUuidSet
@@ -2035,6 +2187,42 @@ public:
         }
     }
 
+    // The one row whose contents just changed, mirroring
+    // LibraryIndex::refreshPlaylistMeta.
+    //
+    // Edits the row in place and, critically, does not move it: the real index
+    // orders on `addedAt` and the merge refuses to touch it, because the payload
+    // carries the playlist author's creation date rather than the day the user
+    // acquired it. A stub that re-inserted at the head of the unpinned block -
+    // which addPlaylist above deliberately does - would hide exactly that.
+    //
+    // A uuid this list has never held is ignored rather than added, the same
+    // answer updatePlaylist gives and for the same reason.
+    void refreshPlaylistMeta(const QVariantMap &p) {
+        const QString uuid = p.value(QStringLiteral("uuid")).toString();
+        if (uuid.isEmpty()) return;
+        for (int i = 0; i < m_entries.size(); ++i) {
+            QVariantMap m = m_entries.at(i).toMap();
+            if (m.value(QStringLiteral("kind")).toString() != QLatin1String("playlist")
+                || m.value(QStringLiteral("id")).toString() != uuid)
+                continue;
+            bool changed = false;
+            const auto take = [&](const char *from, const char *to) {
+                if (!p.contains(QLatin1String(from))) return;
+                if (m.value(QLatin1String(to)) == p.value(QLatin1String(from))) return;
+                m.insert(QLatin1String(to), p.value(QLatin1String(from)));
+                changed = true;
+            };
+            take("numTracks", "trackCount");
+            take("coverUrl",  "imageUrl");
+            take("title",     "title");
+            if (!changed) return;
+            m_entries[i] = m;
+            emit entriesChanged();
+            return;
+        }
+    }
+
     // test hooks
     Q_INVOKABLE void setEntriesForTest(const QVariantList &rows) {
         m_entries = rows;
@@ -2217,6 +2405,11 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     // real TidalBridge::playlistUpdated and LibraryIndex::updatePlaylist.
     QObject::connect(s.bridge, &StubBridge::playlistUpdated,
                      s.library, &StubLibrary::updatePlaylist);
+    // And a third time, for a playlist that gained or lost a track. This is the
+    // connection the reported bug was missing from Application::run(): the count
+    // is cached in both lists and the add path wrote to neither.
+    QObject::connect(s.bridge, &StubBridge::playlistStatsChanged,
+                     s.library, &StubLibrary::refreshPlaylistMeta);
 
     if (!engine->imageProvider(QStringLiteral("tidal")))
         engine->addImageProvider(QStringLiteral("tidal"), new StubImageProvider());
