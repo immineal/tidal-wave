@@ -1392,6 +1392,21 @@ Item {
                     // answers is another thing popping in.
                     visible: rowItem.hasArt
                     source: rowItem.hasArt ? "image://tidal/" + rowItem.modelData.imageUrl : ""
+                    // Decoded at twice the 36px box rather than at the 320 the
+                    // URL serves. This list is the whole library - 971 rows on
+                    // the owner's account - so without this every row holds a
+                    // full-size QImage for a thumbnail. Both dimensions, never
+                    // one: a width-only sourceSize reaches the provider as
+                    // 72x0, which QSize::isValid() accepts and
+                    // QImageReader::setScaledSize() turns into nothing.
+                    //
+                    // Safe against the crop, which MediaCard is not, because
+                    // every URL this list can hold is square by construction:
+                    // LibraryIndex builds all five kinds through coverUrl() or
+                    // artistPictureUrl(), both of which emit `%1/%2x%2.jpg`,
+                    // and Playlist::fromJson deliberately prefers squareImage
+                    // over the 3:2 `image` crop that 403s at square sizes.
+                    sourceSize: Qt.size(root.coverSize * 2, root.coverSize * 2)
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     opacity: status === Image.Ready ? 1 : 0

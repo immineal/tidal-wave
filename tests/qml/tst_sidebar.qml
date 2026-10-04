@@ -580,6 +580,44 @@ TestCase {
     // rail as it is beside a title, so nothing has to resize when the panel
     // slides. The rail used to draw them at 40, which is far too big to sit
     // next to a label.
+    // This list is the whole library - 971 rows on the owner's account - and
+    // the cover URL serves 320px for a 36px box, so without a sourceSize every
+    // row holds a full-size decoded QImage for a thumbnail. The same fix is
+    // already on TrackRow (tst_layout_pages) and the queue (tst_queue_panel);
+    // this was the fourth site and the last one missing it.
+    //
+    // Both dimensions, never one: a width-only sourceSize reaches the image
+    // provider as 72x0, which QSize::isValid() accepts and
+    // QImageReader::setScaledSize() then turns into nothing at all - the
+    // failure is a blank tile, not a slow one.
+    //
+    // A square decode is only safe under PreserveAspectCrop when the source is
+    // square, which is why MediaCard deliberately has no sourceSize. Here it
+    // holds by construction: LibraryIndex builds every one of the five kinds
+    // through coverUrl() or artistPictureUrl(), both of which emit
+    // "%1/%2x%2.jpg", and Playlist::fromJson prefers `squareImage` over the
+    // 3:2 `image` crop precisely because that one 403s at square sizes.
+    function test_a_library_thumbnail_decodes_at_the_size_it_is_drawn() {
+        var host = showHost(640, 700)
+        var sb = host.sidebar
+        settle(host.contentItem)
+
+        var art = findByName(sb, "libraryRowArt")
+        verify(art, "the sidebar has no library row artwork")
+        var box = coverSizeOf(sb)
+        verify(box > 0, "the cover box collapsed")
+
+        compare(art.sourceSize.width, art.sourceSize.height,
+                "a square cover was asked for at " + art.sourceSize.width
+                + "x" + art.sourceSize.height + ", which stretches it")
+        verify(art.sourceSize.width >= box,
+               "the cover decodes at " + art.sourceSize.width
+               + " for a box of " + box + ", which is softer than the screen")
+        verify(art.sourceSize.width <= 2 * box,
+               "the cover decodes at " + art.sourceSize.width
+               + " for a box of " + box + ": more than a 2x screen can show")
+    }
+
     function test_the_covers_are_one_size_in_both_shapes() {
         var host = showHost(640, 700)
         var sb = host.sidebar
