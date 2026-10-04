@@ -22,7 +22,12 @@ DRY=0
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 src_png="$repo/assets/icon.png"
 src_svg="$repo/assets/icon.svg"
+# Two names, not one. The icon *files* and the Icon= key are still "tidal-wave";
+# the desktop entry's basename is the app id, because Flatpak exports only
+# <app-id>.desktop. Conflating them is what this pair of variables prevents.
 name="tidal-wave"
+entry="io.github.immineal.TidalWave"
+legacy_entry="tidal-wave"
 
 data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 cache_home="${XDG_CACHE_HOME:-$HOME/.cache}"
@@ -87,8 +92,16 @@ echo
 # tooltip resolve the window's icon through, so it matters as much as the pixels.
 echo "2. desktop entry"
 run mkdir -p "$data_home/applications"
-run cp -f "$repo/packaging/$name.desktop" "$data_home/applications/$name.desktop"
-did "wrote $data_home/applications/$name.desktop"
+run cp -f "$repo/packaging/$entry.desktop" "$data_home/applications/$entry.desktop"
+did "wrote $data_home/applications/$entry.desktop"
+# The entry used to be called $legacy_entry.desktop. Nothing owns a file under
+# $data_home, so a copy left from before the rename would sit beside the new one
+# and show this app twice in the launcher for ever. Same sweep as the one in
+# CMakeLists.txt's install rule, for the surface that install rule never reaches.
+if [ "$legacy_entry" != "$entry" ] && [ -e "$data_home/applications/$legacy_entry.desktop" ]; then
+    echo "   superseded entry, removing: $data_home/applications/$legacy_entry.desktop"
+    run rm -f "$data_home/applications/$legacy_entry.desktop"
+fi
 echo
 
 # ── 3. the caches ────────────────────────────────────────────────────────────

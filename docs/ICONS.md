@@ -64,11 +64,11 @@ build.
 | 4 | Taskbar entry, window switcher, task-manager tooltip | the `.desktop` entry's `Icon=` key, resolved in the icon theme | surface 6 and surface 7 | ksycoca, then plasmashell's own memory | `kbuildsycoca6 --noincremental` |
 | 5 | System tray (StatusNotifierItem) | the icon *name* `tidal-wave`, resolved by the tray host | `Application::createTrayIcon()` passes a named `QIcon` | plasmashell's icon loader | picks the new file up by itself, see note B |
 | 6 | `~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg` and `128x128/apps/tidal-wave.png` | `assets/icon.svg`, `assets/icon.png` | `cmake --install`, or `tools/refresh-icons.sh` | none, these are the files everything else reads | copy them, see note A |
-| 7 | `~/.local/share/applications/tidal-wave.desktop` | `packaging/tidal-wave.desktop` | `cmake --install`, or `tools/refresh-icons.sh` | ksycoca, `mimeinfo.cache` | `kbuildsycoca6 --noincremental` and `update-desktop-database ~/.local/share/applications` |
+| 7 | `~/.local/share/applications/io.github.immineal.TidalWave.desktop` | `packaging/io.github.immineal.TidalWave.desktop` | `cmake --install`, or `tools/refresh-icons.sh` | ksycoca, `mimeinfo.cache` | `kbuildsycoca6 --noincremental` and `update-desktop-database ~/.local/share/applications` |
 | 8 | Application launcher (Kickoff), pinned panel launcher | surface 7, by name | you, when you pin it | ksycoca | `kbuildsycoca6 --noincremental` |
-| 9 | Desktop-folder launcher (`~/Schreibtisch/tidal-wave.desktop` on this machine) | its own `Icon=tidal-wave`, resolved in the theme | created by hand by dragging the entry out | the folder-view applet in plasmashell | nothing, as long as its `Icon=` is a name and not a path |
+| 9 | Desktop-folder launcher (`~/Schreibtisch/tidal-wave.desktop` on this machine) | its own `Icon=tidal-wave`, resolved in the theme | created by hand by dragging the entry out | the folder-view applet in plasmashell | nothing, as long as its `Icon=` is a name and not a path. Its *filename* is whatever it was dragged out as and nothing updates it, so a copy made before the rename keeps working and keeps its old name |
 | 10 | GTK applications and portals | surface 6 | as surface 6 | `icon-theme.cache` in the hicolor directory | `gtk-update-icon-cache -t -f ~/.local/share/icons/hicolor`, only if that file already exists |
-| 11 | `.deb` package | `assets/icon.*` and `packaging/tidal-wave.desktop` through the install rules | `cpack -G DEB` | the caches under `/usr`, rebuilt by `packaging/deb/postinst` | reinstall the package |
+| 11 | `.deb` package | `assets/icon.*` and `packaging/io.github.immineal.TidalWave.desktop` through the install rules | `cpack -G DEB` | the caches under `/usr`, rebuilt by `packaging/deb/postinst` | reinstall the package |
 | 12 | `~/.icons/...` (legacy pre-XDG location) | nothing should be here | nothing, any more | none | `tools/refresh-icons.sh` deletes any copy it finds, see note C |
 
 ### Note A: one writer, and why this is the whole bug
@@ -128,16 +128,34 @@ outside the process on Wayland.
 What the taskbar, the window switcher and the task-manager tooltip actually use
 is the `.desktop` file:
 
-1. The app calls `QApplication::setDesktopFileName("tidal-wave")`.
+1. The app calls `QApplication::setDesktopFileName("io.github.immineal.TidalWave")`.
 2. Qt's Wayland plugin passes that to `xdg_toplevel::set_app_id`.
-3. KWin matches the app id against `tidal-wave.desktop`.
+3. KWin matches the app id against `io.github.immineal.TidalWave.desktop`.
 4. That entry says `Icon=tidal-wave`.
 5. The icon theme resolves `tidal-wave` to surface 6.
 
 Every link in that chain is a name, and all five have to spell it the same way.
-`StartupWMClass=tidal-wave` in the entry does the same job for an X11 session.
-Rename the binary, the desktop entry or the icon file without the other two and
-the taskbar silently falls back to a generic placeholder.
+Note that only links 1-3 spell the app id. Links 4 and 5 spell the icon name,
+`tidal-wave`, and the two names are not the same and are not meant to be: the
+entry is named after the app id because Flatpak exports only `<app-id>.desktop`,
+while `Icon=` has to name the files in the theme, which are still
+`tidal-wave.svg` and `tidal-wave.png`. Break any link and the taskbar silently
+falls back to a generic placeholder.
+
+X11 does the same job through two properties instead, and neither is
+`WM_CLASS`-only:
+
+- `_KDE_NET_WM_DESKTOP_FILE` and `_GTK_APPLICATION_ID` carry
+  `setDesktopFileName()` verbatim, so Plasma and GTK resolve the entry on X11
+  exactly the way KWin does on Wayland.
+- `StartupWMClass=tidal-wave` is the fallback for everything else, and it tracks
+  the **binary** name, not the app id. Measured with `xprop` against a real
+  window on a headless Xvfb, `WM_CLASS` is `"tidal-wave", "Tidal Wave"`: Qt's
+  xcb plugin builds the instance half from the `argv[0]` basename (or
+  `$RESOURCE_NAME`) and the class half from `applicationName()`, and never reads
+  `desktopFileName()` for it. Moving `StartupWMClass` to the app id alongside
+  the filename would therefore have broken X11 matching, which is why it did
+  not move. `tests/firstrun/run.sh` re-measures both properties on every run.
 
 ## The caches, and the command for each
 

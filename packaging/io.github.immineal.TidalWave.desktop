@@ -1,0 +1,35 @@
+# The basename of this file is the app id, io.github.immineal.TidalWave, and it
+# has to stay that way: Flatpak exports only <app-id>.desktop, so a Flathub
+# build would silently ship no launcher under any other name. Nothing else
+# needed the rename. Three things have to keep spelling it the same way - this
+# filename, QGuiApplication::setDesktopFileName() in src/ui/Application.cpp, and
+# <launchable> in the metainfo file - or the Wayland taskbar cannot match the
+# window to its entry and falls back to a generic icon.
+#
+# Exec= and Icon= below are deliberately NOT the app id. The binary is still
+# tidal-wave and so are the two installed hicolor icon files, because neither
+# was renamed; Icon= is a theme icon *name*, and it has to match those files,
+# not this filename.
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Tidal Wave
+GenericName=Music Player
+Comment=A native desktop client for Tidal
+Exec=tidal-wave
+Icon=tidal-wave
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;streaming;tidal;audio;hifi;
+StartupNotify=true
+# Measured, not guessed, and deliberately not the app id. On X11 the window's
+# WM_CLASS is "tidal-wave", "Tidal Wave": Qt's xcb plugin builds the instance
+# half from the argv[0] basename (or $RESOURCE_NAME) and the class half from
+# QCoreApplication::applicationName(). It never reads desktopFileName() for
+# this - that string goes into _KDE_NET_WM_DESKTOP_FILE and _GTK_APPLICATION_ID
+# instead, which is how KDE and GTK find this file on X11 and which did follow
+# the rename. So StartupWMClass tracks the *binary* name, and moving it to the
+# app id would have broken X11 taskbar matching for a rename that does not
+# touch X11. Verified with xprop against the real window on a headless Xvfb;
+# tests/firstrun/run.sh re-checks it on every run.
+StartupWMClass=tidal-wave

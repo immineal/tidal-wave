@@ -21,7 +21,7 @@
   <id>io.github.immineal.TidalWave</id>
 
   <name>Tidal Wave</name>
-  <!-- Deliberately the same string as Comment= in packaging/tidal-wave.desktop
+  <!-- Deliberately the same string as Comment= in the .desktop entry beside this
        and CPACK_PACKAGE_DESCRIPTION_SUMMARY, so the three places a user can
        read a one-line description of this app cannot drift apart. -->
   <summary>A native desktop client for Tidal</summary>
@@ -41,11 +41,14 @@
   </developer>
 
   <!-- Has to name the desktop file as it is actually installed. CMakeLists.txt
-       installs packaging/tidal-wave.desktop under that basename, and the app
-       calls QGuiApplication::setDesktopFileName("tidal-wave") so the Wayland
-       compositor can match the window to it. A Flatpak build will need this
-       renamed to the app id - see docs/PACKAGING.md, it is not a free change. -->
-  <launchable type="desktop-id">tidal-wave.desktop</launchable>
+       installs packaging/io.github.immineal.TidalWave.desktop under that
+       basename, and the app calls
+       QGuiApplication::setDesktopFileName("io.github.immineal.TidalWave") so
+       the Wayland compositor can match the window to it. The entry is named
+       after the app id because Flatpak exports only <app-id>.desktop; the
+       binary and the icon are still called tidal-wave and were not renamed
+       with it. -->
+  <launchable type="desktop-id">io.github.immineal.TidalWave.desktop</launchable>
 
   <description>
     <p>

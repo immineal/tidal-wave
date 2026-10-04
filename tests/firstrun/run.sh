@@ -51,6 +51,11 @@ set -u
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
+# The desktop entry, named once. Its basename is the app id rather than the
+# binary name, because Flatpak exports only <app-id>.desktop; the binary and the
+# icon are still tidal-wave. Every check below derives what it needs from this
+# single path, so the next rename is one line here and not six.
+DESKTOP_FILE=$REPO_ROOT/packaging/io.github.immineal.TidalWave.desktop
 # TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
 # where the single-instance lock lives, kept in step with src/ui/Application.cpp.
 . "$REPO_ROOT/tests/lib/socket-name.sh"
@@ -408,12 +413,37 @@ if wanted xcb; then
                 else
                     note "xcb: no _NET_WM_ICON on the window"
                 fi
-                # StartupWMClass in the .desktop file has to match, or the running
-                # window never associates with the launcher entry.
+                # The two X11 ways a window is tied back to its launcher entry,
+                # which use two different names and are both easy to get wrong.
+                #
+                # 1. StartupWMClass has to appear in WM_CLASS. WM_CLASS here is
+                #    "tidal-wave", "Tidal Wave": Qt's xcb plugin builds the
+                #    instance half from the argv[0] basename (or $RESOURCE_NAME)
+                #    and the class half from applicationName(). It never reads
+                #    desktopFileName() for this, so StartupWMClass tracks the
+                #    *binary* name and must not be moved to the app id.
                 DESK_WMCLASS=$(grep -m1 '^StartupWMClass=' \
-                               "$REPO_ROOT/packaging/tidal-wave.desktop" 2>/dev/null | cut -d= -f2-)
-                if [ -n "$DESK_WMCLASS" ] && ! echo "$CLASS" | grep -qi "\"$DESK_WMCLASS\""; then
+                               "$DESKTOP_FILE" 2>/dev/null | cut -d= -f2-)
+                if [ -z "$DESK_WMCLASS" ]; then
+                    note "xcb: the entry has no StartupWMClass line"
+                elif echo "$CLASS" | grep -qi "\"$DESK_WMCLASS\""; then
+                    info "StartupWMClass=$DESK_WMCLASS appears in $(echo "$CLASS" | sed 's/^WM_CLASS[^=]*= //')"
+                else
                     note "xcb: StartupWMClass=$DESK_WMCLASS does not appear in $CLASS"
+                fi
+                # 2. _KDE_NET_WM_DESKTOP_FILE is where desktopFileName() lands on
+                #    X11, and it is how Plasma matches a window to its entry
+                #    without going through WM_CLASS at all. This one *does* carry
+                #    the app id, so it is the property the rename moved and the
+                #    one that catches setDesktopFileName() drifting from the
+                #    entry's basename on X11 the way the wayland-appid check does
+                #    on Wayland.
+                DESK_BASE=$(basename "$DESKTOP_FILE" .desktop)
+                KDEPROP=$(DISPLAY="$DISP" xprop -id "$WID" _KDE_NET_WM_DESKTOP_FILE 2>/dev/null)
+                if echo "$KDEPROP" | grep -q "\"$DESK_BASE\""; then
+                    info "_KDE_NET_WM_DESKTOP_FILE is $DESK_BASE, so Plasma resolves the entry on X11 too"
+                else
+                    note "xcb: _KDE_NET_WM_DESKTOP_FILE is not \"$DESK_BASE\" ($KDEPROP)"
                 fi
                 if command -v import >/dev/null 2>&1; then
                     SHOT=$BOX/logs/xcb.png
@@ -502,7 +532,7 @@ if wanted wayland; then
                     >"$BOX/logs/wl-debug.out" 2>"$BOX/logs/wl-debug.err"
                 APPID=$(grep -aoE 'xdg_toplevel#[0-9]+\.set_app_id\("[^"]*"\)' \
                         "$BOX/logs/wl-debug.err" | head -1 | sed 's/.*("\(.*\)").*/\1/')
-                WANT=$(basename "$REPO_ROOT/packaging/tidal-wave.desktop" .desktop)
+                WANT=$(basename "$DESKTOP_FILE" .desktop)
                 if [ -z "$APPID" ]; then
                     if grep -aq 'get_toplevel' "$BOX/logs/wl-debug.err"; then
                         fail wayland-appid "a toplevel was created but no app id was set, so the taskbar icon cannot resolve"
@@ -670,9 +700,9 @@ fi
 
 if wanted desktop-file; then
     head2 "desktop entry and icon name"
-    DESKTOP=$REPO_ROOT/packaging/tidal-wave.desktop
+    DESKTOP=$DESKTOP_FILE
     if [ ! -f "$DESKTOP" ]; then
-        fail desktop-file "packaging/tidal-wave.desktop is missing"
+        fail desktop-file "${DESKTOP#"$REPO_ROOT/"} is missing"
     else
         ok=1
         if command -v desktop-file-validate >/dev/null 2>&1; then

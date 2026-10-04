@@ -205,7 +205,10 @@ jobs:
         run: |
           set -euo pipefail
           id=io.github.immineal.TidalWave
-          desktop=packaging/tidal-wave.desktop
+          # Named after the app id, not after the binary: Flatpak exports only
+          # <app-id>.desktop. The check below that <launchable> matches this
+          # basename is what keeps the two from drifting apart again.
+          desktop="packaging/$id.desktop"
           template="packaging/$id.metainfo.xml.in"
 
           # --warn-kde because Plasma is where this app's tray lives and where a

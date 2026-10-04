@@ -748,7 +748,15 @@ int Application::run(int argc, char **argv) {
     // CMakeLists.txt. QSettings on Linux keys off the organization *name*, so
     // this does not touch ~/.config/TidalWave.
     QApplication::setOrganizationDomain("tidalwave.com");
-    QApplication::setDesktopFileName("tidal-wave");
+    // The basename of the installed .desktop entry, which is the app id and not
+    // the binary name. Qt hands this to the compositor as xdg_toplevel's app id
+    // on Wayland, and publishes it as _KDE_NET_WM_DESKTOP_FILE and
+    // _GTK_APPLICATION_ID on X11; each is how the taskbar finds the entry and
+    // so the icon. It must equal packaging/io.github.immineal.TidalWave.desktop
+    // and the metainfo <launchable> exactly - tests/firstrun/run.sh fails if it
+    // drifts. It is *not* what X11's WM_CLASS is built from, so the entry's
+    // StartupWMClass stays "tidal-wave"; see the comment in the .desktop file.
+    QApplication::setDesktopFileName("io.github.immineal.TidalWave");
 
     // Behind a corporate proxy every request used to hang with nothing said,
     // because Qt ignores the system proxy unless asked. This only flips a

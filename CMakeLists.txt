@@ -373,11 +373,22 @@ install(TARGETS tidal-wave
 
 # Desktop integration (Linux). The .desktop entry is what puts the app in the
 # menus, and on Wayland it is also what the taskbar matches the window against:
-# the app calls QGuiApplication::setDesktopFileName("tidal-wave"), the compositor
-# gets that as the surface's app id, and KWin looks up tidal-wave.desktop to find
-# Icon=tidal-wave. So the entry's basename, the Icon= key and the installed icon
-# file names all have to agree, and the StartupWMClass line keeps the X11 session
-# matching the same way.
+# the app calls QGuiApplication::setDesktopFileName("io.github.immineal.TidalWave"),
+# the compositor gets that as the surface's app id, and KWin looks up
+# io.github.immineal.TidalWave.desktop to find Icon=tidal-wave.
+#
+# There are two separate agreements in that chain, and they are about different
+# names. The entry's *basename* has to equal setDesktopFileName() and the
+# metainfo <launchable>; it is the app id, because Flatpak exports only
+# <app-id>.desktop and nothing else would have made us rename it. The entry's
+# Icon= key has to equal the installed icon *file* names, and both are still
+# "tidal-wave" - the icon was not renamed, and neither was the binary Exec=
+# names. Renaming the entry moved the Wayland app id and nothing else.
+#
+# StartupWMClass is the X11 half and does not follow either of them: it has to
+# equal the window's actual WM_CLASS, which the xcb plugin builds out of
+# QCoreApplication::applicationName() and never out of desktopFileName(). See
+# the header of the .desktop file for the measurement.
 #
 # These two install rules are the only writers of the hicolor icon. The app used
 # to rescale its embedded PNG over the same paths on every launch, which let an
@@ -385,8 +396,33 @@ install(TARGETS tidal-wave
 # copy only when the theme has none. Keep it that way: one writer, one source.
 # docs/ICONS.md has the full list of surfaces and their refresh commands.
 if(UNIX AND NOT APPLE)
-    install(FILES packaging/tidal-wave.desktop
+    install(FILES packaging/io.github.immineal.TidalWave.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+
+    # Sweep up the entry this one replaced. `cmake --install` is the only
+    # install path with no package manager behind it, so for anyone who
+    # installed before the rename nothing owns the old tidal-wave.desktop and
+    # nothing would ever remove it: they would get the new entry alongside the
+    # old one and see this app twice in their launcher, both working, for ever.
+    #
+    # This cannot reach a file some other package owns. CPack and the PKGBUILD
+    # both run this script into a DESTDIR staging tree that was empty a moment
+    # ago, so there is never a stale entry there to find and the whole block is
+    # a no-op for them; only a direct `cmake --install` onto a live prefix can
+    # match, which is exactly the case that needs it. A pinned launcher
+    # pointing at the old basename breaks once - accepted by the owner, and it
+    # breaks either way, since the file it points at is the one being replaced.
+    install(CODE "
+        set(_tw_appdir \"${CMAKE_INSTALL_DATADIR}/applications\")
+        if(NOT IS_ABSOLUTE \"\${_tw_appdir}\")
+            set(_tw_appdir \"\${CMAKE_INSTALL_PREFIX}/\${_tw_appdir}\")
+        endif()
+        set(_tw_legacy \"\$ENV{DESTDIR}\${_tw_appdir}/tidal-wave.desktop\")
+        if(EXISTS \"\${_tw_legacy}\")
+            message(STATUS \"Removing superseded desktop entry: \${_tw_legacy}\")
+            file(REMOVE \"\${_tw_legacy}\")
+        endif()
+    ")
     install(FILES assets/icon.png
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
         RENAME tidal-wave.png)
@@ -401,10 +437,11 @@ if(UNIX AND NOT APPLE)
     # The installed basename has to be "<component id>.metainfo.xml" exactly -
     # that is how AppStream pairs the file with the component - so the name is
     # spelled out here rather than inherited from the source file. The id is
-    # io.github.immineal.TidalWave (docs/PACKAGING.md), which is deliberately
-    # *not* the .desktop basename above; <launchable> inside the file is what
-    # ties the two together, so the Wayland matching the comment above describes
-    # is untouched by this.
+    # io.github.immineal.TidalWave (docs/PACKAGING.md), and since the rename it
+    # is also the .desktop basename above. They are still joined by <launchable>
+    # inside the file rather than by being spelled alike, and the store-metadata
+    # CI job checks that join; the matching the comment above describes is
+    # untouched by this.
     #
     # Configured rather than copied so the version in <releases> comes from
     # project(), instead of being a second copy of 0.4.0 to forget. @ONLY
