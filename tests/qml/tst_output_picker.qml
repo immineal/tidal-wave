@@ -555,6 +555,13 @@ TestCase {
     // to fall into. Downwards now, not sideways: the readout sits under the
     // speaker, so the strip to keep shut is between the glyph's bottom edge and
     // the top of the number's box.
+    //
+    // At or above, not exactly at. The bar's readout is lifted 7px over the
+    // empty bottom of the speaker's 32px tap target, so that the air between
+    // the glyph and the digits comes out the same here as in Now Playing
+    // (PlayerBar.volumeSpeakerBoxSlack, measured in section 9 below). The two
+    // boxes overlap by those 7px, and an overlap belongs to both of them -
+    // which is this promise with room to spare. Only a gap belongs to neither.
     function test_the_speaker_and_the_readout_touch() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -562,16 +569,25 @@ TestCase {
         var pct = bar.volumePercentText
         var btnBottom = btn.mapToItem(bar, 0, btn.height).y
         var pctTop    = pct.mapToItem(bar, 0, 0).y
-        verify(Math.abs(pctTop - btnBottom) <= 0.5,
+        verify(pctTop - btnBottom <= 0.5,
                "the readout starts at y=" + pctTop.toFixed(1)
                + " where the speaker ends at " + btnBottom.toFixed(1)
                + ", leaving a strip that belongs to neither")
-        // And the pointer really can cross it: a hover at the seam opens the
-        // flyout, which is the thing the arithmetic above is for. Aimed at the
-        // readout's first row of pixels, which is the padding the gap is paid
-        // out of and the half of it nothing draws into.
+        // And the far ends: the two of them between them cover every row of the
+        // stack, so there is nowhere inside it a pointer is over neither.
+        var stack = bar.volumeStack
+        var top    = btn.mapToItem(stack, 0, 0).y
+        var bottom = pct.mapToItem(stack, 0, pct.height).y
+        verify(top <= 0.5 && bottom >= stack.height - 0.5,
+               "the pair covers " + top.toFixed(1) + "-" + bottom.toFixed(1)
+               + " of a " + stack.height.toFixed(1)
+               + "px stack, so an end of it is hovered by neither of them")
+        // And the pointer really can cross the seam: a hover there opens the
+        // flyout, which is the thing the arithmetic above is for. Aimed one row
+        // under the speaker's bottom edge, which is the row that used to be the
+        // readout's first and is now 7px into it.
         verify(!bar.hoverVolumePopup.visible, "the flyout is up unprompted")
-        var seam = pct.mapToItem(host.contentItem, pct.width / 2, 1)
+        var seam = btn.mapToItem(host.contentItem, btn.width / 2, btn.height + 1)
         mouseMove(host.contentItem, seam.x, seam.y)
         tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
                   "the seam between the speaker and the readout dropped the hover")
@@ -1003,5 +1019,243 @@ TestCase {
             return collectVisibleByName(body, "outputLocalRow", []).length === 4
         }, 2000, "Now Playing's picker did not notice the hot-plug")
         picker.menu.close()
+    }
+
+    // ── 9. the number reads as the speaker's caption ─────────────────────
+    //
+    // The user, on the pair of them: "The volume icon and the percentage can go
+    // closer together. At the moment, they have pretty much the same spacing as
+    // each does to the output selector, which doesn't make sense. Like they are
+    // contextually relevant to one another, they can be closer together. and the
+    // same distance in the bar and now playing please."
+    //
+    // Two requirements, and neither one is a constant:
+    //
+    //   * the same distance in the two places. Both files already paid the gap
+    //     as the readout's own 4px topPadding, the same number in both - and the
+    //     two still did not match. The bar's speaker is an IconButton, whose box
+    //     is Math.max(size + 12, 32): a 32px tap target around an 18px glyph,
+    //     with 7px of empty box under the glyph that Now Playing's bare 18px
+    //     Item does not have. Same number, 7px more air in the bar: 19px against
+    //     12 at the level this case sets, 18 against 11 at a louder one. What the
+    //     user is comparing is the air, so that is what is compared here, and a
+    //     case that read volumeStackGap out of the two files would have agreed
+    //     with itself while the screen disagreed;
+    //
+    //   * and the pair has to read as one object, which means the air inside it
+    //     has to be clearly less than the air between it and the output picker.
+    //     In the bar that was 19px against the 25 to the picker: "pretty much the
+    //     same spacing", exactly as reported.
+    //
+    // Measured as ink, not as geometry, because every box here is bigger than
+    // what is drawn in it. A Text's box carries the font's ascent above the
+    // digits' caps - 4px at this size - and reports none of it. VectorIcon is
+    // worse: its Shape is permanently 24x24 and blown up by a Scale transform,
+    // so the glyph's own item rect is not where the paint lands either, and the
+    // ink stops short of it at both ends. Nothing short of the painted pixels
+    // answers "how far apart do these look".
+    //
+    // The volume is init()'s 0.5, so the glyph is "volume-mid" and the readout
+    // "50%" in both places: the same ink on both sides of the gap, which is what
+    // makes the two numbers comparable at all. A different level picks one of the
+    // other three speaker glyphs, whose ink is a pixel shorter or taller - and is
+    // so in both places at once, which is why the two can be held equal while
+    // neither is held to a number.
+
+    // grabImage(item) grabs the whole window and then crops it at the item's
+    // x/y - which are its coordinates in its *parent*, not in the window. Only
+    // an item parented straight to the window's content item therefore grabs
+    // itself. A volume stack six layouts deep grabs whatever sits at the same
+    // offset from the window's corner, which for the player bar is the empty air
+    // above the bar: a clean white rectangle in which every measurement below
+    // reads zero. Written the wrong way round, this case reports no ink at all
+    // rather than a wrong gap - which is only useful because the band count is
+    // checked, and is why it is.
+    //
+    // So the content item is what is grabbed - its x/y are 0, so the crop is the
+    // whole window - and everything is indexed in window coordinates.
+    //
+    // Twice, because the first grab of a freshly shown window comes back blank.
+    function windowInk(host) {
+        grabImage(host.contentItem)
+        return grabImage(host.contentItem)
+    }
+
+    // The surface a cluster sits on, sampled from a corner of the item being
+    // measured: the stack is 36 wide around an 18px glyph and the picker 32
+    // around a 20px one, so both corners are bare surface in both places.
+    function surfaceAt(img, rect) {
+        return { r: img.red(rect.x, rect.y),
+                 g: img.green(rect.x, rect.y),
+                 b: img.blue(rect.x, rect.y) }
+    }
+
+    // Paint rather than surface. A sum over the three channels: far above the
+    // noise on a flat fill, far below Theme.textDim's contrast against it.
+    function inked(img, ref, x, y) {
+        return Math.abs(img.red(x, y)   - ref.r)
+             + Math.abs(img.green(x, y) - ref.g)
+             + Math.abs(img.blue(x, y)  - ref.b) > 24
+    }
+
+    function rowHasInk(img, ref, rect, y) {
+        for (var x = rect.x; x < rect.x + rect.w; ++x)
+            if (inked(img, ref, x, y)) return true
+        return false
+    }
+
+    function colHasInk(img, ref, rect, x) {
+        for (var y = rect.y; y < rect.y + rect.h; ++y)
+            if (inked(img, ref, x, y)) return true
+        return false
+    }
+
+    // The rows of `rect` that carry paint, grouped into runs of consecutive
+    // rows. A speaker over a readout is two runs with blank rows between them,
+    // and the count is half the assertion: one run means one of the two drew
+    // nothing - the trap this file's neighbours keep falling into, where an item
+    // of the right size whose painting never happened still answers visible and
+    // still measures correctly.
+    function inkBands(img, ref, rect) {
+        var bands = []
+        var open = null
+        for (var y = rect.y; y < rect.y + rect.h; ++y) {
+            if (rowHasInk(img, ref, rect, y)) {
+                if (open === null) { open = { top: y, bottom: y }; bands.push(open) }
+                else open.bottom = y
+            } else {
+                open = null
+            }
+        }
+        return bands
+    }
+
+    function boxOf(item, root) {
+        var p = item.mapToItem(root, 0, 0)
+        return { x: Math.round(p.x), y: Math.round(p.y),
+                 w: Math.round(item.width), h: Math.round(item.height) }
+    }
+
+    // The air between the glyph's last painted row and the digits' first.
+    function speakerToReadoutInk(img, stack, root, where) {
+        var rect = boxOf(stack, root)
+        var ref = surfaceAt(img, rect)
+        var bands = inkBands(img, ref, rect)
+        compare(bands.length, 2,
+                where + ": the stack paints " + bands.length + " band(s) of ink "
+                + "in its " + rect.w + "x" + rect.h + " box, not the speaker and "
+                + "the readout - one of the two drew nothing")
+        verify(bands[0].bottom - bands[0].top >= 4 && bands[1].bottom - bands[1].top >= 4,
+               where + ": the two bands are " + (bands[0].bottom - bands[0].top + 1)
+               + " and " + (bands[1].bottom - bands[1].top + 1) + " rows of ink, "
+               + "which is too little of either to be a glyph and a number")
+        return bands[1].top - bands[0].bottom - 1
+    }
+
+    // ...and the air between the pair and the picker beside it: the rightmost
+    // painted column of the stack against the leftmost of the picker. The two
+    // boxes do not overlap, so neither can be mistaken for the other.
+    function stackToPickerInk(img, stack, picker, root, where) {
+        var sRect = boxOf(stack, root)
+        var pRect = boxOf(picker, root)
+        verify(pRect.x >= sRect.x + sRect.w,
+               where + ": the picker starts at x=" + pRect.x
+               + " inside a stack that ends at " + (sRect.x + sRect.w))
+        var sRef = surfaceAt(img, sRect)
+        var pRef = surfaceAt(img, pRect)
+        var last = -1
+        for (var x = sRect.x; x < sRect.x + sRect.w; ++x)
+            if (colHasInk(img, sRef, sRect, x)) last = x
+        var first = -1
+        for (x = pRect.x; x < pRect.x + pRect.w && first < 0; ++x)
+            if (colHasInk(img, pRef, pRect, x)) first = x
+        verify(last >= 0, where + ": the volume stack painted nothing at all")
+        verify(first >= 0, where + ": the output picker painted nothing at all")
+        return first - last - 1
+    }
+
+    // The mechanism, kept honest. The bar buys its half of this by lifting the
+    // readout over the empty bottom of the speaker's tap target, and a lift is
+    // only allowed to overlap: the moment the readout's box stops reaching the
+    // speaker's there is a strip inside the stack that neither of them hovers,
+    // and a pointer travelling from the glyph down to the number drops the
+    // flyout in it. Boxes and not ink here, because hovering is a box question.
+    function checkOneHoverTarget(speaker, readout, stack, root, where) {
+        var s = boxOf(speaker, root), r = boxOf(readout, root), t = boxOf(stack, root)
+        verify(r.y <= s.y + s.h + 0.5,
+               where + ": a " + (r.y - (s.y + s.h))
+               + "px strip opened between the speaker and the readout that "
+               + "belongs to neither of them")
+        verify(s.y <= t.y + 0.5 && r.y + r.h >= t.y + t.h - 0.5,
+               where + ": the speaker starts at " + s.y + " and the readout ends "
+               + "at " + (r.y + r.h) + " in a stack spanning " + t.y + "-"
+               + (t.y + t.h) + ", so part of the stack is hovered by neither")
+    }
+
+    function volumeInkIn(host, stack, speaker, readout, picker, where) {
+        settle(host.contentItem)
+        var img = windowInk(host)
+        // One device pixel per logical one, which is what the suite's offscreen
+        // platform gives: every figure below is read out of the grab and
+        // compared against geometry that is in logical pixels, so a scaled
+        // window would quietly double one side of that.
+        compare(img.width, Math.round(host.width),
+                where + ": the grab is " + img.width + " pixels across a "
+                + host.width + "px window, so the ink and the geometry below are "
+                + "not in the same units")
+        checkOneHoverTarget(speaker, readout, stack, host.contentItem, where)
+        return {
+            inner: speakerToReadoutInk(img, stack, host.contentItem, where),
+            outer: stackToPickerInk(img, stack, picker, host.contentItem, where)
+        }
+    }
+
+    function test_the_readout_sits_as_close_to_the_speaker_in_both_places() {
+        var barHost = showHost(playerBarHost, 1280, 200)
+        var bar = barHost.bar
+        var inBar = volumeInkIn(barHost, bar.volumeStack, bar.volumeButton,
+                                bar.volumePercentText, bar.outputButton, "the bar")
+
+        var pageHost = showHost(nowPlayingHost, 1280, 900)
+        var page = pageHost.page
+        var cluster = liveCluster(page)
+        var mute   = findByName(cluster, "nowPlayingMuteButton")
+        var pct    = findByName(cluster, "nowPlayingVolumePercent")
+        var picker = findByName(cluster, "nowPlayingOutputButton")
+        verify(mute && pct && picker,
+               "the page's live cluster is missing one of its three controls")
+        var inPage = volumeInkIn(pageHost, cluster.stack, mute, pct, picker,
+                                 "Now Playing")
+
+        // The ask, in the only terms it was made in. One pixel of slack and not
+        // more: these are two renderings of the same glyph over the same digits
+        // in the same font, so anything they differ by is a difference the user
+        // can see.
+        verify(Math.abs(inBar.inner - inPage.inner) <= 1,
+               "the speaker is " + inBar.inner + "px above the number in the bar "
+               + "and " + inPage.inner + "px above it in Now Playing. Both files "
+               + "pay the gap as the readout's topPadding and both hold the same "
+               + "number, so this is not a constant that got out of step - it is "
+               + "the 7px of empty box under the bar's IconButton glyph")
+
+        // And the pair reads as one object: half again as much air to the picker
+        // as there is inside the pair, in both places. At the 19px inside against
+        // 25px out the bar had, that is the complaint; it is 12 against 25 now.
+        verify(inBar.inner * 1.5 <= inBar.outer,
+               "the bar puts " + inBar.inner + "px between the speaker and the "
+               + "number and only " + inBar.outer + "px between the pair and the "
+               + "output picker, so the three read as three separate controls")
+        verify(inPage.inner * 1.5 <= inPage.outer,
+               "Now Playing puts " + inPage.inner + "px between the speaker and "
+               + "the number and only " + inPage.outer + "px between the pair and "
+               + "the output picker")
+
+        // Not nothing, either: the two are a glyph and its caption, not one
+        // smudge. Anything that collapsed the gap outright would satisfy both
+        // of the cases above.
+        verify(inBar.inner >= 4 && inPage.inner >= 4,
+               "the speaker and the number are " + inBar.inner + "px apart in the "
+               + "bar and " + inPage.inner + "px apart in Now Playing, which is "
+               + "close enough to be touching")
     }
 }

@@ -72,6 +72,31 @@ Rectangle {
     // reads as a caption under a glyph where 8 reads as two separate things.
     readonly property int volumeStackGap: 4
 
+    // The bar's speaker is an IconButton, and IconButton's box is
+    // `Math.max(size + 12, 32)`: a 32px tap target around an 18px glyph, so
+    // 7px of that box below the glyph is empty. Now Playing's speaker is a bare
+    // 18px Item and has no such strip - so the *same* volumeStackGap drew 7px
+    // more air between the glyph and the digits here than it did there, at every
+    // level and in every one of the four speaker glyphs: 18px against 11 with
+    // the high glyph, 19 against 12 with the mid one. The user asked for the two
+    // to be "the same distance in the bar and now playing", and that distance is
+    // between the ink, not between the boxes.
+    //
+    // So the readout is lifted back over the empty strip, and given it back as
+    // bottom padding: the lift and the padding cancel, so the stack is the
+    // same 53px box it was, the flyout centred on it does not move, and neither
+    // does any control beside it. The only thing that moves is the number, 7px
+    // closer to the glyph it labels.
+    //
+    // Not a negative topPadding, and not column spacing: the readout's box
+    // still has to reach the speaker's, or there is a strip between them for a
+    // pointer to drop the flyout in. It now overlaps it by these 7px, which is
+    // that promise and then some, and it still reaches the bottom of the stack.
+    //
+    // Trusted from nowhere: tests/qml/tst_output_picker.qml measures the gap
+    // here and in Now Playing in painted pixels and requires the two to match.
+    readonly property int volumeSpeakerBoxSlack: 7
+
     // ─── Exposed for the suites ────────────────────────
     // tests/qml/tst_layout_player.qml checks the queue button stays on screen;
     // the speaker, the readout and the flyout are what tst_output_picker.qml
@@ -415,7 +440,12 @@ Rectangle {
                     objectName: "playerBarVolumePercent"
                     Layout.preferredWidth: root.volumePercentWidth
                     Layout.alignment: Qt.AlignHCenter
+                    // Up over the empty bottom of the speaker's tap target, and
+                    // the same amount back on as padding so nothing but this
+                    // number moves. See volumeSpeakerBoxSlack.
+                    Layout.topMargin: -root.volumeSpeakerBoxSlack
                     topPadding: root.volumeStackGap
+                    bottomPadding: root.volumeSpeakerBoxSlack
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("%1%").arg(
                         Math.round((player.muted ? 0 : player.volume) * 100)

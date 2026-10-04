@@ -678,11 +678,15 @@ TestCase {
     }
 
     function checkStacked(s, where) {
-        // The speaker is above the readout, not beside it.
-        verify(s.ry >= s.sy + s.sh - 0.5,
-               where + ": the readout starts at y=" + s.ry.toFixed(1)
-               + " where the speaker ends at " + (s.sy + s.sh).toFixed(1)
-               + " - the two are still side by side")
+        // The speaker is above the readout, not beside it: the readout begins
+        // below the speaker's top edge and ends below its bottom one. Not "the
+        // readout begins where the speaker ends" any more - see the strip check
+        // at the end of this function for what the bar does instead and why.
+        verify(s.ry > s.sy + 0.5 && s.ry + s.rh > s.sy + s.sh + 0.5,
+               where + ": the speaker spans y " + s.sy.toFixed(1) + "-"
+               + (s.sy + s.sh).toFixed(1) + " and the readout " + s.ry.toFixed(1)
+               + "-" + (s.ry + s.rh).toFixed(1)
+               + " - the two are not one above the other")
         // ...and they are NOT beside each other: the two boxes share x.
         verify(s.rx < s.sx + s.sw && s.sx < s.rx + s.rw,
                where + ": the speaker spans x " + s.sx.toFixed(1) + "-"
@@ -693,10 +697,16 @@ TestCase {
         verify(Math.abs(sc - rc) <= 0.5,
                where + ": the speaker is centred at " + sc.toFixed(1)
                + " and the readout at " + rc.toFixed(1))
-        // Touching. The readout's box includes the padding the gap is paid out
-        // of, so "touching" is exact and not approximate: a `spacing` on the
-        // column instead would open a strip that belongs to neither.
-        verify(Math.abs(s.ry - (s.sy + s.sh)) <= 0.5,
+        // No strip between them, which is what makes the two one hover target.
+        // One-sided on purpose, and it was not always: the gap is paid inside
+        // the readout as its own top padding, so in Now Playing the two boxes
+        // meet exactly - and in the bar they now overlap, because the bar's
+        // readout is lifted over the 7px of empty box under its IconButton
+        // glyph (PlayerBar.volumeSpeakerBoxSlack) so that the two places draw
+        // the same gap. An overlap belongs to both of them, which is the whole
+        // of the promise. A gap belongs to neither, and is where a pointer on
+        // its way down from the glyph to the number drops the flyout.
+        verify(s.ry <= s.sy + s.sh + 0.5,
                where + ": there is a " + (s.ry - (s.sy + s.sh)).toFixed(1)
                + "px strip between the speaker and the readout that belongs to "
                + "neither of them")
@@ -716,15 +726,27 @@ TestCase {
         compare(Math.round(bar.volumeStack.width), 36,
                 row.tag + ": the bar's volume stack is "
                 + bar.volumeStack.width.toFixed(1) + "px wide")
-        // Exactly the two rows and no column spacing on top of them: the gap is
-        // the readout's own padding, which is already inside its height. A
-        // `spacing` of its own would be a strip neither item's hover covers,
-        // and the sum is where that shows up.
-        compare(Math.round(bar.volumeStack.height),
-                Math.round(bar.volumeButton.height + bar.volumePercentText.height),
-                row.tag + ": the stack is " + bar.volumeStack.height.toFixed(1)
-                + "px around a " + bar.volumeButton.height + "px speaker and a "
-                + bar.volumePercentText.height.toFixed(1) + "px readout")
+        // The two rows cover the stack from its top edge to its bottom one, so
+        // there is no strip anywhere inside it that neither of them hovers. A
+        // `spacing` on the column would open one in the middle, and that is
+        // caught by checkStacked above; this is the other two places it could
+        // open, at the ends.
+        //
+        // This was "the stack is exactly the two rows added up" and cannot be
+        // any more: the bar lifts its readout 7px over the empty bottom of the
+        // speaker's tap target and hands the 7px back as the readout's bottom
+        // padding, so the box is the same 53px it always was while the two rows
+        // now measure 60 between them. The sum was only ever a proxy for this.
+        var speakerTop = bar.volumeButton.mapToItem(bar.volumeStack, 0, 0).y
+        var readoutEnd = bar.volumePercentText.mapToItem(
+                             bar.volumeStack, 0, bar.volumePercentText.height).y
+        verify(speakerTop <= 0.5,
+               row.tag + ": the speaker starts " + speakerTop.toFixed(1)
+               + "px into the stack, so the top of it is hovered by neither row")
+        verify(readoutEnd >= bar.volumeStack.height - 0.5,
+               row.tag + ": the readout ends at " + readoutEnd.toFixed(1)
+               + " in a " + bar.volumeStack.height.toFixed(1)
+               + "px stack, so the bottom of it is hovered by neither row")
     }
 
     function test_the_page_stacks_the_speaker_over_the_readout_data() {
@@ -842,8 +864,12 @@ TestCase {
     // each:
     //
     //   the bar      an 82px bar around a 59px left group. The stack is 53 -
-    //                a 32px IconButton, the 4px gap and a 21px readout - so the
-    //                bar has 29px of slack and the group 6.
+    //                a 32px IconButton over a 28px readout lifted 7px into the
+    //                empty bottom of it, which is 32 - 7 + 28 - so the bar has
+    //                29px of slack and the group 6. The readout is 28 and not
+    //                the old 21 because it carries the 7px of the lift back as
+    //                bottom padding, which is what leaves the box at the 53 it
+    //                has always been; see PlayerBar.volumeSpeakerBoxSlack.
     //   the page,    the transport row is 64 tall because the play button in
     //   riding       the middle of it is. The stack is 39, so the row carries it
     //                with 25px to spare and does not grow by a pixel: the
@@ -1112,6 +1138,12 @@ TestCase {
             // between them is horizontal and these two are y.
             volBottom: vol.mapToItem(bar, 0, vol.height).y,
             pctTop:    pct.mapToItem(bar, 0, 0).y,
+            // The far ends of the pair as well, because a resize is exactly
+            // when a layout could open a hole at one of them.
+            volTop:    vol.mapToItem(bar, 0, 0).y,
+            pctBottom: pct.mapToItem(bar, 0, pct.height).y,
+            stackTop:    stack.mapToItem(bar, 0, 0).y,
+            stackBottom: stack.mapToItem(bar, 0, stack.height).y,
             arrowLeft: arrow.mapToItem(bar, 0, 0).x,
             queueRight: q.mapToItem(bar, q.width, 0).x
         }
@@ -1130,10 +1162,19 @@ TestCase {
                    + " while the bar resized")
         // And the speaker and the readout stay against each other, which is
         // what makes them one hover target. Stacked, that is the readout's top
-        // edge against the speaker's bottom one.
-        verify(Math.abs(s.pctTop - s.volBottom) <= 0.5,
+        // edge at or above the speaker's bottom one. Above, here: the bar lifts
+        // its readout over the empty bottom of the speaker's tap target, and an
+        // overlap belongs to both of them. Only below is a strip that belongs to
+        // neither.
+        verify(s.pctTop - s.volBottom <= 0.5,
                where + ": a " + (s.pctTop - s.volBottom).toFixed(1)
                + "px strip opened up between the speaker and the readout")
+        // ...and the pair still reaches both ends of the stack it is in.
+        verify(s.volTop <= s.stackTop + 0.5 && s.pctBottom >= s.stackBottom - 0.5,
+               where + ": the pair spans y " + s.volTop.toFixed(1) + "-"
+               + s.pctBottom.toFixed(1) + " in a stack spanning "
+               + s.stackTop.toFixed(1) + "-" + s.stackBottom.toFixed(1)
+               + ", so part of the stack is hovered by neither of them")
         // The two controls that open a view are the ones a squeezed bar drops
         // off the end first, so they are checked at every sample and not only
         // at rest.

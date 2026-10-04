@@ -340,6 +340,20 @@ Rectangle {
     // readout's own top padding rather than as the column's spacing: the two
     // are one hover target and a dead strip between them is where a pointer on
     // its way from one to the other drops the flyout.
+    //
+    // The same 4 as the bar's, and the bar carries an extra -7/+7 lift on its
+    // readout on top of it. That is not a second opinion about this number and
+    // it is not a file that drifted: the bar's speaker is a PlayerBar.IconButton
+    // with a 32px tap target around the 18px glyph, and 7px of that box below
+    // the glyph is empty, where the speaker below is a bare 18px Item with
+    // nothing to spare. With the same 4 in both files the bar drew 7px more air
+    // between the glyph and the digits than this does - 18px against the 11 here
+    // with the high glyph - which is what the user saw. The level picks one of
+    // four speaker glyphs and they differ by a pixel of ink, but they differ by
+    // it equally in both places. Do not "tidy" the bar's lift away to make the
+    // two files match - they already match, and the lift is what makes the two
+    // *renderings* match. tests/qml/tst_output_picker.qml measures both, in
+    // painted pixels, and requires them to come out within a pixel.
     readonly property int volumeStackGap:        4
     // As wide as the wider of the two it holds, which is the readout. The
     // speaker is centred in it, and so is the flyout above it.
