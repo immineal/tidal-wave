@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QTemporaryFile>
+#include "DashFetcher.h"
 #include <QStandardPaths>
 #include <QSettings>
 #include <QTimer>
@@ -54,6 +55,7 @@ Downloader::~Downloader() {
     // Tear down cleanly so app-quit leaves no orphaned ffmpeg processes or temp files.
     for (DownloadJob *job : m_jobs) {
         if (job->reply)  { job->reply->disconnect();  job->reply->abort(); job->reply->deleteLater(); }
+        delete job->dash;   // aborts whatever segments were still coming
         if (job->ffmpeg) { job->ffmpeg->disconnect(); if (job->ffmpeg->state() != QProcess::NotRunning) job->ffmpeg->kill(); job->ffmpeg->deleteLater(); }
         if (!job->audioTempPath.isEmpty()) QFile::remove(job->audioTempPath);
         if (!job->coverTempPath.isEmpty()) QFile::remove(job->coverTempPath);
@@ -165,7 +167,6 @@ void Downloader::startManifest(DownloadJob *job) {
 
 void Downloader::handleBts(DownloadJob *job, const QString &url) {
     const qlonglong id = job->id;
-    job->isMpd = false;
     job->reply = m_client->fetchRaw(QUrl(url), [this, id](QByteArray data, QString err) {
         DownloadJob *job = m_jobs.value(id, nullptr);
         if (!job) return;
@@ -187,14 +188,46 @@ void Downloader::handleBts(DownloadJob *job, const QString &url) {
 }
 
 void Downloader::handleMpd(DownloadJob *job, const QString &mpdXml) {
-    job->isMpd = true;
-    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
-    tmp.setAutoRemove(false);
-    if (!tmp.open()) { finish(job, tr("Could not save the playback details to a temporary file. "
-                                    "Check that there is free disk space.")); return; }
-    tmp.write(mpdXml.toUtf8()); tmp.flush(); tmp.close();
-    job->audioTempPath = tmp.fileName();
-    fetchCoverThenConvert(job);
+    // Writing the manifest out and letting ffmpeg pull the segments needs
+    // ffmpeg's DASH demuxer, which is only built when libxml2 is present. Where
+    // it is not — Homebrew's ffmpeg, and anything linking the libavformat the Qt
+    // installer bundles — every lossless download died on "Invalid data found
+    // when processing input". Joining the segments here hands ffmpeg an ordinary
+    // fragmented MP4 instead, which every build reads. See DashFetcher.h.
+    const qlonglong id = job->id;
+
+    auto *fetcher = new DashFetcher(m_client, mpdXml);
+    if (!fetcher->isValid() || !fetcher->openedTempFile()) {
+        const bool manifestWasReadable = fetcher->isValid();
+        delete fetcher;
+        finish(job, manifestWasReadable
+            ? tr("Could not save the audio to a temporary file. "
+                 "Check that there is free disk space.")
+            : tr("Could not read the lossless stream details for this track."));
+        return;
+    }
+    job->dash = fetcher;
+    fetcher->start([this, id, fetcher](QTemporaryFile *file, const QString &dashErr) {
+        // The fetcher is reporting from inside its own callback, so it cannot be
+        // deleted here; one event loop turn later it has nothing in flight left.
+        QTimer::singleShot(0, this, [fetcher] { delete fetcher; });
+        DownloadJob *job = m_jobs.value(id, nullptr);
+        if (job && job->dash == fetcher) job->dash = nullptr;
+        if (!job) {                 // cancelled while segments were in flight
+            if (file) { file->remove(); delete file; }
+            return;
+        }
+        if (!file) {
+            finish(job, dashErr.isEmpty()
+                ? tr("Could not download the audio for this track. No data came back.")
+                : tr("Could not download the audio for this track. %1").arg(dashErr));
+            return;
+        }
+        // Keep the bytes and drop the handle: finish() removes the path.
+        job->audioTempPath = file->fileName();
+        delete file;
+        fetchCoverThenConvert(job);
+    });
 }
 
 void Downloader::fetchCoverThenConvert(DownloadJob *job) {
@@ -229,11 +262,9 @@ QStringList Downloader::ffmpegArgs(const DownloadJob *job, bool flacForceEncode)
 
     QStringList a;
     a << QStringLiteral("-y") << QStringLiteral("-nostdin");
-    // DASH input pulls remote segments — CLI ffmpeg needs the protocol whitelist
-    // (must precede -i) or it refuses http/https and produces an empty file.
-    if (job->isMpd)
-        a << QStringLiteral("-protocol_whitelist")
-          << QStringLiteral("file,crypto,data,http,https,tcp,tls");
+    // No -protocol_whitelist any more: the input is always a local file whose
+    // bytes are already here, DASH included, so ffmpeg has nothing remote to
+    // fetch and no manifest to demux.
     a << QStringLiteral("-i") << job->audioTempPath;
     if (haveCover)
         a << QStringLiteral("-i") << job->coverTempPath;
@@ -329,6 +360,7 @@ void Downloader::finish(DownloadJob *job, const QString &err) {
     m_jobs.remove(id);
 
     if (job->reply)  { job->reply->disconnect();  job->reply->abort(); job->reply->deleteLater(); job->reply = nullptr; }
+    if (job->dash)   { DashFetcher *d = job->dash; job->dash = nullptr; QTimer::singleShot(0, this, [d] { delete d; }); }
     if (job->ffmpeg) { job->ffmpeg->disconnect(); if (job->ffmpeg->state() != QProcess::NotRunning) job->ffmpeg->kill(); job->ffmpeg->deleteLater(); job->ffmpeg = nullptr; }
     if (!job->audioTempPath.isEmpty()) QFile::remove(job->audioTempPath);
     if (!job->coverTempPath.isEmpty()) QFile::remove(job->coverTempPath);

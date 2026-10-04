@@ -404,6 +404,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Could not read the lossless stream details for this track.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -802,6 +806,10 @@
     </message>
     <message>
         <source>Could not save the audio to a temporary file. Check that there is free disk space.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not read the lossless stream details for this track.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

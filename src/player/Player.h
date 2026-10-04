@@ -14,6 +14,7 @@
 
 class QNetworkReply;
 class QMediaDevices;
+class DashFetcher;
 class QTimer;
 class CastSession;
 class Prefs;
@@ -391,8 +392,14 @@ private:
     qint64               m_castPosition  = 0;   // ms
     qint64               m_castDuration  = 0;   // ms
     bool                 m_castPlaying   = false;
+    // The audio for the current track, always a plain .mp4 whichever manifest
+    // it came from: BTS hands over one URL, DASH is joined out of its segments
+    // by DashFetcher. It has not been a .mpd since the Qt installer's ffmpeg
+    // turned out to have no DASH demuxer; the name stayed.
     QTemporaryFile      *m_mpdTempFile    = nullptr;
     QNetworkReply       *m_activeDownload = nullptr;
+    // Joining the current track's DASH segments (lossless); see DashFetcher.h.
+    DashFetcher         *m_dash           = nullptr;
 
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;
@@ -400,4 +407,5 @@ private:
     QString              m_preloadQuality;
     QTemporaryFile      *m_preloadTempFile = nullptr;
     QNetworkReply       *m_preloadDownload = nullptr;
+    DashFetcher         *m_preloadDash     = nullptr;
 };

@@ -404,6 +404,10 @@
         <translation>Die Audiodaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
+        <source>Could not read the lossless stream details for this track.</source>
+        <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
+    </message>
+    <message>
         <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
         <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
@@ -803,6 +807,10 @@
     <message>
         <source>Could not save the audio to a temporary file. Check that there is free disk space.</source>
         <translation>Die Audiodaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
+    </message>
+    <message>
+        <source>Could not read the lossless stream details for this track.</source>
+        <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
     </message>
     <message>
         <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>

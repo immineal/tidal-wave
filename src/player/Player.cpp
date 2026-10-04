@@ -9,6 +9,7 @@
 #include <QMediaDevices>
 #include <QSet>
 #include "cast/CastSession.h"
+#include "player/DashFetcher.h"
 #include "ui/Prefs.h"
 #include "player/SpectrumAnalyzer.h"
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
@@ -88,7 +89,20 @@ Player::~Player() {
     // still be pending, and position() needs the player to still be here.
     savePlaybackState();
     cancelPreload();
-    delete m_mpdTempFile;
+    delete m_dash;
+    m_dash = nullptr;
+    // remove() and not just delete: autoRemove is off on these (the file has to
+    // outlive the QTemporaryFile object while QMediaPlayer holds it open), so
+    // deleting the object closes the file and leaves the bytes. Every exit was
+    // leaving the track it was playing in /tmp - 29 whole tracks, 1.5 to 13 MB
+    // each, had piled up on this machine - and now that the DASH path lands a
+    // joined track here too rather than a few kilobytes of manifest, every
+    // lossless exit would leak one as well.
+    if (m_mpdTempFile) {
+        m_mpdTempFile->remove();
+        delete m_mpdTempFile;
+        m_mpdTempFile = nullptr;
+    }
     // Detach and drop the output here rather than leaving it to QObject's
     // child cleanup: an output destroyed after its player calls back into an
     // object that is already gone.
@@ -862,6 +876,14 @@ Track Player::trackFromMap(const QVariantMap &m) const {
     return t;
 }
 
+// A DashFetcher reports from inside its own callback, so deleting it there would
+// destroy the object whose method is still on the stack. One event loop turn
+// later is safe, and by then it has nothing in flight to abort anyway.
+static void disposeDash(DashFetcher *dash, QObject *ctx) {
+    if (!dash) return;
+    QTimer::singleShot(0, ctx, [dash] { delete dash; });
+}
+
 void Player::loadAndPlay(int index) {
     if (!m_player || index < 0 || index >= m_queue.count()) return;
 
@@ -879,6 +901,12 @@ void Player::loadAndPlay(int index) {
         m_activeDownload = nullptr;
         dl->abort();
         dl->deleteLater();
+    }
+
+    if (m_dash) {
+        auto *d = m_dash;
+        m_dash = nullptr;
+        delete d;          // aborts whatever segments were still coming
     }
 
     if (m_mpdTempFile) {
@@ -998,24 +1026,48 @@ void Player::loadAndPlay(int index) {
                     }
                 });
             } else {
-                m_mpdTempFile = new QTemporaryFile(
-                    QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
-                m_mpdTempFile->setAutoRemove(false);
-                if (m_mpdTempFile->open()) {
-                    m_mpdTempFile->write(manifest.url.toUtf8());
-                    m_mpdTempFile->flush();
-                    m_mpdTempFile->close();
-                    // Casting may have started while this fetch was in flight;
-                    // if so, hand off to the device instead of playing locally.
+                // DASH (lossless). The manifest used to be written to a .mpd and
+                // handed to QMediaPlayer, which only works where libavformat was
+                // built with libxml2 - see DashFetcher.h. Joining the segments
+                // here produces a plain fragmented MP4 instead, which needs no
+                // demuxer that might be missing.
+                auto *fetcher = new DashFetcher(m_client, manifest.url);
+                if (!fetcher->isValid() || !fetcher->openedTempFile()) {
+                    const bool manifestWasReadable = fetcher->isValid();
+                    delete fetcher;
+                    setLoading(false);
+                    if (m_restoreSkips) { skipUnplayableTrack(); return; }
+                    emit error(manifestWasReadable
+                        ? tr("Could not save the audio to a temporary file. "
+                             "Check that there is free disk space.")
+                        : tr("Could not read the lossless stream details for this track."));
+                    return;
+                }
+                m_dash = fetcher;
+                fetcher->start([this, fetcher, loadingTrackId](QTemporaryFile *file, const QString &dashErr) {
+                    // Dispose the fetcher this callback belongs to, not whatever
+                    // the member happens to hold.
+                    if (m_dash == fetcher) m_dash = nullptr;
+                    disposeDash(fetcher, this);
+                    if (m_currentTrack.id != loadingTrackId) {
+                        if (file) { file->remove(); delete file; }
+                        return;
+                    }
+                    if (!file) {
+                        setLoading(false);
+                        if (m_restoreSkips) { skipUnplayableTrack(); return; }
+                        emit error(dashErr.isEmpty()
+                            ? tr("Could not download the audio for this track. No data came back.")
+                            : tr("Could not download the audio for this track. %1").arg(dashErr));
+                        return;
+                    }
+                    m_mpdTempFile = file;
+                    // Casting may have started while the segments were in
+                    // flight; if so, hand off to the device instead.
                     if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                     beginPlayback();
-                } else {
-                    setLoading(false);
-                    emit error(tr("Could not save the playback details to a temporary file. "
-                                  "Check that there is free disk space."));
-                    return;
-                }
+                });
             }
         });
 }
@@ -1073,6 +1125,11 @@ void Player::cancelPreload() {
         dl->abort();
         dl->deleteLater();
     }
+    if (m_preloadDash) {
+        auto *d = m_preloadDash;
+        m_preloadDash = nullptr;
+        delete d;          // aborts whatever segments were still coming
+    }
     if (m_preloadTempFile) {
         m_preloadTempFile->remove();
         delete m_preloadTempFile;
@@ -1112,16 +1169,29 @@ void Player::preloadNext() {
                 }
             });
         } else {
-            auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mpd"));
-            f->setAutoRemove(false);
-            if (f->open()) {
-                f->write(manifest.url.toUtf8()); f->flush(); f->close();
-                m_preloadTempFile = f;
-                m_preloadReady    = true;
-            } else {
-                delete f;
+            // Same route as the live load above: join the DASH segments rather
+            // than leaving a manifest for a demuxer that may not be there.
+            auto *fetcher = new DashFetcher(m_client, manifest.url);
+            if (!fetcher->isValid() || !fetcher->openedTempFile()) {
+                delete fetcher;
                 m_preloadIndex = -1;
+                return;
             }
+            m_preloadDash = fetcher;
+            fetcher->start([this, fetcher, next](QTemporaryFile *file, const QString &) {
+                if (m_preloadDash == fetcher) m_preloadDash = nullptr;
+                disposeDash(fetcher, this);
+                if (m_preloadIndex != next || !file) {
+                    if (file) { file->remove(); delete file; }
+                    // Nothing is preloaded, so leave no index claiming there is:
+                    // the trigger guards on it, and a stale one would stop this
+                    // track ever being tried again.
+                    if (m_preloadIndex == next) m_preloadIndex = -1;
+                    return;
+                }
+                m_preloadTempFile = file;
+                m_preloadReady    = true;
+            });
         }
     });
 }

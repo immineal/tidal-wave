@@ -7,6 +7,8 @@
 
 class QNetworkReply;
 class QProcess;
+class QTemporaryFile;
+class DashFetcher;
 
 // Downloads a single track at the highest available quality and converts it to
 // a user-chosen format (FLAC / MP3 / WAV) with ffmpeg, embedding tags and (for
@@ -60,12 +62,16 @@ private:
         QString   srcTier;           // delivered tier: LOW/HIGH/LOSSLESS/HI_RES_LOSSLESS
         int       sampleRate = 44100;
         int       bitDepth   = 16;
-        bool      isMpd      = false;
 
-        QString   audioTempPath;     // downloaded BTS bytes (.mp4) or DASH manifest (.mpd)
+        // Always a plain .mp4 by the time ffmpeg sees it: BTS downloads one, and
+        // DASH is joined out of its segments by DashFetcher (see DashFetcher.h).
+        // It used to be able to be a .mpd manifest, which is what the
+        // -protocol_whitelist argument in ffmpegArgs() was for.
+        QString   audioTempPath;
         QString   coverTempPath;     // downloaded cover (.jpg), empty if none
 
         QNetworkReply *reply  = nullptr;  // active network fetch (audio or cover)
+        DashFetcher   *dash   = nullptr;  // active DASH segment join (lossless)
         QProcess      *ffmpeg = nullptr;  // active conversion
         bool      flacCopyTried = false;  // FLAC: tried `-c:a copy`, may retry with `-c:a flac`
     };
