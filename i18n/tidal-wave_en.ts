@@ -41,6 +41,14 @@
         <comment>verb, add album to the library</comment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>This album is not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Application</name>

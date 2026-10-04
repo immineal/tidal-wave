@@ -14,6 +14,24 @@ Rectangle {
     property bool loading: false
     property bool isSaved: false
 
+    // What the last load was told, "" when it was served. Both fetches used to
+    // read `if (!err)` and drop this, which is the whole of the bug in
+    // tests/qml/tst_album_load_error.qml: an album the API refuses - a delisted
+    // edition still sitting in the user's favourites answers 404 for both the
+    // header and the tracklist - left the page on its empty initial state with
+    // no spinner and nothing said, and a dead record looked exactly like a
+    // broken app. Same lesson as the eleven dropped refusals in a35cbe3.
+    property string loadError: ""
+
+    // Nothing came back at all. Either call failing on its own still leaves a
+    // page worth drawing - a header with no tracklist under it, or a tracklist
+    // under a hero the caller's data fills - so the panel is only for the case
+    // where the page has nothing *and* the server said why. An empty answer
+    // that carried no error is not this: an album still in flight, or one that
+    // genuinely has nothing, must not be reported as refused.
+    readonly property bool loadFailed:
+        loadError.length > 0 && !loading && tracks.length === 0 && !albumData.title
+
     // Records this album as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("album", "" + root.albumId, root.albumData.title || "")
@@ -103,12 +121,20 @@ Rectangle {
 
     function loadAlbum() {
         loading = true
+        loadError = ""
         bridge.fetchAlbum(albumId, function(album, err) {
-            if (!err) albumData = album
+            if (err) { root.loadError = err; return }
+            root.albumData = album
         })
         bridge.fetchAlbumTracks(albumId, function(t, err) {
-            loading = false
-            if (!err) tracks = t
+            root.loading = false
+            // The header's reason first where there is one: both calls fail
+            // together on a dead album, and the two strings say the same thing.
+            if (err) {
+                if (root.loadError.length === 0) root.loadError = err
+                return
+            }
+            root.tracks = t
         })
     }
 
@@ -118,6 +144,11 @@ Rectangle {
         // header does when it is actually on screen.
         objectName: "albumTracksList"
         anchors.fill: parent
+        // A blank hero is not worth leaving behind the panel below: its Play,
+        // Shuffle and Save pills would still be hit targets and tab stops over
+        // an album that does not exist. Hidden rather than covered, because an
+        // invisible item is neither.
+        visible: !root.loadFailed
         clip: true
         model: root.tracks
         boundsBehavior: Flickable.StopAtBounds
@@ -344,6 +375,65 @@ Rectangle {
         ScrollBar.vertical: ScrollBar {
             active: true
             policy: ScrollBar.AsNeeded
+        }
+    }
+
+    // What the page says when there is nothing to draw and a reason for it.
+    // Persistent, not a tool tip: the queue and favourite refusals in
+    // ContextMenu are about a press that did not land and the page behind them
+    // is still the page, whereas this *is* the page, and it is wrong for as
+    // long as the user is looking at it.
+    Rectangle {
+        objectName: "albumLoadError"
+        anchors.fill: parent
+        visible: root.loadFailed
+        color: Theme.bg
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 96, 420)
+            spacing: 10
+
+            VectorIcon {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 40
+                name: "album"
+                color: Theme.textDim
+                strokeWidth: 1.5
+            }
+
+            Text {
+                objectName: "albumLoadErrorText"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("This album is not available")
+                color: Theme.textPrimary
+                font.pixelSize: 18
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            // Deliberately not the server's own string: it is a Qt network
+            // error with the whole request URL in it. What the user can act on
+            // is that the record is gone, not that a GET returned 404 - and
+            // the reason it is still in their library is that Tidal keeps
+            // answering for it in the favourites list and nowhere else.
+            Text {
+                objectName: "albumLoadErrorDetail"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                // One long literal and not a concatenation of three: lupdate
+                // extracts the source text, and two literals joined by a plus
+                // are an expression it cannot read - the string would ship
+                // untranslatable in every language. (Said without writing the
+                // bad form out: tst_shortcuts scans this file for call sites
+                // and would count an example in a comment as one.)
+                text: qsTr("Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.")
+                color: Theme.textSec
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
         }
     }
 

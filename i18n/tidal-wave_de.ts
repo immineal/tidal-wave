@@ -41,6 +41,14 @@
         <comment>verb, add album to the library</comment>
         <translation>Speichern</translation>
     </message>
+    <message>
+        <source>This album is not available</source>
+        <translation>Dieses Album ist nicht verfügbar</translation>
+    </message>
+    <message>
+        <source>Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.</source>
+        <translation>Tidal liefert es nicht aus. Es wurde möglicherweise zurückgezogen oder ist dort, wo du bist, nicht verfügbar. Die Suche nach dem Titel findet oft eine andere Veröffentlichung davon.</translation>
+    </message>
 </context>
 <context>
     <name>Application</name>

@@ -255,8 +255,24 @@ public:
     }
 
     // Detail pages — these return maps, not lists.
+    //
+    // The two album fetches answer what setAlbumForTest() put there and report
+    // m_headerError alongside it, exactly as the mix and playlist headers above
+    // already do. They used to answer an empty album and `no error`, for every
+    // input and with no way to say otherwise - so "the server refused to serve
+    // this album" was a state no fixture in this repo could reach, and
+    // AlbumPage's two `if (!err)` callbacks could drop the reason for ever
+    // without a single test going red. Same shape as the six mutators in
+    // a35cbe3.
     Q_INVOKABLE void fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
-        Q_UNUSED(albumId); resolve(cb, emptyArray());
+        m_lastAlbumTracksFetched = albumId;
+        m_albumTracksFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_albumTracks) : emptyArray())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     // Answers the tracks the test put there, and not an empty array.
     //
@@ -286,7 +302,14 @@ public:
         deliver(cb, args);
     }
     Q_INVOKABLE void fetchAlbum(qlonglong albumId, QJSValue cb) {
-        Q_UNUSED(albumId); resolve(cb, emptyObject());
+        m_lastAlbumFetched = albumId;
+        m_albumFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(m_albumHeader) : emptyObject())
+             << QJSValue(m_headerError);
+        deliver(cb, args);
     }
     Q_INVOKABLE void fetchArtistDetail(qlonglong artistId, QJSValue cb) {
         Q_UNUSED(artistId); resolve(cb, emptyObject());
@@ -773,9 +796,23 @@ public:
     Q_INVOKABLE void setPlaylistForTest(const QVariantMap &playlist) {
         m_playlist = playlist;
     }
-    // Non-empty makes both header fetches fail with this reason. A page that
-    // was handed a title by its caller has to keep it when the fetch that would
-    // have confirmed it never answers.
+    // What the two album fetches answer: `albums/<id>` and `albums/<id>/items`.
+    Q_INVOKABLE void setAlbumForTest(const QVariantMap &album,
+                                     const QVariantList &tracks) {
+        m_albumHeader = album;
+        m_albumTracks = tracks;
+    }
+    // Mirrors the playlist pair above: how many times each half was asked, and
+    // for which album, so a page opened by id alone can be held to asking for
+    // *that* one.
+    Q_INVOKABLE int       albumFetchesForTest() const { return m_albumFetches; }
+    Q_INVOKABLE qlonglong lastAlbumFetchedForTest() const { return m_lastAlbumFetched; }
+    Q_INVOKABLE int       albumTracksFetchesForTest() const { return m_albumTracksFetches; }
+    Q_INVOKABLE qlonglong lastAlbumTracksFetchedForTest() const { return m_lastAlbumTracksFetched; }
+    // Non-empty makes every header fetch fail with this reason - mix, playlist
+    // and album. A page that was handed a title by its caller has to keep it
+    // when the fetch that would have confirmed it never answers; a page that
+    // was handed nothing but an id has to say that nothing came back.
     Q_INVOKABLE void setHeaderErrorForTest(const QString &err) { m_headerError = err; }
     // Holds the two header replies instead of answering them, so a test can
     // let a second page open before the first one's reply lands. Everything
@@ -805,6 +842,12 @@ public:
         m_playlistTracksFetches = 0;
         m_lastPlaylistTracksFetched.clear();
         m_playlist.clear();
+        m_albumHeader.clear();
+        m_albumTracks.clear();
+        m_albumFetches = 0;
+        m_albumTracksFetches = 0;
+        m_lastAlbumFetched = 0;
+        m_lastAlbumTracksFetched = 0;
         m_headerError.clear();
         m_lastMixPageId.clear();
         m_lastPlaylistFetched.clear();
@@ -1007,6 +1050,12 @@ private:
     int          m_playlistTracksFetches = 0;
     QString      m_lastPlaylistTracksFetched;
     QVariantMap  m_playlist;
+    QVariantMap  m_albumHeader;
+    QVariantList m_albumTracks;
+    int          m_albumFetches = 0;
+    int          m_albumTracksFetches = 0;
+    qlonglong    m_lastAlbumFetched = 0;
+    qlonglong    m_lastAlbumTracksFetched = 0;
     QString      m_headerError;
     QString      m_lastMixPageId;
     QString      m_lastPlaylistFetched;
