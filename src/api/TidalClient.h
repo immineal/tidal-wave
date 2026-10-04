@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QAbstractListModel>
+#include <QStringList>
 #include "TidalApi.h"
 #include "Models.h"
 
@@ -271,6 +272,30 @@ private:
     static QList<Track> parseTracks(const QJsonObject &root);
 
     static QString qualityString(AudioQuality q);
+
+public:
+    // ── which endpoint a tier's manifest comes from ──────────────────────────
+    //
+    // Public and static because they are the whole of the routing decision and
+    // tst_stream_manifest pins them without a network.
+
+    // True for the tiers that have to go to v2/trackManifests because
+    // tracks/<id>/playbackinfopostpaywall will not serve them FLAC. See the long
+    // note on fetchStreamManifest.
+    static bool usesTrackManifests(AudioQuality q);
+
+    // The `formats` the track-manifest endpoint is asked for. Repeated as a
+    // query item per entry, and the server picks the best one it is offered that
+    // the track actually has.
+    static QStringList manifestFormats(AudioQuality q);
+
+    // Reads a v2/trackManifests body into the same StreamManifest the old
+    // endpoint produced, so nothing downstream has to know which one answered.
+    // Pure. On anything that is not a full-track DASH manifest it sets *err and
+    // returns {}, rather than handing a preview or an HLS playlist to the player.
+    static StreamManifest parseTrackManifests(const QJsonObject &root, QString *err);
+
+private:
 
     TidalApi     *m_api;
     qint64        m_userId  = 0;

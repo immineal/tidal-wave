@@ -596,7 +596,145 @@ void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
     fetchStreamManifest(trackId, m_quality, std::move(cb));
 }
 
+// The delivery format Tidal names in a manifest, in the tier vocabulary the rest
+// of the app speaks: Player::audioQuality() and Downloader::srcTier both compare
+// StreamManifest::codec against these exact strings.
+static QString tierForFormat(const QString &format) {
+    if (format == QStringLiteral("FLAC_HIRES")) return QStringLiteral("HI_RES_LOSSLESS");
+    if (format == QStringLiteral("FLAC"))       return QStringLiteral("LOSSLESS");
+    if (format == QStringLiteral("AACLC"))      return QStringLiteral("HIGH");
+    if (format == QStringLiteral("HEAACV1"))    return QStringLiteral("LOW");
+    return format;
+}
+
+bool TidalClient::usesTrackManifests(AudioQuality q) {
+    return q == AudioQuality::Lossless || q == AudioQuality::HiResLossless;
+}
+
+QStringList TidalClient::manifestFormats(AudioQuality q) {
+    switch (q) {
+        case AudioQuality::Low96k:  return {QStringLiteral("HEAACV1")};
+        case AudioQuality::Low320k: return {QStringLiteral("AACLC")};
+        // FLAC alone, deliberately: the endpoint hands back the best format it is
+        // offered that the track has, so adding FLAC_HIRES here would give a
+        // 24-bit stream to the setting labelled "Lossless (16-bit)".
+        case AudioQuality::Lossless: return {QStringLiteral("FLAC")};
+        // Both, equally deliberately: FLAC_HIRES on its own falls back to AAC on
+        // a track with no hi-res master, and most tracks have none.
+        case AudioQuality::HiResLossless:
+            return {QStringLiteral("FLAC"), QStringLiteral("FLAC_HIRES")};
+    }
+    return {QStringLiteral("FLAC")};
+}
+
+StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString *err) {
+    // Cleared up front, so a caller reusing a QString cannot read a stale
+    // message as this call's failure.
+    if (err) err->clear();
+
+    const QJsonObject attrs = root["data"].toObject()["attributes"].toObject();
+
+    // There is no assetpresentation parameter on this endpoint - the old one had
+    // it, and errored rather than answer with a clip. Here the body says what it
+    // gave, so refusing a preview is this function's job.
+    const QString presentation = attrs["trackPresentation"].toString();
+    if (presentation != QStringLiteral("FULL")) {
+        if (err) *err = tr("Tidal returned only a preview of this track, not the whole track.");
+        return {};
+    }
+
+    // uriScheme=DATA, so the manifest arrives inline as data:<mime>;base64,<...>
+    const QString uri   = attrs["uri"].toString();
+    const int     comma = uri.indexOf(QLatin1Char(','));
+    const QString mime  = uri.startsWith(QLatin1String("data:")) && comma > 5
+                        ? uri.mid(5, comma - 5).section(QLatin1Char(';'), 0, 0)
+                        : QString();
+    const QByteArray body = mime.isEmpty() ? QByteArray()
+                                           : QByteArray::fromBase64(uri.mid(comma + 1).toUtf8());
+    if (mime != QStringLiteral("application/dash+xml") || !body.contains("<MPD")) {
+        if (err) *err = tr("Tidal did not return a playable manifest for this track.");
+        return {};
+    }
+
+    StreamManifest m;
+    m.type     = StreamManifest::MPD;
+    m.mimeType = QStringLiteral("application/dash+xml");
+    m.url      = QString::fromUtf8(body);
+    m.replayGainTrack = attrs["trackAudioNormalizationData"].toObject()["replayGain"].toDouble();
+    m.replayGainAlbum = attrs["albumAudioNormalizationData"].toObject()["replayGain"].toDouble();
+
+    // The delivered format, sample rate and bit depth live in the Representation
+    // id - "FLAC,44100,16", "FLAC_HIRES,96000,24", or a bare "AACLC" with neither
+    // number. Nowhere else in this response carries them; the old endpoint had
+    // them as top-level fields. attributes.formats names the format too, and is
+    // the fallback, but only the id has the numbers.
+    QString format;
+    const QJsonArray formats = attrs["formats"].toArray();
+    if (!formats.isEmpty()) format = formats.first().toString();
+
+    const QLatin1String marker("<Representation id=\"");
+    const qsizetype at = m.url.indexOf(marker);
+    if (at >= 0) {
+        const qsizetype from = at + marker.size();
+        const qsizetype end  = m.url.indexOf(QLatin1Char('"'), from);
+        if (end > from) {
+            const QStringList bits = m.url.mid(from, end - from).split(QLatin1Char(','));
+            if (!bits.first().isEmpty()) format = bits.first();
+            // Left at the CD defaults when the id carries no numbers, or carries
+            // ones that do not parse: 0 would read as "not hi-res" only by
+            // accident, and Downloader picks its PCM width off bitDepth.
+            if (bits.size() >= 3) {
+                bool ok = false;
+                const int rate = bits[1].toInt(&ok);
+                if (ok && rate > 0) m.sampleRate = rate;
+                const int depth = bits[2].toInt(&ok);
+                if (ok && depth > 0) m.bitDepth = depth;
+            }
+        }
+    }
+    m.codec = tierForFormat(format);
+    return m;
+}
+
 void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb) {
+    // The FLAC tiers do not come from tracks/<id>/playbackinfopostpaywall any
+    // more. Measured against the live API on 2026-10-04, on this client id and a
+    // current session, that endpoint answers an audioquality=LOSSLESS request
+    // with audioQuality HIGH and a 320 kbps AAC manifest on 27 of 27 catalogue
+    // tracks - including tracks whose mediaMetadata.tags say LOSSLESS, and with
+    // the identical manifestHash it returns for audioquality=HIGH, so the two
+    // settings were fetching one identical file. It is not the account (the same
+    // token is served 24/192 FLAC), the region, or the tracks, and no parameter
+    // changes it; a misspelt audioquality 404s, so the server reads the value and
+    // downgrades it deliberately. v2/trackManifests serves the same 27 tracks as
+    // FLAC on the same token. See tests/tst_stream_manifest.cpp.
+    //
+    // The lossy tiers stay here: the old endpoint still serves those honestly,
+    // and serves them as a single BTS file rather than DASH segments that have to
+    // be joined before the first note.
+    if (usesTrackManifests(quality)) {
+        QUrlQuery q;
+        for (const QString &format : manifestFormats(quality))
+            q.addQueryItem("formats", format);
+        q.addQueryItem("manifestType", "MPEG_DASH");
+        q.addQueryItem("uriScheme",    "DATA");
+        // adaptive=false keeps it to one Representation. There is nothing to
+        // adapt to here - DashFetcher pulls every segment before a note plays and
+        // ignores any Representation after the first.
+        q.addQueryItem("adaptive",     "false");
+        q.addQueryItem("usage",        "PLAYBACK");
+
+        m_api->getOpenApi(QStringLiteral("trackManifests/%1").arg(trackId), q,
+            [cb](QJsonObject root, QString err) {
+                if (!err.isEmpty()) { cb({}, err); return; }
+                QString parseErr;
+                const StreamManifest m = parseTrackManifests(root, &parseErr);
+                if (!parseErr.isEmpty()) { cb({}, parseErr); return; }
+                cb(m, {});
+            });
+        return;
+    }
+
     QUrlQuery q;
     q.addQueryItem("playbackmode",      "STREAM");
     q.addQueryItem("assetpresentation", "FULL");

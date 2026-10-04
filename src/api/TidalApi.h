@@ -35,6 +35,14 @@ public:
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     // The same v1 GET, for a body that is an array at the top level.
     void getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb);
+    // A GET against the track-manifest host, which is neither api.tidal.com nor
+    // the same API version as anything else here, and is the only place that
+    // will still hand this client a FLAC manifest. The body is JSON:API -
+    // {data: {attributes: {...}}} - rather than the flat objects every other
+    // endpoint answers with. Takes the same auth headers, and tolerates the
+    // countryCode this adds to every request (checked against the live host:
+    // identical response with it and without).
+    void getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     void post(const QString &endpoint, const QByteArray &body,
               const QMap<QString,QString> &extraHeaders, JsonCallback cb);
     void postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
@@ -47,9 +55,10 @@ public:
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
-    static constexpr auto kApiBase   = "https://api.tidal.com/v1/";
-    static constexpr auto kApiBaseV2 = "https://api.tidal.com/v2/";
-    static constexpr auto kAuthBase  = "https://auth.tidal.com/v1/";
+    static constexpr auto kApiBase    = "https://api.tidal.com/v1/";
+    static constexpr auto kApiBaseV2  = "https://api.tidal.com/v2/";
+    static constexpr auto kAuthBase   = "https://auth.tidal.com/v1/";
+    static constexpr auto kOpenApiBase = "https://openapi.tidal.com/v2/";
 
 private:
     QNetworkAccessManager *m_nam;

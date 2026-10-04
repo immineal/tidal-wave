@@ -37,6 +37,10 @@ void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayC
         });
 }
 
+void TidalApi::getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    getFrom(QString::fromLatin1(kOpenApiBase), endpoint, params, std::move(cb));
+}
+
 void TidalApi::getFrom(const QString &base, const QString &endpoint,
                        const QUrlQuery &params, JsonCallback cb) {
     getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err) {

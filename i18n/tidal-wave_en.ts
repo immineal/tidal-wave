@@ -1460,6 +1460,17 @@
     </message>
 </context>
 <context>
+    <name>TidalClient</name>
+    <message>
+        <source>Tidal did not return a playable manifest for this track.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal returned only a preview of this track, not the whole track.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>TrackRow</name>
     <message>
         <source>Unknown track</source>
