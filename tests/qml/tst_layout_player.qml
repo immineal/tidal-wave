@@ -269,21 +269,27 @@ TestCase {
         }
     }
 
-    // A VolumeSlider on its own, so the handle arithmetic is measured without
-    // the player bar's animated slot in the way. `value` is a plain property
-    // here and `moved` writes it back, which is what the bar does through the
-    // player.
+    // A VolumeSlider on its own, so the handle arithmetic is measured with
+    // nothing else in the way. `value` is a plain property here and `moved`
+    // writes it back, which is what both hosts do through the player.
+    //
+    // One host for both orientations: the point of the cases below is that the
+    // two are the same arithmetic, and a second host would be the first place
+    // the two could be given different numbers.
     Component {
         id: volumeSliderHost
         Window {
             id: vsWin
-            width: 200; height: 100
+            width: 200; height: 200
+            property bool sliderVertical: false
             property real lastMoved: -1
             property int  moves: 0
             property alias slider: vs
             VolumeSlider {
                 id: vs
-                width: 90
+                orientation: vsWin.sliderVertical ? Qt.Vertical : Qt.Horizontal
+                width:  vsWin.sliderVertical ? 20 : 90
+                height: vsWin.sliderVertical ? 110 : 20
                 anchors.centerIn: parent
                 value: 0.7
                 onMoved: (v) => { vsWin.lastMoved = v; vsWin.moves++; vs.value = v }
@@ -564,12 +570,6 @@ TestCase {
 
     function test_player_bar_fits(row) {
         var host = showHost(playerBarHost, row.w, row.h)
-        // The host is born wide and shown at row.w, so below the breakpoint the
-        // bar is still regrouping for 150ms. This case is about the layout it
-        // comes to rest in; the frames in between are
-        // test_player_bar_regroups_without_leaving_a_gap's business.
-        tryVerify(function () { return host.bar.volumeSlotRoom === host.bar.volumeTargetRoom },
-                  2000, "the bar never settled at " + row.tag)
         var faults = collectOverflow(host.bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar overflows", row, faults))
     }
@@ -578,8 +578,6 @@ TestCase {
 
     function test_player_bar_text_fits(row) {
         var host = showHost(playerBarHost, row.w, row.h)
-        tryVerify(function () { return host.bar.volumeSlotRoom === host.bar.volumeTargetRoom },
-                  2000, "the bar never settled at " + row.tag)
         var faults = collectClipped(host.bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar text clipped", row, faults))
     }
@@ -591,8 +589,6 @@ TestCase {
     function test_player_bar_queue_button_on_screen(row) {
         var host = showHost(playerBarHost, row.w, row.h)
         var bar = host.bar
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
-                  2000, "the bar never settled at " + row.tag)
         var btn = bar.queueButton
         verify(btn, "queue button not found")
         var right = btn.mapToItem(bar, btn.width, 0).x
@@ -602,27 +598,44 @@ TestCase {
         verify(btn.x >= 0, "queue button starts left of the bar")
     }
 
-    // Below the breakpoint the slider goes, so the transport and the track
-    // info keep their space. The output button does not go with it: it is
-    // what says where the sound is, and hiding it on a narrow window is
-    // hiding exactly the thing that has to be true at a glance. Hover brings
-    // the slider back (tst_output_picker.qml), so nothing is unreachable.
-    function test_player_bar_sheds_controls_when_narrow_data() { return sizeRows() }
+    // ── one volume cluster, at every width ───────────────────────────────
+    //
+    // The bar used to shed a 90px inline slider below 720px and hand the
+    // volume to a hover flyout from there down, which meant the bar's volume
+    // was two controls depending on how wide the window was. It is one now:
+    // the speaker, the readout and the picker at every width, and the slider
+    // on hover at every width. tst_output_picker.qml drives the hover; this is
+    // about what the layout does with the three that stay.
+    //
+    // 204px: five controls at 32, 36 and the five 8px gaps, which is also why
+    // the old 720px breakpoint has gone. It existed to buy back 98px that the
+    // group no longer asks for.
+    readonly property int barVolumeGroupWidth: 204
 
-    function test_player_bar_sheds_controls_when_narrow(row) {
+    function test_player_bar_keeps_one_volume_cluster_data() { return sizeRows() }
+
+    function test_player_bar_keeps_one_volume_cluster(row) {
         var host = showHost(playerBarHost, row.w, row.h)
         var bar = host.bar
-        compare(bar.compactRight, row.w < bar.compactRightBreakpoint,
-                "compact right group should follow the bar width")
-        // The host is born wide and shown at row.w, so at the narrow widths this
-        // is a transition and the slider is on its way out rather than already
-        // gone. What the breakpoint decides is where it ends up.
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
-                  2000, "the bar never settled at " + row.tag)
-        compare(bar.volumeSlider.visible, !bar.compactRight, "volume slider visibility")
+        verify(bar.volumeButton.visible, "muting must stay reachable at " + row.tag)
+        verify(bar.volumePercentText.visible,
+               "the level must stay readable at " + row.tag)
         verify(bar.outputButton.visible,
                "the output button must be on screen at " + row.tag)
-        verify(bar.volumeButton.visible, "muting must stay reachable at " + row.tag)
+        // Nothing inline, at any width. A slider under the bar would mean the
+        // hover one is a second control rather than the only one.
+        var strays = collectVisibleNamed(bar, "volumeSliderHandle", [])
+        compare(strays.length, 0,
+                row.tag + ": the bar draws " + strays.length + " inline slider(s)")
+
+        // The group is the same width at every one of them, measured from the
+        // speaker's left edge to the queue button's right. A group whose width
+        // moved with the window is the breakpoint coming back.
+        var left  = bar.volumeButton.mapToItem(bar, 0, 0).x
+        var right = bar.queueButton.mapToItem(bar, bar.queueButton.width, 0).x
+        compare(Math.round(right - left), barVolumeGroupWidth - 8,
+                row.tag + ": the right-hand group measures "
+                + (right - left).toFixed(1) + "px from the speaker")
     }
 
     // The two blocks cross through each other halfway through the move: they
@@ -712,62 +725,58 @@ TestCase {
                row.tag + ": every sample overlapped, including the settled one")
     }
 
-    // ── crossing the bar's breakpoint ────────────────────────────────────
+    // ── the bar resizing ─────────────────────────────────────────────────
     //
-    // Shedding the slider used to move the speaker 98px sideways between two
-    // frames. The slot it leaves behind closes instead, and the invariant that
-    // matters is the one the sidebar got wrong: what the layout reserves for
-    // the slot is never more than the slot has actually reached.
+    // There used to be a breakpoint here. The bar shed its inline slider at
+    // 720px and the slot it left behind closed over 150ms, and most of the
+    // cases in this spot were about that move not leaving a gap behind it.
+    //
+    // There is no move any more: the right-hand group is 204px at every width
+    // it is drawn at, so what a resize does to it is nothing at all. That is
+    // the stronger promise and it is the one measured here - sampled every
+    // frame of a resize, because "nothing moves" is only worth asserting
+    // against the frames in which something could.
 
     function barSample(bar) {
         var vol = bar.volumeButton
+        var pct = bar.volumePercentText
         var out = bar.outputButton
         var q   = bar.queueButton
         var arrow = bar.nowPlayingButton
         return {
-            room:      bar.volumeSlotRoom,
-            openness:  bar.volumeOpenness,
-            slotShown: bar.volumeSlot.visible,
-            slotWidth: bar.volumeSlot.width,
-            volLeft:   vol.mapToItem(bar, 0, 0).x,
-            volRight:  vol.mapToItem(bar, vol.width, 0).x,
             // The group is right-aligned, so where a control sits relative to
             // the bar's right edge is the figure that does not move when the
             // window does: it is the regroup on its own, with the resize that
             // caused it taken out.
-            volFromRight: bar.width - vol.mapToItem(bar, vol.width, 0).x,
+            volFromRight:   bar.width - vol.mapToItem(bar, vol.width, 0).x,
+            pctFromRight:   bar.width - pct.mapToItem(bar, pct.width, 0).x,
+            outFromRight:   bar.width - out.mapToItem(bar, out.width, 0).x,
+            queueFromRight: bar.width - q.mapToItem(bar, q.width, 0).x,
+            volLeft:   vol.mapToItem(bar, 0, 0).x,
             outLeft:   out.mapToItem(bar, 0, 0).x,
+            volRight:  vol.mapToItem(bar, vol.width, 0).x,
+            pctLeft:   pct.mapToItem(bar, 0, 0).x,
             arrowLeft: arrow.mapToItem(bar, 0, 0).x,
             queueRight: q.mapToItem(bar, q.width, 0).x
         }
     }
 
-    // `previous` is the sample before this one, or null for the first.
-    function checkBarSample(bar, s, previous, where) {
-        // The gap between the speaker and the output picker is the output
-        // picker's own 8px plus whatever the slot is drawing, and nothing else.
-        // A slot that had gone invisible while the group still kept its spacing
-        // would show up here as 8px the bar is holding open with nothing in it,
-        // which is the thing being guarded against.
-        //
-        // Both figures are the ones the layout has realised -- the slot's width
-        // and the margin that travels with it come out of the same polish pass,
-        // so the margin is derived from the realised width rather than from the
-        // animation's current value, which may be a pass ahead.
-        var held = s.slotShown
-                 ? s.slotWidth + 8 * (s.slotWidth / bar.volumeSliderWidth)
-                 : 0
-        var gap  = s.outLeft - s.volRight
-        verify(Math.abs(gap - (8 + held)) <= 1.5,
-               where + ": the bar is holding " + gap.toFixed(1)
-               + "px open for a slot that is drawing " + held.toFixed(1)
-               + " (room=" + s.room.toFixed(1) + ")")
-        // And the slot is never wider than the animation has got to, allowing
-        // the one polish of latency a QQuickLayout answers with.
-        var reached = previous ? Math.max(s.room, previous.room) : s.room
-        verify(!s.slotShown || s.slotWidth <= reached + 1,
-               where + ": the slot is " + s.slotWidth.toFixed(1)
-               + "px wide for a bar that has only given it " + reached.toFixed(1))
+    function checkBarSample(bar, s, first, where) {
+        // Every control in the group keeps its distance from the right-hand
+        // edge, whatever the bar is doing. Anything that shrank or grew with
+        // the window would show up here.
+        var axes = ["volFromRight", "pctFromRight", "outFromRight",
+                    "queueFromRight"]
+        for (var i = 0; i < axes.length; i++)
+            verify(Math.abs(s[axes[i]] - first[axes[i]]) <= 0.5,
+                   where + ": " + axes[i] + " moved from "
+                   + first[axes[i]].toFixed(1) + " to " + s[axes[i]].toFixed(1)
+                   + " while the bar resized")
+        // And the speaker and the readout stay against each other, which is
+        // what makes them one hover target.
+        verify(Math.abs(s.pctLeft - s.volRight) <= 0.5,
+               where + ": a " + (s.pctLeft - s.volRight).toFixed(1)
+               + "px strip opened up between the speaker and the readout")
         // The two controls that open a view are the ones a squeezed bar drops
         // off the end first, so they are checked at every sample and not only
         // at rest.
@@ -780,140 +789,48 @@ TestCase {
 
     function sweepBar(host, bar, from, to) {
         host.width = from
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
-                  2000, "the bar never settled before the sweep began")
+        waitForRendering(host.contentItem)
         var rows = []
         host.width = to
+        // One frame before the first sample. Setting a Window's width moves
+        // the window's own property at once and the items in it on the next
+        // polish pass, so the frame of the assignment is one in which `bar.width`
+        // and the controls' positions are measuring two different bars - which
+        // says nothing about this code, and is the one frame in which no
+        // window has been painted either. A 320px jump reads as a 304px
+        // overflow there and nowhere else.
+        waitForRendering(host.contentItem)
         for (var i = 0; i < 14; i++) {
             rows.push(barSample(bar))
             wait(16)
         }
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
-                  2000, "the bar never settled after the sweep")
         rows.push(barSample(bar))
         return rows
     }
 
-    function test_player_bar_regroups_without_leaving_a_gap_data() {
-        // Two pixels apart, so the only thing that really moves is the slot:
-        // the group's right edge stays where it is and the speaker travels the
-        // whole width of the slider.
+    function test_player_bar_resizes_without_regrouping_data() {
+        // Across the width the breakpoint used to be at, both ways, and a
+        // jump of the size a tiling shortcut makes: half a screen to the
+        // window minimum in one frame, which is what used to hang the queue
+        // button 38px off the end of the window for 150ms.
         return [
-            { tag: "sheds the slider", from: 721, to: 719, end: 0 },
-            { tag: "takes it back",    from: 719, to: 721, end: 90 }
+            { tag: "past the old breakpoint", from: 721, to: 719 },
+            { tag: "back past it",            from: 719, to: 721 },
+            { tag: "half screen to minimum",  from: 960, to: 640 },
+            { tag: "minimum to half screen",  from: 640, to: 960 }
         ]
     }
 
-    function test_player_bar_regroups_without_leaving_a_gap(row) {
+    function test_player_bar_resizes_without_regrouping(row) {
         var host = showHost(playerBarHost, row.from, 200)
         var bar = host.bar
         var rows = sweepBar(host, bar, row.from, row.to)
-
-        var mid = 0
         for (var i = 0; i < rows.length; i++)
-            if (rows[i].room > 0.5 && rows[i].room < bar.volumeSliderWidth - 0.5) mid++
-        verify(mid >= 3,
-               "the bar regrouped without ever being between its two layouts: only "
-               + mid + " of " + rows.length + " samples were mid-move")
+            checkBarSample(bar, rows[i], rows[0], row.tag + " sample " + i)
 
-        for (i = 0; i < rows.length; i++)
-            checkBarSample(bar, rows[i], i > 0 ? rows[i - 1] : null,
-                           row.tag + " sample " + i)
-
-        // The speaker travels one way only. It closes on the right-hand end of
-        // the bar as the slot shuts and backs away as it opens, and never
-        // overshoots and comes back.
-        for (i = 1; i < rows.length; i++) {
-            if (row.end === 0)
-                verify(rows[i].volFromRight <= rows[i - 1].volFromRight + 1,
-                       row.tag + ": the speaker went backwards at sample " + i
-                       + " (" + rows[i - 1].volFromRight.toFixed(1) + " then "
-                       + rows[i].volFromRight.toFixed(1) + " from the right edge)")
-            else
-                verify(rows[i].volFromRight >= rows[i - 1].volFromRight - 1,
-                       row.tag + ": the speaker went backwards at sample " + i
-                       + " (" + rows[i - 1].volFromRight.toFixed(1) + " then "
-                       + rows[i].volFromRight.toFixed(1) + " from the right edge)")
-        }
-        // And it really did travel: the whole point is that this 98px is not a
-        // jump any more.
-        var travelled = Math.abs(rows[0].volFromRight
-                                 - rows[rows.length - 1].volFromRight)
-        verify(travelled >= 80,
-               row.tag + ": the speaker only moved " + travelled.toFixed(1)
-               + "px, so the slider was not what came and went")
-
-        compare(rows[rows.length - 1].room, row.end,
-                "the slot has to finish open or closed, not part way")
-        compare(bar.volumeSlider.visible, !bar.compactRight,
-                "the settled bar disagrees with the breakpoint about its slider")
-        compare(bar.volumeInlineGone, bar.compactRight,
-                "the hover flyout is gated on an inline slider that is still there")
         var faults = collectOverflow(bar, "PlayerBar", [])
         verify(faults.length === 0,
                reportFor("Player bar overflows after " + row.tag, row, faults))
-    }
-
-    // Not every width change is a step across the breakpoint. Half a screen to
-    // the 640px window minimum is 320px in one frame, which a tiling shortcut
-    // does, and the slot cannot spend 150ms holding 90px a 640px bar has not
-    // got: the queue button hung 38px off the end of the window for exactly
-    // that long the first time this was written. Sampled from the frame after
-    // the jump, which is where it showed.
-    function test_player_bar_jumping_to_the_minimum_holds_nothing_back() {
-        var host = showHost(playerBarHost, 960, 200)
-        var bar = host.bar
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
-                  2000, "the wide bar never settled with its slider")
-
-        host.width = 640
-        // The controls' own edges rather than collectOverflow, and the reason is
-        // not the one that used to be written here. The old note said the handle
-        // "sits 5px off the left end of its own track by design" and excluded
-        // the slider on that basis. It was not by design: it was the bug the
-        // user later met at max volume, and VolumeSlider.qml has since moved the
-        // handle's centre to travel between the two radii, so at every value the
-        // handle is inside its track. test_volume_slider_handle_stays_inside
-        // holds that.
-        //
-        // What is still true is narrower: a closing slot takes the slider below
-        // its own handle's 10px, and a 10px handle in a 4px slider is wider than
-        // its parent however it is positioned. The slot clips it and nobody can
-        // see it, but the tree walker counts it, so this case measures the bar's
-        // right-hand end -- which is what it is about -- and checks the handle
-        // directly for every sample where the slider is wide enough to hold it.
-        var controls = [bar.volumeButton, bar.outputButton,
-                        bar.nowPlayingButton, bar.queueButton]
-        var handle = findChild(bar.volumeSlider, "volumeSliderHandle")
-        verify(handle, "the volume slider handle was not found")
-        for (var i = 0; i < 14; i++) {
-            for (var c = 0; c < controls.length; c++) {
-                var item = controls[c]
-                if (!item.visible) continue
-                var left  = item.mapToItem(bar, 0, 0).x
-                var right = item.mapToItem(bar, item.width, 0).x
-                verify(left >= -0.5 && right <= bar.width + 0.5,
-                       "sample " + i + ": a control sits at " + left.toFixed(1) + ".."
-                       + right.toFixed(1) + " in a " + bar.width
-                       + "px bar while the slot is still "
-                       + bar.volumeSlotRoom.toFixed(1) + "px wide")
-            }
-            var slider = bar.volumeSlider
-            if (slider.visible && slider.width >= slider.handleSize) {
-                var hl = handle.mapToItem(slider, 0, 0).x
-                var hr = handle.mapToItem(slider, handle.width, 0).x
-                verify(hl >= -0.5 && hr <= slider.width + 0.5,
-                       "sample " + i + ": the handle is at " + hl.toFixed(1) + ".."
-                       + hr.toFixed(1) + " in a " + slider.width.toFixed(1)
-                       + "px slider, so the closing slot is slicing it")
-            }
-            wait(16)
-        }
-        tryVerify(function () { return bar.volumeSlotRoom === 0 }, 2000,
-                  "the slot never closed at the window minimum")
-        verify(!bar.volumeSlider.visible, "the 640px bar kept its inline slider")
-        verify(bar.outputButton.visible,
-               "the output button must survive the window minimum")
     }
 
     // The widths the suite already sweeps, reached by a transition rather than
@@ -926,17 +843,18 @@ TestCase {
         var bar = host.bar
         sweepBar(host, bar, opposite, row.w)
 
-        compare(bar.compactRight, row.w < bar.compactRightBreakpoint, "compact right group")
-        compare(bar.volumeSlotRoom, bar.compactRight ? 0 : bar.volumeSliderWidth,
-                "the slot is still part way at " + row.tag)
-        compare(bar.volumeSlider.visible, !bar.compactRight, "volume slider visibility")
-        verify(bar.outputButton.visible && bar.volumeButton.visible,
+        verify(bar.outputButton.visible && bar.volumeButton.visible
+               && bar.volumePercentText.visible,
                "a control went missing at " + row.tag)
+        var left  = bar.volumeButton.mapToItem(bar, 0, 0).x
+        var right = bar.queueButton.mapToItem(bar, bar.queueButton.width, 0).x
+        compare(Math.round(right - left), barVolumeGroupWidth - 8,
+                "the group did not land at its one width at " + row.tag)
         var faults = collectOverflow(bar, "PlayerBar", [])
         verify(faults.length === 0, reportFor("Player bar overflows", row, faults))
     }
 
-    // ── the volume slider's handle ───────────────────────────────────────
+    // ── the volume slider's handle, both ways round ──────────────────────
     //
     // The user hit this at max volume: the handle was sliced in half. It was
     // positioned at `value * track.width - 5`, so half of it hung outside the
@@ -944,49 +862,86 @@ TestCase {
     // bar's volume slot clips, so what was left on screen was half a knob. The
     // handle's centre travels between the two radii now, which is the whole fix
     // and the thing these cases pin.
+    //
+    // Every one of them runs twice, once per orientation. That is the reason
+    // the upright slider is a mode on the same component rather than a second
+    // file: one piece of arithmetic, measured once, and a vertical copy of
+    // this bug cannot be introduced without a vertical copy of these failing.
+    // The two axes are read through `along` and `across` so each case is
+    // written once as well.
 
-    function volumeParts(slider) {
+    // Everything about a sample that depends on which way the slider runs.
+    // `along` is the axis the value travels on, `across` the other one, and
+    // both are measured in the slider's own coordinates.
+    function volumeParts(slider, vertical) {
         var handle = findChild(slider, "volumeSliderHandle")
         var fill   = findChild(slider, "volumeSliderFill")
         verify(handle, "the volume slider handle was not found")
         verify(fill, "the volume slider fill was not found")
+        var hTL = handle.mapToItem(slider, 0, 0)
+        var hBR = handle.mapToItem(slider, handle.width, handle.height)
+        var fTL = fill.mapToItem(slider, 0, 0)
+        var fBR = fill.mapToItem(slider, fill.width, fill.height)
+        // Upright, "the loud end" is the top and the value grows towards
+        // smaller y, so the axis is read backwards from the far edge. Every
+        // case below is then written once, in the direction the value runs.
+        var span = vertical ? slider.height : slider.width
+        function alongOf(pt)  { return vertical ? span - pt.y : pt.x }
+        function acrossOf(pt) { return vertical ? pt.x : pt.y }
         return {
-            handle: handle,
-            fill: fill,
-            handleLeft:  handle.mapToItem(slider, 0, 0).x,
-            handleRight: handle.mapToItem(slider, handle.width, 0).x,
-            handleTop:    handle.mapToItem(slider, 0, 0).y,
-            handleBottom: handle.mapToItem(slider, 0, handle.height).y,
-            fillLeft:  fill.mapToItem(slider, 0, 0).x,
-            fillRight: fill.mapToItem(slider, fill.width, 0).x
+            handle: handle, fill: fill, span: span,
+            // The near end of the handle in value order, and the far one.
+            handleNear: Math.min(alongOf(hTL), alongOf(hBR)),
+            handleFar:  Math.max(alongOf(hTL), alongOf(hBR)),
+            handleAcrossNear: Math.min(acrossOf(hTL), acrossOf(hBR)),
+            handleAcrossFar:  Math.max(acrossOf(hTL), acrossOf(hBR)),
+            fillNear: Math.min(alongOf(fTL), alongOf(fBR)),
+            fillFar:  Math.max(alongOf(fTL), alongOf(fBR)),
+            acrossSpan: vertical ? slider.width : slider.height
         }
     }
 
     function volumeValueRows() {
         var rows = []
         var vals = [0, 0.001, 0.1, 0.25, 0.5, 0.75, 0.999, 1]
-        for (var i = 0; i < vals.length; i++)
-            rows.push({ tag: "value " + vals[i], v: vals[i] })
+        var ways = [{ name: "across", vertical: false },
+                    { name: "upright", vertical: true }]
+        for (var w = 0; w < ways.length; w++)
+            for (var i = 0; i < vals.length; i++)
+                rows.push({ tag: ways[w].name + " at " + vals[i],
+                            v: vals[i], vertical: ways[w].vertical })
         return rows
+    }
+
+    function sliderHost(vertical) {
+        var host = createTemporaryObject(volumeSliderHost, testCase,
+                                         { width: 200, height: 200,
+                                           sliderVertical: vertical === true })
+        verify(host, "slider host was not created")
+        host.visible = true
+        waitForRendering(host.contentItem)
+        return host
     }
 
     function test_volume_slider_handle_stays_inside_data() { return volumeValueRows() }
 
     function test_volume_slider_handle_stays_inside(row) {
-        var host = showHost(volumeSliderHost, 200, 100)
+        var host = sliderHost(row.vertical)
         var slider = host.slider
         slider.value = row.v
         wait(0)
-        var p = volumeParts(slider)
-        verify(p.handleLeft >= -0.01,
-               row.tag + ": the handle starts at " + p.handleLeft.toFixed(2)
-               + ", which is off the left end of the slider")
-        verify(p.handleRight <= slider.width + 0.01,
-               row.tag + ": the handle ends at " + p.handleRight.toFixed(2)
-               + " in a " + slider.width + "px slider")
-        verify(p.handleTop >= -0.01 && p.handleBottom <= slider.height + 0.01,
-               row.tag + ": the handle is at " + p.handleTop.toFixed(2) + ".."
-               + p.handleBottom.toFixed(2) + " in a " + slider.height + "px slider")
+        var p = volumeParts(slider, row.vertical)
+        verify(p.handleNear >= -0.01,
+               row.tag + ": the handle starts at " + p.handleNear.toFixed(2)
+               + ", which is off the quiet end of the slider")
+        verify(p.handleFar <= p.span + 0.01,
+               row.tag + ": the handle ends at " + p.handleFar.toFixed(2)
+               + " in a " + p.span + "px slider")
+        verify(p.handleAcrossNear >= -0.01
+               && p.handleAcrossFar <= p.acrossSpan + 0.01,
+               row.tag + ": the handle is at " + p.handleAcrossNear.toFixed(2)
+               + ".." + p.handleAcrossFar.toFixed(2) + " across a "
+               + p.acrossSpan + "px slider")
     }
 
     // The fill reaches the handle's centre, so there is no bar of colour
@@ -994,65 +949,79 @@ TestCase {
     function test_volume_slider_fill_meets_the_handle_data() { return volumeValueRows() }
 
     function test_volume_slider_fill_meets_the_handle(row) {
-        var host = showHost(volumeSliderHost, 200, 100)
+        var host = sliderHost(row.vertical)
         var slider = host.slider
         slider.value = row.v
         wait(0)
-        var p = volumeParts(slider)
-        verify(p.fillRight <= p.handleRight + 0.01,
-               row.tag + ": the fill ends at " + p.fillRight.toFixed(2)
-               + " and the handle at " + p.handleRight.toFixed(2)
+        var p = volumeParts(slider, row.vertical)
+        verify(p.fillFar <= p.handleFar + 0.01,
+               row.tag + ": the fill ends at " + p.fillFar.toFixed(2)
+               + " and the handle at " + p.handleFar.toFixed(2)
                + ", so the fill sticks out past the knob")
-        verify(p.fillRight >= p.handleLeft - 0.01,
-               row.tag + ": the fill ends at " + p.fillRight.toFixed(2)
-               + " but the handle only starts at " + p.handleLeft.toFixed(2)
+        verify(p.fillFar >= p.handleNear - 0.01,
+               row.tag + ": the fill ends at " + p.fillFar.toFixed(2)
+               + " but the handle only starts at " + p.handleNear.toFixed(2)
                + ", so there is a gap at the join")
-        verify(p.fillLeft >= -0.01 && p.fillRight <= slider.width + 0.01,
-               row.tag + ": the fill runs " + p.fillLeft.toFixed(2) + ".."
-               + p.fillRight.toFixed(2) + " in a " + slider.width + "px slider")
+        verify(p.fillNear >= -0.01 && p.fillFar <= p.span + 0.01,
+               row.tag + ": the fill runs " + p.fillNear.toFixed(2) + ".."
+               + p.fillFar.toFixed(2) + " in a " + p.span + "px slider")
     }
 
-    // The inset the travel needs must not cost the ends: pressing the extreme
-    // left still means silence and the extreme right still means full.
-    function test_volume_slider_ends_are_reachable() {
-        var host = showHost(volumeSliderHost, 200, 100)
+    // The inset the travel needs must not cost the ends: pressing the quiet
+    // end still means silence and the loud end still means full. Upright, the
+    // loud end is the top, which is the half of the mapping that an inverted
+    // axis gets wrong without noticing.
+    function test_volume_slider_ends_are_reachable_data() {
+        return [{ tag: "across", vertical: false },
+                { tag: "upright", vertical: true }]
+    }
+
+    function test_volume_slider_ends_are_reachable(row) {
+        var host = sliderHost(row.vertical)
         var slider = host.slider
-        var mid = Math.round(slider.height / 2)
+        var quiet = row.vertical ? { x: Math.round(slider.width / 2), y: slider.height - 1 }
+                                 : { x: 0, y: Math.round(slider.height / 2) }
+        var loud  = row.vertical ? { x: Math.round(slider.width / 2), y: 0 }
+                                 : { x: slider.width - 1, y: Math.round(slider.height / 2) }
+        var mid   = { x: Math.round(slider.width / 2), y: Math.round(slider.height / 2) }
 
-        mouseClick(slider, 0, mid)
-        compare(host.moves, 1, "a press at the left end should move the slider")
-        compare(host.lastMoved, 0, "the extreme left has to reach exactly 0")
+        mouseClick(slider, quiet.x, quiet.y)
+        compare(host.moves, 1, row.tag + ": a press at the quiet end should move it")
+        compare(host.lastMoved, 0, row.tag + ": the quiet end has to reach exactly 0")
 
-        mouseClick(slider, slider.width - 1, mid)
-        compare(host.moves, 2, "a press at the right end should move the slider")
-        compare(host.lastMoved, 1, "the extreme right has to reach exactly 1")
+        mouseClick(slider, loud.x, loud.y)
+        compare(host.moves, 2, row.tag + ": a press at the loud end should move it")
+        compare(host.lastMoved, 1, row.tag + ": the loud end has to reach exactly 1")
 
         // And the middle lands near the middle rather than half a handle away.
-        mouseClick(slider, Math.round(slider.width / 2), mid)
+        mouseClick(slider, mid.x, mid.y)
         verify(Math.abs(host.lastMoved - 0.5) <= 0.08,
-               "a press at the midpoint gave " + host.lastMoved.toFixed(3))
+               row.tag + ": a press at the midpoint gave "
+               + host.lastMoved.toFixed(3))
     }
 
-    // The same thing where the user met it: the real bar, at max volume, with
-    // the slot clipping anything that hangs over.
-    function test_player_bar_volume_handle_is_whole_at_max() {
+    // The same thing where the user met it: a real slider, at max volume, in
+    // the popup that is the only place one is drawn now. There is no clipping
+    // slot left to slice the knob, but there is a 10px popup padding, and a
+    // handle that hung half out of its control would be drawn over the popup's
+    // own border instead.
+    function test_hover_volume_handle_is_whole_at_max() {
         player.setVolume(1)
         var host = showHost(playerBarHost, 960, 200)
         var bar = host.bar
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeTargetRoom },
-                  2000, "the bar never settled")
-        verify(bar.volumeSlider.visible, "the 960px bar should have its inline slider")
-        compare(bar.volumeSlider.value, 1, "the fixture did not reach full volume")
+        var btn = bar.volumeButton
+        var p = btn.mapToItem(host.contentItem, btn.width / 2, btn.height / 2)
+        mouseMove(host.contentItem, p.x, p.y)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "the flyout did not open")
+        var slider = bar.hoverVolumeSlider
+        compare(slider.value, 1, "the fixture did not reach full volume")
 
-        var slot = bar.volumeSlot
-        var handle = findChild(bar.volumeSlider, "volumeSliderHandle")
-        verify(handle, "the volume slider handle was not found")
-        var right = handle.mapToItem(slot, handle.width, 0).x
-        var left  = handle.mapToItem(slot, 0, 0).x
-        verify(left >= -0.01 && right <= slot.width + 0.01,
-               "at full volume the handle is at " + left.toFixed(2) + ".."
-               + right.toFixed(2) + " in a " + slot.width.toFixed(1)
-               + "px slot that clips, so half of it is not drawn")
+        var parts = volumeParts(slider, true)
+        verify(parts.handleNear >= -0.01 && parts.handleFar <= parts.span + 0.01,
+               "at full volume the handle runs " + parts.handleNear.toFixed(2)
+               + ".." + parts.handleFar.toFixed(2) + " in a "
+               + parts.span.toFixed(1) + "px slider, so part of it is outside")
         var faults = collectOverflow(bar, "PlayerBar", [])
         verify(faults.length === 0,
                "player bar overflows at full volume:\n  " + faults.join("\n  "))
@@ -1363,14 +1332,20 @@ TestCase {
                + "px tall against the " + transport.implicitHeight.toFixed(1)
                + "px it asks for, so the volume folded with it")
 
-        // ...and the slider inside it is still a slider, not a sliver.
-        var readingSlider = volumeSliderIn(page)
-        compare(readingSlider.width, page.volumeSliderWidth,
-                row.tag + ": the volume slider is " + readingSlider.width.toFixed(1)
+        // ...and the cluster inside it is the whole cluster at its whole
+        // width, not a squeezed version of one. The slider that used to be
+        // measured here lives in the hover flyout now, so what is left to
+        // keep is the three controls and the width they agree on.
+        var readingCluster = volumeCluster(page)
+        compare(readingCluster.width, page.volumeClusterWidth,
+                row.tag + ": the volume cluster is " + readingCluster.width.toFixed(1)
                 + "px in the reading view")
-        verify(effectiveOpacity(readingSlider) > 0.99,
-               row.tag + ": the volume slider is drawn at "
-               + effectiveOpacity(readingSlider).toFixed(2) + " opacity")
+        verify(effectiveOpacity(readingCluster) > 0.99,
+               row.tag + ": the volume cluster is drawn at "
+               + effectiveOpacity(readingCluster).toFixed(2) + " opacity")
+        var readingPct = findChild(readingCluster, "nowPlayingVolumePercent")
+        verify(readingPct && readingPct.visible,
+               row.tag + ": the reading view lost the level readout")
 
         // Where the page has the height to give, the words are now the biggest
         // thing on it, which is the whole point and the opposite of the docked
@@ -1577,11 +1552,17 @@ TestCase {
     // row two blocks under the seek bar, so it was a second bar of almost the
     // same length at every width, not only in the reading view.
     //
-    // It is a short fixed-width cluster now - the slider, the mute button, the
-    // percentage and the output picker - with two homes: the right-hand end of
-    // the transport row where the column can carry it, and a short
-    // right-aligned row of its own where it cannot. The cases below hold both
-    // homes to the same promises.
+    // It is a short fixed-width cluster now - the mute/level speaker, the
+    // percentage and the output picker, 106px of them - with two homes: the
+    // right-hand end of the transport row where the column can carry it, and a
+    // short right-aligned row of its own where it cannot. The cases below hold
+    // both homes to the same promises.
+    //
+    // The slider is not in it at all any more. "it can also go into its hover
+    // to show bar state, no? also I want that hovered bar to be vertical not
+    // horizontal" - so it comes up over the page, upright, when the speaker or
+    // the readout is pointed at. tst_output_picker.qml drives that hover; what
+    // is measured here is the row the hover leaves behind.
 
     // The outermost block the volume is living in right now. This is what the
     // fold and the fade are asked about, so it has to be the block the page
@@ -1599,9 +1580,9 @@ TestCase {
         return riding.visible ? riding : ownRow
     }
 
-    // The four controls themselves, wherever they are. On the transport row the
-    // cluster is the home; on its own row the home is the full-width line it
-    // sits at the right-hand end of.
+    // The three controls themselves, wherever they are. On the transport row
+    // the cluster is the home; on its own row the home is the full-width line
+    // it sits at the right-hand end of.
     function volumeCluster(page) {
         var home = volumeHome(page)
         if (home.objectName === "nowPlayingVolumeCluster") return home
@@ -1610,10 +1591,19 @@ TestCase {
         return own
     }
 
-    function volumeSliderIn(page) {
-        var s = findChild(volumeCluster(page), "nowPlayingVolumeSlider")
-        verify(s, "the volume slider was not found")
-        return s
+    // The flyout the live cluster reveals. A Popup is not an Item, so it is
+    // not among the cluster's `children` and no tree walk will find it: the
+    // cluster hands it over through an alias instead.
+    function volumeFlyoutIn(page) {
+        var f = volumeCluster(page).flyout
+        verify(f, "the live cluster has no volume flyout")
+        return f
+    }
+
+    function volumePercentIn(page) {
+        var t = findChild(volumeCluster(page), "nowPlayingVolumePercent")
+        verify(t, "the volume readout was not found")
+        return t
     }
 
     // An item's box in page coordinates, and whether two of them meet. The half
@@ -1661,24 +1651,27 @@ TestCase {
         return host
     }
 
-    // The complaint itself: the volume slider is short, it is the same short
-    // wherever it lives, and it never grows towards the seek bar again.
+    // The complaint itself: nothing in the volume reads as a second scrub bar.
+    // It is stronger than it was, because there is no horizontal bar left in
+    // the row at all - three controls and a readout, 106px of them, against a
+    // seek bar that is the width of the column.
     function test_the_volume_is_not_a_second_scrub_bar_data() { return volumeRows() }
 
     function test_the_volume_is_not_a_second_scrub_bar(row) {
         var host = volumeHost(row)
         var page = host.page
-        var slider  = volumeSliderIn(page)
         var cluster = volumeCluster(page)
         var seek    = findChild(page, "nowPlayingSeekBar")
         verify(seek, "the seek bar was not found")
 
-        compare(slider.width, page.volumeSliderWidth,
-                row.tag + ": the volume slider is " + slider.width.toFixed(1)
-                + "px, not the fixed " + page.volumeSliderWidth
-                + " - it is stretching with the column again")
-        verify(slider.width <= seek.width / 2,
-                row.tag + ": the volume slider is " + slider.width.toFixed(1)
+        // Nothing drawn in the row is a horizontal bar: the only slider in
+        // this page is in a popup that is not open.
+        var strays = collectVisibleNamed(page, "volumeSliderHandle", [])
+        compare(strays.length, 0,
+                row.tag + ": the page draws " + strays.length
+                + " slider(s) at rest, which is the bar coming back")
+        verify(cluster.width <= seek.width / 2,
+                row.tag + ": the cluster is " + cluster.width.toFixed(1)
                 + "px against a " + seek.width.toFixed(1)
                 + "px seek bar, which is the second-scrub-bar look again")
 
@@ -1872,11 +1865,11 @@ TestCase {
     }
 
     // The cost of writing the cluster once and placing it twice: two mute
-    // buttons, two sliders and two output pickers exist, and only one of each
-    // may be on screen. A control that is drawn twice is a second focus ring,
-    // a second thing to click, and - because Qt only keeps an item out of the
-    // tab chain while it is really invisible - a tab stop on a slider the user
-    // cannot see.
+    // buttons, two readouts, two output pickers and two flyouts exist, and
+    // only one of each may be on screen. A control that is drawn twice is a
+    // second focus ring, a second thing to click, and - because Qt only keeps
+    // an item out of the tab chain while it is really invisible - a tab stop
+    // on a control the user cannot see.
     //
     // Counted rather than looked up by name: the live name is handed to
     // whichever copy is showing, so a page showing both would answer a
@@ -1898,7 +1891,7 @@ TestCase {
         var host = volumeHost(row)
         var page = host.page
 
-        var names = ["nowPlayingMuteButton", "nowPlayingVolumeSlider",
+        var names = ["nowPlayingMuteButton", "nowPlayingVolumePercent",
                      "nowPlayingOutputButton"]
         for (var i = 0; i < names.length; i++) {
             var shown = collectVisibleNamed(page, names[i], [])
@@ -1926,6 +1919,151 @@ TestCase {
         verify(!player.muted, row.tag + ": Space on the mute button did nothing")
     }
 
+    // ── where the volume's two homes change over ─────────────────────────
+    //
+    // The cluster went from 226px to 106, which takes transportWithVolumeWidth
+    // from 828 to 588, and that moves the widths at which the transport row
+    // can carry it. The user has accepted that there is a band where the
+    // volume drops to a row of its own; what they have not accepted is one
+    // nobody measured. These are the measured edges, at the 1200px height the
+    // user's monitors give and behind Main.qml's 220px sidebar, so the numbers
+    // are window widths and not page widths.
+    //
+    //    600 - 903   its own row   (stacked, the column is the whole page)
+    //    904 - 1219  rides the transport row
+    //   1220 - 1387  its own row   (side by side, the column is only 433-587)
+    //   1388 and up  rides the transport row
+    //
+    // The 1220 edge is not the volume's: that is where the page stops stacking
+    // and hands most of its width to the artwork, and it sat at 1220 before
+    // this change too. The two that moved are 1144 -> 904 and 1628 -> 1388,
+    // both of them down by 240, which is twice the 120px the cluster lost -
+    // the cluster is charged for twice over, once at each end of the row.
+    //
+    // One window, resized, and read without settling the restack on purpose.
+    // Both sides of volumeInTransport are closed-form - settledInfoWidth at
+    // one end and gapFor(settledInfoWidth) at the other - so the answer at a
+    // width does not depend on how the page got to it, and that is worth
+    // pinning as much as the numbers are. It did depend on it until this
+    // change: the threshold was built out of the *live* transportSpacing, so
+    // a 1920 window dragged down to 840 answered 840 with the 524 it was
+    // passing through and put the cluster on a row that a window born at 840
+    // does not give it.
+    //
+    // The one turn of the event loop is not the restack: a Window's own width
+    // property moves on assignment and the items inside it only on the next
+    // turn, so without it every probe below would be answered about the width
+    // before.
+    function widthAnswer(host, w) {
+        host.width = w
+        wait(0)
+        return host.page.volumeInTransport
+    }
+
+    function firstWidthWhere(host, lo, hi, want) {
+        // Monotone inside [lo, hi] by construction: each call below is given
+        // a range with exactly one edge in it.
+        verify(widthAnswer(host, lo) !== want,
+               "the search started at " + lo
+               + " already on the answer it was looking for")
+        while (lo < hi) {
+            var mid = Math.floor((lo + hi) / 2)
+            if (widthAnswer(host, mid) === want) hi = mid
+            else lo = mid + 1
+        }
+        compare(widthAnswer(host, lo), want,
+                "the search landed at " + lo + " without finding the edge")
+        compare(widthAnswer(host, lo - 1), !want,
+                "the width below " + lo + " gives the same answer, so "
+                + lo + " is not an edge")
+        return lo
+    }
+
+    function test_the_volume_changes_home_at_the_measured_widths() {
+        var host = showHost(nowPlayingHost, 1920, 1200)
+        var page = host.page
+
+        // The arithmetic the edges come out of, measured rather than trusted:
+        // the page adds up parts it does not own. Asked of a wide window,
+        // because the transport's own gap tightens to 8 in a column under
+        // 344px and the sum goes to 524 with it.
+        compare(page.volumeClusterWidth, 106, "the cluster's budget")
+        compare(page.transportSpacing, 16, "the transport's resting gap")
+        compare(page.transportWithVolumeWidth, 588,
+                "what the transport row has to have to carry the cluster")
+
+        verify(!widthAnswer(host, 600),
+               "the narrowest window should use the own row")
+        var up1 = firstWidthWhere(host, 601, 1219, true)
+        compare(up1, 904, "the stacked column picks the volume up at " + up1)
+
+        var down = firstWidthWhere(host, up1 + 1, 1300, false)
+        compare(down, 1220, "the page goes side by side at " + down)
+
+        var up2 = firstWidthWhere(host, down + 1, 1700, true)
+        compare(up2, 1388, "the side-by-side column picks it up at " + up2)
+
+        // And it stays picked up from there to the user's own maximised
+        // window, which is the width that mattered to them.
+        verify(widthAnswer(host, 1920),
+               "a maximised window on a 1920 monitor does not carry the volume")
+    }
+
+    // ── the volume moves without the mouse ───────────────────────────────
+    //
+    // Three things set the volume from outside this page: the sleep timer's
+    // fade (qml/Main.qml calls player.setVolume on a timer), MPRIS
+    // (src/mpris/MprisPlayer.cpp), and the Up/Down shortcuts, which are
+    // application-wide. The readout and the slider are both bound to the
+    // player rather than to each other, and this is what says so.
+    function test_the_volume_follows_a_change_from_outside_data() {
+        return [{ tag: "riding the transport row", w: 1920, h: 1200 },
+                { tag: "on its own row",           w: 1280, h: 1200 }]
+    }
+
+    function test_the_volume_follows_a_change_from_outside(row) {
+        var host = showHost(nowPlayingHost, row.w, row.h)
+        var page = host.page
+        settlePage(page)
+        waitForRendering(host.contentItem)
+
+        var pct = volumePercentIn(page)
+        compare(pct.text, "70%", row.tag + ": the fixture did not start at 70%")
+
+        // The flyout has to follow it while it is open, which is the case the
+        // sleep timer's fade actually meets: it runs while the page is up.
+        var flyout = volumeFlyoutIn(page)
+        var mute = findChild(volumeCluster(page), "nowPlayingMuteButton")
+        var p = mute.mapToItem(host.contentItem, mute.width / 2, mute.height / 2)
+        mouseMove(host.contentItem, p.x, p.y)
+        tryVerify(function () { return flyout.visible }, 2000,
+                  row.tag + ": the flyout did not open")
+        var handle = findChild(flyout.slider, "volumeSliderHandle")
+        verify(handle, row.tag + ": the flyout slider has no handle")
+        var wasY = handle.mapToItem(flyout.slider, 0, 0).y
+
+        // What the sleep timer does, a step at a time.
+        player.setVolume(0.33)
+        wait(0)
+        compare(pct.text, "33%", row.tag + ": the readout did not follow")
+        compare(flyout.slider.value.toFixed(2), "0.33",
+                row.tag + ": the open flyout did not follow")
+        var nowY = handle.mapToItem(flyout.slider, 0, 0).y
+        verify(nowY > wasY + 1,
+               row.tag + ": the handle sat at " + wasY.toFixed(1)
+               + " and is now at " + nowY.toFixed(1)
+               + ", so turning the volume down did not move it down")
+
+        // And muting from outside - Ctrl+M, or MPRIS - reads as silence in
+        // both of them rather than only in the icon.
+        player.setMuted(true)
+        wait(0)
+        compare(pct.text, "0%", row.tag + ": a muted player still reads loud")
+        compare(flyout.slider.value, 0, row.tag + ": the flyout still reads loud")
+        player.setMuted(false)
+        wait(0)
+        compare(pct.text, "33%", row.tag + ": unmuting lost the level")
+    }
     // The user: "closing the lyrics tab skips to the line that the lyrics switch
     // button is over." Both tap handlers were on the default DragThreshold
     // policy, which takes no exclusive grab, so one tap was delivered to the

@@ -1,9 +1,10 @@
-// One picker for "where is this playing", and the volume slider that comes
-// back on hover once the bar is too narrow to carry one.
+// One picker for "where is this playing", and the upright volume slider the
+// speaker reveals on hover - in the player bar and in Now Playing, which build
+// the same cluster out of the same pieces.
 //
-// The two live next to each other in the player bar's right-hand group and
-// both draw upwards out of an 82px bar, so most of this file is about them
-// not getting in each other's way.
+// The picker and the speaker live next to each other in both of them and both
+// draw upwards, so a good part of this file is about them not getting in each
+// other's way.
 //
 // Two doubles are built below rather than taken from tests/TestStubs.h, which
 // this change does not own:
@@ -390,6 +391,11 @@ TestCase {
     }
 
     // ── 6. volume on hover ───────────────────────────────────────────────
+    //
+    // The bar carries no slider at any width now: it says how loud it is in
+    // words and reveals the slider, upright, when the speaker or the readout
+    // is pointed at. "it can also go into its hover to show bar state, no?
+    // also I want that hovered bar to be vertical not horizontal".
 
     function hover(host, item) {
         var p = item.mapToItem(host.contentItem, item.width / 2, item.height / 2)
@@ -397,57 +403,167 @@ TestCase {
         wait(1)
     }
 
-    // Above the breakpoint the slider is in the bar and there is nothing to
-    // reveal, so the flyout must stay out of the way.
-    function test_a_wide_bar_keeps_its_slider_and_shows_no_flyout() {
-        var host = showHost(playerBarHost, 1280, 200)
-        var bar = host.bar
-        verify(!bar.compactRight)
-        verify(bar.volumeSlider.visible, "the wide bar lost its inline slider")
-
-        hover(host, bar.volumeButton)
-        wait(60)
-        verify(!bar.hoverVolumePopup.visible,
-               "a bar that already shows a slider popped a second one")
+    // The widths the bar is measured at, wide and narrow. There is one
+    // behaviour across all of them now, which is the thing being pinned: the
+    // bar used to answer a hover only below 720.
+    function barWidthRows() {
+        return [{ tag: "640", w: 640 }, { tag: "720", w: 720 },
+                { tag: "960", w: 960 }, { tag: "1280", w: 1280 }]
     }
 
-    // Below it the inline slider is gone and muting is all that is left, so
-    // pointing at the speaker has to bring a slider back.
-    function test_hovering_the_speaker_below_the_breakpoint_reveals_a_slider() {
-        var host = showHost(playerBarHost, 640, 200)
+    function test_the_bar_carries_no_inline_slider_data() { return barWidthRows() }
+
+    function test_the_bar_carries_no_inline_slider(row) {
+        var host = showHost(playerBarHost, row.w, 200)
         var bar = host.bar
-        verify(bar.compactRight, "640 should be a compact bar")
-        // Settled, not one frame after the resize: the slider shrinks out of the
-        // bar over 150ms now rather than vanishing between two frames. What has
-        // to be true is that it is gone once the bar has stopped moving, because
-        // the flyout below is the only way to the volume from then on.
-        tryVerify(function () { return !bar.volumeSlider.visible }, 2000,
-                  "the narrow bar still had its inline slider once it had settled")
-        verify(!bar.hoverVolumePopup.visible, "the flyout is up before anyone pointed at it")
+        settle(host.contentItem)
+        verify(!bar.hoverVolumePopup.visible,
+               row.tag + ": the flyout is up before anyone pointed at it")
+        // Nothing in the bar's own tree draws a slider. The flyout's one is in
+        // the overlay, not under the bar, so a walk of the bar finds none.
+        var strays = collectVisibleByName(bar, "volumeSliderHandle", [])
+        compare(strays.length, 0,
+                row.tag + ": the bar still draws " + strays.length
+                + " inline volume slider(s)")
+        // And what it does draw instead is the level in words.
+        verify(bar.volumePercentText.visible,
+               row.tag + ": the bar does not say how loud it is")
+        compare(bar.volumePercentText.text, "50%",
+                row.tag + ": the readout says " + bar.volumePercentText.text)
+    }
+
+    function test_hovering_the_speaker_reveals_a_slider_data() { return barWidthRows() }
+
+    function test_hovering_the_speaker_reveals_a_slider(row) {
+        var host = showHost(playerBarHost, row.w, 200)
+        var bar = host.bar
+        settle(host.contentItem)
 
         hover(host, bar.volumeButton)
         tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
-                  "hovering the speaker revealed no slider")
-        verify(bar.hoverVolumeSlider.visible, "the flyout is empty")
+                  row.tag + ": hovering the speaker revealed no slider")
+        var s = bar.hoverVolumeSlider
+        verify(s.visible, row.tag + ": the flyout is empty")
         // A Popup forces its content to the size it worked out from the
         // content's implicit size, so a slider with no implicit height comes
         // out as a nothing-tall strip with no hit area at all.
-        verify(bar.hoverVolumeSlider.height >= 16 && bar.hoverVolumeSlider.width >= 60,
-               "the revealed slider is " + bar.hoverVolumeSlider.width.toFixed(1) + "x"
-               + bar.hoverVolumeSlider.height.toFixed(1) + ", too small to aim at")
-
-        // And reachable with the pointer, not just by calling its signal.
-        var mid = bar.hoverVolumeSlider.mapToItem(
-            host.contentItem, bar.hoverVolumeSlider.width / 2,
-            bar.hoverVolumeSlider.height / 2)
-        verify(mid.y >= 0 && mid.y <= host.height,
-               "the flyout opened off the top of the window")
+        verify(s.height >= 60 && s.width >= 16,
+               row.tag + ": the revealed slider is " + s.width.toFixed(1) + "x"
+               + s.height.toFixed(1) + ", too small to aim at")
 
         // And it is a working slider, not a picture of one.
-        bar.hoverVolumeSlider.moved(0.25)
+        s.moved(0.25)
         compare(Math.round(player.volume * 100), 25,
-               "the revealed slider does not set the volume")
-        verify(!player.muted, "moving the slider should unmute")
+                row.tag + ": the revealed slider does not set the volume")
+        verify(!player.muted, row.tag + ": moving the slider should unmute")
+        // The readout under it follows, so the two never disagree.
+        tryVerify(function () { return bar.volumePercentText.text === "25%" }, 2000,
+                  row.tag + ": the readout still says "
+                  + bar.volumePercentText.text + " after the slider moved")
+    }
+
+    // Vertical, which is the instruction: "I want that hovered bar to be
+    // vertical not horizontal". Measured three ways, because a tall box with a
+    // horizontal slider in it would pass the first one on its own.
+    function test_the_revealed_slider_is_vertical() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var bar = host.bar
+        hover(host, bar.volumeButton)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "the flyout did not open")
+        var s = bar.hoverVolumeSlider
+        verify(s.height > s.width * 2,
+               "the revealed slider is " + s.width.toFixed(1) + "x"
+               + s.height.toFixed(1) + ", which is not upright")
+
+        // The handle travels down the slider as the volume falls, and up as it
+        // rises - and does not travel sideways at all.
+        var handle = findByName(s, "volumeSliderHandle")
+        verify(handle, "the revealed slider has no handle")
+        player.setVolume(1)
+        wait(0)
+        var topY = handle.mapToItem(s, 0, 0).y
+        var topX = handle.mapToItem(s, 0, 0).x
+        player.setVolume(0)
+        wait(0)
+        var botY = handle.mapToItem(s, 0, 0).y
+        var botX = handle.mapToItem(s, 0, 0).x
+        verify(botY - topY >= s.height - handle.height - 1,
+               "full to silent moved the handle " + (botY - topY).toFixed(1)
+               + "px down a " + s.height.toFixed(1) + "px slider")
+        compare(botX.toFixed(1), topX.toFixed(1),
+                "the handle moved sideways, so the slider is not upright")
+        verify(topY >= -0.01 && botY + handle.height <= s.height + 0.01,
+               "the handle runs " + topY.toFixed(1) + ".."
+               + (botY + handle.height).toFixed(1) + " in a "
+               + s.height.toFixed(1) + "px slider")
+
+        // Louder is higher: the fill is at the bottom.
+        var fill = findByName(s, "volumeSliderFill")
+        verify(fill, "the revealed slider has no fill")
+        player.setVolume(0.25)
+        wait(0)
+        var fillBottom = fill.mapToItem(s, 0, fill.height).y
+        verify(Math.abs(fillBottom - s.height) <= 1.0,
+               "the fill ends at " + fillBottom.toFixed(1) + " in a "
+               + s.height.toFixed(1) + "px slider, so it is not filling upwards")
+        verify(fill.height < s.height / 2,
+               "at a quarter volume the fill is " + fill.height.toFixed(1)
+               + " of " + s.height.toFixed(1))
+    }
+
+    // Upward, out of an 82px bar. Downward there is nothing but the bottom of
+    // the screen.
+    function test_the_flyout_opens_upward() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var bar = host.bar
+        hover(host, bar.volumeButton)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "the flyout did not open")
+        var popup = bar.hoverVolumePopup
+        var btn = bar.volumeButton
+        var popupBottom = popup.contentItem.mapToItem(
+            host.contentItem, 0, popup.contentItem.height).y
+        var btnTop = btn.mapToItem(host.contentItem, 0, 0).y
+        verify(popupBottom <= btnTop,
+               "the flyout's content runs to " + popupBottom.toFixed(1)
+               + " where the speaker starts at " + btnTop.toFixed(1)
+               + ", so it did not open upward")
+        verify(popup.contentItem.mapToItem(host.contentItem, 0, 0).y >= 0,
+               "the flyout opened off the top of the window")
+        // Centred on the speaker rather than hanging off one side of it.
+        var popupMid = popup.contentItem.mapToItem(
+            host.contentItem, popup.contentItem.width / 2, 0).x
+        var btnMid = btn.mapToItem(host.contentItem, btn.width / 2, 0).x
+        verify(Math.abs(popupMid - btnMid) <= 1.5,
+               "the flyout is centred at " + popupMid.toFixed(1)
+               + " against a speaker at " + btnMid.toFixed(1))
+    }
+
+    // The readout is half of one hover target, not a label beside it: a
+    // pointer running along the row reaches the percentage first.
+    function test_hovering_the_percentage_reveals_the_slider_too() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var bar = host.bar
+        hover(host, bar.volumePercentText)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "pointing at the readout revealed no slider")
+    }
+
+    // The gap between the two halves is paid inside the readout rather than as
+    // a layout margin, so there is no dead strip between them for the pointer
+    // to fall into.
+    function test_the_speaker_and_the_readout_touch() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var bar = host.bar
+        var btn = bar.volumeButton
+        var pct = bar.volumePercentText
+        var btnRight = btn.mapToItem(bar, btn.width, 0).x
+        var pctLeft  = pct.mapToItem(bar, 0, 0).x
+        verify(Math.abs(pctLeft - btnRight) <= 0.5,
+               "the readout starts at " + pctLeft.toFixed(1)
+               + " where the speaker ends at " + btnRight.toFixed(1)
+               + ", leaving a strip that belongs to neither")
     }
 
     // Pointing somewhere else puts it away again.
@@ -461,6 +577,30 @@ TestCase {
         mouseMove(host.contentItem, 20, 20)
         tryVerify(function () { return !bar.hoverVolumePopup.visible }, 2000,
                   "the flyout stayed up after the pointer left")
+    }
+
+    // ...but not at once. A pointer travelling diagonally from the speaker
+    // into the slider above it is off both of them for a frame or two, and a
+    // flyout that closed on that frame could never be reached.
+    function test_the_flyout_waits_before_closing() {
+        var host = showHost(playerBarHost, 1280, 200)
+        var bar = host.bar
+        hover(host, bar.volumeButton)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, 2000,
+                  "the flyout did not open")
+
+        // Off both of them, the way the diagonal crossing is.
+        mouseMove(host.contentItem, 20, 20)
+        wait(40)
+        verify(bar.hoverVolumePopup.visible,
+               "the flyout shut 40ms after the pointer left it, which is inside"
+               + " the time a pointer takes to cross into it")
+        // And coming back inside the grace period keeps it, rather than
+        // closing and reopening.
+        hover(host, bar.volumeButton)
+        wait(40)
+        verify(bar.hoverVolumePopup.visible,
+               "the flyout did not survive the pointer coming back")
     }
 
     // The speaker still mutes. The flyout is hover-only, so it never takes a
@@ -508,6 +648,132 @@ TestCase {
         wait(80)
         verify(!bar.hoverVolumePopup.visible,
                "the output button is not the volume control")
+    }
+
+    // ── 6b. the same control in Now Playing ──────────────────────────────
+    //
+    // One behaviour everywhere: the page builds its cluster out of the same
+    // pieces and reveals the same PlayerBar.VolumeFlyout. These cases are the
+    // page's half of the bargain, because a shared component is only shared
+    // while both callers still wire it up.
+
+    // The cluster the page is actually drawing. Both exist at all times and
+    // the live objectNames follow whichever is visible.
+    function liveCluster(page) {
+        var riding = findByName(page, "nowPlayingVolumeCluster")
+        var ownRow = findByName(page, "nowPlayingVolumeOwnCluster")
+        verify(riding && ownRow, "the page is missing one of its two clusters")
+        verify(riding.visible !== ownRow.visible,
+               "the page is drawing " + (riding.visible ? "both" : "neither")
+               + " of its volume clusters")
+        return riding.visible ? riding : ownRow
+    }
+
+    function offstageCluster(page) {
+        var riding = findByName(page, "nowPlayingVolumeCluster")
+        var ownRow = findByName(page, "nowPlayingVolumeOwnCluster")
+        return riding.visible ? ownRow : riding
+    }
+
+    // A Popup is not an Item, so it is not in the cluster's `children` and no
+    // tree walk will find it. The cluster hands it over instead.
+    function nowPlayingFlyout(page) {
+        var f = liveCluster(page).flyout
+        verify(f, "the page's live cluster has no volume flyout")
+        return f
+    }
+
+    function test_the_page_reveals_the_same_vertical_slider() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var page = host.page
+        settle(host.contentItem)
+
+        var mute = findByName(page, "nowPlayingMuteButton")
+        verify(mute, "the page has no mute button")
+        var flyout = nowPlayingFlyout(page)
+        verify(!flyout.visible, "the page's flyout is up before anyone pointed at it")
+
+        hover(host, mute)
+        tryVerify(function () { return flyout.visible }, 2000,
+                  "pointing at the page's speaker revealed no slider")
+        var s = flyout.slider
+        verify(s.height > s.width * 2,
+               "the page's revealed slider is " + s.width.toFixed(1) + "x"
+               + s.height.toFixed(1) + ", which is not upright")
+        // A tall box is not an upright slider: the handle has to run down it.
+        // A horizontal slider in a 20x110 popup passes the line above and
+        // nothing else here.
+        var handle = findByName(s, "volumeSliderHandle")
+        verify(handle, "the page's revealed slider has no handle")
+        player.setVolume(1)
+        wait(0)
+        var topY = handle.mapToItem(s, 0, 0).y
+        player.setVolume(0)
+        wait(0)
+        var botY = handle.mapToItem(s, 0, 0).y
+        verify(botY - topY >= s.height - handle.height - 1,
+               "full to silent moved the page's handle " + (botY - topY).toFixed(1)
+               + "px down a " + s.height.toFixed(1) + "px slider")
+
+        // Upward here too: below the transport row is the Up Next list.
+        var popupTop = s.mapToItem(host.contentItem, 0, 0).y
+        var muteTop  = mute.mapToItem(host.contentItem, 0, 0).y
+        verify(popupTop < muteTop,
+               "the page's flyout starts at " + popupTop.toFixed(1)
+               + " against a speaker at " + muteTop.toFixed(1))
+
+        s.moved(0.4)
+        compare(Math.round(player.volume * 100), 40,
+                "the page's revealed slider does not set the volume")
+    }
+
+    // The page draws no slider at rest either: three controls, and the fourth
+    // is in the overlay only while it is wanted.
+    function test_the_page_carries_no_inline_slider() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var page = host.page
+        settle(host.contentItem)
+        var strays = collectVisibleByName(page, "volumeSliderHandle", [])
+        compare(strays.length, 0,
+                "the page still draws " + strays.length + " inline volume slider(s)")
+    }
+
+    // Two clusters exist and one is drawn, so two flyouts exist as well. The
+    // offstage one must never answer a hover it cannot have received.
+    function test_only_the_live_cluster_can_open_a_flyout() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var page = host.page
+        settle(host.contentItem)
+        var mute = findByName(page, "nowPlayingMuteButton")
+        hover(host, mute)
+        tryVerify(function () { return nowPlayingFlyout(page).visible }, 2000,
+                  "the live cluster's flyout did not open")
+        var offstage = offstageCluster(page).flyout
+        verify(offstage, "the offstage cluster has no flyout, so this case is blind")
+        compare(offstage.objectName, "nowPlayingVolumeFlyoutOffstage",
+                "the offstage flyout is wearing the live name")
+        verify(!offstage.visible,
+               "the cluster that is not on screen put a slider on it")
+    }
+
+    // The page's picker and the page's flyout draw into the same space, the
+    // same way the bar's two do.
+    function test_the_pages_output_menu_also_wins() {
+        var host = showHost(nowPlayingHost, 1280, 900)
+        var page = host.page
+        settle(host.contentItem)
+        var mute = findByName(page, "nowPlayingMuteButton")
+        var flyout = nowPlayingFlyout(page)
+        hover(host, mute)
+        tryVerify(function () { return flyout.visible }, 2000,
+                  "the page's flyout did not open")
+
+        var picker = findByName(page, "nowPlayingOutputButton")
+        verify(picker, "the page has no output picker")
+        openPicker(host, picker)
+        tryVerify(function () { return !flyout.visible }, 2000,
+                  "the page's slider stayed up while its output menu was open")
+        picker.menu.close()
     }
 
     // ── 7. telling four sinks on one card apart ──────────────────

@@ -301,50 +301,51 @@ TestCase {
         compare(host.nowPlayingOpens, 1)
     }
 
-    // ── and while the chrome rearranges itself ───────────────────────────
+    // ── and while the chrome resizes ─────────────────────────────────────
     //
-    // Both of these controls sit in a group that moves when the bar crosses
-    // 720px: the slider's slot closes and everything left of it travels. A way
-    // in that is only reachable once the bar has settled is not a way in, so
-    // the pair is measured on every frame of that move and clicked in the
-    // middle of it.
+    // Both of these controls sit in the bar's right-hand group. That group used
+    // to regroup at 720px - the volume slider's slot closed over 150ms and
+    // everything left of it travelled - and this case was about the pair
+    // surviving the move. The slider has left the bar for a hover flyout, so
+    // the group is 204px at every width and there is no move to survive. What
+    // is left to hold is that a resize never takes either control off the bar
+    // and never pulls them apart, measured every frame of one and clicked in
+    // the middle of it.
 
-    function test_the_way_in_stays_grouped_while_the_bar_regroups() {
+    function test_the_way_in_stays_grouped_while_the_bar_resizes() {
         var host = showHost(playerBarHost, 760, 200)
         var bar = host.bar
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
-                  2000, "the wide bar never settled with its slider")
 
         host.width = 700
-        var mid = 0
+        // A Window's own width moves on assignment and the items inside it only
+        // on the next turn, so the frame of the assignment measures two
+        // different bars at once. That frame is also one in which nothing has
+        // been painted.
+        waitForRendering(host.contentItem)
         for (var i = 0; i < 14; i++) {
-            wait(16)
             var arrow = bar.nowPlayingButton
             var queue = bar.queueButton
             verify(arrow.visible && queue.visible,
-                   "sample " + i + ": a control went missing mid-regroup")
+                   "sample " + i + ": a control went missing mid-resize")
             var arrowLeft  = arrow.mapToItem(bar, 0, 0).x
             var arrowRight = rightEdgeIn(arrow, bar)
             var queueLeft  = queue.mapToItem(bar, 0, 0).x
             verify(arrowLeft >= -0.5 && rightEdgeIn(queue, bar) <= bar.width + 0.5,
-                   "sample " + i + ": the pair left the bar while it regrouped ("
+                   "sample " + i + ": the pair left the bar while it resized ("
                    + arrowLeft.toFixed(1) + ".." + rightEdgeIn(queue, bar).toFixed(1)
                    + " in " + bar.width + "px)")
             verify(arrowRight <= queueLeft + 0.5 && queueLeft - arrowRight <= 12,
                    "sample " + i + ": the arrow and the queue button came apart ("
-                   + (queueLeft - arrowRight).toFixed(1) + "px) while the bar regrouped")
-            if (bar.volumeSlotRoom > 0.5 && bar.volumeSlotRoom < bar.volumeSliderWidth - 0.5) {
-                mid++
-                // Mid-move, with the group still travelling, the button still
-                // opens the page.
-                if (mid === 2) {
-                    centerClick(arrow)
-                    compare(host.nowPlayingOpens, 1,
-                            "the button did not open Now Playing while the bar was moving")
-                }
+                   + (queueLeft - arrowRight).toFixed(1) + "px) while the bar resized")
+            // Mid-resize, with the window still settling, the button still
+            // opens the page.
+            if (i === 2) {
+                centerClick(arrow)
+                compare(host.nowPlayingOpens, 1,
+                        "the button did not open Now Playing while the bar was moving")
             }
+            wait(16)
         }
-        verify(mid >= 3, "the bar regrouped without ever being between its two layouts")
         compare(host.nowPlayingOpens, 1, "exactly one way in was taken")
         compare(host.navCalls.length, 0, "the button is not a navigation link")
     }

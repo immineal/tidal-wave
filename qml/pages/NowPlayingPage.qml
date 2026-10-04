@@ -268,9 +268,25 @@ Rectangle {
     readonly property int transportFixedWidth: 248
     readonly property int transportGaps: 6
     readonly property int transportSpacing:
-        infoWidth >= transportFixedWidth + transportGaps * 16 ? 16 : 8
+        gapFor(infoWidth)
     readonly property int transportMinWidth:
         transportFixedWidth + transportGaps * transportSpacing
+
+    // The row's own gap, asked of a width. `transportSpacing` asks it of the
+    // width the row has this frame, which is what the row is laid out at;
+    // the volume's arithmetic below asks it of the width the column will
+    // settle at, which is a different question and used to be answered with
+    // this one.
+    //
+    // That was a hole in the fix that settledInfoWidth is: the home was taken
+    // off a settled width but compared against a threshold that moved with
+    // the live one, so the threshold itself fell from 588 to 524 in the
+    // middle of a restack and the volume changed home at a width it does not
+    // change home at. Measured: resizing a 1920 window down to 840 put the
+    // cluster on the transport row, where a window born at 840 does not.
+    function gapFor(w) {
+        return w >= transportFixedWidth + transportGaps * 16 ? 16 : 8
+    }
 
     // ─── Where the volume lives ────────────────────────
     //
@@ -280,44 +296,58 @@ Rectangle {
     // fixed-width cluster now, and it has two homes rather than a row of its
     // own below everything.
     //
-    // 110px of slider, the 18px mute icon, a 36px percentage and the output
-    // picker, which measures 32 square at size 20 - PlayerBar.OutputPicker
-    // rounds `size + 12` up to 32. Three 10px gaps between the four, tighter
-    // than the 12 the old full-width row used, so they read as one object
-    // parked at the end of a row of buttons rather than as four more controls
-    // in it.
+    // And it is shorter again than the 226px that first answered that, because
+    // the slider has left the row entirely: "it can also go into its hover to
+    // show bar state, no? also I want that hovered bar to be vertical not
+    // horizontal". At rest the cluster is three things - the 18px mute/level
+    // speaker, a 36px percentage, and the output picker, which measures 32
+    // square at size 20 because PlayerBar.OutputPicker rounds `size + 12` up to
+    // 32. Two 10px gaps between the three, tighter than the 12 the old
+    // full-width row used, so they read as one object parked at the end of a
+    // row of buttons rather than as three more controls in it. 106px.
+    //
+    // The percentage stays at rest although the flyout draws the level too.
+    // Shown the two-item version without it, the user kept it.
     readonly property int volumeIconSize:       18
-    readonly property int volumeSliderWidth:    110
     readonly property int volumePercentWidth:   36
     readonly property int volumeOutputWidth:    32
     readonly property int volumeClusterSpacing: 10
     readonly property int volumeClusterWidth:
-        volumeIconSize + volumeSliderWidth + volumePercentWidth
-        + volumeOutputWidth + 3 * volumeClusterSpacing
+        volumeIconSize + volumePercentWidth + volumeOutputWidth
+        + 2 * volumeClusterSpacing
+
+    // The slider the speaker reveals, which costs the row nothing: it is drawn
+    // over the page in a popup and never in the layout. Upright, so the numbers
+    // are a length and a thickness rather than a width.
+    readonly property int volumeSliderLength:    110
+    readonly property int volumeSliderThickness: 20
 
     // What the transport row needs to carry the cluster. Not just the cluster
     // and a gap: the play button is in the middle of this column and it stays
     // there, so a cluster at the right-hand end buys a counterweight of its own
     // width at the left-hand one. That is the 248px of buttons, the cluster
-    // twice over and eight gaps instead of six - 828 at the 16px spacing.
+    // twice over and eight gaps instead of six - 588 at the 16px spacing, where
+    // the 226px cluster needed 828.
     //
     // The counterweight sits *after* the shuffle button rather than before it,
     // which is the whole reason this works: shuffle stays flush with the left
-    // edge of the column, where the title and the seek bar start, and the 226px
+    // edge of the column, where the title and the seek bar start, and the 106px
     // goes into the empty stretch between shuffle and the transport, where
     // there is nothing to push out of place. What the row ends up looking like
     // is the shape a player has always had - shuffle at one edge, the transport
     // in the middle, the volume at the other - and the volume is the only thing
     // that moved.
     //
-    // 828 is a lot to ask of a column, and asking it is the point: where the
-    // column cannot pay, the volume goes to a short row of its own rather than
-    // the play button coming off the middle. Both answers fix what the user
-    // complained about, because the fallback row is the same short cluster and
-    // not the full-width bar it replaced.
+    // 588 is still more than a narrow column has, and asking it is the point:
+    // where the column cannot pay, the volume goes to a short row of its own
+    // rather than the play button coming off the middle. Both answers fix what
+    // the user complained about, because the fallback row is the same short
+    // cluster and not the full-width bar it replaced. Dropping 240px off this
+    // figure moves the band where that happens; the band is measured in
+    // tests/qml/tst_layout_player.qml rather than reasoned about here.
     readonly property int transportWithVolumeWidth:
         transportFixedWidth + 2 * volumeClusterWidth
-        + (transportGaps + 2) * transportSpacing
+        + (transportGaps + 2) * gapFor(settledInfoWidth)
 
     // Asked of the width the column will settle at, not the width it has in
     // the middle of a rearrangement. infoWidth is lerped across the
@@ -2289,8 +2319,8 @@ Rectangle {
                     // Either way the volume stays in the reading view, at its
                     // own height and full strength. It folded away once, for the
                     // ~32px of words it is worth; shown the trade the user chose
-                    // the controls, because the volume slider is something they
-                    // reach for with the mouse rather than with the arrow keys.
+                    // the controls, because the volume is something they reach
+                    // for with the mouse rather than with the arrow keys.
                     // tests/qml/tst_layout_player.qml holds both homes to that.
                     RowLayout {
                         objectName: "nowPlayingVolumeRow"
@@ -2540,9 +2570,33 @@ Rectangle {
     // definition and show whichever the column has room for. The one off
     // screen is invisible, so it is out of the tab chain as well as off the
     // layout.
+    //
+    // Three controls, not four. The slider lives in the flyout the speaker
+    // reveals and is the same PlayerBar.VolumeFlyout the bottom bar reveals,
+    // so the two places are one control with one behaviour.
     component VolumeControls : RowLayout {
         id: vol
         spacing: root.volumeClusterSpacing
+
+        // The speaker and the percentage are one hover target. They are two
+        // items because one of them is the keyboard control and the other is
+        // a label, but either of them being pointed at is a request for the
+        // slider, and the flyout's own close delay carries the pointer over
+        // the 10px between them and up into the popup.
+        //
+        // The output picker is deliberately not part of it: it is a different
+        // control with a different glyph, and its menu draws into the same
+        // space - so the flyout stands back entirely while that menu is open,
+        // the same rule the player bar has.
+        readonly property bool wantFlyout:
+            !outPicker.menuVisible && (muteHov.hovered || pctHov.hovered)
+
+        // A Popup is not an Item, so it is not among this row's `children` and
+        // a tree walk cannot find it. tests/qml/tst_output_picker.qml reaches
+        // it through here instead, and through the cluster it belongs to,
+        // which is also the only way to tell the live one from the offstage
+        // copy.
+        readonly property alias flyout: volFlyout
 
         Item {
             id: muteBtn
@@ -2564,52 +2618,73 @@ Rectangle {
             VectorIcon {
                 anchors.fill: parent
                 name: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
-                color: Theme.textSec
+                color: muteHov.hovered ? Theme.textPrimary : Theme.textSec
                 strokeWidth: 1.5
             }
+            // A click still mutes, and the hover is what the flyout reads.
+            // Two handlers rather than a hoverEnabled MouseArea, because the
+            // flyout is not a child of this item and cannot see a MouseArea's
+            // containsMouse from outside it.
+            HoverHandler { id: muteHov; cursorShape: Qt.PointingHandCursor }
             MouseArea { anchors.fill: parent; onClicked: player.setMuted(!player.muted); cursorShape: Qt.PointingHandCursor }
         }
 
-        VolumeSlider {
-            objectName: "nowPlayingVolumeSlider"
-            // Layout.preferredWidth and not width: a Layout owns its children's
-            // size, and this width is the whole of the change.
-            Layout.preferredWidth:  root.volumeSliderWidth
-            Layout.preferredHeight: 20
-            Layout.alignment: Qt.AlignVCenter
-            value: player.muted ? 0 : player.volume
-            onMoved: (v) => { player.setMuted(false); player.setVolume(v) }
-        }
-
         Text {
+            objectName: vol.visible ? "nowPlayingVolumePercent"
+                                    : "nowPlayingVolumePercentOffstage"
             // The label runs from "0%" to "100%", about twelve pixels apart,
-            // and the cluster is now a fixed object that the transport buttons
-            // are placed against - so a label that measured itself would walk
-            // them sideways as the volume moved. It carried `width: 36` for
-            // that already and the 36 never took: a Text has an implicit width
-            // of its own, the layout reads that and overwrites the width it was
+            // and the cluster is a fixed object that the transport buttons are
+            // placed against - so a label that measured itself would walk them
+            // sideways as the volume moved. It carried `width: 36` for that
+            // once and the 36 never took: a Text has an implicit width of its
+            // own, the layout reads that and overwrites the width it was
             // given. Layout.preferredWidth is the one a layout listens to.
             Layout.preferredWidth: root.volumePercentWidth
             Layout.alignment: Qt.AlignVCenter
             text: qsTr("%1%").arg(Math.round((player.muted ? 0 : player.volume) * 100)
                                       .toLocaleString(Qt.locale(), 'f', 0))
             color: Theme.textDim; font.pixelSize: 12
+            HoverHandler { id: pctHov }
         }
 
         // The output picker, the same component the player bar puts next to its
-        // volume slider: this computer's outputs and any cast target in one
+        // volume readout: this computer's outputs and any cast target in one
         // list. It used to be a cast-only picker written out twice, once here
         // and once in the bar, because the two could not share a file without
         // touching CMakeLists.txt. They share PlayerBar's inline component
         // instead, so the list, the headings and the "stop casting" rule are
         // written once.
         PlayerBar.OutputPicker {
+            id: outPicker
             // Two of these exist and one of them is on screen. The name the
             // other suites look the page's picker up by belongs to that one.
             objectName: vol.visible ? "nowPlayingOutputButton"
                                     : "nowPlayingOutputButtonOffstage"
             Layout.alignment: Qt.AlignVCenter
             size: 20
+        }
+
+        // The slider, over the page rather than in it. Parented to the speaker
+        // so it comes up centred on the thing that was pointed at, and upward,
+        // which in this column puts it over the seek bar rather than over the
+        // Up Next list the user is more likely to be reading.
+        //
+        // `vol.visible &&` is belt and braces, and measured to be: both
+        // clusters exist at all times and only one is drawn, and taking the
+        // guard away changes nothing that any test can see, because an
+        // invisible item's HoverHandler never reports hovered and the offstage
+        // copy therefore never asks. It stays because what is cheap here is
+        // the guard and what is expensive is a popup drawn over the page with
+        // no control under it, and because `pointedAt` is a plain property a
+        // later caller could drive from something other than a hover.
+        PlayerBar.VolumeFlyout {
+            id: volFlyout
+            objectName: vol.visible ? "nowPlayingVolumeFlyout"
+                                    : "nowPlayingVolumeFlyoutOffstage"
+            parent: muteBtn
+            pointedAt: vol.visible && vol.wantFlyout
+            sliderLength:    root.volumeSliderLength
+            sliderThickness: root.volumeSliderThickness
         }
     }
 

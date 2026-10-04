@@ -567,14 +567,19 @@ TestCase {
         }
     }
 
-    // The links have to keep working once the bar sheds its volume slider.
-    function test_player_bar_links_work_in_compact_mode() {
+    // The links have to keep working at the narrowest window the app supports.
+    // The bar used to shed its inline volume slider at 720px and this case was
+    // about the layout on the far side of that. There is no breakpoint any more
+    // - the volume is a speaker, a readout and the output picker at every width,
+    // and the slider comes up on hover - but 640 is still where the right-hand
+    // group squeezes the track info hardest: the left group lands on its 200px
+    // minimum there and the names have the least room they ever get.
+    function test_player_bar_links_work_at_the_window_minimum() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Ada" },
             { id: 22, name: "Bela" }
         ]))
         var host = showHost(playerBarHost, 640, 200)
-        verify(host.bar.compactRight, "640 should be below the compact breakpoint")
         var names = visibleNamed(host.bar, "playerBarArtistName")
         compare(names.length, 2, "both names fit even at 640")
         centerClick(names[1])

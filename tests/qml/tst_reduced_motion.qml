@@ -359,47 +359,40 @@ TestCase {
                 "the page did not settle back on its side-by-side layout")
     }
 
-    function test_player_bar_sheds_its_slider_data() { return test_rail_expansion_data() }
+    // The bar used to shed its inline volume slider at 720px, the slot it left
+    // closed over 150ms, and this was the case that held reduced motion to
+    // doing that in one frame. The slider has left the bar for a hover flyout
+    // and nothing in the right-hand group animates any more, so the only motion
+    // the volume still has is the flyout's own 120ms opacity fade - and that is
+    // what reduced motion now has to make instant.
+    function test_player_bar_volume_flyout_fade_data() { return test_rail_expansion_data() }
 
-    function test_player_bar_sheds_its_slider(row) {
+    function test_player_bar_volume_flyout_fade(row) {
         app.setReducedMotionForTest(row.reduced)
 
-        var host = showWindow(playerBarHostC, 760, 200)
+        var host = showWindow(playerBarHostC, 960, 200)
         var bar = host.bar
-        tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
-                  settleMs, "the wide bar never settled with its slider")
+        verify(!bar.hoverVolumePopup.visible, "the flyout is up before anyone pointed at it")
 
-        host.width = 700                 // below the breakpoint: the slider goes
+        var btn = bar.volumeButton
+        var p = btn.mapToItem(host.contentItem, btn.width / 2, btn.height / 2)
+        mouseMove(host.contentItem, p.x, p.y)
+        tryVerify(function () { return bar.hoverVolumePopup.visible }, settleMs,
+                  "the flyout did not open on hover")
         oneFrame()
 
         if (row.reduced) {
-            compare(bar.volumeSlotRoom, 0,
-                    "reduced motion: the slot must be closed on the next frame, not closing")
-            verify(!bar.volumeSlot.visible,
-                   "reduced motion left an empty slot on the bar")
-            verify(bar.volumeInlineGone,
-                   "reduced motion: the hover flyout is still waiting for the inline slider")
+            compare(bar.hoverVolumePopup.opacity, 1,
+                    "reduced motion: the flyout must be fully drawn on the frame it opens")
         } else {
-            verify(bar.volumeSlotRoom > 0,
-                   "without reduced motion the slot shut between two frames")
-            tryVerify(function () { return bar.volumeSlotRoom === 0 }, settleMs,
-                      "the slot never finished closing")
+            tryVerify(function () { return bar.hoverVolumePopup.opacity === 1 }, settleMs,
+                      "the flyout never finished fading in")
         }
-        verify(!bar.volumeSlider.visible, "the narrow bar kept its inline slider")
-
-        host.width = 760
-        oneFrame()
-
-        if (row.reduced) {
-            compare(bar.volumeSlotRoom, bar.volumeSliderWidth,
-                    "reduced motion: taking the slider back must be instant too")
-        } else {
-            verify(bar.volumeSlotRoom < bar.volumeSliderWidth,
-                   "without reduced motion the slot sprang open between two frames")
-            tryVerify(function () { return bar.volumeSlotRoom === bar.volumeSliderWidth },
-                      settleMs, "the slot never finished opening")
-        }
-        verify(bar.volumeSlider.visible, "the wide bar did not get its slider back")
+        // And the slider inside it is a real control either way, not a ghost
+        // left over from the transition.
+        verify(bar.hoverVolumeSlider.visible && bar.hoverVolumeSlider.height >= 60,
+               "the flyout is " + bar.hoverVolumeSlider.height.toFixed(1)
+               + "px tall, which is not a slider to aim at")
     }
 
     // ── a hover fill ─────────────────────────────────────────────────────
