@@ -1464,6 +1464,150 @@ TestCase {
                 "a track scored on something other than its title")
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  5. The tab highlight is one pill, and it lands on the chip
+    // ════════════════════════════════════════════════════════════════════
+    //
+    // Where the travelling highlight comes to rest is a layout question, and
+    // it is asked here because tst_layout_pages' hero-page audit does not
+    // reach SearchPage: its four pages are Album, Playlist, Mix and Artist,
+    // plus Collection.
+    //
+    // Only where it comes to rest. init() above turns reduced motion on for
+    // this whole file - "no fades to wait out" - so every duration under qml/
+    // is zero here and nothing in this file can say anything about a travel.
+    // That half, and the ink that goes with it, is in tst_reduced_motion.
+    //
+    // Every chip, because the six are six different widths - each its own
+    // label plus padding - and the pill has to be each of them in turn: a
+    // highlight aimed with an index times a constant is wrong on five of the
+    // six, which is what the first width catches.
+    //
+    // And every chip at four pane widths, which is the cheap half. The chips
+    // are text-width and the row neither wraps nor stretches, so the pane's
+    // width does not enter the pill's geometry today and the sweep is the
+    // assertion that it still does not - a chip given Layout.fillWidth, or a
+    // row centred rather than left-aligned, would move the chips out from
+    // under a pill aimed at anything but their live boxes.
+
+    readonly property var tabWidths: [1280, 1100, 900, 740]
+
+    function pillAndTabs(win) {
+        var tabs = findByName(win.page, "searchTabsRow")
+        verify(tabs, "the tab row was not found")
+        var pills = findAllByName(win.page, "searchTabPill")
+        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
+        return { tabs: tabs, pill: pills[0] }
+    }
+
+    // A chip's box in the pill's coordinates, so the two are comparable.
+    function chipBoxIn(pill, chip) {
+        var p = chip.mapToItem(pill.parent, 0, 0)
+        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+    }
+
+    function pillSays(pill) {
+        return "the pill is at " + pill.x.toFixed(1) + "," + pill.y.toFixed(1)
+               + " " + pill.width.toFixed(1) + "x" + pill.height.toFixed(1)
+    }
+
+    function test_the_tab_pill_lands_on_the_chip() {
+        for (var i = 0; i < tabWidths.length; ++i) {
+            var w = tabWidths[i]
+            var win = showPage()
+            win.width = w
+            typeInto(win.page, query)
+            waitForRendering(win.contentItem, settleMs)
+
+            var found = pillAndTabs(win)
+            var tabs = found.tabs, pill = found.pill
+
+            for (var tab = 0; tab < 6; ++tab) {
+                win.page.activeTab = tab
+                var chip = tabs.children[tab]
+                verify(chip, "@" + w + ": chip " + tab + " was not built")
+
+                // tryVerify, because the pill is still travelling when the tab
+                // is set: this case is about where it stops. Exactly on the
+                // chip and not within a pixel of it - a pill that stops a
+                // fraction short leaves a sliver of the bare row down one edge
+                // of the chip, and it is the ink check below that would then
+                // fail by a pixel and read as a different bug.
+                tryVerify(function () {
+                    var c = chipBoxIn(pill, tabs.children[tab])
+                    return Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width  - c.w) < 0.01
+                        && Math.abs(pill.y - c.y) < 0.01 && Math.abs(pill.height - c.h) < 0.01
+                }, settleMs,
+                "@" + w + ": " + pillSays(pill) + " with chip " + tab + " at "
+                + chipBoxIn(pill, chip).x.toFixed(1) + "," + chipBoxIn(pill, chip).y.toFixed(1)
+                + " " + chip.width.toFixed(1) + "x" + chip.height.toFixed(1))
+
+                // The accent's ink copy covers the chip exactly when the pill
+                // does, which is what keeps every glyph on the fill its ink
+                // was chosen for; off the chip it is not drawn at all.
+                var ink = findByName(chip, "searchTabInk")
+                verify(ink, "@" + w + ": chip " + tab + " has no accent-ink copy")
+                compare(Math.round(ink.width),  Math.round(chip.width),
+                        "@" + w + ": the ink does not cover the chip the pill is on")
+                compare(Math.round(ink.height), Math.round(chip.height),
+                        "@" + w + ": the ink does not cover the chip the pill is on")
+
+                var other = tabs.children[(tab + 3) % 6]
+                var otherInk = findByName(other, "searchTabInk")
+                verify(!otherInk.visible || otherInk.width < 1,
+                       "@" + w + ": a chip the pill is nowhere near is drawing accent ink")
+            }
+        }
+    }
+
+    function sameColor(a, b) { return String(a) === String(b) }
+
+    // The point in the window that is the middle of this chip, because a
+    // synthesized move is delivered in window coordinates.
+    function centreOf(win, item) {
+        return item.mapToItem(win.contentItem, item.width / 2, item.height / 2)
+    }
+
+    // The hover tint loses to the highlight. That is what the chip's old
+    // `activeTab === index ? accent : hover` said, and a travelling pill has to
+    // say it again by other means: the pill is behind the row and surfaceHov is
+    // opaque, so a tint drawn over it would paint the highlight out from under
+    // the pointer - and the pointer is on the chip that was just clicked, which
+    // makes this the most ordinary state the row has.
+    function test_the_marked_chip_takes_no_hover_tint() {
+        var win = showPage()
+        typeInto(win.page, query)
+        waitForRendering(win.contentItem, settleMs)
+
+        var found = pillAndTabs(win)
+        var tabs = found.tabs, pill = found.pill
+        var marked = tabs.children[0]
+        var far    = tabs.children[4]
+        verify(marked && far, "the chips were not built")
+        compare(win.page.activeTab, 0, "the page did not open on the first tab")
+
+        // A chip the pill is nowhere near takes the tint, so the tint works at
+        // all and the check below is about where it is refused.
+        var f = centreOf(win, far)
+        mouseMove(win.contentItem, f.x, f.y)
+        tryVerify(function () { return sameColor(far.color, Theme.surfaceHov) }, settleMs,
+                  "a chip under the pointer does not light up, got " + far.color)
+
+        // The chip the pill is on refuses it.
+        var m = centreOf(win, marked)
+        mouseMove(win.contentItem, m.x, m.y)
+        tryVerify(function () { return marked.color.a === 0 }, settleMs,
+                  "the marked chip painted its hover tint over the highlight, got "
+                  + marked.color)
+        // ...with the pill still exactly on it, so there was a highlight there
+        // to paint over.
+        var c = chipBoxIn(pill, marked)
+        verify(Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width - c.w) < 0.01,
+               "the pill is not on the chip under the pointer: " + pillSays(pill))
+        tryVerify(function () { return far.color.a === 0 }, settleMs,
+                  "the chip the pointer left kept its tint, got " + far.color)
+    }
+
     // Every Item in the tree with this objectName, in tree order.
     function findAllByName(item, name) {
         return collectByName(item, name, [])

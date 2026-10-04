@@ -1087,93 +1087,311 @@ TestCase {
                "the rows were never laid out, so this case proved nothing")
     }
 
-    // ── the tab chips on Collection and Search ───────────────────────────
+    // ── Search's tabs: one pill, travelling ──────────────────────────────
     //
-    // The content area already faded on a switch and the chip that switched it
-    // did not, which is the wrong way round: the chip is what the eye is on when
-    // it is clicked. The chip's own fill and ink travel now, a little shorter
-    // than the content, so the chip answers and the page follows.
+    // Search's chips used to do what Collection's did before e304a63: the one
+    // being left faded back to nothing while the one arriving faded up to the
+    // accent, so the highlight was briefly nowhere and nothing ever crossed the
+    // gap between the two (QA: "the highlighting bar can move up and not just
+    // fade out in one place and then fade in in the other place"). It is one
+    // accent pill now and it moves between them - the same thing the sidebar's
+    // bar does between its rows and Collection's pill does between its chips,
+    // on the same 140ms, so the three read as one idea.
     //
-    // The label's weight does not travel. A font weight is not a number Qt
-    // interpolates, so `font.bold` lands in the frame of the click whatever this
-    // says; the fill around it is what carries the change.
+    // The pill is one whole item here and not Collection's per-chip slices:
+    // Search's chips are in a Row, which lays out every visible child it has,
+    // so the pill cannot be *in* the row - but it can be the row's sibling,
+    // which is what Collection's Flow left nowhere for. One item means the
+    // crossing of the 4px gaps needs no arranging at all; it is asserted below
+    // anyway, as the one pill every reading comes from.
     //
-    // Nor does the label's ink, and that one is deliberate rather than a
-    // limitation. The two inks are luminance-inverted against the two fills on
-    // the three light palettes - dark ink on a light chip becomes white ink on a
-    // dark one - so fading both at once walks the label down to 1.01:1 and back,
-    // under 2:1 for 57ms of a 140ms fade. The ink steps at the fill's halfway
-    // point instead, which is asserted below: every reading of it is one of the
-    // two inks and never between them.
+    // What the ink has to answer changes with the fill, and the answer is a
+    // stronger one rather than a weaker one. A fading chip cannot fade its
+    // label - the two inks are luminance-inverted against the two fills on the
+    // three light palettes, dark ink on a bare row becoming white ink on an
+    // accent chip - so the ink stepped at the fill's halfway point and took one
+    // frame at 2.1:1, and the step is what this case used to assert. A
+    // *travelling* fill cannot be answered by a step at all: whichever ink a
+    // half-covered label picked, half of its glyphs would be on the wrong fill
+    // for as long as the pill's edge took to cross them, which is far longer
+    // than a frame. So the label is drawn twice, each copy clipped to its own
+    // fill, and what is asserted below is that no accent ink is ever drawn
+    // anywhere but on the accent, at every phase of a travel and not only at
+    // its two ends.
     //
-    // This case is Search's row. Collection's used to be here beside it and is
-    // now in the pair below it: its highlight is one pill that travels between
-    // the chips rather than a fill that fades in each of them, which is a
-    // different contract and a stronger answer to the same measurement - see
-    // the comment there. Nothing about the fading chip has been relaxed; it is
-    // asserted here, on the page that still has one.
+    // That subsumes the reading it replaces. "Every reading of the ink is one
+    // of the two inks and never between them" is still checked, at every
+    // sample and on both copies - the chip's own is the resting ink exactly,
+    // the clipped copy is the accent's ink exactly - and the new half is the
+    // one a step could never give: *which* of the two is on a given pixel is
+    // decided by where the pill is rather than by a clock.
 
-    // Samples a chip's label ink until its fill has arrived, and returns the
-    // first reading that is neither of the two inks, or "" if there was none.
-    function inkBlendDuring(chip, label) {
-        if (!label) return "no label to read"
-        for (var i = 0; i < 60; ++i) {
-            var c = String(label.color)
-            if (c !== String(Theme.textSec) && c !== String(Theme.accentInk)) return c
-            if (sameColor(chip.color, Theme.accent)) break
-            wait(4)
+    function searchChipOf(tabs, i) { return tabs.children[i] }
+
+    // The pill itself. Read off the item that is drawn and not off the host's
+    // markX/markW, because a lag put between the host's numbers and the thing
+    // on screen would not show in the host's numbers. Probed: a Behavior on
+    // the pill's own x takes the reduced-motion sampling and the mid-travel
+    // ink below red, and markX - which is a lerp of two chips' boxes, and
+    // nothing a Behavior on the Rectangle can reach - says the same thing
+    // throughout.
+    function searchPillItem(tabs) { return findByName(tabs.parent, "searchTabPill") }
+
+    // A chip's box in the pill's own coordinates, so the two are comparable.
+    // mapToItem and not an assumption about where the row sits inside its host.
+    function searchChipBox(pill, chip) {
+        var p = chip.mapToItem(pill.parent, 0, 0)
+        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+    }
+
+    // Is the pill exactly on this chip?
+    function searchPillOn(pill, chip) {
+        if (!pill || !chip) return false
+        var c = searchChipBox(pill, chip)
+        return pill.visible
+            && Math.abs(pill.x - c.x) <= 1 && Math.abs(pill.width  - c.w) <= 1
+            && Math.abs(pill.y - c.y) <= 1 && Math.abs(pill.height - c.h) <= 1
+    }
+
+    function searchPillSays(pill) {
+        if (!pill) return "there is no pill"
+        return "the pill is at " + pill.x.toFixed(1) + "," + pill.y.toFixed(1)
+               + " " + pill.width.toFixed(1) + "x" + pill.height.toFixed(1)
+               + (pill.visible ? "" : " (not drawn)")
+    }
+
+    // "" when every chip's accent-ink copy is inside the pill, every chip's own
+    // label is still the resting ink, and no chip has gone back to painting an
+    // accent fill of its own - or what was wrong with the first one that did.
+    // The three are the same question asked of the three layers: the ink on
+    // screen at any pixel is the one its fill was chosen for, and there is only
+    // one fill.
+    function searchInkIsOnTheAccent(tabs, pill) {
+        if (!pill) return "there is no pill to compare the ink against"
+        for (var i = 0; i < 6; ++i) {
+            var chip = searchChipOf(tabs, i)
+            if (!chip) return "chip " + i + " is missing"
+            if (sameColor(chip.color, Theme.accent))
+                return "chip " + i + " is filled with the accent itself, "
+                       + "so there are two highlights on screen"
+            var own = findByName(chip, "searchTabLabel")
+            if (!own) return "chip " + i + " has no label"
+            if (!sameColor(own.color, Theme.textSec))
+                return "chip " + i + "'s own label is " + own.color + ", not the resting ink"
+            var ink = findByName(chip, "searchTabInk")
+            if (!ink) return "chip " + i + " has no accent-ink copy"
+            var inkLabel = findByName(ink, "searchTabInkLabel")
+            if (!inkLabel) return "chip " + i + "'s accent copy has no label"
+            if (!sameColor(inkLabel.color, Theme.accentInk))
+                return "chip " + i + "'s accent copy is " + inkLabel.color + ", not the accent's ink"
+            if (!ink.visible || ink.width <= 0 || ink.height <= 0) continue
+            var o = chip.mapToItem(pill.parent, ink.x, ink.y)
+            var x0 = o.x, x1 = o.x + ink.width
+            var y0 = o.y, y1 = o.y + ink.height
+            if (x0 < pill.x - 0.5 || x1 > pill.x + pill.width + 0.5
+                || y0 < pill.y - 0.5 || y1 > pill.y + pill.height + 0.5)
+                return "chip " + i + "'s accent ink covers " + x0.toFixed(1) + ".." + x1.toFixed(1)
+                       + " x " + y0.toFixed(1) + ".." + y1.toFixed(1) + " while " + searchPillSays(pill)
         }
         return ""
     }
 
-    function test_tab_chip_travels_data() { return test_rail_expansion_data() }
+    function test_search_tab_pill_travels_data() { return test_rail_expansion_data() }
 
-    function test_tab_chip_travels(row) {
+    function test_search_tab_pill_travels(row) {
         app.setReducedMotionForTest(row.reduced)
 
-        // Search's row is the same kind of control as Collection's and is the
-        // half that would quietly go unanimated: it is a second file.
         var sHolder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
         var sPage = createTemporaryObject(searchC, sHolder)
         verify(sPage, "SearchPage was not created")
         sPage.query = "te"                 // the tab row only exists with a query
         settle(sHolder)
 
-        var sTabs = findByName(sPage, "searchTabsRow")
-        verify(sTabs, "the search tab row was not found")
-        var tracksChip = sTabs.children[1]
-        verify(tracksChip, "there is no Tracks chip to measure")
-        tryVerify(function () { return !sameColor(tracksChip.color, Theme.accent) },
-                  settleMs, "the search chip never settled off the accent")
+        var tabs = findByName(sPage, "searchTabsRow")
+        verify(tabs, "the search tab row was not found")
+        // children[1] is the Tracks chip: a Repeater's delegates stack before
+        // the Repeater itself in its parent's children, and the pill is the
+        // row's sibling rather than one of the row's children, so nothing here
+        // has been pushed along.
+        var all    = searchChipOf(tabs, 0)
+        var tracks = searchChipOf(tabs, 1)
+        verify(all && tracks, "there are no chips to measure")
+        compare(sPage.activeTab, 0, "the page did not open on the first tab")
+
+        // One pill for the six chips. One per chip is the cross-fade this case
+        // exists to rule out, and it would answer everything below from
+        // whichever chip was asked.
+        var pills = collectByName(sPage, "searchTabPill", [])
+        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
+        var pill = pills[0]
+
+        tryVerify(function () { return searchPillOn(pill, all) }, settleMs,
+                  "the pill never settled on the first chip: " + searchPillSays(pill))
+        // The chips carry no fill of their own any more - if one of them still
+        // filled, everything below could pass with two highlights on screen.
+        compare(all.color.a, 0,
+                "the current chip is filled as well as marked, got " + all.color)
+        compare(tracks.color.a, 0,
+                "a chip that is not current is painting something, got " + tracks.color)
+        compare(searchInkIsOnTheAccent(tabs, pill), "",
+                "the ink is not where the accent is at rest")
+
+        var fromX = searchChipBox(pill, all).x
+        var toX   = searchChipBox(pill, tracks).x
+        verify(toX - fromX > 8, "the two chips are in the same place; nothing to travel")
 
         sPage.activeTab = 1
 
         if (row.reduced) {
-            oneFrame()
-            verify(sameColor(tracksChip.color, Theme.accent),
-                   "reduced motion: Search's chip must be filled on the next frame, got "
-                   + tracksChip.color)
+            // Every sample, not one: "no intermediate position" is a claim
+            // about all of them.
+            for (var i = 0; i < 12; ++i) {
+                verify(searchPillOn(pill, tracks),
+                       "reduced motion: sample " + i + " - " + searchPillSays(pill)
+                       + " and the chip is at " + searchChipBox(pill, tracks).x.toFixed(1)
+                       + " " + tracks.width.toFixed(1) + " wide")
+                wait(4)
+            }
         } else {
-            verify(!sameColor(tracksChip.color, Theme.accent),
-                   "Search's chip snapped to the accent instead of filling")
-            var sBlended = inkBlendDuring(tracksChip, findByName(tracksChip, "searchTabLabel"))
-            compare(sBlended, "",
-                    "Search's chip faded its label ink instead of stepping: " + sBlended)
-            tryVerify(function () { return sameColor(tracksChip.color, Theme.accent) },
-                      settleMs, "Search's chip never finished filling")
+            // Read in the turn of the write, before the Behavior's first tick -
+            // see the note in the rail case above. Still on the old chip means
+            // it did not jump; the sampling below is what says it moved.
+            verify(Math.abs(pill.x - fromX) <= 1,
+                   "the pill jumped to the new chip instead of setting off: "
+                   + searchPillSays(pill))
+            // Both ends re-read at every sample. Search's labels never go bold,
+            // so its chips do not resize under the pill the way Collection's
+            // do - but a reading against ends measured once is a question about
+            // the ends, and this one is about the pill.
+            verify(sawBetween(function () { return pill.x },
+                              function () { return searchChipBox(pill, all).x },
+                              function () { return searchChipBox(pill, tracks).x }),
+                   "the pill was never between the two chips: the highlight left "
+                   + "one and appeared on the other without travelling")
+            tryVerify(function () { return searchPillOn(pill, tracks) }, settleMs,
+                      "the pill never finished arriving: " + searchPillSays(pill))
         }
+        compare(searchInkIsOnTheAccent(tabs, pill), "",
+                "the ink is not where the accent is after the travel")
+
+        // The ink again, this time sampled through a whole travel rather than
+        // at its ends: a half-covered label is exactly the state a stepped ink
+        // gets wrong, and it only exists in the middle. Four chips' worth, so
+        // the pill is over a label that is neither end for most of it.
+        sPage.activeTab = 5
+        var last = searchChipOf(tabs, 5)
+        verify(last, "there is no Mixes chip")
+        for (var j = 0; j < 60; ++j) {
+            var wrong = searchInkIsOnTheAccent(tabs, pill)
+            compare(wrong, "", "during the travel, " + wrong)
+            if (searchPillOn(pill, last)) break
+            wait(4)
+        }
+        tryVerify(function () { return searchPillOn(pill, last) }, settleMs,
+                  "the pill never reached the last chip: " + searchPillSays(pill))
+    }
+
+    // Opened on a tab that is not the first: the pill is there, not on its way
+    // there. Same rule as the sidebar's bar and Collection's pill, and the one
+    // a lerp between two live boxes gets wrong by sliding out of the row's left
+    // edge on every query that brings the row back.
+    //
+    // The query and the tab are set in the turn the page was made in, and not
+    // handed to createTemporaryObject as initial properties: a QVariantMap
+    // arrives sorted, so `activeTab` would be applied before `query` and the
+    // row would still be hidden when the tab changed - which is a different
+    // guard, and the one the case below this is about. Here the row is on
+    // screen and nothing has been rendered yet, which is the one placement
+    // that is an initialisation rather than a move.
+    function test_search_tab_pill_starts_where_it_belongs() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(searchC, holder)
+        verify(page, "SearchPage was not created")
+        page.query = "te"
+        page.activeTab = 2
+
+        var tabs = findByName(page, "searchTabsRow")
+        verify(tabs, "the search tab row was not found")
+        var pill = searchPillItem(tabs)
+        verify(pill, "there is no pill")
+
+        // From before the first frame. The early readings are taken before the
+        // Row has placed anything, when every chip is at 0 and the pill agrees
+        // with all of them - so the end of this checks that they did get placed
+        // and that the pill is on the right one.
+        for (var i = 0; i < 40; ++i) {
+            var chip = searchChipOf(tabs, 2)
+            verify(chip, "the Albums chip was not built")
+            verify(searchPillOn(pill, chip),
+                   "sample " + i + ": the pill slid into place - " + searchPillSays(pill)
+                   + " with the chip at " + searchChipBox(pill, chip).x.toFixed(1)
+                   + " " + chip.width.toFixed(1) + " wide")
+            wait(4)
+        }
+        settle(holder)
+        verify(searchPillOn(pill, searchChipOf(tabs, 2)), "the pill is not on the third chip")
+        verify(searchChipBox(pill, searchChipOf(tabs, 2)).x > 8,
+               "the chips were never laid out, so this proved nothing")
     }
 
 
+    // A tab picked while the row is off screen - the query cleared, the page
+    // on another of the shell's pages, the row simply not there - is where it
+    // belongs the moment the row comes back, rather than crossing it on the
+    // way in. The same guard the sidebar's bar has for fullscreen, which hides
+    // the panel outright while the page behind it goes on changing.
+    //
+    // The tab and the query are set in one turn with nothing rendered between
+    // them, because a travel started behind the hidden row has 140ms to finish
+    // in: let a frame pass first and the bug walks straight through.
+    function test_search_tab_pill_does_not_cross_a_hidden_row() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
+        var page = createTemporaryObject(searchC, holder)
+        verify(page, "SearchPage was not created")
+        page.query = "te"
+        settle(holder)
+
+        var tabs = findByName(page, "searchTabsRow")
+        verify(tabs, "the search tab row was not found")
+        var pill = searchPillItem(tabs)
+        verify(pill, "there is no pill")
+        tryVerify(function () { return searchPillOn(pill, searchChipOf(tabs, 0)) }, settleMs,
+                  "the pill never settled on the first chip: " + searchPillSays(pill))
+
+        page.query = ""                  // the row goes away with the query
+        settle(holder)
+        verify(!tabs.visible, "the row is still on screen, so this proves nothing")
+
+        page.activeTab = 4
+        page.query = "te"                // and comes back, in the same turn
+
+        for (var i = 0; i < 40; ++i) {
+            var chip = searchChipOf(tabs, 4)
+            verify(chip, "the Playlists chip was not built")
+            verify(searchPillOn(pill, chip),
+                   "sample " + i + ": the pill crossed the row on the way in - "
+                   + searchPillSays(pill) + " with the chip at "
+                   + searchChipBox(pill, chip).x.toFixed(1)
+                   + " " + chip.width.toFixed(1) + " wide")
+            wait(4)
+        }
+        settle(holder)
+        verify(searchChipBox(pill, searchChipOf(tabs, 4)).x > 8,
+               "the chips were never laid out, so this proved nothing")
+    }
+
     // ── Collection's tabs: one pill, travelling ──────────────────────────
     //
-    // Collection's chips used to do what Search's still does: the one being
-    // left faded back to the resting surface while the one arriving faded up to
-    // the accent. Both halves of that are a highlight that is briefly nowhere,
-    // and nothing ever crosses the gap between the two chips.
+    // Collection's chips used to do what Search's did: the one being left
+    // faded back to the resting surface while the one arriving faded up to the
+    // accent. Both halves of that are a highlight that is briefly nowhere, and
+    // nothing ever crosses the gap between the two chips.
     //
     // It is one accent pill now and it moves between them, which is the same
-    // thing the sidebar's bar does and on the same 140ms.
+    // thing the sidebar's bar does and on the same 140ms. Drawn as a slice
+    // inside each chip rather than as the one item Search's row can afford,
+    // because a Flow lays out anything added to it; the pair of cases below is
+    // otherwise the pair above, asked of the other page.
     //
     // That changes what the ink has to answer, and makes it a stronger answer
     // rather than a weaker one. The fading chip could not fade its label - the

@@ -245,54 +245,252 @@ Rectangle {
 
         Item { height: 12 }
 
-        // Tab bar
-        Row {
-            objectName: "searchTabsRow"
+        // ── the tab bar, and its highlight as one pill that travels ──────
+        //
+        // The accent fill used to belong to the chip: the one being left faded
+        // back to nothing while the one arriving faded up to the accent, so the
+        // highlight was briefly nowhere and nothing ever crossed the gap
+        // between the two (QA: "the highlighting bar can move up and not just
+        // fade out in one place and then fade in in the other place"). There is
+        // one pill now and it moves, the same way the sidebar's bar moves
+        // between its three rows and Collection's pill between its chips, and
+        // on the same 140ms, so the three read as one idea.
+        //
+        // A host Item around the row rather than Collection's per-chip slices:
+        // a Row lays out every visible child it has, so the pill cannot be one
+        // of them, but it can be the row's sibling - and then it is one whole
+        // pill that crosses the 4px gaps because it is never cut up in the
+        // first place. Collection's chips are in a Flow, which left nowhere to
+        // put a sibling, which is the only reason it is sliced there.
+        Item {
+            id: tabsHost
+            objectName: "searchTabsHost"
             visible: root.query.length >= 2
             Layout.leftMargin: 24
-            spacing: 4
-            Repeater {
-                model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
-                        qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
-                Rectangle {
-                    id: searchTab
-                    required property string modelData
-                    required property int    index
-                    height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
-                    color: root.activeTab === index ? Theme.accent
-                           : tabMA.containsMouse ? Theme.surfaceHov : "transparent"
-                    // Same as Collection's row, and for the same reason: the
-                    // chip is what was clicked, so it must not be the one thing
-                    // that snaps while the results below it fade. The hover gets
-                    // the fade too, which is what the rest of the app does.
-                    Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
-                    // The fill's own progress, so the label's ink can be chosen
-                    // against what is actually painted under it. See the long
-                    // note on CollectionPage's chip: the ink steps rather than
-                    // fading, because the two inks and the two fills are
-                    // luminance-inverted on the light palettes and every
-                    // continuous path between them goes through an invisible
-                    // label. This row inverts harder than Collection's - its
-                    // resting fill is the page itself - so it needs it more.
-                    property real filled: root.activeTab === index ? 1 : 0
-                    Behavior on filled { NumberAnimation { duration: Theme.dur(140) } }
-                    border.width: searchTab.activeFocus ? 2 : 0
-                    border.color: Theme.accent
-                    activeFocusOnTab: true
-                    Keys.onReturnPressed: root.activeTab = index
-                    Keys.onSpacePressed:  root.activeTab = index
-                    Text {
-                        id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
-                        text: modelData
-                        color: searchTab.filled > 0.5 ? Theme.accentInk : Theme.textSec
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: tabMA
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.activeTab = index
+            // The row is the whole of this item's size. A plain Item has no
+            // implicit size of its own, and a ColumnLayout asks for one.
+            implicitWidth:  searchTabsRow.implicitWidth
+            implicitHeight: searchTabsRow.implicitHeight
+
+            // Which chip the pill is leaving, which it is arriving at, and how
+            // far along it is. Only `markT` is animated: the geometry is a lerp
+            // between the two chips' *live* boxes, so a layout change - the
+            // language changing under the row, a chip's label being retranslated
+            // - arrives in the frame it happens instead of being chased for
+            // 140ms by a pill that was told where the chip used to be.
+            property Item markFrom: null
+            property Item markTo:   null
+            property real markT:    1
+            // The reset to 0 that starts a travel is the one write to markT
+            // that must not animate, or the pill would run backwards to the
+            // chip it is already on before setting off.
+            property bool markResetting: false
+            // The first placement is an initialisation, not a move. Without the
+            // gate the pill would grow out of the row's left edge every time a
+            // query brings the row back.
+            property bool markSettled: false
+
+            Behavior on markT {
+                enabled: !tabsHost.markResetting
+                NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+            }
+
+            // The end it set off from - the destination itself when there is
+            // nothing to set off from, which makes the lerp degenerate and
+            // markT unobservable. That is the first placement, and it is also a
+            // model rebuild.
+            readonly property Item markA: markFrom ? markFrom : markTo
+            readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
+            readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
+            readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
+            readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
+
+            function retarget(animate) {
+                var next = searchTabsRepeater.itemAt(root.activeTab)
+                if (next === null || next === tabsHost.markTo) return
+                tabsHost.markFrom = (animate && tabsHost.markTo !== null) ? tabsHost.markTo : next
+                tabsHost.markTo   = next
+                tabsHost.markResetting = true
+                tabsHost.markT = 0
+                tabsHost.markResetting = false
+                tabsHost.markT = 1
+            }
+
+            // `visible` in the condition as well as the gate. The row is only
+            // there with a query on it, and the page itself is hidden outright
+            // whenever the shell is on another one (Main.qml's searchLoader
+            // keeps it alive behind `visible`), so a tab changed while the row
+            // is off screen has to be where it belongs the moment the row comes
+            // back rather than crossing it on the way in - a travel started
+            // behind a hidden row has its whole 140ms still to run. Same guard
+            // the sidebar's bar has for fullscreen.
+            Connections {
+                target: root
+                function onActiveTabChanged() {
+                    tabsHost.retarget(tabsHost.markSettled && tabsHost.visible)
+                }
+            }
+
+            Component.onCompleted: {
+                retarget(false)
+                Qt.callLater(function () { tabsHost.markSettled = true })
+            }
+
+            // Behind the chips, which rest on nothing at all, so the pill is
+            // what the eye reads as the fill. Behind and not in front because a
+            // chip's hover tint is opaque and would sit on top of it; see the
+            // chip's colour below for the other half of that.
+            Rectangle {
+                objectName: "searchTabPill"
+                x: tabsHost.markX
+                y: tabsHost.markY
+                width:  tabsHost.markW
+                height: tabsHost.markH
+                radius: Theme.radiusChip
+                color: Theme.accent
+                visible: width > 0 && height > 0
+            }
+
+            Row {
+                id: searchTabsRow
+                objectName: "searchTabsRow"
+                spacing: 4
+                Repeater {
+                    id: searchTabsRepeater
+                    model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
+                            qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+                    // itemAt() is a function call and not a dependency, so the
+                    // pill is aimed again as the chips arrive as well as when
+                    // the tab changes - a language change rebuilds all six.
+                    onItemAdded: function (index, item) { tabsHost.retarget(false) }
+                    Rectangle {
+                        id: searchTab
+                        required property string modelData
+                        required property int    index
+                        height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
+                        // Every chip rests on nothing now, including the current
+                        // one: what marks it is the pill behind the row.
+                        //
+                        // The hover tint drops out on any chip the pill is over,
+                        // which is what the old `activeTab === index ? accent :
+                        // hover` said - the highlight beat the hover - now that
+                        // where the highlight is is a box and not an index.
+                        // surfaceHov is opaque and the pill is behind the row, so
+                        // without this the tint would paint the highlight out from
+                        // under the pointer, and the pointer is on the chip that
+                        // was just clicked.
+                        //
+                        // The whole chip and not only the covered part of it: for
+                        // the 140ms a travel passes over a chip the pointer happens
+                        // to be on, the tint fades out and back rather than being
+                        // cut in two by a moving edge. Two rounded slivers chasing
+                        // the pill is a worse answer than none.
+                        color: tabMA.containsMouse && !searchTab.pillOverlaps
+                               ? Theme.surfaceHov : "transparent"
+                        // Same as Collection's row, and for the same reason: the
+                        // chip is what was clicked, so it must not be the one thing
+                        // that snaps while the results below it fade. The hover gets
+                        // the fade too, which is what the rest of the app does.
+                        Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+
+                        // Is any part of the pill over this chip? Horizontal only:
+                        // the row does not wrap, so every chip is on the one line
+                        // the pill travels along.
+                        readonly property bool pillOverlaps:
+                               tabsHost.markW > 0
+                            && tabsHost.markX < searchTab.x + searchTab.width
+                            && tabsHost.markX + tabsHost.markW > searchTab.x
+
+                        // Whether the accent's copy of the label covers every pixel
+                        // the chip's own copy occupies.
+                        readonly property bool labelFullyInked:
+                               inkWindow.visible
+                            && inkWindow.x <= tabLabel.x
+                            && inkWindow.x + inkWindow.width  >= tabLabel.x + tabLabel.width
+                            && inkWindow.y <= tabLabel.y
+                            && inkWindow.y + inkWindow.height >= tabLabel.y + tabLabel.height
+
+                        border.width: searchTab.activeFocus ? 2 : 0
+                        border.color: Theme.accent
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.activeTab = index
+                        Keys.onSpacePressed:  root.activeTab = index
+                        Text {
+                            id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
+                            text: modelData
+                            // The ink the bare row takes, always. The accent's ink
+                            // is the copy below, and which of the two is on screen
+                            // at a given pixel is decided by where the pill is
+                            // rather than by a clock.
+                            color: Theme.textSec
+                            // Not drawn at all where the copy covers every pixel of
+                            // it, which is the resting state of the current chip.
+                            // Two Texts in the same place blend at the glyphs'
+                            // antialiased edge, and the ink underneath is the
+                            // resting ink on the accent fill - the ~2:1 pairing the
+                            // note below calls invisible, which is only *nearly*
+                            // invisible, and the settled chip is where the eye lives.
+                            visible: !searchTab.labelFullyInked
+                            font.pixelSize: 13
+                        }
+
+                        // The same label again in the ink the accent needs, clipped
+                        // to exactly the part of the pill that is over this chip.
+                        //
+                        // This is what lets the fill travel at all. The two inks are
+                        // luminance-inverted against the two fills on the three
+                        // light palettes - dark ink on a bare row becomes white ink
+                        // on an accent chip - so a label cannot cross-fade between
+                        // them (measured in 354d460: under 2:1 for 57ms of a 140ms
+                        // fade, bottoming out at 1.01:1), and it cannot be stepped
+                        // either when a hard fill edge is sweeping across it:
+                        // whichever ink it steps to, half the glyphs are on the
+                        // wrong fill for as long as the edge takes to cross them.
+                        // Two copies, each clipped to its own fill, means every
+                        // glyph pixel is on the fill its ink was chosen for in every
+                        // frame of the travel - better than the single stepped frame
+                        // the fade settled for, rather than a trade against it.
+                        //
+                        // This row needs it harder than Collection's: its resting
+                        // fill is the page itself, so the pair inverts further.
+                        Item {
+                            id: inkWindow
+                            objectName: "searchTabInk"
+                            // The pill, in this chip's coordinates, clamped to the
+                            // chip. Vertically as well, though the row cannot wrap:
+                            // the clamp is what makes the window empty rather than
+                            // negative when the pill is elsewhere.
+                            //
+                            // Not `top`/`bottom`: an Item has those as final
+                            // members, and a property that shadows one takes the
+                            // whole type out of the build with it.
+                            readonly property real coveredLeft:   Math.max(0, tabsHost.markX - searchTab.x)
+                            readonly property real coveredRight:  Math.min(searchTab.width, tabsHost.markX + tabsHost.markW - searchTab.x)
+                            readonly property real coveredTop:    Math.max(0, tabsHost.markY - searchTab.y)
+                            readonly property real coveredBottom: Math.min(searchTab.height, tabsHost.markY + tabsHost.markH - searchTab.y)
+                            x: coveredLeft
+                            y: coveredTop
+                            width:  Math.max(0, coveredRight - coveredLeft)
+                            height: Math.max(0, coveredBottom - coveredTop)
+                            clip: true
+                            visible: width > 0 && height > 0
+                            Text {
+                                objectName: "searchTabInkLabel"
+                                x: tabLabel.x - inkWindow.x
+                                y: tabLabel.y - inkWindow.y
+                                text: tabLabel.text
+                                font: tabLabel.font
+                                color: Theme.accentInk
+                            }
+                        }
+
+                        MouseArea {
+                            id: tabMA
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.activeTab = index
+                        }
                     }
                 }
             }
