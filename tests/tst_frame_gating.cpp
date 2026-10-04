@@ -404,7 +404,13 @@ private:
         m_thieves.append(other);
         other->show();
         other->requestActivate();
-        QTest::qWaitForWindowExposed(other, 2000);
+        // Cast away rather than checked, and marked [[nodiscard]] by Qt for the
+        // usual good reason: the thief being exposed is not the signal this
+        // function reports on. What matters is whether `win` actually lost
+        // focus, which the wait below asks directly - and a thief that never
+        // appeared simply fails to steal it, so the caller QSKIPs on a platform
+        // that will not deactivate a window instead of asserting against it.
+        (void)QTest::qWaitForWindowExposed(other, 2000);
 
         const bool went = QTest::qWaitFor([win] { return !win->isActive(); }, 2000);
         return went;
