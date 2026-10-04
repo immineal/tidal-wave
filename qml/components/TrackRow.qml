@@ -461,16 +461,87 @@ Item {
         pickerLoader.item.openFor(root.trackId)
     }
 
+    // "New playlist…", from the picker's first row.
+    //
+    // Its own Loader rather than a child of the picker's Popup: a Popup
+    // declared inside another Popup's contentData has no reliable window to
+    // resolve `Overlay.overlay` against, and this one has to centre on the
+    // window like every other dialog in the app. A Loader holding a Popup is
+    // the shape the picker below already proves works.
+    //
+    // Lazy for the same reason as the menu and the picker: the track lists are
+    // stress-tested at 5000 rows, and a dialog on each of them is tens of
+    // thousands of objects built for something almost no row is asked for.
+    function openNewPlaylist() {
+        if (root.trackId <= 0) return
+        newPlaylistLoader.active = true
+        newPlaylistLoader.item.openEmpty()
+    }
+
+    // A Popup is not a visual child of the row once it reparents itself to the
+    // window overlay, so this is a test's only handle on it - the same reason
+    // `rowMenu` above exists. Null until the row has been asked for one.
+    readonly property alias newPlaylistPopup: newPlaylistLoader.item
+
+    Loader {
+        id: newPlaylistLoader
+        active: false
+        sourceComponent: NewPlaylistDialog {
+            objectName: "trackRowNewPlaylistDialog"
+            onPlaylistCreated: function (playlist) {
+                const uuid  = (playlist && playlist.uuid)  ? String(playlist.uuid) : ""
+                const title = (playlist && playlist.title) ? playlist.title : ""
+                // The whole point of making one from here: the song goes
+                // straight into it. A playlist the user then has to go and fill
+                // by hand would make this row a detour rather than a shortcut.
+                if (uuid.length > 0 && root.trackId > 0) {
+                    bridge.addTracksToPlaylist(uuid, root.trackId, function (ok) {
+                        root.confirmAddedToPlaylist(ok === true, title)
+                    })
+                }
+                if (pickerLoader.item) pickerLoader.item.close()
+            }
+        }
+    }
+
     // The same confirmation the shared ContextMenu gives, and for the same
     // reason: queueing without a sign it worked is how a track ends up in
     // the queue twice. Drawn over the row the user just acted on. The dwell
     // is deliberately not Theme.dur() - see ContextMenu.confirmMs.
     readonly property int confirmMs: 2000
 
+    // What the last confirmation said. ToolTip.show() writes to the shared
+    // tooltip instance, which nothing outside this item can read back, so the
+    // text is kept here too - it is the only way a test can check that a
+    // *failed* add is not reported to the user as a success.
+    property string lastConfirmation: ""
+
+    function confirm(text) {
+        root.lastConfirmation = text
+        ToolTip.show(text, root.confirmMs)
+    }
+
     function confirmQueued(atFront) {
-        ToolTip.show(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", 1)
-                             : qsTr("%n track(s) added to queue", "queue confirmation", 1),
-                     root.confirmMs)
+        root.confirm(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", 1)
+                             : qsTr("%n track(s) added to queue", "queue confirmation", 1))
+    }
+
+    // The same thing for the picker, which gave no sign at all: it closed, and
+    // whether the song had landed anywhere was a trip to the playlist to find
+    // out. Both ways through the picker say so now - an existing playlist and
+    // one made on the spot - because the second is the one where there is most
+    // to doubt.
+    //
+    // Reports what the server said rather than what was asked for. Every
+    // caller of addTracksToPlaylist in the app passes `function (ok) {}` and
+    // throws the answer away, so a failed add has always been silent; a
+    // confirmation that fired regardless would be worse than that - it would be
+    // wrong rather than absent.
+    function confirmAddedToPlaylist(ok, title) {
+        root.confirm(ok ? qsTr("Added to “%1”",
+                               "confirmation after adding a track to a playlist").arg(title)
+                        : qsTr("Could not add the song to “%1”",
+                               "shown when adding a track to a playlist failed").arg(title))
     }
 
     Loader {
@@ -780,6 +851,74 @@ Item {
                 }
                 Rectangle { width: parent.width; height: 1; color: Theme.border }
 
+                // ── "New playlist…", above the list it adds to ───────────
+                //
+                // The single most common moment anyone wants a new playlist is
+                // while they are putting a song somewhere, and this picker was
+                // the one place in the app that had an "Add to playlist" flow
+                // and no way to make one. Worse at the start: an account with
+                // no playlists opened this and got a title bar over an empty
+                // box, with no way forward at all.
+                //
+                // First in the popup rather than last. The list underneath can
+                // run to fifty rows and scrolls; a row at the bottom of a
+                // scrolling list is a row most people never see.
+                Item {
+                    objectName: "pickerNewPlaylistRow"
+                    width: parent.width
+                    height: 44
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        radius: Theme.radiusRow
+                        color: newPlHov.hovered ? Theme.surfaceHov : "transparent"
+
+                        HoverHandler { id: newPlHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler  { onTapped: root.openNewPlaylist() }
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+
+                            // An outlined tile where the rows below carry
+                            // artwork: the same size, so the two labels line
+                            // up, and plainly not a cover, so this does not
+                            // read as a playlist whose picture failed to load.
+                            Rectangle {
+                                width: 28
+                                height: 28
+                                radius: Theme.radiusArt
+                                color: "transparent"
+                                border.width: 1
+                                border.color: newPlHov.hovered ? Theme.accent : Theme.border
+                                VectorIcon {
+                                    anchors.centerIn: parent
+                                    name: "plus"
+                                    width: 13
+                                    height: 13
+                                    strokeWidth: 1.8
+                                    color: newPlHov.hovered ? Theme.accent : Theme.textDim
+                                }
+                            }
+                            Text {
+                                objectName: "pickerNewPlaylistLabel"
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("New playlist…")
+                                color: Theme.textPrimary
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { width: parent.width; height: 1; color: Theme.border }
+
                 ListView {
                     id: plPickerList
                     width: parent.width
@@ -799,7 +938,11 @@ Item {
                             HoverHandler { id: plHov2 }
                             TapHandler {
                                 onTapped: {
-                                    bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId, function(ok) {})
+                                    var intoTitle = model.title
+                                    bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
+                                                               function (ok) {
+                                        root.confirmAddedToPlaylist(ok === true, intoTitle)
+                                    })
                                     trackPicker.close()
                                 }
                             }

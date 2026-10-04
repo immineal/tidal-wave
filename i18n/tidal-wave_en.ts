@@ -58,6 +58,14 @@
     </message>
 </context>
 <context>
+    <name>ArtistLinks</name>
+    <message>
+        <source>, </source>
+        <comment>between two artist names</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ArtistPage</name>
     <message>
         <source>Play</source>
@@ -225,6 +233,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>New playlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Liked Songs</source>
         <translation type="unfinished"></translation>
     </message>
@@ -371,6 +383,41 @@
     </message>
 </context>
 <context>
+    <name>Feedback</name>
+    <message>
+        <source>Problem with Tidal Wave %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Feedback on Tidal Wave %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What happened</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What I expected instead</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Operating system: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Qt, compiled against: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Qt, running now: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>HomePage</name>
     <message>
         <source>Good morning</source>
@@ -456,7 +503,7 @@
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Linux Tidal Client</source>
+        <source>Native Desktop Tidal Client</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -521,6 +568,47 @@
     </message>
 </context>
 <context>
+    <name>NewPlaylistDialog</name>
+    <message>
+        <source>Enter a name for the playlist.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not create the playlist.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not create the playlist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playlist name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1/%2</source>
+        <comment>characters typed out of the maximum</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Creating…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Create</source>
+        <comment>verb, the button that creates the playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NowPlayingPage</name>
     <message>
         <source>Close Now Playing</source>
@@ -550,7 +638,35 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Released %1</source>
+        <comment>label and date, when the record came out</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISRC %1</source>
+        <comment>label and code, identifies the recording</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UPC %1</source>
+        <comment>label and barcode, identifies the release</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading credits…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No credits available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Loading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Credits</source>
+        <comment>chip, opens the song credits</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -677,11 +793,6 @@
 </context>
 <context>
     <name>PlayerBar</name>
-    <message>
-        <source>, </source>
-        <comment>between two artist names</comment>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>No track playing</source>
         <translation type="unfinished"></translation>
@@ -983,6 +1094,22 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Colour fullscreen Now Playing from the cover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The background takes its colour from the album art. Dimmed to keep the words on top of it readable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bars follow the music</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Language</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1019,6 +1146,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Interface size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <comment>interface size, the default</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Takes effect after you restart Tidal Wave.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1032,6 +1176,28 @@
     </message>
     <message>
         <source>Check now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Feedback</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found a bug, or want to ask for something? Either way works.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a GitHub issue</source>
+        <comment>button that opens the browser at a new issue</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send an email</source>
+        <comment>button that opens the user&apos;s mail client</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1089,6 +1255,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The full version, with the source file behind every line, is at the bottom of the README.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1114,16 +1284,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Space</source>
-        <comment>keyboard key</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Play / Pause</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Ctrl+Right / Left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1131,17 +1292,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Right / Left</source>
-        <comment>arrow keys</comment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Seek forward / back 10s</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Up / Down</source>
-        <comment>arrow keys</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1149,15 +1300,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Ctrl+M</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Mute</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Ctrl+S</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1165,15 +1308,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Ctrl+R</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Cycle repeat mode</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Ctrl+1 / 2 / 3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1181,16 +1316,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Ctrl+N</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Now Playing</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>F11</source>
-        <comment>keyboard key</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1198,23 +1324,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Ctrl+Q</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Toggle queue</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Alt+Left / Esc</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Go back</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Ctrl+,</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1232,6 +1346,10 @@
     </message>
     <message>
         <source>Collection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New playlist</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1286,6 +1404,16 @@
         </translation>
     </message>
     <message>
+        <source>Added to “%1”</source>
+        <comment>confirmation after adding a track to a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not add the song to “%1”</source>
+        <comment>shown when adding a track to a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Play now</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1335,6 +1463,10 @@
     </message>
     <message>
         <source>Copy link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New playlist…</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">

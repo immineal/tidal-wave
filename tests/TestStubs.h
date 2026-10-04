@@ -378,11 +378,40 @@ public:
     }
 
     // Playlist management
+
+    // ── createPlaylist, as TidalBridge::createPlaylist behaves ───────────
+    //
+    // This used to answer `{}` with no error for every input, which is the
+    // shape of stub the Tracks filter comment above warns about: a dialog that
+    // called it went green whatever it did with the answer, and the half of
+    // the feature that matters - the new playlist reaching the sidebar and the
+    // Collection grid without a refresh - could not be tested at all, because
+    // nothing here moved when a playlist was made.
+    //
+    // So it mirrors the real one, including the order of the two effects and
+    // the guard around them. On a success the playlist joins the favourites
+    // cache that getUserPlaylists() and searchFavoritePlaylists() answer from
+    // and favoritePlaylistsChanged goes out (which is what CollectionPage
+    // listens to), and *separately* playlistCreated carries the row itself to
+    // LibraryIndex - the sidebar keeps its own second copy of the library, and
+    // installTestStubs() connects the two exactly as Application::run() does.
+    // Both are inside the guard in the real bridge: a POST that failed, or one
+    // that answered with no uuid, must not leave a phantom row behind.
     Q_INVOKABLE void createPlaylist(const QString &title, QJSValue cb) {
-        Q_UNUSED(title); resolve(cb, emptyObject());
+        m_createCalls++;
+        m_lastCreatedTitle = title;
+        if (m_deferCreates) { m_pendingCreates.append({cb, title}); return; }
+        deliverCreate(cb, title);
     }
+    // Recorded, not ignored: "make a playlist from the picker and the song
+    // goes into it" is the whole point of that row, and a stub that threw the
+    // arguments away would let a version that created an empty playlist and
+    // dropped the track pass.
     Q_INVOKABLE void addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
-        Q_UNUSED(uuid); Q_UNUSED(trackId); resolveOk(cb);
+        m_lastAddedPlaylist = uuid;
+        m_lastAddedTrackId  = trackId;
+        m_addToPlaylistCalls++;
+        resolveOk(cb, m_addToPlaylistOk);
     }
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         Q_UNUSED(uuid); Q_UNUSED(itemIndex); resolveOk(cb);
@@ -447,6 +476,60 @@ public:
     // one, and a page that reads both would then see a library that cannot
     // exist. setUserPlaylistsForTest() therefore fills both.
     Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
+
+    // ── what the next createPlaylist() answers ──────────────────────────
+    //
+    // Three outcomes, because the dialog has three paths through its callback
+    // and only one of them is a success:
+    //   * nothing set: the server makes it and hands back a uuid;
+    //   * an error string: the POST failed and the dialog must say so;
+    //   * an empty uuid with no error: the reply parsed to nothing, which the
+    //     real bridge refuses to treat as a win.
+    Q_INVOKABLE void setCreatePlaylistErrorForTest(const QString &err) {
+        m_createError = err;
+    }
+    // Pass "" for the reply-that-carried-nothing case; anything else is the
+    // uuid the created playlist comes back with.
+    Q_INVOKABLE void setCreatePlaylistUuidForTest(const QString &uuid) {
+        m_createUuid    = uuid;
+        m_createUuidSet = true;
+    }
+    // Hold the reply so a test can look at the dialog while the call is still
+    // out — the in-flight state has no other way in, and it is the one state
+    // a synchronous stub would otherwise make unreachable.
+    Q_INVOKABLE void setDeferCreatePlaylistForTest(bool on) { m_deferCreates = on; }
+    Q_INVOKABLE int  pendingCreatePlaylistsForTest() const {
+        return int(m_pendingCreates.size());
+    }
+    Q_INVOKABLE void flushCreatePlaylistsForTest() {
+        QList<std::pair<QJSValue, QString>> pending;
+        pending.swap(m_pendingCreates);
+        for (auto &p : pending) deliverCreate(p.first, p.second);
+    }
+    // The title as the dialog sent it, which is how a test sees that the name
+    // was trimmed and capped before it left.
+    Q_INVOKABLE QString lastCreatedTitleForTest() const { return m_lastCreatedTitle; }
+    Q_INVOKABLE int     createPlaylistCallsForTest() const { return m_createCalls; }
+    // Whether the add succeeds. The real call answers a plain bool and every
+    // caller in the app used to throw it away, so the failing branch has to be
+    // reachable or "it says so when it worked" is a claim about one case only.
+    Q_INVOKABLE void      setAddToPlaylistOkForTest(bool ok) { m_addToPlaylistOk = ok; }
+    Q_INVOKABLE QString   lastAddedPlaylistForTest() const { return m_lastAddedPlaylist; }
+    Q_INVOKABLE qlonglong lastAddedTrackIdForTest() const { return m_lastAddedTrackId; }
+    Q_INVOKABLE int       addToPlaylistCallsForTest() const { return m_addToPlaylistCalls; }
+    Q_INVOKABLE void    resetCreatePlaylistForTest() {
+        m_createError.clear();
+        m_createUuid.clear();
+        m_createUuidSet = false;
+        m_deferCreates  = false;
+        m_pendingCreates.clear();
+        m_lastCreatedTitle.clear();
+        m_createCalls = 0;
+        m_lastAddedPlaylist.clear();
+        m_lastAddedTrackId   = 0;
+        m_addToPlaylistCalls = 0;
+        m_addToPlaylistOk    = true;
+    }
 
     // test hooks
     Q_INVOKABLE void setUserPlaylistsForTest(const QVariantList &playlists) {
@@ -569,6 +652,7 @@ public:
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
         resetHeadersForTest();
+        resetCreatePlaylistForTest();
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -597,6 +681,12 @@ signals:
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
     void recentSearchesChanged();
+    // The one row the user just made, carried to the sidebar's own copy of the
+    // library. Mirrors TidalBridge::playlistCreated; installTestStubs() hands
+    // it to StubLibrary::addPlaylist the way Application::run() hands the real
+    // one to LibraryIndex::addPlaylist. A QVariantMap and not a Tidal::Playlist
+    // because that is what the stub library deals in.
+    void playlistCreated(const QVariantMap &playlist);
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
@@ -628,6 +718,57 @@ private:
         if (m_deferHeaders) { m_pendingHeaders.append({cb, args}); return; }
         cb.call(args);
     }
+
+    // The body of a createPlaylist reply, run either inline or when a held one
+    // is released. Built here rather than at call time because the two effects
+    // below are what the *server answering* does, and a test that holds a
+    // reply is asking for exactly that gap.
+    void deliverCreate(QJSValue &cb, const QString &title) {
+        QVariantMap p;
+        const QString uuid = m_createUuidSet
+                                 ? m_createUuid
+                                 : QStringLiteral("uuid-created-%1").arg(m_createCalls);
+        // The same guard the real bridge applies, and for the same reason: a
+        // failed POST, or one whose reply parsed to nothing, must not leave a
+        // row in either list.
+        if (m_createError.isEmpty() && !uuid.isEmpty()) {
+            p.insert(QStringLiteral("uuid"), uuid);
+            p.insert(QStringLiteral("title"), title);
+            p.insert(QStringLiteral("description"), QString());
+            p.insert(QStringLiteral("numTracks"), 0);
+            p.insert(QStringLiteral("duration"), 0);
+            p.insert(QStringLiteral("coverUrl"), QString());
+            p.insert(QStringLiteral("type"), QStringLiteral("USER"));
+
+            bool exists = false;
+            for (const QVariant &v : std::as_const(m_userPlaylists))
+                if (v.toMap().value(QStringLiteral("uuid")).toString() == uuid) exists = true;
+            if (!exists) {
+                m_userPlaylists.append(p);
+                emit favoritePlaylistsChanged();
+            }
+            // Outside the dedup, as in the real bridge: the sidebar keeps its
+            // own list and dedups for itself.
+            emit playlistCreated(p);
+        }
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(p) : emptyObject()) << QJSValue(m_createError);
+        cb.call(args);
+    }
+
+    QString m_createError;
+    QString m_createUuid;
+    bool    m_createUuidSet = false;
+    bool    m_deferCreates  = false;
+    QString m_lastCreatedTitle;
+    int     m_createCalls = 0;
+    QList<std::pair<QJSValue, QString>> m_pendingCreates;
+    QString   m_lastAddedPlaylist;
+    qlonglong m_lastAddedTrackId   = 0;
+    int       m_addToPlaylistCalls = 0;
+    bool      m_addToPlaylistOk    = true;
     int     m_userPlaylistFetches = 0;
     int     m_trackCreditsFetches = 0;
     // The canned search reply and what was asked of it.
@@ -1574,6 +1715,46 @@ public:
         return out;
     }
 
+    // The one row the user just made, mirroring LibraryIndex::addPlaylist.
+    //
+    // installTestStubs() connects StubBridge::playlistCreated to this, the way
+    // Application::run() connects the real pair. The sidebar is a *second*
+    // copy of the account's library - TidalBridge keeps the first - so without
+    // the hand-across a created playlist would reach the Collection page and
+    // not the sidebar, which is half of what the New-playlist dialog has to
+    // be shown to do.
+    //
+    // Inserted at the head of the unpinned block rather than appended,
+    // because that is where the real index puts it: addPlaylist() stamps the
+    // row as of now and rebuild() orders the unpinned tier newest first.
+    // Appending here would let a sidebar that quietly dropped the stamp still
+    // look right in a test.
+    void addPlaylist(const QVariantMap &p) {
+        const QString uuid = p.value(QStringLiteral("uuid")).toString();
+        if (uuid.isEmpty()) return;
+        for (const QVariant &v : std::as_const(m_entries)) {
+            const QVariantMap m = v.toMap();
+            if (m.value(QStringLiteral("kind")).toString() == QLatin1String("playlist")
+                && m.value(QStringLiteral("id")).toString() == uuid)
+                return;
+        }
+        QVariantMap row;
+        row.insert(QStringLiteral("kind"),       QStringLiteral("playlist"));
+        row.insert(QStringLiteral("id"),         uuid);
+        row.insert(QStringLiteral("title"),      p.value(QStringLiteral("title")).toString());
+        row.insert(QStringLiteral("subtitle"),   QString());
+        row.insert(QStringLiteral("imageUrl"),   p.value(QStringLiteral("coverUrl")).toString());
+        row.insert(QStringLiteral("pinned"),     false);
+        row.insert(QStringLiteral("trackCount"), p.value(QStringLiteral("numTracks")).toInt());
+
+        int at = 0;
+        while (at < m_entries.size()
+               && m_entries.at(at).toMap().value(QStringLiteral("pinned")).toBool())
+            ++at;
+        m_entries.insert(at, row);
+        emit entriesChanged();
+    }
+
     // test hooks
     Q_INVOKABLE void setEntriesForTest(const QVariantList &rows) {
         m_entries = rows;
@@ -1741,6 +1922,15 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     ThemePalette::instance()->setThemeSource(s.prefs);
     ctx->setContextProperty(QStringLiteral("pins"), s.pins);
     ctx->setContextProperty(QStringLiteral("library"), s.library);
+
+    // The sidebar keeps its own copy of the library, so the one row the user
+    // just made has to be handed across. Application::run() makes exactly this
+    // connection between the real TidalBridge and LibraryIndex; without it a
+    // QML test of the New-playlist dialog would be driving a sidebar wired up
+    // differently from the shipping one, and the half of the feature that is
+    // "it appears without a refresh" would be untestable.
+    QObject::connect(s.bridge, &StubBridge::playlistCreated,
+                     s.library, &StubLibrary::addPlaylist);
 
     if (!engine->imageProvider(QStringLiteral("tidal")))
         engine->addImageProvider(QStringLiteral("tidal"), new StubImageProvider());

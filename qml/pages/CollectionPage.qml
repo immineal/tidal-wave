@@ -444,20 +444,48 @@ Rectangle {
         // The field gets its own row. On one row with the tabs and the sort
         // pills the header needed ~1083px against a 740px pane, so it
         // overflowed at every width the app actually runs at.
-        SearchBar {
-            id: collectionSearch
-            objectName: "collectionSearch"
-            // A whole phrase per tab: German cannot take "Search saved " + a noun
-            placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
-                          qsTr("Search saved artists…"), qsTr("Search saved playlists…")
-                         ][root.activeTab] || qsTr("Search saved items…")
+        //
+        // "New playlist" shares that row rather than joining the tabs above
+        // it, for the same reason. The tab row is already a Flow that has to
+        // wrap at 640 to fit five labelled chips and three sort pills, so a
+        // third group on it is a third thing competing for a width that has
+        // already run out; this row holds one field that gives width back on
+        // demand. It also puts the button directly over the grid it adds to,
+        // and only on the tab where making one means anything.
+        RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 24
             Layout.rightMargin: 24
-            Layout.preferredHeight: 36
-            onTextEdited: (txt) => {
-                root.searchPattern = txt
-                root.updateFilteredContent()
+            spacing: 12
+
+            SearchBar {
+                id: collectionSearch
+                objectName: "collectionSearch"
+                // A whole phrase per tab: German cannot take "Search saved " + a noun
+                placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
+                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                             ][root.activeTab] || qsTr("Search saved items…")
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                onTextEdited: (txt) => {
+                    root.searchPattern = txt
+                    root.updateFilteredContent()
+                }
+            }
+
+            PillButton {
+                objectName: "collectionNewPlaylistButton"
+                // A Layout skips an invisible child outright, so the field
+                // takes the whole row back on the other four tabs.
+                visible: root.activeTab === 3
+                text: qsTr("New playlist")
+                icon: "plus"
+                // Outlined, not filled: the filled pill on this page is Play,
+                // and the grid below is a list of things to play.
+                accent: false
+                Layout.preferredWidth:  implicitWidth
+                Layout.preferredHeight: 36
+                onClicked: newPlaylistDialog.openEmpty()
             }
         }
 
@@ -712,6 +740,19 @@ Rectangle {
                 VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "playlist"; width: 40; height: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
+                // An empty state that only describes the emptiness is a dead
+                // end: an account with no playlists is exactly the account
+                // that needs to make one, and until this there was nowhere in
+                // the app to do it.
+                PillButton {
+                    objectName: "collectionEmptyNewPlaylistButton"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 4
+                    text: qsTr("New playlist")
+                    icon: "plus"
+                    accent: true
+                    onClicked: newPlaylistDialog.openEmpty()
+                }
             }
         }
 
@@ -830,6 +871,24 @@ Rectangle {
     function navigateTo(page, params) {
         Window.window.navigate(page, params)
     }
+
+    // Both "New playlist" buttons on this page open the one dialog; see
+    // NewPlaylistDialog.qml.
+    //
+    // Nothing is reloaded on a success and the page does not navigate away.
+    // TidalBridge appends the new playlist to the favourites cache the four
+    // searchFavorite* calls read and emits favoritePlaylistsChanged, which the
+    // Connections block at the top of this file already answers by rebuilding
+    // the filtered lists - so the card appears in the grid the user is looking
+    // at, and the Playlists tab's count goes up with it. Being thrown onto an
+    // empty playlist page instead would take them off the list they were
+    // curating.
+    //
+    // A Popup is not a visual child of the page once it reparents itself to
+    // the window overlay, so the alias is a test's only handle on it.
+    readonly property alias playlistDialog: newPlaylistDialog
+
+    NewPlaylistDialog { id: newPlaylistDialog }
 
     LoadingOverlay { loading: root.loading }
 }

@@ -1737,15 +1737,20 @@ private slots:
         QCOMPARE(indexedTitles, sorted);
     }
 
-    // ── a playlist the user creates (plumbing only) ───────────────────────
+    // ── a playlist the user creates ───────────────────────────────────────
     //
     // createPlaylist() updated neither TidalBridge's playlist list nor this
     // one, so a new playlist would have been missing from the sidebar until the
     // next launch - the same gap as liking an album, and with no favourite
     // action for playlists anywhere in the interface, creating one is the only
-    // way a playlist row can appear at all. Nothing in qml/ calls
-    // createPlaylist today, so this is the sidebar half of the wiring waiting
-    // for the button, not a user-visible bug being fixed.
+    // way a playlist row can appear at all.
+    //
+    // This was written as the sidebar half of the wiring waiting for a button
+    // that did not exist. The button exists now - the "New playlist" row above
+    // the library list, the Collection page's Playlists tab and the track
+    // menu's picker all reach TidalBridge::createPlaylist, and
+    // tests/qml/tst_new_playlist.qml drives them - so the two halves below are
+    // a live path, not plumbing.
     void creatingAPlaylistPutsItInTheSidebar() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1773,6 +1778,83 @@ private slots:
         lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
         QCOMPARE(keysOf(lib.entries()).count(key), 1);
         QCOMPARE(spy.count(), 1);
+    }
+
+    // ...and it has to land where the user will look for it, which is the head
+    // of the unpinned block.
+    //
+    // addPlaylist() stamps `addedAt = stampNow()` before appending, and that
+    // stamp is the only thing that puts the row there: rebuild() orders the
+    // unpinned tier by max(last played, addedAt) and falls through to collation
+    // for rows with no date. Drop the stamp and a playlist created in a library
+    // of a thousand rows lands wherever its title happens to sort, which is the
+    // same class of bug as the A-Z tier that sent a just-saved album to
+    // alphabetical position 589 of 971.
+    //
+    // The fixture is built here rather than from fillMixedLibrary() because
+    // that one carries no dates at all - every row's recency is 0, so the whole
+    // list is in collation order and "Avalon Mix" would reach the front of it
+    // alphabetically whether it had been stamped or not. The test above passes
+    // either way. So: the other rows carry real dates, there is a pinned row to
+    // make "top of the unpinned block" different from "top of the list", and
+    // the new playlist is named so that it sorts *last* of the three.
+    void aCreatedPlaylistLeadsTheUnpinnedBlock() {
+        PinStore pins; pins.setUserId(kUser);
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+                 QString(), QString());
+
+        TestLibrary lib(&pins);
+        const Artist various = mkArtist(99, QStringLiteral("Various"));
+        lib.playlists = {mkPlaylist(QStringLiteral("p-jan"), QStringLiteral("Abendrot"), 10,
+                                    daysAfterJan(1)),
+                         mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Alte Liste"), 10,
+                                    daysAfterJan(20))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        // Pinned first, then the two playlists newest-date first.
+        QCOMPARE(keysOf(lib.entries()),
+                 QStringList({QStringLiteral("album:12"),
+                              QStringLiteral("playlist:p-feb"),
+                              QStringLiteral("playlist:p-jan")}));
+
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"),
+                                   QStringLiteral("Zuletzt erstellt"), 0));
+
+        QCOMPARE(keysOf(lib.entries()),
+                 QStringList({QStringLiteral("album:12"),
+                              QStringLiteral("playlist:p-new"),
+                              QStringLiteral("playlist:p-feb"),
+                              QStringLiteral("playlist:p-jan")}));
+        // Second, not first: the pinned album keeps the head of the list.
+        QCOMPARE(indexOfKey(lib.entries(), QStringLiteral("playlist:p-new")), 1);
+    }
+
+    // The same thing when the response carries a date of its own, which is the
+    // case the bridge's own comment flags: a POST reply may or may not include
+    // `created`, and a playlist made now that arrives carrying January must
+    // still read as made now. The stamp is unconditional for that reason, and
+    // this is the case that says so - the one above would pass with
+    // `if (p.addedAt == 0) created.addedAt = stampNow();`.
+    void aCreatedPlaylistIsStampedNowWhateverDateItArrivesWith() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        lib.playlists = {mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Alte Liste"), 10,
+                                    daysAfterJan(20))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        // Named to sort last and dated nineteen days *before* the row already
+        // in the library, so neither collation nor its own date can put it
+        // first.
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-stale"),
+                                   QStringLiteral("Zuletzt erstellt"), 0, daysAfterJan(1)));
+
+        QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("playlist:p-stale"),
+                 qPrintable(QStringLiteral("a created playlist kept the stale date its reply "
+                                           "carried; the list reads %1")
+                                .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
 private:

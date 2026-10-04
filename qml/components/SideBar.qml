@@ -761,6 +761,103 @@ Item {
                 Layout.preferredHeight: Math.round(4 + 6 * root.wideness)
             }
 
+            // ── "New playlist" (S1, the one thing the list could not do) ──
+            //
+            // The sidebar lists the account's playlists and had no way to add
+            // one; creating is the only way a playlist enters the account from
+            // in here, since nothing in the interface favourites or
+            // unfavourites one. So the row belongs at the head of the list it
+            // adds to, between the finder and the library, where "add to this
+            // list" reads as what it is.
+            //
+            // The user's fork puts its + on a PLAYLISTS section heading. There
+            // is no such heading here - one flat, typed list is the whole of
+            // S1 - so the row is built like a library row instead: the same
+            // 44px rhythm, the same inset, a tile on the covers' centre line,
+            // and a label that fades in on `wideness` with everything else. At
+            // the rail it is a bare + in a 68px strip, which is exactly the
+            // bargain the rows below it make.
+            Item {
+                id: newPlaylistRow
+                objectName: "sidebarNewPlaylist"
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.libRowHeight
+                activeFocusOnTab: true
+                Keys.onReturnPressed: newPlaylistDialog.openEmpty()
+                Keys.onSpacePressed:  newPlaylistDialog.openEmpty()
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.leftMargin:  root.rowInset
+                    anchors.rightMargin: root.rowInset
+                    radius: Theme.radiusRow
+                    color: newPlaylistHov.hovered ? Theme.surfaceHov : "transparent"
+                    border.width: newPlaylistRow.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+
+                    HoverHandler { id: newPlaylistHov; cursorShape: Qt.PointingHandCursor }
+                    TapHandler  { onTapped: newPlaylistDialog.openEmpty() }
+
+                    // On the covers' centre line in both shapes of the
+                    // sidebar, which is the same arithmetic the covers
+                    // themselves use and comes out the same at both ends: a
+                    // 36px cover centred in a 68px rail sits at 16, and 16 is
+                    // also the sidebar's left inset, so nothing here travels
+                    // horizontally either.
+                    //
+                    // Outlined and smaller than a cover on purpose. This is an
+                    // action, not something in the library, and a filled tile
+                    // the size of the artwork below it would read as a row
+                    // that had lost its picture.
+                    Rectangle {
+                        id: plusTile
+                        objectName: "sidebarNewPlaylistTile"
+                        width: 26
+                        height: 26
+                        x: Math.round(root.coverLeft + (root.coverSize - width) / 2)
+                           - root.rowInset
+                        anchors.verticalCenter: parent.verticalCenter
+                        radius: Theme.radiusArt
+                        color: "transparent"
+                        border.width: 1
+                        border.color: newPlaylistHov.hovered ? Theme.accent : Theme.border
+
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: "plus"
+                            width: 13
+                            height: 13
+                            strokeWidth: 1.8
+                            color: newPlaylistHov.hovered ? Theme.accent : Theme.textDim
+                        }
+                    }
+
+                    Text {
+                        objectName: "sidebarNewPlaylistLabel"
+                        visible: root.showsWide
+                        opacity: root.wideOpacity
+                        anchors.left: plusTile.right
+                        anchors.leftMargin: 10
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("New playlist")
+                        color: newPlaylistHov.hovered ? Theme.textPrimary : Theme.textSec
+                        font.pixelSize: 13
+                        elide: Text.ElideRight
+                    }
+
+                    // No tooltip for the rail, and none anywhere else in this
+                    // panel either. It was the obvious thing to add and it is
+                    // unreachable: `hoverExpanded` watches a HoverHandler over
+                    // the whole panel, so pointing at this tile is already what
+                    // brings the full sidebar out, and the label arrives inside
+                    // 170ms - well before any tooltip delay worth having would
+                    // arm. The library rows below make the same bargain and
+                    // carry no tooltip for the same reason.
+                }
+            }
+
             // ── the library list (S1, S2, S9) ────────────────────────────
             //
             // One list, in both shapes of the sidebar. It used to be two: a
@@ -1144,6 +1241,24 @@ Item {
     // Its own file since it grew a picker for every 0.4.0 feature that had
     // none; this file was already the longest in qml/.
     SettingsPanel { id: settingsPopup }
+
+    // The "New playlist" row above the library opens this; see
+    // NewPlaylistDialog.qml, which three places in the app share.
+    //
+    // Nothing is done with the answer here, deliberately. The bridge raises
+    // playlistCreated, Application hands that to LibraryIndex::addPlaylist,
+    // and the new row arrives in `library.entries` and through this list like
+    // every other row - stamped as of now, so it lands at the head of the
+    // unpinned block where the user will look for it. Reloading anything here
+    // would be a second path to the same row that could disagree with the
+    // first.
+    //
+    // A Popup is not a visual child of the sidebar once it reparents itself to
+    // the window overlay, so this alias is the only handle a test has on it -
+    // the same reason `settingsPanel` above exists.
+    readonly property alias playlistDialog: newPlaylistDialog
+
+    NewPlaylistDialog { id: newPlaylistDialog }
 
     // ── inline components ────────────────────────────────────────────────
 

@@ -233,6 +233,10 @@
         <translation>Gespeicherte Einträge suchen…</translation>
     </message>
     <message>
+        <source>New playlist</source>
+        <translation>Neue Playlist</translation>
+    </message>
+    <message>
         <source>Liked Songs</source>
         <translation>Lieblingstitel</translation>
     </message>
@@ -564,6 +568,47 @@
     </message>
 </context>
 <context>
+    <name>NewPlaylistDialog</name>
+    <message>
+        <source>Enter a name for the playlist.</source>
+        <translation>Gib der Playlist einen Namen.</translation>
+    </message>
+    <message>
+        <source>Could not create the playlist.</source>
+        <translation>Playlist konnte nicht erstellt werden.</translation>
+    </message>
+    <message>
+        <source>Could not create the playlist: %1</source>
+        <translation>Playlist konnte nicht erstellt werden: %1</translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation>Neue Playlist</translation>
+    </message>
+    <message>
+        <source>Playlist name</source>
+        <translation>Playlist-Name</translation>
+    </message>
+    <message>
+        <source>%1/%2</source>
+        <comment>characters typed out of the maximum</comment>
+        <translation>%1/%2</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Abbrechen</translation>
+    </message>
+    <message>
+        <source>Creating…</source>
+        <translation>Wird erstellt…</translation>
+    </message>
+    <message>
+        <source>Create</source>
+        <comment>verb, the button that creates the playlist</comment>
+        <translation>Erstellen</translation>
+    </message>
+</context>
+<context>
     <name>NowPlayingPage</name>
     <message>
         <source>Close Now Playing</source>
@@ -748,11 +793,6 @@
 </context>
 <context>
     <name>PlayerBar</name>
-    <message>
-        <source>, </source>
-        <comment>between two artist names</comment>
-        <translation>, </translation>
-    </message>
     <message>
         <source>No track playing</source>
         <translation>Es läuft kein Titel</translation>
@@ -1120,7 +1160,7 @@
     </message>
     <message>
         <source>Send an email</source>
-        <comment>button that opens the user's mail client</comment>
+        <comment>button that opens the user&apos;s mail client</comment>
         <translation>E-Mail schreiben</translation>
     </message>
     <message>
@@ -1244,108 +1284,52 @@
         <translation>Lossless (16 Bit)</translation>
     </message>
     <message>
-        <source>Space</source>
-        <comment>keyboard key</comment>
-        <translation>Leertaste</translation>
-    </message>
-    <message>
         <source>Play / Pause</source>
         <translation>Wiedergabe / Pause</translation>
-    </message>
-    <message>
-        <source>Ctrl+Right / Left</source>
-        <translation>Strg+Rechts / Links</translation>
     </message>
     <message>
         <source>Next / Previous track</source>
         <translation>Nächster / vorheriger Titel</translation>
     </message>
     <message>
-        <source>Right / Left</source>
-        <comment>arrow keys</comment>
-        <translation>Rechts / Links</translation>
-    </message>
-    <message>
         <source>Seek forward / back 10s</source>
         <translation>10 s vor- / zurückspulen</translation>
-    </message>
-    <message>
-        <source>Up / Down</source>
-        <comment>arrow keys</comment>
-        <translation>Hoch / Runter</translation>
     </message>
     <message>
         <source>Volume up / down</source>
         <translation>Lauter / leiser</translation>
     </message>
     <message>
-        <source>Ctrl+M</source>
-        <translation>Strg+M</translation>
-    </message>
-    <message>
         <source>Mute</source>
         <translation>Stummschalten</translation>
-    </message>
-    <message>
-        <source>Ctrl+S</source>
-        <translation>Strg+S</translation>
     </message>
     <message>
         <source>Toggle shuffle</source>
         <translation>Zufallswiedergabe ein/aus</translation>
     </message>
     <message>
-        <source>Ctrl+R</source>
-        <translation>Strg+R</translation>
-    </message>
-    <message>
         <source>Cycle repeat mode</source>
         <translation>Wiederholmodus wechseln</translation>
-    </message>
-    <message>
-        <source>Ctrl+1 / 2 / 3</source>
-        <translation>Strg+1 / 2 / 3</translation>
     </message>
     <message>
         <source>Home / Search / Collection</source>
         <translation>Startseite / Suche / Sammlung</translation>
     </message>
     <message>
-        <source>Ctrl+N</source>
-        <translation>Strg+N</translation>
-    </message>
-    <message>
         <source>Now Playing</source>
         <translation>Jetzt läuft</translation>
-    </message>
-    <message>
-        <source>F11</source>
-        <comment>keyboard key</comment>
-        <translation>F11</translation>
     </message>
     <message>
         <source>Fullscreen Now Playing</source>
         <translation>Jetzt läuft im Vollbild</translation>
     </message>
     <message>
-        <source>Ctrl+Q</source>
-        <translation>Strg+Q</translation>
-    </message>
-    <message>
         <source>Toggle queue</source>
         <translation>Warteschlange ein/aus</translation>
     </message>
     <message>
-        <source>Alt+Left / Esc</source>
-        <translation>Alt+Links / Esc</translation>
-    </message>
-    <message>
         <source>Go back</source>
         <translation>Zurück</translation>
-    </message>
-    <message>
-        <source>Ctrl+,</source>
-        <translation>Strg+,</translation>
     </message>
 </context>
 <context>
@@ -1363,6 +1347,10 @@
     <message>
         <source>Collection</source>
         <translation>Sammlung</translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation>Neue Playlist</translation>
     </message>
     <message>
         <source>No matches</source>
@@ -1416,6 +1404,16 @@
         </translation>
     </message>
     <message>
+        <source>Added to “%1”</source>
+        <comment>confirmation after adding a track to a playlist</comment>
+        <translation>Zu „%1“ hinzugefügt</translation>
+    </message>
+    <message>
+        <source>Could not add the song to “%1”</source>
+        <comment>shown when adding a track to a playlist failed</comment>
+        <translation>Titel konnte nicht zu „%1“ hinzugefügt werden</translation>
+    </message>
+    <message>
         <source>Play now</source>
         <translation>Jetzt abspielen</translation>
     </message>
@@ -1466,6 +1464,10 @@
     <message>
         <source>Copy link</source>
         <translation>Link kopieren</translation>
+    </message>
+    <message>
+        <source>New playlist…</source>
+        <translation>Neue Playlist…</translation>
     </message>
     <message numerus="yes">
         <source>%n track(s)</source>
