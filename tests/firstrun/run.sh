@@ -210,6 +210,14 @@ guard_check() {
 
 head2 "sandbox"
 info "binary:  $APP"
+# A binary older than the sources makes every dynamic check below measure the
+# previous build while saying nothing about this one. Not hypothetical: the
+# Wayland app-id check was first run against a binary from before the entry was
+# renamed, and it faithfully reported the old id.
+STALE_SRC=$(find "$REPO_ROOT/src" "$REPO_ROOT/qml" -type f -newer "$APP" -print -quit 2>/dev/null)
+if [ -n "$STALE_SRC" ]; then
+    note "the binary predates ${STALE_SRC#"$REPO_ROOT/"}; rebuild, or every dynamic check measures the previous build"
+fi
 info "scratch: $SCRATCH (short on purpose: a unix socket path caps at 107 bytes)"
 if [ "$LIVE_INSTANCE" -eq 1 ]; then
     info "another instance is already listening on $REAL_LOCK; it is left strictly alone."
@@ -330,6 +338,42 @@ verdict() {
 
     guard_check "$id"
 }
+
+# ── the .deb depends list, read once ────────────────────────────────────────
+#
+# Read the assembled list, not the code that assembles it.
+#
+# The deps scenario used to grep CMakeLists.txt for
+# `set(CPACK_DEBIAN_PACKAGE_DEPENDS`, a string CMakeLists.txt does not contain
+# and never did: the list is built up a package at a time into TW_DEB_DEPENDS,
+# with a version floor appended to each, and only then
+#     list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
+# So the pattern could not match, the list was always empty, and that scenario
+# took its skip branch on every run it has ever had - green by vacuity for its
+# whole life, while reporting itself as merely unavailable.
+#
+# The generated CPackConfig.cmake beside the binary is the assembled value: it is
+# what CPack writes into the control file, version constraints and all. Reading
+# it keeps the package list in one place instead of making this file a second
+# copy that drifts.
+CPACK_CFG=$(dirname "$APP")/CPackConfig.cmake
+cpack_var() {
+    sed -n "s/^set(${1} \"\(.*\)\")[[:space:]]*\$/\1/p" "$CPACK_CFG" | head -1
+}
+DEB_DEPENDS=''; DEB_RECOMMENDS=''
+if [ -f "$CPACK_CFG" ]; then
+    DEB_DEPENDS=$(cpack_var CPACK_DEBIAN_PACKAGE_DEPENDS)
+    DEB_RECOMMENDS=$(cpack_var CPACK_DEBIAN_PACKAGE_RECOMMENDS)
+fi
+# Package names only, with the "(>= 6.12)" stripped off: comparing whole entries
+# would miss every versioned one, and substring matching would let
+# "qml6-module-qtquick" pretend to satisfy "qml6-module-qtquick-shapes".
+dep_names() {
+    printf '%s' "$1" | tr ',' '\n' | sed 's/(.*//' \
+        | tr -d '[:blank:]' | grep -v '^$'
+}
+listed()      { dep_names "$DEB_DEPENDS"    | grep -qxF -- "$1"; }
+recommended() { dep_names "$DEB_RECOMMENDS" | grep -qxF -- "$1"; }
 
 # ── scenario 1: offscreen, the CI shape and the baseline ────────────────────
 
@@ -480,70 +524,279 @@ if wanted xcb; then
 fi
 
 # ── scenario 4: Wayland, nested in a headless compositor ────────────────────
+#
+# Why both of these used to fail, because the cause is nowhere near the symptom
+# and it leaves no log line to find.
+#
+#   kwin_wayland is installed with the file capability cap_sys_nice=ep, and
+#   KWin::gainRealTime() moves its main thread onto SCHED_RR the moment it has
+#   it. A real-time thread is then subject to RLIMIT_RTTIME, and the kernel's
+#   remedy for exceeding that is SIGXCPU at the soft limit and SIGKILL at the
+#   hard one. Software-rendering the virtual backend's first frames spends a
+#   200ms budget in one uninterrupted go, so the compositor was SIGKILLed about
+#   a second after binding its socket, having written nothing at all - SIGKILL
+#   leaves no opportunity to write. The app then connected to a socket with
+#   nobody behind it, found no xdg-shell global and aborted with 134. That was
+#   the pair of FAILs, and neither of them was about the app.
+#
+#   Whose limit it is matters, because it decides who sees the failure. Plasma
+#   starts its own compositor with RLIMIT_RTTIME=infinity and so does a plain
+#   terminal, so running this by hand on the developer's box never hit it. A
+#   harness that lowers RLIMIT_RTTIME for itself hands the lowered value to
+#   every child, and this script was failing under exactly that: measured at
+#   200000us inherited, with the terminal above it still at infinity. A
+#   container or service manager with a finite DefaultLimitRTTIME does the same.
+#   The run prints the value it inherited so the next reader does not have to
+#   work it out again.
+#
+#   setpriv --no-new-privs is the whole fix. PR_SET_NO_NEW_PRIVS makes the exec
+#   refuse to pick the capability up, so sched_setscheduler() is denied by
+#   RLIMIT_RTPRIO, KWin stays on SCHED_OTHER, and RLIMIT_RTTIME never applies to
+#   it at all - no matter what was inherited. What that gives up is real-time
+#   scheduling for the compositor, which a test reading protocol traffic rather
+#   than frame timing does not need. It is otherwise the KWin the owner runs:
+#   same xdg-shell implementation, same app-id matching, so this is not a
+#   weaker stand-in for the real compositor.
+#
+#   The readiness check used to wait for the socket file and nothing else. The
+#   socket is bound about a second before any global is advertised, and it stays
+#   on disk after the compositor is killed, so that check could be satisfied
+#   with nothing on the other end - which is how a dead compositor came out as a
+#   broken app. It now waits until xdg_wm_base is really advertised, and the
+#   compositor's life is re-checked at every verdict.
+#
+# Nothing here goes near the developer's session: the compositor renders to an
+# offscreen framebuffer, binds its own socket inside the sandbox's own
+# XDG_RUNTIME_DIR, and talks to the sandbox's own session bus. That is also why
+# the old "this box is not running a Wayland session" precondition is gone:
+# --virtual needs no parent display of any kind, so requiring one only made the
+# scenario skip on the X11 and headless boxes where it would have run fine.
 
 if wanted wayland; then
     head2 "Wayland"
-    if [ "${XDG_SESSION_TYPE:-}" != "wayland" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
-        skip wayland "this box is not running a Wayland session"
-    elif ! command -v kwin_wayland >/dev/null 2>&1; then
-        skip wayland "no nested compositor available (kwin_wayland), and the real session must not be used"
-    elif ! command -v dbus-daemon >/dev/null 2>&1; then
-        skip wayland "kwin_wayland needs a session bus and dbus-daemon is not installed"
+    sandbox wayland
+    WANT=$(basename "$DESKTOP_FILE" .desktop)
+
+    # Report the compositor-dependent checks as skipped by name rather than
+    # letting them disappear from the tally, which is how a check stops being
+    # noticed at all.
+    wl_skip_dynamic() {
+        skip wayland "$1"; skip wayland-surface "$1"; skip wayland-appid "$1"
+    }
+
+    # ── wayland-entry: the id on the wire has to name the entry that is really
+    # installed, so run the install rules into a throwaway DESTDIR and resolve
+    # the id against that tree the way a compositor resolves it - not against
+    # packaging/, which is not what reaches a user's disk. Static, so it runs
+    # even where there is no compositor to nest.
+    BUILD_DIR=$(dirname "$APP")
+    STAGE=$BOX/stage
+    if ! command -v cmake >/dev/null 2>&1; then
+        skip wayland-entry "cmake is not installed, so the install rules cannot be run"
+    elif [ ! -f "$BUILD_DIR/cmake_install.cmake" ]; then
+        skip wayland-entry "$BUILD_DIR is not a configured CMake build directory"
+    elif ! DESTDIR=$STAGE cmake --install "$BUILD_DIR" --prefix /usr \
+              >"$BOX/logs/stage-install.log" 2>&1; then
+        # Worth failing rather than skipping: a build directory whose install
+        # rules predate a rename still names the file that used to exist, and
+        # `cpack` out of that directory would package the old layout or nothing.
+        # Re-configuring it is the fix.
+        fail wayland-entry "cmake --install into a staging tree failed; ${BUILD_DIR#"$REPO_ROOT/"}'s install rules may predate the sources, so re-configure it"
+        tail -6 "$BOX/logs/stage-install.log" 2>/dev/null | sed 's/^/         /'
     else
-        sandbox wayland
+        ok=1
+        APPDIR=$(find "$STAGE" -type d -name applications -print -quit 2>/dev/null)
+        ENTRY=$APPDIR/$WANT.desktop
+        if [ -z "$APPDIR" ]; then
+            fail wayland-entry "the install rules create no applications directory, so the app id resolves to nothing"
+            ok=0
+        elif [ ! -f "$ENTRY" ]; then
+            fail wayland-entry "nothing installs $WANT.desktop, so an app id of $WANT resolves to nothing"
+            info "installed instead: $(ls "$APPDIR" 2>/dev/null | tr '\n' ' ')"
+            ok=0
+        else
+            info "app id $WANT resolves to ${ENTRY#"$STAGE"}"
+            # One entry only. Two would put the app in the launcher twice and
+            # leave which one the compositor matches to chance; the legacy sweep
+            # in CMakeLists.txt exists for exactly that.
+            NENTRY=$(find "$APPDIR" -maxdepth 1 -name '*.desktop' | wc -l)
+            if [ "$NENTRY" -ne 1 ]; then
+                fail wayland-entry "$NENTRY desktop entries are installed; the app id may resolve to either"
+                info "$(find "$APPDIR" -maxdepth 1 -name '*.desktop' -printf '%f ' 2>/dev/null)"
+                ok=0
+            fi
+            # The file that is checked statically elsewhere in this script has to
+            # be the file that is installed, or those checks measure nothing.
+            if ! cmp -s "$ENTRY" "$DESKTOP_FILE"; then
+                fail wayland-entry "the installed entry differs from ${DESKTOP_FILE#"$REPO_ROOT/"}, which is what the other checks read"
+                ok=0
+            fi
+            # Last link of the icon chain: KWin takes Icon= out of the entry it
+            # matched and looks that up as a theme icon name.
+            EICON=$(grep -m1 '^Icon=' "$ENTRY" | cut -d= -f2-)
+            if [ -z "$EICON" ]; then
+                fail wayland-entry "the installed entry has no Icon= line, so the matched window has no icon to show"
+                ok=0
+            else
+                FOUND=$(find "$STAGE" -path '*/icons/hicolor/*/apps/*' \
+                        \( -name "$EICON.png" -o -name "$EICON.svg" \) -print 2>/dev/null)
+                if [ -z "$FOUND" ]; then
+                    fail wayland-entry "Icon=$EICON names no installed hicolor icon, so KWin matches the entry and still shows nothing"
+                    ok=0
+                else
+                    info "Icon=$EICON resolves to $(printf '%s\n' "$FOUND" | grep -c .) installed hicolor file(s)"
+                fi
+            fi
+            # AppStream is the third speller of the app id, and the one a store
+            # listing hangs off.
+            MINFO=$(find "$STAGE" -path '*/metainfo/*.xml' -print -quit 2>/dev/null)
+            if [ -z "$MINFO" ]; then
+                note "wayland-entry: no metainfo file is installed"
+            else
+                [ "$(basename "$MINFO")" = "$WANT.metainfo.xml" ] \
+                    || { fail wayland-entry "the metainfo installs as $(basename "$MINFO"), not $WANT.metainfo.xml, so AppStream pairs it with no component"; ok=0; }
+                LAUNCH=$(grep -o '<launchable[^>]*>[^<]*</launchable>' "$MINFO" \
+                         | sed 's/.*>\(.*\)<.*/\1/' | head -1)
+                if [ "$LAUNCH" = "$WANT.desktop" ]; then
+                    info "metainfo <launchable> is $LAUNCH"
+                else
+                    fail wayland-entry "metainfo <launchable> is \"$LAUNCH\", not $WANT.desktop"
+                    ok=0
+                fi
+            fi
+        fi
+        [ "$ok" -eq 1 ] && pass wayland-entry "the app id resolves to the installed entry, and its icon and metainfo resolve with it"
+    fi
+
+    # ── the nested compositor, and what the app does under it ───────────────
+    if ! command -v kwin_wayland >/dev/null 2>&1; then
+        wl_skip_dynamic "no nested compositor available (kwin_wayland), and the real session must not be used"
+    elif ! command -v dbus-daemon >/dev/null 2>&1; then
+        wl_skip_dynamic "kwin_wayland needs a session bus and dbus-daemon is not installed"
+    else
         PRIVATE_BUS=''
         if ! private_bus; then
-            skip wayland "could not start a private session bus"
+            wl_skip_dynamic "could not start a private session bus"
         else
             WD=wayland-twfr
+            KWIN_WRAP=(); HOW='no capability guard'
+            if command -v setpriv >/dev/null 2>&1; then
+                KWIN_WRAP=(setpriv --no-new-privs); HOW='PR_SET_NO_NEW_PRIVS'
+            else
+                note "wayland: setpriv is missing, so the compositor may take SCHED_RR; a SIGKILL below is RLIMIT_RTTIME"
+            fi
+            RTTIME=$(awk '/realtime timeout/ {print $4}' /proc/self/limits 2>/dev/null)
             info "nested kwin_wayland on a virtual framebuffer, socket $WD, private bus"
+            info "started with $HOW; inherited RLIMIT_RTTIME is ${RTTIME:-unknown}"
             # --virtual renders to an offscreen framebuffer, so nothing appears on
             # the developer's screen and no focus is taken.
             env -i "${BOX_ENV[@]}" DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" \
                 QT_QPA_PLATFORM=offscreen \
+                ${KWIN_WRAP[@]+"${KWIN_WRAP[@]}"} \
                 kwin_wayland --virtual --width 1280 --height 800 \
                              --no-lockscreen --no-global-shortcuts --socket "$WD" \
                 >"$BOX/logs/kwin.log" 2>&1 &
             KWIN_PID=$!; track "$KWIN_PID"
+
+            # Readiness is "the shell global the app will ask for is advertised",
+            # not "the socket file exists".
+            HAVE_WL_INFO=0; READY_BY='the socket plus a settle, unverified'
+            command -v wayland-info >/dev/null 2>&1 && \
+                { HAVE_WL_INFO=1; READY_BY='xdg_wm_base, asked for with wayland-info'; }
             ready=0
-            for _ in $(seq 1 60); do
-                [ -S "$BOX/run/$WD" ] && { ready=1; break; }
+            for _ in $(seq 1 120); do
+                if [ -S "$BOX/run/$WD" ]; then
+                    if [ "$HAVE_WL_INFO" -eq 1 ]; then
+                        env -i "${BOX_ENV[@]}" WAYLAND_DISPLAY="$WD" wayland-info \
+                            2>/dev/null | grep -q "'xdg_wm_base'" && { ready=1; break; }
+                    else
+                        # Nothing installed to ask the compositor with; give it
+                        # time to finish binding globals instead.
+                        sleep 2; ready=1; break
+                    fi
+                fi
                 kill -0 "$KWIN_PID" 2>/dev/null || break
                 sleep 0.25
             done
+            kill -0 "$KWIN_PID" 2>/dev/null || ready=0
+
             if [ "$ready" -eq 0 ]; then
-                skip wayland "kwin_wayland did not create $WD (see $BOX/logs/kwin.log)"
-                info "$(tail -3 "$BOX/logs/kwin.log" 2>/dev/null)"
+                if kill -0 "$KWIN_PID" 2>/dev/null; then
+                    wl_skip_dynamic "kwin_wayland never advertised xdg_wm_base on $WD"
+                else
+                    wait "$KWIN_PID" 2>/dev/null; KST=$?
+                    wl_skip_dynamic "the nested kwin_wayland died (status $KST) before it served xdg_wm_base"
+                    [ "$KST" = 137 ] && info "137 is SIGKILL: RLIMIT_RTTIME=${RTTIME:-unknown} against KWin's SCHED_RR thread, see the note above this scenario"
+                fi
+                KLOG=$(tail -3 "$BOX/logs/kwin.log" 2>/dev/null)
+                if [ -n "$KLOG" ]; then
+                    printf '%s\n' "$KLOG" | sed 's/^/       /'
+                else
+                    info "kwin.log is empty: KWin logs to the journal, and a SIGKILLed process gets no chance to write either way"
+                fi
             else
+                info "compositor ready by: $READY_BY"
                 RUN_WRAPPER=()
                 run_app wayland WAYLAND_DISPLAY="$WD" QT_QPA_PLATFORM=wayland \
                         DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" \
                         XDG_CURRENT_DESKTOP=KDE
-                verdict wayland "wayland (nested kwin)"
+                if kill -0 "$KWIN_PID" 2>/dev/null; then
+                    verdict wayland "wayland (nested kwin)"
+                else
+                    fail wayland "the nested compositor died mid-run, so nothing was measured about the app"
+                fi
 
-                # On Wayland the taskbar icon comes from the .desktop file
-                # matched against xdg_toplevel.set_app_id, not from
-                # setWindowIcon. WAYLAND_DEBUG prints the protocol traffic, so
-                # the id the app actually sent can be read rather than assumed.
+                # A second launch, this time with the protocol traffic printed,
+                # so what the app told the compositor can be read instead of
+                # assumed. WAYLAND_DEBUG goes to stderr and would drown the
+                # verdict's own greps, hence the separate run.
                 env -i "${BOX_ENV[@]}" WAYLAND_DISPLAY="$WD" QT_QPA_PLATFORM=wayland \
                     DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" XDG_CURRENT_DESKTOP=KDE \
                     WAYLAND_DEBUG=1 \
                     timeout -s TERM 6 "$APP" \
                     >"$BOX/logs/wl-debug.out" 2>"$BOX/logs/wl-debug.err"
+                WLOG=$BOX/logs/wl-debug.err
+
+                # Did a window actually reach the screen? Three things have to be
+                # true, and only the middle one needs the compositor to answer:
+                # the app asked for a toplevel, the compositor configured it with
+                # a real size (an event, so it has no "->" prefix: proof there is
+                # a compositor and not just a socket), and the app then attached
+                # a buffer and committed it, which is a drawn frame.
+                TOPLEVEL=$(grep -aoE 'xdg_surface#[0-9]+\.get_toplevel' "$WLOG" | head -1)
+                CONFSZ=$(grep -a 'xdg_toplevel#' "$WLOG" | grep -av -- '->' \
+                         | grep -aoE '\.configure\([1-9][0-9]*, [1-9][0-9]*,' | head -1)
+                ATTACH=$(grep -aoE 'wl_surface#[0-9]+\.attach\(wl_buffer#[0-9]+' "$WLOG" | head -1)
+                COMMIT=$(grep -aoE 'wl_surface#[0-9]+\.commit\(\)' "$WLOG" | head -1)
+                ok=1
+                if [ -z "$TOPLEVEL" ]; then
+                    fail wayland-surface "no xdg_toplevel was ever created; no window reached the compositor"
+                    ok=0
+                elif [ -z "$CONFSZ" ]; then
+                    fail wayland-surface "the compositor never configured the toplevel with a size; it was created but never mapped"
+                    ok=0
+                elif [ -z "$ATTACH" ] || [ -z "$COMMIT" ]; then
+                    fail wayland-surface "no buffer was attached and committed; the surface exists but drew nothing"
+                    ok=0
+                fi
+                if [ "$ok" -eq 1 ]; then
+                    SZ=$(printf '%s' "$CONFSZ" | sed 's/\.configure(\([0-9]*\), \([0-9]*\),/\1x\2/')
+                    pass wayland-surface "a toplevel was mapped at $SZ and a buffer was attached and committed"
+                fi
+
+                # On Wayland the taskbar entry and the icon come from the
+                # .desktop file matched against xdg_toplevel.set_app_id, never
+                # from setWindowIcon. This is the id on the wire; wayland-entry
+                # above is the other end of the same chain.
                 APPID=$(grep -aoE 'xdg_toplevel#[0-9]+\.set_app_id\("[^"]*"\)' \
-                        "$BOX/logs/wl-debug.err" | head -1 | sed 's/.*("\(.*\)").*/\1/')
-                WANT=$(basename "$DESKTOP_FILE" .desktop)
+                        "$WLOG" | head -1 | sed 's/.*("\(.*\)").*/\1/')
                 if [ -z "$APPID" ]; then
-                    if grep -aq 'get_toplevel' "$BOX/logs/wl-debug.err"; then
-                        fail wayland-appid "a toplevel was created but no app id was set, so the taskbar icon cannot resolve"
-                    else
-                        fail wayland-appid "no xdg_toplevel was ever created; no window reached the compositor"
-                    fi
+                    fail wayland-appid "no app id was set on the toplevel, so KWin has no entry to match and the taskbar icon is generic"
                 elif [ "$APPID" = "$WANT" ]; then
-                    pass wayland-appid "set_app_id(\"$APPID\") matches $WANT.desktop, so the Wayland icon resolves"
-                    info "set_title: $(grep -aoE 'set_title\("[^"]*"\)' "$BOX/logs/wl-debug.err" | head -1)"
+                    pass wayland-appid "set_app_id(\"$APPID\") is the installed entry's basename, so KWin resolves $WANT.desktop"
+                    info "set_title: $(grep -aoE 'set_title\("[^"]*"\)' "$WLOG" | head -1)"
                 else
-                    fail wayland-appid "set_app_id(\"$APPID\") does not match $WANT.desktop; the taskbar shows a generic icon"
+                    fail wayland-appid "set_app_id(\"$APPID\") is not \"$WANT\"; KWin finds no $WANT.desktop and the taskbar shows a generic icon"
                 fi
                 guard_check wayland-appid
             fi
@@ -644,7 +897,15 @@ if wanted missing-qml; then
         if grep -aqE 'QtQuick.Shapes.*is not installed|failed to load component' "$RUN_ERR"; then
             pass missing-qml "reproduced the packaging failure a missing QtQuick.Shapes causes (exit $RUN_STATUS)"
             head -6 "$RUN_ERR" | sed 's/^/         /'
-            note "CPACK_DEBIAN_PACKAGE_DEPENDS has no qml6-module-qtquick-shapes"
+            # This note used to be an unconditional sentence claiming the
+            # package was missing from the depends list. It was not missing, so
+            # the claim was false on every run that ever printed it; the list is
+            # right there to ask.
+            if listed qml6-module-qtquick-shapes; then
+                info "qml6-module-qtquick-shapes is in the depends list, so a .deb install does not land here"
+            else
+                note "qml6-module-qtquick-shapes is not in the depends list, so this is what a .deb user sees"
+            fi
         elif [ "$RUN_STATUS" = 124 ]; then
             pass missing-qml "survived without QtQuick.Shapes (the module is optional after all)"
         else
@@ -745,22 +1006,20 @@ fi
 # ── static check: runtime dependencies against the .deb depends list ────────
 
 if wanted deps; then
-    head2 "runtime dependencies vs CPACK_DEBIAN_PACKAGE_DEPENDS"
-    # The first quoted string inside the set(...) call, not the RECOMMENDS one.
-    DEPS=$(sed -n '/set(CPACK_DEBIAN_PACKAGE_DEPENDS/,/)/p' "$REPO_ROOT/CMakeLists.txt" \
-           | grep -o '"[^"]*"' | head -1 | tr -d '"')
-    if [ -z "$DEPS" ]; then
-        skip deps "could not read CPACK_DEBIAN_PACKAGE_DEPENDS from CMakeLists.txt"
+    head2 "runtime dependencies vs the .deb depends list"
+    # The list itself is read once, near the top of this file; see the comment
+    # there for why it is read out of CPackConfig.cmake and not CMakeLists.txt.
+    if [ ! -f "$CPACK_CFG" ]; then
+        skip deps "no CPackConfig.cmake beside the binary; configure $(dirname "$APP") to generate one"
+    elif [ -z "$DEB_DEPENDS" ]; then
+        # The file exists and carries no depends list, which is a defect and not
+        # a reason to skip: the .deb would declare no dependencies at all.
+        fail deps "$CPACK_CFG sets no CPACK_DEBIAN_PACKAGE_DEPENDS, so the package would declare no dependencies"
     else
-        # Exact token membership: substring matching would let
-        # "qml6-module-qtquick" pretend to satisfy "qml6-module-qtquick-shapes".
-        listed() {
-            local want=$1 have
-            for have in $(printf '%s' "$DEPS" | tr ',' ' '); do
-                [ "$have" = "$want" ] && return 0
-            done
-            return 1
-        }
+        if [ "$REPO_ROOT/CMakeLists.txt" -nt "$CPACK_CFG" ]; then
+            note "deps: CMakeLists.txt is newer than CPackConfig.cmake; re-configure that build directory or this reads the previous list"
+        fi
+        info "$(dep_names "$DEB_DEPENDS" | grep -c .) depends, $(dep_names "$DEB_RECOMMENDS" | grep -c .) recommends, read from ${CPACK_CFG#"$REPO_ROOT/"}"
         missing=0
         # Qt libraries the binary really needs, mapped to their Debian package.
         # dpkg-shlibdeps would catch these too, but only if it runs; the explicit
@@ -803,9 +1062,30 @@ MAP
         # separate package from libqt6gui6.
         if listed qt6-wayland; then
             info "qt6-wayland is listed"
+        elif recommended qt6-wayland; then
+            # Deliberate: apt installs Recommends by default and an X11-only box
+            # does not need it. Worth stating rather than passing silently,
+            # because --no-install-recommends then leaves a Wayland-only desktop
+            # with no wayland platform plugin at all.
+            info "qt6-wayland is a Recommends, not a Depends; --no-install-recommends leaves a Wayland-only desktop without the platform plugin"
         else
-            note "deps: qt6-wayland is not listed; on a Wayland-only desktop the app falls back to XWayland or fails to start"
+            note "deps: qt6-wayland is in neither Depends nor Recommends; on a Wayland-only desktop the app falls back to XWayland or fails to start"
             missing=1
+        fi
+
+        # Every Qt entry has to carry a version floor. Without one the package
+        # installs happily on a box whose Qt is older than the one it was built
+        # against and then dies at load with "version Qt_6.12 not found", which
+        # is the failure CMakeLists.txt records measuring on bookworm. An
+        # install that succeeds and then crashes is the worst outcome of the
+        # three, so the floors are the point of the list and not a detail of it.
+        unversioned=$(printf '%s' "$DEB_DEPENDS" | tr ',' '\n' | sed 's/^[[:blank:]]*//' \
+                      | grep -E '^(libqt6|qml6-module-)' | grep -v '(>=')
+        if [ -n "$unversioned" ]; then
+            note "deps: Qt entries with no version floor: $(printf '%s' "$unversioned" | tr '\n' ' ')"
+            missing=1
+        else
+            info "every libqt6*/qml6-module-* entry carries a version floor"
         fi
 
         [ "$missing" -eq 0 ] && pass deps "every linked library and QML import is covered" \

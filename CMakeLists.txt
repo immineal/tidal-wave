@@ -532,7 +532,7 @@ by or affiliated with Tidal.")
         qml6-module-qtquick qml6-module-qtquick-shapes
         qml6-module-qtquick-controls qml6-module-qtquick-layouts
         qml6-module-qtquick-window qml6-module-qtquick-templates
-        qml6-module-qtqml-workerscript)
+        qml6-module-qtqml-workerscript qml6-module-qtqml-models)
     set(TW_DEB_DEPENDS "")
     foreach(pkg IN LISTS TW_QT_DEB_PACKAGES)
         list(APPEND TW_DEB_DEPENDS "${pkg} (>= ${TW_QT_DEB_FLOOR})")
