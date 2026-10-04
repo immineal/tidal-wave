@@ -741,6 +741,12 @@ Rectangle {
             ? bridge.isTrackFavorite(track.id)
             : false
     }
+
+    // See PlayerBar: the same heart, the same read-back state, the same one
+    // shared action behind it.
+    readonly property alias favoriteAction: npFav
+    ContextMenu.FavoriteAction { id: npFav }
+
     Component.onCompleted: {
         updateLikedState()
         loadLyrics()
@@ -1360,6 +1366,7 @@ Rectangle {
                     spacing: 24
 
                     RowLayout {
+                        id: npTransportRow
                         Layout.fillWidth: true
                         spacing: 16
 
@@ -1515,18 +1522,17 @@ Rectangle {
 
                         CtrlBtn {
                             id: npLikeBtn
+                            objectName: "nowPlayingLikeButton"
                             visible: root.hasTrack
                             icon: root.isLiked ? "heart-filled" : "heart"
                             size: 24
                             active: root.isLiked
-                            onClicked: {
-                                var trackId = root.track.id
-                                if (root.isLiked) {
-                                    bridge.removeTrackFavorite(trackId, function(success) {})
-                                } else {
-                                    bridge.addTrackFavorite(trackId, function(success) {})
-                                }
-                            }
+                            // The row, not this button: CtrlBtn declares its own
+                            // hover tool tip with `delay: 600`, and the two uses
+                            // of the shared tool tip fight. See the same note on
+                            // the player bar's heart.
+                            onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked,
+                                                                      npTransportRow)
                         }
                     }
 

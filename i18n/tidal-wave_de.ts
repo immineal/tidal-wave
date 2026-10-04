@@ -319,6 +319,36 @@
         </translation>
     </message>
     <message>
+        <source>Could not unlike the song</source>
+        <comment>shown when removing a track from favourites failed</comment>
+        <translation>Die Markierung „Gefällt mir“ konnte nicht entfernt werden</translation>
+    </message>
+    <message>
+        <source>Could not like the song</source>
+        <comment>shown when adding a track to favourites failed</comment>
+        <translation>Titel konnte nicht mit „Gefällt mir“ markiert werden</translation>
+    </message>
+    <message>
+        <source>Could not remove the album from your library</source>
+        <comment>shown when removing an album from the library failed</comment>
+        <translation>Album konnte nicht aus der Mediathek entfernt werden</translation>
+    </message>
+    <message>
+        <source>Could not save the album</source>
+        <comment>shown when saving an album to the library failed</comment>
+        <translation>Album konnte nicht gespeichert werden</translation>
+    </message>
+    <message>
+        <source>Could not unfollow the artist</source>
+        <comment>shown when unfollowing an artist failed</comment>
+        <translation>Das Folgen konnte nicht beendet werden</translation>
+    </message>
+    <message>
+        <source>Could not follow the artist</source>
+        <comment>shown when following an artist failed</comment>
+        <translation>Dem Künstler konnte nicht gefolgt werden</translation>
+    </message>
+    <message>
         <source>Play next</source>
         <comment>verb, play this right after the current track</comment>
         <translation>Als Nächstes abspielen</translation>

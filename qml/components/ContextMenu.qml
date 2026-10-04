@@ -171,6 +171,130 @@ Menu {
                         root.confirmMs)
     }
 
+    // ── a favourite the server can refuse ────────────────────────────────
+    //
+    // Liking a song, saving an album and following an artist are six calls
+    // across six files, and every one of the eleven call sites passed
+    // `function (success) {}` and dropped the answer. Nothing lied about it -
+    // all three hearts read back through bridge.isTrackFavorite() and friends,
+    // and the bridge only touches its caches when the server has said yes - so
+    // a refused favourite left the heart exactly where it was. Which is the
+    // whole problem: a press that does nothing and says nothing is
+    // indistinguishable from a press that missed, and the cheaper guess is to
+    // press again.
+    //
+    // So this is the half that was missing, in one place: the call, and a word
+    // when it comes back refused. It is deliberately *not* a revert - there is
+    // nothing optimistic at any of the eleven sites to take back, and a helper
+    // that wrote the state itself would introduce the lie it is here to
+    // prevent.
+    //
+    // Silent on success, unlike confirmAddedToPlaylist() in TrackRow.qml, and
+    // for the opposite reason: adding a song to a playlist changes nothing you
+    // can see, so success needs saying. A favourite's success *is* the heart
+    // filling, the pill reading "Saved", the tile leaving the grid. A tool tip
+    // on top of that is noise over a message the interface already sent.
+    //
+    // Declared here for the same reason Entry and the two fades are: this file
+    // is where the app keeps the things more than one menu-adjacent host needs
+    // exactly one copy of, and it already owns the "say it over an anchor, for
+    // confirmMs" idiom that _confirm() above uses.
+    component FavoriteAction : QtObject {
+        id: fav
+
+        // Its own copy of the dwell rather than the menu's above. An inline
+        // component is a separate type and does not share the enclosing file's
+        // id scope, so `root.confirmMs` in here is a ReferenceError at the
+        // moment a call comes back refused - the one path that must not throw.
+        // Not Theme.dur(), for the reason given on the other one.
+        property int confirmMs: 2000
+
+        // What the last reply said, or "" when it was accepted. ToolTip.show()
+        // writes to the one shared tool tip instance, which nothing outside
+        // that item can read back, so the text is kept here too - it is the
+        // only way a test can tell "it said nothing" from "it said the wrong
+        // thing", and the only way to catch a success being reported as a
+        // failure. Cleared when a call goes out, not when one comes back, so
+        // the value never belongs to the previous press.
+        property string lastMessage: ""
+
+        // `liked`/`saved`/`following` is the state the thing is in *now*, which
+        // is the state the press undoes - the same sense as the labels at every
+        // call site ("Unlike" when it is liked). Backwards here would send an
+        // add where a remove was asked for, which is why every caller's test
+        // checks which call went out and not only what came back.
+        //
+        // `anchor` is the item the refusal is drawn over - as near as possible
+        // to what was pressed, so the word appears where the user is looking. It
+        // draws *above* what it is given, the same contract as confirmAnchor on
+        // the menu. Passed per call rather than held as a property because two
+        // of the eleven sites are grid delegates: the host is one object serving
+        // a recycled row, and a bound anchor would be whichever tile was last
+        // built rather than the one that was pressed.
+        //
+        // It must be an item that does not drive `ToolTip.visible`/`.text`/
+        // `.delay` declaratively itself, because there is one shared tool tip
+        // per window and the two uses fight: the host's `delay` is applied to
+        // this message as well, its `visible` binding closes it again when the
+        // pointer leaves, and its text overwrites it. Both hearts in this app
+        // sit on buttons that do exactly that, which is why both pass the row
+        // around them instead of themselves.
+        function toggleTrack(trackId, liked, anchor) {
+            if (!(trackId > 0)) return
+            fav.lastMessage = ""
+            if (liked) bridge.removeTrackFavorite(trackId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not unlike the song",
+                                              "shown when removing a track from favourites failed"))
+            })
+            else       bridge.addTrackFavorite(trackId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not like the song",
+                                              "shown when adding a track to favourites failed"))
+            })
+        }
+
+        function toggleAlbum(albumId, saved, anchor) {
+            if (!(albumId > 0)) return
+            fav.lastMessage = ""
+            if (saved) bridge.removeAlbumFavorite(albumId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not remove the album from your library",
+                                              "shown when removing an album from the library failed"))
+            })
+            else       bridge.addAlbumFavorite(albumId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not save the album",
+                                              "shown when saving an album to the library failed"))
+            })
+        }
+
+        function toggleArtist(artistId, following, anchor) {
+            if (!(artistId > 0)) return
+            fav.lastMessage = ""
+            if (following) bridge.removeArtistFavorite(artistId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not unfollow the artist",
+                                              "shown when unfollowing an artist failed"))
+            })
+            else           bridge.addArtistFavorite(artistId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not follow the artist",
+                                              "shown when following an artist failed"))
+            })
+        }
+
+        // Only an explicit `true` counts as accepted, the same test
+        // confirmAddedToPlaylist in TrackRow.qml makes. The callback is handed a
+        // bool by C++, but a reply that never arrived leaves the argument
+        // undefined, and the mistake worth guarding against is `ok !== false`,
+        // which would read that silence as a success. `!ok` would do here too;
+        // the explicit form says which of the two cases is being decided.
+        function _refused(ok, anchor, message) {
+            if (ok === true) return
+            // Recorded before the tool tip and whatever the anchor turns out to
+            // be. A grid delegate can be destroyed between the press and the
+            // reply, which leaves `anchor` null here; losing the tool tip in
+            // that case is unavoidable, losing the record of it is not.
+            fav.lastMessage = message
+            if (anchor) anchor.ToolTip.show(message, fav.confirmMs)
+        }
+    }
+
     // Insets reset, not inherited. A Menu's insets exist for a style's drop
     // shadow, and the native macOS style sets all four to -32; this menu
     // replaces the background with its own Rectangle and never drew that

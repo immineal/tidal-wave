@@ -88,6 +88,14 @@ Rectangle {
             : false
     }
 
+    // The heart's one call, and what it says when the server refuses it. The
+    // state above is read back from the bridge and never written here, so there
+    // is nothing to undo on a refusal - only something to say. Published rather
+    // than hidden in the button, because `lastMessage` is a test's only way to
+    // see which of the two things it said.
+    readonly property alias favoriteAction: likeFav
+    ContextMenu.FavoriteAction { id: likeFav }
+
     // S4: recently-played is tracked locally, and it is what orders the
     // sidebar. Every page declares where a play came from immediately before
     // starting it, so one listener on the always-present player bar records
@@ -220,6 +228,7 @@ Rectangle {
             // button at the other end of the bar.
             IconButton {
                 id: likeBtn
+                objectName: "playerLikeButton"
                 visible: root.hasTrack
                 icon: root.isLiked ? "heart-filled" : "heart"
                 size: 16
@@ -228,14 +237,17 @@ Rectangle {
                 ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
                 ToolTip.delay: 600
                 HoverHandler { id: likeTipHov }
-                onClicked: {
-                    var trackId = root.track.id
-                    if (root.isLiked) {
-                        bridge.removeTrackFavorite(trackId, function(success) {})
-                    } else {
-                        bridge.addTrackFavorite(trackId, function(success) {})
-                    }
-                }
+                // Anchored on the bar, not on this button, although this button
+                // is what was pressed. The three ToolTip lines above are a
+                // declarative binding on the *shared* tool tip: anchoring here
+                // put the refusal and the hover hint on the same object, where
+                // the hint's `delay: 600` held the refusal back by six tenths of
+                // a second and `ToolTip.visible: likeTipHov.hovered` closed it
+                // again the moment the pointer left - and the hint's own text
+                // overwrote the refusal while it was still up. The bar drives no
+                // tool tip of its own, and above its centre is where the other
+                // transient messages in this app appear.
+                onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
             }
         }
 

@@ -137,6 +137,15 @@ Rectangle {
         function onFavoritePlaylistsChanged() { root.updateFilteredContent() }
     }
 
+    // The two grids' Remove rows, and what they say when the server refuses.
+    // Both are removals only, so `true` is passed for the current state at both
+    // sites - a tile in this grid is in the library by definition. The grids
+    // redraw off the bridge's own signals, so a refusal leaves the tile where it
+    // is; without this it also left no word, and a tile that stays after
+    // "Remove from library" reads as a click that missed.
+    readonly property alias favoriteAction: collectionFav
+    ContextMenu.FavoriteAction { id: collectionFav }
+
     function updateFilteredContent() {
         filteredTracks    = bridge.searchFavoriteTracks(searchPattern)
         filteredAlbums    = bridge.searchFavoriteAlbums(searchPattern)
@@ -588,7 +597,11 @@ Rectangle {
                     // all. "Go to album" went with it: that is what clicking
                     // the tile does.
                     removeLabel: qsTr("Remove from library")
-                    onRemoveRequested: bridge.removeAlbumFavorite(albumDelegate.modelData.id, function(ok) {})
+                    // The tile is the anchor, not the grid: it is what was
+                    // right-clicked. It survives a refusal, because the grid is
+                    // only rebuilt when the removal lands.
+                    onRemoveRequested: root.favoriteAction.toggleAlbum(albumDelegate.modelData.id, true,
+                                                                      albumDelegate)
                     onClicked: navigateTo("album", { albumId: modelData.id })
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
@@ -655,7 +668,9 @@ Rectangle {
                     // is reachable here too. An artist is not a tracklist, so
                     // this one offers Pin and nothing else above the rule.
                     removeLabel: qsTr("Unfollow artist")
-                    onRemoveRequested: bridge.removeArtistFavorite(artistDelegate.modelData.id, function(ok) {})
+                    // As on the album grid above.
+                    onRemoveRequested: root.favoriteAction.toggleArtist(artistDelegate.modelData.id, true,
+                                                                       artistDelegate)
                     onClicked: navigateTo("artist", { artistId: modelData.id })
                 }
             }

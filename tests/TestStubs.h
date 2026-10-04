@@ -374,40 +374,104 @@ public:
     Q_INVOKABLE void copyToClipboard(const QString &text) { m_lastClipboardText = text; }
 
     // Favourite state — nothing is favourited unless a test says so.
+    //
+    // All six mutators answer setFavoriteOkForTest(), and a refusal is modelled
+    // the way TidalBridge models one: the cache is left alone, no
+    // favorite*Changed goes out, and the callback is handed false. That matters
+    // more than it looks. Until this switch existed every one of the six always
+    // succeeded *and* always wrote the cache, so "the server refused the like"
+    // was a state no fixture could put the app in - which is exactly how eleven
+    // call sites came to drop the bool and nothing went red.
+    //
+    // It also means a QML test asserting "the heart stays empty after a
+    // refusal" is asserting something about this stub and not about the heart.
+    // That assertion belongs in tst_bridge_favorites.cpp, against the real
+    // bridge; what a QML test can falsify is whether the refusal is *reported*.
+    Q_INVOKABLE void setFavoriteOkForTest(bool ok) { m_favoriteOk = ok; }
+
+    // Seeding, without going through a mutator. A "remove is refused" case has
+    // to start from an album that is already saved, and reaching that state by
+    // calling addAlbumFavorite() would mean the pre-state depended on the very
+    // switch under test - a fixture that silently stops setting itself up the
+    // moment the switch is flipped. Tracks already had their own seeder
+    // (setTrackFavoriteForTest, further down); albums and artists did not, which
+    // is why only two of the three show up here.
+    Q_INVOKABLE void setAlbumFavoriteForTest(qlonglong albumId, bool on) {
+        m_favoriteAlbums[albumId] = on;
+        emit favoriteAlbumsChanged();
+    }
+    Q_INVOKABLE void setArtistFavoriteForTest(qlonglong artistId, bool on) {
+        m_favoriteArtists[artistId] = on;
+        emit favoriteArtistsChanged();
+    }
+
+    // Which call went out last, as "<verb><Kind>:<id>" — "removeAlbum:77". The
+    // shared helper picks add or remove from the state the host hands it, and an
+    // inverted branch there would send an add where a remove was asked for and
+    // still come back true, so every caller's test checks the call and not only
+    // the answer.
+    Q_INVOKABLE QString lastFavoriteCallForTest() const { return m_lastFavoriteCall; }
+    Q_INVOKABLE int     favoriteCallsForTest() const { return m_favoriteCalls; }
+    Q_INVOKABLE void    resetFavoriteCallsForTest() {
+        m_lastFavoriteCall.clear();
+        m_favoriteCalls = 0;
+    }
+
     Q_INVOKABLE bool isTrackFavorite(qlonglong trackId) const { return m_favoriteTracks.value(trackId, false); }
     Q_INVOKABLE void addTrackFavorite(qlonglong trackId, QJSValue cb) {
-        m_favoriteTracks[trackId] = true;
-        emit favoriteTracksChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("addTrack"), trackId);
+        if (m_favoriteOk) {
+            m_favoriteTracks[trackId] = true;
+            emit favoriteTracksChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
     Q_INVOKABLE void removeTrackFavorite(qlonglong trackId, QJSValue cb) {
-        m_favoriteTracks[trackId] = false;
-        emit favoriteTracksChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("removeTrack"), trackId);
+        if (m_favoriteOk) {
+            m_favoriteTracks[trackId] = false;
+            dropById(m_favoriteTrackList, trackId);
+            emit favoriteTracksChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
 
     Q_INVOKABLE bool isAlbumFavorite(qlonglong albumId) const { return m_favoriteAlbums.value(albumId, false); }
     Q_INVOKABLE void addAlbumFavorite(qlonglong albumId, QJSValue cb) {
-        m_favoriteAlbums[albumId] = true;
-        emit favoriteAlbumsChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("addAlbum"), albumId);
+        if (m_favoriteOk) {
+            m_favoriteAlbums[albumId] = true;
+            emit favoriteAlbumsChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
     Q_INVOKABLE void removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
-        m_favoriteAlbums[albumId] = false;
-        emit favoriteAlbumsChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("removeAlbum"), albumId);
+        if (m_favoriteOk) {
+            m_favoriteAlbums[albumId] = false;
+            dropById(m_favoriteAlbumList, albumId);
+            emit favoriteAlbumsChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
 
     Q_INVOKABLE bool isArtistFavorite(qlonglong artistId) const { return m_favoriteArtists.value(artistId, false); }
     Q_INVOKABLE void addArtistFavorite(qlonglong artistId, QJSValue cb) {
-        m_favoriteArtists[artistId] = true;
-        emit favoriteArtistsChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("addArtist"), artistId);
+        if (m_favoriteOk) {
+            m_favoriteArtists[artistId] = true;
+            emit favoriteArtistsChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
     Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb) {
-        m_favoriteArtists[artistId] = false;
-        emit favoriteArtistsChanged();
-        resolveOk(cb);
+        noteFavoriteCall(QStringLiteral("removeArtist"), artistId);
+        if (m_favoriteOk) {
+            m_favoriteArtists[artistId] = false;
+            dropById(m_favoriteArtistList, artistId);
+            emit favoriteArtistsChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
     }
 
     // Playlist management
@@ -748,6 +812,14 @@ public:
     Q_INVOKABLE void resetForTest() {
         m_userPlaylistFetches = 0;
         m_trackCreditsFetches = 0;
+        // The three maps too, not only the switch: they used to survive
+        // resetForTest(), so a test that liked something left the next test's
+        // heart filled and the next test's "it starts empty" was luck.
+        m_favoriteTracks.clear();
+        m_favoriteAlbums.clear();
+        m_favoriteArtists.clear();
+        m_favoriteOk = true;
+        resetFavoriteCallsForTest();
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
@@ -800,9 +872,38 @@ signals:
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
+    // The removals take the row out of the *list* too, the way TidalBridge does:
+    // the three searchFavorite* lists are what Collection's grids draw from, so
+    // a stub that only flipped the id -> bool map above left the tile on screen
+    // after a removal the server had accepted - and "the tile goes when it
+    // worked, stays when it was refused" would have been the same green either
+    // way. The add side cannot be mirrored here: the real bridge fetches the
+    // album or artist to get an object to insert, and this stub has no payload
+    // for an arbitrary id. Tests that need a row present seed it with
+    // setFavoriteAlbumsForTest() and friends.
+    static void dropById(QVariantList &list, qlonglong id) {
+        for (int i = 0; i < list.size(); ++i) {
+            if (list.at(i).toMap().value(QStringLiteral("id")).toLongLong() == id) {
+                list.removeAt(i);
+                return;
+            }
+        }
+    }
+
+    void noteFavoriteCall(const QString &verb, qlonglong id) {
+        m_lastFavoriteCall = verb + QLatin1Char(':') + QString::number(id);
+        ++m_favoriteCalls;
+    }
+
     QHash<qlonglong, bool> m_favoriteTracks;
     QHash<qlonglong, bool> m_favoriteAlbums;
     QHash<qlonglong, bool> m_favoriteArtists;
+    // Whether the next favourite call is accepted. True, because almost every
+    // test wants the ordinary path; the refusal is the case that has to be asked
+    // for.
+    bool    m_favoriteOk = true;
+    QString m_lastFavoriteCall;
+    int     m_favoriteCalls = 0;
     // The favourite *objects*, as opposed to the id -> bool maps above, which
     // only answer isAlbumFavorite()/isArtistFavorite().
     QVariantList m_favoriteAlbumList;

@@ -62,6 +62,13 @@ Rectangle {
         isSaved = albumId > 0 ? bridge.isAlbumFavorite(albumId) : false
     }
 
+    // The Save pill's one call, and what it says when the server refuses it.
+    // isSaved above is read back from the bridge and never written here, so a
+    // refusal has nothing to undo - only something to say. See
+    // ContextMenu.FavoriteAction.
+    readonly property alias favoriteAction: albumFav
+    ContextMenu.FavoriteAction { id: albumFav }
+
     readonly property int effectiveArtistId: albumData.artistId > 0 ? albumData.artistId
         : (tracks.length > 0 && tracks[0].artistId > 0 ? tracks[0].artistId : 0)
 
@@ -286,17 +293,17 @@ Rectangle {
                             }
 
                             PillButton {
+                                objectName: "albumSavePill"
                                 text: root.isSaved ? qsTr("Saved", "state, album is in the library")
                                                    : qsTr("Save", "verb, add album to the library")
                                 icon: root.isSaved ? "heart-filled" : "heart"
                                 accent: root.isSaved
-                                onClicked: {
-                                    if (root.isSaved) {
-                                        bridge.removeAlbumFavorite(root.albumId, function(success) {})
-                                    } else {
-                                        bridge.addAlbumFavorite(root.albumId, function(success) {})
-                                    }
-                                }
+                                // Anchored on the action row rather than the
+                                // pill, the way the hero's pin menu anchors its
+                                // confirmation: the pill sits low in the hero
+                                // and the row is what has clear space above it.
+                                onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
+                                                                          heroActions)
                             }
                         }
                     }

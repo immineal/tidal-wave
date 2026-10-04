@@ -129,6 +129,18 @@ Item {
         }
     }
 
+    // Like/Unlike in the row menu, and what it says when the server refuses.
+    // isLiked above is read back from the bridge on the signal and never
+    // written by the action, so a refusal has nothing to undo - only something
+    // to say. See ContextMenu.FavoriteAction.
+    //
+    // Not behind a Loader like the menu and the picker, for the opposite
+    // reason: this is a QtObject with three functions and two properties, not a
+    // popup with a list in it, and the thing a Loader would save is dwarfed by
+    // the two Connections this row already builds for every one of its 5000.
+    readonly property alias favoriteAction: trackFav
+    ContextMenu.FavoriteAction { id: trackFav }
+
     // Reflect download progress for this track. Delegates are recycled on scroll,
     // so re-evaluate whenever trackData is (re)assigned.
     Connections {
@@ -706,20 +718,17 @@ Item {
                 }
             }
             ContextMenu.Entry {
+                objectName: "likeMenuItem"
                 text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
                                    : qsTr("Like", "verb, add to favourites")
                 // Filled is the state it is in, so it is the row that undoes
                 // it -- the same pairing the pin row uses.
                 iconName: root.isLiked ? "heart-filled" : "heart"
                 enabled: root.trackId > 0
-                onTriggered: {
-                    if (root.trackId <= 0) return
-                    if (root.isLiked) {
-                        bridge.removeTrackFavorite(root.trackId, function(success) {})
-                    } else {
-                        bridge.addTrackFavorite(root.trackId, function(success) {})
-                    }
-                }
+                // Over the row, not the menu entry: the menu has closed by the
+                // time a refusal comes back, and a tool tip anchored to a
+                // destroyed popup item has nowhere to draw.
+                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
             }
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
             ContextMenu.Entry {

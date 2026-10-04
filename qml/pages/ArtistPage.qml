@@ -42,6 +42,13 @@ Rectangle {
         isFollowing = artistId > 0 ? bridge.isArtistFavorite(artistId) : false
     }
 
+    // The Follow pill's one call, and what it says when the server refuses it.
+    // isFollowing above is read back from the bridge and never written here, so
+    // a refusal has nothing to undo - only something to say. See
+    // ContextMenu.FavoriteAction.
+    readonly property alias favoriteAction: artistFav
+    ContextMenu.FavoriteAction { id: artistFav }
+
     onArtistIdChanged: if (artistId > 0) { loadArtist(); updateFollowState() }
 
     Connections {
@@ -168,16 +175,14 @@ Rectangle {
                         }
 
                         PillButton {
+                            objectName: "artistFollowPill"
                             text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
                             icon: root.isFollowing ? "heart-filled" : "heart"
                             accent: root.isFollowing
-                            onClicked: {
-                                if (root.isFollowing) {
-                                    bridge.removeArtistFavorite(root.artistId, function(success) {})
-                                } else {
-                                    bridge.addArtistFavorite(root.artistId, function(success) {})
-                                }
-                            }
+                            // On the action row, not the pill, for the reason
+                            // the hero's pin menu gives on the same item.
+                            onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
+                                                                      heroActions)
                         }
                     }
                 }
