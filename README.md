@@ -15,9 +15,12 @@ Wayland; X11 works too. The macOS and Windows builds get far less attention, and
 Mac. The goal is for this to be the easiest thing to install on whatever system
 you happen to use, and `docs/PACKAGING.md` is the plan for getting there.
 
-![Tidal Wave home screen](assets/screenshot.png)
+![Tidal Wave home screen](assets/screenshot_home.png)
 
-<!-- GALLERY: a row of the remaining assets/screenshot_*.png goes here once the new shots are taken and approved. -->
+Your collection, an album, the now playing view and search:
+
+<img src="assets/screenshot_collection.png" width="49%"> <img src="assets/screenshot_album.png" width="49%">
+<img src="assets/screenshot_nowplaying.png" width="49%"> <img src="assets/screenshot_search.png" width="49%">
 
 ## Features
 
