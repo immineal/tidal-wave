@@ -20,6 +20,7 @@ class I18n;
 class UpdateCheck;
 class PinStore;
 class LibraryIndex;
+class SignalWatcher;
 
 class Application : public QObject {
     Q_OBJECT
@@ -35,6 +36,16 @@ public:
     bool reducedMotion() const { return m_reducedMotion; }
     Q_INVOKABLE void quit();
     Q_INVOKABLE void openUrl(const QString &url);
+
+    // Makes SIGTERM, SIGINT and SIGHUP quit the app the ordinary way, so that
+    // ~Player runs and gets to save the session and remove the temp media
+    // file. Call it once, after the QApplication exists; run() does.
+    //
+    // Separate from run() and public so a test can bring up this exact
+    // wiring - the real SignalWatcher connected to the real quit() - in a
+    // child process without a QML engine or an account. False means the
+    // handlers could not be installed, which run() treats as non-fatal.
+    bool installSignalHandlers();
 
     void showWindow();
     void hideWindow();
@@ -273,6 +284,7 @@ private:
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
+    SignalWatcher *m_signals = nullptr;
 
     bool         m_reallyQuit = false;
     bool         m_reducedMotion = false;

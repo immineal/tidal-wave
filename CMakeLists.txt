@@ -70,6 +70,7 @@ set(SOURCES
     src/ui/I18n.cpp
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
+    src/ui/SignalWatcher.cpp
     src/api/LibraryIndex.cpp
 )
 
@@ -93,6 +94,7 @@ set(HEADERS
     src/ui/I18n.h
     src/ui/PinStore.h
     src/ui/Shortcuts.h
+    src/ui/SignalWatcher.h
     src/api/LibraryIndex.h
 )
 

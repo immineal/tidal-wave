@@ -124,7 +124,11 @@ public:
     void removeArtistFavorite(qint64 artistId,   std::function<void(bool)> cb);
 
     // Streaming
-    void fetchStreamManifest(qint64 trackId, StreamCb cb);
+    // `virtual` for the same test seam as createPlaylist and the three
+    // below it: resolving a stream is the only way a temp media file ever
+    // comes to exist, so it is how tests/tst_signals.cpp gets the real
+    // Player to make a real one without an account or the network.
+    virtual void fetchStreamManifest(qint64 trackId, StreamCb cb);
     // Request a specific quality (e.g. HiResLossless for downloads) without
     // touching the persisted playback preference m_quality.
     void fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb);

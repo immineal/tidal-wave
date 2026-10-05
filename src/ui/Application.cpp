@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "ui/SignalWatcher.h"
 #include "ui/I18n.h"
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
@@ -773,6 +774,23 @@ int Application::run(int argc, char **argv) {
     // backend, which does its own HTTP and never sees QNetworkProxy.
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
+    // Before anything that could own a temp file or unsaved state exists, so
+    // a logout arriving mid-startup is still a clean quit. A desktop that is
+    // shutting down sends SIGTERM and then stops waiting; without this the
+    // process simply died, ~Player never ran, and the session went unsaved
+    // while the playing track was left behind in the temp directory.
+    if (!installSignalHandlers()) {
+#if defined(Q_OS_UNIX)
+        // Only worth saying where there were signals to catch. On Windows this
+        // answers false by design - there is no SIGTERM to install for, and
+        // Qt already turns WM_QUERYENDSESSION into an ordinary quit - so
+        // warning there would be a line on every single launch about nothing.
+        qWarning().noquote()
+            << QStringLiteral("tidal-wave: could not install signal handlers; "
+                              "a logout or shutdown will not save the session.");
+#endif
+    }
+
     // Prefs first: QSettings needs the names above, and the scene graph backend
     // below is chosen once, before any window exists, and never revisited.
     m_prefs = new Prefs(this);
@@ -1076,6 +1094,16 @@ int Application::run(int argc, char **argv) {
 }
 
 
+
+bool Application::installSignalHandlers() {
+    if (!m_signals) m_signals = new SignalWatcher(this);
+    // Through quit() and not straight to QCoreApplication::quit(), so a
+    // signal takes the identical path to the tray's Quit item: it is an
+    // ordinary quit, and reallyQuit() must agree that it is one.
+    connect(m_signals, &SignalWatcher::quitRequested,
+            this, &Application::quit, Qt::UniqueConnection);
+    return m_signals->install();
+}
 
 void Application::quit() {
     m_reallyQuit = true;
