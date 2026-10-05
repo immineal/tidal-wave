@@ -21,33 +21,54 @@
 //
 // ── the response, and why each part of it is the way it is ──────────────────
 //
-// Measured against QMediaPlayer on Qt 6.12 / ffmpeg 7.1.3, serving a growing
-// 8-segment fragmented MP4 (tst_progressive.cpp has the harness):
+// Measured against QMediaPlayer serving a growing 8-segment fragmented MP4
+// (tst_progressive.cpp has the harness). Twice, on two ffmpeg builds, because
+// which one is behind QMediaPlayer depends on where the Qt came from: 7.1.3 in
+// the 6.12.0 the owner's installer put down, 9.0.1 in the 6.12.0 aqt fetches,
+// which is the one CI tests with and the one a Qt installed today has.
 //
-//   Transfer-Encoding: chunked, no Content-Length, Range ignored
-//                                     first sample 0.6 s, all 64000 frames, a
-//                                     clean EndOfMedia.           <- this
+//   chunked, no Content-Length, Range
+//   ignored, the body ended by closing
+//   the socket at a chunk boundary    first sample 0.6 s, all 64000 frames, a
+//                                     clean EndOfMedia on both.      <- this
+//   the same, ended with the
+//   terminating 0-length chunk        clean on 7.1.3. On 9.0.1 ffmpeg logs "Last
+//                                     chunk received, closing conn", drops its
+//                                     own connection, and answers every read
+//                                     after that with EIO. The last second of
+//                                     the track never decodes, EndOfMedia never
+//                                     comes, and QMediaPlayer sits in
+//                                     BufferingMedia while the demuxer spins.
+//                                     All 25912 bytes had arrived by then and
+//                                     ffmpeg counted 0 seeks, so the bytes were
+//                                     never the problem. The terminator is.
 //   Content-Length of the final size  first sample 2.4 s of a 2.7 s join: with a
 //                                     length the input looks seekable *and*
 //                                     complete, and ffmpeg's mov demuxer walks
 //                                     every moof in the file before open()
 //                                     returns. That walk is the wait we are
 //                                     removing.
-//   no Content-Length, no chunking    first sample 0.9 s, but the socket close
-//                                     is an I/O error rather than an end of
-//                                     stream: 50688 of 64000 frames, then the
-//                                     demuxer spins on EIO.
+//   no Content-Length, no chunking    broken on both. 7.1.3 reads the close as an
+//                                     I/O error and decodes 50688 of 64000
+//                                     frames; 9.0.1 hangs in BufferingMedia the
+//                                     way the terminator makes it hang.
 //   Content-Length of what exists,
 //   close at the cursor               nothing at all. ffmpeg does not re-request
 //                                     the rest; it reports "Demuxing failed" and
 //                                     decodes zero frames.
 //
-// So: chunked, because the terminating zero-length chunk is an unambiguous end
-// of body that a bare socket close is not; no Content-Length and no
-// Accept-Ranges, because a client that believes it can seek will try to, and
-// there is nothing behind the write cursor to seek to; and a Range header is
-// ignored rather than answered, because answering it would be claiming to have
-// bytes we do not have.
+// So: chunked framing, because the chunk sizes are what put the close on a
+// boundary the client can believe; the close itself rather than a terminator,
+// because that is the only ending both builds read as an end of stream; no
+// Content-Length and no Accept-Ranges, because a client that believes it can
+// seek will try to, and there is nothing behind the write cursor to seek to; and
+// a Range header is ignored rather than answered, because answering it would be
+// claiming to have bytes we do not have.
+//
+// Ending on a close costs the one thing the terminator was for. A server that
+// dies mid-track now looks to the client exactly like one that finished. The
+// caller is the thing that calls setComplete(), so the caller is where that
+// difference is still known, and where it has to be checked.
 //
 // A request whose body reaches the write cursor is *parked*: the socket stays
 // open and silent until more bytes exist. It is never answered short, because a
@@ -101,9 +122,8 @@ public:
     // that does not move anything on is harmless.
     void setBytesReady(qint64 bytes);
 
-    // No more bytes are coming. Sends what is left plus the terminating chunk,
-    // which is what lets the client end the stream cleanly rather than treat the
-    // close as an error.
+    // No more bytes are coming. Sends what is left and then closes the socket,
+    // which is the end of stream both ffmpeg builds above agree on.
     void setComplete();
 
     // Stops listening and drops every connection. Safe to call twice.

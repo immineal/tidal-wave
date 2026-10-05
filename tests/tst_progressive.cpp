@@ -478,16 +478,22 @@ private slots:
         QVERIFY2(!dechunkSawTerminator(got.mid(head.size() + 4)),
                  "the body was ended at the write cursor, which is an early end of track");
 
-        // The rest of the join, then the terminating chunk.
+        // The rest of the join, and then the close that ends the body. No
+        // terminating 0-length chunk goes out: ffmpeg 9.0.1 answers every read
+        // after one with EIO, and the track then never ends. GrowingFileServer.h
+        // has the measurement.
         QCOMPARE(file.write(all.mid(firstHalf)), qint64(all.size() - firstHalf));
         QVERIFY(file.flush());
         server.setBytesReady(all.size());
         server.setComplete();
 
         QTRY_VERIFY_WITH_TIMEOUT((got += client.readAll(),
-                                  dechunkSawTerminator(got.mid(head.size() + 4))), 5000);
-        QCOMPARE(dechunk(got.mid(head.size() + 4)), all);
+                                  dechunk(got.mid(head.size() + 4)).size() >= all.size()), 5000);
         QTRY_COMPARE_WITH_TIMEOUT(client.state(), QAbstractSocket::UnconnectedState, 5000);
+        got += client.readAll();
+        QCOMPARE(dechunk(got.mid(head.size() + 4)), all);
+        QVERIFY2(!dechunkSawTerminator(got.mid(head.size() + 4)),
+                 "a terminating chunk went out, which ffmpeg 9 reads as an I/O error");
     }
 
     // The URL is the only thing between another process on this machine and the

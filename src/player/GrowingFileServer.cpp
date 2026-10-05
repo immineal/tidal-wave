@@ -219,10 +219,11 @@ void GrowingFileServer::pump()
             c.sent += data.size();
         }
 
-        // Only once everything the writer will ever produce has gone out. A
-        // terminator sent at the write cursor would be an end of track.
+        // Only once everything the writer will ever produce has gone out. A close
+        // at the write cursor would be an early end of track. No terminating
+        // 0-length chunk: ffmpeg 9 turns that into an EIO storm instead of an end
+        // of stream, and GrowingFileServer.h has the measurement.
         if (m_complete && c.sent >= m_bytesReady) {
-            sock->write("0\r\n\r\n");
             c.finished = true;
             sock->disconnectFromHost();
         }
