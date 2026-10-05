@@ -109,6 +109,13 @@ Rectangle {
             if (requested !== root.artistId) return
             root.loading = false
             if (err) { root.noteLoadError(err); return }
+            // One reply, three requests: TidalClient::fetchArtistAlbums sends
+            // the unfiltered request, EPSANDSINGLES and COMPILATIONS and hands
+            // back the union, because the unfiltered one answers the albums
+            // alone. The merge is there and not here precisely so that this
+            // callback stays the single place that clears `loading` and the
+            // single place the superseded-request guard above has to cover.
+            //
             // Tidal's artist/albums endpoint lists every edition of a release
             // (Standard, Deluxe, Explicit, retailer-exclusives …) as separate ids,
             // so the discography shows the same cover many times. Collapse them by
@@ -130,15 +137,45 @@ Rectangle {
         return s
     }
 
+    // Which of the two discography sections a release belongs in: true for the
+    // Singles & EPs row, false for the Albums row. `type` is what Tidal files
+    // the release as and it reaches here intact - Album::fromJson reads it and
+    // TidalBridge::albumToMap passes it on - while the track count is only the
+    // fallback for a response that omitted it, and a poor one: it misfiles a
+    // four-track EP as an album. So the type has to be the rule doing the work
+    // and the count only the backstop.
+    //
+    // One function rather than a predicate per section, because dedupeEditions()
+    // keys on this answer too: three copies of the rule would be three chances
+    // for it to drift.
+    function isSingleOrEp(a) {
+        var t = a.type || ""
+        if (t === "SINGLE" || t === "EP") return true
+        if (t === "ALBUM" || t === "COMPILATION") return false
+        return (a.numTracks || 1) <= 3
+    }
+
     // Collapse duplicate album editions, keying on artwork + base title so that
     // same-release editions merge while distinct releases (different covers) stay.
+    //
+    // Which section the release is in is part of the key, and has to be now
+    // that the list is the union of three filtered responses rather than one.
+    // A lead single very often carries its album's artwork and the album's
+    // title, so on artwork + title alone the single and the album collapse into
+    // each other and whichever of the two lost is a row the user can no longer
+    // reach. Editions still merge, because two editions of one release are on
+    // the same side of that split. Releases the three responses genuinely share
+    // are already down to one row before this runs: mergeAlbumLists() dedupes
+    // those on the album id, which this cannot do - two editions are two ids,
+    // which is the whole reason this function exists.
     function dedupeEditions(list) {
         var seen = ({})
         var out = []
         for (var i = 0; i < list.length; i++) {
             var a = list[i]
             var cover = a.coverUrl || ("id:" + a.id)
-            var key = cover + "" + root.baseTitle(a.title)
+            var key = (root.isSingleOrEp(a) ? "s" : "a") + ""
+                      + cover + "" + root.baseTitle(a.title)
             if (seen[key]) continue
             seen[key] = true
             out.push(a)
@@ -302,12 +339,10 @@ Rectangle {
 
             HorizontalSection {
                 id: albumsSection
+                objectName: "artistAlbumsSection"
                 Layout.fillWidth: true
                 property var mainAlbums: root.albums.filter(function(a) {
-                    var t = a.type || ""
-                    if (t === "SINGLE" || t === "EP") return false
-                    if (t === "ALBUM" || t === "COMPILATION") return true
-                    return (a.numTracks || 1) > 3
+                    return !root.isSingleOrEp(a)
                 })
                 visible: mainAlbums.length > 0
                 title: singlesSection.singles.length > 0 ? qsTr("Albums") : qsTr("Discography")
@@ -330,12 +365,10 @@ Rectangle {
 
             HorizontalSection {
                 id: singlesSection
+                objectName: "artistSinglesSection"
                 Layout.fillWidth: true
                 property var singles: root.albums.filter(function(a) {
-                    var t = a.type || ""
-                    if (t === "SINGLE" || t === "EP") return true
-                    if (t === "ALBUM" || t === "COMPILATION") return false
-                    return (a.numTracks || 1) <= 3
+                    return root.isSingleOrEp(a)
                 })
                 visible: singles.length > 0
                 title: qsTr("Singles & EPs")

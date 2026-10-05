@@ -301,7 +301,13 @@ private:
     void loadNextUserPlaylistsPage(int offset);
 
     static QVariantMap  trackToMap  (const Track &t);
+public:
+    // Public and static only so a test can reach it, as TidalClient::parseAlbums
+    // is: it is the last hop between an Album and what a page reads off it, and
+    // ArtistPage's two discography rows split on the `type` it carries here.
+    // Touches no member state.
     static QVariantMap  albumToMap  (const Album &a);
+private:
     static QVariantMap  artistToMap (const Artist &a);
     static QVariantMap  playlistToMap(const Playlist &p);
     static QVariantMap  mixToMap    (const Mix &m);

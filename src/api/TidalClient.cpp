@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QDebug>
 #include <QHash>
+#include <QSet>
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -473,12 +474,108 @@ void TidalClient::fetchArtistDetail(qint64 artistId,
         });
 }
 
-void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
+// The union of several album lists, in the order the lists were given, one row
+// per album id. Unlike a mix a release has nothing to merge *into* the kept
+// record - the three filtered responses carry the same fields - so the first
+// one to carry an id simply wins, which is what keeps the albums at the front
+// of the list and the compilations behind them.
+//
+// The dedup is not theoretical: a release can answer to two filters at once
+// (an EP that the unfiltered request also lists, a compilation that is also
+// filed as "other"), and without this the discography would show it twice.
+QList<Album> TidalClient::mergeAlbumLists(const QList<QList<Album>> &lists) {
+    QList<Album> out;
+    QSet<qint64> seen;
+    for (const QList<Album> &list : lists) {
+        for (const Album &a : list) {
+            // id 0 is "the response carried no id", which parseAlbums already
+            // drops; kept rather than collapsed so a future caller cannot have
+            // several distinct releases merged into one by a missing field.
+            if (a.id != 0) {
+                if (seen.contains(a.id)) continue;
+                seen.insert(a.id);
+            }
+            out.append(a);
+        }
+    }
+    return out;
+}
+
+void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
+                                       AlbumsCallback cb, int offset, QList<Album> acc)
+{
     QUrlQuery q;
-    q.addQueryItem("limit", "50");
+    if (!filter.isEmpty()) q.addQueryItem("filter", filter);
+    q.addQueryItem("limit", QString::number(kArtistAlbumsPageSize));
+    q.addQueryItem("offset", QString::number(offset));
     m_api->get(QStringLiteral("artists/%1/albums").arg(artistId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseAlbums(root) : QList<Album>{}, err); });
+        [this, artistId, filter, cb, offset, acc](QJsonObject root, QString err) mutable {
+            if (!err.isEmpty()) {
+                // Whatever the earlier pages of *this* filter delivered is
+                // still worth having; the error is only news when nothing is.
+                cb(acc, acc.isEmpty() ? err : QString());
+                return;
+            }
+            const QList<Album> page = parseAlbums(root);
+            acc.append(page);
+            const int total = root["totalNumberOfItems"].toInt(acc.size());
+            if (page.isEmpty() || acc.size() >= total || acc.size() >= kMaxArtistAlbums) {
+                cb(acc, {});
+                return;
+            }
+            fetchArtistAlbumPage(artistId, filter, cb, offset + int(page.size()), acc);
+        });
+}
+
+void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
+    // One discography, three requests. See kFilterEpsAndSingles: the unfiltered
+    // request answers the albums and nothing else, which is why the Singles &
+    // EPs section of ArtistPage had been empty - and therefore invisible -
+    // since it was written. The page's own sectioning is unchanged; it was
+    // never given anything to section.
+    //
+    // Merged here and not in QML on purpose: ArtistPage opens this beside
+    // fetchArtistDetail() and fetchArtistTopTracks() behind one `loading` flag
+    // and one superseded-request guard, so three replies arriving separately
+    // would each have had to avoid clearing `loading` early and avoid blanking
+    // the other two. One reply out of here keeps that page exactly as correct
+    // as it already was. Same Pending/finish shape as fetchHomeMixes().
+    struct Pending {
+        QList<Album> albums;
+        QList<Album> epsAndSingles;
+        QList<Album> compilations;
+        int          outstanding = 3;
+        QString      err;
+    };
+    const auto pending = std::make_shared<Pending>();
+
+    const auto finish = [cb, pending]() {
+        if (--pending->outstanding > 0) return;
+        const QList<Album> all = mergeAlbumLists(
+            {pending->albums, pending->epsAndSingles, pending->compilations});
+        // One filter failing must not empty the page: an artist whose albums
+        // came back and whose compilations did not still has a discography,
+        // and ArtistPage's loadFailed only fires when nothing at all arrived.
+        // The error is reported only when none of the three yielded anything.
+        if (all.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
+        cb(all, {});
+    };
+
+    const auto collect = [pending, finish](QList<Album> *into) {
+        return [pending, finish, into](QList<Album> albums, QString err) {
+            if (err.isEmpty()) *into = albums;
+            else if (pending->err.isEmpty()) pending->err = err;
+            finish();
+        };
+    };
+
+    // Albums first, so mergeAlbumLists() leaves a release that answers to two
+    // filters where the album list put it.
+    fetchArtistAlbumPage(artistId, QString(), collect(&pending->albums));
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterEpsAndSingles),
+                         collect(&pending->epsAndSingles));
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterCompilations),
+                         collect(&pending->compilations));
 }
 
 void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {

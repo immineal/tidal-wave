@@ -260,6 +260,22 @@ public:
     // record has one. See the definition.
     static QList<Mix> mergeMixLists(const QList<QList<Mix>> &lists);
 
+    // The union of several album lists, deduplicated on the album id. The first
+    // list to carry an id fixes that release's position. See the definition and
+    // fetchArtistAlbums(), its only caller.
+    static QList<Album> mergeAlbumLists(const QList<QList<Album>> &lists);
+
+    // The `filter` values artists/<id>/albums takes. The endpoint does not
+    // answer a discography: with no filter it answers the *albums* only, and
+    // the EPs, the singles and the compilations each need a request of their
+    // own. (Confirmed against python-tidal's Artist.get_albums /
+    // get_ep_singles / get_other, which are three calls to this one path
+    // distinguished by nothing else, and whose own tests assert three disjoint
+    // sets of ids.) Named here because fetchArtistAlbums() sends all three and
+    // tst_artist_discography asserts on exactly these strings.
+    static constexpr auto kFilterEpsAndSingles = "EPSANDSINGLES";
+    static constexpr auto kFilterCompilations  = "COMPILATIONS";
+
     // The two sources fetchHomeMixes merges. Separate so that what the Collection
     // shows is one decision in one place rather than a shape spread over the
     // class: the generated feed (pages/my_collection_my_mixes) and the saved list
@@ -328,6 +344,25 @@ private:
     // the Tidal API caps each response at 100 items regardless of `limit`.
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
+
+    // One of fetchArtistAlbums()'s three requests, paged to the end. `filter`
+    // empty means the unfiltered request (the albums); otherwise one of the two
+    // constants above. Like fetchAllTracks() a failed page delivers whatever
+    // came before it and only reports the error when nothing did.
+    void fetchArtistAlbumPage(qint64 artistId, const QString &filter,
+                              AlbumsCallback cb, int offset = 0,
+                              QList<Album> acc = {});
+
+    // The server's page size for artists/<id>/albums. The call used to send
+    // limit=50 and no offset at all, so a prolific artist's discography was
+    // silently cut at fifty - and with three requests that would now be three
+    // truncations rather than one.
+    static constexpr int kArtistAlbumsPageSize = 50;
+    // A backstop on the offset loop, per filter, for a server that keeps
+    // answering full pages while claiming a total it never reaches. Ten
+    // requests; no artist in the catalogue has five hundred albums under one
+    // filter, so reaching it means the loop, not the artist.
+    static constexpr int kMaxArtistAlbums = 500;
 
     // Daily Discovery, then New Arrivals, then the order they came in.
     static QList<Mix> orderMixes(QList<Mix> mixes);

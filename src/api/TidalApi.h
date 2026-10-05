@@ -28,7 +28,16 @@ public:
     QString countryCode() const { return m_countryCode; }
 
     // Low-level GET/POST
-    void get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    //
+    // `virtual` for one reason, and nothing in the app overrides it: it is the
+    // test seam one level below TidalClient. tst_artist_discography drives the
+    // real TidalClient against a subclass that answers canned JSON per query,
+    // which is the only way to hold fetchArtistAlbums() to the three `filter`
+    // values it has to send, to the offsets it has to page through, and to what
+    // it does when one of those three requests fails. A fake one level up -
+    // overriding TidalClient's own method - could not see any of that, which is
+    // exactly the "stub that cannot express the bug" this tree keeps growing.
+    virtual void get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     // The same GET against the v2 host. A handful of endpoints only exist there -
     // favorites/mixes is one - and they are cursor-paged rather than
     // offset-paged, so they are not drop-in replacements for their v1 siblings.
