@@ -5,18 +5,7 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
-## [0.4.0] - unreleased
-
-<!--
-  NOT FINAL. Check this section against `git log v0.3.1..HEAD` immediately
-  before the tag is cut.
-
-  It was written while the last commits of the release were still landing, and
-  two entries below describe work that had not been committed yet:
-    * "Track radio had two viewers ..." under Fixed
-    * "The artist discography never showed singles ..." under Fixed
-  Confirm both are in the log, or delete them.
--->
+## [0.4.0] - 2026-10-05
 
 ### Added
 

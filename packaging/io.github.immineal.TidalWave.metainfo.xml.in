@@ -193,10 +193,12 @@
   <releases>
     <!-- date= is the release date and cannot be derived, so it is the one thing
          here that has to be touched by hand when v@PROJECT_VERSION@ is tagged. -->
-    <release version="@PROJECT_VERSION@" date="2026-10-03">
+    <release version="@PROJECT_VERSION@" date="2026-10-05">
       <description>
-        <p>The theming, reading and settings release.</p>
+        <p>Six themes, a settings panel, and lossless that is actually lossless.</p>
         <ul>
+          <li>Lossless plays the FLAC file. It had been serving the same 320 kbps AAC as High</li>
+          <li>An artist page shows singles, EPs and compilations, not only full albums</li>
           <li>Six themes, paired light and dark, plus a true-black mode for OLED screens</li>
           <li>A lyrics view, album credits, and artist biographies with clickable names</li>
           <li>A Settings panel, live language switching, and a complete German catalogue</li>
