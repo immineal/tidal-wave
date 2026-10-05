@@ -14,7 +14,7 @@ Item {
 
     // Fixed brand colours, matching assets/icon.svg exactly. Deliberately not
     // theme tokens: see the tile colour below.
-    readonly property color brandTile: "#00B2F8"
+    readonly property color brandTile: "#0079A8"
     readonly property color brandInk:  "#FFFFFF"
 
     implicitWidth: 64

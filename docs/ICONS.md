@@ -46,7 +46,7 @@ The inset is applied as a transform wrapped around the emitted drawing, so the
 three `<path d="...">` values stay identical to what `AppMark._band()` produces
 and the two drawings can still be compared number for number.
 
-The mark is pinned to the brand colours (`#00B2F8` tile, `#FFFFFF` bands) in
+The mark is pinned to the brand colours (`#0079A8` tile, `#FFFFFF` bands) in
 both places. It deliberately does not follow `Theme.accent`. A mark that changed
 colour with the in-app palette stopped reading as the same thing as the icon
 sitting next to it in the taskbar, which is what "the app shows two different

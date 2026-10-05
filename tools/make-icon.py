@@ -38,7 +38,7 @@ AMP = 5.0                       # wave amplitude
 THICK = (64 - 2 * AMP) / 7      # band thickness, so 7 equal bands and gaps fill 64
 HALF = 32.0                     # half period
 RADIUS = 14                     # tile corner radius, = ThemePalette's radii["mark"]
-TILE = "#00B2F8"                # brand blue
+TILE = "#0079A8"                # brand blue
 INK = "#FFFFFF"
 
 CENTRES = [1.5 * THICK + AMP, 32.0, 64 - (1.5 * THICK + AMP)]

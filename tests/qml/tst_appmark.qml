@@ -194,7 +194,7 @@ TestCase {
 
         // toString() because a colour read into a var is a value type whose
         // identity is not stable across a repaint; the hex is.
-        compare(tile.color.toString(), "#00b2f8")
+        compare(tile.color.toString(), "#0079a8")
         for (var i = 0; i < bands.length; ++i)
             compare(bands[i].fillColor.toString(), "#ffffff",
                     "band " + i + " is not the brand white")
@@ -213,7 +213,7 @@ TestCase {
             prefs.theme = names[t]
             waitForRendering(mark)
 
-            compare(tile.color.toString(), "#00b2f8",
+            compare(tile.color.toString(), "#0079a8",
                     names[t] + " changed the mark's tile")
             for (var i = 0; i < bands.length; ++i)
                 compare(bands[i].fillColor.toString(), "#ffffff",
