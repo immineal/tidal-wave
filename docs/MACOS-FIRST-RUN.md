@@ -169,7 +169,7 @@ which is why `tst_library` aborts in `initTestCase` here.
 A first run on this machine also came up already signed in, from a
 `credentials.json` left by an install months earlier, and refreshed the token.
 If that happens, quit without touching anything and re-run with a scratch
-`HOME`; do not log out, because that may revoke the token on the owner's other
+`HOME`; do not log out, because that may revoke the token on the maintainer's other
 devices.
 
 ## What to send back

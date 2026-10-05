@@ -86,3 +86,12 @@ Thumbs.db
 # data into a tracked file happened. It stays on disk, untracked, and is read
 # at the start of every session.
 /HANDOFF.md
+
+# Working documents, not for people installing or packaging the app. They stay
+# on disk and out of the repository: machine-specific test scripts, the frozen
+# session spec with the development hardware in it, the design review page, and
+# the packaging plan, which records decisions in the first person.
+docs/DEBIAN-FIRST-RUN.md
+docs/SPEC-0.4.0.md
+docs/design-review.html
+docs/PACKAGING.md

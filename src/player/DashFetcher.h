@@ -8,7 +8,7 @@
 // works where libavformat was built with libxml2, because libxml2 is what its
 // DASH demuxer is gated on:
 //
-//     ldd ~/Qt/6.12.0/gcc_64/lib/libavformat.so.61 | grep -c xml2  -> 0
+//     ldd <qt-prefix>/lib/libavformat.so.61 | grep -c xml2  -> 0
 //     ldd /usr/lib/libavformat.so.61                         | grep -c xml2  -> 1
 //
 // The Qt installer's bundled ffmpeg has no libxml2, and the ffmpeg media plugin

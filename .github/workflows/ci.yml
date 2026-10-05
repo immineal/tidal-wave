@@ -35,9 +35,13 @@ jobs:
           version: ${{ matrix.qt }}
           # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
           # ship in the base desktop install (aqt has no separate 'qtsvg' module).
-          # qttools supplies lrelease, without which CMake skips the .qm
-          # catalogues and the binary ships English-only.
-          modules: 'qtmultimedia qttools'
+          # qttools was dropped as a separate module: `aqt list-qt linux
+          # desktop --modules 6.12.0 linux_gcc_64` does not list it for 6.12,
+          # and asking for it fails the whole install step. lrelease ships in
+          # the base desktop package now. TIDALWAVE_REQUIRE_TRANSLATIONS below
+          # turns a Qt without it into a configure error rather than a build
+          # that silently ships English only.
+          modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -46,7 +50,7 @@ jobs:
           sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
 
       - name: Configure
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
@@ -65,9 +69,10 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.12.0'
-          # qtmultimedia and qttools as in the build job; Qt6::Test and
-          # Qt6::QuickTest ship with the base desktop install.
-          modules: 'qtmultimedia qttools'
+          # qtmultimedia as in the build job; Qt6::Test, Qt6::QuickTest and
+          # lrelease all ship with the base desktop install. qttools is not a
+          # module for 6.12 and asking for it fails the step.
+          modules: 'qtmultimedia'
 
       - name: Install dependencies
         run: |
@@ -75,7 +80,7 @@ jobs:
           sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
 
       - name: Configure
-        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON
+        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
 
       - name: Build
         run: cmake --build build-tests --parallel 4
@@ -182,7 +187,7 @@ jobs:
   # two files every Linux store reads are the two nothing else in CI looks at,
   # and a mistake in either is found by the store that rejects the submission.
   # The AppStream metainfo file is the hard blocker for Flathub, KDE Discover and
-  # GNOME Software - see docs/PACKAGING.md.
+  # GNOME Software.
   store-metadata:
     name: The metadata stores read is valid
     runs-on: ubuntu-latest
@@ -250,7 +255,7 @@ jobs:
           # 1. AppStream pairs a metainfo file with its component by filename, so
           #    <id> and the installed basename have to be the same string. This
           #    is also the guard against the second spelling of the app id that
-          #    docs/PACKAGING.md warns about.
+          #    the packaging notes warn about.
           grep -q "<id>$id</id>" "$id.metainfo.xml" \
             || { echo "<id> does not match the filename $id.metainfo.xml"; exit 1; }
           # 2. <launchable> has to name the desktop entry as installed. If it

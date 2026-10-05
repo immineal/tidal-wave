@@ -353,6 +353,16 @@ endif()
 # lupdate/lrelease live in qttools, which not every Qt install carries, so this
 # is optional: without it the app builds and runs in English.
 find_package(Qt6 QUIET COMPONENTS LinguistTools)
+# Optional is right for someone building locally, and wrong for anything we
+# publish: a missing lrelease is silent, and the first evidence is a user
+# reporting the German build is in English. CI and the release workflow set
+# this, so a Qt that cannot compile the catalogues stops the build instead.
+if(TIDALWAVE_REQUIRE_TRANSLATIONS AND NOT Qt6LinguistTools_FOUND)
+    message(FATAL_ERROR
+        "TIDALWAVE_REQUIRE_TRANSLATIONS is on and Qt6 LinguistTools was not "
+        "found, so the .qm catalogues would be skipped and the build would "
+        "ship English only. Install the Qt tools package that carries lrelease.")
+endif()
 if(Qt6LinguistTools_FOUND)
     # Before adding LRELEASE_OPTIONS here, read
     # tests/tst_shortcuts.cpp::theUnfinishedFlagIsNotLoadBearing().
@@ -455,7 +465,7 @@ if(UNIX AND NOT APPLE)
     # The installed basename has to be "<component id>.metainfo.xml" exactly -
     # that is how AppStream pairs the file with the component - so the name is
     # spelled out here rather than inherited from the source file. The id is
-    # io.github.immineal.TidalWave (docs/PACKAGING.md), and since the rename it
+    # io.github.immineal.TidalWave, and since the rename it
     # is also the .desktop basename above. They are still joined by <launchable>
     # inside the file rather than by being spelled alike, and the store-metadata
     # CI job checks that join; the matching the comment above describes is

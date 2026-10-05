@@ -1,9 +1,9 @@
 # Maintainer: Linus Linhof <tidal-wave@linu.li>
 #
 # This is the project's own PKGBUILD. It lives in the repo and is kept current
-# with it, and anyone is welcome to upload it to the AUR - decided 2026-10-03,
-# see docs/PACKAGING.md. Two users wrote their own in GitHub issue #2 and both
-# are wrong against this tree, so what this file gets right is deliberate:
+# with it, and anyone is welcome to upload it to the AUR. Two users wrote their
+# own in GitHub issue #2 and both are wrong against this tree, so what this file
+# gets right is deliberate:
 #
 #   * It installs with `cmake --install` and nothing else. The desktop entry and
 #     the two hicolor icons are install rules in CMakeLists.txt, and the Plasma

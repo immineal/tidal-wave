@@ -13,7 +13,7 @@ It is built and used on Linux, specifically openSUSE with KDE Plasma on
 Wayland; X11 works too. The macOS and Windows builds get far less attention, and
 `docs/MACOS-FIRST-RUN.md` is the running list of what is known to be wrong on a
 Mac. The goal is for this to be the easiest thing to install on whatever system
-you happen to use, and `docs/PACKAGING.md` is the plan for getting there.
+you happen to use.
 
 ![Tidal Wave home screen](assets/screenshot_home.png)
 
