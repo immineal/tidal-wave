@@ -37,6 +37,7 @@
 #include <QQuickImageProvider>
 #include <QSet>
 #include <QString>
+#include <functional>
 #include <utility>
 #include <QStringList>
 #include <QVariantList>
@@ -506,61 +507,99 @@ public:
         m_favoriteCalls = 0;
     }
 
+    // ── a mutation whose reply has not come back yet ──────────────────────
+    //
+    // Held replies, the same shape as setDeferSearchForTest() above and the two
+    // playlist-dialog deferrals further down: the call goes out and is counted,
+    // and nothing else happens until flushFavoriteRepliesForTest().
+    //
+    // Until this existed the callback ran before mouseClick() had returned, so
+    // "the call is still out" was a state no fixture could put a page in - and
+    // the three things that exist only for that state (a line saying it is
+    // working, a button that greys out, and the guard that stops a second press
+    // sending a second DELETE) were all green against a stub that never let any
+    // of them happen. Over a real network that state lasts a second or two,
+    // which is the whole window the user presses twice in.
+    //
+    // The cache write is held *with* the callback rather than done on the way
+    // out, because the real bridge writes it inside the reply: isAlbumFavorite()
+    // goes on answering true while the DELETE is in flight, so a page looked at
+    // mid-call has to see the album still saved. Whether the held reply is an
+    // acceptance or a refusal is read off setFavoriteOkForTest() when it is
+    // released, not when it was made.
+    //
+    // All six mutators, not just the albums: a knob that held some of them and
+    // not others is the kind of asymmetry a fixture gets believed about.
+    Q_INVOKABLE void setDeferFavoriteRepliesForTest(bool on) { m_deferFavorites = on; }
+    Q_INVOKABLE int  pendingFavoriteRepliesForTest() const { return int(m_pendingFavorites.size()); }
+    Q_INVOKABLE void flushFavoriteRepliesForTest() {
+        QList<std::pair<QJSValue, std::function<void()>>> held;
+        held.swap(m_pendingFavorites);
+        for (auto &h : held) deliverFavorite(h.first, h.second);
+    }
+
     Q_INVOKABLE bool isTrackFavorite(qlonglong trackId) const { return m_favoriteTracks.value(trackId, false); }
     Q_INVOKABLE void addTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addTrack"), trackId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, trackId] {
             m_favoriteTracks[trackId] = true;
             emit favoriteTracksChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
     Q_INVOKABLE void removeTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeTrack"), trackId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, trackId] {
             m_favoriteTracks[trackId] = false;
             dropById(m_favoriteTrackList, trackId);
             emit favoriteTracksChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
 
     Q_INVOKABLE bool isAlbumFavorite(qlonglong albumId) const { return m_favoriteAlbums.value(albumId, false); }
+    // The saved row itself and not the flag, answered out of the list
+    // setFavoriteAlbumsForTest() fills - which removeAlbumFavorite below drops
+    // from on a removal the server accepted, exactly as the real bridge drops
+    // the album out of m_favoriteAlbums. So a page that reads an album's title
+    // out of here and then unsaves it has nothing to read afterwards, which is
+    // the state tests/qml/tst_album_load_error.qml is about.
+    Q_INVOKABLE QVariantMap favoriteAlbumById(qlonglong albumId) const {
+        for (const QVariant &v : m_favoriteAlbumList) {
+            const QVariantMap m = v.toMap();
+            if (m.value(QStringLiteral("id")).toLongLong() == albumId) return m;
+        }
+        return {};
+    }
     Q_INVOKABLE void addAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addAlbum"), albumId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, albumId] {
             m_favoriteAlbums[albumId] = true;
             emit favoriteAlbumsChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
     Q_INVOKABLE void removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeAlbum"), albumId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, albumId] {
             m_favoriteAlbums[albumId] = false;
             dropById(m_favoriteAlbumList, albumId);
             emit favoriteAlbumsChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
 
     Q_INVOKABLE bool isArtistFavorite(qlonglong artistId) const { return m_favoriteArtists.value(artistId, false); }
     Q_INVOKABLE void addArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addArtist"), artistId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, artistId] {
             m_favoriteArtists[artistId] = true;
             emit favoriteArtistsChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
     Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeArtist"), artistId);
-        if (m_favoriteOk) {
+        answerFavorite(cb, [this, artistId] {
             m_favoriteArtists[artistId] = false;
             dropById(m_favoriteArtistList, artistId);
             emit favoriteArtistsChanged();
-        }
-        resolveOk(cb, m_favoriteOk);
+        });
     }
 
     // ── a saved mix, which is how a track radio is saved ─────────────────
@@ -1132,6 +1171,8 @@ public:
         m_favoriteArtists.clear();
         m_favoriteMixes.clear();
         m_favoriteOk = true;
+        m_deferFavorites = false;
+        m_pendingFavorites.clear();
         resetFavoriteCallsForTest();
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
@@ -1225,6 +1266,22 @@ private:
         }
     }
 
+    // What a favourite mutator does once it has been counted: either the
+    // accepted effect and the answer now, or both parked for
+    // flushFavoriteRepliesForTest(). The effect is a lambda and not a flag
+    // because each of the six writes a different cache.
+    void answerFavorite(QJSValue &cb, std::function<void()> accepted) {
+        if (m_deferFavorites) {
+            m_pendingFavorites.append({ cb, std::move(accepted) });
+            return;
+        }
+        deliverFavorite(cb, accepted);
+    }
+    void deliverFavorite(QJSValue &cb, const std::function<void()> &accepted) {
+        if (m_favoriteOk && accepted) accepted();
+        resolveOk(cb, m_favoriteOk);
+    }
+
     void noteFavoriteCall(const QString &verb, qlonglong id) {
         noteFavoriteCall(verb, QString::number(id));
     }
@@ -1251,6 +1308,8 @@ private:
     bool    m_favoriteOk = true;
     QString m_lastFavoriteCall;
     int     m_favoriteCalls = 0;
+    bool    m_deferFavorites = false;
+    QList<std::pair<QJSValue, std::function<void()>>> m_pendingFavorites;
     // The favourite *objects*, as opposed to the id -> bool maps above, which
     // only answer isAlbumFavorite()/isArtistFavorite().
     QVariantList m_favoriteAlbumList;

@@ -32,6 +32,61 @@ Rectangle {
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0 && !albumData.title
 
+    // The title the library still holds for this album, "" when it holds none.
+    //
+    // A page that could not load cannot name what it is showing: every
+    // navigate("album", ...) in the tree passes { albumId } and nothing else,
+    // and both fetches for that id have just been refused. The favourites list
+    // can name it - it is the one endpoint that still answers for a delisted
+    // edition, which is the whole reason the record is reachable at all - so
+    // that is where the failure panel's search term comes from.
+    //
+    // Read once per album into a property rather than bound to the bridge:
+    // unsaveDeadAlbum() below deletes the very row this is read out of, and a
+    // binding would take the title off the page at the moment it is most
+    // needed - together with the button that carries it.
+    property string savedTitle: ""
+
+    function readSavedAlbum() {
+        var saved = albumId > 0 ? bridge.favoriteAlbumById(albumId) : null
+        root.savedTitle = (saved && saved.title) ? saved.title : ""
+    }
+
+    // Unsave, and what the panel says about it. Three pieces of state and not
+    // one, because "the call is out", "it landed" and "the server refused it"
+    // all have to be tellable apart from "nothing happened" - which is what a
+    // panel that only ever drew the button would leave the user with, on the one
+    // page where a press is the only thing they can still do.
+    //
+    // Deliberately not ContextMenu.FavoriteAction, which the hero's Save pill
+    // uses: that reports a refusal in a tool tip over an anchor and says nothing
+    // at all about a success, and here both have to stay readable for as long as
+    // the user is on the page. The refusal is a flag rather than the message, so
+    // the wording stays in a qsTr() binding and follows a language change.
+    property bool unsaving:      false
+    property bool unsaveDone:    false
+    property bool unsaveRefused: false
+
+    function unsaveDeadAlbum() {
+        if (!(albumId > 0) || root.unsaving || root.unsaveDone) return
+        var asked = root.albumId
+        root.unsaving = true
+        root.unsaveRefused = false
+        bridge.removeAlbumFavorite(asked, function (ok) {
+            // The page is reused for whatever album is opened next, so a reply
+            // for the one that was on screen when the press happened has
+            // nothing to say about the one that is on screen now.
+            if (asked !== root.albumId) return
+            root.unsaving = false
+            // Only an explicit true counts as accepted, the same test
+            // ContextMenu.FavoriteAction._refused() makes: a callback handed
+            // undefined by a bridge that stopped reporting would otherwise
+            // read as a success.
+            if (ok === true) root.unsaveDone = true
+            else             root.unsaveRefused = true
+        })
+    }
+
     // Records this album as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("album", "" + root.albumId, root.albumData.title || "")
@@ -100,11 +155,25 @@ Rectangle {
     readonly property var albumArtistList:
         (albumData.artistList && albumData.artistList.length > 0) ? albumData.artistList : []
 
-    onAlbumIdChanged: if (albumId > 0) { loadAlbum(); updateSavedState() }
+    onAlbumIdChanged: if (albumId > 0) {
+        root.unsaving = false
+        root.unsaveDone = false
+        root.unsaveRefused = false
+        loadAlbum()
+        updateSavedState()
+        readSavedAlbum()
+    }
 
     Connections {
         target: bridge
-        function onFavoriteAlbumsChanged() { root.updateSavedState() }
+        function onFavoriteAlbumsChanged() {
+            root.updateSavedState()
+            // The favourites list arrives after the window does, so an album
+            // opened early in a session had nothing to read a title out of yet.
+            // Only ever gains one: the removal above empties the row this reads,
+            // and re-reading then is precisely what must not happen.
+            if (root.savedTitle.length === 0) root.readSavedAlbum()
+        }
     }
 
     // What the hero's queue actions act on: the whole album, which is not
@@ -431,6 +500,69 @@ Rectangle {
                 // and would count an example in a comment as one.)
                 text: qsTr("Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.")
                 color: Theme.textSec
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+
+            // The two things that can still be done about a record the API will
+            // not serve, on the one page that knows it is dead. Every other
+            // route to either of them goes through a page that will not load:
+            // the hero's Save pill is under this panel, and the sidebar row the
+            // user arrived from opens nothing else.
+            //
+            // Each is hidden when it would be a lie rather than shown doing
+            // nothing - no title to search for, nothing saved to remove.
+            RowLayout {
+                objectName: "albumLoadErrorActions"
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 6
+                spacing: 10
+
+                PillButton {
+                    objectName: "albumLoadErrorFind"
+                    text: qsTr("Find album", "verb, look for another release of this album")
+                    icon: "search"
+                    visible: root.savedTitle.length > 0
+                    // The title, not the id: the id is the thing that is dead.
+                    // Search is handed a term to run rather than one to display,
+                    // which is what `requestedQuery` means in SearchPage.qml.
+                    onClicked: root.navigateTo("search", { requestedQuery: root.savedTitle })
+                }
+
+                PillButton {
+                    objectName: "albumLoadErrorUnsave"
+                    // The words the Collection grid's row menu already uses for
+                    // this exact action (CollectionPage's removeLabel), rather
+                    // than a second name for it. "Unsave" appears nowhere else
+                    // in the app, and this panel is reached *from* that grid.
+                    text: qsTr("Remove from library")
+                    icon: "trash"
+                    accent: false
+                    // isSaved alone, which is the bridge's account: it is read
+                    // back on favoriteAlbumsChanged, and the bridge emits that
+                    // before it answers the callback, so the flag has already
+                    // gone false by the time this page hears the removal landed.
+                    // An `&& !root.unsaveDone` term sat here as well and no test
+                    // could tell it from this line - nothing can reach the state
+                    // it described, since the real bridge's emit and its cache
+                    // write are the same branch. The page's own account of the
+                    // removal is what the status line below is for.
+                    visible: root.isSaved
+                    enabled: !root.unsaving
+                    onClicked: root.unsaveDeadAlbum()
+                }
+            }
+
+            Text {
+                objectName: "albumLoadErrorUnsaveStatus"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                visible: text.length > 0
+                text: root.unsaveDone    ? qsTr("Removed from your library.")
+                    : root.unsaveRefused ? qsTr("Tidal would not remove it. It is still in your library.")
+                    : root.unsaving      ? qsTr("Removing…")
+                    : ""
+                color: root.unsaveRefused ? Theme.red : Theme.textSec
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap
             }

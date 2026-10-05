@@ -117,6 +117,17 @@ public:
     Q_INVOKABLE bool isAlbumFavorite     (qlonglong albumId)  const;
     Q_INVOKABLE void addAlbumFavorite    (qlonglong albumId,  QJSValue cb);
     Q_INVOKABLE void removeAlbumFavorite (qlonglong albumId,  QJSValue cb);
+    // The saved album itself, by id, or an empty map when it is not saved.
+    //
+    // For a record the API has stopped serving: `albums/<id>` and
+    // `albums/<id>/items` both answer 404 for a delisted edition while the
+    // favourites endpoint goes on listing it, so this cache is the only place
+    // left that knows the album's title - and AlbumPage's failure panel needs
+    // it to offer a search for the edition that replaced it. isAlbumFavorite()
+    // above answers the same lookup with a bool; searchFavoriteAlbums() below
+    // answers a different question (a title substring) and copies the whole
+    // library to do it.
+    Q_INVOKABLE QVariantMap favoriteAlbumById(qlonglong albumId) const;
 
     Q_INVOKABLE bool isArtistFavorite    (qlonglong artistId) const;
     Q_INVOKABLE void addArtistFavorite   (qlonglong artistId, QJSValue cb);

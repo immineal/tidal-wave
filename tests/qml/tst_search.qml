@@ -1608,6 +1608,38 @@ TestCase {
                   "the chip the pointer left kept its tint, got " + far.color)
     }
 
+    // ── a query the page is handed rather than typed ────────────────────
+    //
+    // AlbumPage's failure panel sends the title of a delisted album here, so
+    // the live edition can be found under whatever id it is listed as now.
+    // Main.applyParams() can only *assign* - it walks the params object and
+    // sets each name it finds on the page - so a page that is to run a search
+    // on arrival has to be given a property, and a page that merely stored one
+    // would land the user on an empty pane with the term in the box and nothing
+    // asked for. Writing `query` does exactly that: it is the field's echo and
+    // nothing watches it.
+    function test_a_query_handed_to_the_page_is_actually_searched_for() {
+        bridge.setSearchResultsForTest(fakeTracks(1), fakeAlbums(1), [], [])
+        var win = showApp()
+
+        win.navigate("search", { requestedQuery: query })
+
+        tryVerify(function () { return bridge.lastSearchQueryForTest() === query },
+                  settleMs,
+                  "arriving at Search with a query to run asked the server for nothing; "
+                  + "the last query it saw was \"" + bridge.lastSearchQueryForTest() + "\"")
+
+        var bar = searchBarIn(win.contentItem)
+        compare(bar.text, query,
+                "the field does not hold the query that was run, so the user cannot "
+                + "edit or even read what they are looking at")
+        tryVerify(function () {
+                      return saysSomethingContaining(win.contentItem, "Erfundenes Album 1")
+                  }, settleMs,
+                  "the results for the handed-over query never reached the page: "
+                  + visibleCopy(win.contentItem))
+    }
+
     // Every Item in the tree with this objectName, in tree order.
     function findAllByName(item, name) {
         return collectByName(item, name, [])

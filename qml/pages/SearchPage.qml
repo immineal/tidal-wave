@@ -212,6 +212,37 @@ Rectangle {
         doSearch(q)
     }
 
+    // ── a query handed over by another page ──────────────────────────────
+    //
+    // AlbumPage's failure panel sends the title of a delisted album here so the
+    // live edition can be found, since it is listed under a different id. The
+    // router hands a page its parameters by *assigning* them (Main.applyParams
+    // walks the object and sets each name it finds), so arriving with a search
+    // to run means arriving with a property set - there is no way to ask the
+    // page to call something.
+    //
+    // Which is why this is not `query`: that property is the field's echo and
+    // nothing watches it, so writing it would put the term on screen and ask
+    // the server for nothing. Cleared as it is taken, so arriving twice with
+    // the same term runs it twice - the change signal is the whole trigger.
+    property string requestedQuery: ""
+    onRequestedQueryChanged: {
+        if (requestedQuery.length === 0) return
+        var q = requestedQuery
+        requestedQuery = ""
+        searchFor(q)
+    }
+
+    // runRecent() without the bookkeeping: the user did not type this one, so it
+    // is not one of their recent searches. The field is filled first because
+    // that is what sets `query` - the bar's onTextEdited is the only writer.
+    function searchFor(q) {
+        searchBar.text = q
+        searchDebounce.stop()       // a query that was handed over needs no settling
+        if (q.length < 2) return
+        doSearch(q)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0

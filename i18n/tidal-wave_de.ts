@@ -49,6 +49,27 @@
         <source>Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.</source>
         <translation>Tidal liefert es nicht aus. Es wurde möglicherweise zurückgezogen oder ist dort, wo du bist, nicht verfügbar. Die Suche nach dem Titel findet oft eine andere Veröffentlichung davon.</translation>
     </message>
+    <message>
+        <source>Find album</source>
+        <comment>verb, look for another release of this album</comment>
+        <translation>Album suchen</translation>
+    </message>
+    <message>
+        <source>Remove from library</source>
+        <translation>Aus der Mediathek entfernen</translation>
+    </message>
+    <message>
+        <source>Removed from your library.</source>
+        <translation>Aus deiner Mediathek entfernt.</translation>
+    </message>
+    <message>
+        <source>Tidal would not remove it. It is still in your library.</source>
+        <translation>Tidal hat es nicht entfernt. Es ist weiterhin in deiner Mediathek.</translation>
+    </message>
+    <message>
+        <source>Removing…</source>
+        <translation>Wird entfernt…</translation>
+    </message>
 </context>
 <context>
     <name>Application</name>

@@ -530,6 +530,12 @@ bool TidalBridge::isAlbumFavorite(qlonglong albumId) const {
     return false;
 }
 
+QVariantMap TidalBridge::favoriteAlbumById(qlonglong albumId) const {
+    for (const auto &a : m_favoriteAlbums)
+        if (a.id == albumId) return albumToMap(a);
+    return {};
+}
+
 void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
     m_client->addAlbumFavorite(albumId, [this, albumId, cb](bool success) mutable {
         if (success) {
