@@ -602,3 +602,38 @@ by or affiliated with Tidal.")
 
     include(CPack)
 endif()
+
+# The build tree keeps its symbols, so a crash on this machine can still be
+# symbolised. The installed copy does not need them: 12,562,824 bytes against
+# 6,860,464 stripped, 45% of the file being a .symtab nothing reads.
+# CPACK_STRIP_FILES already does this for the .deb and makepkg strips the AUR
+# package, so a plain `cmake --install` was the one path still shipping them.
+# Setting CMAKE_INSTALL_DO_STRIP here does not work: the generated
+# cmake_install.cmake runs in a fresh script context and only sees the variable
+# when `cmake --install --strip` passes it. Hence an explicit rule, declared
+# last so it runs after install(TARGETS). The GNU build-id survives, so a
+# backtrace off a user's machine still matches an unstripped build.
+if(CMAKE_STRIP AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel"))
+    # Stripped to a temporary file and renamed over the target, never in place:
+    # strip rewrites the file where it stands, and the kernel refuses that with
+    # ETXTBSY while the binary is running, which is the normal case when someone
+    # reinstalls over a copy they are using. A rename only swaps the directory
+    # entry, so the running process keeps its old inode and the next launch gets
+    # the new one. A failure is reported rather than swallowed, because a silent
+    # one ships 5.7 MB nobody asked for.
+    install(CODE "
+        set(tw_installed \"\$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/tidal-wave\")
+        if(EXISTS \"\${tw_installed}\")
+            execute_process(
+                COMMAND \"${CMAKE_STRIP}\" --strip-unneeded -o \"\${tw_installed}.stripped\" \"\${tw_installed}\"
+                RESULT_VARIABLE tw_strip_rc ERROR_VARIABLE tw_strip_err)
+            if(tw_strip_rc EQUAL 0)
+                file(RENAME \"\${tw_installed}.stripped\" \"\${tw_installed}\")
+                message(STATUS \"Stripped \${tw_installed}\")
+            else()
+                file(REMOVE \"\${tw_installed}.stripped\")
+                message(WARNING \"strip failed, the installed binary keeps its symbols: \${tw_strip_err}\")
+            endif()
+        endif()
+    ")
+endif()
