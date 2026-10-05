@@ -46,6 +46,41 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
     getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, std::move(cb));
 }
 
+void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    QUrl url(kApiBaseV2 + endpoint);
+    QUrlQuery q = params;
+    // The same country code every other call carries. getDoc() adds it to each
+    // GET; this is the PUT's copy of that line, and not an assumption that the
+    // endpoint needs one: it is tolerated everywhere else in this API and
+    // leaving it off would make this the single request in the app that is
+    // country-less.
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    QNetworkRequest req = makeRequest(url);
+    // Empty body, so Qt sends Content-Length: 0 rather than omitting the header.
+    auto *reply = m_nam->put(req, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
+        reply->deleteLater();
+        const QByteArray data = reply->readAll();
+        if (data.isEmpty()) {
+            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
+            return;
+        }
+        QJsonParseError err;
+        const auto doc = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            cb({}, err.errorString());
+            return;
+        }
+        const auto obj = doc.object();
+        if (obj.contains("error"))
+            cb(obj, obj["error_description"].toString(obj["error"].toString()));
+        else
+            cb(obj, {});
+    });
+}
+
 void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
     getDoc(QString::fromLatin1(kApiBase), endpoint, params,
         [cb](QJsonDocument doc, QString err) {

@@ -85,7 +85,11 @@ public:
     // The same request as fetchMixTracks(), delivering the MIX_HEADER beside
     // the tracks. fetchMixTracks() is this call with the header dropped, so a
     // caller that wants both does not pay for two round trips.
-    void fetchMixPage     (const QString &mixId, MixPageCallback cb);
+    //
+    // `virtual` for the same test seam as the playlist calls below. TidalBridge
+    // calls it on an accepted save, to get a row to hand the sidebar, so a test
+    // of that hand-across has to be able to answer it.
+    virtual void fetchMixPage(const QString &mixId, MixPageCallback cb);
 
     // My collection
     void fetchFavoriteTracks  (TracksCallback    cb, int limit=50, int offset=0);
@@ -107,7 +111,11 @@ public:
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
     void fetchAlbum        (qint64 albumId,        std::function<void(Album,QString)>  cb);
-    void fetchTrack        (qint64 trackId,        std::function<void(Track,QString)>  cb);
+    // `virtual` for the same test seam as fetchMixPage above: TidalBridge
+    // answers "which mix is this track's radio" out of it, and that chain -
+    // the one that decides which viewer "Start radio" opens - has to be
+    // drivable without a network.
+    virtual void fetchTrack(qint64 trackId,        std::function<void(Track,QString)>  cb);
 
     // Search
     // `offset` is the row to start at, per kind — the search endpoint takes one
@@ -122,6 +130,25 @@ public:
     void removeAlbumFavorite (qint64 albumId,    std::function<void(bool)> cb);
     void addArtistFavorite   (qint64 artistId,   std::function<void(bool)> cb);
     void removeArtistFavorite(qint64 artistId,   std::function<void(bool)> cb);
+
+    // ── a mix the user saved ────────────────────────────────────────────
+    //
+    // The first write this app has ever made to a mix. Until now every mix call
+    // was a fetch, which is why a saved track radio could reach the sidebar (it
+    // comes in on v2/favorites/mixes, merged by fetchHomeMixes) and then never
+    // be got rid of, and why there was no way to put a new one there at all.
+    //
+    // Nothing like the v1 favourites above. These are v2, they are PUTs, their
+    // arguments ride in the query string, and crucially their reply *says what
+    // it did* - so unlike the six above, success here is not "the request did
+    // not fail". See mixFavoriteAccepted().
+    //
+    // `virtual` for the test seam tst_bridge_favorites.cpp uses, the same one
+    // the four playlist calls carry: a FakeClient answers these, and the bridge
+    // under test is a real TidalBridge.
+    virtual void fetchFavoriteMixes(MixesCallback cb);
+    virtual void addMixFavorite    (const QString &mixId, std::function<void(bool)> cb);
+    virtual void removeMixFavorite (const QString &mixId, std::function<void(bool)> cb);
 
     // Streaming
     // `virtual` for the same test seam as createPlaylist and the three
@@ -240,6 +267,40 @@ public:
     void fetchGeneratedMixes(MixesCallback cb);
     void fetchSavedMixes    (MixesCallback cb, const QString &cursor = QString(),
                              QList<Mix> acc = {}, int page = 0);
+
+    // ── the two favourite-mix writes, as data ───────────────────────────
+    //
+    // Public and static for the reason the parses above are: this is the whole
+    // of what the two requests say, and it is worth a test that does not need a
+    // network, a session or the owner's account. They touch no member state.
+
+    // "favorites/mixes/add" or "favorites/mixes/remove", under the v2 base.
+    static QString mixFavoriteEndpoint(bool adding);
+
+    // `mixIds=<a>,<b>&onArtifactNotFound=FAIL`. Comma-joined for several ids,
+    // which for one id is the id. FAIL and not the permissive alternative: a
+    // mix that no longer exists must come back as an error the user is told
+    // about, not as a silent no-op that leaves the pill reading "Save".
+    static QUrlQuery mixFavoriteQuery(const QStringList &mixIds);
+
+    // Whether the reply says `mixId` really went in, or really came out.
+    //
+    // This is the half the six v1 favourites cannot have. Those answer with no
+    // body, so "the request did not fail" is all there is, and this app already
+    // has a recorded history of a refused favourite looking like it succeeded.
+    // v2 answers `addedItems` / `deletedItems`, so there is a fact to check, and
+    // it is checked.
+    //
+    // Strict on purpose: the id has to be *in* the matching array. A reply that
+    // carries no such array at all therefore reads as a refusal. That is a
+    // deliberate choice of which way to be wrong - of the two possible lies, a
+    // save that worked being reported as refused is visible and recoverable (the
+    // next refresh shows the mix saved), while a refusal reported as a success
+    // is the exact defect this rule exists to prevent. It is also what the
+    // reference client's own validating path does
+    // (tidalapi/user.py: `set(mix_ids).issubset(added_items)`).
+    static bool mixFavoriteAccepted(const QJsonObject &reply, const QString &mixId,
+                                    bool adding);
 
     // The server's maximum for v2/favorites/mixes; limit=100 answers 400.
     static constexpr int kSavedMixesPageSize = 50;

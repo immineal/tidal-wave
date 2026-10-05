@@ -4,6 +4,20 @@ import QtQuick.Window
 import QtQuick.Controls
 import TidalWave
 
+// A track's radio as a plain list, with no identity on it.
+//
+// This is the *fallback* viewer, and reaching it means one specific thing: the
+// track did not name the mix its radio is, and `tracks/<id>` did not name one
+// either. See TrackRow.startRadio(), which is the only route in.
+//
+// Why there is a second page at all: `tracks/<id>/radio` answers tracks and
+// nothing else - no mix id, no artwork, no title of its own - so a station
+// opened this way cannot be saved, cannot be unsaved, and cannot be the same
+// thing as the mix row a saved radio shows up as in the sidebar. That split is
+// what the owner reported twice ("the two different views of a track radio as a
+// mix and a radio"). MixPage is the one viewer now; this one is what is left
+// when there is no mix to open, and keeping it is what stops an absent id from
+// turning "Start radio" into a dead menu entry.
 Rectangle {
     id: root
     color: Theme.bg

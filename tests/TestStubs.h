@@ -563,6 +563,49 @@ public:
         resolveOk(cb, m_favoriteOk);
     }
 
+    // ── a saved mix, which is how a track radio is saved ─────────────────
+    //
+    // Keyed by string, not by number: a mix id is 30 hex characters, and a stub
+    // that stored them as qlonglong would map every real id to 0 and so could
+    // not tell two mixes apart - a fixture unable to express the bug, which is
+    // this repo's recurring defect.
+    //
+    // Answers setFavoriteOkForTest() like the other six, and records the call as
+    // "addMix:<id>" / "removeMix:<id>" so a test can prove the *remove* went out
+    // where a remove was asked for. Both are needed for the refusal case: the
+    // real question is not whether the pill flips but whether a refusal is said
+    // out loud, and until this stub could refuse, that was a state no fixture in
+    // the tree could reach.
+    Q_INVOKABLE bool isMixFavorite(const QString &mixId) const {
+        return !mixId.isEmpty() && m_favoriteMixes.value(mixId, false);
+    }
+    Q_INVOKABLE void addMixFavorite(const QString &mixId, QJSValue cb) {
+        noteFavoriteCall(QStringLiteral("addMix"), mixId);
+        if (m_favoriteOk) {
+            m_favoriteMixes[mixId] = true;
+            emit favoriteMixesChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
+    }
+    Q_INVOKABLE void removeMixFavorite(const QString &mixId, QJSValue cb) {
+        noteFavoriteCall(QStringLiteral("removeMix"), mixId);
+        if (m_favoriteOk) {
+            m_favoriteMixes[mixId] = false;
+            emit favoriteMixesChanged();
+        }
+        resolveOk(cb, m_favoriteOk);
+    }
+
+    // Seeding, without going through a mutator - for the reason
+    // setAlbumFavoriteForTest() gives: a "remove is refused" case has to start
+    // from a mix that is already saved, and getting there through
+    // addMixFavorite() would make the pre-state depend on the very switch under
+    // test.
+    Q_INVOKABLE void setMixFavoriteForTest(const QString &mixId, bool on) {
+        m_favoriteMixes[mixId] = on;
+        emit favoriteMixesChanged();
+    }
+
     // Playlist management
 
     // ── createPlaylist, as TidalBridge::createPlaylist behaves ───────────
@@ -668,6 +711,37 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+    // ── which mix a track's radio is ────────────────────────────────────
+    //
+    // The lookup TrackRow makes when the row's own payload did not name the
+    // mix. Three answers have to be reachable from a fixture or the fallback
+    // chain cannot be tested: an id, "" (Tidal served the track and gave it no
+    // radio), and an error.
+    //
+    // The call is counted as well as answered, because "the row already knew
+    // the id and so asked nothing" is an assertion about cost that a boolean
+    // answer alone could not make.
+    Q_INVOKABLE void fetchTrackMix(qlonglong trackId, QJSValue cb) {
+        m_lastTrackMixFetched = trackId;
+        m_trackMixFetches++;
+        if (!cb.isCallable()) return;
+        QJSValueList args;
+        args << QJSValue(m_trackMixId) << QJSValue(m_trackMixError);
+        deliver(cb, args);
+    }
+    Q_INVOKABLE void setTrackMixForTest(const QString &mixId, const QString &error = {}) {
+        m_trackMixId    = mixId;
+        m_trackMixError = error;
+    }
+    Q_INVOKABLE int      trackMixFetchesForTest()    const { return m_trackMixFetches; }
+    Q_INVOKABLE qlonglong lastTrackMixFetchedForTest() const { return m_lastTrackMixFetched; }
+    Q_INVOKABLE void     resetTrackMixForTest() {
+        m_trackMixId.clear();
+        m_trackMixError.clear();
+        m_trackMixFetches      = 0;
+        m_lastTrackMixFetched  = 0;
+    }
+
     // NowPlayingPage reads .text and .timed off the result.
     Q_INVOKABLE void fetchLyrics(qlonglong trackId, QJSValue cb) {
         Q_UNUSED(trackId);
@@ -1056,12 +1130,14 @@ public:
         m_favoriteTracks.clear();
         m_favoriteAlbums.clear();
         m_favoriteArtists.clear();
+        m_favoriteMixes.clear();
         m_favoriteOk = true;
         resetFavoriteCallsForTest();
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
         resetHeadersForTest();
+        resetTrackMixForTest();
         resetCreatePlaylistForTest();
         resetEditPlaylistForTest();
         m_lastUserPlaylistLimit  = -1;
@@ -1092,6 +1168,7 @@ public:
 signals:
     void preferredQualityChanged();
     void favoriteTracksChanged();
+    void favoriteMixesChanged();
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
@@ -1149,13 +1226,25 @@ private:
     }
 
     void noteFavoriteCall(const QString &verb, qlonglong id) {
-        m_lastFavoriteCall = verb + QLatin1Char(':') + QString::number(id);
+        noteFavoriteCall(verb, QString::number(id));
+    }
+
+    // The same log, for the one kind whose id is not a number. Routed through
+    // one function rather than two so "<verb>:<id>" cannot drift between them.
+    void noteFavoriteCall(const QString &verb, const QString &id) {
+        m_lastFavoriteCall = verb + QLatin1Char(':') + id;
         ++m_favoriteCalls;
     }
 
     QHash<qlonglong, bool> m_favoriteTracks;
     QHash<qlonglong, bool> m_favoriteAlbums;
     QHash<qlonglong, bool> m_favoriteArtists;
+    QHash<QString, bool>   m_favoriteMixes;
+    // What fetchTrackMix() answers, and what it was asked.
+    QString   m_trackMixId;
+    QString   m_trackMixError;
+    int       m_trackMixFetches     = 0;
+    qlonglong m_lastTrackMixFetched = 0;
     // Whether the next favourite call is accepted. True, because almost every
     // test wants the ordinary path; the refusal is the case that has to be asked
     // for.

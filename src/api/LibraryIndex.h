@@ -111,6 +111,14 @@ public:
     void addAlbum (const Tidal::Album  &a);
     void addArtist(const Tidal::Artist &a);
     void addTrack (const Tidal::Track  &t);
+    // A mix the user just saved - in practice a track radio, since that is the
+    // only mix the interface can save. Stamped as of now, like the three above,
+    // so it sorts to the top of the sidebar where a thing just acquired belongs.
+    //
+    // `Mix::addedAt` on the payload is not trusted for that: the row comes from
+    // `pages/mix`, which carries no date at all, so it would be 0 and the mix
+    // would land at the bottom of the list.
+    void addMix   (const Tidal::Mix    &m);
     // A playlist the user just created. Creating is the only way a playlist
     // enters the account from here - there is no favourite action for
     // playlists anywhere in the interface - and TidalBridge::createPlaylist
@@ -138,8 +146,9 @@ public:
     // mergePlaylistMeta(), which both ends call rather than each keeping its own
     // idea of them.
     void refreshPlaylistMeta(const Tidal::Playlist &p);
-    // `kind` is album/artist/track; mixes and playlists cannot be unfavourited
-    // from anywhere in the interface.
+    // `kind` is album/artist/track/mix. Not playlists: nothing in the interface
+    // unfavourites one. Mixes joined the list when MixPage gained its Save pill -
+    // before that a saved track radio could reach the sidebar and never leave it.
     void removeEntry(const QString &kind, const QString &id);
 
     // The library list filtered by kind, with nothing typed. `kinds` empty gives
@@ -205,6 +214,7 @@ private:
         QString subtitle;
         QString imageUrl;
         QString playlistType;        // playlists: USER / EDITORIAL, see toRow
+        QString mixType;             // mixes: DISCOVERY_MIX / TRACK_MIX / ..., see toRow
         qint64  albumId = 0;         // tracks: the saved album holding them
         int     trackCount = 0;      // albums and playlists; QML formats it,
                                      // so the count retranslates live

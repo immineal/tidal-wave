@@ -24,21 +24,28 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
         emit recentSearchesChanged();
         if (uid > 0) {
             loadFavoriteTrackIds();
+            loadFavoriteMixIds();
         } else {
             m_favoriteTrackIds.clear();
             m_favoriteTracks.clear();
             m_favoriteAlbums.clear();
             m_favoriteArtists.clear();
             m_favoritePlaylists.clear();
+            // Invalidated as well as cleared, so a reply still out for the
+            // account being left cannot fill the set behind the sign-out.
+            ++m_favMixesLoadGen;
+            m_favoriteMixIds.clear();
             emit favoriteTracksChanged();
             emit favoriteAlbumsChanged();
             emit favoriteArtistsChanged();
             emit favoritePlaylistsChanged();
+            emit favoriteMixesChanged();
         }
     });
 
     if (m_client->userId() > 0) {
         loadFavoriteTrackIds();
+        loadFavoriteMixIds();
     }
 }
 
@@ -106,6 +113,13 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["explicit_"]   = t.explicit_;
     m["quality"]     = t.audioQuality;
     m["popularity"]  = t.popularity;
+    // This track's radio, as a mix id, or "" when the response did not carry
+    // one. Put in the map rather than on a new TrackRow property on purpose:
+    // all seven pages that build a row already pass the whole map as
+    // `trackData`, so the id reaches every one of them with no call site to
+    // change - and a page this app has not written yet gets it for free. See
+    // Track::trackMixId for why it may legitimately be empty.
+    m["trackMixId"]  = t.trackMixId;
     // pre-computed display
     int s = t.duration % 60, mm = t.duration / 60;
     m["durationStr"] = QString("%1:%2").arg(mm).arg(s, 2, 10, QChar('0'));
@@ -464,6 +478,48 @@ void TidalBridge::removeTrackFavorite(qlonglong trackId, QJSValue cb) {
     });
 }
 
+bool TidalBridge::isMixFavorite(const QString &mixId) const {
+    return !mixId.isEmpty() && m_favoriteMixIds.contains(mixId);
+}
+
+void TidalBridge::addMixFavorite(const QString &mixId, QJSValue cb) {
+    if (mixId.isEmpty()) { call(cb, { false }); return; }
+    m_client->addMixFavorite(mixId, [this, mixId, cb](bool success) mutable {
+        if (success) {
+            // The cache first, because isMixFavorite() is what the pill reads
+            // and the pill flipping to "Saved" *is* the confirmation - the same
+            // gap addAlbumFavorite was fixed for.
+            m_favoriteMixIds.insert(mixId);
+            emit favoriteMixesChanged();
+            // And the sidebar's own copy of the library, which keeps its own
+            // mix list and hears nothing from the signal above. The row has to
+            // be re-read, as addAlbumFavorite re-reads its album: this call is
+            // handed an id and nothing else, and a row invented out of the id
+            // would put an untitled line in the sidebar.
+            //
+            // `pages/mix` is the only endpoint that describes one mix, so the
+            // track list comes back with the header and is dropped. That is a
+            // real cost and it is paid once, on a deliberate save.
+            m_client->fetchMixPage(mixId, [this](Mix mix, QList<Track>, QString err) {
+                if (err.isEmpty() && !mix.id.isEmpty()) emit favoriteMixAdded(mix);
+            });
+        }
+        call(cb, { success });
+    });
+}
+
+void TidalBridge::removeMixFavorite(const QString &mixId, QJSValue cb) {
+    if (mixId.isEmpty()) { call(cb, { false }); return; }
+    m_client->removeMixFavorite(mixId, [this, mixId, cb](bool success) mutable {
+        if (success) {
+            m_favoriteMixIds.remove(mixId);
+            emit favoriteMixesChanged();
+            emit favoriteRemoved(QStringLiteral("mix"), mixId);
+        }
+        call(cb, { success });
+    });
+}
+
 void TidalBridge::copyToClipboard(const QString &text) {
     QGuiApplication::clipboard()->setText(text);
 }
@@ -746,6 +802,17 @@ void TidalBridge::fetchTrackRadio(qlonglong trackId, QJSValue cb) {
     });
 }
 
+void TidalBridge::fetchTrackMix(qlonglong trackId, QJSValue cb) {
+    if (trackId <= 0) { call(cb, { QString(), QStringLiteral("no track") }); return; }
+    m_client->fetchTrack(trackId, [this, cb](Track t, QString err) mutable {
+        // A track Tidal serves but gives no radio for answers "" and no error.
+        // The caller treats both the same - it falls back to the list viewer -
+        // but they are different facts and are not folded together here.
+        call(cb, { qjsEngine(this)->toScriptValue(t.trackMixId),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
 void TidalBridge::fetchLyrics(qlonglong trackId, QJSValue cb) {
     m_client->fetchLyrics(trackId, [this, cb](QString text, bool timed, QString err) mutable {
         QVariantMap result;
@@ -849,6 +916,25 @@ void TidalBridge::loadFavoriteTrackIds() {
     loadNextFavoriteAlbumsPage(0);
     loadNextFavoriteArtistsPage(0);
     loadNextUserPlaylistsPage(0);
+}
+
+void TidalBridge::loadFavoriteMixIds() {
+    const int gen = ++m_favMixesLoadGen;
+    m_favoriteMixIds.clear();
+    // Not merged with loadFavoriteTrackIds(): that one walks four offset-paged
+    // v1 endpoints and this is one cursor-paged v2 chain that TidalClient already
+    // runs to completion for us. One list, one assignment, one signal.
+    m_client->fetchFavoriteMixes([this, gen](QList<Mix> mixes, QString err) {
+        if (gen != m_favMixesLoadGen) return;
+        // A failed load leaves the set empty, which reads as "nothing is saved".
+        // That is the right way round: it offers a Save on a mix that may already
+        // be saved, and saving an already-saved mix is harmless, whereas guessing
+        // the other way would offer an Unsave that could not work.
+        if (!err.isEmpty()) return;
+        for (const Mix &m : mixes)
+            if (!m.id.isEmpty()) m_favoriteMixIds.insert(m.id);
+        emit favoriteMixesChanged();
+    });
 }
 
 void TidalBridge::loadNextFavoriteTracksPage(int offset) {

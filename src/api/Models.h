@@ -21,6 +21,29 @@ inline qint64 isoToMSecs(const QString &iso) {
     return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
 }
 
+// The `mixType` constants the app acts on. Every other value is carried through
+// as whatever string the page sent; the ones seen in the captured responses the
+// tests are built from are DAILY_MIX ("My Mix 1".."My Mix 8") and ARTIST_MIX
+// (one radio station per artist).
+namespace MixTypes {
+inline constexpr auto DailyDiscovery = "DISCOVERY_MIX";   // "My Daily Discovery"
+inline constexpr auto NewArrivals    = "NEW_RELEASE_MIX"; // "My New Arrivals"
+// "My Video Mix 1".."My Video Mix 7". Dropped from the generated list only - see
+// parseMixPage(). A saved one is kept like any other saved mix.
+inline constexpr auto VideoDailyMix  = "VIDEO_DAILY_MIX";
+// A track's radio station, as a mix. This is the one that closes the two-viewer
+// split: `tracks/<id>` carries this mix's id under `mixes.TRACK_MIX`, so a
+// track's radio *is* a mix with an id, and the app can open it on MixPage -
+// where it can be saved and unsaved - instead of on the bare list RadioPage
+// draws from `tracks/<id>/radio`, which answers no identity at all.
+inline constexpr auto TrackMix       = "TRACK_MIX";
+// The artist equivalent, listed for the same reason the key is: it is the other
+// value `mixes` can carry (tidalapi/mix.py names both). Nothing reads an artist
+// radio yet; the constant is here so the two keys are written down in one place
+// rather than one here and one in a string literal.
+inline constexpr auto ArtistMix      = "ARTIST_MIX";
+} // namespace MixTypes
+
 struct Artist {
     qint64 id = 0;
     QString name;
@@ -112,6 +135,21 @@ struct Track {
     QString audioQuality;
     Album   album;
     QList<Artist> artists;
+    // This track's radio, as a mix id - "" when the response did not say.
+    //
+    // Tidal hands every track a `mixes` object keyed by mix type, and the
+    // TRACK_MIX entry is the id of the station "Start radio" means. Having it
+    // is what lets one viewer serve both: MixPage can be opened on the id, and
+    // a mix has a save state, where `tracks/<id>/radio` answers a plain track
+    // list with no identity on it at all.
+    //
+    // Deliberately allowed to be empty. It is NOT established that every
+    // listing endpoint carries `mixes` - album items, playlist items and search
+    // results have not been checked against a live response, and this must not
+    // be found out by calling the user's account - so an absent id is a normal
+    // case, not a fault, and TrackRow falls back to the old RadioPage route
+    // when it sees one.
+    QString trackMixId;
 
     static Track fromJson(const QJsonObject &j) {
         Track t;
@@ -123,6 +161,12 @@ struct Track {
         t.explicit_    = j["explicit"].toBool();
         t.popularity   = j["popularity"].toInt();
         t.audioQuality = j["audioQuality"].toString();
+        // {"TRACK_MIX": "001603cb31f1842e052770e0ad7647", ...}: 30 lowercase hex
+        // characters, nothing like a numeric track id. Read through toObject()
+        // so a response that spells `mixes` as anything else - or omits it,
+        // which most listing endpoints may well do - yields "" rather than
+        // warning or throwing.
+        t.trackMixId   = j["mixes"].toObject()[MixTypes::TrackMix].toString();
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());
         for (const auto &v : j["artists"].toArray())
@@ -302,20 +346,6 @@ inline bool mergePlaylistMeta(Playlist &dst, const Playlist &fresh) {
     return changed;
 }
 
-// The `mixType` constants the app acts on. Every other value is carried through
-// as whatever string the page sent; the ones seen in the captured responses the
-// tests are built from are DAILY_MIX ("My Mix 1".."My Mix 8") and ARTIST_MIX
-// (one radio station per artist).
-namespace MixTypes {
-inline constexpr auto DailyDiscovery = "DISCOVERY_MIX";   // "My Daily Discovery"
-inline constexpr auto NewArrivals    = "NEW_RELEASE_MIX"; // "My New Arrivals"
-// "My Video Mix 1".."My Video Mix 7". Dropped from the generated list only - see
-// parseMixPage(). TRACK_MIX and ARTIST_MIX, the radio stations, are not written
-// down here: nothing branches on them. A saved one is kept like any other saved
-// mix, and nothing else is fetched that carries them.
-inline constexpr auto VideoDailyMix  = "VIDEO_DAILY_MIX";
-} // namespace MixTypes
-
 struct Mix {
     QString id;
     QString title;
@@ -336,6 +366,10 @@ struct Mix {
     bool isDailyDiscovery() const { return mixType == QLatin1String(MixTypes::DailyDiscovery); }
     bool isNewArrivals()    const { return mixType == QLatin1String(MixTypes::NewArrivals); }
     bool isVideoMix()       const { return mixType == QLatin1String(MixTypes::VideoDailyMix); }
+    // A radio station: the mix Tidal builds out of one track. The hero says
+    // "Radio" rather than "Mix" for one of these, because that is what the user
+    // asked for and what every other surface in the app calls it.
+    bool isTrackMix()       const { return mixType == QLatin1String(MixTypes::TrackMix); }
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};

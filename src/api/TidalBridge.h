@@ -122,6 +122,24 @@ public:
     Q_INVOKABLE void addArtistFavorite   (qlonglong artistId, QJSValue cb);
     Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb);
 
+    // ── a mix, saved and unsaved ────────────────────────────────────────
+    //
+    // The fourth kind, and the one the interface had no write for at all. A
+    // track radio the user saved on another device arrived in the sidebar as a
+    // mix, opened on MixPage, and could not be got rid of from anywhere in the
+    // app; and "Start radio" could not put one there, because it opened a
+    // second viewer with no mix identity to save.
+    //
+    // The id is a string, not a number: a mix id is 30 hex characters.
+    //
+    // isMixFavorite() answers out of m_favoriteMixIds, which holds the *saved*
+    // list and not the merged one the Collection shows - a generated "My Mix 4"
+    // is not saved and has no Unsave to offer. The set is loaded once per
+    // sign-in, like m_favoriteTrackIds.
+    Q_INVOKABLE bool isMixFavorite    (const QString &mixId) const;
+    Q_INVOKABLE void addMixFavorite   (const QString &mixId, QJSValue cb);
+    Q_INVOKABLE void removeMixFavorite(const QString &mixId, QJSValue cb);
+
     // Playlist management
     Q_INVOKABLE void createPlaylist         (const QString &title, QJSValue cb);
     // Rename a playlist and rewrite its description. function(ok) - there is
@@ -148,6 +166,19 @@ public:
 
     // Track features
     Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb);
+    // Which mix this track's radio is: function(mixId, error), mixId "" when
+    // Tidal did not name one.
+    //
+    // `tracks/<id>` is the one endpoint known to carry the `mixes` object -
+    // known from the reference client's recorded response, not from a call made
+    // here. Whether an album's, a playlist's or a search's items carry it was
+    // deliberately not found out, because finding out means reading the owner's
+    // account; so a row that already has the id uses it and never calls this,
+    // and a row that does not asks here before giving up on the mix viewer.
+    //
+    // That ordering is the whole point: without it the fix would quietly do
+    // nothing for exactly the places a user presses "Start radio" from.
+    Q_INVOKABLE void fetchTrackMix  (qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
     //           releaseDate, upc } and an error string.
@@ -167,6 +198,11 @@ signals:
     void favoriteAlbumsChanged();
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
+    // The saved-mix set moved: one was saved, one was unsaved, or the set was
+    // (re)loaded for an account. MixPage reads its Save pill back off
+    // isMixFavorite() on this, exactly as AlbumPage reads its own off
+    // favoriteAlbumsChanged.
+    void favoriteMixesChanged();
     void recentSearchesChanged();
 
     // One favourite the user deliberately added or removed, carrying the row
@@ -225,8 +261,13 @@ signals:
     // pressed Play, overwrite the header it had just fetched with whatever the
     // cache happened to hold. PlaylistPage reads its own length off this.
     void playlistStatsRefreshed(const QString &uuid);
-    // `kind` is "album", "artist" or "track", spelled the way LibraryIndex
-    // spells it.
+    // A mix the user just saved, carrying the row, for the sidebar's own copy of
+    // the library - the same hand-across favoriteAlbumAdded makes and for the
+    // same reason: favoriteMixesChanged() says only "the set moved" and carries
+    // no row, so LibraryIndex could not add one off it.
+    void favoriteMixAdded(const Mix &mix);
+    // `kind` is "album", "artist", "track" or "mix", spelled the way
+    // LibraryIndex spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
 
 private:
@@ -238,6 +279,11 @@ private:
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);
     void loadFavoriteTrackIds();
+    // The saved-mix ids, in one request chain, at sign-in. Cheap enough to do
+    // eagerly and necessary to do eagerly: MixPage's pill has to know the
+    // state the moment the page opens, and the alternative - a fetch per page
+    // open - would put a round trip in front of every mix the user looks at.
+    void loadFavoriteMixIds();
     void loadNextFavoriteTracksPage(int offset);
     void loadNextFavoriteAlbumsPage(int offset);
     void loadNextFavoriteArtistsPage(int offset);
@@ -273,4 +319,12 @@ private:
     QList<Album>    m_favoriteAlbums;
     QList<Artist>   m_favoriteArtists;
     QList<Playlist> m_favoritePlaylists;
+    // Ids only: nothing in the app needs a saved mix's title out of here (the
+    // Collection and the sidebar each fetch their own list), and the question
+    // asked of it is only ever "is this one saved".
+    QSet<QString>   m_favoriteMixIds;
+    // Bumped each time loadFavoriteMixIds() starts, for the reason
+    // m_favTracksLoadGen exists: a reply from a previous account's load must not
+    // fill the set after a switch.
+    int             m_favMixesLoadGen = 0;
 };

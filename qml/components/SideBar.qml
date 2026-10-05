@@ -1223,7 +1223,11 @@ Item {
                 mixId:    id,
                 title:    data.title || "",
                 subtitle: data.subtitle || "",
-                coverUrl: data.imageUrl || ""
+                coverUrl: data.imageUrl || "",
+                // Which kind of mix, so a saved track radio opens under the
+                // heading "Radio" from the first frame instead of flipping from
+                // "Mix" when the page's own request lands.
+                mixType:  data.mixType || ""
             })
             break
         case "track":

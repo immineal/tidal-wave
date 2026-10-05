@@ -935,6 +935,11 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteAlbumAdded,  m_library, &LibraryIndex::addAlbum);
     connect(m_bridge, &TidalBridge::favoriteArtistAdded, m_library, &LibraryIndex::addArtist);
     connect(m_bridge, &TidalBridge::favoriteTrackAdded,  m_library, &LibraryIndex::addTrack);
+    // The fourth kind, added with MixPage's Save pill. A track radio saved from
+    // that pill has to appear in the sidebar at once, and an unsaved one has to
+    // leave it - and until the pill existed a mix could only ever arrive, at
+    // sign-in, and never go.
+    connect(m_bridge, &TidalBridge::favoriteMixAdded,    m_library, &LibraryIndex::addMix);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
     // Creating a playlist is the same gap: there is no favourite action for
     // playlists anywhere, so creating one is the only way a playlist row

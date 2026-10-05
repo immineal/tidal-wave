@@ -364,6 +364,16 @@
         <translation>Künstler konnte nicht entfolgt werden</translation>
     </message>
     <message>
+        <source>Could not remove the mix from your library</source>
+        <comment>shown when removing a mix from the library failed</comment>
+        <translation>Mix konnte nicht aus der Mediathek entfernt werden</translation>
+    </message>
+    <message>
+        <source>Could not save the mix</source>
+        <comment>shown when saving a mix to the library failed</comment>
+        <translation>Mix konnte nicht gespeichert werden</translation>
+    </message>
+    <message>
         <source>Could not follow the artist</source>
         <comment>shown when following an artist failed</comment>
         <translation>Dem Künstler konnte nicht gefolgt werden</translation>
@@ -627,6 +637,21 @@
     <message>
         <source>Shuffle</source>
         <translation>Zufallswiedergabe</translation>
+    </message>
+    <message>
+        <source>Radio</source>
+        <comment>noun, a track&apos;s radio station</comment>
+        <translation>Radio</translation>
+    </message>
+    <message>
+        <source>Saved</source>
+        <comment>state, mix is in the library</comment>
+        <translation>Gespeichert</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <comment>verb, add mix to the library</comment>
+        <translation>Speichern</translation>
     </message>
 </context>
 <context>

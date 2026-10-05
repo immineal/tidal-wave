@@ -139,6 +139,62 @@ public:
         cb(removeOk);
     }
 
+    // ── the favourite-mix seam ───────────────────────────────────────────
+    //
+    // Three more virtuals, answered from here. The real ones are a v2 PUT and a
+    // `pages/mix` GET; without the seam nothing could reach isMixFavorite()
+    // after an addMixFavorite() that never comes back - which is exactly the
+    // hole this file's header paragraph records for albums and artists.
+
+    bool addMixOk    = true;
+    bool removeMixOk = true;
+    QStringList mixCalls;          // "add:<id>" / "remove:<id>", in order
+    // What `pages/mix` answers for the row the bridge re-reads on an accepted
+    // save, per id. An id with no entry answers an error, which is the "the
+    // re-read failed" case - the sidebar gets nothing and the cache still moves.
+    QHash<QString, Mix> mixHeaders;
+    int  mixHeaderReads = 0;
+    // The whole saved list, for the sign-in load. Never reached in this file:
+    // calling setUserId() on a client with a null api would send the four v1
+    // favourites pagers at a null pointer. Overridden anyway, so that a future
+    // case which does seed this way cannot reach the network by accident.
+    QList<Mix> savedMixes;
+
+    void fetchFavoriteMixes(MixesCallback cb) override { cb(savedMixes, QString()); }
+
+    void addMixFavorite(const QString &mixId, std::function<void(bool)> cb) override {
+        mixCalls << QStringLiteral("add:") + mixId;
+        cb(addMixOk);
+    }
+
+    void removeMixFavorite(const QString &mixId, std::function<void(bool)> cb) override {
+        mixCalls << QStringLiteral("remove:") + mixId;
+        cb(removeMixOk);
+    }
+
+    // What the page's TRACK_LIST holds. Only the map-shape case below uses it;
+    // the save path drops the tracks.
+    QList<Track> mixPageTracks;
+
+    // What `tracks/<id>` answers, per id, for the "which mix is this track's
+    // radio" lookup. An id with no entry answers an error.
+    QHash<qint64, Track> tracks;
+    QString trackError;
+    int     trackReads = 0;
+
+    void fetchTrack(qint64 trackId, std::function<void(Track, QString)> cb) override {
+        ++trackReads;
+        if (!trackError.isEmpty())  { cb({}, trackError); return; }
+        if (!tracks.contains(trackId)) { cb({}, QStringLiteral("404")); return; }
+        cb(tracks.value(trackId), QString());
+    }
+
+    void fetchMixPage(const QString &mixId, MixPageCallback cb) override {
+        ++mixHeaderReads;
+        if (!mixHeaders.contains(mixId)) { cb({}, {}, QStringLiteral("404")); return; }
+        cb(mixHeaders.value(mixId), mixPageTracks, QString());
+    }
+
 private:
     void answerHeader(const QString &uuid, std::function<void(Playlist, QString)> cb) {
         if (!headerError.isEmpty())    { cb({}, headerError); return; }
@@ -525,6 +581,281 @@ private slots:
         QCOMPARE(dst.numTracks, 3);
     }
 
+    // ── saving and unsaving a mix ───────────────────────────────────────
+    //
+    // The owner's longest-standing complaint, at the layer that answers "is this
+    // saved": a track radio arrived in the sidebar from another device, opened on
+    // MixPage, and had no way to be unsaved - and no way to be saved either,
+    // because "Start radio" opened a different page with no mix id on it.
+    //
+    // The pill reads its state back out of isMixFavorite(), so if the cache does
+    // not move on an accepted save the pill goes on saying "Save" over a mix that
+    // is now in the library. That is the gap addAlbumFavorite was fixed for, and
+    // these cases are here so the mix never has it.
+    //
+    // Every id is invented, at the shape a real one has: 30 lowercase hex
+    // characters. None of the owner's is in this file.
+
+    void aMixIsNotSavedUntilItIsSaved() {
+        Harness h;
+        QVERIFY(!h.bridge.isMixFavorite(kMixId));
+        // And an empty id is never saved, whatever is in the set.
+        QVERIFY(!h.bridge.isMixFavorite(QString()));
+    }
+
+    void anAcceptedSaveMovesTheStateThePillReads() {
+        Harness h;
+        QSignalSpy moved(&h.bridge, &TidalBridge::favoriteMixesChanged);
+
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+
+        QCOMPARE(h.client.mixCalls, QStringList{QStringLiteral("add:") + kMixId});
+        QVERIFY2(h.bridge.isMixFavorite(kMixId),
+                 "the server accepted the save and the pill still reads Save");
+        QCOMPARE(moved.count(), 1);
+    }
+
+    void aRefusedSaveMovesNothingAndSaysSo() {
+        Harness h;
+        h.client.addMixOk = false;
+        QSignalSpy moved(&h.bridge, &TidalBridge::favoriteMixesChanged);
+
+        const auto told = h.answerSlot();
+        h.bridge.addMixFavorite(kMixId, told.fn);
+
+        QVERIFY2(told.seen(), "the refused save never answered its callback");
+        QVERIFY2(!told.ok(), "a refused save was reported to QML as a success");
+        QVERIFY2(!h.bridge.isMixFavorite(kMixId),
+                 "a refused save marked the mix as saved anyway");
+        QCOMPARE(moved.count(), 0);
+    }
+
+    void anAcceptedRemovalTakesTheMixBackOut() {
+        Harness h;
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+        QVERIFY(h.bridge.isMixFavorite(kMixId));
+
+        QSignalSpy gone(&h.bridge, &TidalBridge::favoriteRemoved);
+        h.bridge.removeMixFavorite(kMixId, QJSValue());
+
+        QVERIFY2(!h.bridge.isMixFavorite(kMixId),
+                 "the server accepted the removal and the pill still reads Saved");
+        QCOMPARE(h.client.mixCalls.last(), QStringLiteral("remove:") + kMixId);
+        // The sidebar keeps its own copy of the library and hears nothing from
+        // favoriteMixesChanged, so this is the signal that takes the row out of
+        // it. Before the pill existed, a mix could only ever arrive there.
+        QCOMPARE(gone.count(), 1);
+        QCOMPARE(gone.first().at(0).toString(), QStringLiteral("mix"));
+        QCOMPARE(gone.first().at(1).toString(), kMixId);
+    }
+
+    void aRefusedRemovalLeavesTheMixSaved() {
+        Harness h;
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+        h.client.removeMixOk = false;
+        QSignalSpy gone(&h.bridge, &TidalBridge::favoriteRemoved);
+
+        const auto told = h.answerSlot();
+        h.bridge.removeMixFavorite(kMixId, told.fn);
+
+        QVERIFY2(told.seen(), "the refused removal never answered its callback");
+        QVERIFY2(!told.ok(), "a refused removal was reported to QML as a success");
+        QVERIFY2(h.bridge.isMixFavorite(kMixId),
+                 "a refused removal unsaved the mix anyway");
+        QCOMPARE(gone.count(), 0);
+    }
+
+    // The sidebar's half. It holds a separate list from the bridge's set, so the
+    // row has to be handed across - and the bridge is given an id and nothing
+    // else, so it re-reads the mix to have a titled row to send.
+    void anAcceptedSaveHandsTheRowToTheSidebar() {
+        Harness h;
+        Mix radio;
+        radio.id       = kMixId;
+        radio.title    = QStringLiteral("Weit hinter dem Horizont");
+        radio.subTitle = QStringLiteral("Radio");
+        radio.mixType  = QStringLiteral("TRACK_MIX");
+        h.client.mixHeaders[kMixId] = radio;
+
+        QList<Mix> handed;
+        QObject::connect(&h.bridge, &TidalBridge::favoriteMixAdded,
+                         &h.bridge, [&handed](const Mix &m) { handed << m; });
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+
+        QCOMPARE(h.client.mixHeaderReads, 1);
+        QCOMPARE(handed.size(), 1);
+        QCOMPARE(handed.first().id, kMixId);
+        QCOMPARE(handed.first().title, QStringLiteral("Weit hinter dem Horizont"));
+        QCOMPARE(handed.first().mixType, QStringLiteral("TRACK_MIX"));
+    }
+
+    // A re-read that fails must not cost the save. The cache has already moved -
+    // the server said yes - and the sidebar catches up at the next sign-in.
+    void aFailedRereadStillLeavesTheMixSaved() {
+        Harness h;                       // no entry in mixHeaders: 404
+        int handed = 0;
+        QObject::connect(&h.bridge, &TidalBridge::favoriteMixAdded,
+                         &h.bridge, [&handed](const Mix &) { ++handed; });
+
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+
+        QCOMPARE(h.client.mixHeaderReads, 1);
+        QCOMPARE(handed, 0);
+        QVERIFY2(h.bridge.isMixFavorite(kMixId),
+                 "a failed re-read undid a save the server had accepted");
+    }
+
+    // A refused save must not cost a round trip either.
+    void aRefusedSaveDoesNotRereadTheMix() {
+        Harness h;
+        h.client.addMixOk = false;
+        h.bridge.addMixFavorite(kMixId, QJSValue());
+        QCOMPARE(h.client.mixHeaderReads, 0);
+    }
+
+    // An empty id never reaches the network, and still answers its callback -
+    // dropping it would leave the pill waiting forever.
+    void anEmptyMixIdIsRefusedWithoutACall() {
+        Harness h;
+        const auto add = h.answerSlot();
+        h.bridge.addMixFavorite(QString(), add.fn);
+        QVERIFY2(add.seen(), "an empty id dropped its callback, so the pill would wait forever");
+        QVERIFY(!add.ok());
+
+        const auto remove = h.answerSlot();
+        h.bridge.removeMixFavorite(QString(), remove.fn);
+        QVERIFY(remove.seen());
+        QVERIFY(!remove.ok());
+
+        QVERIFY2(h.client.mixCalls.isEmpty(), "an empty mix id reached the client");
+    }
+
+    // ── the map QML reads a track out of ────────────────────────────────
+    //
+    // The link nothing else can see. TrackRow decides between the two viewers on
+    // `trackData.trackMixId`, and `trackData` is the map TidalBridge::trackToMap
+    // builds - but every QML test drives the stub bridge, which assembles its own
+    // maps from fixtures. So a trackToMap that stopped carrying the field would
+    // leave the whole of "Start radio opens the mix" green and dead: proved by
+    // blanking it, which fails nothing in tests/qml.
+    //
+    // Read back through fetchMixPage, which is the one bridge call this file's
+    // FakeClient can answer with tracks, and out of script, because the map only
+    // exists as a QJSValue.
+    void theTrackMapCarriesTheRadiosMixId() {
+        Harness h;
+        Mix header;
+        header.id = kMixId;
+        h.client.mixHeaders[kMixId] = header;
+
+        Track t;
+        t.id         = 900000001;
+        t.title      = QStringLiteral("Weit hinter dem Horizont");
+        t.trackMixId = kMixId;
+        Track plain;
+        plain.id    = 900000002;
+        plain.title = QStringLiteral("Ohne Radio");
+        h.client.mixPageTracks = {t, plain};
+
+        QJSValue seen = h.engine.newObject();
+        seen.setProperty(QStringLiteral("first"),  QStringLiteral("unset"));
+        seen.setProperty(QStringLiteral("second"), QStringLiteral("unset"));
+        const QJSValue cb = h.engine.evaluate(
+            QStringLiteral("(function (s) { return function (mix, tracks, err) {"
+                           " s.first  = String(tracks[0].trackMixId);"
+                           " s.second = String(tracks[1].trackMixId); }; })"))
+                                .call({seen});
+
+        h.bridge.fetchMixPage(kMixId, cb);
+
+        QCOMPARE(seen.property(QStringLiteral("first")).toString(), kMixId);
+        // And a track whose payload said nothing hands QML an empty string, not
+        // "undefined" or a 0 - that is the value TrackRow's fallback turns on.
+        QCOMPARE(seen.property(QStringLiteral("second")).toString(), QString());
+    }
+
+    // ── which mix a track's radio is ────────────────────────────────────
+    //
+    // The lookup TrackRow falls back on when the row's own payload did not name
+    // the mix - which is every row whose endpoint turns out not to carry
+    // `mixes`, and that was deliberately not established. The two answers go
+    // back in a fixed order, (mixId, error); swapped, every lookup would read
+    // as a refusal with the mix id as its reason and the fix would silently
+    // stop working.
+    void theLookupAnswersTheMixIdThenTheError() {
+        Harness h;
+        Track t;
+        t.id         = 900000001;
+        t.trackMixId = kMixId;
+        h.client.tracks[900000001] = t;
+
+        QJSValue seen = h.engine.newObject();
+        seen.setProperty(QStringLiteral("mix"), QStringLiteral("unset"));
+        seen.setProperty(QStringLiteral("err"), QStringLiteral("unset"));
+        const QJSValue cb = h.engine.evaluate(
+            QStringLiteral("(function (s) { return function (mixId, err) {"
+                           " s.mix = String(mixId); s.err = String(err); }; })"))
+                                .call({seen});
+
+        h.bridge.fetchTrackMix(900000001, cb);
+
+        QCOMPARE(h.client.trackReads, 1);
+        QCOMPARE(seen.property(QStringLiteral("mix")).toString(), kMixId);
+        QCOMPARE(seen.property(QStringLiteral("err")).toString(), QString());
+    }
+
+    // A track Tidal serves and builds no station for: "" and no error. Both of
+    // the caller's fallbacks hang off telling this apart from a failure.
+    void aTrackWithNoRadioAnswersAnEmptyIdAndNoError() {
+        Harness h;
+        Track t;
+        t.id = 900000002;                 // trackMixId left empty
+        h.client.tracks[900000002] = t;
+
+        QJSValue seen = h.engine.newObject();
+        const QJSValue cb = h.engine.evaluate(
+            QStringLiteral("(function (s) { return function (mixId, err) {"
+                           " s.mix = String(mixId); s.err = String(err); }; })"))
+                                .call({seen});
+        h.bridge.fetchTrackMix(900000002, cb);
+
+        QCOMPARE(seen.property(QStringLiteral("mix")).toString(), QString());
+        QCOMPARE(seen.property(QStringLiteral("err")).toString(), QString());
+    }
+
+    void aFailedLookupAnswersItsReason() {
+        Harness h;
+        h.client.trackError = QStringLiteral("503");
+
+        QJSValue seen = h.engine.newObject();
+        const QJSValue cb = h.engine.evaluate(
+            QStringLiteral("(function (s) { return function (mixId, err) {"
+                           " s.mix = String(mixId); s.err = String(err); }; })"))
+                                .call({seen});
+        h.bridge.fetchTrackMix(900000003, cb);
+
+        QCOMPARE(seen.property(QStringLiteral("mix")).toString(), QString());
+        QCOMPARE(seen.property(QStringLiteral("err")).toString(), QStringLiteral("503"));
+    }
+
+    // A row with no usable track id must not reach the network, and must still
+    // answer - a dropped callback would leave the menu press doing nothing at
+    // all, which is the failure mode this whole fix is about.
+    void anImpossibleTrackIdIsAnsweredWithoutACall() {
+        Harness h;
+        QJSValue seen = h.engine.newObject();
+        seen.setProperty(QStringLiteral("seen"), false);
+        const QJSValue cb = h.engine.evaluate(
+            QStringLiteral("(function (s) { return function (mixId, err) {"
+                           " s.seen = true; s.mix = String(mixId); }; })"))
+                                .call({seen});
+        h.bridge.fetchTrackMix(0, cb);
+
+        QVERIFY(seen.property(QStringLiteral("seen")).toBool());
+        QCOMPARE(seen.property(QStringLiteral("mix")).toString(), QString());
+        QCOMPARE(h.client.trackReads, 0);
+    }
+
 private:
     static constexpr qint64 kDay      = 24LL * 60 * 60 * 1000;
     static constexpr qint64 kJan2026  = 1767225600000LL;   // 2026-01-01T00:00:00Z
@@ -556,6 +887,33 @@ private:
                               kJan2026) });
         }
 
+        // What QML was told, recorded in script.
+        //
+        // The callbacks these methods take are QJSValues, so the only place the
+        // answer can be observed is inside the engine. `seen` is separate from
+        // `ok` on purpose: "the callback was never called" and "the callback was
+        // called with false" are different bugs, and a single bool could not tell
+        // a dropped reply from a refusal.
+        struct Answer {
+            QJSValue fn;
+            QJSValue holder;
+            bool seen() const { return holder.property(QStringLiteral("seen")).toBool(); }
+            bool ok()   const { return holder.property(QStringLiteral("ok")).toBool(); }
+        };
+
+        Answer answerSlot() {
+            QJSValue holder = engine.newObject();
+            holder.setProperty(QStringLiteral("seen"), false);
+            // Starts true, so a callback that is never called cannot pass for a
+            // refusal and a refusal cannot pass for "not called".
+            holder.setProperty(QStringLiteral("ok"), true);
+            const QJSValue fn = engine.evaluate(
+                QStringLiteral("(function (h) { return function (ok) {"
+                               " h.seen = true; h.ok = (ok === true); }; })"))
+                                   .call({holder});
+            return { fn, holder };
+        }
+
         void fill(const QList<Playlist> &playlists) {
             for (const Playlist &p : playlists) {
                 client.created = p;
@@ -563,6 +921,7 @@ private:
             }
             client.created = {};
         }
+
     };
 
     static QStringList uuidsOf(const QVariantList &rows) {
@@ -573,11 +932,15 @@ private:
     }
 
     static const QString kUuid;
+    // Invented, at a real mix id's shape: 30 lowercase hex characters.
+    static const QString kMixId;
 
     QTemporaryDir m_dir;
 };
 
-const QString TestBridgeFavorites::kUuid = QStringLiteral("pl-tape-1");
+const QString TestBridgeFavorites::kUuid  = QStringLiteral("pl-tape-1");
+const QString TestBridgeFavorites::kMixId =
+    QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
 
 QTEST_GUILESS_MAIN(TestBridgeFavorites)
 #include "tst_bridge_favorites.moc"

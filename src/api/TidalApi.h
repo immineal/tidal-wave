@@ -33,6 +33,17 @@ public:
     // favorites/mixes is one - and they are cursor-paged rather than
     // offset-paged, so they are not drop-in replacements for their v1 siblings.
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // A v2 PUT whose arguments ride in the query string and whose body is empty.
+    //
+    // That is not a style choice: v2/favorites/mixes/add and .../remove are
+    // specified that way (tidalapi/user.py::add_mixes and remove_mixes send
+    // method="PUT" with `params` and no `data`), and they are the only callers.
+    // A form body would be a different request.
+    //
+    // The reply is parsed the way postApiForm() parses one, so an `error` key in
+    // a 200 is still an error - but a 200 is *not* taken as success by the
+    // caller: see TidalClient::mixFavoriteAccepted().
+    void putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     // The same v1 GET, for a body that is an array at the top level.
     void getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb);
     // A GET against the track-manifest host, which is neither api.tidal.com nor

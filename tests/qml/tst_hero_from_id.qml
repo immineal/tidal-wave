@@ -65,6 +65,12 @@ TestCase {
         return t.text
     }
 
+    function heroKindOf(page) {
+        var t = findChild(page, "heroKindLabel")
+        verify(t, "the page has no heading over its title")
+        return t.text
+    }
+
     function heroCoverOf(page) {
         var c = findChild(page, "heroCover")
         verify(c, "the page has no hero cover")
@@ -133,6 +139,79 @@ TestCase {
         compare(page.tracks.length, 0, "the fixture was supposed to carry no tracks")
         compare(heroTitleOf(page), "Mein Video-Mix 1",
                 "an empty track list threw the hero away with it")
+    }
+
+    // ── what the page calls itself ──────────────────────────────────────
+    //
+    // The owner, on the viewer a saved track radio opened in: "it looks like an
+    // album except it says mix at the top and has the track radio thumbnail on
+    // the top left". This page is now the *only* viewer for a track radio, so
+    // the heading has to say which of the two it is showing.
+    //
+    // On the mixType and never on the title: the title arrives in the account's
+    // language, so matching one breaks in German (see MixTypes in
+    // src/api/Models.h, and the ordering cases in tests/tst_mixes.cpp).
+
+    function test_a_track_radio_is_headed_radio_and_not_mix() {
+        var header = mixHeader("mx-radio", "Weit hinter dem Horizont")
+        header.mixType = "TRACK_MIX"
+        bridge.setMixPageForTest(header, makeTracks(4))
+
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder)
+        page.mixId = "mx-radio"
+        settle(page)
+
+        compare(heroKindOf(page), qsTranslate("MixPage", "Radio",
+                                              "noun, a track's radio station"),
+                "a track radio still headed itself a mix")
+    }
+
+    function test_an_ordinary_mix_is_still_headed_mix() {
+        bridge.setMixPageForTest(mixHeader("mx-5", "Meine Entdeckungen"), makeTracks(4))
+
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder)
+        page.mixId = "mx-5"
+        settle(page)
+
+        compare(heroKindOf(page), qsTranslate("MixPage", "Mix", "noun, a Tidal mix"),
+                "a DISCOVERY_MIX was relabelled a radio")
+    }
+
+    // The caller may know before the request comes back - the sidebar row and
+    // the row menu's "Start radio" both carry it - and the heading must not flip
+    // from "Mix" to "Radio" when a header that says nothing about the type
+    // lands.
+    function test_a_header_without_a_type_keeps_the_callers() {
+        bridge.setMixPageForTest({ id: "mx-6", title: "Weit hinter dem Horizont" },
+                                 makeTracks(2))
+
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder)
+        page.mixType = "TRACK_MIX"
+        page.mixId   = "mx-6"
+        settle(page)
+
+        compare(heroKindOf(page), qsTranslate("MixPage", "Radio",
+                                              "noun, a track's radio station"),
+                "a typeless header blanked the caller's mixType")
+    }
+
+    // And the other way: the response is the authority when it does say.
+    function test_the_response_corrects_the_caller() {
+        var header = mixHeader("mx-7", "Meine Entdeckungen")
+        header.mixType = "DISCOVERY_MIX"
+        bridge.setMixPageForTest(header, makeTracks(2))
+
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder)
+        page.mixType = "TRACK_MIX"
+        page.mixId   = "mx-7"
+        settle(page)
+
+        compare(heroKindOf(page), qsTranslate("MixPage", "Mix", "noun, a Tidal mix"),
+                "the caller's guess outranked what the server said")
     }
 
     // The other half: a response with tracks and no header leaves whatever the

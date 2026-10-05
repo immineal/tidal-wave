@@ -53,6 +53,9 @@ TestCase {
     readonly property int trackId:  9101
     readonly property int albumId:  4242
     readonly property int artistId: 777
+    // A mix id is 30 lowercase hex characters, not a number. Invented, like
+    // everything else here; none of the owner's is in this file.
+    readonly property string mixId: "0a1b2c3d4e5f60718293a4b5c6d7e8"
 
     function makeTrack() {
         return {
@@ -94,6 +97,10 @@ TestCase {
                                                 "shown when following an artist failed")
     readonly property string unfollowFailed: qsTranslate("ContextMenu", "Could not unfollow the artist",
                                                 "shown when unfollowing an artist failed")
+    readonly property string mixSaveFailed:   qsTranslate("ContextMenu", "Could not save the mix",
+                                                "shown when saving a mix to the library failed")
+    readonly property string mixUnsaveFailed: qsTranslate("ContextMenu", "Could not remove the mix from your library",
+                                                "shown when removing a mix from the library failed")
 
     // ── hosts ────────────────────────────────────────────────────────────
 
@@ -103,6 +110,7 @@ TestCase {
     Component { id: albumC;      AlbumPage      { anchors.fill: parent } }
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
+    Component { id: mixC;        MixPage        { anchors.fill: parent } }
 
     // NowPlayingPage delegates its sleep timer and its fullscreen toggle to the
     // application window and reaches them through Window.window, so it cannot
@@ -164,6 +172,22 @@ TestCase {
         verify(row, "the track row was not created")
         settle(holder)
         return row
+    }
+
+    // A mix page showing one mix, with its tracks already in hand. The hero
+    // lives in the ListView's header, so the holder has to be big enough - and
+    // the TestCase `visible: true` at the top of this file is what gets the
+    // header instantiated at all.
+    function makeMixPage() {
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder, {})
+        verify(page, "the mix page was not created")
+        page.title    = "Weit hinter dem Horizont"
+        page.subtitle = "Radio"
+        page.mixId    = testCase.mixId
+        page.tracks   = [makeTrack()]
+        settle(holder)
+        return page
     }
 
     function makeAlbumPage() {
@@ -268,6 +292,7 @@ TestCase {
         bridge.setFavoriteArtistsForTest([])
         bridge.setFavoriteTracksListForTest([])
         bridge.setUserPlaylistsForTest([])
+        bridge.setMixFavoriteForTest(testCase.mixId, false)
         // One shared tool tip serves the whole window, so a leftover from the
         // last test would answer the next one's "did it say anything?".
         testCase.ToolTip.toolTip.close()
@@ -543,6 +568,140 @@ TestCase {
         compare(bridge.lastFavoriteCallForTest(), "removeAlbum:" + testCase.albumId,
                 "a saved album's pill must send a remove, not an add")
         compare(page.isSaved, true, "a refused removal un-saved the album anyway")
+    }
+
+    // ── MixPage: the Save pill ───────────────────────────────────────────
+    //
+    // The owner's longest-standing complaint, reported twice. A track radio
+    // saved on another device arrived in the sidebar as a mix and opened on this
+    // page - hero, artwork, a right-click pin - with no way to unsave it, and no
+    // way to save a new one either, because "Start radio" opened a second viewer
+    // with no mix id to save.
+    //
+    // The pill is the missing half. It reads its state back out of the bridge
+    // and never writes it, so a refusal has nothing to undo - only something to
+    // say, which is the rule this whole file exists for.
+
+    function test_the_mix_page_draws_a_save_pill_at_all() {
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+        verify(pill, "the mix hero drew no Save pill, so a mix still cannot be saved")
+        verify(pill.width > 0 && pill.height > 0, "the Save pill has no size")
+        compare(pill.enabled, true, "the pill is dead on a page that knows its mix")
+    }
+
+    function test_the_mix_page_reports_a_refused_save() {
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+        compare(page.isSaved, false, "the fixture starts with the mix already saved")
+        compare(pill.text, qsTranslate("MixPage", "Save", "verb, add mix to the library"))
+
+        bridge.setFavoriteOkForTest(false)
+        clickCenter(pill)
+
+        tryVerify(function () { return page.favoriteAction.lastMessage.length > 0 }, 2000,
+                  "a refused save said nothing at all")
+        compare(page.favoriteAction.lastMessage, testCase.mixSaveFailed,
+                "the mix page said the wrong thing about a refused save")
+        compare(bridge.lastFavoriteCallForTest(), "addMix:" + testCase.mixId,
+                "the mix page sent the wrong call")
+        compare(page.isSaved, false, "a refused save marked the mix as saved")
+        compare(pill.text, qsTranslate("MixPage", "Save", "verb, add mix to the library"),
+                "a refused save turned the pill into Saved")
+    }
+
+    function test_the_mix_page_says_nothing_when_the_save_lands() {
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+
+        clickCenter(pill)
+
+        tryVerify(function () { return page.isSaved }, 2000,
+                  "an accepted save never reached the pill")
+        compare(pill.text, qsTranslate("MixPage", "Saved", "state, mix is in the library"),
+                "the pill reading Saved is the confirmation")
+        compare(page.favoriteAction.lastMessage, "",
+                "the mix page reported a successful save as a failure")
+    }
+
+    // The half the owner asked for by name: a mix that is already saved has to
+    // offer the way back out, and the press has to send a *remove*.
+    function test_an_already_saved_mix_offers_the_way_out() {
+        bridge.setMixFavoriteForTest(testCase.mixId, true)
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+        compare(page.isSaved, true,
+                "a mix already in the account's favourites read as unsaved")
+        compare(pill.text, qsTranslate("MixPage", "Saved", "state, mix is in the library"))
+
+        clickCenter(pill)
+
+        tryVerify(function () { return !page.isSaved }, 2000,
+                  "the mix could not be unsaved, which is the whole complaint")
+        compare(bridge.lastFavoriteCallForTest(), "removeMix:" + testCase.mixId,
+                "a saved mix's pill must send a remove, not an add")
+        compare(page.favoriteAction.lastMessage, "",
+                "an accepted removal was reported as a failure")
+    }
+
+    function test_the_mix_page_reports_a_refused_removal() {
+        bridge.setMixFavoriteForTest(testCase.mixId, true)
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+        compare(page.isSaved, true, "the fixture did not start from a saved mix, "
+                + "so there is no removal to refuse")
+
+        bridge.setFavoriteOkForTest(false)
+        clickCenter(pill)
+
+        tryVerify(function () { return page.favoriteAction.lastMessage.length > 0 }, 2000,
+                  "a refused removal said nothing at all")
+        compare(page.favoriteAction.lastMessage, testCase.mixUnsaveFailed,
+                "a refused removal must not be reported as a refused save")
+        compare(bridge.lastFavoriteCallForTest(), "removeMix:" + testCase.mixId,
+                "a saved mix's pill must send a remove, not an add")
+        compare(page.isSaved, true, "a refused removal unsaved the mix anyway")
+    }
+
+    // A page that does not know which mix it is has nothing to save, and must
+    // not send a call for the empty id.
+    function test_a_mix_page_with_no_id_cannot_be_saved() {
+        var holder = makeHolder()
+        var page = createTemporaryObject(mixC, holder, {})
+        settle(holder)
+        var pill = named(page, "mixSavePill")
+        verify(pill, "the hero drew no Save pill")
+        compare(pill.enabled, false, "the pill is live on a page with no mix")
+        compare(page.isSaved, false)
+    }
+
+    // Saving and pinning are two different things and the hero has to keep
+    // saying so. The pill is Tidal's own favourites list, shared with every
+    // other client; the right-click menu is PinStore, which is local to this
+    // machine and never leaves it. They were conflated once already - the hero's
+    // pin was read as "the way to unsave" and there was no way to unsave at all -
+    // so this pins the distinction rather than leaving it to a comment.
+    function test_saving_a_mix_is_not_pinning_it() {
+        var page = makeMixPage()
+        var pill = named(page, "mixSavePill")
+
+        clickCenter(pill)
+        tryVerify(function () { return page.isSaved }, 2000, "the save never landed")
+
+        page.showHeroPinMenu(10, 10)
+        tryVerify(function () { return page.pinMenu.visible }, 2000, "no hero pin menu")
+        var pin = page.pinMenu.pinItem
+        verify(pin, "the hero menu has no pin entry")
+        compare(pin.text, qsTranslate("ContextMenu", "Pin", "verb, pin to the sidebar"),
+                "saving the mix also pinned it, which is a different list entirely")
+        verify(pin.text !== pill.text, "the pin entry and the Save pill read the same")
+        verify(pin.iconName !== pill.icon,
+               "the pin and the favourite draw the same glyph")
+        page.pinMenu.close()
+
+        // And the other way: the local pin must not touch the account.
+        compare(bridge.lastFavoriteCallForTest(), "addMix:" + testCase.mixId,
+                "something other than the pill talked to the favourites API")
     }
 
     // ── ArtistPage: the Follow pill ──────────────────────────────────────

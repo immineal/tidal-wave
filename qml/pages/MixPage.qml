@@ -31,6 +31,49 @@ Rectangle {
     property var    tracks: []
     property bool   loading: false
 
+    // Which kind of mix, as Tidal names it: "DISCOVERY_MIX", "TRACK_MIX", and so
+    // on. The only handle on that question code may branch on - the title
+    // arrives in the account's language, so matching one breaks in German (see
+    // MixTypes in src/api/Models.h).
+    //
+    // Here for one reason: a TRACK_MIX is a track's radio, and this page is now
+    // the one and only viewer for one. Calling it a "Mix" on the heading is what
+    // the owner noticed first ("it looks like an album except it says mix at the
+    // top"), so the heading says what they asked for instead.
+    property string mixType: ""
+
+    // Whether this mix is in the account's saved mixes - Tidal's
+    // v2/favorites/mixes, which is what put a radio saved on another device into
+    // the sidebar in the first place.
+    //
+    // Read back out of the bridge and never written here, so a refused save has
+    // nothing to undo, only something to say. See ContextMenu.FavoriteAction.
+    //
+    // NOT the same thing as a pin, and the hero keeps the two apart on purpose:
+    // the pill is this, the account's own list, shared with every other Tidal
+    // client; the right-click menu is PinStore, which is local to this machine
+    // and this account and never leaves it. Conflating them is how this page
+    // came to look as though it offered a way to unsave when it did not.
+    property bool isSaved: false
+
+    // The heading over the title. "Radio" for a track's radio station, because
+    // that is the word every other surface in the app uses for one and the word
+    // the user pressed to get here; "Mix" for everything else.
+    readonly property bool isTrackRadio: root.mixType === "TRACK_MIX"
+
+    function updateSavedState() {
+        isSaved = mixId.length > 0 ? bridge.isMixFavorite(mixId) : false
+    }
+
+    // The Save pill's one call, and what it says when the server refuses it.
+    readonly property alias favoriteAction: mixFav
+    ContextMenu.FavoriteAction { id: mixFav }
+
+    Connections {
+        target: bridge
+        function onFavoriteMixesChanged() { root.updateSavedState() }
+    }
+
     // What the last load was told, "" when it was served. The one callback used
     // to read `if (err) return` and drop it, which is AlbumPage's bug from
     // 8ec30ed: a mix that has rotated out of the user's set, or one pinned to
@@ -55,7 +98,7 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    onMixIdChanged: if (mixId.length > 0) loadMix()
+    onMixIdChanged: if (mixId.length > 0) { loadMix(); updateSavedState() }
 
     // What the hero's queue actions act on: the whole mix. The menu can be
     // opened while fetchMixTracks() is still out, so an empty page asks
@@ -100,6 +143,11 @@ Rectangle {
                 if (header.title)    root.title    = header.title
                 if (header.subtitle) root.subtitle = header.subtitle
                 if (header.coverUrl) root.coverUrl = header.coverUrl
+                // Same rule as the three above, and it matters more here: a
+                // header that names no mixType must not turn a caller's
+                // "TRACK_MIX" back into "", which would relabel the heading
+                // "Mix" the moment the response landed.
+                if (header.mixType)  root.mixType  = header.mixType
             }
             tracks = t
         })
@@ -174,7 +222,10 @@ Rectangle {
                     spacing: 8
 
                     Text {
-                        text: qsTr("Mix", "noun, a Tidal mix")
+                        objectName: "heroKindLabel"
+                        text: root.isTrackRadio
+                              ? qsTr("Radio", "noun, a track's radio station")
+                              : qsTr("Mix", "noun, a Tidal mix")
                         color: Theme.textSec
                         font.pixelSize: 12
                         font.bold: true
@@ -231,6 +282,30 @@ Rectangle {
                                     root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
                                 }
                             }
+                        }
+
+                        // The half of the complaint that was simply missing:
+                        // nowhere in the app could a mix be saved or unsaved.
+                        // A heart and the words, exactly as AlbumPage's pill
+                        // reads, so the account-wide favourite is plainly a
+                        // different affordance from the local pin on the
+                        // right-click menu - which is a pin glyph and the words
+                        // "Pin"/"Unpin" and writes nothing to Tidal.
+                        PillButton {
+                            objectName: "mixSavePill"
+                            // Dead until the page knows which mix it is: a
+                            // MixPage can be constructed with no id at all.
+                            enabled: root.mixId.length > 0
+                            text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
+                                               : qsTr("Save", "verb, add mix to the library")
+                            icon: root.isSaved ? "heart-filled" : "heart"
+                            accent: root.isSaved
+                            // Anchored on the action row rather than the pill,
+                            // the way the hero's pin menu anchors its
+                            // confirmation: the pill sits low in the hero and
+                            // the row is what has clear space above it.
+                            onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
+                                                                    heroActions)
                         }
                     }
                 }

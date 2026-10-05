@@ -590,6 +590,58 @@ void TidalClient::removeArtistFavorite(qint64 artistId, std::function<void(bool)
         [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
 }
 
+// ─── Favourite mixes (v2) ──────────────────────────
+
+QString TidalClient::mixFavoriteEndpoint(bool adding) {
+    return adding ? QStringLiteral("favorites/mixes/add")
+                  : QStringLiteral("favorites/mixes/remove");
+}
+
+QUrlQuery TidalClient::mixFavoriteQuery(const QStringList &mixIds) {
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("mixIds"), mixIds.join(QLatin1Char(',')));
+    q.addQueryItem(QStringLiteral("onArtifactNotFound"), QStringLiteral("FAIL"));
+    return q;
+}
+
+bool TidalClient::mixFavoriteAccepted(const QJsonObject &reply, const QString &mixId,
+                                      bool adding)
+{
+    if (mixId.isEmpty()) return false;
+    const QJsonArray items = reply.value(adding ? QLatin1String("addedItems")
+                                               : QLatin1String("deletedItems")).toArray();
+    for (const auto &v : items)
+        if (v.toString() == mixId) return true;
+    return false;
+}
+
+void TidalClient::fetchFavoriteMixes(MixesCallback cb) {
+    // The saved half of fetchHomeMixes() on its own. The merged list cannot
+    // serve here: it folds the generated feed in, and a generated mix is not
+    // something the user saved and cannot be unsaved - so answering "is this
+    // mix a favourite" off the merge would offer an Unsave on all eight of
+    // "My Mix 1".."My Mix 8".
+    fetchSavedMixes(std::move(cb));
+}
+
+void TidalClient::addMixFavorite(const QString &mixId, std::function<void(bool)> cb) {
+    if (mixId.isEmpty()) { cb(false); return; }
+    m_api->putV2(mixFavoriteEndpoint(true), mixFavoriteQuery({mixId}),
+        [cb, mixId](QJsonObject reply, QString err) {
+            // Both halves. An error is a refusal, and so is a 200 whose
+            // addedItems does not name the mix.
+            cb(err.isEmpty() && mixFavoriteAccepted(reply, mixId, true));
+        });
+}
+
+void TidalClient::removeMixFavorite(const QString &mixId, std::function<void(bool)> cb) {
+    if (mixId.isEmpty()) { cb(false); return; }
+    m_api->putV2(mixFavoriteEndpoint(false), mixFavoriteQuery({mixId}),
+        [cb, mixId](QJsonObject reply, QString err) {
+            cb(err.isEmpty() && mixFavoriteAccepted(reply, mixId, false));
+        });
+}
+
 // ─── Streaming ─────────────────────────────────────
 
 void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {

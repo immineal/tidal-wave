@@ -885,6 +885,102 @@ private slots:
         QCOMPARE(spy.count(), 1);
     }
 
+    // ── a saved mix, which is how a track radio reaches the sidebar ─────
+    //
+    // The owner's complaint, at the sidebar: "I liked the hell of a time track
+    // radio and it is displayed in my sidebar as a mix ... but it doesn't have a
+    // way to unsave it". The row could arrive - fetchHomeMixes merges
+    // v2/favorites/mixes in - and nothing in the app could ever take it back out
+    // again, because removeEntry had no mix branch at all.
+    //
+    // The id is a string and not a number, which is the trap this case exists
+    // for: the album and artist branches call toLongLong(), and a mix id put
+    // through that is 0 for every mix, so one copy of that branch would delete
+    // the wrong row or none.
+    void savingAndUnsavingAMixMoveTheSidebar() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        // Invented, at a real mix id's shape: 30 lowercase hex characters.
+        const QString mixId = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
+        const QString key   = QStringLiteral("mix:") + mixId;
+        QCOMPARE(indexOfKey(lib.entries(), key), -1);
+        const int before = lib.albumRequests;
+
+        QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
+        lib.addMix(mkMix(mixId, QStringLiteral("Weit hinter dem Horizont")));
+
+        QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
+                 qPrintable(QStringLiteral("the sidebar did not gain %1; it holds %2")
+                                .arg(key, keysOf(lib.entries()).join(QLatin1String(", ")))));
+        QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Weit hinter dem Horizont"));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(lib.albumRequests, before);   // nothing was re-paged for it
+
+        lib.removeEntry(QStringLiteral("mix"), mixId);
+        QVERIFY2(indexOfKey(lib.entries(), key) < 0,
+                 qPrintable(QStringLiteral("%1 is still in the sidebar: %2")
+                                .arg(key, keysOf(lib.entries()).join(QLatin1String(", ")))));
+    }
+
+    // Unsaving one mix must take out that mix. With a numeric id the two would
+    // both fold to 0 and the first row in the list would go instead.
+    void unsavingOneMixLeavesTheOtherAlone() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        lib.mixes = {mkMix(QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"),
+                           QStringLiteral("Erstes Radio")),
+                     mkMix(QStringLiteral("ffeeddccbbaa99887766554433221100"),
+                           QStringLiteral("Zweites Radio"))};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        lib.removeEntry(QStringLiteral("mix"),
+                        QStringLiteral("ffeeddccbbaa99887766554433221100"));
+
+        QCOMPARE(keysOf(lib.entries()),
+                 QStringList{QStringLiteral("mix:0a1b2c3d4e5f60718293a4b5c6d7e8")});
+    }
+
+    // A mix already in the list is not added twice - the user may save one that
+    // the merged list already carried.
+    void savingAMixAlreadyListedAddsNoSecondRow() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillMixedLibrary(lib);
+        lib.setUserId(kUser);
+        lib.refresh();
+        const int was = lib.entries().size();
+
+        lib.addMix(mkMix(QStringLiteral("m1"), QStringLiteral("The Cosmos")));
+
+        QCOMPARE(lib.entries().size(), was);
+        QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("mix:m1")), 1);
+    }
+
+    // The sidebar row carries the mix's type, so MixPage can head a saved track
+    // radio "Radio" from the first frame instead of flipping from "Mix" when its
+    // own request lands. This is the exact route the complaint came in on.
+    void aSidebarMixRowSaysWhichKindOfMixItIs() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        Mix radio = mkMix(QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"),
+                          QStringLiteral("Weit hinter dem Horizont"));
+        radio.mixType = QStringLiteral("TRACK_MIX");
+        lib.mixes = {radio};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(rowFor(lib.entries(),
+                        QStringLiteral("mix:0a1b2c3d4e5f60718293a4b5c6d7e8"))
+                     .value(QStringLiteral("mixType")).toString(),
+                 QStringLiteral("TRACK_MIX"));
+    }
+
     // Following an artist is the same gap wearing a different hat, and so is
     // unfollowing: a stale row left behind is as wrong as a missing one.
     void followingAndUnfollowingAnArtistMoveTheSidebar() {

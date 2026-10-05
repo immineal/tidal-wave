@@ -1075,7 +1075,8 @@ Rectangle {
         }
         if (kind === kMixes)
             navigateTo("mix", { mixId: item.id, title: item.title,
-                                subtitle: item.subtitle, coverUrl: item.coverUrl })
+                                subtitle: item.subtitle, coverUrl: item.coverUrl,
+                                mixType: item.mixType || "" })
     }
 
     // Declaring the source is what records the play; see the same shape on

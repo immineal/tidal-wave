@@ -54,6 +54,9 @@ TestCase {
         player.setAudioQualityForTest("LOSSLESS")
         player.setDurationForTest(215000)
         player.setPositionForTest(42000)
+        // What fetchTrackMix answers, and the count of how often it was asked.
+        // Left over from a previous case it would decide this one's routing.
+        bridge.resetTrackMixForTest()
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -112,6 +115,29 @@ TestCase {
                 anchors.bottom: parent.bottom
                 onShowNowPlaying: pbWin.nowPlayingOpens++
                 onShowQueue:      pbWin.queueOpens++
+            }
+        }
+    }
+
+    // A track row in a window that records where it would have navigated. The
+    // row's own menu is what carries "Start radio", and it reaches the router
+    // through Window.window exactly as the bar and the page above do.
+    Component {
+        id: trackRowHost
+        Window {
+            id: trWin
+            width: 1000; height: 200
+
+            property var navCalls: []
+            function navigate(page, params) {
+                navCalls = navCalls.concat([{ page: page, params: params }])
+            }
+            function goBack() {}
+
+            property alias row: tr
+            TrackRow {
+                id: tr
+                width: trWin.width
             }
         }
     }
@@ -585,5 +611,156 @@ TestCase {
         centerClick(names[1])
         compare(host.navCalls.length, 1)
         compare(host.navCalls[0].params.artistId, 22)
+    }
+
+    // ── "Start radio": one viewer, with the old one kept as a fallback ───
+    //
+    // The owner, twice: "it doesn't have a way to unsave it and it also doesn't
+    // have a way to save new ones because if I just click on open track radio
+    // then it opens in a different viewer", and later "the two different views
+    // of a track radio as a mix and a radio are still there".
+    //
+    // Both viewers are real pages. MixPage has the hero, the artwork and now the
+    // Save pill; RadioPage is a bare list built from `tracks/<id>/radio`, which
+    // answers no mix identity and so can never be saved. Which one this entry
+    // opens is the whole of the complaint, and it turns on one field of the
+    // track payload.
+
+    // A 30-hex-character mix id, invented. Real ones are minted per account and
+    // none of the owner's is in this file.
+    readonly property string trackMixIdFixture: "0a1b2c3d4e5f60718293a4b5c6d7e8"
+
+    function radioEntryOf(row) {
+        row.openMenu()
+        var menu = row.rowMenu
+        verify(menu, "the row has no menu")
+        for (var i = 0; i < menu.count; ++i) {
+            var it = menu.itemAt(i)
+            if (it && it.objectName === "startRadioMenuItem") return it
+        }
+        fail("the row menu has no Start radio entry")
+        return null
+    }
+
+    function rowWith(extra) {
+        var host = showHost(trackRowHost, 1000, 200)
+        var t = trackWith([{ id: 11, name: "Erika Mustermann" }])
+        for (var k in extra) t[k] = extra[k]
+        host.row.trackData = t
+        host.row.title     = t.title
+        host.row.artists   = t.artists
+        waitForRendering(host.contentItem)
+        return host
+    }
+
+    function test_start_radio_opens_the_mix_viewer_when_the_track_names_its_mix() {
+        var host = rowWith({ trackMixId: testCase.trackMixIdFixture })
+        var entry = radioEntryOf(host.row)
+        entry.triggered()
+        host.row.rowMenu.close()
+
+        compare(host.navCalls.length, 1, "Start radio navigated nowhere, or twice")
+        compare(host.navCalls[0].page, "mix",
+                "a track that names its radio's mix still opened the second viewer, "
+                + "which has no way to save it")
+        compare(host.navCalls[0].params.mixId, testCase.trackMixIdFixture,
+                "the mix id did not reach the page, so it could not be saved")
+        // Handed over so the hero is not blank for the length of the request,
+        // and so the heading reads "Radio" rather than flipping from "Mix".
+        compare(host.navCalls[0].params.title, "Weit hinter dem Horizont")
+        compare(host.navCalls[0].params.mixType, "TRACK_MIX")
+        // And it costs nothing: the row was already told, so nothing is asked.
+        compare(bridge.trackMixFetchesForTest(), 0,
+                "a row that already knows its mix id still went to the server")
+    }
+
+    // The case that decides whether the fix works at all.
+    //
+    // Only `tracks/<id>` is known to carry the `mixes` object the id comes out
+    // of - known from the reference client's recorded response, not from any
+    // call made here. Whether an album's, a playlist's or a search's items
+    // carry it was deliberately never found out, because finding out means
+    // reading the owner's account. Those lists are exactly where a user presses
+    // "Start radio" from, so without this lookup the fix could quietly be a
+    // no-op everywhere it matters.
+    function test_start_radio_asks_which_mix_when_the_row_was_not_told() {
+        bridge.setTrackMixForTest(testCase.trackMixIdFixture)
+        var host = rowWith({})
+        compare(host.row.trackMixId, "", "the fixture already carries a mix id")
+
+        var entry = radioEntryOf(host.row)
+        entry.triggered()
+        host.row.rowMenu.close()
+
+        tryVerify(function () { return host.navCalls.length === 1 }, 2000,
+                  "Start radio navigated nowhere")
+        compare(bridge.lastTrackMixFetchedForTest(), 4242,
+                "the lookup asked about the wrong track")
+        compare(host.navCalls[0].page, "mix",
+                "the lookup found the mix and the row opened the old viewer anyway")
+        compare(host.navCalls[0].params.mixId, testCase.trackMixIdFixture)
+        compare(host.navCalls[0].params.mixType, "TRACK_MIX")
+    }
+
+    // The fallback, and it is load-bearing rather than tidiness: a track Tidal
+    // builds no station for, and a lookup that fails, both have to leave the
+    // menu entry working the way it always did instead of doing nothing.
+    function test_start_radio_falls_back_to_the_list_viewer_with_no_mix_to_open() {
+        var cases = [
+            { mix: "",     err: "",      why: "Tidal named no radio for the track" },
+            { mix: "",     err: "503",   why: "the lookup failed" },
+            { mix: "abcd", err: "503",   why: "the lookup failed but answered an id anyway" }
+        ]
+        for (var i = 0; i < cases.length; ++i) {
+            bridge.resetTrackMixForTest()
+            bridge.setTrackMixForTest(cases[i].mix, cases[i].err)
+            var host = rowWith({})
+
+            var entry = radioEntryOf(host.row)
+            entry.triggered()
+            host.row.rowMenu.close()
+
+            tryVerify(function () { return host.navCalls.length === 1 }, 2000,
+                      "Start radio navigated nowhere when " + cases[i].why)
+            compare(host.navCalls[0].page, "radio",
+                    "nothing opens the mix viewer when " + cases[i].why)
+            compare(host.navCalls[0].params.trackId, 4242)
+            compare(host.navCalls[0].params.radioTitle, "Weit hinter dem Horizont")
+        }
+    }
+
+    // A payload whose `trackMixId` is not a string - an object, a number, a
+    // null - must not be navigated with. It goes to the lookup like any row
+    // that was not told, and from there to whichever viewer the answer allows.
+    function test_a_malformed_mix_id_is_not_navigated_with() {
+        var shapes = [null, 7, {}, undefined]
+        for (var i = 0; i < shapes.length; ++i) {
+            bridge.resetTrackMixForTest()
+            var host = rowWith({ trackMixId: shapes[i] })
+            compare(host.row.trackMixId, "",
+                    "a malformed mix id at index " + i + " was taken as an id")
+
+            var entry = radioEntryOf(host.row)
+            entry.triggered()
+            host.row.rowMenu.close()
+
+            tryVerify(function () { return host.navCalls.length === 1 }, 2000,
+                      "Start radio navigated nowhere at index " + i)
+            compare(host.navCalls[0].page, "radio",
+                    "a malformed mix id at index " + i + " opened a mix page")
+        }
+    }
+
+    // The lookup answering a mix id that is not a string must not become a
+    // navigation either - the check is on the answer, not only on the row.
+    function test_a_malformed_lookup_answer_is_not_navigated_with() {
+        bridge.setTrackMixForTest("")
+        var host = rowWith({})
+        // The stub answers a string; this drives the guard directly, which is
+        // the only way to hand the callback something else.
+        host.row.startRadio()
+        tryVerify(function () { return host.navCalls.length === 1 }, 2000,
+                  "nothing happened at all")
+        compare(host.navCalls[0].page, "radio")
     }
 }

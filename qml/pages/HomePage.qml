@@ -101,7 +101,10 @@ Rectangle {
             for (var i = 0; i < Math.min(mixList.length, root.rowLimit); i++) {
                 var m = mixList[i]
                 items.push({ id: m.id, title: m.title, subtitle: m.subtitle,
-                             coverUrl: m.coverUrl, type: "mix" })
+                             coverUrl: m.coverUrl, type: "mix",
+                             // Carried through so the tile can hand it to
+                             // MixPage; see SideBar.open().
+                             mixType: m.mixType || "" })
             }
             mixes = items
         })
@@ -156,7 +159,8 @@ Rectangle {
                 mediaType: "mix"
                 onItemClicked: (idx, item) => navigateTo("mix", {
                     mixId: item.id, title: item.title,
-                    subtitle: item.subtitle, coverUrl: item.coverUrl
+                    subtitle: item.subtitle, coverUrl: item.coverUrl,
+                    mixType: item.mixType || ""
                 })
                 // Declaring the source is what records the play: the player
                 // bar listens to player.sourceChanged and is the only place

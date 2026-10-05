@@ -48,6 +48,7 @@
 
 #include <QTest>
 #include <QJsonArray>
+#include <QUrlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDateTime>
@@ -882,6 +883,174 @@ private slots:
         QVERIFY(TidalClient::parseSearchMixes(QJsonObject{}).isEmpty());
         QVERIFY(TidalClient::parseSearchMixes(
                     QJsonObject{{QStringLiteral("items"), QJsonValue::Null}}).isEmpty());
+    }
+
+    // ── a track carries the id of its own radio ──────────────────────────
+    //
+    // The fact the two-viewer fix rests on. A track's payload holds a `mixes`
+    // object keyed by mix type, and its TRACK_MIX entry is the mix id of the
+    // station "Start radio" means - so a track's radio *is* a mix, and can be
+    // opened on MixPage, where it can be saved and unsaved.
+    //
+    // The shape is taken from the reference client, which reads
+    // `json_obj.get("mixes", {})` (tidalapi/media.py) and whose recorded
+    // response fixture asserts
+    // `track.mixes == {"TRACK_MIX": "<30 hex chars>"}` (tidalapi
+    // tests/test_media.py). The id below is invented, at that shape; no id of
+    // the owner's is in this file.
+
+    void aTrackCarriesTheMixIdOfItsRadio() {
+        const QJsonObject j{
+            {QStringLiteral("id"),    900000001},
+            {QStringLiteral("title"), QStringLiteral("Ein Stück")},
+            {QStringLiteral("mixes"), QJsonObject{
+                {QStringLiteral("TRACK_MIX"),  QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8")},
+                {QStringLiteral("ARTIST_MIX"), QStringLiteral("ffeeddccbbaa99887766554433221100")}}}};
+        const Track t = Track::fromJson(j);
+        QCOMPARE(t.trackMixId, QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"));
+        // The artist's station is a different mix and must not be mistaken for
+        // this track's - the only thing distinguishing them is the key.
+        QCOMPARE(t.trackMixId.length(), 30);
+    }
+
+    // The case the fallback exists for, and it must stay a quiet "" rather than
+    // becoming a 0 or a warning. Whether every listing endpoint carries `mixes`
+    // is deliberately NOT established here - finding out would mean calling the
+    // owner's account - so this is a supported state and TrackRow keeps its
+    // RadioPage route for it.
+    void aTrackWithNoMixesObjectHasNoRadio() {
+        const Track t = Track::fromJson(QJsonObject{
+            {QStringLiteral("id"),    900000002},
+            {QStringLiteral("title"), QStringLiteral("Ohne Radio")}});
+        QVERIFY2(t.trackMixId.isEmpty(),
+                 "a track whose payload has no mixes object invented a mix id");
+    }
+
+    // A `mixes` object that carries only the artist's station. The key is the
+    // whole of the discrimination, so reading "the first value in there" would
+    // open the artist's radio from a track's row.
+    void aTrackWithOnlyAnArtistMixHasNoTrackRadio() {
+        const Track t = Track::fromJson(QJsonObject{
+            {QStringLiteral("id"),    900000003},
+            {QStringLiteral("mixes"), QJsonObject{
+                {QStringLiteral("ARTIST_MIX"), QStringLiteral("ffeeddccbbaa99887766554433221100")}}}});
+        QVERIFY2(t.trackMixId.isEmpty(),
+                 "an artist radio was handed over as the track's own");
+    }
+
+    // `mixes` arriving as something other than an object - a null, a string, an
+    // array - degrades to "" rather than warning per track.
+    void aMalformedMixesFieldHasNoRadio() {
+        for (const QJsonValue v : {QJsonValue(QJsonValue::Null),
+                                   QJsonValue(QStringLiteral("TRACK_MIX")),
+                                   QJsonValue(QJsonArray{QStringLiteral("x")}),
+                                   QJsonValue(7)}) {
+            const Track t = Track::fromJson(QJsonObject{
+                {QStringLiteral("id"), 900000004}, {QStringLiteral("mixes"), v}});
+            QVERIFY2(t.trackMixId.isEmpty(), "a malformed mixes field produced an id");
+        }
+    }
+
+    // A saved radio station is identified by its type and not by its title, for
+    // the reason every other mixType check in this file gives: the title arrives
+    // in the account's language.
+    void aTrackRadioIsIdentifiedByItsType() {
+        Mix radio;
+        radio.mixType = QStringLiteral("TRACK_MIX");
+        radio.title   = QStringLiteral("Irgendein Titel");
+        QVERIFY(radio.isTrackMix());
+
+        Mix discovery;
+        discovery.mixType = QStringLiteral("DISCOVERY_MIX");
+        discovery.title   = QStringLiteral("TRACK_MIX");   // a title cannot decide it
+        QVERIFY(!discovery.isTrackMix());
+    }
+
+    // ── saving and unsaving a mix: the two v2 writes ─────────────────────
+    //
+    // Shape taken from the reference client (tidalapi/user.py::add_mixes and
+    // remove_mixes): PUT against the v2 base, arguments in the query string,
+    // `onArtifactNotFound=FAIL`, and a reply carrying `addedItems` /
+    // `deletedItems`. Nothing here touches the network.
+
+    void theTwoWritesAreDifferentEndpoints() {
+        QCOMPARE(TidalClient::mixFavoriteEndpoint(true),
+                 QStringLiteral("favorites/mixes/add"));
+        QCOMPARE(TidalClient::mixFavoriteEndpoint(false),
+                 QStringLiteral("favorites/mixes/remove"));
+    }
+
+    void theQueryNamesTheMixAndRefusesAMissingOne() {
+        const QUrlQuery q = TidalClient::mixFavoriteQuery(
+            {QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8")});
+        QCOMPARE(q.queryItemValue(QStringLiteral("mixIds")),
+                 QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"));
+        // FAIL and not the permissive setting: a mix that has rotated out must
+        // come back as an error the user is told about, rather than as a 200
+        // that changed nothing.
+        QCOMPARE(q.queryItemValue(QStringLiteral("onArtifactNotFound")),
+                 QStringLiteral("FAIL"));
+    }
+
+    void severalMixIdsAreCommaJoined() {
+        QCOMPARE(TidalClient::mixFavoriteQuery({QStringLiteral("aaaa"), QStringLiteral("bbbb")})
+                     .queryItemValue(QStringLiteral("mixIds")),
+                 QStringLiteral("aaaa,bbbb"));
+    }
+
+    // The point of the whole pair: a 200 is not a success. The reply says what
+    // it did, so that is what is read - this app already shipped one favourite
+    // that looked accepted when it was refused.
+    void anAddIsAcceptedOnlyWhenTheReplyNamesTheMix() {
+        const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
+        QVERIFY(TidalClient::mixFavoriteAccepted(
+            QJsonObject{{QStringLiteral("addedItems"), QJsonArray{id}}}, id, true));
+    }
+
+    void anAddNamingAnotherMixIsARefusal() {
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(
+                     QJsonObject{{QStringLiteral("addedItems"),
+                                  QJsonArray{QStringLiteral("ffffffffffffffffffffffffffffff")}}},
+                     QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"), true),
+                 "a reply about a different mix was taken as this mix being saved");
+    }
+
+    void aBare200IsARefusal() {
+        const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(QJsonObject{}, id, true),
+                 "a reply with no addedItems at all was taken as a success");
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(
+                     QJsonObject{{QStringLiteral("addedItems"), QJsonArray{}}}, id, true),
+                 "an empty addedItems was taken as a success");
+    }
+
+    void aRemoveIsAcceptedOnlyWhenTheReplyNamesTheMix() {
+        const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
+        QVERIFY(TidalClient::mixFavoriteAccepted(
+            QJsonObject{{QStringLiteral("deletedItems"), QJsonArray{id}}}, id, false));
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(QJsonObject{}, id, false),
+                 "a reply with no deletedItems was taken as a removal");
+    }
+
+    // The two arrays must not be read interchangeably. A server that answered
+    // an *add* to a *remove* request - or a crossed branch here - would
+    // otherwise report the mix as unsaved while it is still saved, which is the
+    // same class of lie as the bare 200 above.
+    void theTwoArraysAreNotInterchangeable() {
+        const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(
+                     QJsonObject{{QStringLiteral("addedItems"), QJsonArray{id}}}, id, false),
+                 "addedItems was read as a removal");
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(
+                     QJsonObject{{QStringLiteral("deletedItems"), QJsonArray{id}}}, id, true),
+                 "deletedItems was read as an addition");
+    }
+
+    void anEmptyMixIdIsNeverAccepted() {
+        QVERIFY2(!TidalClient::mixFavoriteAccepted(
+                     QJsonObject{{QStringLiteral("addedItems"),
+                                  QJsonArray{QStringLiteral("")}}}, QString(), true),
+                 "an empty id matched an empty entry and was taken as a success");
     }
 
 };

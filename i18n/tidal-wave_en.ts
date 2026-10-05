@@ -364,6 +364,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Could not remove the mix from your library</source>
+        <comment>shown when removing a mix from the library failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not save the mix</source>
+        <comment>shown when saving a mix to the library failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Could not follow the artist</source>
         <comment>shown when following an artist failed</comment>
         <translation type="unfinished"></translation>
@@ -626,6 +636,21 @@
     </message>
     <message>
         <source>Shuffle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Radio</source>
+        <comment>noun, a track&apos;s radio station</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved</source>
+        <comment>state, mix is in the library</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <comment>verb, add mix to the library</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>

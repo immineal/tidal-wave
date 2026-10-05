@@ -811,7 +811,7 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "mix"
                     itemId: "" + modelData.id
-                    onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl })
+                    onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl, mixType: modelData.mixType || "" })
                     onPlayClicked: {
                         bridge.fetchMixTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return

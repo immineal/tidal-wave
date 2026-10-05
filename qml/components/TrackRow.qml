@@ -57,6 +57,74 @@ Item {
     }
     readonly property string coverText:   textOf(root.coverUrl)
 
+    // ── this track's radio, as a mix id ─────────────────────────────────
+    //
+    // "" when the payload did not carry one, which is a normal case and not a
+    // fault: it is NOT established that every listing endpoint includes the
+    // `mixes` object TidalBridge reads this out of, and a row built by hand
+    // (a recently-played entry restored from disk, anything a test assembles)
+    // has no such key either.
+    //
+    // Read off `trackData` rather than taken as its own property, which is why
+    // not one of the seven pages that build a row had to change: every one of
+    // them already passes the whole API map as `trackData`.
+    //
+    // 30 lowercase hex characters, so it is a string and is tested on length.
+    // textOf() does the typeof check, so a map holding an object or a number
+    // under that key degrades to "" instead of warning per row.
+    readonly property string trackMixId:
+        root.trackData ? textOf(root.trackData.trackMixId) : ""
+
+    // Open this track's radio, in the one viewer that can save it.
+    //
+    // MixPage whenever a mix id can be had: off the row's own payload when it
+    // carries one, otherwise from a single `tracks/<id>` lookup. RadioPage -
+    // the bare list, which has no mix identity on it and so can never be
+    // saved - only when there is no mix to open at all.
+    //
+    // The lookup is not belt and braces. Only `tracks/<id>` is known to carry
+    // the `mixes` object, from the reference client's recorded response rather
+    // than from any call made here; whether an album's, a playlist's or a
+    // search's items carry it was deliberately never established, because
+    // establishing it means reading the owner's account. Those lists are where
+    // "Start radio" is actually pressed from, so without the lookup this fix
+    // could be a no-op exactly where it is needed.
+    //
+    // Everything the reply needs - the window, the track id, the label - is
+    // captured *before* the request goes out, and nothing below touches `root`.
+    // The menu closes on the press and a list delegate can be recycled while
+    // the lookup is in flight; a callback that reached back into the row would
+    // then throw and lose the navigation with no sign of why.
+    function startRadio() {
+        if (root.trackId <= 0) return
+        var win = Window.window
+        if (!win) return
+
+        var id    = root.trackId
+        var label = root.titleText
+        // The title is handed over so the hero is not blank for the length of
+        // the request; the response's own header overwrites it, and a
+        // TRACK_MIX's title is the track's title anyway. mixType goes with it
+        // so the heading reads "Radio" from the first frame rather than
+        // flipping from "Mix" when the header lands.
+        var toMix  = function (mixId) {
+            win.navigate("mix", { mixId: mixId, title: label, mixType: "TRACK_MIX" })
+        }
+        var toList = function () {
+            win.navigate("radio", { trackId: id, radioTitle: label })
+        }
+
+        if (root.trackMixId.length > 0) { toMix(root.trackMixId); return }
+
+        bridge.fetchTrackMix(id, function (mixId, err) {
+            // The shape is checked as well as the error: a reply that never
+            // arrived leaves the argument undefined, and String(undefined)
+            // would navigate to a mix called "undefined".
+            if (!err && typeof mixId === "string" && mixId.length > 0) toMix(mixId)
+            else                                                       toList()
+        })
+    }
+
     // ── who made it, name by name ───────────────────────────────────────
     //
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}],
@@ -717,19 +785,25 @@ Item {
                         root.removeFromPlaylistRequested(root.trackItemIndex)
                 }
             }
+            // The owner's longest-standing complaint, reported twice: a track
+            // radio had two viewers. Saved on another device it arrived in the
+            // sidebar as a mix and opened on MixPage - artwork, hero, pin, and
+            // no way to unsave it - while this entry opened RadioPage, a bare
+            // list built from `tracks/<id>/radio`, which answers no mix
+            // identity at all and so could never be saved.
+            //
+            // One viewer now: MixPage, by the mix id, where the hero's Save
+            // pill can put the station in the library and take it out again.
+            // See root.startRadio() for how the id is found and why RadioPage
+            // is still reachable.
             ContextMenu.Entry {
+                objectName: "startRadioMenuItem"
                 text: qsTr("Start radio")
                 // What the queue heading already draws for a radio source;
                 // see QueuePanel.contextGlyph.
                 iconName: "waves"
                 enabled: root.trackId > 0
-                onTriggered: {
-                    if (root.trackId <= 0) return
-                    Window.window.navigate("radio", {
-                        trackId:    root.trackId,
-                        radioTitle: root.titleText
-                    })
-                }
+                onTriggered: root.startRadio()
             }
             ContextMenu.Entry {
                 objectName: "likeMenuItem"

@@ -278,6 +278,28 @@ Menu {
             })
         }
 
+        // A mix - in practice a track radio, the only mix the interface can save.
+        // Its id is a string of 30 hex characters, not a number, so the guard is
+        // on length and not on `> 0`: `Number("001603cb…") > 0` is false and
+        // would have refused every real id.
+        function toggleMix(mixId, saved, anchor) {
+            if (!mixId || String(mixId).length === 0) return
+            fav.lastMessage = ""
+            // One pair of strings for both things MixPage shows. A track radio is
+            // a mix as far as Tidal and this call are concerned - that is the
+            // whole premise of routing "Start radio" here - so the message names
+            // the mix even on a page whose heading reads "Radio". The heading
+            // says what the user asked for; this says what the call was about.
+            if (saved) bridge.removeMixFavorite(mixId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not remove the mix from your library",
+                                              "shown when removing a mix from the library failed"))
+            })
+            else       bridge.addMixFavorite(mixId, function (ok) {
+                fav._refused(ok, anchor, qsTr("Could not save the mix",
+                                              "shown when saving a mix to the library failed"))
+            })
+        }
+
         // Only an explicit `true` counts as accepted, the same test
         // confirmAddedToPlaylist in TrackRow.qml makes. The callback is handed a
         // bool by C++, but a reply that never arrived leaves the argument

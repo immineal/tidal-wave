@@ -417,6 +417,7 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Mix &m) {
     Entry e;
     e.kind     = QLatin1String(kKindMix);
     e.id       = m.id;
+    e.mixType  = m.mixType;
     e.title    = m.title;
     e.subtitle = m.subTitle;
     e.imageUrl = m.coverUrl(320);
@@ -552,6 +553,13 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     // the only place it can learn that without another round trip.
     if (e.kind == QLatin1String(kKindPlaylist))
         m[QStringLiteral("type")] = e.playlistType;
+    // Mixes carry theirs for the same reason: MixPage's heading reads "Radio"
+    // for a TRACK_MIX and "Mix" otherwise, and the sidebar row is the only place
+    // it can learn which without waiting for the page's own request to land. The
+    // sidebar is also the exact route the complaint came in on - a saved radio
+    // listed there opened a page headed "Mix".
+    if (e.kind == QLatin1String(kKindMix))
+        m[QStringLiteral("mixType")] = e.mixType;
     // Songs only, and for the same reason as addedAt/recency above: it is what
     // makes the Tracks chip's placement inspectable from outside the sort.
     if (e.kind == QLatin1String(kKindTrack))
@@ -691,6 +699,19 @@ void LibraryIndex::addTrack(const Track &t) {
     rebuild();
 }
 
+void LibraryIndex::addMix(const Mix &m) {
+    if (m.id.isEmpty()) return;
+    for (const Mix &x : m_mixes)
+        if (x.id == m.id) return;        // already listed; re-saving adds no row
+    Mix saved = m;
+    saved.addedAt = stampNow();
+    m_mixes.append(saved);
+    // rebuild() and nothing else: a mix has no tracklist in the search index -
+    // only saved albums are indexed, deliberately - so there is no indexOneAlbum
+    // counterpart to run here.
+    rebuild();
+}
+
 void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
     if (id.isEmpty()) return;
 
@@ -713,6 +734,17 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
         for (int i = 0; i < m_artists.size(); ++i) {
             if (m_artists[i].id != artistId) continue;
             m_artists.removeAt(i);
+            rebuild();
+            return;
+        }
+    } else if (kind == QLatin1String(kKindMix)) {
+        // The id is the string itself, not a number: a mix id is 30 hex
+        // characters and toLongLong() would turn every one of them into 0.
+        for (int i = 0; i < m_mixes.size(); ++i) {
+            if (m_mixes[i].id != id) continue;
+            m_mixes.removeAt(i);
+            // rebuild() alone. Nothing of a mix is in the song index, so neither
+            // rebuildTrackEntries() nor pruneSongPlays() has anything to do.
             rebuild();
             return;
         }
