@@ -60,6 +60,17 @@ public:
     // delete it, or keep it and let its destructor leave the bytes behind.
     using Done = std::function<void(QTemporaryFile *file, const QString &errorDetail)>;
 
+    // Reported each time the front of the file grows, from the event loop.
+    // bytesReady is how many bytes from the start of tempFilePath() are on disk
+    // and visible to a *second* reader of that path; segmentsReady is how many
+    // segments that is, counting the initialization segment, so 2 means "the
+    // init segment and one media segment", which is the least that plays.
+    //
+    // This is what makes a progressive start possible: the segments are already
+    // written in play order (see fetchAt()), so the front of the file is a
+    // shorter fragmented MP4 of the same track, playable on its own.
+    using Progress = std::function<void(qint64 bytesReady, int segmentsReady)>;
+
     // Expands a DASH manifest into the URLs to fetch: [0] is the initialization
     // segment, the rest are the media segments in play order. Empty when the
     // manifest carries no SegmentTemplate this can expand — see expandTemplate()
@@ -110,6 +121,17 @@ public:
     // Segments including the initialization segment, so one more than the
     // manifest's media-segment count.
     int partCount() const { return int(m_urls.size()); }
+
+    // How much of the front of the file is on disk. Zero until the first
+    // contiguous write, and it only ever grows.
+    qint64 bytesReady() const { return m_bytesReady; }
+    // Segments on disk, counting the initialization segment.
+    int segmentsReady() const { return m_writeCursor; }
+
+    // Optional, and set before start(). Called from the event loop, so the
+    // receiver may delete this fetcher from inside it; nothing is touched
+    // afterwards that would notice.
+    void setProgress(Progress p) { m_progress = std::move(p); }
 
     // Call once, only when isValid() && openedTempFile(). done runs exactly
     // once, from the event loop, and never after this object is destroyed.
@@ -237,6 +259,7 @@ private:
                 // closes, so at most kMaxParallel segments are ever in memory.
                 // Holding the whole track would be tens of megabytes for CD
                 // audio and a few hundred for a long hi-res one.
+                const int cursorBefore = m_writeCursor;
                 while (m_writeCursor < m_parts.size() && !m_parts[m_writeCursor].isEmpty()) {
                     if (m_file->write(m_parts[m_writeCursor]) != m_parts[m_writeCursor].size()) {
                         settle(nullptr, m_file->errorString());
@@ -244,6 +267,27 @@ private:
                     }
                     m_parts[m_writeCursor] = QByteArray();
                     ++m_writeCursor;
+                }
+
+                if (m_writeCursor != cursorBefore) {
+                    // flush(), not just write(): QFile keeps a write buffer, so
+                    // until this runs the bytes exist only inside this process
+                    // and anything that opens tempFilePath() to read the front
+                    // of the track — which is the whole point of reporting it —
+                    // sees a short file. A failure here is the disk filling up,
+                    // which used to surface only at the end of the join.
+                    if (!m_file->flush()) {
+                        settle(nullptr, m_file->errorString());
+                        return;
+                    }
+                    m_bytesReady = m_file->pos();
+                    if (m_progress) {
+                        m_progress(m_bytesReady, m_writeCursor);
+                        // A track change is exactly a receiver that drops this
+                        // fetcher from inside the report, so from here on this
+                        // object may already be gone.
+                        if (alive.expired() || m_settled) return;
+                    }
                 }
 
                 if (m_nextToRequest < m_urls.size())
@@ -298,6 +342,8 @@ private:
     QVector<QPointer<QNetworkReply>> m_inFlight;
     QTemporaryFile *m_file = nullptr;
     Done m_done;
+    Progress m_progress;
+    qint64 m_bytesReady = 0;
     int  m_nextToRequest = 0;
     int  m_completed     = 0;
     int  m_writeCursor   = 0;

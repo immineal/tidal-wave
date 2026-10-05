@@ -59,6 +59,7 @@ set(SOURCES
     src/player/Player.cpp
     src/player/SpectrumAnalyzer.cpp
     src/player/Downloader.cpp
+    src/player/GrowingFileServer.cpp
     src/mpris/MprisPlayer.cpp
     src/ui/Application.cpp
     src/ui/ImageProvider.cpp
@@ -83,6 +84,7 @@ set(HEADERS
     src/player/Player.h
     src/player/SpectrumAnalyzer.h
     src/player/Downloader.h
+    src/player/GrowingFileServer.h
     src/mpris/MprisPlayer.h
     src/ui/Application.h
     src/ui/ImageProvider.h
