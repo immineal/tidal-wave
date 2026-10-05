@@ -49,6 +49,8 @@ compile_commands.json
 CTestTestfile.cmake
 # Any build directory (build/, build_custom/, build_dl/, …)
 /build*/
+# flatpak-builder's cache and checkout tree, which it writes next to the manifest.
+/.flatpak-builder/
 
 # IDE files
 .idea/

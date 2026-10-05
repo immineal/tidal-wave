@@ -1,0 +1,170 @@
+# Flathub manifest for Tidal Wave.
+#
+# This file is what gets copied into the flathub/flathub pull request, beside a
+# flathub.json if one is ever needed. Build and test it locally first; the
+# commands are in docs/PACKAGING.md.
+#
+# The id is the one spelling used everywhere: the metainfo component id, the
+# .desktop basename and this file's own name. See docs/PACKAGING.md.
+id: io.github.immineal.TidalWave
+
+# org.kde.Platform is the runtime Qt 6 apps use on Flathub. 6.11 and 6.10 are
+# both published today; 6.11 is the newer of the two, so the submission starts
+# on the branch that will be supported longest and no reviewer has to ask for a
+# bump. Either clears the Qt 6.4 floor in CMakeLists.txt with years to spare. If
+# a Qt 6.11 regression turns up during testing, 6.10 is the fallback and the
+# only change is this one line plus the same line under sdk.
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+
+# The binary keeps its own name. Only reverse-DNS identifiers moved to the app
+# id; Exec=, Icon= and the executable did not.
+command: tidal-wave
+
+finish-args:
+  # Tidal's API and the audio streams. Also the cast media server, which listens
+  # on a LAN address so the Chromecast can fetch the track from us
+  # (src/cast/CastMediaServer.cpp).
+  - --share=network
+  # X11 needs shared IPC for MIT-SHM. It travels with the fallback socket below.
+  - --share=ipc
+  # The normal path on a current desktop.
+  - --socket=wayland
+  # Used only where there is no Wayland compositor to talk to.
+  - --socket=fallback-x11
+  # Audio out. PipeWire answers on the same socket, so this covers both.
+  - --socket=pulseaudio
+  # Qt Quick renders through the GPU. Without this every machine falls back to
+  # llvmpipe, which is what the app's software-rendering switch exists to turn
+  # on for the few machines that need it.
+  - --device=dri
+  # MPRIS, so the media keys and the panel's player widget work.
+  # src/mpris/MprisPlayer.cpp registers exactly this name.
+  - --own-name=org.mpris.MediaPlayer2.tidalwave
+  # The tray icon. QSystemTrayIcon registers a StatusNotifierItem with the
+  # watcher, and src/ui/Application.cpp also waits for a watcher that appears
+  # after the app (autostart). Qt names the item org.kde.StatusNotifierItem-
+  # <pid>-<n>, and the first process inside the sandbox gets pid 2. If the tray
+  # comes up blank under test, check the instance number: a second
+  # QSystemTrayIcon in one session would be -2-2 and needs its own own-name.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  # Chromecast discovery. libavahi-client does no mDNS itself; it asks the
+  # host's avahi-daemon, which sits on the system bus. Where this is refused or
+  # where no daemon is running, avahi_client_new() returns null,
+  # CastDiscovery::start() gives up quietly and the device list stays empty.
+  # Nothing else in the app depends on it.
+  - --system-talk-name=org.freedesktop.Avahi
+  # The download dialog starts in the user's music folder and remembers the
+  # directory it last saved to (QSettings "download/lastDir"). The file the user
+  # actually picks is granted through the portal, so this is only about the
+  # dialog opening somewhere useful and that memory surviving a restart. Without
+  # it both resolve to the sandbox's own home, which is not where anyone keeps
+  # their music.
+  - --filesystem=xdg-music
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /lib/systemd
+  - /share/man
+  - /share/dbus-1/system-services
+  - '*.la'
+  - '*.a'
+
+modules:
+  # Only the client library, which is all src/cast/CastDiscovery.cpp links. The
+  # daemon that does the actual mDNS stays on the host and is reached over the
+  # system bus, so the --disable-libdaemon build here loses nothing.
+  #
+  # Built rather than taken from the runtime because CMakeLists.txt calls
+  # pkg_check_modules(AVAHI REQUIRED avahi-client): if org.kde.Sdk turns out not
+  # to carry avahi-client.pc, the configure step fails outright and there is no
+  # build at all. Whether it carries it could not be checked without downloading
+  # the SDK. If `pkg-config --exists avahi-client` succeeds inside
+  # `flatpak run --devel --command=sh org.kde.Sdk//6.11`, this whole module can
+  # go.
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-libdaemon
+      - --disable-autoipd
+      - --disable-mono
+      - --disable-monodoc
+      - --disable-python
+      - --disable-qt3
+      - --disable-qt4
+      - --disable-qt5
+      - --disable-gtk
+      - --disable-gtk3
+      - --disable-libevent
+      - --disable-dbm
+      - --disable-introspection
+      - --disable-core-docs
+      - --disable-manpages
+      - --disable-doxygen-doc
+      - --with-distro=none
+      - --with-systemdsystemunitdir=no
+    cleanup:
+      - /bin
+      - /etc
+      - /lib/avahi
+      - /share/applications
+      - /share/avahi
+      - /share/dbus-1
+      - /share/locale
+    sources:
+      - type: archive
+        url: https://github.com/avahi/avahi/releases/download/v0.8/avahi-0.8.tar.gz
+        # Not verified in this session; the manifest was written offline. Check
+        # it against the release page before the Flathub PR goes up.
+        sha256: 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda
+
+  - name: tidal-wave
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    # CMakeLists.txt strips the installed binary itself, through an
+    # install(CODE ...) rule that runs `strip --strip-unneeded` into a temporary
+    # file and renames it over the target. flatpak-builder is happy with that:
+    # --strip-unneeded leaves the dynamic symbol table and the GNU build-id
+    # alone, so the file stays a valid ELF and the later strip pass finds
+    # nothing to remove. The one cost is that the .Debug extension Flathub
+    # builds alongside the app ships no symbols, so a user's backtrace comes
+    # back bare. Passing -DCMAKE_STRIP= here would switch the rule off and let
+    # flatpak-builder split the debug info properly, at the same final size.
+    # That is the owner's call, since the rule is deliberate (commit 345b030).
+    sources:
+      - type: git
+        url: https://github.com/immineal/tidal-wave.git
+        tag: v0.4.0
+        # A git source rather than a tarball because the tag is the thing being
+        # released and packaging/PKGBUILD already pins the same way, so there is
+        # one pin to update per release instead of a pin and a checksum.
+        #
+        # Flathub wants the commit the tag resolved to, so the source cannot
+        # move under a re-cut tag. Read it back with:
+        #   git rev-parse v0.4.0^{commit}
+        #
+        # Left unfilled on purpose. v0.4.0 is already on origin, at
+        # 0d6ba04e22e885570922fa4a2194ac17e4518a69, and that commit still
+        # carries the placeholder comment where <screenshots> now is. Flatpak
+        # builds the metainfo file out of this source, and Flathub will not take
+        # an app whose metainfo has no screenshots, so that commit cannot be the
+        # pin. Whichever commit does carry the block is the sha that belongs
+        # here, and the tag has to point at it.
+        commit: FILL-IN-THE-COMMIT-THE-TAG-ENDS-UP-ON
+    post-install:
+      # cmake --install writes the icons as tidal-wave.png and tidal-wave.svg,
+      # because QIcon::fromTheme("tidal-wave") in src/ui/Application.cpp looks
+      # them up under that name and the tray goes blank if they move. Flatpak
+      # exports only files named after the app id to the host, so the host's
+      # launcher needs a second copy under the id and the desktop entry has to
+      # point at it. Copying rather than renaming keeps both names in the
+      # sandbox theme, so the fromTheme lookup is untouched.
+      - install -Dm644 /app/share/icons/hicolor/128x128/apps/tidal-wave.png /app/share/icons/hicolor/128x128/apps/io.github.immineal.TidalWave.png
+      - install -Dm644 /app/share/icons/hicolor/scalable/apps/tidal-wave.svg /app/share/icons/hicolor/scalable/apps/io.github.immineal.TidalWave.svg
+      - desktop-file-edit --set-icon=io.github.immineal.TidalWave /app/share/applications/io.github.immineal.TidalWave.desktop

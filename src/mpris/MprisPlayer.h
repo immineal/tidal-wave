@@ -23,7 +23,11 @@ public:
     bool        canRaise()            const { return true; }
     bool        hasTrackList()        const { return false; }
     QString     identity()            const { return "Tidal Wave"; }
-    QString     desktopEntry()        const { return "tidal-wave"; }
+    // The installed entry is io.github.immineal.TidalWave.desktop, not
+    // tidal-wave.desktop: Flatpak exports only <app-id>.desktop, so the file
+    // was renamed and this was missed. A client that resolves DesktopEntry to
+    // find the icon and name found nothing.
+    QString     desktopEntry()        const { return "io.github.immineal.TidalWave"; }
     QStringList supportedUriSchemes() const { return {}; }
     QStringList supportedMimeTypes()  const { return {}; }
 public slots:

@@ -172,7 +172,14 @@ jobs:
           # tidal-wave@linu.li is the project mailbox (src/ui/Feedback.cpp, the
           # .deb Maintainer field). someone@example.com is the fake username in
           # tests/tst_auth.cpp. Anything else is a mistake until it is added here.
-          found=$(git grep -hoIE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- . \
+          # @BASE@ is the substitution marker in the DASH fixtures, as in
+          # initialization="@BASE@init.mp4" in tst_cast_prep.cpp, tst_dash.cpp
+          # and tst_progressive.cpp. The regex reads what follows the marker as
+          # a domain and reports the whole thing as an address, so the marker
+          # comes out of the text before the scan. Do not write the matched
+          # form into this comment; the scan reads this file too.
+          found=$(git grep -hI -e '' -- . | sed 's/@BASE@//g' \
+                  | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
                   | sort -u | grep -ivE "^($allowed)$" || true)
           if [ -n "$found" ]; then
             echo "Addresses in the tree that are not on the allowlist:"

@@ -176,19 +176,35 @@
   </content_rating>
 
   <!--
-    No <screenshots> block, deliberately, and not an oversight to be filled in
-    with placeholder URLs: Flathub fetches every screenshot URL at submission
-    time, so a link to an image that does not exist fails louder than no link.
-
-    What completing it needs, in order (docs/PACKAGING.md has the long version):
-      1. Captures taken on a headless X server from the owner's own session -
-         their account, never their monitor, never their running instance.
-      2. The owner's yes to each individual image. Nothing ships without it.
-      3. The approved files hosted at a stable raw URL on a tag, and listed here
-         as <screenshot type="default"> with <image> and <caption>.
-    Flathub requires at least one screenshot, so this block is the last thing
-    between the metainfo file and a submission.
+    The URLs point at the v0.4.0 tag rather than a branch, so each one keeps
+    serving the image its caption describes however the files move afterwards.
+    Both Flathub at submission time and the store-metadata CI job fetch every
+    one of them. The tag is on origin and the five blobs there are identical to
+    the ones in assets/, so all five resolve today. Moving the tag is safe for
+    the same reason: the images do not change with it.
   -->
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_home.png</image>
+      <caption>The home page, with mixes, saved albums and playlists for the account</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_collection.png</image>
+      <caption>My Collection, showing saved albums, with tabs for tracks, artists, playlists and mixes</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_album.png</image>
+      <caption>An album page with its track list, over a background taken from the cover</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_nowplaying.png</image>
+      <caption>Now Playing, with the queue below it and buttons for credits and lyrics</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/immineal/tidal-wave/v0.4.0/assets/screenshot_search.png</image>
+      <caption>Search results grouped into artists, tracks and albums</caption>
+    </screenshot>
+  </screenshots>
 
   <releases>
     <!-- date= is the release date and cannot be derived, so it is the one thing
