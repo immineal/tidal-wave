@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest something Tidal Wave should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Anything that depends on Tidal's API can only be built if their API
+        exposes it, and plenty of it does not. Cross-device play history is
+        the usual example. Chromecast output is Linux-only because it needs
+        Avahi for mDNS discovery.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is awkward right now
+      description: What you are trying to do and where the app gets in the way.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like instead
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which platform this is for
+      description: >-
+        Linux is the primary target. macOS is built and shipped but far less
+        exercised, and Windows least of all.
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - All of them
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything else
+      description: >-
+        Another client that does this well, a screenshot, or the Tidal API
+        endpoint you think it would need.

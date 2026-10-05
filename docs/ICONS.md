@@ -205,8 +205,8 @@ Work down this list. Each step is cheap and the order matters.
    current artwork into place, refreshes the desktop entry and clears the
    caches. It only ever writes under `$HOME` and it never restarts anything.
 
-4. **Prove it with pixels, not with a file listing.** A file whose name and date
-   look right can still be the old art. Compare it against the reference:
+4. **Prove it with pixels.** A file whose name and date look right can still be
+   the old art. Compare it against the reference:
    ```sh
    python3 - <<'EOF'
    from PIL import Image

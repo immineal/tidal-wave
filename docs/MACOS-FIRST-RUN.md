@@ -1,11 +1,10 @@
 # First run on macOS
 
-For someone with a Mac and a day or two. Tidal Wave has only ever been built and
-run on Linux, so most of what follows has never been executed once. Treat
-everything here as a question, not a regression.
+For someone with a Mac and a day or two. Tidal Wave is built and used on Linux,
+so most of what follows has never been executed once. Treat everything here as
+a question rather than a regression.
 
-Start by cloning the branch — the repository is public, so nothing needs to be
-sent to you:
+The repository is public, so start by cloning the branch:
 
     git clone --branch beta-0.4.0 https://github.com/immineal/tidal-wave.git
     cd tidal-wave
@@ -13,20 +12,19 @@ sent to you:
 ## What is already known to be absent
 
 Six `if(UNIX AND NOT APPLE)` blocks in `CMakeLists.txt` skip things on macOS, so
-some of this is by design rather than broken:
+some of this is by design:
 
-- **Chromecast is compiled out entirely.** `src/cast/*` and the Avahi dependency
-  are Linux-only. The app is expected to run without it, and the output picker
-  is written to hide its whole "Cast to" half when there is no cast backend. That
-  the picker degrades correctly rather than showing an empty heading or a
-  permanent "Searching…" is worth checking, because `cast: null` is unreachable
-  on Linux and so is only ever exercised here.
-- **No `.desktop` file, no icon install, no RPATH fixup, no CPack packaging.**
-  The target *is* `MACOSX_BUNDLE TRUE`, so the build does produce a `.app` - but
-  nothing signs it, notarises it or wraps it in a disk image, and its bundle
-  metadata is wrong (the app menu says `tidal-wave`). Note that `open` cannot be
-  used for the two-launch test in item 2: it coalesces onto the running instance
-  before the app ever sees it, so run the binary inside the bundle directly.
+- Chromecast is compiled out entirely. `src/cast/*` and the Avahi dependency are
+  Linux-only. The app should run without it, and the output picker is written to
+  hide its whole "Cast to" half when there is no cast backend. Check that it
+  does, rather than showing an empty heading or a permanent "Searching…":
+  `cast: null` is unreachable on Linux and so is only ever exercised here.
+- No `.desktop` file, no icon install, no RPATH fixup, no CPack packaging. The
+  target *is* `MACOSX_BUNDLE TRUE`, so the build produces a `.app`, but nothing
+  signs it, notarises it or wraps it in a disk image, and its bundle metadata is
+  wrong (the app menu says `tidal-wave`). `open` cannot be used for the
+  two-launch test in item 2: it coalesces onto the running instance before the
+  app ever sees it, so run the binary inside the bundle directly.
 
 ## 1. Does it build
 
@@ -34,27 +32,24 @@ some of this is by design rather than broken:
     cmake --build build -j
 
 You need Qt 6. CI builds against 6.12 and that is the only version anyone has
-used; `find_package(Qt6 6.4)` is the declared floor and was true again as of
-this branch, but has never been *run*. Homebrew's `qt` is fine to try — report
-which version you got, because that is part of the answer. If CMake cannot find
-Qt, pass `-DCMAKE_PREFIX_PATH=$(brew --prefix qt)`.
+used; `find_package(Qt6 6.4)` is the declared floor and has never been *run*.
+Homebrew's `qt` is fine to try, and report which version you got, because that
+is part of the answer. If CMake cannot find Qt, pass
+`-DCMAKE_PREFIX_PATH=$(brew --prefix qt)`.
 
-One place to watch:
-
-- `tests/` are behind an option: add `-DTIDALWAVE_BUILD_TESTS=ON` and run
-  `ctest --test-dir build --output-on-failure`. 17 tests pass on Linux. Any that
-  fail here are findings, and the GUI ones need no display trickery on macOS the
-  way they do on Linux — but if you want them quiet, `QT_QPA_PLATFORM=offscreen`
-  works.
+The tests are behind an option: add `-DTIDALWAVE_BUILD_TESTS=ON` and run
+`ctest --test-dir build --output-on-failure`. 17 tests pass on Linux and any
+that fail here are findings. The GUI ones need no display trickery on macOS the
+way they do on Linux, but `QT_QPA_PLATFORM=offscreen` works if you want them
+quiet.
 
 ## 2. The single-instance lock, which is the one I expect to break
 
 `Application::singleInstanceSocketName()` builds a Unix domain socket path and a
 `sockaddr_un` has 107 bytes for it. It tries `XDG_RUNTIME_DIR` (absent on macOS),
-then `QDir::tempPath()`, then `/tmp`, taking the first that fits. **macOS's
-per-user temp directory is long** — something like
-`/var/folders/xy/9z.../T/` — so this is the first platform where the fitting
-check actually has to do something.
+then `QDir::tempPath()`, then `/tmp`, taking the first that fits. macOS's
+per-user temp directory is long, something like `/var/folders/xy/9z.../T/`, so
+this is the first platform where the fitting check has to do anything.
 
 Check that a second launch does *not* open a second window but raises the first
 one, and say which directory the socket ended up in. If two windows appear, the
@@ -70,39 +65,40 @@ fall through to the embedded pixmap.
 
 Report whether the menu bar shows the Tidal Wave mark, something generic, or
 nothing. Also whether its menu works and whether it can bring a closed window
-back — which matters for the next item.
+back, which matters for the next item.
 
 ## 4. The close button, which is a convention clash
 
 New in this branch: a `ui/quitOnClose` preference, in Settings → Window,
-defaulting to off. Off means closing the window hides it and the tray icon brings
-it back; with no tray available, closing always quits.
+defaulting to off. Off means closing the window hides it and the tray icon
+brings it back. With no tray available, closing always quits.
 
-macOS convention is already that closing a window does not quit the app — it
-stays in the Dock. So the default is probably right here by accident. What needs
-an eye is whether there is genuinely a way back: `QSystemTrayIcon::
-isSystemTrayAvailable()` returns true on macOS, so the app will take the "hide
-it" branch, and if the menu bar item is blank or absent (item 3) then the window
-is gone with no route back and the Dock icon may not restore it. Say exactly how
-you got the window back, or that you could not.
+macOS convention is already that closing a window leaves the app in the Dock, so
+the default is probably right here by accident. What needs an eye is whether
+there is genuinely a way back. `QSystemTrayIcon::isSystemTrayAvailable()`
+returns true on macOS, so the app takes the "hide it" branch, and if the menu
+bar item is blank or absent (item 3) then the window is gone with no route back
+and the Dock icon may not restore it. Say exactly how you got the window back,
+or that you could not.
 
 ## 5. Keyboard shortcuts say the wrong thing
 
 Qt maps `Ctrl` to Command on macOS automatically, so the shortcuts themselves
-should work. But Settings → Keyboard shortcuts **prints the strings**, and they
-will read "Ctrl+Q" where a Mac user expects ⌘Q. Confirm that the shortcuts fire
-with Command, and that the displayed text is wrong — both halves are the finding.
+should work. Settings → Keyboard shortcuts prints the stored strings, though, so
+they will read "Ctrl+J" where a Mac user expects ⌘J. Confirm that the shortcuts
+fire with Command and that the displayed text is wrong. Both halves are the
+finding.
 
 ## 6. Reduced motion is not implemented here
 
 `detectReducedMotion()` reads KDE's and GNOME's config files and has a comment
 saying macOS's `NSWorkspace.accessibilityDisplayShouldReduceMotion` is not read
 yet. So turning on System Settings → Accessibility → Display → Reduce motion
-should have **no effect**, and `TIDALWAVE_REDUCED_MOTION=1` in the environment
-should have the full effect. Confirming both is what turns a comment into a
-measured gap. With the variable set, the sidebar collapse, the Now Playing
-restack and the player bar regroup should all arrive in a single frame, and the
-playing indicator should sit still at an uneven skyline rather than vanishing.
+should have no effect, while `TIDALWAVE_REDUCED_MOTION=1` in the environment
+should have the full effect. Confirming both turns a comment into a measured
+gap. With the variable set, the sidebar collapse, the Now Playing restack and
+the player bar regroup should all arrive in a single frame, and the playing
+indicator should sit still at an uneven skyline rather than vanishing.
 
 ## 7. Retina, which Linux cannot test at all
 
@@ -135,15 +131,15 @@ different timing.
 
 Without logging in you can still open Settings → Playback → Audio output, see
 whether the device list matches the system's, and switch between devices. Watch
-for the window going **unresponsive** rather than crashing — that was the
-symptom. Plugging and unplugging headphones mid-session is the interesting case.
+for the window going unresponsive rather than crashing; that was the symptom.
+Plugging and unplugging headphones mid-session is the interesting case.
 
 ## 10. Do not log in, and most of this needs a workaround because of it
 
 Stop at the login screen. Do not attempt to sign in to anyone's Tidal account.
 
-**An earlier draft of this file claimed the whole checklist works signed out.
-That was wrong**, and a real run proved it: every `Shortcut` in `Main.qml` is
+An earlier draft of this file claimed the whole checklist works signed out.
+A real run proved otherwise: every `Shortcut` in `Main.qml` is
 `enabled: auth.state === 2`, `PlayerBar` is `visible: auth.state === 2`, and
 `loginLoader` covers the content until then. So items 5b, 6, 7 beyond the login
 screen, 8 and 9 are all unreachable by launching the app.
@@ -152,7 +148,7 @@ The login-free route is already in the repository. `tests/visual/` is a
 standalone CMake project whose `tst_shots` runner instantiates SideBar,
 PlayerBar, SettingsPanel, TrackRow, the album page and Now Playing against
 `tests/TestStubs.h` and grabs each with `grabToImage`. `tests/visual/run.sh` is
-Linux-only - Xvfb, ImageMagick `import`, `/proc/net/unix` - but the binary itself
+Linux-only (Xvfb, ImageMagick `import`, `/proc/net/unix`), but the binary itself
 runs under cocoa, so build that project and drive the binary directly. That
 covers the shortcut strings, reduced motion, every Retina glyph and the German
 walk.
@@ -162,7 +158,7 @@ no-cast-backend path is unreachable even there, and that path is reachable
 *only* on macOS. Answering it needs a small runner of your own, outside the
 repository, that binds `cast` to null.
 
-**Also be aware that `HOME` does not isolate anything on macOS.** `QSettings`
+`HOME` does not isolate anything on macOS. `QSettings`
 goes through CFPreferences and writes
 `~/Library/Preferences/com.tidalwave.Tidal Wave.plist` whatever `HOME` says, so
 a settings change in a test run lands in the real user's preferences. Back that
@@ -170,7 +166,7 @@ file up before you change any setting, and put it back afterwards. The same root
 cause makes `QStandardPaths::AppDataLocation` ignore `HOME` and `XDG_DATA_HOME`,
 which is why `tst_library` aborts in `initTestCase` here.
 
-A first run on this machine also came up **already signed in**, from a
+A first run on this machine also came up already signed in, from a
 `credentials.json` left by an install months earlier, and refreshed the token.
 If that happens, quit without touching anything and re-run with a scratch
 `HOME`; do not log out, because that may revoke the token on the owner's other

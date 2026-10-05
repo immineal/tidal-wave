@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/immineal/tidal-wave/security/advisories/new
+    about: Report privately through GitHub rather than in a public issue.
+  - name: Building it yourself
+    url: https://github.com/immineal/tidal-wave/blob/main/CONTRIBUTING.md
+    about: Build and test commands, the Qt 6.4 floor, and what CI will check.
+  - name: What the app sends and stores
+    url: https://github.com/immineal/tidal-wave/blob/main/README.md
+    about: The README's privacy section lists every request and every file on disk.

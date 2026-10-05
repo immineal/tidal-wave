@@ -1,0 +1,150 @@
+name: Bug report
+description: Something in Tidal Wave does not work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Settings -> Feedback -> "Open a GitHub issue" opens this form with your
+        version, your operating system and both Qt versions already filled in.
+        That saves you three of the fields below.
+
+        Please do not paste the contents of `credentials.json`. It contains
+        your Tidal tokens. For a security problem, use
+        [Report a vulnerability](https://github.com/immineal/tidal-wave/security/advisories/new)
+        instead of this form.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open an artist page
+        2. Click ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Tidal Wave version
+      placeholder: "0.4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - .deb from a release
+        - .tar.gz from a release
+        - Built from source
+        - AUR / PKGBUILD
+        - Flatpak
+        - Distro package
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: "openSUSE Tumbleweed 20260928 / Ubuntu 24.04 / macOS 15.1 / Windows 11"
+    validations:
+      required: true
+
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop environment
+      description: Linux only. Leave blank on macOS and Windows.
+      placeholder: "KDE Plasma 6.2"
+
+  - type: dropdown
+    id: session
+    attributes:
+      label: Wayland or X11
+      description: >-
+        Linux only. `echo $XDG_SESSION_TYPE` will tell you. Window placement,
+        tray icons and media keys all behave differently between the two.
+      options:
+        - Wayland
+        - X11
+        - Not on Linux
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: qt
+    attributes:
+      label: Qt version
+      description: >-
+        Both the Qt the build was compiled against and the Qt it is running on,
+        if they differ. The prefilled issue form in Settings has both. Qt 6.4
+        is the oldest version supported.
+      placeholder: "built against 6.12.0, running on 6.12.0"
+
+  - type: dropdown
+    id: subscription
+    attributes:
+      label: Tidal subscription
+      description: >-
+        Quality-tier bugs are a recurring class here, so this is worth getting
+        right even when the problem looks unrelated to audio.
+      options:
+        - Paid, hi-res included
+        - Paid, lossless only
+        - Paid, older HiFi or HiFi Plus plan
+        - Free, trial or expired
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: quality
+    attributes:
+      label: Quality selected in Settings
+      options:
+        - Normal (96 kbps)
+        - High (320 kbps)
+        - Lossless (16-bit)
+        - Hi-Res (24-bit)
+        - Not sure
+        - Not relevant
+
+  - type: dropdown
+    id: fresh-config
+    attributes:
+      label: Does it still happen with a fresh config?
+      description: >-
+        Move `~/.config/TidalWave/` aside and restart. That resets the theme,
+        language, pins and quality setting but keeps you signed in. Moving
+        `~/.config/tidal-wave/` aside as well also signs you out, so only do
+        that if the first step changes nothing.
+      options:
+        - Yes, still happens
+        - No, a fresh config fixes it
+        - Have not tried
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Terminal output
+      description: >-
+        Run the app from a terminal and paste what it printed, especially any
+        QML warnings. Leave it out if there was nothing.
+      render: text

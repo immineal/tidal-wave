@@ -67,7 +67,8 @@
     <ul>
       <li>Six themes, three dark and three light, with a true-black mode for OLED screens</li>
       <li>Lyrics, album credits and artist biographies, with every name a link</li>
-      <li>A sleep timer with a fade-out, and a sidebar that searches your library</li>
+      <li>A sidebar that searches your whole library, saved songs included</li>
+      <li>A sleep timer with presets, an optional fade-out and an end-of-track mode</li>
       <li>Pinning, with drag-to-reorder, kept per Tidal account</li>
       <li>A complete German translation, switchable without restarting</li>
       <li>A software-rendering switch for machines where the GPU path misbehaves</li>

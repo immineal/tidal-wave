@@ -57,7 +57,12 @@ jobs:
           tar -czf ${{ matrix.asset_name }} -C build tidal-wave TidalWave
           # Also build a .deb with the correct runtime dependencies declared.
           (cd build && cpack -G DEB)
-          mv build/tidal-wave-*-Linux.deb ./tidal-wave-linux-x86_64.deb
+          # CPACK_DEBIAN_FILE_NAME is DEB-DEFAULT, so the file is named
+          # tidal-wave_<version>_amd64.deb. The old tidal-wave-*-Linux.deb
+          # glob stopped matching when that was set, and this step failed
+          # silently enough that releases shipped with no .deb at all.
+          deb=$(ls build/*.deb)
+          mv "$deb" ./tidal-wave-linux-x86_64.deb
 
       - name: Package binary (macOS)
         if: matrix.os == 'macos-latest'
