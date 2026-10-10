@@ -241,6 +241,7 @@ private:
     void setIndex(int i);
     void setManualCount(int n);
     void loadAndPlay(int index);
+    void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;
     int  nextIndex() const;
@@ -284,6 +285,8 @@ private:
     QPointer<Prefs>      m_prefs;
     // Set during an output swap, so its transport churn does not reach the UI.
     bool                 m_rebinding     = false;
+    // Set while a seek pauses and resumes the backend around itself.
+    bool                 m_seekToggling  = false;
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
 

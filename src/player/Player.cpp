@@ -252,7 +252,7 @@ void Player::restoreAudioState(const AudioState &state) {
     // A swap can drop the backend back to the start of the track. Seek back,
     // and never re-set the source: that would re-fetch the stream.
     if (state.position > 0 && m_player->position() != state.position && m_player->isSeekable())
-        m_player->setPosition(state.position);
+        setPlayerPosition(state.position);
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
     if (state.playing && !playing)      m_player->play();
     else if (!state.playing && playing) m_player->pause();
@@ -638,9 +638,28 @@ void Player::seek(qint64 ms) {
     }
 #endif
     if (!m_player) return;
-    m_player->setPosition(ms);
+    setPlayerPosition(ms);
     // Nothing is loaded to seek inside yet, so hold it until something is.
     m_pendingSeek = (m_player->duration() > 0) ? 0 : qMax<qint64>(0, ms);
+}
+
+void Player::setPlayerPosition(qint64 ms) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4 stops reading a file once it has read to its end, and a seek
+    // while playing does not start it again. Resuming from a pause does.
+    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+        m_seekToggling = true;
+        m_player->pause();
+        m_player->setPosition(ms);
+        m_player->play();
+        m_seekToggling = false;
+        // If it did not come back up, the UI has to hear of it.
+        if (!m_rebinding && m_player->playbackState() != QMediaPlayer::PlayingState)
+            emit playingChanged(false);
+        return;
+    }
+#endif
+    m_player->setPosition(ms);
 }
 
 void Player::setVolume(double v) {
@@ -986,7 +1005,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         if (m_pendingSeek > 0 && m_player) {
             const qint64 to = m_pendingSeek;
             m_pendingSeek = 0;
-            m_player->setPosition(to);
+            setPlayerPosition(to);
         }
         break;
     case QMediaPlayer::EndOfMedia:
@@ -1003,6 +1022,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 
 void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     if (m_rebinding) return;   // rebindAudioOutput() reports the settled state
+    if (m_seekToggling) return;   // the state a seek started in is the one it ends in
     // Audio is coming out, so the load is over even if a media status was
     // missed. After the guard above: a rebind's transient Playing is no load.
     if (state == QMediaPlayer::PlayingState) setLoading(false);
