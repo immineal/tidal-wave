@@ -1,0 +1,52 @@
+# Build base for the AppImage: Ubuntu 22.04 with Qt 6.12.0 from the Qt
+# installer. packaging/build-appimage.sh builds and uses this image.
+#
+# An old base keeps the glibc floor low: nothing built here can need more than
+# 2.35. The Qt comes from the installer because its media backend is FFmpeg and
+# it ships the FFmpeg libraries, so the AppImage needs no GStreamer on the host.
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Toolchain, and what aqtinstall and the packaging tools need to run. CMake is
+# installed further down, because Qt 6.12 needs 3.25 and this base has 3.22.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential ninja-build pkg-config \
+        ca-certificates curl file python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies of the app: Avahi for Chromecast discovery, and the
+# OpenGL and xkbcommon headers Qt's CMake packages look for.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libavahi-client-dev libgl-dev libegl-dev libxkbcommon-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# What the Qt libraries and plugins link. linuxdeploy resolves every one of
+# them here and copies those that belong in the bundle.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libbrotli1 libbz2-1.0 libdbus-1-3 libdrm2 libegl1 libfontconfig1 \
+        libfreetype6 libgl1 libglib2.0-0 libgssapi-krb5-2 libopengl0 \
+        libpulse0 libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+        libx11-6 libx11-xcb1 libxcb1 libxcb-cursor0 libxcb-glx0 \
+        libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+        libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
+        libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libxext6 \
+        libxkbcommon0 libxkbcommon-x11-0 libxrandr2 libzstd1 zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+# Qt 6.12.0, the version the CI and release workflows pin for Linux. The base
+# install carries lrelease and the Wayland client; qtmultimedia is the add-on.
+RUN python3 -m venv /opt/pytools \
+    && /opt/pytools/bin/pip install --no-cache-dir aqtinstall==3.3.0 cmake==3.31.10 \
+    && /opt/pytools/bin/aqt install-qt linux desktop 6.12.0 linux_gcc_64 \
+        -m qtmultimedia -O /opt/qt \
+    && ln -s /opt/pytools/bin/cmake /usr/local/bin/cmake \
+    && rm -f aqtinstall.log
+ENV QT_PREFIX=/opt/qt/6.12.0/gcc_64
+
+# No Qt binary in here may open a window.
+ENV QT_QPA_PLATFORM=offscreen
+
+# The build runs as the invoking user, whose uid does not exist in here.
+RUN mkdir -p /build && chmod 0777 /build
+WORKDIR /build

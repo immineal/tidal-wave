@@ -4,20 +4,10 @@ import QtQuick.Window
 import QtQuick.Controls
 import TidalWave
 
-// A track's radio as a plain list, with no identity on it.
-//
-// This is the *fallback* viewer, and reaching it means one specific thing: the
-// track did not name the mix its radio is, and `tracks/<id>` did not name one
-// either. See TrackRow.startRadio(), which is the only route in.
-//
-// Why there is a second page at all: `tracks/<id>/radio` answers tracks and
-// nothing else - no mix id, no artwork, no title of its own - so a station
-// opened this way cannot be saved, cannot be unsaved, and cannot be the same
-// thing as the mix row a saved radio shows up as in the sidebar. That split is
-// what the owner reported twice ("the two different views of a track radio as a
-// mix and a radio"). MixPage is the one viewer now; this one is what is left
-// when there is no mix to open, and keeping it is what stops an absent id from
-// turning "Start radio" into a dead menu entry.
+// A track's radio as a plain list, with no identity on it. This is the fallback
+// viewer: `tracks/<id>/radio` answers tracks and no mix id, so a station opened
+// here cannot be saved. MixPage is the viewer whenever the track names its mix.
+// TrackRow.startRadio() is the only route in.
 Rectangle {
     id: root
     color: Theme.bg
@@ -27,19 +17,11 @@ Rectangle {
     property var    tracks:     []
     property bool   loading:    false
 
-    // What the last load was told, "" when it was served. The one callback used
-    // to read `if (!err)` and drop it, which is AlbumPage's bug from 8ec30ed on
-    // the page with the least left over: a station Tidal will not build - ask
-    // for one from a track that has since been delisted and `tracks/<id>/radio`
-    // answers 404 the same way `albums/<id>` does - left `tracks` empty and
-    // `loading` false, which is this page's empty initial state.
+    // What the last load was told, "" when it was served.
     property string loadError: ""
 
-    // Nothing came back at all. The list *is* this page: there is no artwork, no
-    // description and the one pill hides itself when there is nothing to play,
-    // so a refusal leaves a correct heading over an empty rectangle. The heading
-    // is kept - it says which track the station was asked for, and it carries
-    // the way back - and the message goes where the list would have been.
+    // Nothing came back at all. The heading stays, since it names the track and
+    // carries the way back, and the message goes where the list would be.
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
@@ -55,11 +37,8 @@ Rectangle {
         loading = true
         loadError = ""
         tracks  = []
-        // Which track this reply is about; see MixPage.loadMix(). A row's
-        // "Start radio" can be used again from inside the station it opened,
-        // and the page item is reused - so a reply for the station just left
-        // must not empty, fill or condemn the one now on screen. A superseded
-        // request is not a failure: checked first, and on its own.
+        // Which track this reply is about. The page item is reused, so a reply
+        // for a station already left must not touch the one now on screen.
         var requested = trackId
         bridge.fetchTrackRadio(trackId, function(t, err) {
             if (requested !== root.trackId) return
@@ -78,8 +57,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 16
 
-            // Same drawn arrow as BackButton and PageHeader; see BackButton
-            // for why none of the three is a character any more.
+            // Same drawn arrow as BackButton and PageHeader.
             VectorIcon {
                 name: "chevron-left"
                 color: Theme.textSec
@@ -127,11 +105,8 @@ Rectangle {
 
         Item { height: 8 }
 
-        // Where the list would have been. The heading above stays, because it is
-        // still true and still the way out; only the empty half is replaced.
-        // A sibling in the same ColumnLayout rather than an overlay: a Layout
-        // skips an invisible child outright, so the one of these two that is
-        // drawn gets the whole remaining height either way.
+        // Where the list would be. A sibling in the same ColumnLayout: a Layout
+        // skips an invisible child, so the one drawn gets all the height.
         Item {
             objectName: "radioLoadError"
             visible: root.loadFailed
@@ -145,8 +120,7 @@ Rectangle {
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
-                    // See the note on the chevron above: in a Layout the size
-                    // has to be asked for, or the implicit 24 is what draws.
+                    // A Layout needs it asked for, or the implicit 24 draws.
                     Layout.preferredWidth: 40
                     Layout.preferredHeight: 40
                     name: "waves"
@@ -166,8 +140,7 @@ Rectangle {
                 }
 
                 // Not the server's own string; see AlbumPage's panel for why.
-                // One long literal and not a concatenation, so lupdate can read
-                // it.
+                // One long literal, since lupdate cannot read a concatenation.
                 Text {
                     objectName: "radioLoadErrorDetail"
                     Layout.fillWidth: true

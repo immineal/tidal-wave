@@ -1,18 +1,8 @@
 // ArtistPage's two discography rows: which release lands in which, and what
-// the edition collapse is allowed to throw away.
-//
-// The server half of this bug - artists/<id>/albums answering the albums only,
-// so the Singles & EPs row had nothing to show and hid itself - is in
-// tests/tst_artist_discography.cpp, against the real TidalClient. This file is
-// the other half: the page is now handed a list with three kinds of release in
-// it where it used to be handed one, and two things about it changed with that.
-//
-//   * the split is `type` first and the track count only as a fallback, so a
-//     four-track EP is an EP and not an album;
-//   * dedupeEditions() keys on the section as well as on artwork + title,
-//     because a lead single routinely carries its album's artwork *and* the
-//     album's title, and on artwork + title alone one of the two vanishes.
-//
+// the edition collapse may drop. The split is by type, with the track count
+// as a fallback. dedupeEditions() keys on the section as well as on artwork
+// and title, because a lead single often carries its album's artwork and
+// title. The request side is in tests/tst_artist_discography.cpp.
 // Every id, title and cover is invented.
 
 import QtQuick
@@ -27,8 +17,7 @@ TestCase {
     width: 1000
     height: 800
     // TestCase declares visible: false, and an invisible tree reports every
-    // item invisible - so the two sections could not be told apart from hidden
-    // ones. Same reason tst_page_load_errors.qml sets it.
+    // item invisible, so a shown section would read as hidden.
     visible: true
 
     readonly property int artistId: 900000031
@@ -85,8 +74,6 @@ TestCase {
 
     // ── the split ────────────────────────────────────────────────────────────
 
-    // The bug as the owner reported it, seen from the page: hand it singles and
-    // the Singles & EPs row has to appear with them in it.
     function test_singles_and_eps_fill_their_own_row() {
         var s = openWith([
             rel(900010001, "Ein Album",   "ALBUM",  11, "11111111-0000-0000-0000-000000000000"),
@@ -107,9 +94,8 @@ TestCase {
                + s.singles.width + "x" + s.singles.height)
     }
 
-    // The track count is only the fallback. A four-track EP that Tidal filed as
-    // an EP belongs in the singles row; `numTracks <= 3` would put it in the
-    // albums row, and that fallback must never be the rule doing the work.
+    // The track count is only the fallback: a four-track EP filed as an EP
+    // belongs in the singles row, where numTracks <= 3 would not put it.
     function test_a_four_track_ep_is_not_filed_as_an_album() {
         var s = openWith([
             rel(900011001, "Ein Album", "ALBUM", 11, "11111111-0000-0000-0000-000000000000"),
@@ -121,7 +107,6 @@ TestCase {
         compare(idsOf(s.albums), [900011001])
     }
 
-    // A response with no `type` at all is the only case the count decides.
     function test_without_a_type_the_track_count_decides() {
         var s = openWith([
             rel(900012001, "Lang",  "", 9, "11111111-0000-0000-0000-000000000000"),
@@ -132,10 +117,8 @@ TestCase {
         compare(idsOf(s.singles), [900012002])
     }
 
-    // The heading says "Albums" only when there is a second row under it to
-    // tell it apart from; on an artist with no singles the one row is the whole
-    // discography. This is the title that had been stuck on "Discography" for
-    // every artist alive, because the singles row was always empty.
+    // The heading names the albums only when there is a second row under it.
+    // With no singles, the one row is the whole discography.
     function test_the_albums_heading_names_the_second_row() {
         var withSingles = openWith([
             rel(900013001, "Ein Album",   "ALBUM",  11, "11111111-0000-0000-0000-000000000000"),
@@ -155,10 +138,8 @@ TestCase {
 
     // ── the edition collapse ─────────────────────────────────────────────────
 
-    // A lead single very often carries the album's artwork and the album's
-    // title. Before the three filters only one of the two could ever be in the
-    // list, so collapsing on artwork + title alone was safe; now it would drop
-    // whichever came second, and the user would have no way to reach it.
+    // A lead single often carries its album's artwork and title, so a collapse
+    // on artwork and title alone would drop whichever came second.
     function test_a_single_sharing_its_album_artwork_and_title_is_kept() {
         var sharedArt = "99999999-0000-0000-0000-000000000000"
         var s = openWith([
@@ -172,8 +153,8 @@ TestCase {
                 "the lead single was collapsed into its album and is unreachable")
     }
 
-    // What the collapse is for, and it still has to work: Tidal lists every
-    // edition of a release under its own id, and they are the same record.
+    // What the collapse is for: Tidal lists every edition of a release under
+    // its own id, and they are the same record.
     function test_editions_of_one_album_still_collapse() {
         var art = "88888888-0000-0000-0000-000000000000"
         var s = openWith([
@@ -186,7 +167,6 @@ TestCase {
                 "the editions of one album stopped collapsing into one row")
     }
 
-    // The same, among singles: two editions of one single are one single.
     function test_editions_of_one_single_still_collapse() {
         var art = "77777777-0000-0000-0000-000000000000"
         var s = openWith([

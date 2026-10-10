@@ -2,13 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import TidalWave
 
-// The sidebar's finder: the search field (SPEC S5) with the type filter chips
-// (S8) drawn inside it as one unit.
-//
-// The chips are deliberately *inside* the field's rounded container rather than
-// a row of pills underneath it. The labelled variant was tried and the pills
-// came out too big and too loose; the names live in the tooltips now and the
-// chips are icons only, at every width.
+// The sidebar's finder: the search field with the type filter chips drawn
+// inside its rounded container as one unit. The chips are icons only, at
+// every width; their names are in the tooltips.
 Rectangle {
     id: root
 
@@ -26,17 +22,9 @@ Rectangle {
     readonly property int chipRowHeight: 30
 
     // ── how five icon chips are made to fit any sidebar ──────────────────
-    //
-    // Measured, because the number is not obvious. SideBar gives this block a
-    // 12px margin on each side, so the block is the sidebar less 24. Inside
-    // it the strip keeps `chipInset` left and right and `chipSpacing` between
-    // chips, so five chips want
-    //     4 + 5*30 + 4*2 + 4 = 166px of block, i.e. a 190px sidebar.
-    //
-    // That is exactly why Prefs::minSidebarWidth is 190. The chips were made
-    // to shrink below it instead, and the user saw them twitch in the last few
-    // pixels of the drag, so the sidebar stops where the chips stop fitting
-    // and the size is a constant again.
+    // SideBar gives this block a 12px margin each side. Five chips need
+    //     4 + 5*30 + 4*2 + 4 = 166px of block, a 190px sidebar,
+    // which is why Prefs::minSidebarWidth is 190.
     readonly property int chipSpacing: 2
     readonly property int chipInset: 4
     readonly property int chipHeight: 24
@@ -54,11 +42,9 @@ Rectangle {
 
     function releaseFocus() { input.focus = false }
 
-    // Put the finder back to "no filter at all". Guarded on both halves: the
-    // sidebar rebuilds its model whenever `kinds` changes, and `kinds = []` on
-    // an already empty list is still a new array and still emits, which would
-    // hand the library list a new model in the middle of a slide and destroy
-    // the very covers the slide is moving.
+    // Back to no filter at all. Guarded on both halves: `kinds = []` on an
+    // empty list is still a new array and still emits, and the sidebar would
+    // rebuild its model in the middle of a slide.
     function reset() {
         if (input.text.length > 0) input.text = ""
         if (kinds.length > 0)      kinds = []
@@ -163,12 +149,9 @@ Rectangle {
             height: root.chipRowHeight
 
             Row {
-                // Left-aligned rather than centred: at 420px of sidebar a
-                // centred strip floats in the middle of nowhere, and the inset
-                // puts the first chip's icon on the same vertical as the
-                // magnifier above it. The matching inset on the right is what
-                // the arithmetic at the top of this file budgets for, so the
-                // last chip never ends flush against the rounded edge.
+                // Left-aligned. The inset puts the first chip's icon on the
+                // same vertical as the magnifier above it, and the matching
+                // inset on the right is in the width budget at the top.
                 anchors.left: parent.left
                 anchors.leftMargin: root.chipInset
                 anchors.right: parent.right

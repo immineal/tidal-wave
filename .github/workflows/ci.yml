@@ -14,20 +14,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One Qt for all three platforms: 6.12.0 has aqt binaries everywhere
-        # (win64_msvc2022_64 / clang_64 / linux_gcc_64), which the old per-OS
-        # split existed to work around. Keep this in sync with release.yml.
+        # Linux and macOS build against 6.12.0. Windows is held at 6.10.3, and
+        # the reason is the installer, nothing in this code: from 6.11.0 on,
+        # Qt's windows_x86 repository keeps its metadata under
+        # qt6_<ver>/qt6_<ver>_msvc2022_64/Updates.xml, and the plain
+        # qt6_<ver>/qt6_<ver>/Updates.xml that aqtinstall 3.3.0 asks for is a
+        # 404. 3.3.0 is the newest aqtinstall there is, so every Windows Qt
+        # from 6.11.0 up fails at "Failed to locate XML data". 6.10.3 is the
+        # last one on the old layout and carries qtmultimedia for
+        # win64_msvc2022_64. Lift the pin when aqtinstall learns the new
+        # layout. Keep this in sync with release.yml.
+        #
+        # ubuntu-24.04 by name: the ubuntu-latest label moves to a new release
+        # on a date GitHub picks, and a build that changes under a release is
+        # the wrong surprise.
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             qt: '6.12.0'
           - os: windows-latest
-            qt: '6.12.0'
+            qt: '6.10.3'
           - os: macos-latest
             qt: '6.12.0'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -44,10 +55,10 @@ jobs:
           modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+          sudo apt-get install -y libasound2-dev libavahi-client-dev
 
       - name: Configure
         run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
@@ -58,12 +69,15 @@ jobs:
   # Tests are Linux-only on purpose: the suite is platform-independent, and one
   # runner keeps CI fast. QML tests need a QPA plugin, hence offscreen.
   test:
-    name: Tests (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: Tests (Ubuntu 24.04, Qt 6.12)
+    runs-on: ubuntu-24.04
+    # The suite takes about thirteen minutes here. An hour is the ceiling for a
+    # run that has hung, where the default is six.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -77,7 +91,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+          sudo apt-get install -y libasound2-dev libavahi-client-dev
 
       - name: Configure
         run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
@@ -102,13 +116,14 @@ jobs:
   # assign to non-existent property popupType") is raised when the engine loads
   # the file. tests/qml/*.qml are only ever loaded at runtime, so a build-only
   # job cannot see them at all - which is how the declarative popupType in
-  # tst_menus_and_glyphs.qml that e972e24 replaced survived until a Debian box
+  # tst_menus_and_glyphs.qml that f10019c replaced survived until a Debian box
   # ran the suite on real 6.4.2. Qt comes from apt, as in packaging/Dockerfile,
   # so nothing is downloaded and the version cannot drift.
   test-debian-12:
     name: Tests (Debian 12, Qt 6.4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: debian:bookworm
+    timeout-minutes: 60
 
     steps:
       # Before the checkout: the container is bare, and actions/checkout needs
@@ -131,10 +146,10 @@ jobs:
             qml6-module-qtquick-layouts qml6-module-qtquick-shapes \
             qml6-module-qtquick-templates qml6-module-qtquick-window \
             qml6-module-qtqml-workerscript \
-            libasound2 gstreamer1.0-plugins-good
+            libasound2 gstreamer1.0-plugins-good gstreamer1.0-libav ffmpeg
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # No CMAKE_PREFIX_PATH: apt's Qt is on the default search path, and
       # pinning one is the dev-machine leak this job exists to catch.
@@ -161,10 +176,14 @@ jobs:
   # the next one is caught too.
   addresses:
     name: Only addresses we mean to publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          # The whole history, because the second scan reads who each commit
+          # says it is by.
+          fetch-depth: 0
 
       - name: Scan the tracked tree
         run: |
@@ -190,6 +209,27 @@ jobs:
           fi
           echo "clean"
 
+      - name: Scan the maintainer's own commits
+        run: |
+          # The scan above reads files. It cannot see commit metadata, and that
+          # is where a private address sat on every commit of this repository
+          # until the history was rewritten: git signs a commit with whatever
+          # user.email the machine has configured, and nothing in the tree
+          # shows it. Commits by the maintainer have to carry a GitHub noreply
+          # address. Anyone else's commits are theirs to sign as they like, so
+          # this looks at one name only.
+          found=$(git log --format='%an <%ae>%n%cn <%ce>' \
+                  | grep '^Linus Linhof <' | sort -u \
+                  | grep -vE '<[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com>$' || true)
+          if [ -n "$found" ]; then
+            echo "Commits by the maintainer signed with something other than a noreply address:"
+            echo "$found" | sed 's/<.*>/<address withheld from this log>/'
+            echo
+            echo "Set user.email for this repository and rewrite those commits before they are pushed."
+            exit 1
+          fi
+          echo "clean"
+
   # Also seconds, no Qt, no build, for the same reason the job above exists: the
   # two files every Linux store reads are the two nothing else in CI looks at,
   # and a mistake in either is found by the store that rejects the submission.
@@ -197,10 +237,10 @@ jobs:
   # GNOME Software.
   store-metadata:
     name: The metadata stores read is valid
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install the validators
         run: |

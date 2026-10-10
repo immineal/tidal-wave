@@ -1,16 +1,9 @@
-// The reworked queue panel: played history, the current track, the manual
-// queue and the remainder of the context, in one scrolling list.
-//
-// `player` is the stub from tests/TestStubs.h. It models the same split the
-// real Player does: setQueueForTest() seeds the *context* and the index cuts
-// it into played and upcoming, while setManualForTest() fills the manual queue
-// the user built. Every assertion below is written against that split rather
-// than against a flat queue, because a flat queue is exactly what this rework
-// takes away.
-//
-// The panel lives inside the content area in Main.qml, with a scrim over the
-// page and the panel pinned to the right of it, so the host mirrors that: a
-// click-counting page under a QueuePanel that fills it.
+// The queue panel: played history, the current track, the manual queue and
+// the rest of the context, in one scrolling list. The player stub from
+// tests/TestStubs.h models the real split: setQueueForTest() seeds the
+// context and the index cuts it into played and upcoming, setManualForTest()
+// fills the manual queue. The host mirrors Main.qml: a click-counting page
+// under a QueuePanel that fills it.
 
 import QtQuick
 import QtQuick.Window
@@ -131,10 +124,9 @@ TestCase {
         return item.mapToItem(host.contentItem, dx, dy)
     }
 
-    // A settled scene produces no new frame, so waitForRendering would sit out
-    // its whole timeout every time; the cap keeps that at a tenth of a second
-    // rather than five, which is the difference between a 10s test file and a
-    // 110s one. Anything genuinely pending arrives inside one frame.
+    // A settled scene produces no new frame, so waitForRendering would sit
+    // out its whole timeout. The cap keeps that short, and anything pending
+    // arrives inside one frame.
     function settle(item) {
         wait(1)
         waitForRendering(item, 100)
@@ -190,11 +182,9 @@ TestCase {
         return host.panel
     }
 
-    // The same decode budget TrackRow's cover carries, for the same reason: a
-    // 5000-row queue holding a 320px decode per 36px thumbnail is the one
-    // place in the app where that arithmetic really bites. Both dimensions,
-    // because a width-only sourceSize reaches the image provider as 72x0 and
-    // QImageReader scales it away to nothing.
+    // The decode budget TrackRow's cover carries: one decode per thumbnail
+    // adds up in a long queue. Both dimensions, because a width-only
+    // sourceSize reaches the image provider with a height of zero.
     function test_a_queue_thumbnail_decodes_at_the_size_it_is_drawn() {
         seedAll()
         var host = showHost()
@@ -242,7 +232,6 @@ TestCase {
                 "the flat index must map back onto the sections")
     }
 
-    // The source names itself, so the header is not a legend to decode.
     function test_the_context_header_names_the_source() {
         seedAll()
         player.setPlaybackSource("playlist", "uuid-p1", "Evening Drive")
@@ -292,11 +281,11 @@ TestCase {
         var host = showHost()
         var panel = openPanel(host)
 
-        var row = entryAt(panel, panel.manualAt + 1)      // "Manual 1"
+        var row = entryAt(panel, panel.manualAt + 1)      // Manual 1
         verify(row, "the second manual row was never drawn")
         compare(row.kind, "manual", "the index arithmetic put the wrong row here")
 
-        // The button lives behind hover, the way the old panel's did.
+        // The button lives behind hover.
         var p = pointIn(host, row, row.width / 2, row.height / 2)
         mouseMove(host.contentItem, p.x, p.y)
         settle(host.contentItem)
@@ -319,7 +308,7 @@ TestCase {
     }
 
     // Only the manual queue is the user's to edit: a context row is not
-    // removable, because there is no API for it and no meaning to it.
+    // removable, because there is no API for it.
     function test_a_context_row_has_no_remove_button() {
         seedAll()
         var host = showHost()
@@ -374,8 +363,8 @@ TestCase {
         mouseRelease(host.contentItem, from.x, from.y + 2 * panel.rowHeight)
         settle(host.contentItem)
 
-        // moveManual(0, 2) and nothing else: a swap would have left
-        // "Manual 2" in the middle.
+        // moveManual(0, 2) and nothing else: a swap would leave Manual 2 in the
+        // middle.
         compare(player.queueCalls.join(","), "moveManual 0 2",
                 "the drop called moveManual with the wrong pair")
         compare(player.queueManual[0].title + "," + player.queueManual[1].title + ","
@@ -434,8 +423,6 @@ TestCase {
                 "the list reordered anyway after a drop " + row.tag)
     }
 
-    // Nothing outside the manual queue can be picked up in the first place,
-    // which is the other half of why a row cannot leave its section.
     function test_only_manual_rows_have_a_grip_data() {
         return [{ tag: "played" }, { tag: "current" }, { tag: "context" }]
     }
@@ -462,7 +449,7 @@ TestCase {
         var host = showHost()
         var panel = openPanel(host)
 
-        var row = entryAt(panel, panel.playedAt + 1)       // "Ctx 1"
+        var row = entryAt(panel, panel.playedAt + 1)       // Ctx 1
         verify(row, "the second played row was never drawn")
         compare(row.kind, "played", "the index arithmetic put the wrong row here")
         compare(row.titleText, "Ctx 1", "the played section is not oldest first")
@@ -500,8 +487,7 @@ TestCase {
     // ── finding your place ───────────────────────────────────────────────
 
     // Opening the panel on a queue that has been playing for a while must
-    // land on the current track, not at the top of a history nobody is
-    // looking for.
+    // land on the current track.
     function test_opening_the_panel_scrolls_to_the_current_track() {
         player.setQueueForTest(makeTracks(400, "Ctx"), 250)
         player.setCurrentTrackForTest(makeTrack(250, "Ctx"))
@@ -515,8 +501,7 @@ TestCase {
         verify(panel.currentOnScreen,
                "the current track is not on screen after opening the panel")
 
-        // And really on screen, not merely claimed to be: the delegate exists
-        // and sits inside the viewport.
+        // The delegate exists and sits inside the viewport.
         var entry = entryAt(panel, panel.currentAt)
         verify(entry, "the current row has no delegate")
         var top = entry.mapToItem(view, 0, 0).y
@@ -528,7 +513,6 @@ TestCase {
                "the jump affordance showed while the current track was on screen")
     }
 
-    // The fifth complaint: a long queue that has been playing for a while.
     function test_scrolling_away_reveals_the_jump_affordance_and_it_returns() {
         player.setQueueForTest(makeTracks(400, "Ctx"), 250)
         player.setCurrentTrackForTest(makeTrack(250, "Ctx"))
@@ -569,8 +553,7 @@ TestCase {
         verify(!jump.visible, "scrolling back by hand left the affordance showing")
     }
 
-    // 5000 is the size the spec stress-tests, and the size at which a panel
-    // that builds its whole list freezes the window.
+    // At 5000 rows a panel that builds its whole list freezes the window.
     function test_five_thousand_rows_stay_virtualised() {
         var n = 5000
         player.setQueueForTest(makeTracks(n, "Ctx"), 4000)
@@ -589,8 +572,8 @@ TestCase {
         var live = liveDelegates(view)
         verify(live < 400, "the panel built " + live + " delegates for " + n + " rows")
 
-        // The reveal has to be O(1) as well: it is the thing that runs on
-        // open, which is exactly when the list is at its biggest.
+        // The reveal has to be O(1) as well: it runs on open, when the list is
+        // at its biggest.
         verify(panel.currentOnScreen, "a 5000 row queue did not open on the current track")
         var entry = entryAt(panel, panel.currentAt)
         verify(entry, "the current row has no delegate at 5000 rows")
@@ -618,12 +601,9 @@ TestCase {
 
     // ── a track simply ending ────────────────────────────────────────────
 
-    // The signal that is deliberately *not* sent. An advance moves the index
-    // and shortens the manual run; it does not republish the queue, because
-    // doing that per track is the regression tst_queue_perf.cpp guards. A
-    // panel bound to queuePlayed/queueManual/queueContext would therefore be
-    // a row behind from the moment the first track ended, and would stay
-    // behind until something else happened to touch the queue.
+    // An advance moves the index and shortens the manual run without
+    // republishing the queue (tests/tst_queue_perf.cpp guards that), so the
+    // panel must follow the boundaries with no queueChanged.
     function test_an_advance_moves_the_sections_with_no_queue_change() {
         seedAll()
         var host = showHost()
@@ -633,7 +613,7 @@ TestCase {
                 "the starting order")
 
         queueSpy.clear()
-        player.advanceForTest()          // "Ctx 2" ends, "Manual 0" takes over
+        player.advanceForTest()          // Ctx 2 ends, Manual 0 takes over
         settle(host.contentItem)
 
         compare(queueSpy.count, 0, "the fixture republished the queue, so this proves nothing")
@@ -668,8 +648,6 @@ TestCase {
 
     // ── Clear ────────────────────────────────────────────────────────────
 
-    // It clears the manual queue now: that is the one the user built, and the
-    // one they would be upset to find still there.
     function test_clear_empties_the_manual_queue_only() {
         seedAll()
         var host = showHost()
@@ -694,7 +672,7 @@ TestCase {
         verify(!clear.visible, "Clear stayed offered with nothing left to clear")
     }
 
-    // ── the scrim (L9), unchanged ────────────────────────────────────────
+    // ── the scrim ────────────────────────────────────────────────────────
 
     function test_the_scrim_still_swallows_clicks() {
         seedAll()

@@ -1,40 +1,33 @@
 #!/usr/bin/env bash
 # Build the release .deb in a Debian 12 (bookworm) container.
 #
-# Run it from anywhere; it locates the repo from its own path:
-#
-#     packaging/build-deb.sh              # build, package, print Depends
-#     packaging/build-deb.sh --tests       # also run ctest inside the container
+#     packaging/build-deb.sh                  # build, package, check the floors
+#     packaging/build-deb.sh --tests          # also build and run the test suite
 #     packaging/build-deb.sh --rebuild-image
 #
-# The .deb lands in dist/ at the repo root, owned by the invoking user.
-#
-# Why not just build on the host: the depends floors in CMakeLists.txt come from
-# the configuring toolchain, so a host build (Qt 6.12, GCC 16) demands
-# libqt6core6 (>= 6.12) and libstdc++6 (>= 16) and installs nowhere. See
-# packaging/Dockerfile for the long version.
+# The .deb lands in dist/ at the repo root. The dependency floors come from the
+# configuring toolchain, so a build on a newer host installs nowhere; see
+# packaging/Dockerfile. Any failure exits non-zero and leaves dist/ untouched.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SELF/.." && pwd)"
 IMAGE="tidal-wave-build:bookworm"
 
-RUN_TESTS=0
+TW_TESTS=OFF
 REBUILD_IMAGE=0
 for arg in "$@"; do
     case "$arg" in
-        --tests)         RUN_TESTS=1 ;;
+        --tests)         TW_TESTS=ON ;;
         --rebuild-image) REBUILD_IMAGE=1 ;;
-        -h|--help)       sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)       sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
 
 # ── The build itself, as run inside the container ────────────────────────────
-# Kept as a here-doc rather than a second file so there is one thing to read.
-# /src is the bind-mounted source tree (read-only), /out is dist/ on the host,
-# and the build tree is a fresh container-local directory every run - never the
-# host's build dir, whose cache points at the host Qt.
+# /src is the source tree (read-only), /out is dist/ on the host. The build
+# tree is container-local, so no host CMake cache can leak in.
 read -r -d '' INNER <<'INNER_EOF' || true
 set -euo pipefail
 
@@ -46,20 +39,19 @@ dpkg-query -W 'qt6-base-dev' | head -1
 BUILD=/build/pkg
 rm -rf "$BUILD"
 
-# No CMAKE_PREFIX_PATH: Qt comes from apt and is on the default search path.
-# Pinning one here is exactly the dev-machine leak this container exists to
-# avoid. Tests are on so the same configure can run them.
+# No CMAKE_PREFIX_PATH: Qt comes from apt. REQUIRE_TRANSLATIONS makes a missing
+# lrelease a configure error, since the package would ship English only.
 cmake -S /src -B "$BUILD" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DTIDALWAVE_BUILD_TESTS="${TW_TESTS:-ON}"
+    -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON \
+    -DTIDALWAVE_BUILD_TESTS="${TW_TESTS:-OFF}"
 
 cmake --build "$BUILD" --parallel "$(nproc)"
 
-if [ "${TW_RUN_TESTS:-0}" = "1" ]; then
+if [ "${TW_TESTS:-OFF}" = "ON" ]; then
     echo "=== ctest ==="
-    # Debian's real ctest, by absolute path. The one on a dev box's PATH can be
-    # a shim that exits 0 without running anything, so the count is printed and
-    # a zero-test run is a failure here.
+    # By absolute path: a ctest shim on PATH can exit 0 without running
+    # anything. A run that finds no tests is a failure for the same reason.
     CTEST=/usr/bin/ctest
     "$CTEST" --version | head -1
     n=$("$CTEST" --test-dir "$BUILD" -N 2>/dev/null | sed -n 's/^Total Tests: //p')
@@ -68,25 +60,37 @@ if [ "${TW_RUN_TESTS:-0}" = "1" ]; then
         echo "ERROR: ctest reports no tests - refusing to call that a pass" >&2
         exit 1
     fi
-    "$CTEST" --test-dir "$BUILD" --output-on-failure || TEST_RC=$?
-    echo "ctest exit: ${TEST_RC:-0}"
+    rc=0
+    "$CTEST" --test-dir "$BUILD" --output-on-failure || rc=$?
+    echo "ctest exit: $rc"
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: the test suite failed, so no package is built" >&2
+        exit "$rc"
+    fi
 fi
 
 echo "=== cpack ==="
-# Likewise absolute, and from the same cmake that configured the build.
 /usr/bin/cpack --version | head -1
 ( cd "$BUILD" && /usr/bin/cpack -G DEB )
 
-mkdir -p /out
-find "$BUILD" -maxdepth 1 -name '*.deb' -exec cp -v {} /out/ \;
+# Taken from the build tree: dist/ may still hold packages of other versions.
+deb=$(find "$BUILD" -maxdepth 1 -name '*.deb')
+if [ "$(printf '%s\n' "$deb" | grep -c .)" -ne 1 ]; then
+    echo "ERROR: expected one .deb in $BUILD, found: ${deb:-none}" >&2
+    exit 1
+fi
 
 echo "=== generated control fields ==="
-for deb in /out/*.deb; do
-    echo "--- $deb"
-    dpkg-deb -f "$deb" Package Version Architecture Installed-Size
-    echo "Depends:"; dpkg-deb -f "$deb" Depends | tr ',' '\n' | sed 's/^ */  /'
-    echo "Recommends:"; dpkg-deb -f "$deb" Recommends
-done
+dpkg-deb -f "$deb" Package Version Architecture Installed-Size
+echo "Depends:"; dpkg-deb -f "$deb" Depends | tr ',' '\n' | sed 's/^ */  /'
+echo "Recommends:"; dpkg-deb -f "$deb" Recommends
+
+echo "=== dependency floors ==="
+# Before the copy, so a package with the wrong floors never reaches dist/.
+/src/packaging/assert-deb-floors.sh "$deb"
+
+mkdir -p /out
+cp -v "$deb" /out/
 INNER_EOF
 
 if [ "$REBUILD_IMAGE" = "1" ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
@@ -96,13 +100,14 @@ fi
 
 mkdir -p "$REPO/dist"
 
+# As the invoking user, so the package in dist/ is not owned by root.
 echo "==> building the package in $IMAGE"
 docker run --rm \
     --user "$(id -u):$(id -g)" \
     -e HOME=/tmp \
     -e XDG_RUNTIME_DIR=/tmp \
     -e QT_QPA_PLATFORM=offscreen \
-    -e TW_RUN_TESTS="$RUN_TESTS" \
+    -e TW_TESTS="$TW_TESTS" \
     -v "$REPO:/src:ro" \
     -v "$REPO/dist:/out" \
     "$IMAGE" bash -c "$INNER"

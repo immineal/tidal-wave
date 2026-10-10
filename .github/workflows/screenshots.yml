@@ -1,0 +1,58 @@
+name: Store screenshots
+
+# Started by hand. Draws the five store screenshots from the invented library
+# and hands them back as an artifact. Nothing is committed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: Draw the store screenshots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.12.0'
+          # As in ci.yml: qtmultimedia is the only add-on module the build needs.
+          modules: 'qtmultimedia'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          # The build's two libraries, then what the drawing needs: a private
+          # X server with software GL, the libraries Qt's xcb plugin loads,
+          # and the two faces the app sets its text in.
+          sudo apt-get install -y libasound2-dev libavahi-client-dev \
+            xvfb libgl1-mesa-dri \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            fonts-inter fonts-dejavu-core
+
+      # run.sh builds the shot runner, starts its own Xvfb and exits non-zero
+      # if a scene fails.
+      - name: Draw the store set
+        run: tests/visual/run.sh store
+
+      - name: Upload the five screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-screenshots
+          # A run that was skipped exits 0 and draws nothing, so a missing
+          # picture fails here.
+          if-no-files-found: error
+          path: |
+            tests/visual/out/store_home.png
+            tests/visual/out/store_collection.png
+            tests/visual/out/store_album.png
+            tests/visual/out/store_nowplaying.png
+            tests/visual/out/store_search.png

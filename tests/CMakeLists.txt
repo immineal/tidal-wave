@@ -95,3 +95,11 @@ add_test(NAME tst_qml COMMAND tst_qml)
 set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+# ctest gives a test 1500 seconds unless it is told otherwise, and tst_qml takes
+# 625 of them on a GitHub runner and 809 on a loaded desktop. A runner twice as
+# slow would be killed mid-suite and reported as a failure of whichever test
+# happened to be running. The core binaries finish in well under a minute each,
+# so five is already a hang.
+set_tests_properties(${CORE_TEST_TARGETS} PROPERTIES TIMEOUT 300)
+set_tests_properties(tst_qml PROPERTIES TIMEOUT 2700)

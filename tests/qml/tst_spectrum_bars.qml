@@ -1,28 +1,9 @@
 // The five now-playing bars, on the live path and back off it again.
-//
-// tests/tst_spectrum.cpp owns the DSP: what comes out of a buffer, in what
-// formats, at what rate. What it cannot reach is the half the user actually
-// sees - whether the bars take their heights from the analyser at all,
-// whether they let go of them afterwards, and whether the preference being
-// off really leaves the old behaviour untouched rather than merely looking
-// like it does.
-//
-// So every case here is about the indicator and not about the spectrum:
-//
-//   * with nothing playing through the analyser the bars animate, exactly as
-//     they did before this feature existed;
-//   * driven, they line up with the levels - the lit band is the tall bar,
-//     and a band at zero still draws something rather than vanishing;
-//   * released, they go back to animating, and a paused indicator parks on
-//     its resting skyline instead of staying frozen on the last spectrum;
-//   * reduced motion outranks the spectrum, because a live spectrogram is
-//     continuous movement and that preference is asking for less of it.
-//
-// Spectrum.setLevelsForTest()/stopForTest() are the only way in: the real
-// path needs a QMediaPlayer, an audio device and a Tidal stream. They are
-// also the reason cleanup() exists - the analyser is a process-wide
-// singleton, so a case that left it driven would hand the next file in
-// tst_qml five frozen bars.
+// tests/tst_spectrum.cpp owns the DSP. This file is about the indicator:
+// whether the bars take their heights from the analyser, let go of them
+// afterwards, and stand still under reduced motion.
+// Spectrum.setLevelsForTest()/stopForTest() are the only way in. The analyser
+// is a process-wide singleton, so cleanup() releases it for the next file.
 
 import QtQuick
 import QtTest
@@ -37,11 +18,10 @@ TestCase {
     height: 300
 
     // PlayingIndicator's own floor: a band at zero is still drawn, at this
-    // fraction of the box. Repeated rather than read off the component, so
-    // changing it there is a failure here instead of a tautology.
+    // fraction of the box. Repeated here, so changing it there fails here.
     readonly property real minFrac: 0.12
 
-    // The Behavior on the live path, plus room for a slow box.
+    // The Behavior on the live path, plus room for a slow machine.
     readonly property int settleMs: 1500
 
     function init() {
@@ -70,9 +50,8 @@ TestCase {
         }
     }
 
-    // The five Rectangles, left to right. Walks rather than indexes, because
-    // the Repeater sits inside a Row inside the indicator and the delegate's
-    // own structure is not this file's business.
+    // The five Rectangles, left to right. Walks the tree, because the
+    // Repeater sits inside a Row and the delegate's structure may change.
     function bars(ind) {
         var out = []
         function walk(item) {
@@ -98,8 +77,8 @@ TestCase {
 
     // ── off ────────────────────────────────────────────────────────────────
 
-    // The shipped state. Nothing is driving the analyser, so the indicator is
-    // the same object it has always been: five bars on their own schedule.
+    // Nothing is driving the analyser, so the five bars keep their own
+    // schedule.
     function test_untouched_when_nothing_is_driving_it() {
         var host = createTemporaryObject(indicatorC, testCase)
         verify(host)
@@ -109,7 +88,6 @@ TestCase {
         verify(!ind.useSpectrum)
         compare(bars(ind).length, 5)
 
-        // Moving, which is the whole of the old behaviour.
         var first = heights(ind)
         var moved = false
         tryVerify(function () {
@@ -122,8 +100,8 @@ TestCase {
 
     // ── on ─────────────────────────────────────────────────────────────────
 
-    // One band lit. The bar for that band goes to the top of the box and the
-    // other four sit on the floor - which is a floor, not zero.
+    // One band lit. Its bar goes to the top of the box and the other four sit
+    // on the floor, which is above zero.
     function test_bars_follow_the_levels() {
         var host = createTemporaryObject(indicatorC, testCase)
         verify(host)
@@ -147,8 +125,6 @@ TestCase {
         }
     }
 
-    // Middling levels land in order, so the bars are a meter and not a row of
-    // on/off lights.
     function test_bars_are_ordered_by_level() {
         var host = createTemporaryObject(indicatorC, testCase)
         verify(host)
@@ -185,8 +161,6 @@ TestCase {
 
     // ── back off ───────────────────────────────────────────────────────────
 
-    // Releasing the bars has to hand them back to their own animation rather
-    // than leave them on the last spectrum.
     function test_bars_resume_animating_when_released() {
         var host = createTemporaryObject(indicatorC, testCase)
         verify(host)
@@ -209,9 +183,8 @@ TestCase {
         }, settleMs, "the bars stayed frozen on the last spectrum")
     }
 
-    // A paused row has no animation to put the bars back, so the release has
-    // to do it. Parked on the resting skyline, not on the floor and not on
-    // whatever the spectrum last said.
+    // A paused row has no animation to put the bars back, so the release
+    // parks them on the resting skyline.
     function test_a_paused_indicator_parks_on_release() {
         var host = createTemporaryObject(indicatorC, testCase)
         verify(host)
@@ -247,8 +220,7 @@ TestCase {
         verify(Spectrum.active)
         verify(!ind.useSpectrum)
 
-        // Parked on the resting skyline, which is what reduced motion has
-        // always left behind here.
+        // Parked on the resting skyline.
         var rest = [0.45, 0.80, 0.30, 0.65, 0.50]
         tryVerify(function () {
             var hs = heights(ind)

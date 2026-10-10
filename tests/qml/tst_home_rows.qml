@@ -1,36 +1,8 @@
-// Regression tests for the two HomePage bugs the user reported against the
-// 0.4.0 beta.
-//
-// "I saved an album and Saved Albums did not show it until I restarted."
-//     HomePage sits in a Loader that is never torn down, and it filled its rows
-//     once, in Component.onCompleted, so every row kept whatever the network
-//     handed it at login. It listens to the bridge's favourite signals now and
-//     rebuilds the three favourite rows from the bridge's in-memory favourites
-//     copy. The signals are coalesced through a 120ms timer, because one save
-//     emits several times, which is why the three cases below wait for the row
-//     instead of reading it straight after the signal.
-//       → test_saved_albums_row_follows_a_save
-//       → test_saved_albums_row_follows_a_removal
-//       → test_playlist_and_artist_rows_follow_the_bridge
-//
-// "The gap above Saved Albums is twice as big as every other gap."
-//     Two 32px spacers were left behind where the dropped Recently Played row
-//     used to be. There is one spacer per gap now, each declares
-//     Layout.preferredHeight (a ColumnLayout reads that, not a plain height),
-//     and each spacer above a row that can be empty is hidden along with that
-//     row - otherwise a user with no playlists got that row's gap twice over,
-//     which is the same double gap by another route.
-//       → test_every_gap_between_rows_is_the_same
-//       → test_an_empty_row_leaves_exactly_one_gap
-//
-// The harness is the one from tst_layout_pages.qml: the page is built inside a
-// holder Item that gives it its size, and TestCase's own `visible: false` is
-// overridden, because it makes every child report visible == false and the gap
-// measurement here only looks at the rows that are visible.
-//
-// The rows carry no objectName, so a row is found by the properties only a
-// HorizontalSection has, and its heading is the first text inside it (a section
-// draws its title at the very top of its own column).
+// HomePage's rows: the three favourite rows follow the bridge's favourite
+// signals, and every gap between two visible rows is the same. The signals
+// are coalesced through a timer, so a test waits for a row after a signal.
+// The rows carry no objectName: a row is found by the properties only a
+// HorizontalSection has, and its heading is the first text inside it.
 
 import QtQuick
 import QtTest
@@ -47,14 +19,11 @@ TestCase {
     visible: true
 
     // The one place the gap is written down. Every other assertion compares a
-    // gap against the first gap on the page, so a spacer that doubles shows up
-    // as two gaps that disagree rather than as a number that has to be updated
-    // here in two places.
+    // gap against the first gap on the page.
     readonly property int rowGap: 32
 
-    // Tall enough that the whole page fits without scrolling: a row that was
-    // scrolled out of the viewport would still be measurable, but its cards
-    // would not have been created, and two of the cases below read a card.
+    // Tall enough that the whole page fits without scrolling: a row out of
+    // the viewport has no cards created, and two cases below read a card.
     readonly property int paneWidth: 1000
     readonly property int paneHeight: 1400
 
@@ -216,9 +185,6 @@ TestCase {
 
     // ── the double gap ──────────────────────────────────────────────────────
 
-    // The reported one: the gap between My Mixes and Saved Albums was two 32px
-    // spacers, left behind when the Recently Played row between them was
-    // dropped, so one gap on the page was double every other.
     function test_every_gap_between_rows_is_the_same() {
         var page = filledPage()
 
@@ -237,15 +203,13 @@ TestCase {
                + rowGap + ": " + gapReport(page))
     }
 
-    // The same bug by the other route: a row that is empty is hidden, and if
-    // the spacer above it is not hidden with it, the two spacers around the
-    // missing row stack into one double gap.
+    // An empty row is hidden, and the spacer above it has to hide with it, or
+    // the two spacers around the missing row stack into a double gap.
     function test_an_empty_row_leaves_exactly_one_gap() {
         var page = makeHome({ mixes: makeMixes(5), recentAlbums: makeAlbums(6, 200),
                               playlists: [], artists: makeArtists(5) })
 
-        // The row is hidden rather than gone, so this really is the empty-row
-        // case and not a page that lost the row altogether.
+        // The row is hidden, and still on the page.
         var playlistRow = rowFor(allRows(page), "playlist")
         verify(playlistRow, "the Your Playlists row is not on the page at all")
         verify(!playlistRow.visible, "the Your Playlists row shows itself with no playlists in it")
@@ -273,8 +237,8 @@ TestCase {
         var albums = makeAlbums(3, 200)
         bridge.setFavoriteAlbumsForTest(albums)
 
-        // The three favourite signals are coalesced through a 120ms timer, so the
-        // row is still empty on the next line and only a wait can see the refresh.
+        // The favourite signals are coalesced through a timer, so only a wait
+        // can see the refresh.
         tryVerify(function() { return page.recentAlbums.length === 3 }, 2000,
                   "the Saved Albums row never picked up the saved albums")
         settle(page)
@@ -283,8 +247,8 @@ TestCase {
         verify(row, "the Saved Albums row is not on the page")
         compare(row.items.length, 3, "the row was handed " + row.items.length + " albums")
 
-        // Down to the card: a page property no row reads would be a green test
-        // over a row the user still sees as empty.
+        // Down to the card: a page property that no row reads would also pass
+        // above.
         var list = findByName(row, "sectionList")
         verify(list, "the row's list was not found")
         var card = list.itemAtIndex(0)
@@ -315,9 +279,8 @@ TestCase {
                    "the unsaved album \"" + dropped.title + "\" is still in the row")
     }
 
-    // Playlists and artists refresh off their own signals, and the playlist row
-    // reads the bridge's playlist cache rather than the favourites search, so
-    // both are worth their own case.
+    // Playlists and artists refresh off their own signals, and the playlist
+    // row reads the bridge's playlist cache.
     function test_playlist_and_artist_rows_follow_the_bridge() {
         var page = makeHome({ mixes: makeMixes(5) })
         compare(page.playlists.length, 0, "the playlist row started out filled")
@@ -332,8 +295,7 @@ TestCase {
                   "the Favorite Artists row never picked up the artists")
 
         // The album row as well, so all four rows are back for the gap check
-        // below; a refresh rebuilds all three favourite rows at once, so this
-        // leaves the playlists and the artists where they are.
+        // below. A refresh rebuilds all three favourite rows at once.
         bridge.setFavoriteAlbumsForTest(makeAlbums(3, 200))
         tryVerify(function() { return page.recentAlbums.length === 3 }, 2000,
                   "the Saved Albums row never picked up the saved albums")
@@ -345,9 +307,8 @@ TestCase {
         compare(rowFor(rows, "artist").items.length, 2,
                 "the artist row does not show what the bridge holds")
 
-        // Every row here was empty, and so hidden, while the page was built, and
-        // the refresh has to bring each one back with exactly one spacer above
-        // it: the gaps have to be right afterwards, not only the contents.
+        // Every row here was hidden while the page was built. The refresh has to
+        // bring each one back with exactly one spacer above it.
         var gaps = rowGaps(page)
         compare(gaps.length, 3, "all four rows should be showing again")
         for (var i = 0; i < gaps.length; ++i)

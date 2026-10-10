@@ -1,17 +1,9 @@
-// The update prompt: section K of HANDOFF.md, the half that is visible.
-//
-// The backend (src/ui/UpdateCheck.{h,cpp}, covered by tests/tst_update.cpp)
-// decides *whether* there is something to offer. Everything asserted here is
-// the other half: that the dialog appears exactly once per launch, that it
-// names both versions, that each of the three buttons reaches the right
-// invokable, that Escape means "Later" and never "Skip", and that it fits the
-// smallest window the app allows (640x600, Main.qml's minimum).
-//
-// `update` has no double in tests/TestStubs.h, so this file builds its own
-// below. It is deliberately not a no-op recorder: skipThisVersion() and
-// remindLater() mutate state the way UpdateCheck does (remindLater clears the
-// cached release, skip drops the offer), so a handler that calls one and then
-// reads a version back is tested against the real shape.
+// The update prompt, the visible half. src/ui/UpdateCheck decides whether
+// there is something to offer and is covered by tests/tst_update.cpp. Here:
+// the dialog appears once per launch, names both versions, each button
+// reaches its invokable, Escape means Later, and it fits the minimum window.
+// The update double below mutates state the way UpdateCheck does, so a
+// handler that calls it and then reads a version back sees the real shape.
 
 import QtQuick
 import QtQuick.Window
@@ -173,10 +165,9 @@ TestCase {
         verify(!host.prompt.visible, "the prompt opened with nothing to offer")
     }
 
-    // updateAvailable is left true on purpose. UpdateCheck already folds
-    // `enabled` into it, so the C++ cannot produce this state - which is the
-    // point: the dialog has to carry its own guard, or switching the check off
-    // in Settings would stop mattering the day that folding changes.
+    // updateAvailable is left true on purpose. UpdateCheck folds enabled into
+    // it, so the C++ cannot produce this state, and the dialog has to carry
+    // its own guard.
     function test_silent_when_check_disabled() {
         var host = showHost(minWindowW, minWindowH)
         updateStub.latestVersion = newVersion
@@ -213,9 +204,7 @@ TestCase {
                "the running version is not named: " + text)
     }
 
-    // The user's reason for keeping the feature this shape: it opens a page and
-    // stops there. If that line ever goes, the dialog is making a promise the
-    // code no longer prints.
+    // The feature opens a page and stops there, and the dialog has to say so.
     function test_says_it_installs_nothing() {
         var host = showHost(minWindowW, minWindowH)
         updateStub.offerForTest(newVersion, newUrl)
@@ -253,8 +242,8 @@ TestCase {
         compare(app.lastOpenedUrlForTest(), newUrl,
                 "Open release did not hand the release URL to app.openUrl()")
         compare(app.openedUrlsForTest().length, 1, "openUrl() was called more than once")
-        // Opening the page is not a decision about the offer, so neither of the
-        // two persisting actions may fire behind the user's back.
+        // Opening the page is no decision about the offer, so neither persisting
+        // action may fire.
         compare(updateStub.skipCount, 0, "Open release skipped the version")
         compare(updateStub.laterCount, 0, "Open release postponed the version")
     }
@@ -289,8 +278,7 @@ TestCase {
 
     // ── Escape ───────────────────────────────────────────────────────────
 
-    // Escape is "I am not dealing with this now", never "never show me this
-    // release again" - a dismissal must not silently throw the release away.
+    // Escape postpones. A dismissal must never throw the release away.
     function test_escape_is_later_not_skip() {
         var host = showHost(minWindowW, minWindowH)
         updateStub.offerForTest(newVersion, newUrl)
@@ -307,8 +295,8 @@ TestCase {
 
     // ── once per launch ──────────────────────────────────────────────────
 
-    // Hosted on the window rather than on a page precisely so navigating
-    // cannot rebuild it; this covers the other half, a second deliberate ask.
+    // The prompt is hosted on the window so that navigating cannot rebuild
+    // it. This covers the other half, a second deliberate ask.
     function test_does_not_reappear_after_dismissal() {
         var host = showHost(minWindowW, minWindowH)
         updateStub.offerForTest(newVersion, newUrl)

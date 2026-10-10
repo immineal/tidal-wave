@@ -136,7 +136,7 @@ modules:
     # builds alongside the app ships no symbols, so a user's backtrace comes
     # back bare. Passing -DCMAKE_STRIP= here would switch the rule off and let
     # flatpak-builder split the debug info properly, at the same final size.
-    # That is the owner's call, since the rule is deliberate (commit 345b030).
+    # That is the owner's call, since the rule is deliberate (commit c3c60c3).
     sources:
       - type: git
         url: https://github.com/immineal/tidal-wave.git

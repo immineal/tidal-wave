@@ -20,11 +20,9 @@ Rectangle {
         input.focus = false
     }
 
-    // The other half of it. This is a Rectangle and not a FocusScope, so the
-    // bar's root, the row and the input all share whatever scope the bar was
-    // put into: clearing input.focus leaves that scope with no focus item, and
-    // handing the scope active focus again then lands on nothing. Only the
-    // input can put itself back.
+    // This is a Rectangle, not a FocusScope, so clearing input.focus leaves
+    // the enclosing scope with no focus item. Only the input can put itself
+    // back.
     function takeFocus() {
         input.forceActiveFocus()
     }

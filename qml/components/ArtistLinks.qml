@@ -3,31 +3,11 @@ import QtQuick.Window
 import TidalWave
 
 // One line of artist credits, with one hover target and one tab stop per
-// artist, so a featured credit opens the guest rather than the lead (SPEC N2).
-//
-// It began as two copies, in components/PlayerBar.qml and in
-// pages/NowPlayingPage.qml, and the note left on the second one said that if
-// the two ever disagreed this was the pair to reconcile. They are one file now,
-// and every other artists line in the app uses it as well.
-//
-// What a host has to say:
-//
-//   artistList       [{id, name}], as TidalBridge::trackToMap() and
-//                    albumToMap() carry it. Empty or missing falls back to the
-//                    joined line below.
-//   joinedText       the joined names, for a map with no artistList.
-//   fallbackArtistId the one artist such a map can name. 0 leaves the fallback
-//                    line plain text, which is what the player bar wants: a
-//                    click goes through to whatever sits under the line.
-//   fontPixelSize    12 in the bar and the lists, 18 on Now Playing.
-//   namePrefix       prefixes the objectNames the tests reach for:
-//                    <prefix>ArtistLine on this item, <prefix>ArtistName per
-//                    name, <prefix>ArtistSeparator per separator, and
-//                    <prefix>Artists on the joined fallback.
-//
-// Height is implicit, never assigned: a Layout owns its children's size and
-// ignores an explicit height in favour of the implicit one, so hosts in a
-// RowLayout or ColumnLayout only have to say Layout.fillWidth.
+// artist, so a featured credit opens the guest rather than the lead.
+// artistList is [{id, name}]; without it the joined text stands in, and
+// fallbackArtistId 0 leaves that plain text. namePrefix prefixes the
+// objectNames the tests reach for. Height is implicit, never assigned:
+// a Layout ignores an explicit height in favour of the implicit one.
 Item {
     id: root
 
@@ -50,10 +30,9 @@ Item {
 
     FontMetrics { id: fm; font.pixelSize: root.fontPixelSize }
 
-    // Where the i-th name begins, measured on the names in front of it rather
-    // than on the laid-out items: a delegate cannot see its siblings' widths,
-    // and binding a width to the x a Row just assigned is how binding loops
-    // start.
+    // Where the i-th name begins, measured on the names in front of it.
+    // A delegate cannot see its siblings' widths, and binding a width to the
+    // x a Row just assigned makes a binding loop.
     function startX(i) {
         if (i <= 0) return 0
         var before = []
@@ -170,21 +149,9 @@ Item {
                         border.color: Theme.accent
                     }
 
-                    // A MouseArea rather than a Tap/Hover handler pair: a
-                    // TapHandler only takes a passive grab, so a click target
-                    // underneath answers the same press and one click does both
-                    // things. This one swallows it. Left button only, so a
-                    // right-click still reaches the row menu under a track row.
-                    //
-                    // Disabled when the artist has no id, so that name is not a
-                    // dead target: the click falls through like the gaps do, and
-                    // nothing about it lights up.
-                    //
-                    // hoverEnabled here takes the hover event off whatever is
-                    // behind the name. A parent MouseArea therefore stops
-                    // reporting containsMouse while the pointer is on a name,
-                    // which is why a host that dresses itself on hover reads it
-                    // from a HoverHandler instead — see TrackRow's rowHover.
+                    // A MouseArea swallows the press, where a TapHandler's
+                    // passive grab lets a target underneath answer it too. Its
+                    // hover hides the pointer from any MouseArea behind it.
                     MouseArea {
                         id: nameHit
                         anchors.fill: parent

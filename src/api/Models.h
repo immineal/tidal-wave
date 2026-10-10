@@ -440,6 +440,9 @@ struct StreamManifest {
     int     bitDepth   = 16;
     double  replayGainTrack = 0.0;
     double  replayGainAlbum = 0.0;
+    // Only read beside an error: Tidal answered, and the answer rules the track
+    // out. False when the request itself failed, which says nothing about it.
+    bool    unavailable = false;
 };
 
 struct SearchResults {

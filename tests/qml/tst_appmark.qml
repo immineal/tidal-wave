@@ -1,15 +1,7 @@
-// The app mark, qml/components/AppMark.qml.
-//
-// The mark used to be the text glyph U+224B set in DejaVu Sans, in two places,
-// while the window and tray icons were already assets/icon.svg. So the app
-// drew two different logos, and the in-app one changed shape on any machine
-// without that font. This file holds the replacement in place: a drawn mark,
-// on the theme tokens, with no Text in it anywhere.
-//
-// Deliberately no pixel geometry here. The band thickness and the wave are in
-// one function in AppMark.qml and are allowed to be tuned; what must not come
-// back is the font dependency, a hardcoded colour, or a mark that paints
-// outside the box it was given.
+// The app mark, qml/components/AppMark.qml: a drawn mark with no Text in
+// it, so it needs no font. No pixel geometry is asserted here, since the
+// band thickness and the wave may be tuned. What is held: no font
+// dependency, the brand colours, and nothing painted outside the box.
 
 import QtQuick
 import QtQuick.Shapes
@@ -34,8 +26,7 @@ TestCase {
         Item { Item { Text { text: "x" } } }
     }
 
-    // A row glyph, for the test that the fix to the mark was not applied to
-    // every one of these as well.
+    // A row glyph, for the test that VectorIcon carries no layer.
     Component {
         id: iconC
         VectorIcon { name: "play" }
@@ -93,16 +84,9 @@ TestCase {
 
     // ── the edge the curve renderer is here for ──────────────────────────
 
-    // `antialiasing: true` was the whole of the smoothing, and on a Retina
-    // screen that is not enough: the geometry renderer leaves the edge to the
-    // window's 4x multisampling, 4 samples is 4 coverage levels, and at 2x the
-    // shallow part of each band came out visibly stair-stepped. The curve
-    // renderer computes coverage analytically instead and needs no
-    // multisampling, no layer and no FBO.
-    //
-    // Guarded on the property rather than on a version, the same way AppMark
-    // itself is, because it arrived in Qt 6.6 and this project still builds
-    // against the 6.4 on Debian bookworm.
+    // The curve renderer computes edge coverage analytically and needs no
+    // multisampling. Guarded on the property, as AppMark is: it arrived in
+    // Qt 6.6 and the project still builds against 6.4.
     function test_mark_prefers_the_curve_renderer() {
         var mark = makeMark(64)
         var shape = findByName(mark, "appMarkBands")
@@ -116,11 +100,9 @@ TestCase {
                 "the mark is back on the renderer that stair-stepped at 2x")
     }
 
-    // The other half of that decision, and the reason it is not set globally.
-    // A layer is an FBO per item and the curve renderer is per-item GPU work;
-    // VectorIcon is drawn once per row in virtualised lists hundreds of rows
-    // long, so neither belongs on it. The mark is large, few, and was the worst
-    // offender, so it carries the cost alone.
+    // A layer is an FBO per item and the curve renderer is per-item GPU work.
+    // VectorIcon is drawn once per row in long virtualised lists, so it
+    // carries neither.
     function test_row_glyphs_carry_no_layer() {
         var icon = createTemporaryObject(iconC, testCase, { width: 24, height: 24 })
         verify(icon, "VectorIcon would not instantiate")
@@ -182,11 +164,9 @@ TestCase {
 
     // ── the brand colours, deliberately not the tokens ──────────────────
 
-    // The mark is the same artwork the window, tray and launcher show, and
-    // those are a fixed PNG and SVG that cannot follow the in-app palette. A
-    // logo that changed colour with the theme would stop reading as the same
-    // thing as the icon beside it in the taskbar, so it is pinned to the brand
-    // colours on purpose. assets/icon.svg is the source of truth for both.
+    // The mark is the artwork the window, tray and launcher show, and those
+    // are fixed assets that cannot follow the palette, so the mark is pinned
+    // to the brand colours. assets/icon.svg is the source of truth.
     function test_tile_and_bands_use_the_brand_colours() {
         var mark = makeMark(64)
         var tile = findByName(mark, "appMarkTile")
@@ -200,9 +180,8 @@ TestCase {
                     "band " + i + " is not the brand white")
     }
 
-    // The inverse of the old contract: switching the theme must NOT repaint
-    // it. This is the assertion that catches someone "helpfully" rebinding the
-    // mark to Theme.accent again.
+    // Switching the theme must not repaint the mark: it has no binding to
+    // Theme.accent.
     function test_theme_switch_leaves_the_mark_alone() {
         var mark = makeMark(64)
         var tile = findByName(mark, "appMarkTile")
@@ -220,8 +199,8 @@ TestCase {
                         names[t] + " changed band " + i)
         }
 
-        // ...and the accent really did move across those six, so the test
-        // above is not passing because every palette happens to agree.
+        // The accent has to differ across those six, or the loop above proves
+        // nothing.
         var accents = {}
         for (var k = 0; k < names.length; ++k) {
             prefs.theme = names[k]
@@ -233,8 +212,8 @@ TestCase {
 
     // ── the regression that matters ──────────────────────────────────────
 
-    // The whole point. A glyph mark renders differently, or as a tofu box,
-    // wherever the font it was set in is missing.
+    // A glyph mark renders differently, or as a tofu box, wherever its font
+    // is missing.
     function test_no_text_anywhere_data() { return sizes() }
 
     function test_no_text_anywhere(data) {

@@ -1,33 +1,9 @@
-// The five empty-state glyphs on CollectionPage, at the size they were asked
-// for.
-//
-// Each of them was written as
-//
-//     VectorIcon { Layout.alignment: ...; name: "..."; width: 40; height: 40 }
-//
-// and every one is a direct child of a ColumnLayout. A Layout owns the geometry
-// of its direct children, so a plain width/height is assigned once and then
-// overwritten on the first rearrange; what survives is the item's implicit size,
-// and VectorIcon declares implicitWidth/implicitHeight 24. All five therefore
-// drew at 24 where 40 was intended - small enough to read as a different design
-// rather than as a bug, which is why it sat there.
-//
-// This is the repo's own documented trap. CollectionPage's own layout says it
-// four lines above the first of these icons ("A ColumnLayout reads
-// Layout.preferredHeight, not a plain height, so these spacers have to declare
-// it or they collapse to nothing"), RadioPage's back chevron says it again, and
-// the panel 8ec30ed added to AlbumPage gets it right. It had never been
-// asserted, so nothing stopped the next one.
-//
-// Measured rather than read. A test that checked the source for
-// `Layout.preferredWidth` would pass on a file that sets it to the wrong number,
-// and a test that read the `width` *property* would pass on the broken version
-// too - the property holds 40, it is the laid-out geometry that is 24. So this
-// asks the running item how big it ended up.
-//
-// The five tabs: 0 tracks, 1 albums, 2 artists, 3 playlists, 4 mixes. Every
-// list is empty because the stub's favourites are, which is the state these
-// items exist for.
+// The five empty-state glyphs on CollectionPage, at the size they ask for.
+// Each is a direct child of a ColumnLayout, which sizes its children from
+// Layout.preferredWidth/Height or the implicit size and overwrites a plain
+// width/height. The laid-out geometry is measured, because the width
+// property still holds the requested number when the layout ignores it.
+// Tabs: 0 tracks, 1 albums, 2 artists, 3 playlists, 4 mixes, all empty.
 
 import QtQuick
 import QtQuick.Controls
@@ -41,8 +17,7 @@ TestCase {
     width: 1000
     height: 800
     // TestCase declares visible: false, and an invisible tree reports every
-    // item invisible - which would make the visibility half of this meaningless
-    // and, worse, is the state in which a Layout has nothing to rearrange.
+    // item invisible and gives a Layout nothing to rearrange.
     visible: true
 
     readonly property int wanted: 40
@@ -83,8 +58,8 @@ TestCase {
                "the " + data.tag + " empty state is not showing, so its glyph "
                + "size says nothing - the tab or the fixture is wrong, not the icon")
 
-        // The number, not merely "bigger than the implicit 24". A Layout that
-        // stretched it to fill would also be wrong.
+        // The exact number: a Layout that stretched the glyph to fill would also
+        // be wrong.
         compare(icon.width, testCase.wanted,
                 "the " + data.tag + " glyph was laid out " + icon.width
                 + "px wide, not " + testCase.wanted
@@ -95,20 +70,9 @@ TestCase {
                 + "px tall, not " + testCase.wanted)
     }
 
-    // And the ink is that big, not just the item.
-    //
-    // VectorIcon draws into a Shape that is always 24x24 and is blown up by a
-    // Scale transform reading `root.width * 0.85 / 24`. So the *child* stays 24
-    // whatever happens, and an item of the right size whose drawing had not
-    // followed would pass every assertion above. What is measured here is where
-    // the Shape's two opposite corners land in the icon's own coordinates, which
-    // is mapToItem's job and does apply the transform: 24 * 40 * 0.85 / 24 = 34
-    // against 24 * 24 * 0.85 / 24 = 20.4 when the size is the implicit one.
-    //
-    // Found by shape rather than by name, because VectorIcon is shared with the
-    // rest of the app and this file has no business adding an objectName to it.
-    // Its two children are the Shape and the strip used for the "track" glyph
-    // alone, and only one of them is ever visible.
+    // The ink follows the item. VectorIcon draws a 24x24 Shape under a Scale
+    // transform, so the drawing is measured through mapToItem. The Shape is
+    // found as the visible child, since VectorIcon gives it no objectName.
     function test_the_glyph_inside_is_drawn_at_the_items_size() {
         var page = makeCollection(1)
         var icon = findChild(page, "collectionEmptyAlbumsIcon")
@@ -124,8 +88,8 @@ TestCase {
         var inkW = b.x - a.x
         var inkH = b.y - a.y
 
-        // 34 at 40px, 20.4 at the implicit 24. Asserted as a band rather than a
-        // number so the 0.85 inset inside VectorIcon stays VectorIcon's business.
+        // About 34 at 40px and 20 at the implicit 24. A band, so the inset inside
+        // VectorIcon stays VectorIcon's business.
         verify(inkW > 30 && inkH > 30,
                "the glyph is drawn " + inkW.toFixed(1) + "x" + inkH.toFixed(1)
                + "px inside a " + icon.width + "x" + icon.height

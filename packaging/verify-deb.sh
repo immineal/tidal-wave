@@ -1,77 +1,102 @@
 #!/usr/bin/env bash
-# Install the built .deb in a *clean* Debian 12 container and run it.
+# Install the built .deb in a clean container and start the app headless.
 #
-#     packaging/verify-deb.sh [path/to/tidal-wave_*.deb]
+#     packaging/verify-deb.sh [package.deb] [image]
 #
-# Defaults to the newest .deb in dist/. Deliberately not the build image: that
-# one has every -dev package and the whole Qt toolchain, so a missing runtime
-# dependency would go unnoticed there. A bare debian:bookworm has nothing, so
-# apt has to resolve the generated Depends list for real.
-#
-# What it checks, in order:
-#   1. `apt-get install ./pkg.deb` resolves and configures with no -f fixup.
-#   2. The installed binary reaches its event loop with a root object. The app
-#      returns -1 immediately when the QML engine produces none, so surviving
-#      until the timeout kills it (exit 124) is the window check, and an
-#      immediate exit is the failure.
-#   3. stderr carries no "is not a type" and no ReferenceError.
-# It never logs in: the app stops at the login page on its own with no token.
+# Defaults: the newest .deb in dist/, and debian:bookworm. The image is a bare
+# distribution, never the build image, so apt has to resolve the generated
+# Depends for real. Pass means apt installs the package with nothing left to
+# fix, the app is still running after 25 seconds, and its log carries no QML
+# or plugin load error. Any failure exits non-zero.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SELF/.." && pwd)"
 
-if [ $# -ge 1 ]; then
-    DEB="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-else
+IMAGE="debian:bookworm"
+DEB=""
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        *.deb)     DEB="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")" ;;
+        *)         IMAGE="$arg" ;;
+    esac
+done
+if [ -z "$DEB" ]; then
     DEB="$(ls -t "$REPO"/dist/*.deb 2>/dev/null | head -1 || true)"
 fi
-[ -n "${DEB:-}" ] && [ -f "$DEB" ] || { echo "no .deb found - run packaging/build-deb.sh first" >&2; exit 2; }
-echo "==> verifying $(basename "$DEB")"
+[ -n "$DEB" ] && [ -f "$DEB" ] || { echo "no .deb found - run packaging/build-deb.sh first" >&2; exit 2; }
+echo "==> verifying $(basename "$DEB") on $IMAGE"
 
 read -r -d '' INNER <<'INNER_EOF' || true
 set -eu
 export DEBIAN_FRONTEND=noninteractive
 DEB=/pkg/$(ls /pkg)
+FAILED=0
+fail() { echo "FAIL: $*"; FAILED=1; }
 
 echo "=== 1. apt-get install ==="
 apt-get update -qq
-# No -f, no --fix-broken, no dpkg -i fallback: if the generated floors are wrong
-# for this release apt refuses here, and that refusal is the finding.
+# No -f and no dpkg -i fallback: a refusal from apt is the finding.
 apt-get install -y "$DEB"
-echo "--- install status"
 dpkg-query -W -f='${Package} ${Version} ${Status}\n' tidal-wave
-echo "--- anything left unconfigured or half-installed?"
-if dpkg --audit | grep -q .; then dpkg --audit; echo "DPKG AUDIT NOT CLEAN"; else echo "dpkg --audit: clean"; fi
-echo "--- would apt-get -f install change anything?"
-apt-get -f install --dry-run 2>&1 | tail -5
+if dpkg --audit | grep -q .; then
+    dpkg --audit
+    fail "dpkg --audit is not clean"
+else
+    echo "ok: dpkg --audit is clean"
+fi
+# Simulated. An Inst, Remv or Conf line is work apt still wants to do.
+if apt-get -f install --dry-run 2>&1 | grep -E '^(Inst|Remv|Conf) '; then
+    fail "apt-get -f install would still change something"
+else
+    echo "ok: apt-get -f install has nothing to do"
+fi
 
 echo
-echo "=== 2+3. launch the installed binary, headless ==="
+echo "=== 2. launch the installed binary, headless ==="
 command -v tidal-wave
 export QT_QPA_PLATFORM=offscreen
-export HOME=/tmp/run; mkdir -p "$HOME"
-export XDG_RUNTIME_DIR=/tmp/run
-set +e
-timeout -s TERM 25 tidal-wave >/tmp/out.log 2>&1
-RC=$?
-set -e
-echo "exit code: $RC  (124 = still running when the timer fired = reached the event loop)"
-echo "--- stderr/stdout, in full ---"
+export HOME=/tmp/run XDG_RUNTIME_DIR=/tmp/run
+mkdir -m 700 "$HOME"
+RC=0
+timeout -s TERM 25 tidal-wave >/tmp/out.log 2>&1 || RC=$?
+echo "--- log, in full ---"
 cat /tmp/out.log
-echo "--- scan ---"
-if grep -q "is not a type" /tmp/out.log; then echo 'FAIL: "is not a type" present'; else echo 'ok: no "is not a type"'; fi
-if grep -q "ReferenceError" /tmp/out.log; then
-    echo 'ReferenceError present:'; grep -c "ReferenceError" /tmp/out.log
-    grep -o "ReferenceError: [A-Za-z]* is not defined" /tmp/out.log | sort | uniq -c
+echo "--- end of log ---"
+# The app exits at once when the QML engine yields no root object, so 124
+# (timeout had to stop it) means it reached its event loop with a window.
+if [ "$RC" -eq 124 ]; then
+    echo "ok: still running after 25 s"
 else
-    echo "ok: no ReferenceError"
+    fail "exited early with status $RC"
 fi
-if [ "$RC" -eq 124 ] || [ "$RC" -eq 143 ]; then echo "ok: reached a window"; else echo "FAIL: exited early with $RC"; fi
+
+echo
+echo "=== 3. scan the log ==="
+for pattern in \
+    'is not a type' \
+    'ReferenceError' \
+    'module "[^"]*" is not installed' \
+    'Could not (find|load) the Qt platform plugin' \
+    'No QtMultimedia backends found' \
+    'TLS initialization failed'
+do
+    if grep -qE "$pattern" /tmp/out.log; then
+        fail "the log matches: $pattern"
+        grep -E "$pattern" /tmp/out.log | sort | uniq -c | head -5
+    else
+        echo "ok: no match for: $pattern"
+    fi
+done
+
+echo
+if [ "$FAILED" -ne 0 ]; then echo "RESULT: FAILED"; else echo "RESULT: passed"; fi
+exit "$FAILED"
 INNER_EOF
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp "$DEB" "$STAGE/"
 
-docker run --rm -v "$STAGE:/pkg:ro" debian:bookworm bash -c "$INNER"
+docker run --rm -v "$STAGE:/pkg:ro" "$IMAGE" bash -c "$INNER"

@@ -1,32 +1,9 @@
-// The remote search page: what it says between the keystroke and the reply.
-//
-// Four defects, all of them the same shape - the page had two notions of state,
-// "I have results" and "I have none", and told the user about the second one
-// whenever it was not in the first:
-//
-//   D1  "No results for ab" for the whole 400ms the debounce was still
-//       waiting, on every keystroke, before anything had been asked for.
-//   D2  the field never had the keyboard at all. Arriving at the page gave the
-//       *Loader* active focus, and leaving it cleared the only focus item in
-//       that scope, so neither the first visit nor any later one put a cursor
-//       in the field. (It was reported as a second-visit bug; the first visit
-//       went red too.)
-//   D3  a type tab whose own kind had no hits hid every section *and* the
-//       no-results strip, so the pane was empty with no message in it.
-//   D4  a failed search looked exactly like a successful one: the spinner went
-//       away, the previous query's results stayed on screen under the new
-//       text, and nothing said the request had failed.
-//
-// Nothing here looks for an objectName on the strip. The assertions ask what a
-// person reading the page would see - is there a visible line of text saying
-// this, right now - because D1 and D3 are both about a sentence appearing when
-// it has no business appearing, and a test that found the strip by name would
-// pass the day the sentence moved into a different Item.
-//
-// The fixtures are invented: `bridge.search` answers whatever
-// setSearchResultsForTest() put there and the stub matches nothing itself, so
-// the names below exist only to be recognisable in a failure message. None of
-// it is a capture.
+// The remote search page: what it says between the keystroke and the reply,
+// then paging, recent searches, mixes, section order and the tab pill.
+// The assertions ask what a reader of the page would see, a visible line of
+// text, so they hold when a sentence moves to a different Item.
+// bridge.search answers what setSearchResultsForTest() put there. Every
+// name in the fixtures is invented.
 
 import QtQuick
 import QtQuick.Layouts
@@ -43,9 +20,8 @@ TestCase {
     width: 1280
     height: 800
 
-    // The page's own debounce (SearchPage.qml's searchDebounce), repeated so a
-    // change to it fails here rather than silently widening the window this
-    // file is measuring.
+    // The page's own debounce (SearchPage.qml's searchDebounce), repeated so
+    // a change to it fails here.
     readonly property int debounceMs: 400
     readonly property int settleMs: 2000
 
@@ -58,7 +34,7 @@ TestCase {
     function init() {
         app.setReducedMotionForTest(true)   // no fades to wait out
         auth.setStateForTest(2)             // LoggedIn
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         auth.setHasSavedCredentialsForTest(false)
         library.setEntriesForTest([])
         library.setTracksForTest([])
@@ -136,10 +112,8 @@ TestCase {
         }
     }
 
-    // D2 is a bug in the handover between the router and the page, so it needs
-    // the router: the Loader that drops the field's focus on the way out lives
-    // in Main.qml, and no stand-in host has one. Same window tst_main_escape
-    // and tst_nowplaying_access use.
+    // The focus cases need the router: the Loader that drops the field's
+    // focus on the way out lives in Main.qml.
     Component { id: appHost; Main { } }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -163,10 +137,9 @@ TestCase {
         return win
     }
 
-    // Typing, as the user does it: the bar's TextInput is what the page listens
-    // to, so setting its text runs onTextEdited and restarts the debounce. Not
-    // keyClick, because every case below one is about the page and not about
-    // which item has the keyboard.
+    // Typing: the page listens to the bar's TextInput, so setting its text
+    // runs onTextEdited and restarts the debounce. No keyClick, because these
+    // cases are not about which item has the keyboard.
     function typeInto(page, text) {
         var bar = findByName(page, "searchPageBar")
         verify(bar, "the page has no search bar")
@@ -196,10 +169,9 @@ TestCase {
         return visibleTextsSaying(item, needle).length > 0
     }
 
-    // The column under the tab row, which is where every answer about a query
-    // is printed. Scanning the whole page for the query instead would find the
-    // search field itself - it is a visible Text holding exactly that string -
-    // and three cases below went green against it before this existed.
+    // The column under the tab row, where every answer about a query is
+    // printed. A scan of the whole page for the query would find the search
+    // field itself.
     function resultsArea(page) {
         var area = findByName(page, "searchResults")
         verify(area, "the page has no results column")
@@ -215,9 +187,8 @@ TestCase {
         return out.length === 0 ? "(nothing at all)" : out.join(", ")
     }
 
-    // `focused` is the bar's own alias for its TextInput's activeFocus, which
-    // is the thing D2 is about. By name, not by type: the Collection page has a
-    // bar of its own and its Loader is live in this window too.
+    // focused is the bar's alias for its TextInput's activeFocus. Found by
+    // name, because the Collection page has a bar of its own in this window.
     function searchBarIn(item) {
         var bar = findByName(item, "searchPageBar")
         verify(bar, "no search bar in this window")
@@ -235,7 +206,7 @@ TestCase {
     }
 
     // The ways the page can report an empty outcome, so a case can assert that
-    // it reports none of them. Returns the offending line, or "".
+    // it reports none of them. Returns the offending line, or an empty string.
     readonly property var emptyPhrases: ["No results", "No tracks", "No albums",
                                          "No artists", "No playlists"]
 
@@ -248,7 +219,8 @@ TestCase {
     }
 
     // Everything the page can say about the outcome of a search: the lines
-    // above plus the one a failure prints. Returns the offending line, or "".
+    // above plus the one a failure prints. Returns the offending line, or an
+    // empty string.
     function outcomeClaim(item) {
         var claim = emptyClaim(item)
         if (claim !== "") return claim
@@ -256,12 +228,10 @@ TestCase {
         return failed.length > 0 ? failed[0].text : ""
     }
 
-    // ── D0 (the prerequisite): the stub is answering honestly ────────────
-    //
-    // Until this file existed, StubBridge::search dropped the query and the
-    // limit and always resolved four empty lists, so every assertion about a
-    // result ever reaching the page passed against nothing. If that regresses,
-    // everything below it goes green for the wrong reason.
+    // ── the prerequisite: the stub is answering honestly ─────────────────
+    // StubBridge::search has to report the query and the limit it was given
+    // and answer with the canned lists, or everything below passes against
+    // nothing.
 
     function test_the_stub_reports_what_was_asked_and_answers_with_it() {
         var win = showPage()
@@ -299,18 +269,11 @@ TestCase {
                "the page said \"No results\" for a query it never ran")
     }
 
-    // ── D1: typed, but nothing has come back yet ─────────────────────────
+    // ── typed, but nothing has come back yet ─────────────────────────────
 
-    // Types `text` and holds the page to its silence for as long as the request
-    // has not gone out.
-    //
-    // Polled, not slept through: the window closes on its own after the page's
-    // 400ms debounce, and a case that slept a fraction of it would stop
-    // asserting anything the first time a loaded box let the Timer fire early.
-    // The first check below happens before any turn of the event loop, where
-    // the Timer cannot have fired at all, and load widens the window rather
-    // than narrowing it - so there is no machine on which this quietly passes
-    // without having looked.
+    // Types text and holds the page to its silence for as long as the request
+    // has not gone out. Polled: the first check runs before any turn of the
+    // event loop, so the debounce Timer cannot have fired yet.
     function typeAndHoldToSilence(win, text, note) {
         var before = bridge.searchCountForTest()
         typeInto(win.page, text)
@@ -336,8 +299,8 @@ TestCase {
         typeAndHoldToSilence(win, query, "a fresh query, still being debounced")
     }
 
-    // The same window, one keystroke later: a query that *has* been answered,
-    // then extended. The old answer does not describe the new query.
+    // A query that has been answered, then extended. The old answer does not
+    // describe the new query.
     function test_a_further_keystroke_withdraws_the_previous_answer() {
         var win = showPage()
         typeInto(win.page, query)
@@ -378,7 +341,7 @@ TestCase {
                "the no-results line does not name the query it is about")
     }
 
-    // ── D3: a type tab with no hits of its own kind ──────────────────────
+    // ── a type tab with no hits of its own kind ──────────────────────────
 
     function test_a_tab_with_no_hits_of_its_kind_is_not_a_blank_pane_data() {
         return [
@@ -405,15 +368,14 @@ TestCase {
                + "because this kind had no hits, and the no-results strip is "
                + "suppressed because another kind did. The results column is "
                + "showing: " + visibleCopy(resultsArea(win.page)))
-        // ...and it must not claim there were no results when there were.
+        // And it must not claim there were no results when there were.
         verify(!saysSomethingContaining(win.page, "No results for"),
                "the " + row.tag + " tab says \"No results\" while " + row.tag
                + " were the only kind missing")
     }
 
-    // The other half of that line: a type tab when the search found nothing
-    // anywhere is about the search again. "No albums" would be true but it
-    // would also suggest that another tab has something, and none has.
+    // A type tab when the search found nothing anywhere reports the search.
+    // Naming the tab would suggest that another tab has something.
     function test_a_type_tab_with_nothing_anywhere_reports_the_search() {
         var win = showPage()
         typeInto(win.page, query)        // the stub answers four empty lists
@@ -443,7 +405,7 @@ TestCase {
                 "the All tab reported something empty while tracks matched")
     }
 
-    // ── D4: a failed search ─────────────────────────────────────────────
+    // ── a failed search ─────────────────────────────────────────────────
 
     function test_a_failed_search_says_it_failed() {
         var win = showPage()
@@ -483,7 +445,6 @@ TestCase {
                "the failure was never surfaced: " + visibleCopy(win.page))
     }
 
-    // A search that succeeds after one failed clears the failure.
     function test_a_successful_search_clears_an_earlier_failure() {
         var win = showPage()
         bridge.setSearchErrorForTest("Connection closed")
@@ -492,8 +453,8 @@ TestCase {
                   settleMs, "the failure was never surfaced")
 
         bridge.setSearchResultsForTest(fakeTracks(2), [], [], [])   // clears the error
-        // The failure is withdrawn the moment the query changes, not only once
-        // the replacement answer lands: it described the query before this one.
+        // The failure is withdrawn the moment the query changes: it described
+        // the query before this one.
         typeAndHoldToSilence(win, query + "er",
                              "a retry of a query whose search had failed")
         tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
@@ -502,7 +463,7 @@ TestCase {
                "the old failure is still on screen: " + visibleCopy(win.page))
     }
 
-    // ── D2: the field's focus across a visit ────────────────────────────
+    // ── the field's focus across a visit ────────────────────────────────
 
     function test_the_field_has_focus_on_the_first_visit() {
         var win = showApp()
@@ -534,17 +495,9 @@ TestCase {
                   + "it back, so from the second visit on typing goes nowhere")
     }
 
-    // The symptom as the user meets it, over the route they use: Ctrl+2, away,
-    // Ctrl+2 again. What is asserted is where this window *would* send a
-    // keystroke, using Main.qml's own predicate for it - the one the bare-key
-    // shortcuts are gated on, so it is also the app's definition of "the field
-    // has the keyboard".
-    //
-    // Not an actual letter: QuickTestEvent posts keys to the test harness's own
-    // window and there is no way to aim one at this window instead. That is
-    // also why the three Ctrl chords below work at all - they are
-    // Qt.ApplicationShortcut and fire whichever window the event reached - and
-    // why a bare letter would prove nothing either way.
+    // Over the shortcut route: Ctrl+2, away, Ctrl+2 again. Asserted through
+    // Main.qml's own predicate for a typing context. A bare letter cannot be
+    // aimed at this window: QuickTestEvent posts keys to the harness's window.
     function test_the_window_would_send_typing_to_the_field_on_the_second_visit() {
         var win = showApp()
         keyClick(Qt.Key_2, Qt.ControlModifier)
@@ -567,13 +520,13 @@ TestCase {
     }
 
     // ════════════════════════════════════════════════════════════════════
-    //  The four features that landed on this page after the defect fixes.
+    //  Paging, recent searches, mixes, section order and the tab pill.
     // ════════════════════════════════════════════════════════════════════
 
     // ── helpers the new cases share ──────────────────────────────────────
 
-    // The Flickable inside the results ScrollView: what "the bottom of the
-    // page" means, and the thing paging is driven off.
+    // The Flickable inside the results ScrollView, which defines the bottom
+    // of the page and drives paging.
     function scrollerIn(page) {
         var sv = findByName(page, "searchScroll")
         verify(sv, "the page has no results scroll view")
@@ -645,16 +598,9 @@ TestCase {
     // ════════════════════════════════════════════════════════════════════
     //  1. Load more as you scroll
     // ════════════════════════════════════════════════════════════════════
-    //
-    // Before this the page asked for 20 of each kind, sent no offset at all,
-    // and the bridge dropped the four totals the server had already answered
-    // with - so twenty was the catalogue, and nothing could even have known
-    // otherwise.
-    //
     // The stub pages: each canned list is sliced [offset, offset+limit) and
-    // the five totals report the whole list, so a second request really does
-    // come back with different rows. Without that every case below would go
-    // green against page one arriving twice.
+    // the totals report the whole list, so a second request comes back with
+    // different rows.
 
     function test_the_first_page_asks_from_the_top() {
         var win = showPage()
@@ -691,9 +637,8 @@ TestCase {
                "the appended rows are not on screen")
     }
 
-    // The end has to be knowable, which is the half the dropped totals cost:
-    // a last page that happens to be full looks exactly like a full page with
-    // more behind it.
+    // The end has to be knowable from the total: a last page that happens to
+    // be full looks exactly like a full page with more behind it.
     function test_the_end_of_a_kind_stops_the_asking() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
@@ -720,9 +665,7 @@ TestCase {
                "nothing says the list has ended: " + visibleCopy(resultsArea(win.page)))
     }
 
-    // The case the dropped totals cost outright: a last page that happens to
-    // be exactly full. Nothing about the page itself says it is the last one -
-    // only the total does.
+    // A last page that is exactly full. Only the total says it is the last.
     function test_a_last_page_that_is_exactly_full_is_still_the_last() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(40), [], [], [])
@@ -735,11 +678,8 @@ TestCase {
                   settleMs, "the second page never arrived")
         wait(250)        // long enough for a third request to have gone out
 
-        // Two requests and no more: the first page and the second. A third
-        // would come back empty and end the run just as quietly, so counting
-        // requests is the only way to see the difference - and the count is
-        // taken from the start rather than from here, because the spurious
-        // third request happens before anything a later snapshot could see.
+        // Two requests and no more. A third would come back empty and end the
+        // run just as quietly, so only the request count shows the difference.
         compare(bridge.searchCountForTest(), 2,
                 "the page asked for a page of a kind it already has all 40 "
                 + "rows of: a full last page is only distinguishable from a "
@@ -749,7 +689,6 @@ TestCase {
         verify(!win.page._more[1], "the Tracks kind still thinks it has more")
     }
 
-    // A short result set is not an end worth announcing.
     function test_a_single_short_page_says_nothing_about_an_end() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
@@ -761,9 +700,8 @@ TestCase {
                "three results were announced as the end of a list")
     }
 
-    // Tidal repeats rows across pages whenever the result set shifts under a
-    // query between two requests, and a repeated row drawn twice is the most
-    // visible way a paged list can be wrong.
+    // Tidal repeats rows across pages when the result set shifts between two
+    // requests. A repeated row must not be drawn twice.
     function test_a_row_the_server_repeats_is_not_shown_twice() {
         var win = showPage()
         var tracks = fakeTracks(40)
@@ -788,8 +726,8 @@ TestCase {
         }
     }
 
-    // ...and the *offset* must still count what the server sent, not what
-    // survived the dedup, or the dropped row is re-requested forever.
+    // The offset must count what the server sent, or the dropped row is
+    // requested again forever.
     function test_the_offset_counts_what_the_server_sent_not_what_was_kept() {
         var win = showPage()
         var tracks = fakeTracks(40)
@@ -829,9 +767,8 @@ TestCase {
                + " and is at " + f.contentY)
     }
 
-    // The All tab is a summary of five kinds at once; there is no one kind for
-    // its bottom to be the bottom of, and a horizontal tile row has no bottom
-    // at all - so it does not page.
+    // The All tab is a summary of five kinds at once, with no single kind for
+    // its bottom to belong to, so it does not page.
     function test_the_all_tab_does_not_page() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(45), fakeAlbums(45), [], [])
@@ -846,9 +783,8 @@ TestCase {
                 + "tile rows it shows do not scroll downwards")
     }
 
-    // A page that is still in flight when the query changes describes a search
-    // the user has left. It is dropped by the generation counter the defect
-    // fixes already introduced - not by a second mechanism.
+    // A page still in flight when the query changes describes a search the
+    // user has left. The generation counter drops it.
     function test_a_page_in_flight_is_dropped_when_the_query_changes() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
@@ -867,7 +803,7 @@ TestCase {
         search(win, query + "er")
         compare(win.page.tracks.length, 2)
 
-        // ...and the page of the *old* query finally comes back.
+        // The page of the old query finally comes back.
         bridge.flushSearchRepliesForTest()
         wait(50)
         compare(win.page.tracks.length, 2,
@@ -922,11 +858,9 @@ TestCase {
     // ════════════════════════════════════════════════════════════════════
     //  2. Recent searches, clearable
     // ════════════════════════════════════════════════════════════════════
-    //
-    // Nothing in this file is a query anyone really ran: the stub keeps the
-    // list in memory and never touches QSettings, and the strings below are
-    // invented. A test must not read - or append to - a person's search
-    // history.
+    // The stub keeps the list in memory and never touches QSettings, and the
+    // strings below are invented. A test must not read or append to a
+    // person's search history.
 
     function test_the_empty_state_lists_recent_searches() {
         var win = showPage()
@@ -942,7 +876,6 @@ TestCase {
                "the static illustration is still up alongside the list")
     }
 
-    // ...and the illustration is what is there before anything was searched.
     function test_the_illustration_stays_when_nothing_was_searched_yet() {
         var win = showPage()
         compare(bridge.recentSearches().length, 0)
@@ -981,7 +914,6 @@ TestCase {
                 "every prefix of one search was remembered separately")
     }
 
-    // ...but a different query does not swallow the one before it.
     function test_an_unrelated_query_does_not_replace_the_previous_one() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(2), [], [], [])
@@ -1061,11 +993,9 @@ TestCase {
     // ════════════════════════════════════════════════════════════════════
     //  3. Mixes in search
     // ════════════════════════════════════════════════════════════════════
-    //
-    // The video filter itself is proved in tests/tst_mixes.cpp, against the
-    // captured mixType values: a video mix is dropped in
-    // TidalClient::parseSearchMixes and so never reaches QML at all. What is
-    // here is the page's half - a sixth chip, a sixth section, a sixth tab.
+    // The video filter is proved in tests/tst_mixes.cpp: a video mix is
+    // dropped in TidalClient::parseSearchMixes and never reaches QML. Here is
+    // the page's half: a sixth chip, a sixth section, a sixth tab.
 
     function test_there_is_a_mixes_chip() {
         var win = showPage()
@@ -1120,27 +1050,12 @@ TestCase {
     // ════════════════════════════════════════════════════════════════════
     //  4. The section order follows the query
     // ════════════════════════════════════════════════════════════════════
-    //
-    // The rule, as agreed with the user and written down in HANDOFF.md under
-    // "The rule, as agreed": fold the query the way LibraryIndex folds, score
-    // each kind's best hit's *name* (exact 400, prefix 300, word-start 200,
-    // mid-word 100, plus up to 40 for coverage, minus one point per row the
-    // hit sits below the top), and let the best-scoring kind lead - but only
-    // if it is a full tier (100) clear of the runner-up.
-    //
-    // ── about the names below ──────────────────────────────────────────
-    //
-    // The six worked examples are the specification: they were put to the user
-    // in those words and the rule was chosen on them, so they are reproduced
-    // verbatim rather than restated with placeholder names - a case built on
-    // different names would not be the case that was agreed. The names are
-    // public catalogue names out of HANDOFF.md. Nothing here comes from the
-    // user's own library or search history, and every id is invented.
+    // Each kind's best hit is scored by name: exact 400, prefix 300,
+    // word-start 200, mid-word 100, plus up to 40 for coverage, minus one per
+    // row below the top. The best kind leads only if it is 100 clear.
 
-    // The catalogue the four "kendrick"-family cases share: one artist, their
-    // songs, their albums, and the editorial playlist that names them. Held
-    // fixed across those cases on purpose - the examples differ in the query,
-    // not in what the server answered.
+    // The catalogue the kendrick cases share, held fixed across them: the
+    // examples differ in the query. Public catalogue names, invented ids.
     function kendrickResults() {
         return {
             tracks:    tracksWithTitles(["Alright", "Money Trees", "Swimming Pools"]),
@@ -1170,19 +1085,15 @@ TestCase {
 
     function test_the_section_order_follows_the_query_data() {
         return [
-            // `kendrick` -> Artists. A prefix hit at index 0 with high
-            // coverage of "Kendrick Lamar" (300 + 22 = 322) against the
-            // playlist that merely contains the name (200 + 14 = 214); no
-            // track is *titled* "kendrick", so Tracks score nothing.
+            // Artists: a prefix hit at index 0 (300 + 22 = 322) against the
+            // playlist that contains the name mid-title (200 + 14 = 214).
             { tag: "an artist's name",  q: "kendrick",   lead: "Artists" },
-            // `alright` -> Tracks. An exact title: 400 + 40.
+            // Tracks: an exact title, 400 + 40.
             { tag: "an exact title",    q: "alright",    lead: "Tracks" },
-            // A full album title -> Albums, exact, for the same reason.
+            // Albums: an exact title again.
             { tag: "an exact album",    q: "to pimp a butterfly", lead: "Albums" },
-            // `kendrick alright` -> default, and this is the case that proves
-            // the rule: matching names only means no artist name matches the
-            // whole query and no track is titled that, so every kind scores 0
-            // and Tidal's own ranking is what the user sees.
+            // The default order: no single name matches the whole query, so
+            // every kind scores 0 and Tidal's own ranking stands.
             { tag: "two things at once", q: "kendrick alright", lead: "" }
         ]
     }
@@ -1210,8 +1121,8 @@ TestCase {
         }
     }
 
-    // `jazz` -> default: playlists, artists and tracks all have plausible hits
-    // and none wins by a tier (317 / 316 / 310 / 210), so nothing moves.
+    // Playlists, artists and tracks all have plausible hits and none wins by
+    // a tier, so nothing moves.
     function test_an_ambiguous_query_leaves_the_order_alone() {
         var win = showPage()
         feed({
@@ -1228,13 +1139,8 @@ TestCase {
                 "an ambiguous query reordered the page")
     }
 
-    // `kend` -> default. The premise of the example is that a half-typed query
-    // is not decisive yet, which is true the moment the shorter query pulls in
-    // a competing short name: "Kendo" is 300 + 32 = 332 against the artist's
-    // 300 + 11 = 311, a gap of 21.
-    //
-    // See the companion case below: against the *same* result set as
-    // `kendrick`, this query does reorder.
+    // A half-typed query that pulls in a competing short name is not
+    // decisive: the gap between the two best kinds is under a tier.
     function test_a_half_typed_query_over_an_ambiguous_set_holds_still() {
         var win = showPage()
         feed({
@@ -1251,50 +1157,26 @@ TestCase {
                 "a half-typed query jumped the page around")
     }
 
-    // ── where the agreed rule and the agreed example disagree ──────────
-    //
-    // The sixth worked example says `kend` -> default: "nothing decisive yet,
-    // so the page does not jump while the user is still typing." Against a
-    // genuinely ambiguous result set that is what happens, which is the case
-    // above. Against the *same* result set as `kendrick` it is not: the rule
-    // promotes Artists at four characters too.
-    //
-    // The arithmetic, which is the rule as agreed and not a deviation from it:
-    //
-    //   kendrick   artists "Kendrick Lamar"         300 + 22 = 322
-    //              playlists "This Is Kendrick Lamar" 200 + 14 = 214   gap 108
-    //   kend       artists                          300 + 11 = 311
-    //              playlists                        200 +  7 = 207   gap 104
-    //
-    // Both clear the 100 threshold, and they clear it for a structural reason:
-    // when the leader and the runner-up are in *adjacent* tiers the gap is
-    // 100 + (leader coverage - runner-up coverage), so "a full tier clear"
-    // comes down to "a higher tier, and at least as much coverage". The
-    // shorter name has more coverage almost by definition, so an artist whose
-    // name begins with the query beats a playlist that merely contains it from
-    // the fourth character on.
-    //
-    // Recorded as the behaviour rather than quietly fixed: the threshold was
-    // the user's own choice and the example was agreed with them, so the two
-    // have to be put back to them together. If `kend` really must hold still
-    // against this result set the threshold has to be more than one tier, and
-    // that is a decision, not a bug fix.
+    // ── the same half-typed query over the kendrick set ────────────────
+    // When the leader and the runner-up are in adjacent tiers the gap is 100
+    // plus the difference in coverage, so an artist whose name begins with the
+    // query beats a playlist that contains it, even at four characters.
     function test_a_half_typed_query_over_the_same_set_does_reorder() {
         var win = showPage()
         feed(kendrickResults())
         search(win, "kend")
 
         compare(orderNames(win.page)[0], "Artists",
-                "this case records a known departure from the agreed example "
-                + "(`kend` -> default). If it starts passing as written in "
-                + "HANDOFF.md, the rule changed and this case is the one to "
-                + "delete - not the example.")
+                "this case records a known departure from the rule's own "
+                + "example (`kend` -> default order). If the order is the "
+                + "default now, the rule changed and this case is the one "
+                + "to delete.")
         compare(win.page.scoreKind(3, win.page.artists, "kend"), 311)
         compare(win.page.scoreKind(4, win.page.playlists, "kend"), 207)
     }
 
-    // The leading section earns a few more rows than it would in third place.
-    // Tracks is the only section with a cap, so it is the whole of this.
+    // The leading section shows a few more rows. Tracks is the only section
+    // with a cap.
     function test_the_leading_tracks_section_shows_more_rows() {
         var win = showPage()
         var titles = ["Alright"]
@@ -1322,10 +1204,9 @@ TestCase {
                + visibleCopy(resultsArea(win.page)))
     }
 
-    // The decision is only as good as the layout that carries it: a Loader
-    // inside a layout overwrites a `height` binding on the item it holds, and
-    // HorizontalSection binds exactly that - so a section can be in the right
-    // slot and still be nought pixels tall.
+    // A Loader inside a layout overwrites a height binding on the item it
+    // holds, and HorizontalSection binds one, so a section can be in the
+    // right slot and still have no height. The painted order is checked.
     function test_the_leading_section_is_really_drawn_first() {
         var win = showPage()
         feed(kendrickResults())
@@ -1381,8 +1262,6 @@ TestCase {
                 "a page of results reordered the sections under the user")
     }
 
-    // And a query below the threshold puts the default back, rather than
-    // leaving the last search's order standing over an empty page.
     function test_clearing_the_query_restores_the_default_order() {
         var win = showPage()
         feed(kendrickResults())
@@ -1409,9 +1288,8 @@ TestCase {
                 + "accents the way LibraryIndex does")
     }
 
-    // Two kinds that score the same are a tie, and a tie is a gap of zero, so
-    // nothing moves. Two artists and two tracks with the same exact-match name
-    // is the cleanest form of it.
+    // Two kinds that score the same are a tie, a gap of zero, so nothing
+    // moves.
     function test_a_tie_between_two_kinds_changes_nothing() {
         var win = showPage()
         feed({ tracks: tracksWithTitles(["Nebelwerk"]),
@@ -1446,9 +1324,6 @@ TestCase {
                 "a hit nine rows down its own kind paid no index penalty")
     }
 
-    // Names only, never a track's artist. This is what makes the rule general
-    // rather than an artist hack, and the whole of why `kendrick alright`
-    // comes out as the default order.
     function test_a_tracks_artist_is_never_scored() {
         var win = showPage()
         feed({ tracks: tracksWithTitles(["Ein Lied"]),   // artists: Beispielkapelle
@@ -1458,8 +1333,7 @@ TestCase {
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "Tracks led on a query that matches only the artist column, "
-                + "which is the widening LibraryIndex and SPEC-0.4.0 both "
-                + "refused")
+                + "which is the widening LibraryIndex refuses")
         compare(win.page.scoreKind(1, win.page.tracks, "beispielkapelle"), 0,
                 "a track scored on something other than its title")
     }
@@ -1467,28 +1341,9 @@ TestCase {
     // ════════════════════════════════════════════════════════════════════
     //  5. The tab highlight is one pill, and it lands on the chip
     // ════════════════════════════════════════════════════════════════════
-    //
-    // Where the travelling highlight comes to rest is a layout question, and
-    // it is asked here because tst_layout_pages' hero-page audit does not
-    // reach SearchPage: its four pages are Album, Playlist, Mix and Artist,
-    // plus Collection.
-    //
-    // Only where it comes to rest. init() above turns reduced motion on for
-    // this whole file - "no fades to wait out" - so every duration under qml/
-    // is zero here and nothing in this file can say anything about a travel.
-    // That half, and the ink that goes with it, is in tst_reduced_motion.
-    //
-    // Every chip, because the six are six different widths - each its own
-    // label plus padding - and the pill has to be each of them in turn: a
-    // highlight aimed with an index times a constant is wrong on five of the
-    // six, which is what the first width catches.
-    //
-    // And every chip at four pane widths, which is the cheap half. The chips
-    // are text-width and the row neither wraps nor stretches, so the pane's
-    // width does not enter the pill's geometry today and the sweep is the
-    // assertion that it still does not - a chip given Layout.fillWidth, or a
-    // row centred rather than left-aligned, would move the chips out from
-    // under a pill aimed at anything but their live boxes.
+    // Where the travelling highlight comes to rest. init() turns reduced
+    // motion on for this file, so nothing here is about the travel. Every
+    // chip, at four pane widths: the six chips are six different widths.
 
     readonly property var tabWidths: [1280, 1100, 900, 740]
 
@@ -1527,12 +1382,9 @@ TestCase {
                 var chip = tabs.children[tab]
                 verify(chip, "@" + w + ": chip " + tab + " was not built")
 
-                // tryVerify, because the pill is still travelling when the tab
-                // is set: this case is about where it stops. Exactly on the
-                // chip and not within a pixel of it - a pill that stops a
-                // fraction short leaves a sliver of the bare row down one edge
-                // of the chip, and it is the ink check below that would then
-                // fail by a pixel and read as a different bug.
+                // tryVerify, because the pill is still travelling when the tab is
+                // set. Exactly on the chip: a pill that stops a fraction short
+                // leaves a sliver of the bare row down one edge.
                 tryVerify(function () {
                     var c = chipBoxIn(pill, tabs.children[tab])
                     return Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width  - c.w) < 0.01
@@ -1543,8 +1395,7 @@ TestCase {
                 + " " + chip.width.toFixed(1) + "x" + chip.height.toFixed(1))
 
                 // The accent's ink copy covers the chip exactly when the pill
-                // does, which is what keeps every glyph on the fill its ink
-                // was chosen for; off the chip it is not drawn at all.
+                // does, and off the chip it is not drawn at all.
                 var ink = findByName(chip, "searchTabInk")
                 verify(ink, "@" + w + ": chip " + tab + " has no accent-ink copy")
                 compare(Math.round(ink.width),  Math.round(chip.width),
@@ -1568,12 +1419,9 @@ TestCase {
         return item.mapToItem(win.contentItem, item.width / 2, item.height / 2)
     }
 
-    // The hover tint loses to the highlight. That is what the chip's old
-    // `activeTab === index ? accent : hover` said, and a travelling pill has to
-    // say it again by other means: the pill is behind the row and surfaceHov is
-    // opaque, so a tint drawn over it would paint the highlight out from under
-    // the pointer - and the pointer is on the chip that was just clicked, which
-    // makes this the most ordinary state the row has.
+    // The hover tint loses to the highlight. The pill is behind the row and
+    // surfaceHov is opaque, so a tint drawn over the marked chip would paint
+    // the highlight out from under the pointer.
     function test_the_marked_chip_takes_no_hover_tint() {
         var win = showPage()
         typeInto(win.page, query)
@@ -1586,8 +1434,7 @@ TestCase {
         verify(marked && far, "the chips were not built")
         compare(win.page.activeTab, 0, "the page did not open on the first tab")
 
-        // A chip the pill is nowhere near takes the tint, so the tint works at
-        // all and the check below is about where it is refused.
+        // A chip the pill is nowhere near takes the tint, so the tint works.
         var f = centreOf(win, far)
         mouseMove(win.contentItem, f.x, f.y)
         tryVerify(function () { return sameColor(far.color, Theme.surfaceHov) }, settleMs,
@@ -1599,8 +1446,7 @@ TestCase {
         tryVerify(function () { return marked.color.a === 0 }, settleMs,
                   "the marked chip painted its hover tint over the highlight, got "
                   + marked.color)
-        // ...with the pill still exactly on it, so there was a highlight there
-        // to paint over.
+        // The pill is still exactly on it.
         var c = chipBoxIn(pill, marked)
         verify(Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width - c.w) < 0.01,
                "the pill is not on the chip under the pointer: " + pillSays(pill))
@@ -1609,15 +1455,9 @@ TestCase {
     }
 
     // ── a query the page is handed rather than typed ────────────────────
-    //
-    // AlbumPage's failure panel sends the title of a delisted album here, so
-    // the live edition can be found under whatever id it is listed as now.
-    // Main.applyParams() can only *assign* - it walks the params object and
-    // sets each name it finds on the page - so a page that is to run a search
-    // on arrival has to be given a property, and a page that merely stored one
-    // would land the user on an empty pane with the term in the box and nothing
-    // asked for. Writing `query` does exactly that: it is the field's echo and
-    // nothing watches it.
+    // AlbumPage's failure panel sends the title of a delisted album here.
+    // Main.applyParams() can only assign properties, so the page takes the
+    // query as requestedQuery and has to run it on arrival.
     function test_a_query_handed_to_the_page_is_actually_searched_for() {
         bridge.setSearchResultsForTest(fakeTracks(1), fakeAlbums(1), [], [])
         var win = showApp()

@@ -1,30 +1,9 @@
-// A playlist's track count, after the user changes what is in it — and the two
-// popups the counts are read in.
-//
-// The reported defect, in the owner's words: "if I create a new tape playlist and
-// then add two songs to it, the two songs are in the playlist, but in the 'add to
-// playlist' menu, it still says the playlist has zero tracks."
-//
-// The songs really did go in. The count is cached, in two separate lists, and
-// `TidalBridge::addTracksToPlaylist` told the server and updated neither - so every
-// place the number is drawn off a cache kept saying 0 until the next sign-in. There
-// are three such places: this picker's row, the Collection grid's tile and the Home
-// row's tile. The playlist page's own hero is not one of them, because it counts
-// `tracks.length` and is live; the Search grid is not one either, because its
-// playlists come straight off a search response.
-//
-// The removal direction had the mirror of the bug - every cached count one too high
-// - and a second defect beside it: PlaylistPage discarded the server's answer, so a
-// removal the server refused left the song in the list, correctly, and said nothing
-// about it, which reads as a click that missed.
-//
-// Everything here runs against the stubs in tests/TestStubs.h. No account is
-// touched and nothing reaches the network. `StubBridge::addTracksToPlaylist` and
-// `removeTrackFromPlaylist` mirror the real pair including the header re-read, the
-// guard on it and the two signals, and `setPlaylistHeaderForTest` is what that
-// re-read answers. Before this file they recorded the call and stopped, which is
-// precisely why a picker drawing "0 tracks" over a playlist with two songs in it
-// kept the suite green: the only thing being tested was the stub.
+// A playlist's track count after the user changes what is in it, and the two
+// popups the counts are read in. The count is cached in two lists, the
+// bridge's and the sidebar's, and both have to follow an add or a removal.
+// StubBridge::addTracksToPlaylist and removeTrackFromPlaylist mirror the real
+// pair, including the header re-read, its guard and the two signals.
+// setPlaylistHeaderForTest sets what that re-read answers.
 
 import QtQuick
 import QtQuick.Layouts
@@ -46,14 +25,9 @@ TestCase {
     readonly property int settleMs: 2000
 
     // ── fixtures ─────────────────────────────────────────────────────────
-    //
-    // "p-tape" is the playlist under test and is deliberately the *middle* row of
-    // three, with a distinct count on each: an assertion that read the wrong row,
-    // or a repair that rewrote the whole list, has somewhere to fail. A fixture of
-    // three identical rows could say neither.
-    //
-    // It starts at 0, which is the state the owner's report starts in - a playlist
-    // just created.
+    // p-tape is the playlist under test, the middle row of three with a
+    // distinct count on each, so reading the wrong row or rewriting the whole
+    // list fails. It starts at 0, as a playlist just created does.
     function makeCache() {
         return [
             { uuid: "p-first", title: "Alte Liste",  description: "unberührt",
@@ -65,10 +39,9 @@ TestCase {
         ]
     }
 
-    // What `playlists/p-tape` answers once the two songs are on it. The cover
-    // arrives with them, because Tidal builds a USER playlist's artwork out of its
-    // first tracks - so an empty playlist that gains songs gains a picture, and
-    // that is a second field the old code left stale.
+    // What playlists/p-tape answers once the two songs are on it. The cover
+    // arrives with them, because Tidal builds a USER playlist's artwork out of
+    // its first tracks.
     function tapeHeaderWithTwo() {
         return { uuid: "p-tape", title: "Tape", numTracks: 2, duration: 418,
                  coverUrl: "cdn/mosaic-two.jpg" }
@@ -96,7 +69,7 @@ TestCase {
         app.setReducedMotionForTest(false)
         prefs.setSidebarWidthForTest(220)
         auth.setStateForTest(2)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest(makeEntries())
         library.setTracksForTest([])
         library.resetCallsForTest()
@@ -172,9 +145,7 @@ TestCase {
         return list
     }
 
-    // What the picker's row actually *draws*, not what its model holds. The two
-    // were identical for a cache nobody updated, which is how "0 tracks" survived
-    // over a playlist with two songs in it.
+    // What the picker's row draws, read off its label.
     function drawnCount(host, index) {
         var list = pickerList(host)
         var item = list.itemAtIndex(index)
@@ -190,21 +161,17 @@ TestCase {
         return findByName(item, "pickerRowTitle").text
     }
 
-    // The expected string, built by the same call the delegate makes rather than
-    // spelled out here: "%n track(s)" renders differently per language and per
-    // number, and a literal would pin the English source instead of the rule.
+    // The expected string, built by the call the delegate makes: the plural
+    // form differs per language and per number.
     function countText(n) {
         return qsTr("%n track(s)", "", n)
     }
 
-    // ── the reported bug ─────────────────────────────────────────────────
+    // ── the picker's count ───────────────────────────────────────────────
 
-    // The owner's report, step for step: a playlist with nothing in it, two songs
-    // added through the picker, and then the picker opened again.
-    //
-    // Reopened rather than watched in place, because that is what the user did and
-    // what the picker supports - it closes on a tap and fills from the cache on
-    // each open. The assertion is on the second open.
+    // A playlist with nothing in it, two songs added through the picker, and
+    // the picker opened again. It closes on a tap and fills from the cache on
+    // each open, so the assertion is on the second open.
     function test_the_picker_draws_the_new_count_once_the_songs_are_in() {
         var host = showPane(1200)
         var row  = makePicker(host)
@@ -213,9 +180,9 @@ TestCase {
         compare(drawnCount(host, 1), countText(0),
                 "the picker did not start from the empty playlist the report starts from")
 
-        // The server will say "two tracks" when asked, which is the only way the
-        // app can know: the post that puts a song on a playlist sends
-        // onDuplicateFound=SKIP, so a success does not mean the playlist grew.
+        // The server reports two tracks when asked, which is the only way the
+        // app can know: the post sends onDuplicateFound=SKIP, so a success does
+        // not mean the playlist grew.
         bridge.setPlaylistHeaderForTest("p-tape", tapeHeaderWithTwo())
 
         var rowItem = pickerList(host).itemAtIndex(1)
@@ -229,15 +196,13 @@ TestCase {
         compare(drawnTitle(host, 1), "Tape", "the picker's rows reordered")
         compare(drawnCount(host, 1), countText(2),
                 "the picker still calls the playlist empty after two songs went into it")
-        // The neighbours are untouched: this repairs one row, not the list.
+        // The neighbours are untouched: the repair is to one row.
         compare(drawnCount(host, 0), countText(12), "a neighbouring row's count moved")
         compare(drawnCount(host, 2), countText(7),  "a neighbouring row's count moved")
     }
 
-    // One accepted add, one header read, and the picker still never round-trips for
-    // the list itself. That second half is the thing a re-read must not quietly
-    // undo: going back to the network on every picker *open* is what was removed,
-    // and this is a request on a mutation instead.
+    // One accepted add costs one header read, and the picker still never
+    // fetches the list itself.
     function test_an_accepted_add_costs_one_header_read_and_no_list_fetch() {
         var host = showPane(1200)
         makePicker(host)
@@ -261,8 +226,7 @@ TestCase {
         var host = showPane(1200)
         var row  = makePicker(host)
         bridge.setAddToPlaylistOkForTest(false)
-        // Set on purpose: a version that re-read the header regardless would
-        // visibly write this in rather than merely cost a request.
+        // Set on purpose: a header re-read after a refusal would write this in.
         bridge.setPlaylistHeaderForTest("p-tape", tapeHeaderWithTwo())
 
         var rowItem = pickerList(host).itemAtIndex(1)
@@ -281,10 +245,8 @@ TestCase {
     }
 
     // ── the Collection grid, the second place the number is drawn ─────────
-    //
-    // This one redraws in place rather than on reopen: the page answers
-    // favoritePlaylistsChanged by re-reading searchFavoritePlaylists(), so the tile
-    // is the one count that must be seen to move without being asked again.
+    // The page answers favoritePlaylistsChanged by re-reading
+    // searchFavoritePlaylists(), so the tile has to move in place.
     function test_the_collection_tile_redraws_when_the_count_moves() {
         var host = showPane(1200)
         var page = createTemporaryObject(collectionC, host.pane)
@@ -294,8 +256,7 @@ TestCase {
 
         var card = findByName(host.contentItem, "collectionPlaylistCard")
         verify(card, "the Collection grid drew no playlist tile")
-        // The first tile is "Alte Liste"; find the one under test by its title
-        // rather than by position, because the grid is sorted by the bridge.
+        // Found by its title, because the grid is sorted by the bridge.
         function tapeCard() {
             var grid = findByName(host.contentItem, "collectionPlaylistCard")
             var found = null
@@ -322,12 +283,9 @@ TestCase {
     }
 
     // ── the sidebar's separate copy ──────────────────────────────────────
-    //
-    // The bridge's cache and the sidebar's library are two lists that do not hear
-    // each other; three earlier fixes each needed their own hand-across written for
-    // them and this is the fourth. The sidebar row draws no count today, so this
-    // asserts the row's `trackCount` rather than a label - and that the row does
-    // not *move*, which is the part that has a rejected patch behind it.
+    // The bridge's cache and the sidebar's library are two lists that do not
+    // hear each other. The sidebar row draws no count, so this asserts the
+    // row's trackCount, and that the row does not move.
     function test_the_sidebars_own_copy_takes_the_new_count_without_moving() {
         var host = showPane(1200)
         var before = []
@@ -377,8 +335,6 @@ TestCase {
         return found
     }
 
-    // A removal the server refuses must keep the song *and* say so. It already
-    // kept it; the silence was the defect.
     function test_a_refused_removal_keeps_the_song_and_says_so() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         var host = showPane(1200)
@@ -402,15 +358,9 @@ TestCase {
                 "a refused removal said nothing, so it reads as a click that missed")
     }
 
-    // ...and an accepted one says nothing, because the row leaving the list is the
-    // confirmation. A tool tip over the gap the row used to occupy, every time
-    // anyone tidies a playlist, would be noise.
-    //
-    // Driven on a standalone row rather than a page delegate, and that is not a
-    // shortcut: on the page, a successful removal destroys the very delegate that
-    // raised it, so there is nothing left to read `lastConfirmation` off. Reading it
-    // *before* the removal - which is what this case first did - compares "" with ""
-    // and cannot fail. The function's own guard is the right unit for the rule.
+    // An accepted removal says nothing: the row leaving the list is the
+    // confirmation. Driven on a standalone row, because on the page a
+    // successful removal destroys the delegate that raised it.
     function test_an_accepted_removal_is_not_announced_and_a_refused_one_is() {
         var host = showPane(1200)
         var row = createTemporaryObject(trackRowC, host.pane,
@@ -427,7 +377,6 @@ TestCase {
                 "a refused removal said nothing, or said the wrong thing")
     }
 
-    // The page half: the row goes, and the cached counts are repaired.
     function test_an_accepted_removal_drops_the_row_and_repairs_the_counts() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         var host = showPane(1200)
@@ -449,20 +398,9 @@ TestCase {
     }
 
     // ── getting out of the two popups ────────────────────────────────────
-    //
-    // The owner: "the new playlist as well as add to playlist should be closable
-    // with escape and have a more prominent X sign, like especially add to playlist."
-    //
-    // The picker's X was a 12px glyph in Theme.textSec behind a MouseArea grown
-    // with anchors.margins: -6 - a 24px target hanging outside its own parent, and
-    // unreachable from the keyboard. The dialog had no X at all; the only ways out
-    // were the Cancel button and a click on the overlay. Both are now
-    // SettingsPanel's button - a 26px target around a 14px glyph that lights on
-    // hover - with SearchBar's keyboard treatment, which is the two idioms already
-    // in the tree rather than a third.
-    //
-    // The hit area is asserted as a number because "more prominent" has to mean
-    // something a mutation can fail.
+    // Both popups close with Escape and carry SettingsPanel's close button,
+    // with SearchBar's keyboard treatment. The hit area is asserted as a
+    // number.
     readonly property int closeTargetPx: 26
 
     function clickItem(host, item) {
@@ -490,8 +428,7 @@ TestCase {
         var row  = makePicker(host)
         var close = findByName(host.contentItem, "pickerCloseButton")
         verify(close, "the picker has no close button")
-        // The mechanism: without this the button is not in the tab order at all,
-        // whatever its size.
+        // Without this the button is not in the tab order at all.
         compare(close.activeFocusOnTab, true, "the picker's X is not a tab stop")
 
         close.forceActiveFocus()
@@ -511,9 +448,8 @@ TestCase {
                   "Escape did not close the picker")
     }
 
-    // Escape from wherever focus happens to be, which for this popup is the X once
-    // anyone has tabbed to it. An item that consumed the key would strand the user
-    // on the one control they reached with the keyboard.
+    // Escape from wherever focus is, which for this popup is the X once
+    // anyone has tabbed to it. The focused item must not consume the key.
     function test_escape_closes_the_picker_with_the_x_focused() {
         var host = showPane(1200)
         var row  = makePicker(host)
@@ -550,8 +486,8 @@ TestCase {
                   "the dialog's X did not close it")
     }
 
-    // The case the brief singles out: the field takes focus the moment the dialog
-    // opens, and a TextInput is exactly the sort of item that can swallow a key.
+    // The field takes focus the moment the dialog opens, and a TextInput can
+    // swallow a key.
     function test_escape_closes_the_dialog_with_the_name_field_focused() {
         var host = showPane(1200)
         var dlg  = openDialog(host)
@@ -566,7 +502,7 @@ TestCase {
                   "Escape was swallowed by the name field")
     }
 
-    // ...and with something typed in it, which is the state a TextInput is most
+    // With something typed in it, the state in which a TextInput is most
     // likely to treat a key as its own.
     function test_escape_closes_the_dialog_with_a_name_half_typed() {
         var host = showPane(1200)
@@ -595,11 +531,9 @@ TestCase {
     }
 
     // ── and the mid-save guard, which must survive all of the above ──────
-    //
-    // A dialog dismissed under a create that is still going to answer leaves the
-    // callback writing into a dialog the user has left, and leaves them unable to
-    // tell whether the playlist was made. Escape already refused; the X must refuse
-    // for the same reason Cancel does.
+    // A dialog dismissed under a create that is still going to answer leaves
+    // the user unable to tell whether the playlist was made. The X refuses
+    // for the same reason Cancel and Escape do.
     function test_nothing_closes_the_dialog_while_a_create_is_in_flight() {
         var host = showPane(1200)
         var dlg  = openDialog(host)
@@ -631,7 +565,7 @@ TestCase {
         verify(cancel, "the dialog has no Cancel button")
         compare(cancel.enabled, false, "Cancel stays live under a create that is still going")
 
-        // And it does finish, so the guard is a hold and not a deadlock.
+        // And it does finish: the guard only holds while the call is out.
         bridge.flushCreatePlaylistsForTest()
         tryVerify(function () { return !dlg.visible }, settleMs,
                   "the dialog never closed once the create answered")
@@ -639,14 +573,9 @@ TestCase {
     }
 
     // ── the hero's length, the one number on that page with no live source ──
-    //
-    // The count beside it reads tracks.length and is live. The length arrives once,
-    // from fetchPlaylist() at load, so taking a song off left the line reading the
-    // old figure next to the new count - "4 tracks • 25 min" where 25 minutes was
-    // what five tracks came to.
-    //
-    // The fixture gives the page a five-track length and then has the server report
-    // the four-track one, so a page that kept what it was handed fails.
+    // The count beside it reads tracks.length and is live. The length arrives
+    // once, from fetchPlaylist() at load, so it has to follow a removal. The
+    // fixture's server reports a different length than the page was handed.
     function test_the_playlist_pages_length_follows_a_removal() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -668,9 +597,8 @@ TestCase {
                 "the hero still reports the length the playlist had before the removal")
     }
 
-    // ...and it does not go back to the network to learn it. The bridge has already
-    // re-read the header; a second request for the same URL would be the round trip
-    // the picker had removed, put back one page over.
+    // It does not go back to the network to learn it: the bridge has already
+    // re-read the header.
     function test_the_pages_length_comes_from_the_cache_not_a_second_request() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -691,9 +619,8 @@ TestCase {
                 "the page asked the account for a header the bridge had already read")
     }
 
-    // A cache row that reports no length and some tracks is a row the sign-in
-    // paging has not filled in, not an empty playlist, and must not blank a figure
-    // the page was handed.
+    // A cache row that reports no length and some tracks is one the sign-in
+    // paging has not filled in, and must not blank the page's figure.
     function test_an_unfilled_cache_row_does_not_blank_the_pages_length() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -714,11 +641,8 @@ TestCase {
     }
 
     // ── a song added to the playlist being looked at ─────────────────────
-    //
-    // Every row on the page carries the shared picker, so the playlist a song can
-    // be put on includes the one on screen. Nothing updated the tracklist for that,
-    // so the song went in and the page did not show it - with the count beside the
-    // title one short, because that count is tracks.length.
+    // Every row on the page carries the shared picker, so a song can be put
+    // on the playlist on screen, and the tracklist has to show it.
     function test_a_song_added_to_the_open_playlist_appears_on_the_page() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -748,9 +672,8 @@ TestCase {
                 + " times where it should ask once")
     }
 
-    // ...and a removal, where the page has already spliced its own list to match,
-    // asks for nothing. This is the case that makes the disagreement test above
-    // affordable: without the guard every tidy-up would re-fetch the whole list.
+    // A removal, where the page has already spliced its own list to match,
+    // asks for nothing.
     function test_a_removal_does_not_re_fetch_the_tracklist() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -773,18 +696,9 @@ TestCase {
                 + "already spliced it to match")
     }
 
-    // The regression this is wired to avoid, as its own case.
-    //
-    // favoritePlaylistsChanged says only "the playlist list moved". It fires on
-    // every page of the sign-in paging and on every markPlaylistPlayed - which is
-    // to say, on pressing Play on this very page. A page that read its length off
-    // that signal would, for a playlist edited on another device, throw away the
-    // header it had just fetched and take the stale cached figure instead. So the
-    // page listens to playlistStatsRefreshed, which names the playlist and only
-    // goes out after a contents change.
-    //
-    // setUserPlaylistsForTest raises favoritePlaylistsChanged and nothing else,
-    // which is exactly the shape of that event.
+    // favoritePlaylistsChanged only says the playlist list moved, and fires
+    // on every Play. The page takes its length from playlistStatsRefreshed,
+    // which names the playlist. setUserPlaylistsForTest raises only the former.
     function test_a_bare_playlist_list_change_does_not_touch_the_pages_length() {
         bridge.setPlaylistTracksForTest([makeTrack()])
         bridge.setPlaylistForTest({ uuid: "p-tape", title: "Tape", description: "",
@@ -794,8 +708,8 @@ TestCase {
         var page = showPlaylistPage(host)
         compare(page.playlistDuration, 1500, "the page did not take the length it was served")
 
-        // The cache disagrees, the way it does for a playlist changed elsewhere and
-        // not yet re-paged. Nothing about *this* playlist's contents has happened.
+        // The cache disagrees, the way it does for a playlist changed elsewhere
+        // and not yet re-paged. This playlist's contents have not changed.
         bridge.setUserPlaylistsForTest([
             { uuid: "p-tape", title: "Tape", description: "", coverUrl: "",
               numTracks: 9, duration: 9999, type: "USER" }

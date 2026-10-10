@@ -143,7 +143,7 @@ static void silenceLogsAndAlsa() {
 // Locates one of the bundled icon files in the Qt resource system.
 //
 // The QML module's RESOURCES prefix moved from ":/TidalWave/..." to
-// ":/qt/qml/TidalWave/..." when QTP0001 was set to NEW (commit 749527a). A
+// ":/qt/qml/TidalWave/..." when QTP0001 was set to NEW (commit 9b2d27f). A
 // hardcoded single path silently broke the tray icon when that happened, so we
 // probe both prefixes and return whichever actually exists - future policy
 // churn can't blank the tray again.
@@ -576,6 +576,11 @@ void Application::applyScaleFactor() {
         // deferred to by the devicePixelRatio branch above. So the primary screen
         // decides - it is the one the window opens on - and the Settings slider
         // is how the remaining cases get settled by eye.
+
+        // Qt queues work on the application object for its event loop, such as
+        // switching on delivery for a session bus the platform theme opened.
+        // The probe has no loop, and work left on it is discarded with it.
+        QCoreApplication::sendPostedEvents();
     }
     if (screen.widthPx <= 0)
         return;

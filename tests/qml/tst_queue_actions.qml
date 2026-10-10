@@ -1,16 +1,9 @@
-// The two ways a user puts something into the queue: Play next, which goes to
-// the front of the manual queue, and Add to queue, which goes to its end.
-//
-// Both are offered everywhere a track, album, playlist or mix can be acted on:
-// a track row's menu, a media card's menu, and the hero header of the four
-// detail pages. The three places are checked here against the same rules, so a
-// new call site has one shape to copy.
-//
-// `player` is the stub from tests/TestStubs.h. Its manual queue is a list of
-// its own (queueManual), separate from the context that playTracks() seeds, and
-// it writes down every queue call it is handed (queueCalls, e.g. "playNext 4").
-// That is what lets these tests say "called once, with all four tracks, in
-// order" rather than only "the queue ended up longer".
+// The two ways into the queue: Play next goes to the front of the manual
+// queue, Add to queue to its end. Both are offered on a track row's menu, a
+// media card's menu and the hero header of the detail pages, and checked
+// here against the same rules. The player stub from tests/TestStubs.h keeps
+// its manual queue (queueManual) apart from the context and records every
+// queue call (queueCalls), so a test can count calls and their arguments.
 
 import QtQuick
 import QtQuick.Controls
@@ -24,7 +17,7 @@ TestCase {
     width: 1000
     height: 700
     // TestCase declares visible: false, which would leave every child
-    // unrendered - and a ToolTip never shows for an item in no window.
+    // unrendered, and a ToolTip never shows for an item in no window.
     visible: true
 
     Component { id: holderC;    Item { } }
@@ -62,8 +55,8 @@ TestCase {
         return out.join(",")
     }
 
-    // A MenuItem reports visible: false while its menu is shut, so every
-    // "is it offered" question has to be asked of an open menu.
+    // A MenuItem reports visible: false while its menu is shut, so whether it
+    // is offered has to be asked of an open menu.
     function openCardMenu(card) {
         card.pinMenu.showPin(10, 10, card.pinKind, card.itemId,
                              card.title, card.subtitle, card.coverUrl)
@@ -136,8 +129,8 @@ TestCase {
         player.setCurrentTrackForTest({})
         player.resetQueueCallsForTest()
         pins.setItemsForTest([])
-        // The confirmation is one shared tool tip, so a leftover from the
-        // last test would answer the next one's "did it confirm?".
+        // The confirmation is one shared tool tip, so a leftover from the last
+        // test would pass for the next one's confirmation.
         testCase.ToolTip.toolTip.close()
     }
 
@@ -151,10 +144,6 @@ TestCase {
 
         verify(menu.playNextItem.visible,   "a row offers no Play next")
         verify(menu.addToQueueItem.visible, "a row offers no Add to queue")
-        // endsWith rather than compare, from when every item in this menu
-        // carried a leading glyph. The glyphs are gone and the labels are now
-        // exactly the translated string, but the looser check still holds and
-        // still catches the label being wrong.
         verify(endsWith(menu.playNextItem.text,
                         qsTr("Play next", "verb, play this right after the current track")),
                "wrong Play next label: " + menu.playNextItem.text)
@@ -188,8 +177,8 @@ TestCase {
         menu.close()
     }
 
-    // A sidebar row has a thing to pin and no tracklist behind it, so it must
-    // be offered neither action rather than one that quietly does nothing.
+    // A sidebar row has a thing to pin and no tracklist behind it, so it
+    // offers neither action.
     function test_nothing_to_queue_offers_neither_action() {
         var holder = makeHolder()
         var menu = createTemporaryObject(ctxMenuC, holder, {})
@@ -268,10 +257,8 @@ TestCase {
             { tag: "album",    kind: "album",    queueable: true  },
             { tag: "playlist", kind: "playlist", queueable: true  },
             { tag: "mix",      kind: "mix",      queueable: true  },
-            // An artist is not a tracklist. The only list available is their
-            // top ten, which is a chart position rather than anything the user
-            // chose, so "add this artist to the queue" has no honest meaning.
-            // Pinning an artist still does, and is unaffected.
+            // An artist is not a tracklist: the only list available is their top
+            // ten, which nobody chose. Pinning an artist is unaffected.
             { tag: "artist",   kind: "artist",   queueable: false },
             { tag: "track",    kind: "track",    queueable: false }
         ]
@@ -287,8 +274,8 @@ TestCase {
                 data.kind + " tile: wrong idea of whether it has tracks")
     }
 
-    // A tile carries an id, so its tracklist arrives later - sometimes a lot
-    // later. The whole list still has to go in, in order, whenever it lands.
+    // A tile carries an id, so its tracklist arrives later. The whole list
+    // still has to go in, in order, whenever it lands.
     function test_a_late_tracklist_is_queued_whole_and_in_order() {
         var card = makeCard()
         card.pinMenu.trackSource = function (cb) {
@@ -312,8 +299,6 @@ TestCase {
         onTriggered: if (deliver) deliver()
     }
 
-    // An album whose fetch comes back empty must queue nothing at all,
-    // rather than an empty block and a confirmation that lied.
     function test_nothing_fetched_queues_nothing() {
         var page = makeAlbumPage(0)
         page.pinMenu.addToQueueItem.triggered()
@@ -353,9 +338,8 @@ TestCase {
 
     // ── the confirmation ─────────────────────────────────────────────────
 
-    // Queueing used to be silent, which is how the same album ends up in the
-    // queue twice. The confirmation is the app's own transient: it never takes
-    // focus, never blocks, and times out on its own.
+    // The confirmation is the app's own transient: it never takes focus,
+    // never blocks, and times out on its own.
     function test_queueing_confirms_and_the_confirmation_goes_away() {
         var page = makeAlbumPage(4)
         var tip = testCase.ToolTip.toolTip

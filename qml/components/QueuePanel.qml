@@ -3,59 +3,26 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import TidalWave
 
-// The queue overlay: a scrim across the page with the panel pinned to the right
-// of it. It covers the whole content area rather than being a bare 340px strip,
-// because without a scrim and a MouseArea of its own every click simply landed
-// on the page underneath it (SPEC L9).
-//
-// Inside the panel the queue is four sections in *one* ListView: the played
-// history, the current track, the manual queue, and what is left of the context
-// the user started from. One view rather than four, because the user scrolls
-// the queue as a whole and four stacked lists would each need their own
-// scrollbar and their own height, which means either nested flicking or
-// `height: contentHeight`, and the second of those builds all 5000 delegates.
-//
-// So the model is a plain row *count*, and the delegate works out from its
-// index which section it is in and which track of the queue it draws.
-//
-// What it works that out from is deliberate. The Player publishes the sections
-// three ways: as three lists (`queuePlayed`/`queueManual`/`queueContext`) or as
-// the one `queueTracks` list plus two ints, `queueIndex` and `manualCount`.
-// This panel binds the second way. A track simply ending moves the boundaries
-// without changing the queue, so the Player does not emit `queueChanged` for it
-// - it cannot, because republishing 5000 rows per track is the 815ms-per-track
-// regression tests/tst_queue_perf.cpp exists to keep out. The three lists are
-// correct whenever they are read but go stale on an advance; the two ints have
-// notifiers of their own and are always live. So an advance here costs two
-// integers and no marshalling at all.
+// The queue overlay: a scrim across the page with the panel pinned to its
+// right, so no click lands on the page underneath. The queue is four
+// sections in one ListView. The model is a row count, and the delegate
+// works out its section from player.queueIndex and player.manualCount,
+// which stay live on an advance; the three section lists do not, because
+// the Player emits no queueChanged for a track simply ending.
 Item {
     id: root
 
-    // Raised by a click on the scrim. The owner decides what dismissal means.
+    // Raised by a click on the scrim. The host decides what dismissal means.
     signal dismissed()
 
     // ── opening and closing ──────────────────────────────────────────────
-    //
-    // The owner raises `open`; the panel decides how long it stays on screen,
-    // because it has to outlive `open` by the length of the slide. `visible`
-    // is what everything inside gates its bindings on, so it is still the one
-    // question "is this panel costing anything" - it is just answered from the
-    // animation now instead of straight from the owner.
-    //
-    // It defaults to open so that a bare QueuePanel is a panel, which is how
-    // the layout and glyph tests instantiate it.
+    // The host raises `open`; the panel outlives it by the length of the
+    // slide. `visible` is what everything inside gates its bindings on.
+    // Defaults to open, so a bare QueuePanel in a test is a panel.
     property bool open: true
     property real openness: open ? 1 : 0
     // A Behavior does not run on a binding's first evaluation, so a panel that
-    // starts open is open in its first frame and only later changes slide.
-    //
-    // 150, down from 190. The user: "which has a little bit too long of a
-    // delay". OutCubic front-loads the travel, so what is left at the end of a
-    // long one is the tail - the panel is all but arrived and still arriving -
-    // and that is the part that reads as a delay. Shortened rather than
-    // re-eased: the easing is the app's one easing. Not the 140 of a chip
-    // either, because this is the widest surface that moves, and the same
-    // length on 340px as on a 60px pill would read as a snap.
+    // starts open is open in its first frame.
     Behavior on openness {
         NumberAnimation { duration: Theme.dur(150); easing.type: Easing.OutCubic }
     }
@@ -73,20 +40,14 @@ Item {
     readonly property int rowHeight:    52
     readonly property int headerHeight: 30
 
-    // VectorIcon draws into a fixed 24x24 Shape anchored centerIn, so a small
-    // icon leaves that Shape hanging out past its own bounds, which the
-    // layout guard in tests/qml/tst_layout_player.qml reports as an overflow,
-    // correctly. 16 is the smallest size that stays inside the guard's slack
-    // once the centring has been rounded to whole pixels, and is the size
-    // PlayerBar's own small icons already use.
+    // VectorIcon draws into a fixed 24x24 Shape, so a smaller icon hangs past
+    // its own bounds. 16 is the smallest size that stays inside the slack of
+    // the layout guard in tests/qml/tst_layout_player.qml.
     readonly property int iconSize: 16
 
     // ── the model ────────────────────────────────────────────────────────
-    //
-    // One list and two boundaries. All three are gated on `visible`, because a
-    // closed panel used to evaluate its binding anyway and hold a copy of the
-    // whole queue in JS; `rows` is the only one of them that costs anything to
-    // read, and it is only re-read when the queue really changed.
+    // One list and two boundaries, all gated on `visible` so a closed panel
+    // holds no copy of the queue.
     readonly property var rows:        visible ? player.queueTracks : []
     readonly property int playIndex:   visible ? player.queueIndex  : -1
     readonly property int manualTotal: visible ? player.manualCount : 0
@@ -106,7 +67,6 @@ Item {
                                                  - (hasCurrent ? 1 : 0) - manualCount)
 
     // ── flat index arithmetic ────────────────────────────────────────────
-    //
     // Rows and headers share one index space; a header of an empty section is
     // -1 and takes up no index, which is how an empty section disappears
     // entirely rather than leaving a stray heading behind.
@@ -171,10 +131,8 @@ Item {
         return ""
     }
 
-    // "Next from: Life 1" when the source has a name, which it has whenever
-    // the queue came from an album, a playlist or a mix. A radio or a one-off
-    // play has nothing to name, and "Next from: " with a hole in it is worse
-    // than a plain heading.
+    // Names the source when it has a name, as an album, a playlist or a mix
+    // does. A radio or a one-off play has nothing to name.
     readonly property string contextHeading:
         contextName.length > 0 ? qsTr("Next from: %1").arg(contextName)
                                : qsTr("Up Next")
@@ -192,7 +150,7 @@ Item {
     }
 
     // Each section goes back to the player through its own call, so a row
-    // never has to know its position in a flat queue that no longer exists.
+    // never has to know its position in the flat queue.
     function activate(kind, slot) {
         switch (kind) {
         case "played":  player.jumpToPlayed(slot);  break
@@ -202,14 +160,9 @@ Item {
     }
 
     // ── finding your place ───────────────────────────────────────────────
-    //
-    // Nothing here works in absolute content coordinates. A ListView whose
-    // delegates are not all the same height only *estimates* where an item it
-    // has not built yet sits, from the average size of the ones on screen, so
-    // at 5000 rows "header height times the number of headers above" misses by
-    // thousands of pixels. Everything below is therefore either an index or a
-    // measurement off a delegate that really exists, which is exact whatever
-    // the view guessed.
+    // Nothing here works in absolute content coordinates: a ListView with
+    // mixed delegate heights only estimates where an unbuilt item sits. So
+    // everything below is an index or a measurement off a real delegate.
     property bool currentOnScreen: true
     property bool currentAbove:    false
 
@@ -247,29 +200,23 @@ Item {
         scheduleCurrentPosition()
     }
 
-    // On open the rows do not exist yet, so the scroll has to wait for them.
-    // Only on open: following the current track on every advance would yank
-    // the view back while the user was reading somewhere else, which is what
-    // the jump affordance is for instead.
+    // On open the rows do not exist yet, so the scroll waits for them. Only on
+    // open: following every advance would yank the view back from wherever the
+    // user was reading, which is what the jump pill is for.
     onVisibleChanged: if (visible) Qt.callLater(revealCurrent)
 
     // ── dragging inside the manual queue ─────────────────────────────────
-    //
-    // Same shape as the sidebar's pinned block (SideBar.qml, P4): the live
-    // state sits here rather than in the row, because the drop indicator
-    // belongs to the list and not to the row being dragged.
+    // Same shape as the sidebar's pinned block (SideBar.qml): the live state
+    // sits here, because the drop indicator belongs to the list.
     property int  dragFrom:   -1
     property int  dragTo:     -1
     property real dragOffset: 0
-    // Content y of the first manual row, taken off the dragged delegate at
-    // press time. Measured rather than computed, for the reason given under
-    // "finding your place": the view's idea of where things are is the only
-    // one the view will honour.
+    // Content y of the first manual row, measured off the dragged delegate
+    // at press time, because the view only estimates positions.
     property real dragTopY:   0
     // Whether the pointer is still inside the manual queue. A drag that ends
-    // anywhere else is abandoned rather than clamped: a queued track must not
-    // be able to land in the history or in the album, and letting a drop out
-    // there mean anything would turn a slip of the hand into an edit.
+    // anywhere else is abandoned, not clamped: a queued track must not land
+    // in the history or in the album by a slip of the hand.
     property bool dropValid:  false
     readonly property bool dragging: dragFrom >= 0
 
@@ -309,9 +256,8 @@ Item {
     }
 
     // Swallows anything that misses the panel, so no click reaches the page.
-    // Dead while the panel is on its way out: the scrim is still painted for
-    // those frames and a click on it must reach the page, not be eaten by a
-    // panel that is already closing.
+    // Disabled while the panel slides out: the scrim is still painted then,
+    // and a click on it must reach the page.
     MouseArea {
         anchors.fill: parent
         enabled: root.open
@@ -329,10 +275,9 @@ Item {
         color: Theme.surface
         border.color: Theme.border
 
-        // The slide. A transform rather than an x offset, so the panel's
-        // geometry - which the list inside measures itself against, and which
-        // the layout guard in tests/qml/tst_layout_player.qml checks - is the
-        // same during the slide as it is at rest.
+        // The slide. A transform, not an x offset, so the panel's geometry is
+        // the same during the slide as at rest. The list inside measures itself
+        // against it and tests/qml/tst_layout_player.qml checks it.
         transform: Translate { x: (1 - root.openness) * root.panelWidth }
 
         // Declared before the panel's content, so it only ever sees what the
@@ -365,9 +310,7 @@ Item {
                     }
                     Item { width: 8 }
                     // Clears the manual queue and only that: the history and
-                    // the album are not the user's list, and wiping the album
-                    // they are listening to is the complaint this rework came
-                    // from.
+                    // the album are not the user's list.
                     Text {
                         objectName: "queueClear"
                         text: qsTr("Clear", "verb, empties the play queue")
@@ -413,10 +356,9 @@ Item {
                         width: ListView.view ? ListView.view.width : 0
                     }
 
-                    // Where the dragged row will land. Declared inside the
-                    // list, which parents it to the content item, so it is
-                    // positioned in content coordinates and points between the
-                    // same two rows however far the list is scrolled.
+                    // Where the dragged row will land. A child of the list is
+                    // parented to the content item, so this is positioned in
+                    // content coordinates however far the list is scrolled.
                     Rectangle {
                         objectName: "queueDropIndicator"
                         visible: root.dragging && root.dropValid
@@ -439,10 +381,9 @@ Item {
                     onHeightChanged:        root.scheduleCurrentPosition()
                 }
 
-                // Outside the list on purpose: a child of a ListView is
-                // parented to its content item, which is zero-sized when there
-                // is nothing to show, so centring in it would centre on a
-                // corner.
+                // Outside the list: a child of a ListView is parented to its
+                // content item, which is zero-sized when there is nothing to
+                // show, so centring in it would centre on a corner.
                 Text {
                     anchors.centerIn: parent
                     width: parent.width - 32
@@ -454,10 +395,8 @@ Item {
                     font.pixelSize: 12
                 }
 
-                // The fifth complaint: in a long queue that has been playing
-                // for a while it is hard to see where you are. The pill
-                // appears on the edge the current track went off, so it also
-                // says which way it is.
+                // Shown when the current track is off screen, on the edge it
+                // went off, so it also says which way it is.
                 Rectangle {
                     id: jumpPill
                     objectName: "queueJumpToCurrent"
@@ -508,11 +447,9 @@ Item {
     }
 
     // ── one delegate for every kind of row ───────────────────────────────
-    //
-    // Header and track share a delegate instead of being switched by a Loader:
-    // only the handful of rows in the viewport exist at once, so the unused
-    // half costs a hidden Text, and a Loader would cost the loaded item not
-    // being able to see the delegate's own properties.
+    // Header and track share a delegate. A Loader would cost the loaded item
+    // the sight of the delegate's own properties, and only the rows in the
+    // viewport exist at once, so the unused half is one hidden Text.
     component QueueEntry : Item {
         id: entry
 
@@ -553,10 +490,9 @@ Item {
             isHeader ? "" : (fieldOf("artists") || qsTranslate("TrackRow", "Unknown artist"))
         readonly property string coverText: fieldOf("coverUrl80")
 
-        // fieldOf() answers with a string or nothing, so the artist list needs
-        // its own accessor. A queue restored from QSettings is whatever was
-        // saved, so a map without the field is normal here and ArtistLinks
-        // falls back to the joined string and the lead id.
+        // fieldOf() answers with a string or nothing, so the artist list has
+        // its own accessor. A queue restored from QSettings may lack the field,
+        // and ArtistLinks then falls back to the joined string and the lead id.
         readonly property var artistList:
             (track && track.artistList && track.artistList.length > 0) ? track.artistList : []
         readonly property real leadArtistId: {
@@ -660,10 +596,8 @@ Item {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // The grip's column is reserved on *every* track row, not
-                // only the ones that have a grip, so the artwork runs down one
-                // straight edge instead of stepping sideways at each section
-                // boundary and on the day the manual queue drops to one row.
+                // The grip's column is reserved on every track row, so the
+                // artwork keeps one straight edge across section boundaries.
                 Item {
                     Layout.preferredWidth: 16
                     Layout.fillHeight: true
@@ -682,9 +616,8 @@ Item {
                         objectName: "queueDragArea"
                         anchors.fill: parent
                         // A deliberate bleed, so a 16px-wide grip is not a
-                        // 16px-wide target. 4 and not more: the layout guard
-                        // in tests/qml/tst_layout_player.qml allows exactly
-                        // that much for intentional overhang.
+                        // 16px-wide target. 4 is what the layout guard in
+                        // tests/qml/tst_layout_player.qml allows for overhang.
                         anchors.margins: -4
                         visible: entry.draggable
                         enabled: entry.draggable
@@ -703,10 +636,9 @@ Item {
                         }
                         onPositionChanged: function (mouse) {
                             if (!entry.dragging) return
-                            // The row travels with the pointer, but the event
-                            // arrives in the handle's own moving coordinates and
-                            // mapToItem puts it back, so this is the pointer
-                            // itself, in the list's content space.
+                            // The event arrives in the handle's own moving
+                            // coordinates; mapToItem puts the pointer back into
+                            // the list's content space.
                             var p = mapToItem(list.contentItem, mouse.x, mouse.y)
                             root.dragOffset = p.y - pressY
                             root.dragTo     = root.manualSlotAt(entry.slot, root.dragOffset)
@@ -753,10 +685,9 @@ Item {
                         font.bold: entry.isCurrent
                         elide: Text.ElideRight
                     }
-                    // One hover target and one tab stop per artist. The
-                    // row's own click target is declared before this, so a name
-                    // takes the left click before the row does and the rest of
-                    // the line still jumps to the track.
+                    // One hover target and one tab stop per artist. The row's
+                    // click target is declared before this, so a name takes the
+                    // left click and the rest of the line jumps to the track.
                     ArtistLinks {
                         Layout.fillWidth: true
                         namePrefix: "queue"
@@ -767,12 +698,9 @@ Item {
                     }
                 }
 
-                // The track that is playing: the row is already accented, and
-                // this says *why* without a word of text. The same indicator
-                // the track rows show, out of VectorIcon, so the queue and
-                // the lists cannot end up with two different answers to what
-                // "playing" looks like. Three static bars before, which read
-                // as a bar chart rather than as something happening.
+                // Says why the row is accented. The same indicator the track
+                // rows show, so the queue and the lists agree on what playing
+                // looks like.
                 VectorIcon.PlayingIndicator {
                     objectName: "queuePlayingIndicator"
                     visible: entry.isCurrent
@@ -782,11 +710,9 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                 }
 
-                // Removing is for the manual queue only: the history is
-                // history, and the context is replaced rather than edited.
-                // The slot is reserved on every row for the same reason the
-                // grip's is, and so the titles do not reflow under the pointer
-                // when the button appears.
+                // Removing is for the manual queue only. The slot is reserved
+                // on every row, like the grip's, so the titles do not reflow
+                // under the pointer when the button appears.
                 Item {
                     Layout.preferredWidth: 24
                     Layout.preferredHeight: 24
@@ -823,40 +749,10 @@ Item {
                 // ContextMenu.qml for why it is opacity and nothing else.
                 enter: ContextMenu.OpenFade { }
                 exit:  ContextMenu.CloseFade { }
-                // Insets reset, not inherited. A Menu's insets exist for a style's drop
-                // shadow, and the native macOS style sets all four to -32; this menu
-                // replaces the background with its own Rectangle and never drew that
-                // shadow, so the panel was laid out 32px past the popup on every side and
-                // real entries were clipped at the window edge (a 207x56 popup drawing a
-                // 271x120 background). Pinning the Basic style fixes it today, because
-                // Basic's insets are 0; stating it here is what survives the next style
-                // change, and it is a no-op wherever they already are 0.
+                // Insets reset, not inherited; see ContextMenu.qml.
                 leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
 
-                // Set here rather than declaratively, and only where it exists.
-                //
-                // `popupType` and `Popup.Item` are both Qt 6.8. A declarative
-                // `popupType: Popup.Item` is resolved when the file loads, so on
-                // older Qt it does not merely warn - it makes this whole type
-                // unavailable, and every type that uses it, all the way up. A real
-                // Debian 12 build failed exactly that way: "Cannot assign to
-                // non-existent property popupType", then "Type ContextMenu
-                // unavailable", then "Type SideBar unavailable", and the app exited
-                // with no window.
-                //
-                // Nothing is lost by leaving it unset on older Qt, because before
-                // 6.8 an in-scene item was a menu's only form - the property was
-                // added to allow native and separate-window popups, which arrived
-                // with it. So this asks whether the property exists and sets it when
-                // it does, which is the behaviour we want on both.
-                //
-                // `this.` is load-bearing. A *bare* identifier that names no property is
-                // not undefined in QML's JS scope, it is a ReferenceError - and the error
-                // aborts the whole handler rather than warning, at every instantiation,
-                // which for a per-row menu is a stream of them. Qualifying the access
-                // makes the miss a plain undefined. Worth knowing that this is invisible
-                // on a current Qt, where the property exists and the bare form resolves
-                // fine.
+                // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
                 Component.onCompleted: {
                     if (this.popupType !== undefined) this.popupType = Popup.Item
                 }

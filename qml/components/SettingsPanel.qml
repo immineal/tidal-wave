@@ -3,26 +3,17 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import TidalWave
 
-// The Settings popup, lifted out of SideBar.qml (which was 1173 lines with it
-// inside) now that it has a picker for every 0.4.0 feature that shipped
-// without one.
-//
-// SideBar still owns the instance and still exposes it as `settingsPanel`, so
-// tests/qml/tst_layout_player.qml and tst_sidebar.qml measure the same object
-// they always did. The clamping below is theirs: a fixed 480x640 did not fit
-// the 640x600 window minimum, so the popup is clamped to the overlay with 32px
-// on every side (SPEC L10) and the ScrollView takes whatever is left over.
+// The Settings popup. SideBar owns the instance and exposes it as
+// `settingsPanel`, which tests/qml/tst_layout_player.qml and tst_sidebar.qml
+// measure. It is clamped to the overlay with 32px on every side so it fits the
+// 640x600 window minimum, and the ScrollView takes what is left over.
 Popup {
     id: root
 
     // ── what this panel drives ───────────────────────────────────────────
-    //
-    // The three context properties below are read through `typeof` and kept in
-    // a property rather than used inline. tests/TestStubs.h installs no `i18n`
-    // at all, and an unqualified name that is not there is a ReferenceError,
-    // not undefined - which tst_firstrun.cpp, failing on any QML warning,
-    // would report. Main.qml guards UpdatePrompt's `check` for the same
-    // reason. Holding them in properties also lets a test inject its own.
+    // The three context properties are read through `typeof` and kept in
+    // properties: a host may install none, and an unqualified name that is not
+    // there is a ReferenceError. A test can also inject its own.
     property var langSource:   (typeof i18n        !== "undefined") ? i18n        : null
     property var deviceSource: (typeof player      !== "undefined") ? player      : null
     property var check:        (typeof updateCheck !== "undefined") ? updateCheck : null
@@ -36,11 +27,9 @@ Popup {
 
     readonly property var themes: {
         var retranslate = root.currentLanguage   // dependency, see above
-        // ...and again when the colour switch moves: available() answers for
-        // whichever grey ramp is in force, and it is an invokable rather than a
-        // bound property, so without this line the six swatches would keep
-        // showing the ramp the panel was opened in. A stale grid is the obvious
-        // bug here, and it looks like the switch not working.
+        // And again when the colour switch moves: available() answers for the
+        // grey ramp in force, and it is an invokable, so nothing else would
+        // notice.
         var recolour = prefs.tintedGreys
         return ThemePalette.available()
     }
@@ -64,14 +53,9 @@ Popup {
 
     onAboutToShow: root.reloadAudioDevices()
 
-    // ...and again whenever the set of devices changes while the panel is
-    // already up. Re-reading only on open was the same bug the output picker
-    // in the player bar had: a sink plugged in with the panel open never
-    // appeared, and closing and reopening was the only way to see it. Caught
-    // on the Debian box by adding a sink with pactl while the menu was up.
-    //
-    // ignoreUnknownSignals because `deviceSource` is injected: the test double
-    // has no such signal, and a host may pass anything here.
+    // And again whenever the set of devices changes while the panel is up.
+    // ignoreUnknownSignals because `deviceSource` is injected: a test double
+    // has no such signal.
     Connections {
         target: root.deviceSource
         ignoreUnknownSignals: true
@@ -90,12 +74,8 @@ Popup {
 
     readonly property bool updatesOn: check ? check.enabled === true : false
 
-    // ThemePalette::available() now hands over the ground, border and accent
-    // alongside {name, label, dark}, so there is nothing to copy. What stood
-    // here was a six-row table repeated from kSpecs in ThemePalette.cpp, and
-    // its own comment conceded the columns had drifted two accent revisions
-    // behind without anyone noticing. tst_settings.qml caught the next drift
-    // the day the light palettes were re-separated; this removes the class.
+    // ThemePalette::available() hands over the ground, border and accent
+    // alongside {name, label, dark}, so no colour table is repeated here.
     function swatchFor(name) {
         for (var i = 0; i < themes.length; i++)
             if (themes[i].name === name) return themes[i]
@@ -131,10 +111,9 @@ Popup {
 
     // ── the popup itself ─────────────────────────────────────────────────
 
-    // Reparented to the window overlay, not left on the sidebar that declares
-    // it. anchors.centerIn alone only *positions* against the overlay: `parent`
-    // stays the SideBar, and the clamp below was reading a 220px sidebar, so
-    // the whole panel came up 156px wide.
+    // Reparented to the window overlay. anchors.centerIn alone only positions
+    // against it: `parent` would stay the SideBar, and the clamp below would
+    // read the sidebar's width.
     parent: Overlay.overlay
     anchors.centerIn: parent
     width:  Math.min(480, (parent ? parent.width  : 480) - 64)
@@ -144,9 +123,8 @@ Popup {
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
 
-    // The sheet the cards sit on, which has to be a step below them or a
-    // raised card is invisible. The panel was Theme.surfaceHigh when its
-    // sections were separated by rules instead.
+    // The sheet the cards sit on, which has to be a step below them or a raised
+    // card is invisible.
     background: Rectangle {
         color: Theme.surface
         border.color: Theme.border
@@ -164,12 +142,8 @@ Popup {
     }
 
     // ── the header, which does not scroll ────────────────────────────────
-    //
-    // It used to be the first row of the scrolling column, so a few sections
-    // down there was nothing saying what the panel was and no visible way out
-    // of it: the close button had gone off the top. It sits outside the
-    // ScrollView now rather than over it, so the content starts below it and
-    // never passes under it. Laid out with anchors because it is no longer a
+    // Outside the ScrollView, so the heading and the close button stay on
+    // screen and the content never passes under them. Anchored, as it is no
     // child of a layout.
     Item {
         id: headerBar
@@ -193,9 +167,6 @@ Popup {
             }
             Item {
                 objectName: "settingsClose"
-                // A 26px target around a 14px glyph. The MouseArea this
-                // replaces reached its size with anchors.margins: -6, so
-                // it hung outside its own parent.
                 Layout.preferredWidth: 26
                 Layout.preferredHeight: 26
                 VectorIcon {
@@ -211,11 +182,9 @@ Popup {
         }
     }
 
-    // Roughly 1400px of content in a 640px panel, and the default AsNeeded
-    // scrollbar drew nothing at all: Updates, Privacy and Keyboard shortcuts
-    // were below the fold with no sign they existed. Two signals now, because
-    // one of them has to survive a glance: a bar that is always there, and a
-    // fade at the bottom edge that goes away once you reach the end.
+    // The content is far taller than the panel, and the default AsNeeded
+    // scrollbar draws nothing at rest. Two signals that there is more: a bar
+    // that is always there, and a fade at the bottom edge until the end.
     ScrollView {
         id: scroller
         objectName: "settingsScroll"
@@ -230,20 +199,17 @@ Popup {
         // right edge of the content it describes.
         rightPadding: 10
 
-        // parent, x, y and height are spelled out because ScrollView only
-        // lays out the scrollbar it makes for itself. Hand it one and it is
-        // left at 0,0 with its implicit 10x6 size: the first attempt at this
-        // put a grey nub in the top-left corner of the panel and no bar.
+        // parent, x, y and height are spelled out because ScrollView only lays
+        // out the scrollbar it makes for itself. One handed to it is left at
+        // 0,0 with its implicit size.
         ScrollBar.vertical: ScrollBar {
             id: vbar
             objectName: "settingsScrollBar"
             parent: scroller
             x: scroller.width - width
             // Held off the popup's rounded bottom corner, which the
-            // ScrollView's rectangular clip does not follow. Only the bottom
-            // one now: the top of this gutter is the straight edge under the
-            // fixed header, so the bar runs alongside the scrolling area and
-            // stops where it stops.
+            // ScrollView's rectangular clip does not follow. The top needs
+            // none: it is the straight edge under the fixed header.
             y: scroller.topPadding
             height: scroller.availableHeight - Theme.radiusPopup
             policy: ScrollBar.AlwaysOn
@@ -283,10 +249,6 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
-                    // No avatar stand-in. It was an accent tile with a note
-                    // in it, which stood for neither the account nor the
-                    // app, and the sidebar footer has already dropped its
-                    // own.
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 1
@@ -299,8 +261,7 @@ Popup {
                             objectName: "settingsVersion"
                             // The "v" is written here and not in the
                             // translatable string: it belongs to the version
-                            // number, not to the sentence, and prefs
-                            // .appVersion() is the bare "0.4.0".
+                            // number, and prefs.appVersion() is bare.
                             readonly property string ver: prefs.appVersion()
                             text: qsTr("Version %1").arg(ver.length > 0 ? "v" + ver : ver)
                             color: Theme.textDim; font.pixelSize: 12
@@ -322,13 +283,9 @@ Popup {
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
-                // Side by side, not stacked. kSpecs lists the dark palettes
-                // and the light ones in the same hue order, so the two
-                // columns line up row by row - Sea beside Sky, Pine beside
-                // Sand, Rust beside Clay - and the picker reads as a grid of
-                // three colour families rather than as one long list and one
-                // short one. The pure-black switch belongs to the left column
-                // and lives inside it.
+                // Side by side, not stacked. kSpecs lists the dark palettes and
+                // the light ones in the same hue order, so the two columns line
+                // up row by row as a grid of three colour families.
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
@@ -336,16 +293,9 @@ Popup {
                     ThemeGroup { dark: false; title: qsTr("Light", "heading over the light themes") }
                 }
 
-                // The colour switch. By default the three dark palettes share
-                // one neutral grey ramp and the three light ones share another,
-                // so the accent is all that tells the six apart; this turns
-                // each palette's own tinted grounds on. It sits directly under
-                // the grid because it changes what the grid shows.
-                //
-                // Always there, unlike the pure-black row below: there is no
-                // theme where it does nothing. And its track is a rainbow,
-                // because it is the one row in a panel of hardware preferences
-                // that is just for fun, and it should look like it.
+                // The colour switch, under the grid because it changes what the
+                // grid shows. Off, the palettes share one grey ramp per mode
+                // and differ only by accent. No theme makes it a no-op.
                 RowLayout {
                     objectName: "settingsTintedBlock"
                     Layout.fillWidth: true
@@ -377,15 +327,9 @@ Popup {
                     }
                 }
 
-                // The pure-black switch. Gone rather than greyed out on a
-                // light theme: a disabled control invites you to work out how
-                // to enable it, and there is nothing to work out here.
-                //
-                // Across the whole card rather than tucked under the dark
-                // column, which was half the width and made the switch look
-                // like a seventh dark palette. The toggle is centred against
-                // both lines of its label; aligned to the first line it sat
-                // visibly high of the block it belongs to.
+                // The pure-black switch. Gone, not greyed out, on a light
+                // theme: a disabled control invites working out how to enable
+                // it. Full width, so it is not read as a seventh palette.
                 RowLayout {
                     objectName: "settingsOledBlock"
                     visible: ThemePalette.isDark
@@ -417,11 +361,8 @@ Popup {
                 }
 
                 // The fullscreen Now Playing background. Shown whether or not
-                // the window is fullscreen right now, for the same reason the
-                // quit-on-close note stays visible with no tray: it is a
-                // preference about a mode you are not in yet, and a row that
-                // came and went with the window state would be a row nobody
-                // could find twice.
+                // the window is fullscreen: it is a preference about a mode you
+                // are not in yet.
                 RowLayout {
                     objectName: "settingsCoverGradientBlock"
                     Layout.fillWidth: true
@@ -453,9 +394,7 @@ Popup {
                 }
 
                 // Below Qt 6.8 there is no QAudioBufferOutput, so the row is
-                // hidden rather than shown disabled: a disabled control invites
-                // you to work out how to enable it, and there is nothing to
-                // work out.
+                // hidden, not shown disabled.
                 RowLayout {
                     objectName: "settingsSpectrumBlock"
                     visible: Spectrum.available
@@ -474,15 +413,9 @@ Popup {
                         }
                         Text {
                             objectName: "settingsSpectrumNote"
-                            // The second sentence is not padding. Attaching the
-                            // audio tap to a QMediaPlayer that is already
-                            // playing delivers nothing for the track already
-                            // loaded, and the only way round it is to re-set the
-                            // source - which for a Tidal stream means re-fetching
-                            // it and a hole in the audio. Saying so is the
-                            // cheaper honest answer; switching back off is
-                            // immediate either way. tests/tst_spectrum.cpp pins
-                            // this, so do not drop the line without checking.
+                            // The second sentence is a real limit: a tap
+                            // attached while a track plays delivers nothing for
+                            // it. tests/tst_spectrum.cpp pins the line.
                             text: qsTr("The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.")
                             color: Theme.textDim; font.pixelSize: 11
                             wrapMode: Text.Wrap; Layout.fillWidth: true
@@ -532,15 +465,9 @@ Popup {
                 }
                 Text {
                     objectName: "settingsQuitOnCloseNote"
-                    // Left visible with no tray icon rather than hidden, which
-                    // is the opposite of what the pure-black switch does above.
-                    // That one is dead until the theme changes in this same
-                    // panel; this one is remembered and starts working the
-                    // moment a tray appears, and a StatusNotifier host can turn
-                    // up long after login with no signal for it - so a row that
-                    // came and went would be a row nobody could rely on
-                    // finding. The sentence below is what the hiding would
-                    // otherwise have had to explain.
+                    // Left visible with no tray icon, unlike the pure-black
+                    // switch above: it starts working when a tray appears, and
+                    // a StatusNotifier host can turn up long after login.
                     text: qsTr("While this is off, closing the window hides it and the tray icon brings it back. With no tray icon available, closing always quits.")
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
@@ -564,9 +491,8 @@ Popup {
                         { value: "LOW",             label: qsTr("Normal (96 kbps)") },
                         { value: "HIGH",            label: qsTr("High (320 kbps)") },
                         // Tidal's lossless tier is CD quality, 16-bit/44.1kHz.
-                        // Named by its bit depth rather than by its container
-                        // so it pairs with the hi-res row under it: the two
-                        // differ in depth, not in being a FLAC.
+                        // Named by bit depth so it pairs with the hi-res row
+                        // under it.
                         { value: "LOSSLESS",        label: qsTr("Lossless (16-bit)") },
                         { value: "HI_RES_LOSSLESS", label: qsTr("Hi-Res (24-bit)") }
                     ]
@@ -627,10 +553,9 @@ Popup {
                         onToggled: prefs.softwareRendering = !prefs.softwareRendering
                     }
                 }
-                // Interface size. Sits above the restart note deliberately,
-                // because the note applies to this row as well: Qt reads the
-                // scale factor before the application object exists, so neither
-                // of these two can take effect live.
+                // Interface size. Above the restart note because the note
+                // applies to this row too: Qt reads the scale factor before the
+                // application object exists.
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
@@ -639,9 +564,7 @@ Popup {
                         color: Theme.textPrimary; font.pixelSize: 14
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
-                    // The number, always. "A bit bigger" is not something a
-                    // person can report back, and working that out by eye
-                    // against a screen cost two wrong guesses already.
+                    // The number, always, so a size can be reported back.
                     Text {
                         objectName: "settingsUiScaleValue"
                         text: prefs.uiScale > 0
@@ -652,17 +575,13 @@ Popup {
                     Slider {
                         objectName: "settingsUiScaleSlider"
                         Layout.preferredWidth: 140
-                        // Dead when something outside the process already set
-                        // the factor: the app deliberately keeps its hands off
-                        // in that case, so a live-looking slider would be
-                        // lying. Visibly disabled, with the note below saying
-                        // why - a control that quietly does nothing is worse
-                        // than one that says it cannot.
+                        // Disabled when something outside the process already
+                        // set the factor, which the app leaves alone. Visibly
+                        // so, with the note below saying why.
                         enabled: !app.scaleIsEnvironmentOverridden()
                         opacity: enabled ? 1.0 : 0.45
                         // One step below the minimum is Automatic, so Auto is a
-                        // position on the slider rather than a missing value -
-                        // somebody who picks 2.00 can still get back to it.
+                        // position on the slider and can be picked again.
                         from: app.minScaleFactor() - app.scaleFactorStep()
                         // Capped by what this screen can actually hold, so the
                         // slider cannot be dragged somewhere that leaves the
@@ -675,11 +594,9 @@ Popup {
                             (value < app.minScaleFactor()) ? 0 : value
                     }
                 }
-                // Only when the scale was worked out here, rather than taken
-                // from the desktop or from the slider. That is the case that
-                // needs explaining: the app has sized itself differently from
-                // every other window on the screen, and without a word for it
-                // that reads as a bug rather than as a decision.
+                // Only when the scale was worked out here and not taken from
+                // the desktop or the slider: the app is then sized differently
+                // from every other window, which needs a word.
                 Text {
                     objectName: "settingsUiScaleAutoNote"
                     visible: app.scaleWasChosenAutomatically()
@@ -700,9 +617,8 @@ Popup {
                 Text {
                     objectName: "settingsRestartNote"
                     // Qt picks the scene graph backend once, at startup, so
-                    // this one cannot take effect live. In the panel rather
-                    // than in a tooltip: nobody hovers a setting to find out
-                    // that it did nothing.
+                    // this cannot take effect live. Said in the panel, not in a
+                    // tooltip.
                     text: qsTr("Takes effect after you restart Tidal Wave.")
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
@@ -746,19 +662,9 @@ Popup {
 
 
             // ── feedback ─────────────────────────────────────────────────
-            //
-            // Directly under Updates, because Updates is the other thing in
-            // this panel that reaches off the machine and both of them end up
-            // at the same repository - and above the shortcuts table, because a
-            // row of buttons under a thirteen-row reference table is a row of
-            // buttons nobody scrolls to. The privacy block stays last;
-            // tst_settings pins the whole order.
-            //
-            // Two routes, side by side, and neither of them sends anything. The
-            // app builds a URL and hands it to a program the user already has:
-            // the browser gets a GitHub issue form with the template filled in,
-            // the mail client gets an addressed, subject-lined draft. What
-            // happens after that is the user's to press.
+            // Under Updates and above the shortcuts table; tst_settings pins
+            // the order. Neither route sends anything: the app builds a URL and
+            // hands it to the browser or the mail client.
             Section {
                 heading: qsTr("Feedback")
                 key: "feedback"
@@ -777,18 +683,15 @@ Popup {
 
                     PanelButton {
                         objectName: "settingsIssueButton"
-                        // A globe, for the one of the two that opens a web page.
-                        // There is no GitHub mark and no bug in VectorIcon, and
-                        // neither is drawable at 13px by hand.
+                        // A globe, for the one that opens a web page.
+                        // VectorIcon has no GitHub mark and no bug.
                         icon: "globe"
                         label: qsTr("Open a GitHub issue", "button that opens the browser at a new issue")
                         onActivated: app.openUrl(Feedback.issueUrl())
                     }
                     PanelButton {
                         objectName: "settingsEmailButton"
-                        // The pencil-on-a-sheet: there is no envelope in the
-                        // glyph set, and this is the half of the label worth
-                        // drawing anyway - you are about to write something.
+                        // The pencil on a sheet: the glyph set has no envelope.
                         icon: "edit"
                         label: qsTr("Send an email", "button that opens the user's mail client")
                         onActivated: app.openUrl(Feedback.mailUrl())
@@ -800,10 +703,9 @@ Popup {
 
                 Text {
                     objectName: "settingsFeedbackPrefillNote"
-                    // The address is printed, not hidden behind the button: the
-                    // user should be able to see where their mail is going
-                    // before their mail client opens. It comes from Feedback so
-                    // there is one copy of it in the project.
+                    // The address is printed so the user sees where the mail is
+                    // going before the mail client opens. It comes from
+                    // Feedback, the one copy of it in the project.
                     text: qsTr("The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.")
                               .arg(Feedback.mailAddress())
                     color: Theme.textDim; font.pixelSize: 11
@@ -818,22 +720,9 @@ Popup {
                 key: "shortcuts"
                 spacing: 6
 
-                // The keys are named by id, never spelled out here. The
-                // sequences live in the Shortcuts table in
-                // src/ui/Shortcuts.cpp, which is also where Main.qml binds
-                // them from, and the text in the badge is whatever
-                // QKeySequence says this platform calls that sequence. Written
-                // out as literals - which is what this was - the rows drifted
-                // from the bindings with nothing to notice, and they were
-                // simply wrong on macOS, where Qt maps Ctrl onto Command and a
-                // row reading "Ctrl+Q" was telling the user to press the wrong
-                // key. One row may name several ids; they are joined with the
-                // same " / " the descriptions use.
-                //
-                // Only the descriptions are translated now. The key names are
-                // not, because QKeySequence::toString already returns them in
-                // Qt's own translation of the key, which is better than this
-                // app carrying a catalogue entry for every key on the keyboard.
+                // The keys are named by id. The sequences live in the Shortcuts
+                // table in src/ui/Shortcuts.cpp, which Main.qml also binds
+                // from, and QKeySequence names them for this platform.
                 Repeater {
                     model: [
                         { ids: ["playPause"],                       d: qsTr("Play / Pause") },
@@ -880,14 +769,9 @@ Popup {
 
 
             // ── privacy ──────────────────────────────────────────────────
-            // Last on purpose. This is a wall of prose and reads as the end of
-            // the panel, while the shortcuts above it are a reference table
-            // people open Settings to look things up in; underneath this they
-            // were not found. tst_settings pins the order.
-            //
-            // The text the user approved, one qsTr() per paragraph. Split any
-            // finer and a translator would be handed half-sentences to join
-            // back together in a language whose word order is not ours.
+            // Last on purpose: a wall of prose reads as the end of the panel,
+            // and tst_settings pins the order. One translatable string per
+            // paragraph, so a translator is never handed half-sentences.
             Section {
                 heading: qsTr("Privacy")
                 key: "privacy"
@@ -913,15 +797,9 @@ Popup {
             }
 
             // ── signing out ────────────────────────────────────
-            //
-            // Not in the Account card, where it sat next to the version
-            // number: signing out has nothing to do with which build is
-            // installed, and a destructive action one line under a number
-            // people lean in to read is the wrong place for it. It has no
-            // heading and no card either, because it is not a setting; it is
-            // the end of the panel, which is where a sign-out lives in every
-            // other app. Full width and alone below the last section, so it
-            // cannot be hit by accident on the way past.
+            // Not in the Account card and not a setting, so no heading and no
+            // card. Full width and alone below the last section, so it cannot
+            // be hit by accident on the way past.
             PanelButton {
                 objectName: "settingsLogOut"
                 label: qsTr("Log out")
@@ -936,14 +814,9 @@ Popup {
         }
     }
 
-    // The same treatment at the top edge, and for the same reason rather
-    // than for symmetry: the scroll area's clip cuts the first visible line
-    // in half, and a half line reads as a broken word, not as "there is more
-    // above". A hairline under the header would have drawn a rule between
-    // two things that are already a surface apart, and said nothing about
-    // whether anything had scrolled; this appears only once something has.
-    // Shorter than the bottom fade, because the header is doing half the
-    // work of separating already.
+    // The same fade at the top edge: the scroll area's clip cuts the first
+    // visible line in half. It appears only once something has scrolled.
+    // Shorter than the bottom fade, as the header already separates.
     Rectangle {
         id: topFade
         objectName: "settingsTopFade"
@@ -961,10 +834,9 @@ Popup {
         }
     }
 
-    // The bottom edge of a scrollable panel, faded into the panel's own
-    // background: text that runs under it reads as cut off rather than as the
-    // end of the list. It hides itself at the end of the travel, so "nothing
-    // below" and "more below" look different.
+    // The bottom edge, faded into the panel's own background, so text running
+    // under it reads as cut off. It hides itself at the end of the travel, so
+    // "nothing below" and "more below" look different.
     Rectangle {
         id: bottomFade
         objectName: "settingsBottomFade"
@@ -988,18 +860,9 @@ Popup {
 
     // ── inline components ────────────────────────────────────────────────
 
-    // A heading over a card of controls.
-    //
-    // The sections used to be separated by hairlines, which read as leftover
-    // dividers rather than as structure and get lost in a 1400px scroll. The
-    // controls are on their own raised panel now and the heading sits outside
-    // it, so a section is a shape you can see at a glance from any scroll
-    // position, and the gap between two of them does the separating.
-    //
-    // Children declared on an instance land inside the card. That needs the
-    // default property redirected, which in turn is why the heading and the
-    // card itself are assigned to `data` by hand: anything declared the
-    // ordinary way here would go through the redirect and into its own card.
+    // A heading over a card of controls. Children declared on an instance land
+    // inside the card through the redirected default property, which is why the
+    // heading and the card are assigned to `data` by hand.
     component Section : ColumnLayout {
         id: sec
         objectName: "settingsSection"
@@ -1031,10 +894,9 @@ Popup {
             Rectangle {
                 objectName: "settingsCard"
                 Layout.fillWidth: true
-                // A Layout gives an anchored child its own size, so the card
-                // has to be told how tall its contents are. The inner column
-                // measures its children without reference to its own height,
-                // so this cannot feed back.
+                // A Layout gives an anchored child its own size, so the card is
+                // told how tall its contents are. The inner column does not
+                // read its own height, so this cannot feed back.
                 Layout.preferredHeight: body.implicitHeight + 2 * sec.cardPad
                 color: Theme.surfaceHigh
                 radius: Theme.radiusCard
@@ -1067,10 +929,8 @@ Popup {
     component PanelButton : Item {
         id: btn
         property string label: ""
-        // A VectorIcon name, never a character, the way PillButton takes it.
-        // Empty leaves the plain text button this has always been, and the Row
-        // below skips an invisible child, so nothing moves for the buttons that
-        // do not set it.
+        // A VectorIcon name, never a character. Empty leaves a plain text
+        // button: the Row below skips an invisible child.
         property string icon: ""
         property bool danger: false
         // Still clickable, drawn as "this will not do much right now".
@@ -1121,18 +981,9 @@ Popup {
         TapHandler { onTapped: btn.activated() }
     }
 
-    // An on/off switch. Qt Quick Controls' Switch brings its own style with
-    // it, which is not this one.
-    //
-    // `rainbow` is for the colour switch above, the one row here that is not a
-    // preference about hardware: with it set, a checked track is a rainbow
-    // instead of a flat accent fill.
-    //
-    // It used to turn. It does not any more - the gradient was liked, the
-    // motion was "visual noise" in a panel people leave open. The animation is
-    // gone rather than slowed, so there is no phase to drive, no reduced-motion
-    // branch to special-case, and nothing running behind an open Popup. Seven
-    // static stops on a 38x22 rectangle, no shader, no layer.
+    // An on/off switch; Qt Quick Controls' Switch brings a style of its own.
+    // With `rainbow` set, a checked track is a static rainbow gradient with no
+    // animation, so nothing runs behind an open Popup.
     component Toggle : Item {
         id: tg
         property bool checked: false
@@ -1145,11 +996,9 @@ Popup {
         Keys.onReturnPressed: tg.toggled()
         Keys.onSpacePressed:  tg.toggled()
 
-        // Seven stops, a sixth of the wheel apart, so the first and the last
-        // land on the same hue and the strip joins up with no seam. Lightness
-        // 0.55 rather than 0.5 because the knob riding on top is accentInk,
-        // which is white in all six palettes, and a darker yellow read as a
-        // smudge under it.
+        // Seven stops a sixth of the wheel apart, so the first and last share a
+        // hue and the strip joins with no seam. Lightness 0.55, not 0.5: the
+        // knob on top is white, and a darker yellow reads as a smudge under it.
         function rainbowStop(i) {
             return Qt.hsla(i / 6, 0.9, 0.55, 1)
         }
@@ -1159,10 +1008,9 @@ Popup {
             anchors.fill: parent
             radius: Theme.radiusChip
             color: tg.checked ? Theme.accent : Theme.surface
-            // The rainbow carries no resting border: a thin solid ring around
-            // a gradient reads as a frame bolted onto it, and the gradient is
-            // the control. Focus still draws its ring, on this toggle as on
-            // every other, because that one is not decoration.
+            // The rainbow carries no resting border: a thin solid ring around a
+            // gradient reads as a frame bolted onto it. Focus still draws its
+            // ring.
             readonly property bool showingRainbow: tg.rainbow && tg.checked
             border.width: tg.activeFocus ? 2 : (showingRainbow ? 0 : 1)
             border.color: tg.activeFocus ? Theme.accent
@@ -1205,10 +1053,8 @@ Popup {
     }
 
     // One column of the picker: the dark palettes or the light ones, in table
-    // order, so the row a tile sits in is its hue family. Half the panel each,
-    // because six swatches in one strip would be 50px apiece at 480px and the
-    // labels would have nowhere to go. The pure-black switch used to live at
-    // the foot of this column; it is a full-width row under both of them now.
+    // order, so the row a tile sits in is its hue family. Half the panel each:
+    // six swatches in one strip would leave the labels nowhere to go.
     component ThemeGroup : ColumnLayout {
         id: group
         objectName: "settingsThemeGroup"
@@ -1216,10 +1062,9 @@ Popup {
         property string title: ""
 
         Layout.fillWidth: true
-        // Exactly half the row each, whatever the labels measure. Without
-        // these two the wrapping note under the switch sets a minimum width
-        // for the left column, the right one gets what is left, and the hue
-        // rows stop lining up.
+        // Exactly half the row each, whatever the labels measure. Without these
+        // two each column takes its own implicit width and the hue rows stop
+        // lining up.
         Layout.preferredWidth: 0
         Layout.minimumWidth: 0
         Layout.alignment: Qt.AlignTop
@@ -1349,15 +1194,13 @@ Popup {
 
         readonly property int wantedIndex: {
             var i = root.indexOfValue(sel.options, sel.value)
-            // A stored value that is no longer offered - an output that was
-            // unplugged - falls back to the first entry, which is what the
-            // backend resolves it to anyway.
+            // A stored value that is no longer offered, such as an unplugged
+            // output, falls back to the first entry, as the backend does.
             return i >= 0 ? i : (sel.options.length > 0 ? 0 : -1)
         }
         function syncIndex() { sel.currentIndex = sel.wantedIndex }
         // Deferred, because ComboBox resets currentIndex to 0 from its own
-        // handler for the same model change - after this one, if the index is
-        // written straight away.
+        // handler for the same model change, which can run after this one.
         onWantedIndexChanged:  Qt.callLater(sel.syncIndex)
         onOptionsChanged:      Qt.callLater(sel.syncIndex)
         onCountChanged:        Qt.callLater(sel.syncIndex)

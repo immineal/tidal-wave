@@ -41,8 +41,6 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                // Not "Native Linux Tidal Client", which is what this said on
-                // every platform, including the macOS first run that found it.
                 text: qsTr("Native Desktop Tidal Client")
                 color: Theme.textSec
                 font.pixelSize: 14
@@ -51,7 +49,6 @@ Rectangle {
 
         Item { height: 48 }
 
-        // Auth card
         Rectangle {
             objectName: "loginAuthCard"
             Layout.fillWidth: true
@@ -93,10 +90,9 @@ Rectangle {
                                 radius: 3
                                 color: Theme.accent
                                 opacity: 0.3
-                                // Reduced motion runs the sequence once with
-                                // every leg at zero, which parks the dot at
-                                // full opacity: three steady dots instead of
-                                // none. Infinite loops at zero would spin.
+                                // Reduced motion runs the sequence once and
+                                // parks the dot at full opacity. Infinite loops
+                                // at zero duration would spin.
                                 SequentialAnimation on opacity {
                                     loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: auth.state === 0 && auth.hasSavedCredentials
@@ -244,10 +240,9 @@ Rectangle {
                                 radius: 3
                                 color: Theme.accent
                                 opacity: 0.3
-                                // Reduced motion runs the sequence once with
-                                // every leg at zero, which parks the dot at
-                                // full opacity: three steady dots instead of
-                                // none. Infinite loops at zero would spin.
+                                // Reduced motion runs the sequence once and
+                                // parks the dot at full opacity. Infinite loops
+                                // at zero duration would spin.
                                 SequentialAnimation on opacity {
                                     loops: Theme.reduceMotion ? 1 : Animation.Infinite
                                     running: auth.state === 1

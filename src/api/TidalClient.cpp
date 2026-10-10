@@ -878,7 +878,13 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
                 if (!err.isEmpty()) { cb({}, err); return; }
                 QString parseErr;
                 const StreamManifest m = parseTrackManifests(root, &parseErr);
-                if (!parseErr.isEmpty()) { cb({}, parseErr); return; }
+                if (!parseErr.isEmpty()) {
+                    // Tidal answered with something other than a whole track.
+                    StreamManifest refused;
+                    refused.unavailable = true;
+                    cb(refused, parseErr);
+                    return;
+                }
                 cb(m, {});
             });
         return;

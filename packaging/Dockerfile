@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Qt 6.4.2 development packages, one per component the top-level
 # find_package(Qt6 ...) asks for:
-#   qt6-base-dev        Core Gui Widgets Network DBus Concurrent  (+ Test)
+#   qt6-base-dev        Core Gui Widgets Network DBus  (+ Test)
 #   qt6-declarative-dev Quick Qml QmlModels                       (+ QuickTest)
 #   qt6-multimedia-dev  Multimedia
 #   qt6-svg-dev         Svg
@@ -64,18 +64,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qml6-module-qtqml-workerscript \
         libasound2 \
         gstreamer1.0-plugins-good \
+        gstreamer1.0-libav \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# gstreamer1.0-plugins-good above is not a build dependency and not optional
-# either. Qt 6.4 still defaults to the GStreamer media backend (6.5 switched the
-# default to FFmpeg, which is why this never shows up on a newer Qt), and with
-# only plugins-base installed the pipeline Qt builds gets a null element:
-#     GStreamer-CRITICAL: gst_element_link_many: assertion 'GST_IS_ELEMENT
-#     (element_2)' failed
-# followed by a segfault the moment anything touches QMediaPlayer. That takes
-# out four of the test binaries here, and it will take out the installed app on
-# any minimal bookworm, because nothing in the generated Depends list pulls it
-# in - see the note in the report accompanying this change.
+# The last three are what the tests need at run time. Qt 6.4 plays through
+# GStreamer: -good for FLAC in MP4 and the sinks, -libav for AAC, as the
+# package's Depends has them. ffmpeg is what cast preparation shells out to.
 
 # Every Qt GUI binary in here runs headless - no X, no Wayland. Setting it in
 # the image means a forgotten environment variable cannot open a window.

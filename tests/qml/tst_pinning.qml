@@ -1,16 +1,9 @@
-// The pinning interface: section F of HANDOFF.md, P1-P6 of docs/SPEC-0.4.0.md.
-//
-// `pins` and `library` are the stubs from tests/TestStubs.h. The one thing the
-// stubs do not do is wire the two together: the real LibraryIndex connects to
-// PinStore::changed and rebuilds its rows from it (pinned first, in pin order,
-// every row flagged `pinned`, and no row listed twice). applyPins() below
-// mirrors that contract and nothing else, so a pin made on a page header
-// travels into the sidebar here the way it does in the app, and P5 is asserted
-// against the same rule tst_library pins down on the C++ side.
-//
-// The host mirrors Main.qml — a RowLayout of the SideBar and a content pane —
-// because half of these tests pin something on a page and then look for it in
-// the sidebar, which needs both on screen at once.
+// The pinning interface. The pins and library stubs from tests/TestStubs.h
+// are not wired together, so applyPins() below mirrors the LibraryIndex
+// contract: pinned rows first, in pin order, every row flagged pinned, and
+// no row listed twice. The host mirrors Main.qml, a RowLayout of the SideBar
+// and a content pane, because half of these tests pin something on a page
+// and then look for it in the sidebar.
 
 import QtQuick
 import QtQuick.Controls
@@ -25,19 +18,14 @@ TestCase {
     when: windowShown
 
     readonly property int railWidth: 68
-    // SideBar.libRowHeight, read off the sidebar rather than written down.
-    // The drag arithmetic below is in whole rows, and the row has already
-    // changed height once (34 -> 44, for a bigger cover): a copy of the
-    // number here makes every such change a failure in this file instead of
-    // a test of the thing it is actually about.
+    // SideBar.libRowHeight, read off the sidebar: the drag arithmetic below is
+    // in whole rows, and a copy of the number here would go stale.
     function rowHeightOf(sb) { return sb.libRowHeight }
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
-    // The library with nothing pinned: six rows, A-Z, which is what the data
-    // layer hands over when no pin and no play has happened yet. Album and
-    // artist ids are numeric strings because that is what the pages build
-    // their pin id from.
+    // The library with nothing pinned: six rows, A-Z. Album and artist ids
+    // are numeric strings because the pages build their pin id from those.
     function baseEntries() {
         return [
             { kind: "album",    id: "43",      title: "Aquarium",         subtitle: "Aqua Band",  imageUrl: "cdn/43.jpg",  trackCount: 11 },
@@ -83,7 +71,7 @@ TestCase {
     function init() {
         prefs.setSidebarWidthForTest(220)
         app.setReducedMotionForTest(true)   // no slide to wait out
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         pins.setItemsForTest([])            // fires applyPins() through the Connections
         library.setTracksForTest(makeTracks())
         library.resetCallsForTest()
@@ -268,7 +256,7 @@ TestCase {
         return null
     }
 
-    // ── P2: the menu, and the label that follows the state ───────────────
+    // ── the menu, and the label that follows the state ───────────────────
 
     function test_sidebar_row_offers_pin_then_unpin() {
         var host = showHost(1280)
@@ -330,21 +318,9 @@ TestCase {
     }
 
     // ── what a tile hands the store, per kind ────────────────────────────
-    //
-    // A pin row is written to QSettings and read back in some later session, so
-    // the only thing worth putting in its subtitle is a datum Tidal sent. An
-    // album tile's subtitle is its artists and a mix tile's is Tidal's own:
-    // both are facts, both keep. An artist tile's is the word qsTr("Artist"),
-    // and a playlist tile's is qsTr("%n track(s)") over a cached count - app
-    // text, not data - so neither may be stored. Frozen, the playlist one is
-    // wrong twice over: the wrong language after the app's locale changes, and
-    // the wrong number as soon as a track is added to the playlist.
-    //
-    // MediaCard.pinSubtitle is the property that draws this line, and until
-    // this test nothing asserted it for any kind - which is how the playlist
-    // case got in. Driven through the tile's real right-click area and the real
-    // menu entry, so what is asserted is what the app stores, not what this
-    // file passes along.
+    // A pin row is written to QSettings and read back in a later session, so
+    // its subtitle may only hold data Tidal sent. An artist tile's type word
+    // and a playlist tile's track count are app text and must not be stored.
     function test_a_tile_pins_data_and_not_app_text_data() {
         return [
             { tag: "album keeps its artists",
@@ -382,29 +358,16 @@ TestCase {
 
         compare(pins.items[0].subtitle, data.stored,
                 "a " + data.kind + " tile stored the wrong subtitle")
-        // The fields that are facts are still there, so this is a rule about
-        // one field and not a tile that stopped describing itself.
+        // The fields that are data are still stored.
         compare(pins.items[0].title, "Whatever", "the card pinned the wrong title")
         compare(pins.items[0].imageUrl, "cdn/" + data.id + ".jpg",
                 "the card pinned no artwork")
         menu.close()
     }
 
-    // Where a pinned row's text actually comes from, written down because the
-    // repo has guessed it wrong twice in two days and in both directions.
-    //
-    // A pinned row is a *library* row that PinStore moved to the front of the
-    // list. The model is `library.entriesForKinds()`, the delegate reads it
-    // through `modelData`, and nothing in qml/ reads `pins.items` at all - so a
-    // pin's stored title, subtitle and artwork are never drawn anywhere,
-    // including in the hover tooltip that is the only place a row's subtitle
-    // reaches the screen.
-    //
-    // That is what makes the frozen track count the test above is about a latent
-    // defect rather than a visible one, and it is also why nothing had to be
-    // migrated to make the pinned block read correctly. Asserted with the two
-    // sources deliberately disagreeing: this pin carries a title, a subtitle and
-    // an artwork url that no library row has.
+    // A pinned row is a library row that PinStore moved to the front. The
+    // delegate reads library.entriesForKinds(), and nothing in qml/ draws a
+    // pin's stored title, subtitle or artwork. The two sources disagree here.
     function test_a_pinned_row_draws_the_library_row_not_the_pin() {
         setPins([{ kind: "album", id: "42", title: "A title only the pin has",
                    subtitle: "A subtitle only the pin has",
@@ -422,28 +385,18 @@ TestCase {
         compare(row.modelData.subtitle, "The Band", "the row drew the pin's subtitle")
         compare(row.modelData.imageUrl, "cdn/42.jpg", "the row drew the pin's artwork")
 
-        // The tooltip is on every row deliberately - in the collapsed rail the
-        // title is not on screen at all - so it is the one draw site a stored
-        // pin subtitle could ever have reached, and it does not read it.
+        // The tooltip is on every row, because in the collapsed rail the title
+        // is not on screen. It is built from the library row too.
         var box = findByName(row, "libraryRowTitle").parent
         verify(box, "the row has no content box to carry the tooltip")
         compare(box.ToolTip.text, "Fever Dream · The Band",
                 "the row tooltip is not built from the library row")
     }
 
-    // ── Collection's grids, which could not pin at all ───────────────────
-    //
-    // The album and the artist delegate each declared a right-click MouseArea
-    // *after* the MediaCard, so the tile's own menu never opened and its Pin
-    // entry was unreachable: an album or an artist could be pinned from its
-    // page or from the sidebar, and not from the library view that lists
-    // them. Both bespoke menus are gone and the tiles use the one shared
-    // ContextMenu, which is what these two cases hold in place.
-    //
-    // StubBridge's searchFavoriteAlbums/Artists return nothing, so the page's
-    // filtered lists are written straight onto it. The tab is set first:
-    // changing it is what calls updateFilteredContent(), which would wipe
-    // them.
+    // ── Collection's grids pin through the shared menu ───────────────────
+    // The tiles use the one shared ContextMenu. StubBridge's favourites
+    // searches return nothing, so the filtered lists are written onto the
+    // page. The tab is set first, because changing it wipes them.
     function makeCollection(host, tab, items) {
         var page = createTemporaryObject(collectionC, host.pane)
         verify(page, "CollectionPage was not created")
@@ -495,9 +448,7 @@ TestCase {
         verify(menu.removeItem.danger, "removing from the library is destructive")
         compare(menu.removeItem.iconName, "trash")
         verify(!menu.pinItem.danger, "pinning is not destructive")
-        // Pin is the row that proves the icon is not merely decoration: the
-        // filled pin is the one already stuck in, so it is the row that pulls
-        // it out, and the glyph has to follow the label rather than sit fixed.
+        // The glyph follows the label: a pinned row draws the filled pin.
         compare(menu.pinItem.iconName, "pin-filled",
                 "the Unpin row must draw the state it is in")
         verify(menu.playNextItem.iconName !== "" && menu.addToQueueItem.iconName !== "",
@@ -527,14 +478,13 @@ TestCase {
         tryVerify(function () { return menu.visible }, 2000, "the menu did not reopen")
         compare(menu.removeItem.text, qsTr("Unfollow artist"))
         verify(menu.removeItem.danger)
-        // An artist is not a tracklist: "queue this artist" has no honest
-        // meaning, so those two rows stay away.
+        // An artist is not a tracklist, so those two rows stay away.
         verify(!menu.playNextItem.visible, "an artist tile should offer no Play next")
         verify(!menu.addToQueueItem.visible, "an artist tile should offer no Add to queue")
         menu.close()
     }
 
-    // ── P1: the four kinds, and only those four ──────────────────────────
+    // ── the four kinds, and only those four ──────────────────────────────
 
     function test_page_headers_pin_all_four_kinds_data() {
         return [
@@ -603,7 +553,7 @@ TestCase {
         compare(pins.items.length, 0, "a song reached PinStore")
     }
 
-    // ── P3/P5: the pinned block, live, and never duplicated ──────────────
+    // ── the pinned block, live, and never duplicated ─────────────────────
 
     function test_pinning_on_a_page_moves_the_row_into_the_pinned_block() {
         var host = showHost(1280)
@@ -621,13 +571,13 @@ TestCase {
         page.pinMenu.close()
         settle(host.contentItem)
 
-        // P3: the block is above the list, and it updated without anyone
-        // touching the sidebar.
+        // The block is above the list, and it updated without anyone touching
+        // the sidebar.
         tryVerify(function () { return rowIds(sb)[0] === "42" }, 2000,
                   "the pin did not reach the sidebar's pinned block")
         compare(sb.pinnedCount, 1, "exactly one row belongs above the break")
 
-        // P5: once, and only in the block.
+        // Once, and only in the block.
         var rows = collectByName(sb, "libraryRow", [])
         var seen = ({})
         var below = 0
@@ -644,8 +594,8 @@ TestCase {
         compare(breaks.length, 1, "the pinned block wants exactly one break under it")
         compare(breaks[0].rowIndex, 1, "the break sits at the wrong row")
 
-        // Unpinning puts it back where the alphabet wants it: between
-        // "Evening Drive" and "Golden Hour".
+        // Unpinning puts it back where the alphabet wants it, between Evening
+        // Drive and Golden Hour.
         rightClickItem(host, findByName(page, "heroPinArea"))
         tryVerify(function () { return page.pinMenu.visible }, 2000, "no hero menu the second time")
         compare(page.pinMenu.pinItem.text, qsTr("Unpin"), "the hero should offer Unpin now")
@@ -660,7 +610,7 @@ TestCase {
                 "the break outlived the block")
     }
 
-    // ── P4: drag to reorder inside the pinned block ──────────────────────
+    // ── drag to reorder inside the pinned block ──────────────────────────
 
     function test_drag_reorders_the_pinned_block() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
@@ -697,8 +647,8 @@ TestCase {
         mouseRelease(host.contentItem, from.x, from.y + 2 * rowHeight)
         settle(host.contentItem)
 
-        // pins.move(0, 2) and nothing else: a swap would have left Daily
-        // Discovery in the middle.
+        // pins.move(0, 2) and nothing else: a swap would leave Daily Discovery
+        // in the middle.
         compare(pinIds().join(","), "43,mix-1,uuid-p1", "pins.move was called with the wrong pair")
         compare(pins.items.length, 3, "the drop added or dropped a pin")
         compare(pinsSpy.count, 1, "one drop is one write")
@@ -707,27 +657,9 @@ TestCase {
         compare(sb.pinnedCount, 3, "the block changed size over a reorder")
         verify(!findByName(sb, "pinDropIndicator").visible, "the drop indicator outlived the drag")
     }
-    // A block of two, which is both the smallest block that can be dragged at
-    // all and the size every account reaches first: PinStore seeds one pin, so
-    // the second pin the user makes is where reordering becomes possible.
-    //
-    // One gesture, three times, and the only thing that differs is where inside
-    // the handle the pointer came down — which is not something anyone can see,
-    // choose, or be told about.
-    //
-    // It used to decide whether the drop counted. pinSlotAt() *clamps* its
-    // target into the block, so the indicator always points at a legal slot,
-    // but the bounds were measured against the pointer: the press's own place
-    // in the row it grabbed, plus the travel, against the block's pixel extent.
-    // The two disagree by however far into the row the press landed, and the
-    // block is only pinnedCount rows tall — 88px here — so a press in the
-    // middle of the row and a pull of a row and a half put the pointer past the
-    // block's bottom edge while the indicator was still pointing at the bottom
-    // slot. The drop was then thrown away with nothing said: a line drawn where
-    // the row was going to land, and a row that stayed where it was.
-    //
-    // It took a block of two to show. The three-pin fixture above has 132px to
-    // play with, which swallows the same gesture whole.
+    // A block of two is the smallest that can be dragged. pinSlotAt() clamps
+    // its target into the block, so the drop must count wherever inside the
+    // handle the pointer came down.
     function test_a_block_of_two_swaps_wherever_the_handle_was_grabbed_data() {
         return [
             { tag: "grabbed at the top",    grab: 4  },
@@ -750,25 +682,22 @@ TestCase {
         var rowHeight = rowHeightOf(sb)
         var top = rowFor(sb, "mix-1")
         verify(top, "the row to drag was never drawn")
-        // Aimed in the *row's* coordinates and not the handle's: the handle
-        // inflates its hit area by 5px on every side, so its own lower edge is
-        // inside the row below, where a press is a press on that row.
+        // Aimed in the row's coordinates: the handle inflates its hit area on
+        // every side, so its lower edge is inside the row below.
         var at = pointIn(host, top, top.width - 22, row.grab)
         mousePress(host.contentItem, at.x, at.y)
-        // A row and a half: far enough that the row being dragged is past the
-        // one it is changing places with, which is how far a hand takes it.
+        // A row and a half, so the dragged row is past the one it changes
+        // places with.
         mouseMove(host.contentItem, at.x, at.y + 1.5 * rowHeight)
         wait(1)
-        // Whatever the pointer did, this is where the sidebar had decided the
-        // row would land, because pinSlotAt() clamps into the block.
+        // pinSlotAt() clamps into the block, so this is where the row lands.
         compare(sb.pinDragTo, 1, "the bottom slot is the only place a block of two can send it")
         var promised = findByName(sb, "pinDropIndicator").visible
         mouseRelease(host.contentItem, at.x, at.y + 1.5 * rowHeight)
         settle(host.contentItem)
 
         // The store, because the store is the order and the rows are a reading
-        // of it: a drop that moves the rows and not the pins is undone by the
-        // next rebuild, and one that moves neither is this bug.
+        // of it: a drop that moves only the rows is undone by the next rebuild.
         compare(pinIds().join(","), "43,mix-1",
                 "the drop was thrown away — the target was slot 1 and the pins did not move"
                 + " (the indicator was " + (promised ? "still up" : "already dark")
@@ -834,24 +763,9 @@ TestCase {
         verify(!grip || !grip.enabled, "an unpinned row can be dragged")
     }
 
-    // Two drops in a row, with nothing in between - which is what arranging a
-    // pinned block actually looks like: one drag, then the next, as fast as the
-    // pointer can be aimed.
-    //
-    // The first drop is what breaks the second. It reorders the pins, the list
-    // animates the reorder (SideBar's move/displaced transitions), and for the
-    // length of that travel a row's `index` is already its new one while its `y`
-    // is still its old one. The drag is written in indices - `pinDragFrom` is one
-    // and pinSlotAt() returns one - so a press read off the drawn position alone
-    // put the gesture in the wrong frame by as much as the whole travel, and the
-    // release was abandoned as "outside the block". Nothing said so: the pins
-    // simply did not move.
-    //
-    // Deliberately no settle() between the two drags, and that is not a race:
-    // the model moves the row synchronously inside the first release, while the
-    // view repositions it on its next polish, so the press below always lands on
-    // a row whose index and drawn place disagree. Waiting is exactly what hid
-    // this - test_drag_reorders_the_pinned_block waits, and passes either way.
+    // Two drops in a row. After the first, the list animates the reorder, and
+    // a row's index is already its new one while its y is still its old one.
+    // No settle() between the drags: the press must land on such a row.
     function test_a_second_drag_lands_while_the_first_is_still_travelling() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
                  pinRow("album",    "43",      "Aquarium"),
@@ -862,8 +776,7 @@ TestCase {
         settle(host.contentItem)
         var rowHeight = rowHeightOf(sb)
 
-        // One drag of the top row, two slots down, in the shape the passing
-        // test uses.
+        // One drag of a row by a number of slots.
         function dragBy(id, slots) {
             var row = rowFor(sb, id)
             verify(row, "the row \"" + id + "\" was never drawn")
@@ -889,9 +802,7 @@ TestCase {
         compare(pinIds().join(","), "43,mix-1,uuid-p1", "the first drop did not reorder the pins")
 
         // The state the second drag begins in: the row is at index 2 and still
-        // drawn at the top. Recorded rather than waited out - this is the whole
-        // point of the case, so if it ever stops being true the message below
-        // says which half changed.
+        // drawn at the top.
         var moved = rowFor(sb, "uuid-p1")
         verify(moved, "the row that was just dropped is no longer drawn")
         compare(moved.index, 2, "the model did not move the row inside the release")
@@ -911,21 +822,9 @@ TestCase {
         compare(pinsSpy.count, 2, "two drops are two writes")
     }
 
-    // The library arriving under a live drag. It arrives in pages over several
-    // seconds in the app, so this is ordinary: a page lands while the pointer is
-    // down, and past the keyed diff's cap SideBar refills the model wholesale
-    // rather than moving rows one at a time. A refill is libModel.clear(), which
-    // releases every delegate - including the one holding the pointer grab - and
-    // a broken grab is onCanceled, so the drag ended with nothing said and
-    // nothing moved.
-    //
-    // This one only tells the truth when the machine is busy, which is worth
-    // knowing before trusting its green. Run on an idle box it passes either
-    // way: the released delegates are still waiting on deleteLater when the drop
-    // arrives, so the gesture survives by luck. Run with eight spinners on
-    // twelve cores, and with another of this file's drags having been through the
-    // same process first, it failed ten times out of ten without SideBar's hold
-    // and passed ten times out of ten with it.
+    // The library arrives in pages, so one can land under a live drag. Past
+    // the keyed diff's cap SideBar refills the model wholesale, which must not
+    // release the delegate holding the grab. Only a busy machine shows a failure.
     function test_the_library_arriving_mid_drag_does_not_lose_the_drop() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
                  pinRow("album",    "43",      "Aquarium"),
@@ -943,8 +842,8 @@ TestCase {
         wait(1)
         compare(sb.pinDragTo, 2, "the drag never reached the bottom of the block")
 
-        // A whole page of the library lands. Far more than the diff's cap, so
-        // this is the wholesale refill and not a handful of moves.
+        // A whole page of the library lands, far more than the diff's cap, so
+        // this is the wholesale refill.
         var flood = baseEntries()
         for (var i = 0; i < 60; ++i)
             flood.push({ kind: "album", id: "flood-" + i, title: "Flood " + i,
@@ -975,8 +874,7 @@ TestCase {
         tryVerify(function () { return rowIds(sb).join(",") === "43,mix-1,uuid-p1,7,42,uuid-p2" },
                   2000, "the visible order did not follow the drop")
 
-        // And the list is listening again: what is held for the length of a drag
-        // is held for the length of a drag and no longer.
+        // And the list is listening again once the drag is over.
         var more = baseEntries()
         for (i = 0; i < 60; ++i)
             more.push({ kind: "album", id: "late-" + i, title: "Late " + i,
@@ -986,7 +884,7 @@ TestCase {
                   "the sidebar stopped taking rows after a drag")
     }
 
-    // ── S9: the rail ─────────────────────────────────────────────────────
+    // ── the rail ─────────────────────────────────────────────────────────
 
     // The rail shows the pinned covers and nothing else of the library, so a
     // right-click there can only mean the one thing: unpin.

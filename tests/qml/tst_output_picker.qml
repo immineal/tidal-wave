@@ -1,19 +1,9 @@
-// One picker for "where is this playing", and the upright volume slider the
-// speaker reveals on hover - in the player bar and in Now Playing, which build
-// the same cluster out of the same pieces.
-//
-// The picker and the speaker live next to each other in both of them and both
-// draw upwards, so a good part of this file is about them not getting in each
-// other's way.
-//
-// Two doubles are built below rather than taken from tests/TestStubs.h, which
-// this change does not own:
-//   * StubPlayer has no availableAudioDevices(), so there would be no local
-//     half of the menu to assert anything about;
-//   * `cast` is always installed, and null is exactly the state every
-//     non-Linux build is in, so it has to be injectable to be tested.
-// Both go in through the properties the picker already has for them, the same
-// way tst_settings.qml hands SettingsPanel its own device source.
+// The output picker, and the upright volume slider the speaker reveals on
+// hover, in the player bar and in Now Playing, which build the same cluster
+// out of the same pieces. Both draw upwards, so part of this file is about
+// them staying out of each other's way. Two doubles are built here: StubPlayer
+// has no availableAudioDevices(), and cast has to be injectable as null, the
+// state of every non-Linux build.
 
 import QtQuick
 import QtQuick.Controls
@@ -32,7 +22,7 @@ TestCase {
 
     // ── the doubles ──────────────────────────────────────────────────────
 
-    // Player::availableAudioDevices(): the "System default" sentinel first
+    // Player::availableAudioDevices(): the System default sentinel first,
     // with an empty id, then the real outputs.
     QtObject {
         id: audioStub
@@ -42,10 +32,8 @@ TestCase {
             reads++
             return devices
         }
-        // Player::audioDevicesChanged(), raised when a sink appears, goes
-        // away, or the system default moves. The real one is emitted from the
-        // deferred turn in Player::onAudioOutputsChanged(); here a test emits
-        // it by hand, which is the same thing as far as the picker can tell.
+        // Player::audioDevicesChanged(), raised when a sink appears, goes away,
+        // or the system default moves. Here a test emits it by hand.
         signal audioDevicesChanged()
     }
 
@@ -100,8 +88,8 @@ TestCase {
         }
     }
 
-    // NowPlayingPage delegates its sleep timer to Window.window, so it needs a
-    // window that answers for it. The same stand-in the other files use.
+    // NowPlayingPage delegates its sleep timer to Window.window, so it needs
+    // a window that answers for it.
     Component {
         id: nowPlayingHost
         Window {
@@ -208,9 +196,7 @@ TestCase {
         picker.menu.close()
     }
 
-    // The sentinel is what "follow the system" is, and it has to come first
-    // so the list reads as a choice rather than as a device list with an
-    // oddity on the end.
+    // The sentinel means following the system, and it comes first.
     function test_system_default_is_the_first_local_row() {
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
@@ -275,13 +261,9 @@ TestCase {
         picker.menu.close()
     }
 
-    // Exactly one row in the whole menu is ticked, and it is the one the
-    // sound is going to.
-    //
-    // The fixture's id and name are the same string on purpose: CastManager
-    // reports the device's own name through `deviceName`, which is what the
-    // rows match on, while StubCast reports back whatever id it was handed.
-    // They have to coincide for the tick to be assertable at all.
+    // Exactly one row in the whole menu is ticked. The fixture's id and name
+    // are the same string on purpose: the rows match on CastManager's
+    // deviceName, while StubCast reports back the id it was handed.
     function test_the_row_being_cast_to_is_the_only_one_ticked() {
         cast.setDevicesForTest([{ id: "Living Room Speaker", name: "Living Room Speaker" },
                                 { id: "Kitchen Display",     name: "Kitchen Display"     }])
@@ -351,8 +333,7 @@ TestCase {
     // ── 4. no cast backend ───────────────────────────────────────────────
 
     // Every platform but Linux. The menu is a local picker and nothing else:
-    // no heading with nothing under it, and no "searching" line that will
-    // never finish.
+    // no empty heading, and no searching line that will never finish.
     function test_the_menu_still_works_with_no_cast_backend() {
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
@@ -391,11 +372,9 @@ TestCase {
     }
 
     // ── 6. volume on hover ───────────────────────────────────────────────
-    //
-    // The bar carries no slider at any width now: it says how loud it is in
-    // words and reveals the slider, upright, when the speaker or the readout
-    // is pointed at. "it can also go into its hover to show bar state, no?
-    // also I want that hovered bar to be vertical not horizontal".
+    // The bar carries no slider at any width. It shows the level as a
+    // number and reveals the slider, upright, when the speaker or the readout
+    // is pointed at.
 
     function hover(host, item) {
         var p = item.mapToItem(host.contentItem, item.width / 2, item.height / 2)
@@ -403,9 +382,8 @@ TestCase {
         wait(1)
     }
 
-    // The widths the bar is measured at, wide and narrow. There is one
-    // behaviour across all of them now, which is the thing being pinned: the
-    // bar used to answer a hover only below 720.
+    // The widths the bar is measured at. The behaviour is the same across
+    // all of them.
     function barWidthRows() {
         return [{ tag: "640", w: 640 }, { tag: "720", w: 720 },
                 { tag: "960", w: 960 }, { tag: "1280", w: 1280 }]
@@ -420,12 +398,12 @@ TestCase {
         verify(!bar.hoverVolumePopup.visible,
                row.tag + ": the flyout is up before anyone pointed at it")
         // Nothing in the bar's own tree draws a slider. The flyout's one is in
-        // the overlay, not under the bar, so a walk of the bar finds none.
+        // the overlay, so a walk of the bar finds none.
         var strays = collectVisibleByName(bar, "volumeSliderHandle", [])
         compare(strays.length, 0,
                 row.tag + ": the bar still draws " + strays.length
                 + " inline volume slider(s)")
-        // And what it does draw instead is the level in words.
+        // What it draws instead is the level as a number.
         verify(bar.volumePercentText.visible,
                row.tag + ": the bar does not say how loud it is")
         compare(bar.volumePercentText.text, "50%",
@@ -451,7 +429,7 @@ TestCase {
                row.tag + ": the revealed slider is " + s.width.toFixed(1) + "x"
                + s.height.toFixed(1) + ", too small to aim at")
 
-        // And it is a working slider, not a picture of one.
+        // And it is a working slider.
         s.moved(0.25)
         compare(Math.round(player.volume * 100), 25,
                 row.tag + ": the revealed slider does not set the volume")
@@ -462,9 +440,8 @@ TestCase {
                   + bar.volumePercentText.text + " after the slider moved")
     }
 
-    // Vertical, which is the instruction: "I want that hovered bar to be
-    // vertical not horizontal". Measured three ways, because a tall box with a
-    // horizontal slider in it would pass the first one on its own.
+    // Vertical. Measured three ways, because a tall box with a horizontal
+    // slider in it would pass the first one on its own.
     function test_the_revealed_slider_is_vertical() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -476,8 +453,8 @@ TestCase {
                "the revealed slider is " + s.width.toFixed(1) + "x"
                + s.height.toFixed(1) + ", which is not upright")
 
-        // The handle travels down the slider as the volume falls, and up as it
-        // rises - and does not travel sideways at all.
+        // The handle travels down the slider as the volume falls, and never
+        // sideways.
         var handle = findByName(s, "volumeSliderHandle")
         verify(handle, "the revealed slider has no handle")
         player.setVolume(1)
@@ -512,8 +489,8 @@ TestCase {
                + " of " + s.height.toFixed(1))
     }
 
-    // Upward, out of an 82px bar. Downward there is nothing but the bottom of
-    // the screen.
+    // Upward, out of the bar. Downward there is only the bottom of the
+    // screen.
     function test_the_flyout_opens_upward() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -531,7 +508,7 @@ TestCase {
                + ", so it did not open upward")
         verify(popup.contentItem.mapToItem(host.contentItem, 0, 0).y >= 0,
                "the flyout opened off the top of the window")
-        // Centred on the speaker rather than hanging off one side of it.
+        // Centred on the speaker.
         var popupMid = popup.contentItem.mapToItem(
             host.contentItem, popup.contentItem.width / 2, 0).x
         var btnMid = btn.mapToItem(host.contentItem, btn.width / 2, 0).x
@@ -540,8 +517,7 @@ TestCase {
                + " against a speaker at " + btnMid.toFixed(1))
     }
 
-    // The readout is half of one hover target, not a label beside it: a
-    // pointer running along the row reaches the percentage first.
+    // The readout is half of one hover target with the speaker.
     function test_hovering_the_percentage_reveals_the_slider_too() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -550,18 +526,9 @@ TestCase {
                   "pointing at the readout revealed no slider")
     }
 
-    // The gap between the two halves is paid inside the readout rather than as
-    // a layout margin, so there is no dead strip between them for the pointer
-    // to fall into. Downwards now, not sideways: the readout sits under the
-    // speaker, so the strip to keep shut is between the glyph's bottom edge and
-    // the top of the number's box.
-    //
-    // At or above, not exactly at. The bar's readout is lifted 7px over the
-    // empty bottom of the speaker's 32px tap target, so that the air between
-    // the glyph and the digits comes out the same here as in Now Playing
-    // (PlayerBar.volumeSpeakerBoxSlack, measured in section 9 below). The two
-    // boxes overlap by those 7px, and an overlap belongs to both of them -
-    // which is this promise with room to spare. Only a gap belongs to neither.
+    // The readout sits under the speaker with no dead strip between them for
+    // the pointer to fall into. The bar's readout is lifted over the empty
+    // bottom of the speaker's tap target, so the two boxes may overlap.
     function test_the_speaker_and_the_readout_touch() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -573,8 +540,7 @@ TestCase {
                "the readout starts at y=" + pctTop.toFixed(1)
                + " where the speaker ends at " + btnBottom.toFixed(1)
                + ", leaving a strip that belongs to neither")
-        // And the far ends: the two of them between them cover every row of the
-        // stack, so there is nowhere inside it a pointer is over neither.
+        // The far ends: between them the two cover every row of the stack.
         var stack = bar.volumeStack
         var top    = btn.mapToItem(stack, 0, 0).y
         var bottom = pct.mapToItem(stack, 0, pct.height).y
@@ -582,10 +548,8 @@ TestCase {
                "the pair covers " + top.toFixed(1) + "-" + bottom.toFixed(1)
                + " of a " + stack.height.toFixed(1)
                + "px stack, so an end of it is hovered by neither of them")
-        // And the pointer really can cross the seam: a hover there opens the
-        // flyout, which is the thing the arithmetic above is for. Aimed one row
-        // under the speaker's bottom edge, which is the row that used to be the
-        // readout's first and is now 7px into it.
+        // The pointer can cross the seam: a hover one row under the speaker's
+        // bottom edge opens the flyout.
         verify(!bar.hoverVolumePopup.visible, "the flyout is up unprompted")
         var seam = btn.mapToItem(host.contentItem, btn.width / 2, btn.height + 1)
         mouseMove(host.contentItem, seam.x, seam.y)
@@ -593,7 +557,6 @@ TestCase {
                   "the seam between the speaker and the readout dropped the hover")
     }
 
-    // Pointing somewhere else puts it away again.
     function test_the_flyout_closes_when_the_pointer_leaves() {
         var host = showHost(playerBarHost, 640, 200)
         var bar = host.bar
@@ -606,9 +569,8 @@ TestCase {
                   "the flyout stayed up after the pointer left")
     }
 
-    // ...but not at once. A pointer travelling diagonally from the speaker
-    // into the slider above it is off both of them for a frame or two, and a
-    // flyout that closed on that frame could never be reached.
+    // A pointer travelling diagonally from the speaker into the slider is
+    // off both of them for a frame or two, so the flyout waits before closing.
     function test_the_flyout_waits_before_closing() {
         var host = showHost(playerBarHost, 1280, 200)
         var bar = host.bar
@@ -622,16 +584,14 @@ TestCase {
         verify(bar.hoverVolumePopup.visible,
                "the flyout shut 40ms after the pointer left it, which is inside"
                + " the time a pointer takes to cross into it")
-        // And coming back inside the grace period keeps it, rather than
-        // closing and reopening.
+        // Coming back inside the grace period keeps it open.
         hover(host, bar.volumeButton)
         wait(40)
         verify(bar.hoverVolumePopup.visible,
                "the flyout did not survive the pointer coming back")
     }
 
-    // The speaker still mutes. The flyout is hover-only, so it never takes a
-    // click, and that is half of how it stays out of the output menu's way.
+    // The flyout is hover-only, so a click on the speaker still mutes.
     function test_the_speaker_still_mutes_on_a_click() {
         var host = showHost(playerBarHost, 640, 200)
         var bar = host.bar
@@ -642,8 +602,8 @@ TestCase {
         verify(player.muted, "clicking the speaker no longer mutes")
     }
 
-    // The other half: both of these draw upwards out of the same 82px bar,
-    // so the output menu wins outright while it is open.
+    // Both draw upwards out of the same bar, so the output menu wins while
+    // it is open.
     function test_the_output_menu_and_the_hover_slider_are_never_both_up() {
         var host = showHost(playerBarHost, 640, 200)
         var bar = host.bar
@@ -666,8 +626,6 @@ TestCase {
         picker.menu.close()
     }
 
-    // The output button is a separate control from the speaker, and pointing
-    // at it is not a request for the volume slider.
     function test_hovering_the_output_button_does_not_reveal_the_slider() {
         var host = showHost(playerBarHost, 640, 200)
         var bar = host.bar
@@ -678,11 +636,8 @@ TestCase {
     }
 
     // ── 6b. the same control in Now Playing ──────────────────────────────
-    //
-    // One behaviour everywhere: the page builds its cluster out of the same
-    // pieces and reveals the same PlayerBar.VolumeFlyout. These cases are the
-    // page's half of the bargain, because a shared component is only shared
-    // while both callers still wire it up.
+    // The page builds its cluster out of the same pieces and reveals the same
+    // PlayerBar.VolumeFlyout. These cases are the page's half of the wiring.
 
     // The cluster the page is actually drawing. Both exist at all times and
     // the live objectNames follow whichever is visible.
@@ -728,8 +683,6 @@ TestCase {
                "the page's revealed slider is " + s.width.toFixed(1) + "x"
                + s.height.toFixed(1) + ", which is not upright")
         // A tall box is not an upright slider: the handle has to run down it.
-        // A horizontal slider in a 20x110 popup passes the line above and
-        // nothing else here.
         var handle = findByName(s, "volumeSliderHandle")
         verify(handle, "the page's revealed slider has no handle")
         player.setVolume(1)
@@ -754,8 +707,6 @@ TestCase {
                 "the page's revealed slider does not set the volume")
     }
 
-    // The page draws no slider at rest either: three controls, and the fourth
-    // is in the overlay only while it is wanted.
     function test_the_page_carries_no_inline_slider() {
         var host = showHost(nowPlayingHost, 1280, 900)
         var page = host.page
@@ -805,14 +756,9 @@ TestCase {
 
     // ── 7. telling four sinks on one card apart ──────────────────
 
-    // What the Debian box actually reports: one synthetic default and four
-    // PipeWire sinks that all belong to the same controller. ALSA names a
-    // sink after the card first and the socket last, so the first thirty-odd
-    // characters are identical and the only part that says which socket this
-    // is sits at the very end - which is exactly what elide-right threw away.
-    // Every row read "Tiger Lake-H HD Audio Contr…" and the user could not
-    // pick. A short-named sink hot-plugged in beside them rendered in full,
-    // which is what proved it was width against length and nothing else.
+    // One synthetic default and four PipeWire sinks on the same controller.
+    // ALSA names a sink after the card first and the socket last, so the part
+    // that tells them apart is at the very end, which elide-right cuts off.
     function tigerLake() {
         return [
             { id: "",   label: "System default", isDefault: false },
@@ -880,9 +826,9 @@ TestCase {
         picker.menu.close()
     }
 
-    // The degenerate case the fold has to survive: a box with two cards, where
-    // no prefix is common to everything. The pair that does share one is
-    // folded; the odd one out keeps its whole name, and nothing truncates.
+    // Two cards, so no prefix is common to everything. The pair that shares
+    // one is folded, the odd one out keeps its whole name, and nothing
+    // truncates.
     function test_a_device_that_shares_no_prefix_keeps_its_whole_name() {
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
@@ -906,8 +852,7 @@ TestCase {
         picker.menu.close()
     }
 
-    // A shared prefix that is short is not the problem, and folding it would
-    // read worse than leaving it: "Speaker Left" must not become "… Left".
+    // A short shared prefix is left alone: folding it would read worse.
     function test_a_short_shared_prefix_is_left_alone() {
         audioStub.devices = [
             { id: "",  label: "System default", isDefault: false },
@@ -923,8 +868,8 @@ TestCase {
         picker.menu.close()
     }
 
-    // One long-named sink and nothing to fold it against. There is no prefix
-    // to hide, so the backstop has to carry it: the middle goes, not the end.
+    // One long-named sink and nothing to fold it against, so the elide
+    // carries it: the middle goes and the end stays.
     function test_a_lone_long_name_loses_its_middle_and_not_its_end() {
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
@@ -945,8 +890,6 @@ TestCase {
 
     // ── 8. hot-plug with the menu already open ───────────────────
 
-    // `pactl load-module` with the picker up: the menu did not change, and
-    // closing and reopening it was the only way to see the new sink.
     function test_a_sink_added_while_the_menu_is_open_appears_in_it() {
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
@@ -981,8 +924,8 @@ TestCase {
         picker.menu.close()
     }
 
-    // The refresh is not an excuse to put a menu on screen. Nobody asked for
-    // one, and the next open still has to be fresh.
+    // The refresh must not open the menu, and the next open still has to be
+    // fresh.
     function test_a_hot_plug_does_not_open_a_menu_nobody_asked_for() {
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
@@ -1001,9 +944,8 @@ TestCase {
         picker.menu.close()
     }
 
-    // Now Playing instantiates the same component, so it has to get the same
-    // refresh - that is the whole reason this lives in the component and not
-    // at one of the two call sites.
+    // Now Playing instantiates the same component, so it gets the same
+    // refresh.
     function test_now_playings_picker_refreshes_on_a_hot_plug_too() {
         var host = showHost(nowPlayingHost, 1280, 900)
         var picker = findByName(host.page, "nowPlayingOutputButton")
@@ -1022,60 +964,13 @@ TestCase {
     }
 
     // ── 9. the number reads as the speaker's caption ─────────────────────
-    //
-    // The user, on the pair of them: "The volume icon and the percentage can go
-    // closer together. At the moment, they have pretty much the same spacing as
-    // each does to the output selector, which doesn't make sense. Like they are
-    // contextually relevant to one another, they can be closer together. and the
-    // same distance in the bar and now playing please."
-    //
-    // Two requirements, and neither one is a constant:
-    //
-    //   * the same distance in the two places. Both files already paid the gap
-    //     as the readout's own 4px topPadding, the same number in both - and the
-    //     two still did not match. The bar's speaker is an IconButton, whose box
-    //     is Math.max(size + 12, 32): a 32px tap target around an 18px glyph,
-    //     with 7px of empty box under the glyph that Now Playing's bare 18px
-    //     Item does not have. Same number, 7px more air in the bar: 19px against
-    //     12 at the level this case sets, 18 against 11 at a louder one. What the
-    //     user is comparing is the air, so that is what is compared here, and a
-    //     case that read volumeStackGap out of the two files would have agreed
-    //     with itself while the screen disagreed;
-    //
-    //   * and the pair has to read as one object, which means the air inside it
-    //     has to be clearly less than the air between it and the output picker.
-    //     In the bar that was 19px against the 25 to the picker: "pretty much the
-    //     same spacing", exactly as reported.
-    //
-    // Measured as ink, not as geometry, because every box here is bigger than
-    // what is drawn in it. A Text's box carries the font's ascent above the
-    // digits' caps - 4px at this size - and reports none of it. VectorIcon is
-    // worse: its Shape is permanently 24x24 and blown up by a Scale transform,
-    // so the glyph's own item rect is not where the paint lands either, and the
-    // ink stops short of it at both ends. Nothing short of the painted pixels
-    // answers "how far apart do these look".
-    //
-    // The volume is init()'s 0.5, so the glyph is "volume-mid" and the readout
-    // "50%" in both places: the same ink on both sides of the gap, which is what
-    // makes the two numbers comparable at all. A different level picks one of the
-    // other three speaker glyphs, whose ink is a pixel shorter or taller - and is
-    // so in both places at once, which is why the two can be held equal while
-    // neither is held to a number.
+    // The air between the speaker and the number has to match in the bar and
+    // in Now Playing, and be clearly less than the air to the output picker.
+    // Measured as painted pixels: every box here is bigger than its ink.
 
-    // grabImage(item) grabs the whole window and then crops it at the item's
-    // x/y - which are its coordinates in its *parent*, not in the window. Only
-    // an item parented straight to the window's content item therefore grabs
-    // itself. A volume stack six layouts deep grabs whatever sits at the same
-    // offset from the window's corner, which for the player bar is the empty air
-    // above the bar: a clean white rectangle in which every measurement below
-    // reads zero. Written the wrong way round, this case reports no ink at all
-    // rather than a wrong gap - which is only useful because the band count is
-    // checked, and is why it is.
-    //
-    // So the content item is what is grabbed - its x/y are 0, so the crop is the
-    // whole window - and everything is indexed in window coordinates.
-    //
-    // Twice, because the first grab of a freshly shown window comes back blank.
+    // grabImage(item) grabs the whole window and crops it at the item's x/y,
+    // which are in its parent's coordinates. So the content item is grabbed
+    // and indexed in window coordinates. Twice: the first grab comes back blank.
     function windowInk(host) {
         grabImage(host.contentItem)
         return grabImage(host.contentItem)
@@ -1110,12 +1005,9 @@ TestCase {
         return false
     }
 
-    // The rows of `rect` that carry paint, grouped into runs of consecutive
-    // rows. A speaker over a readout is two runs with blank rows between them,
-    // and the count is half the assertion: one run means one of the two drew
-    // nothing - the trap this file's neighbours keep falling into, where an item
-    // of the right size whose painting never happened still answers visible and
-    // still measures correctly.
+    // The rows of rect that carry paint, grouped into runs of consecutive
+    // rows. A speaker over a readout is two runs with blank rows between
+    // them. One run means one of the two drew nothing.
     function inkBands(img, ref, rect) {
         var bands = []
         var open = null
@@ -1152,9 +1044,8 @@ TestCase {
         return bands[1].top - bands[0].bottom - 1
     }
 
-    // ...and the air between the pair and the picker beside it: the rightmost
-    // painted column of the stack against the leftmost of the picker. The two
-    // boxes do not overlap, so neither can be mistaken for the other.
+    // The air between the pair and the picker beside it: the rightmost
+    // painted column of the stack against the leftmost of the picker.
     function stackToPickerInk(img, stack, picker, root, where) {
         var sRect = boxOf(stack, root)
         var pRect = boxOf(picker, root)
@@ -1174,12 +1065,9 @@ TestCase {
         return first - last - 1
     }
 
-    // The mechanism, kept honest. The bar buys its half of this by lifting the
-    // readout over the empty bottom of the speaker's tap target, and a lift is
-    // only allowed to overlap: the moment the readout's box stops reaching the
-    // speaker's there is a strip inside the stack that neither of them hovers,
-    // and a pointer travelling from the glyph down to the number drops the
-    // flyout in it. Boxes and not ink here, because hovering is a box question.
+    // The bar lifts the readout over the empty bottom of the speaker's tap
+    // target, and the two boxes must keep touching, or a pointer travelling
+    // between them drops the flyout. Boxes here, because hovering goes by box.
     function checkOneHoverTarget(speaker, readout, stack, root, where) {
         var s = boxOf(speaker, root), r = boxOf(readout, root), t = boxOf(stack, root)
         verify(r.y <= s.y + s.h + 0.5,
@@ -1195,10 +1083,9 @@ TestCase {
     function volumeInkIn(host, stack, speaker, readout, picker, where) {
         settle(host.contentItem)
         var img = windowInk(host)
-        // One device pixel per logical one, which is what the suite's offscreen
-        // platform gives: every figure below is read out of the grab and
-        // compared against geometry that is in logical pixels, so a scaled
-        // window would quietly double one side of that.
+        // One device pixel per logical one, which the offscreen platform gives.
+        // The figures below are read out of the grab and compared against
+        // geometry in logical pixels.
         compare(img.width, Math.round(host.width),
                 where + ": the grab is " + img.width + " pixels across a "
                 + host.width + "px window, so the ink and the geometry below are "
@@ -1227,10 +1114,8 @@ TestCase {
         var inPage = volumeInkIn(pageHost, cluster.stack, mute, pct, picker,
                                  "Now Playing")
 
-        // The ask, in the only terms it was made in. One pixel of slack and not
-        // more: these are two renderings of the same glyph over the same digits
-        // in the same font, so anything they differ by is a difference the user
-        // can see.
+        // One pixel of slack: these are two renderings of the same glyph over
+        // the same digits in the same font.
         verify(Math.abs(inBar.inner - inPage.inner) <= 1,
                "the speaker is " + inBar.inner + "px above the number in the bar "
                + "and " + inPage.inner + "px above it in Now Playing. Both files "
@@ -1238,9 +1123,8 @@ TestCase {
                + "number, so this is not a constant that got out of step - it is "
                + "the 7px of empty box under the bar's IconButton glyph")
 
-        // And the pair reads as one object: half again as much air to the picker
-        // as there is inside the pair, in both places. At the 19px inside against
-        // 25px out the bar had, that is the complaint; it is 12 against 25 now.
+        // The pair reads as one object: half again as much air to the picker as
+        // there is inside the pair, in both places.
         verify(inBar.inner * 1.5 <= inBar.outer,
                "the bar puts " + inBar.inner + "px between the speaker and the "
                + "number and only " + inBar.outer + "px between the pair and the "
@@ -1250,9 +1134,8 @@ TestCase {
                + "the number and only " + inPage.outer + "px between the pair and "
                + "the output picker")
 
-        // Not nothing, either: the two are a glyph and its caption, not one
-        // smudge. Anything that collapsed the gap outright would satisfy both
-        // of the cases above.
+        // A gap that collapsed outright would satisfy both checks above, so a
+        // minimum is held too.
         verify(inBar.inner >= 4 && inPage.inner >= 4,
                "the speaker and the number are " + inBar.inner + "px apart in the "
                + "bar and " + inPage.inner + "px apart in Now Playing, which is "

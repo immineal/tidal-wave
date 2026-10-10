@@ -1,51 +1,9 @@
-// The four pages that still threw away the reason a fetch failed.
-//
-// 8ec30ed fixed this on AlbumPage and named the rest: ArtistPage (three
-// callbacks), PlaylistPage (three), MixPage and RadioPage (one each) all read
-// `if (!err)` or `if (err) return` and kept nothing. The trigger is the one the
-// album report was traced to, in four more shapes: a record the favourites and
-// pin lists go on naming while the endpoint that would describe it answers 404.
-// An artist withdrawn from the catalogue, a playlist its owner deleted or made
-// private, a mix that rotated out of the day's set, a station asked for from a
-// delisted track - every one of them is a 404 that the page met with silence.
-//
-// Two groups, and the tests say which is which because the right answer differs:
-//
-//   ArtistPage has nothing of its own on screen. The hero is artistData and
-//   every section below hides itself on an empty list, so a refusal left a page
-//   that is blank from edge to edge - the reported symptom. It gets AlbumPage's
-//   full-page panel, and its content is hidden rather than left behind it.
-//
-//   MixPage, PlaylistPage and RadioPage were handed a title by whoever
-//   navigated to them, and that title is still correct. Covering it would throw
-//   away the one true thing on screen, so these say why the *list* is empty and
-//   keep their heading: the message goes in the list's footer, which on an empty
-//   list sits exactly where the missing tracks would be.
-//
-// RadioPage is in the second group although 8ec30ed's note put it in the first.
-// Both routes in set radioTitle - TrackRow's "Start radio" passes the track's
-// title, Now Playing's "Playing from" passes player.sourceName - so a failed
-// station is a correct heading over an empty rectangle, not a blank page. It is
-// still the harshest of the three, because the list is the whole page: no
-// artwork, no description, and the one pill hides itself when there is nothing
-// to play.
-//
-// The other half of every case is the gate. The panel is on what the server
-// said, never on the page being bare - an empty playlist, an artist with no
-// releases in this region and a video mix whose track module this app cannot
-// read are all pages with nothing in them and nothing wrong.
-//
-// And PlaylistPage's two folded conditions. `if (err || requested !== uuid)`
-// put a refusal and a superseded request through the same door. They are not
-// the same thing: a reply about the playlist the user has already left must
-// change nothing on the one now open, including whether it is called refused.
-// Folded, a slow 404 draws an error panel over whatever is on screen when it
-// lands, so fast navigation manufactures failures. Two tests here hold a reply
-// back and let the next page open first, which is the only way to reach it.
-//
-// `bridge` is the stub from tests/TestStubs.h, whose artist trio, track radio
-// and playlist-tracks fetches could not fail at all until this file needed them
-// to.
+// ArtistPage, PlaylistPage, MixPage and RadioPage keep the reason a fetch
+// failed. ArtistPage has nothing of its own on screen, so it gets a full-page
+// panel. The other three keep the heading their caller passed and say in the
+// list's footer why the list is empty. The panel is gated on what the server
+// said, never on the page being bare, and a reply for a page the user has
+// left must change nothing. The bridge stub is from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Controls
@@ -59,13 +17,11 @@ TestCase {
     width: 1000
     height: 800
     // TestCase declares visible: false, and an invisible tree reports every
-    // item invisible and never instantiates the list header and footer the two
-    // hero pages keep their message in. Same reason tst_hero_from_id.qml and
-    // tst_album_load_error.qml set it.
+    // item invisible and never instantiates the list header and footer the
+    // two hero pages keep their message in.
     visible: true
 
-    // Invented, like every fixture here: no id, name or title of the owner's is
-    // in this file.
+    // Invented, like every fixture here.
     readonly property int deadArtistId: 900000011
     readonly property int liveArtistId: 900000012
     readonly property int deadTrackId:  900000021
@@ -107,17 +63,16 @@ TestCase {
     }
 
     // Asserted by objectName before the properties behind it, so a page that
-    // says nothing fails on *that* rather than on a missing property name.
+    // says nothing fails here and never on a missing property name.
     function panelOf(page, objName) {
         var p = findChild(page, objName)
         verify(p, "the page has no " + objName + " panel at all")
         return p
     }
 
-    // Visible and laid out, not merely visible. A direct child of a Layout that
-    // sets `width`/`height` instead of Layout.preferredWidth/Height is laid out
-    // at nothing, and an item of no size still answers `visible: true` - so a
-    // message that cannot be read would pass a bare visibility check.
+    // Laid out as well as visible. A direct child of a Layout that sets width
+    // and height in place of Layout.preferredWidth/Height is laid out at
+    // nothing, and an item of no size still answers visible: true.
     function verifyMessageIsReadable(page, headingName, detailName) {
         var heading = findChild(page, headingName)
         verify(heading, "the failure message has no heading")
@@ -208,12 +163,9 @@ TestCase {
                 "the failure panel was shown for an answer that carried no failure")
     }
 
-    // Related Artists is a whole row of links from one artist page to another,
-    // and Main.qml reuses the page item - so a refusal for the artist the user
-    // has already left arrives into the page now showing a different one. It
-    // must not condemn it. This is the shape that makes a *wrong* fix visible:
-    // check the error before the staleness and a held 404 draws the panel over
-    // an artist that is merely still bare.
+    // Related Artists links one artist page to another, and Main.qml reuses
+    // the page item, so a refusal for the artist just left arrives into the
+    // page now showing a different one. Staleness is checked before the error.
     function test_a_failed_reply_for_the_artist_just_left_does_not_condemn_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setHeaderErrorForTest("server replied: Not Found")
@@ -224,10 +176,9 @@ TestCase {
         compare(bridge.pendingHeaderRepliesForTest(), 3,
                 "the first artist's three replies were not held")
 
-        // The second artist answers with nothing and no error, which is the
-        // legitimately-bare page above. That is what makes the stale 404 able to
-        // do damage: everything loadFailed looks at is already empty, so the
-        // reason is the only thing standing between the user and a lie.
+        // The second artist answers with nothing and no error, the legitimately
+        // bare page above. Everything loadFailed looks at is already empty, so
+        // only the reason keeps the stale 404 from condemning it.
         bridge.setDeferHeaderRepliesForTest(false)
         bridge.setHeaderErrorForTest("")
         page.artistId = testCase.liveArtistId
@@ -266,8 +217,7 @@ TestCase {
                "a station that cannot be built drew an empty list and said nothing")
         verifyMessageIsReadable(page, "radioLoadErrorText", "radioLoadErrorDetail")
 
-        // The second group's distinguishing property: the heading the caller
-        // handed over is still correct and still on screen.
+        // The heading the caller handed over is still correct and still on screen.
         compare(page.radioTitle, "Erstes Stück",
                 "the failure threw away the title the caller passed")
         verify(page.loadError.length > 0,
@@ -302,8 +252,8 @@ TestCase {
                 "the failure message was shown for an answer that carried no failure")
     }
 
-    // "Start radio" is on every row, including the rows of a station, so one
-    // station opens another in the same reused page item.
+    // The radio entry is on every row, including the rows of a station, so
+    // one station opens another in the same reused page item.
     function test_a_failed_reply_for_the_station_just_left_does_not_condemn_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setHeaderErrorForTest("server replied: Not Found")
@@ -345,7 +295,7 @@ TestCase {
                "a mix that cannot be loaded drew an empty list and said nothing")
         verifyMessageIsReadable(page, "mixLoadErrorText", "mixLoadErrorDetail")
 
-        // The hero is kept, which is the whole difference from ArtistPage.
+        // The hero is kept, unlike on ArtistPage.
         var heroTitle = findChild(page, "heroTitle")
         verify(heroTitle, "the mix page has no hero title")
         compare(heroTitle.text, "Abendrunde",
@@ -375,9 +325,8 @@ TestCase {
     }
 
     // A video mix answers VIDEO_LIST where a normal mix answers TRACK_LIST, so
-    // its track list reads as empty with no error anywhere - the case
-    // tst_hero_from_id already holds the header half of. It must not be called
-    // refused: the reply arrived and it was fine.
+    // its track list reads as empty with no error anywhere. It must not be
+    // called refused.
     function test_a_mix_whose_tracks_cannot_be_read_is_not_called_refused() {
         bridge.setMixPageForTest({ id: "mx-live-2", title: "Mein Video-Mix 1",
                                    subtitle: "", coverUrl: "",
@@ -427,7 +376,7 @@ TestCase {
                 "the mix the user left retitled the one they are on")
     }
 
-    // ── PlaylistPage: the two folded conditions ──────────────────────────
+    // ── PlaylistPage: keeps its title, says why the list is empty ────────
 
     function test_a_playlist_the_server_refuses_says_why_and_keeps_its_title() {
         bridge.setHeaderErrorForTest("server replied: Not Found")
@@ -473,11 +422,8 @@ TestCase {
                 "the failure message covered a playlist that loaded")
     }
 
-    // The gate, in the shape that would hurt most. An empty playlist is an
-    // ordinary thing to own - every playlist is empty for as long as it takes to
-    // put the first song in - so a panel gated on the list being bare rather
-    // than on the server's answer would call the user's own new playlist
-    // unavailable.
+    // An empty playlist is an ordinary thing to own, so a panel gated on the
+    // list being bare would call the user's own new playlist unavailable.
     function test_an_empty_playlist_is_not_a_failed_one() {
         bridge.setPlaylistForTest({ uuid: "pl-live-2", title: "Neue Liste",
                                     description: "", numTracks: 0, duration: 0,
@@ -499,14 +445,9 @@ TestCase {
 
     // ── superseded is not failed ─────────────────────────────────────────
 
-    // loadPlaylistHeader() read `if (err || !p || requested !== uuid) return`:
-    // one door for three different things. Only the middle one is a failure.
-    //
-    // Held reply for a playlist the user leaves, with a 404 frozen into it,
-    // landing on a page now showing a real but empty playlist. The two
-    // conditions kept apart, nothing happens. Checked in the other order - the
-    // error first - the reason is recorded against a playlist that is merely
-    // empty, and the panel goes up over the user's own list.
+    // A held 404 for a playlist the user leaves lands on a page now showing
+    // a real but empty playlist. Staleness is checked before the error, so
+    // nothing happens.
     function test_a_failed_reply_for_the_playlist_just_left_does_not_condemn_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setHeaderErrorForTest("server replied: Not Found")
@@ -547,12 +488,9 @@ TestCase {
                 "the playlist the user left retitled the one they are on")
     }
 
-    // The same fold one function up, in reloadTracks(). That one is the top-up
-    // for a song added to this playlist from a row on this very page, and it
-    // runs on a page that is already right apart from one row - so a failed
-    // top-up must stay silent. Recording the reason there would put "this
-    // playlist could not be loaded" over a playlist the user can see, and over
-    // the empty one they had just added their first song to.
+    // reloadTracks() is the top-up for a song added from a row on this page,
+    // and it runs on a page that is already right apart from one row, so a
+    // failed top-up must stay silent.
     function test_a_failed_top_up_leaves_the_playlist_on_screen_alone() {
         bridge.setPlaylistForTest({ uuid: "pl-live-4", title: "Neue Liste",
                                     description: "", numTracks: 0, duration: 0,
@@ -578,10 +516,8 @@ TestCase {
                 "a failed top-up blanked the hero")
     }
 
-    // And the staleness half of the same statement, which until the stub grew
-    // its own hold for the tracks reply could not be reached at all: the
-    // function captures the uuid and then got a synchronous answer, so
-    // `requested` could never differ from the uuid on screen.
+    // The staleness half of the same guard. The stub holds the tracks reply,
+    // so the requested uuid can differ from the one on screen when it lands.
     function test_a_superseded_top_up_does_not_overwrite_the_playlist_on_screen() {
         bridge.setPlaylistForTest({ uuid: "pl-live-5", title: "Erste Liste",
                                     description: "", numTracks: 1, duration: 60,

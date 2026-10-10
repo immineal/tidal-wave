@@ -1,16 +1,7 @@
-// Song credits, the rights line and the date a record came out.
-//
-// The user: "currently there is no way to see song credits or exact copyright
-// information or the actual date that something came out." All three are in the
-// API and none of them reached the screen - the album page showed four digits of
-// the release date and nothing showed the rest.
-//
-// What this file measures is the content and the four states around it. The
-// credits panel's geometry - the slot it shares with the lyrics, and what
-// fullscreen does to it - is tests/qml/tst_layout_player.qml's business.
-//
-// No fixture here carries anything out of the user's own library: the names
-// below are invented and the identifiers are not real codes.
+// Song credits, the rights line and the date a record came out: the content
+// and the four states around it. The credits panel's geometry is covered by
+// tests/qml/tst_layout_player.qml.
+// Every name and identifier in the fixtures is invented.
 
 import QtQuick
 import QtQuick.Window
@@ -49,9 +40,8 @@ TestCase {
         bridge.resetTrackCreditsFetchCountForTest()
     }
 
-    // NowPlayingPage delegates its sleep timer to Window.window, so it cannot be
-    // instantiated bare. The same surface tst_layout_player.qml and
-    // tst_reduced_motion.qml mirror, and nothing more.
+    // NowPlayingPage delegates its sleep timer to Window.window, so it cannot
+    // be instantiated bare.
     Component {
         id: nowPlayingHost
         Window {
@@ -102,10 +92,9 @@ TestCase {
         }, settleMs, "the page never settled")
     }
 
-    // The shape the bridge answers with, invented end to end. "Bass guitar" and
-    // "Mastering Engineer" are the label's own words for the role, which is why
-    // they arrive in English and are not translated: they are data about the
-    // recording, like the names beside them.
+    // The shape the bridge answers with, invented end to end. The role names
+    // are the label's own words, so they arrive in English and are never
+    // translated.
     function fakeCredits() {
         return {
             groups: [
@@ -125,10 +114,8 @@ TestCase {
         }
     }
 
-    // Written onto the page rather than answered by the bridge, the way
-    // tst_layout_player.qml gives the page lyrics: the stub answers
-    // fetchTrackCredits emptily by design, which is what the empty case below
-    // measures.
+    // Written onto the page, because the stub answers fetchTrackCredits with
+    // an empty result by design. The empty case below relies on that.
     function giveCredits(page) {
         page.applyCredits(fakeCredits())
     }
@@ -191,14 +178,12 @@ TestCase {
                    "the panel does not credit " + names[j]
                    + ". It shows: " + shownTexts(panel))
 
-        // The rights line verbatim, not reworded and not reformatted.
+        // The rights line, verbatim.
         verify(hasTextContaining(panel, "(P) 2017 An Invented Label Ltd."),
                "the rights line is not on the panel. It shows: " + shownTexts(panel))
 
-        // The date in full. Not asserted as a literal string, because the page
-        // writes it in the reader's own locale: what matters is that the day and
-        // the month are there and not only the year, which is all the album page
-        // used to show.
+        // The date in full. No literal string is asserted, because the page
+        // writes it in the reader's locale: the day has to be there with the year.
         var dateText = ""
         var all = visibleTexts(panel, [])
         for (var k = 0; k < all.length; k++)
@@ -220,8 +205,7 @@ TestCase {
                + "day of the week")
 
         // The two identifiers are there, and they are the quietest thing on the
-        // panel: smaller than the names they sit under, which is what "reference
-        // data, not headline content" has to mean in pixels.
+        // panel: smaller than the names they sit under.
         verify(hasTextContaining(panel, "ZZ0000000001"),
                "the ISRC is not on the panel. It shows: " + shownTexts(panel))
         verify(hasTextContaining(panel, "000000000001"),
@@ -255,8 +239,8 @@ TestCase {
                "the credits list is " + view.width.toFixed(1) + "x"
                + view.height.toFixed(1) + " in a panel " + panel.width.toFixed(1)
                + "x" + panel.height.toFixed(1))
-        // ...and it keeps content room at the bottom for the chips over it, the
-        // same way the lyric list does.
+        // It keeps content room at the bottom for the chips over it, the same
+        // way the lyric list does.
         verify(view.bottomMargin >= 30,
                "the credits list reserves no content room at the bottom ("
                + view.bottomMargin + "), so its last line cannot clear the chips")
@@ -288,8 +272,7 @@ TestCase {
                "the credits list is still showing with nothing in it")
     }
 
-    // In flight. Not the same message as the empty case, and not the empty
-    // message as well as its own.
+    // In flight: its own message, and never the empty one beside it.
     function test_credits_in_flight_say_so() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -305,16 +288,14 @@ TestCase {
                "the panel says the credits are missing while it is still "
                + "fetching them. It shows: " + shownTexts(panel))
 
-        // And the chip says so too, rather than offering a tab that answers
-        // nothing yet.
+        // The chip says so too.
         var chip = findChild(page, "nowPlayingCreditsToggle")
         verify(hasTextContaining(chip, "Loading"),
                "the chip does not say the credits are loading")
     }
 
-    // A failed fetch lands on the same one message as an empty one, because from
-    // the panel's side "we asked and there is nothing to show" is one fact. What
-    // it must not do is get stuck in "loading" with a spinner that never stops.
+    // A failed fetch lands on the same message as an empty one. It must not
+    // stay in the loading state with a spinner that never stops.
     function test_a_failed_fetch_does_not_spin_forever() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -368,7 +349,7 @@ TestCase {
         compare(bridge.trackCreditsFetchCountForTest(), 2,
                 "a new track did not get its own credits")
 
-        // ...and going back to the first track is cached, not refetched.
+        // Going back to the first track is served from the cache.
         player.setCurrentTrackForTest(makeTrack(0))
         tryVerify(function () { return page.creditsState !== "loading" }, settleMs,
                   "coming back to the first track never settled")
@@ -376,8 +357,8 @@ TestCase {
                 "coming back to a track already fetched asked again")
     }
 
-    // The two panels are tabs over one slot, and the invariant is the page's and
-    // not the chips': anything that opens one closes the other.
+    // The two panels are tabs over one slot, and the page holds the
+    // invariant: anything that opens one closes the other.
     function test_the_two_panels_are_one_slot() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -399,7 +380,7 @@ TestCase {
         verify(page.showLyrics, "the lyrics did not come back")
         verify(!page.showCredits, "the credits stayed open under the lyrics")
 
-        // Closing the open one leaves the artwork, not an empty panel.
+        // Closing the open one brings the artwork back.
         page.showLyrics = false
         settlePage(page)
         compare(page.panelness, 0, "the slot is still a panel with neither open")
@@ -407,11 +388,9 @@ TestCase {
         verify(art && art.visible, "the artwork did not come back")
     }
 
-    // A track with no lyrics hides the lyrics chip, so a panel left open over
-    // that track's cover has lost the control that opened it. The slot follows
-    // the words: when the answer comes back "there are none", it goes back to
-    // the artwork rather than sitting on "No lyrics available" until the user
-    // finds the way out through the credits tab.
+    // A track with no lyrics hides the lyrics chip, so a panel left open
+    // over it has lost the control that opened it. When the answer is that
+    // there are none, the slot goes back to the artwork.
     function test_a_track_without_lyrics_closes_the_lyrics_panel() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -431,16 +410,14 @@ TestCase {
         var art = findChild(page, "nowPlayingArt")
         verify(art && art.visible, "the artwork did not come back")
 
-        // And the chip that would have closed it really is gone, which is what
-        // made the panel a one-way door.
+        // The chip that would have closed it is gone.
         var chip = findChild(page, "nowPlayingLyricsToggle")
         verify(chip, "the lyrics chip was not found")
         verify(!chip.visible, "the lyrics chip is still offered for a track with none")
     }
 
-    // Closing the lyrics must not reach across the tab divide. The credits are
-    // the other half of the same slot and have nothing to do with whether the
-    // words arrived, so a user reading them is not dropped back to the cover.
+    // Closing the lyrics must not reach across the tab divide: a user
+    // reading the credits is not dropped back to the cover.
     function test_unavailable_lyrics_leave_the_credits_alone() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -455,13 +432,9 @@ TestCase {
         compare(page.panelness, 1, "the slot left the panel shape with the credits open")
     }
 
-    // Moving to another track drops what was on screen and keeps the cache.
-    //
-    // Two halves, and they fail for different reasons. With the tab open the
-    // page has to go and ask again; with it shut there is nothing to ask for,
-    // and what matters is that the state does not carry over - otherwise
-    // opening the tab on the next track shows the last track's credits with no
-    // fetch in sight, which is the worst of the three states to be wrong in.
+    // Moving to another track drops what is on screen and keeps the cache.
+    // With the tab open the page asks again. With it shut, the state must not
+    // carry over to the next track.
     function test_a_track_change_clears_what_is_on_screen() {
         var host = showHost(nowPlayingHost, 1280, 1000)
         var page = host.page
@@ -499,7 +472,7 @@ TestCase {
         compare(page.creditsReleaseDate, "",
                 "the previous track's release date carried over")
 
-        // And opening the tab now shows the new track's answer, not the old one.
+        // Opening the tab now shows the new track's answer.
         openCredits(host)
         tryVerify(function () { return page.creditsState !== "loading" }, settleMs,
                   "the new track's credits never settled")
@@ -511,8 +484,8 @@ TestCase {
 
     // ── the album page ───────────────────────────────────────────────────
 
-    // The hero printed `albumData.year`, which is the first four characters of a
-    // date the response has carried in full all along.
+    // The response carries the date in full. albumData.year is only its
+    // first four characters.
     function test_the_album_hero_shows_the_whole_release_date() {
         var host = showHost(albumHost, 1000, 800)
         var page = host.page
@@ -540,8 +513,7 @@ TestCase {
         verify(facts.indexOf(weekday) < 0,
                "the hero's facts line reads \"" + facts
                + "\", which names the day of the week")
-        // The rest of the line is still there: this replaced the year, it did not
-        // replace the line.
+        // The rest of the facts line is still there.
         verify(facts.indexOf("•") >= 0,
                "the hero's facts line reads \"" + facts
                + "\", which has lost the rest of the facts")
@@ -577,8 +549,6 @@ TestCase {
                "the rights line is still showing with nothing in it")
     }
 
-    // A response that only ever had the year stays the year rather than becoming
-    // a guessed-at date.
     function test_a_year_only_release_date_stays_the_year() {
         var host = showHost(albumHost, 1000, 800)
         var page = host.page

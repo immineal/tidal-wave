@@ -16,24 +16,23 @@ private slots:
 
         QTest::newRow("profile name wins")
             << QJsonObject{{"profileName", "waveboy"},
-                           {"firstName", "Linus"},
+                           {"firstName", "Robin"},
                            {"username", "someone@example.com"}}
             << QStringLiteral("waveboy");
 
         QTest::newRow("real name beats the address")
-            << QJsonObject{{"firstName", "Linus"},
-                           {"lastName", "Linhof"},
+            << QJsonObject{{"firstName", "Robin"},
+                           {"lastName", "Ashby"},
                            {"username", "someone@example.com"}}
-            << QStringLiteral("Linus Linhof");
+            << QStringLiteral("Robin Ashby");
 
-        // The shape of the reporter's own account: a first name, no last name,
-        // no profile name, and an address sitting in "username".
+        // A first name, no last name, no profile name, an address in "username".
         QTest::newRow("first name only")
-            << QJsonObject{{"firstName", "Linus"},
+            << QJsonObject{{"firstName", "Robin"},
                            {"lastName", ""},
                            {"profileName", ""},
                            {"username", "someone@example.com"}}
-            << QStringLiteral("Linus");
+            << QStringLiteral("Robin");
 
         QTest::newRow("a username without an @ is a real username")
             << QJsonObject{{"username", "waveboy"}}

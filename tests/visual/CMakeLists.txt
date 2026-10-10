@@ -40,6 +40,7 @@ endif()
 
 qt_add_executable(tst_shots
     shots_main.cpp
+    StoreArt.h
     "${TIDALWAVE_ROOT}/tests/TestStubs.h"
 )
 

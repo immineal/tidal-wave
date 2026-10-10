@@ -1,17 +1,9 @@
-// Navigation from the playback chrome: SPEC-0.4.0 N1 and N2.
-//
-// N1 — the Now Playing track title opens that track's album.
-// N2 — every artist in the bottom player bar is its own link, so a two-artist
-//      track sends you to whichever name you clicked. The cover, the separator
-//      between two names and the empty space after them are not links: they
-//      open Now Playing, the way the rest of the bar's left group does.
-//
-// Both hosts stand in for Main.qml, which owns the router: the page and the bar
-// reach it as Window.window.navigate(page, params). The hosts record the calls
-// instead of routing, so a test can say exactly where a click would have gone.
-//
-// The fixtures carry German titles on purpose. Track metadata is never
-// translated (SPEC T3) but it is what has to fit, and German names are long.
+// Navigation from the playback chrome. The Now Playing track title opens
+// that track's album. Every artist in the player bar is its own link, while
+// the cover, the separator and the empty space after the names open Now
+// Playing. The hosts stand in for Main.qml's router and record navigate()
+// calls. The fixtures carry German titles on purpose: metadata is never
+// translated, and German names are long.
 
 import QtQuick
 import QtQuick.Window
@@ -28,9 +20,8 @@ TestCase {
 
     readonly property int albumIdFixture: 7788
 
-    // The shape TidalBridge::trackToMap() produces: the joined `artists`
-    // string and the first `artistId` as before, plus `artistList` with one
-    // {id, name} per artist.
+    // The shape TidalBridge::trackToMap() produces: the joined artists string,
+    // the first artistId, and artistList with one {id, name} per artist.
     function trackWith(artists) {
         var names = []
         for (var i = 0; i < artists.length; i++) names.push(artists[i].name)
@@ -119,9 +110,9 @@ TestCase {
         }
     }
 
-    // A track row in a window that records where it would have navigated. The
-    // row's own menu is what carries "Start radio", and it reaches the router
-    // through Window.window exactly as the bar and the page above do.
+    // A track row in a window that records where it would navigate. The
+    // row's menu carries the radio entry and reaches the router through
+    // Window.window, as the bar and the page do.
     Component {
         id: trackRowHost
         Window {
@@ -185,7 +176,7 @@ TestCase {
         return host
     }
 
-    // ── N1: the Now Playing title opens the album ────────────────────────
+    // ── the Now Playing title opens the album ────────────────────────────
 
     function test_now_playing_title_opens_its_album() {
         var host = showHost(nowPlayingHost, 1280, 900)
@@ -193,15 +184,14 @@ TestCase {
         verify(title, "the Now Playing track title was not found")
         compare(title.text, "Weit hinter dem Horizont")
 
-        // Near the left edge: the hit target follows the words, not the column
-        // the Text fills, so the far right of a short title is not the link.
+        // Near the left edge: the hit target follows the words, so the far right
+        // of a short title is not the link.
         mouseClick(title, 6, Math.round(title.height / 2))
         compare(host.navCalls.length, 1, "clicking the title should navigate once")
         compare(host.navCalls[0].page, "album")
         compare(host.navCalls[0].params.albumId, testCase.albumIdFixture)
     }
 
-    // A track with no album is not a dead link.
     function test_now_playing_title_without_album_does_nothing() {
         var t = trackWith([{ id: 11, name: "Erika Mustermann" }])
         t.albumId = 0
@@ -213,7 +203,7 @@ TestCase {
         compare(host.navCalls.length, 0, "a track with no album must not navigate")
     }
 
-    // ── N2: one hover target per artist in the player bar ────────────────
+    // ── one hover target per artist in the player bar ────────────────────
 
     function test_player_bar_renders_one_target_per_artist() {
         player.setCurrentTrackForTest(trackWith([
@@ -291,7 +281,7 @@ TestCase {
         compare(host.navCalls.length, 0, "the cover is not an artist link")
     }
 
-    // The ", " between two names belongs to neither of them.
+    // The separator between two names belongs to neither of them.
     function test_player_bar_gap_between_names_opens_now_playing() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -307,7 +297,6 @@ TestCase {
         compare(host.nowPlayingOpens, 1, "the gap opens Now Playing")
     }
 
-    // So does the empty space after the last name.
     function test_player_bar_space_after_the_names_opens_now_playing() {
         player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Ada" }]))
         var host = showHost(playerBarHost, 960, 200)
@@ -352,8 +341,8 @@ TestCase {
         compare(host.nowPlayingOpens, 1, "it falls through like the gaps do")
     }
 
-    // Tracks whose map predates `artistList` (saved recently-played entries,
-    // and anything built by hand) still have to show their artists.
+    // A track map with no artistList (a saved recently-played entry, or one
+    // built by hand) still has to show its artists.
     function test_player_bar_falls_back_to_the_joined_names() {
         player.setCurrentTrackForTest({
             id: 99, title: "Ohne Liste", artists: "Erika Mustermann, Gastsängerin",
@@ -399,13 +388,9 @@ TestCase {
         }
     }
 
-    // ── N2 in Now Playing as well ────────────────────────────────────────
-    //
-    // The user: "the singular artist link underline thing from the bar at the
-    // bottom obviously also have that in the now playing window." Same
-    // behaviour, same treatment -- textSec at rest, textPrimary and underlined
-    // under the pointer -- at the page's own 18px, and with the page's keyboard
-    // handling carried over per name rather than over the joined blob.
+    // ── the same links in Now Playing ────────────────────────────────────
+    // The same behaviour and treatment as the bar: textSec at rest,
+    // textPrimary and underlined under the pointer, with one tab stop per name.
 
     function test_now_playing_renders_one_target_per_artist() {
         player.setCurrentTrackForTest(trackWith([
@@ -420,7 +405,7 @@ TestCase {
         verify(names[0] !== names[1], "the two names must be separate items")
         verify(rightEdgeIn(names[0], host.page) <= names[1].mapToItem(host.page, 0, 0).x + 0.5,
                "the two artist names overlap")
-        // The joined one-link version is what it replaces, so it must be gone.
+        // The joined one-link line stands down for the per-name row.
         var joined = findChild(host.page, "nowPlayingArtists")
         verify(joined, "the joined fallback line was not found")
         verify(!joined.visible, "the joined line should stand down for the per-name row")
@@ -473,9 +458,8 @@ TestCase {
         verify(!names[1].font.underline, "the underline should follow the pointer")
     }
 
-    // The colour is the bar's, not the page's old accent. Now Playing is being
-    // cleared of accent-coloured content so a cover-derived background can go
-    // behind it, and this line was the first of that.
+    // The colour is the bar's. Now Playing carries no accent-coloured
+    // content, so that a cover-derived background can go behind it.
     function test_now_playing_artist_names_are_not_accent_coloured() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -501,8 +485,6 @@ TestCase {
         compare(names[0].color.toString(), Theme.textSec.toString(), "and only that one")
     }
 
-    // The page's keyboard handling came over per name: 18px and the focus ring
-    // are the page's, but there is one tab stop per artist now, not one blob.
     function test_now_playing_each_artist_is_its_own_tab_stop() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -539,7 +521,7 @@ TestCase {
         compare(host.navCalls.length, 0, "an artist with no id must not navigate")
     }
 
-    // Tracks whose map predates `artistList` keep the one link they can have.
+    // A track map with no artistList keeps the one link it can have.
     function test_now_playing_falls_back_to_the_joined_names() {
         player.setCurrentTrackForTest({
             id: 99, title: "Ohne Liste", artists: "Erika Mustermann, Gastsängerin",
@@ -554,7 +536,7 @@ TestCase {
         compare(joined.text, "Erika Mustermann, Gastsängerin")
         compare(joined.color.toString(), Theme.textSec.toString(),
                 "the fallback takes the same colour")
-        // Near the left edge: the hit target follows the words, not the column.
+        // Near the left edge, because the hit target follows the words.
         mouseClick(joined, 6, Math.round(joined.height / 2))
         compare(host.navCalls.length, 1, "the fallback still opens the lead artist")
         compare(host.navCalls[0].params.artistId, 11)
@@ -593,13 +575,9 @@ TestCase {
         }
     }
 
-    // The links have to keep working at the narrowest window the app supports.
-    // The bar used to shed its inline volume slider at 720px and this case was
-    // about the layout on the far side of that. There is no breakpoint any more
-    // - the volume is a speaker, a readout and the output picker at every width,
-    // and the slider comes up on hover - but 640 is still where the right-hand
-    // group squeezes the track info hardest: the left group lands on its 200px
-    // minimum there and the names have the least room they ever get.
+    // The links have to keep working at the narrowest window the app
+    // supports. At 640 the left group lands on its minimum width and the
+    // names have the least room they ever get.
     function test_player_bar_links_work_at_the_window_minimum() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Ada" },
@@ -613,21 +591,12 @@ TestCase {
         compare(host.navCalls[0].params.artistId, 22)
     }
 
-    // ── "Start radio": one viewer, with the old one kept as a fallback ───
-    //
-    // The owner, twice: "it doesn't have a way to unsave it and it also doesn't
-    // have a way to save new ones because if I just click on open track radio
-    // then it opens in a different viewer", and later "the two different views
-    // of a track radio as a mix and a radio are still there".
-    //
-    // Both viewers are real pages. MixPage has the hero, the artwork and now the
-    // Save pill; RadioPage is a bare list built from `tracks/<id>/radio`, which
-    // answers no mix identity and so can never be saved. Which one this entry
-    // opens is the whole of the complaint, and it turns on one field of the
-    // track payload.
+    // ── Start radio: the mix viewer, with the list viewer as a fallback ───
+    // MixPage has the hero, the artwork and the Save pill. RadioPage is a bare
+    // list built from tracks/<id>/radio, which answers no mix identity and so
+    // cannot be saved. Which one opens turns on the track's mix id.
 
-    // A 30-hex-character mix id, invented. Real ones are minted per account and
-    // none of the owner's is in this file.
+    // A 30-hex-character mix id, invented. Real ones are minted per account.
     readonly property string trackMixIdFixture: "0a1b2c3d4e5f60718293a4b5c6d7e8"
 
     function radioEntryOf(row) {
@@ -665,8 +634,8 @@ TestCase {
                 + "which has no way to save it")
         compare(host.navCalls[0].params.mixId, testCase.trackMixIdFixture,
                 "the mix id did not reach the page, so it could not be saved")
-        // Handed over so the hero is not blank for the length of the request,
-        // and so the heading reads "Radio" rather than flipping from "Mix".
+        // Handed over so the hero is not blank for the length of the request and
+        // the heading does not flip when the header lands.
         compare(host.navCalls[0].params.title, "Weit hinter dem Horizont")
         compare(host.navCalls[0].params.mixType, "TRACK_MIX")
         // And it costs nothing: the row was already told, so nothing is asked.
@@ -674,15 +643,9 @@ TestCase {
                 "a row that already knows its mix id still went to the server")
     }
 
-    // The case that decides whether the fix works at all.
-    //
-    // Only `tracks/<id>` is known to carry the `mixes` object the id comes out
-    // of - known from the reference client's recorded response, not from any
-    // call made here. Whether an album's, a playlist's or a search's items
-    // carry it was deliberately never found out, because finding out means
-    // reading the owner's account. Those lists are exactly where a user presses
-    // "Start radio" from, so without this lookup the fix could quietly be a
-    // no-op everywhere it matters.
+    // Only tracks/<id> is known to carry the mixes object the id comes out
+    // of. Rows in an album, a playlist or a search may not have it, so the
+    // row asks.
     function test_start_radio_asks_which_mix_when_the_row_was_not_told() {
         bridge.setTrackMixForTest(testCase.trackMixIdFixture)
         var host = rowWith({})
@@ -702,9 +665,8 @@ TestCase {
         compare(host.navCalls[0].params.mixType, "TRACK_MIX")
     }
 
-    // The fallback, and it is load-bearing rather than tidiness: a track Tidal
-    // builds no station for, and a lookup that fails, both have to leave the
-    // menu entry working the way it always did instead of doing nothing.
+    // The fallback: a track Tidal builds no station for, and a lookup that
+    // fails, both leave the menu entry opening the list viewer.
     function test_start_radio_falls_back_to_the_list_viewer_with_no_mix_to_open() {
         var cases = [
             { mix: "",     err: "",      why: "Tidal named no radio for the track" },
@@ -729,9 +691,9 @@ TestCase {
         }
     }
 
-    // A payload whose `trackMixId` is not a string - an object, a number, a
-    // null - must not be navigated with. It goes to the lookup like any row
-    // that was not told, and from there to whichever viewer the answer allows.
+    // A trackMixId that is not a string (an object, a number, a null) must
+    // not be navigated with. The row goes to the lookup like any row that
+    // was not told.
     function test_a_malformed_mix_id_is_not_navigated_with() {
         var shapes = [null, 7, {}, undefined]
         for (var i = 0; i < shapes.length; ++i) {
@@ -751,8 +713,8 @@ TestCase {
         }
     }
 
-    // The lookup answering a mix id that is not a string must not become a
-    // navigation either - the check is on the answer, not only on the row.
+    // A lookup answering a mix id that is not a string must not become a
+    // navigation either: the check is on the answer as well as on the row.
     function test_a_malformed_lookup_answer_is_not_navigated_with() {
         bridge.setTrackMixForTest("")
         var host = rowWith({})

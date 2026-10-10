@@ -264,7 +264,7 @@ public:
     // this album" was a state no fixture in this repo could reach, and
     // AlbumPage's two `if (!err)` callbacks could drop the reason for ever
     // without a single test going red. Same shape as the six mutators in
-    // a35cbe3.
+    // 72e5896.
     Q_INVOKABLE void fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
         m_lastAlbumTracksFetched = albumId;
         m_albumTracksFetches++;

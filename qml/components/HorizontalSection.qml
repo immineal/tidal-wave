@@ -14,16 +14,8 @@ Item {
     property string  mediaType: "album"
     property bool    showViewAll: true
 
-    // Cards are a FIXED size and the row simply clips. Deriving the size from
-    // the row width so it always ended on a deliberate sliver meant every
-    // card in every row resized continuously while the window was dragged,
-    // which is far noisier than a clean cut: the thing you are looking at
-    // should hold still while you resize the thing around it.
-    //
-    // What a row ends on is now whatever falls there. That costs the old
-    // "there is more to the right" cue, so the scrollbar is no longer hidden
-    // until hover when the row actually overflows; it is the honest signal and
-    // it does not move the artwork to deliver it.
+    // Cards are a fixed size and the row clips. A size derived from the row
+    // width resizes every card continuously while the window is dragged.
     readonly property int  cardSize: 160
     readonly property int  listSpacing: 16
     readonly property int  edgeInset: 24      // the leading inset, as list header/footer
@@ -65,11 +57,8 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            // The arrow used to live inside the translatable string. It is
-            // drawn beside it now: it is the only thing marking this grey
-            // line as a control rather than a caption, so it stays, but as
-            // part of the icon set rather than as a character the font may
-            // not have.
+            // The arrow is drawn beside the label, out of the icon set. It is
+            // the only thing marking this grey line as a control.
             Item {
                 id: viewAll
                 visible: root.showViewAll
@@ -126,11 +115,9 @@ Item {
                 orientation: ListView.Horizontal
                 clip: true
                 spacing: root.listSpacing
-                // Leading/trailing inset as real content (header/footer) rather than
-                // leftMargin/rightMargin: with margins the rest position is contentX
-                // = -leftMargin, which the wheel handler (clamped to >= 0) can't reach,
-                // so the inset was lost after scrolling right and back. As content the
-                // inset lives in [0, contentWidth-width] and is always preserved.
+                // The inset is content (header/footer), not a margin. With
+                // leftMargin the rest position is contentX = -leftMargin, which
+                // the wheel handler (clamped to >= 0) cannot reach.
                 header: Item { width: root.edgeInset; height: 1 }
                 footer: Item { width: root.edgeInset; height: 1 }
                 model: root.items
@@ -138,9 +125,8 @@ Item {
 
                 ScrollBar.horizontal: ScrollBar {
                     id: hbar
-                    // Shown when the row overflows, because the cards no
-                    // longer resize to leave a sliver of the next one and
-                    // that sliver was the only cue that the row scrolled.
+                    // Shown whenever the row overflows: it is the only cue that
+                    // the row scrolls.
                     policy: root.overflows ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                     minimumSize: 0.05
                 }
@@ -152,8 +138,8 @@ Item {
                     title:     modelData.title     || ""
                     subtitle:  modelData.subtitle  || ""
                     mediaType: root.mediaType
-                    // What a right-click pins (P2). Playlists are keyed by
-                    // uuid, everything else by id.
+                    // What a right-click pins. Playlists are keyed by uuid,
+                    // everything else by id.
                     itemId:    "" + (modelData.uuid || modelData.id || "")
                     cardSize:  root.cardSize
                     onClicked:      root.itemClicked(index, modelData)
@@ -203,11 +189,7 @@ Item {
         }
     }
 
-    // Nothing sits over the whole section. A hoverEnabled MouseArea used to,
-    // left over from when the scrollbar was only shown while the row was
-    // hovered; the scrollbar follows `overflows` now and nothing read it. As
-    // the section's last child it was in front of every card, and hover
-    // delivery stops at the first item that takes it, so it swallowed the
-    // cards' own hover: no wash, no play button and the arrow cursor where the
-    // pointing hand belongs. See tst_layout_pages.
+    // Nothing sits over the whole section. A hoverEnabled MouseArea here would
+    // be in front of every card and swallow the cards' own hover. See
+    // tst_layout_pages.
 }

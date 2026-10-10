@@ -4,19 +4,12 @@ import QtQuick.Layouts
 import QtQuick.Window
 import TidalWave
 
-// The sidebar, in both of its shapes (SPEC sections 2 and L2-L4).
-//
-// Wide windows get the full sidebar; below Prefs::railBreakpoint it collapses to
-// a 68px rail of icons, and hovering that rail brings the *same* sidebar back as
-// an overlay on top of the page, the way compact mode works in Zen Browser and
-// Firefox. There is deliberately no manual toggle: window width is the only
-// thing that decides.
-//
-// The overlay is why this item is not the panel it draws. The root is the slot
-// the layout gives it (rail-wide while compact) and `panel` inside it is free
-// to grow past that slot and cover the page without the layout reflowing and
-// shoving the page sideways. Main.qml gives the root `z: 2` so it covers the
-// page rather than sliding under it.
+// The sidebar in both of its shapes. Wide windows get the full sidebar; below
+// Prefs::railBreakpoint it is a rail of icons, and hovering the rail brings the
+// same sidebar back as an overlay on the page. Window width alone decides. The
+// root is the slot the layout reserves, and `panel` inside it may grow past
+// that slot, so the overlay does not reflow the page. Main.qml gives the root
+// `z: 2` so it covers the page.
 Item {
     id: root
 
@@ -40,53 +33,16 @@ Item {
     readonly property bool expanded:   !compact || hoverExpanded
     readonly property bool overlaying:  compact && hoverExpanded
 
-    // What the layout must reserve, which is *not* always what the panel draws:
-    // that difference is the overlay, and only the overlay.
-    //
-    // This used to be `compact ? railWidth : expandedWidth`, which jumped to
-    // the full width the instant `compact` went false while the panel spent
-    // 170ms animating into that slot. For those frames the slot was wider than
-    // the panel and the difference painted the page ground: a bar of empty page
-    // where the sidebar was about to be (QA: "it reserves its space and for a
-    // few milliseconds there's a black bar where it will expand to").
-    //
-    // Following `panelWidth` removes the gap by construction rather than by
-    // suppressing the animation, and it means the page's left edge travels with
-    // the sidebar instead of jumping ahead of it. The relayout that costs is
-    // only ever during a breakpoint crossing, which is a window resize that is
-    // relaying the page out anyway.
-    //
-    // The compact branch is the rail width and not `overlaying ? ...`, which
-    // was the first attempt: `overlaying` goes false the instant the pointer
-    // leaves the rail, while the panel still has 170ms of collapsing to do, so
-    // the slot would have jumped out to the panel's full width and the page
-    // would have flinched inwards and back on every un-hover. Below the
-    // breakpoint the slot is the rail, always; the panel overflowing it is the
-    // overlay, in both directions.
-    //
-    // It reads `expandedWidth` and animates, rather than reading `panelWidth`
-    // and inheriting its animation, because that version was smooth in one
-    // direction only (QA: "when the sidebar collapses because of window
-    // resizing, the main content just teleports, but when it expands back out
-    // again it animates smoothly"). Expanding, `compact` went false while
-    // panelWidth was still the rail, so the slot picked up the rail width and
-    // rode the panel out. Collapsing, `compact` went true and the slot fell
-    // straight to railWidth from a panel that still had 170ms to travel - the
-    // page jumped in one frame and the sidebar caught up with it afterwards.
-    //
-    // Both ends now animate on the same duration and easing, flipped by the
-    // same `compact` in the same frame, so the two stay locked together during
-    // a breakpoint crossing. They come apart only when they should: hovering
-    // the rail re-targets the panel to full width while `compact` holds the
-    // slot at the rail, which is exactly what makes the hover an overlay.
+    // What the layout reserves. While compact that is the rail, whatever the
+    // panel draws: the difference is the overlay. It has its own Behavior and
+    // does not read panelWidth, so the page edge follows the panel both ways.
     property int reservedWidth: compact ? railWidth : expandedWidth
     readonly property int targetWidth:   expanded ? expandedWidth : railWidth
     property int panelWidth: targetWidth
 
     // How open the panel is, 0 at the rail and 1 at full width. Everything that
-    // has to move during the slide lerps off this rather than switching on
-    // `expanded`, which would snap the moment the animation started instead of
-    // travelling with it.
+    // moves during the slide lerps off this; switching on `expanded` would snap
+    // when the animation starts.
     readonly property real wideness: Math.max(0, Math.min(1,
         (panelWidth - railWidth) / Math.max(1, expandedWidth - railWidth)))
     // Content that only fits the full sidebar. Held back until the panel is a
@@ -95,44 +51,28 @@ Item {
     readonly property bool showsWide: wideness > 0.25
     readonly property real wideOpacity: Math.max(0, (wideness - 0.25) / 0.75)
 
-    // X6. Qt exposes no cross-platform reduced-motion hint, so Application
-    // reads what the desktop does expose; see Application::reducedMotion().
-    // Theme.reduceMotion is where the rest of the app asks the same question;
-    // this stays as the name the sidebar's own tests reach for.
+    // Theme.reduceMotion under the name the sidebar's own tests reach for.
     readonly property bool reduceMotion: Theme.reduceMotion
 
-    // A drag is a continuous stream of new widths, so animating it would make
-    // the border lag behind the pointer. Reduced motion goes through the
-    // duration instead of through `enabled`, so the slide still runs and still
-    // finishes; it just finishes in the frame it started.
+    // A drag is a stream of new widths, so animating it would make the border
+    // lag the pointer. Reduced motion goes through the duration, not `enabled`,
+    // so the slide still runs and finishes in the frame it started.
     Behavior on panelWidth {
         enabled: !dragHandle.dragging
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
     }
 
-    // The slot does not animate until the window has said how wide it is.
-    // `hostWidth` comes from Window.width, which the platform delivers on its
-    // own schedule, so the first evaluation runs at 0 - and `compact` reads a
-    // zero width as "not compact". The correction that lands a frame later is a
-    // real binding change, not an initialisation, so without this gate every
-    // narrow window would open by sliding the whole page across from the full
-    // panel width down to the rail. It also broke two sidebar tests, which
-    // measured the geometry before that phantom slide had finished.
-    //
-    // Qt.callLater rather than setting it inline: it runs after the bindings
-    // this same change is about to re-evaluate, so the first, corrective jump
-    // is still instant and only the moves after it travel.
+    // The slot does not animate until the window has said how wide it is: the
+    // first evaluation runs at hostWidth 0, which reads as not compact. Set
+    // through Qt.callLater, so the corrective jump itself is still instant.
     property bool slotSettled: false
     onHostWidthChanged: {
         if (hostWidth > 0 && !slotSettled)
             Qt.callLater(function () { root.slotSettled = true })
     }
 
-    // Same curve and same duration as the panel's, deliberately: a breakpoint
-    // crossing moves both, and two animations that differ by a frame or an
-    // easing would show as the page ground tearing away from the sidebar's
-    // edge. Dragging bypasses it for the reason above - a drag is a stream of
-    // widths, and animating each one makes the page lag the pointer.
+    // Same curve and duration as the panel's: a breakpoint crossing moves both,
+    // and any difference shows as page ground between the two edges.
     Behavior on reservedWidth {
         enabled: root.slotSettled && !dragHandle.dragging
         NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
@@ -150,28 +90,15 @@ Item {
             syncRows(library.search(finder.query, finder.kinds))
             return
         }
-        // Filtered by the index rather than here. The `entries` property holds
-        // the four browsable kinds and deliberately leaves songs out - there
-        // are thousands of them and they would bury everything else - so
-        // filtering it in QML could never answer the Tracks chip, which showed
-        // "Nothing saved yet" while the same chip worked as soon as anything
-        // was typed. entriesForKinds() knows about the track entries too.
+        // Filtered by the index, not here: `entries` leaves songs out, so
+        // filtering it in QML could never answer the Tracks chip.
         syncRows(library.entriesForKinds(finder.kinds || []))
     }
 
     // ── the same rows, as a model the view can animate ───────────────────
-    //
-    // `rows` is the array; `libModel` is what the ListView binds to. The two
-    // hold the same entries in the same order, and the only reason there are
-    // two is motion.
-    //
-    // A ListView over a JS array has no change set to work from: assigning a
-    // new array is a model *reset*, which throws every delegate away and
-    // builds it again. Probed on Qt 6.12 - reordering a five-item array fires
-    // `populate` five times and `move`/`displaced` not once - so a row that
-    // changes tier because it was pinned, played or liked teleports to its new
-    // place. Feeding the same rows through a ListModel turns one pin into one
-    // move() on the model, which the view *can* animate.
+    // `rows` is the array; `libModel` holds the same entries for the ListView.
+    // Assigning a new JS array is a model reset that rebuilds every delegate,
+    // while a ListModel turns one pin into one move() the view can animate.
     ListModel {
         id: libModel
         // The rows are whole objects out of LibraryIndex. A static-role
@@ -184,15 +111,9 @@ Item {
     // already, and no kind contains a slash.
     function rowKey(e) { return e ? e.kind + "/" + e.id : "" }
 
-    // The smallest remove/move/insert list that turns `oldKeys` into
-    // `newKeys`, or null when it would take more than `cap` of them.
-    //
-    // Planned against a copy of the keys before anything touches the model,
-    // so the decision to give up and rebuild wholesale is made before the
-    // first op rather than halfway through. Past the cap the rows have little
-    // to do with each other anyway - a finder query replacing the whole list,
-    // not a pin changing one row's tier - and walking them one at a time would
-    // cost more than it could show.
+    // The smallest remove/move/insert list that turns `oldKeys` into `newKeys`,
+    // or null when it would take more than `cap` of them. Planned on a copy of
+    // the keys, so giving up happens before the first op touches the model.
     function rowPlan(oldKeys, newKeys, cap) {
         var ops = []
         var cur = oldKeys.slice()
@@ -238,22 +159,8 @@ Item {
     }
 
     // Rows that arrived while a pin was being dragged, held until the pointer
-    // is up. `null` when there are none.
-    //
-    // The library arrives in pages over several seconds, and a page landing
-    // under a live drag is a refill and not a handful of moves: past the diff's
-    // cap above, syncRows() gives up and rebuilds the model wholesale, which is
-    // libModel.clear(). That releases every delegate, including the one holding
-    // the pointer grab, and a broken grab is onCanceled - so the drag the user
-    // is in the middle of ends with nothing said and nothing moved.
-    //
-    // Found under load and not before it. Unloaded, the released delegates are
-    // still waiting on deleteLater when the drop arrives and the gesture
-    // survives by luck, which is why the test for this passes either way on an
-    // idle box; with eight spinners on twelve cores, and a drag already made in
-    // the same process, it failed ten times out of ten. Held for the length of a
-    // drag instead, which is well under a second, and applied the moment the
-    // pointer comes up.
+    // is up; null when there are none. A refill past the diff's cap clears the
+    // model, which releases the delegate holding the pointer grab.
     property var deferredRows: null
 
     function syncRows(next) {
@@ -283,12 +190,9 @@ Item {
                                                                 entry: next[op.at] })
         }
 
-        // The plan is only as good as the keys being unique. Two rows that
-        // answer to the same key - which a payload missing both kind and id
-        // would do - collapse into one entry in the lookups above and leave the
-        // model a different length from `rows`, which from then on would draw
-        // one row's content under another row's index. Rebuilt outright
-        // instead, which cannot be wrong even when the keys are.
+        // The plan is only as good as the keys being unique. Two rows with one
+        // key leave the model a different length from `rows`, so it is rebuilt
+        // outright.
         if (libModel.count !== next.length) {
             fillLibModel(next, newKeys)
             return
@@ -300,79 +204,33 @@ Item {
         for (i = 0; i < next.length; ++i) libModel.setProperty(i, "entry", next[i])
     }
 
-    // How long a row takes to travel to its new place.
     readonly property int libraryTravelMs: 170
 
-    // How many rows have been asked to travel since the sidebar was built. A
-    // ListView says nothing about its own transitions, and whether a reorder
-    // was animated or merely redrawn is the thing the sidebar's tests are
-    // about.
-    //
-    // It only ever goes up, deliberately. The first version of this was a
-    // "still moving" flag, and a flag is a transient: tests/qml/tst_reduced_
-    // motion.qml polls at 50ms, and on a machine running four test processes
-    // at once a poll interval ran long enough for a 170ms travel to start and
-    // finish between two of them - the reorder had animated and the test read
-    // "it did not", four times out of four. A count cannot be stepped over.
-    //
-    // A counted-in/counted-out pair would not do either: a ViewTransition the
-    // view *cancels*, which is what a second reorder arriving inside the first
-    // one does, drops the rest of its animation, so a trailing ScriptAction
-    // never runs. Probed on Qt 6.12: three reorders 40ms apart left such a
-    // counter stuck at 10 with everything long since settled.
+    // How many rows have been asked to travel, for the tests. It only goes up:
+    // a poll can step over a flag, and a ViewTransition the view cancels never
+    // runs a trailing ScriptAction, so an in/out pair would stick.
     property int libraryMoves: 0
 
-    // One list in both shapes of the sidebar means one model, so a query or a
-    // chip left behind would go on filtering a rail that has no finder on
-    // screen to explain itself. Clearing it as the panel closes is also what
-    // keeps the model still during the slide: a new model would throw the
-    // delegates away, and the covers are supposed to travel, not be rebuilt.
+    // One list in both shapes means one model, so a query left behind would go
+    // on filtering a rail with no finder on screen. Clearing as the panel
+    // closes also keeps the model still during the slide, so the covers travel.
     onExpandedChanged: if (!expanded) finder.reset()
 
-    // ── the pinned block, and dragging inside it (P3, P4) ────────────────
+    // ── the pinned block, and dragging inside it ─────────────────────────
 
-    // The height of one library row, which is also the height of one slot in
-    // the pinned block, so the drag can work in whole rows. Everything the
-    // drag does -- which slot the pointer is over, how far down the block
-    // still counts, where the drop indicator sits -- is expressed as a
-    // multiple of this, so the three of them follow it rather than being
-    // retuned every time the row changes height.
+    // The height of one library row and of one slot in the pinned block, so the
+    // drag works in whole rows.
     readonly property int libRowHeight: 44
 
-    // ── the cover, which is one cover in both shapes (S9, amended) ───────
-    //
-    // The rail used to draw its own 40px covers and the open sidebar its own
-    // type glyphs, and the two swapped. One size, one item, one list now.
-    //
-    // It was 26, which left the corner type badge too small to read: a 13px
-    // chip holding a 9px glyph, which is the whole reason the badge exists.
-    // At 36 the badge is 18 and its glyph 12, which is legible, and the cover
-    // still leaves 4px of air above and below inside the row -- the same
-    // rhythm 26-in-34 had -- and still centres in the 68px rail with 16
-    // either side.
+    // ── the cover, which is one cover in both shapes ─────────────────────
+    // 36 makes the corner badge 18 and its glyph 12, which is legible, and
+    // leaves 4px of air above and below the cover inside the row.
     readonly property int coverSize: 36
-    // Derived, so the next time the cover moves these move with it instead of
-    // being three more numbers to find.
     readonly property int coverBadge:     Math.round(coverSize * 0.5)
     readonly property int coverBadgeIcon: Math.round(coverSize / 3)
-    // How far the badge is held off the cover's right and bottom edges.
-    //
-    // Flush, it left a speck. A cover's corner is round and a badge's corner
-    // is round by a different amount, so where the two met a crescent of the
-    // cover showed past the badge and read as a stray pixel rather than as an
-    // edge. Worse with artwork on it: an Image is clipped to its parent's
-    // bounding box and never to its rounded outline, so the art reaches the
-    // square corner the badge's arc has already curved away from.
-    //
-    // Holding the badge inside the corner sidesteps the whole question --
-    // there is no join to get wrong, only a margin, and the same margin on
-    // both sides reads as deliberate. Clipping the badge to the cover's shape
-    // would not have worked: QQuickShape ignores an ancestor's clip in Qt
-    // 6.12, which is the wall the finder's reveal hit, so the glyph inside
-    // the badge would have gone on painting into the corner anyway.
-    //
-    // Derived like the rest of this block, with a floor of 2: below that the
-    // margin stops being a margin and the speck comes back.
+    // How far the badge is held off the cover's right and bottom edges. Flush,
+    // a crescent of cover shows past the badge's corner, and clipping cannot
+    // fix it: a Shape ignores an ancestor's clip. Below 2 the speck returns.
     readonly property int coverBadgeInset: Math.max(2, Math.round(coverSize * 0.06))
     // The whole tile when there is no artwork to put a corner on.
     readonly property int coverPlainIcon: Math.round(coverSize * 0.56)
@@ -397,9 +255,8 @@ Item {
     property int  pinDragTo:     -1
     property real pinDragOffset: 0
     // Whether the row being dragged is still over the pinned block. A drag that
-    // ends anywhere else is abandoned rather than clamped: a pinned row must not
-    // land in the ordinary library list below, and letting a drop out there
-    // mean anything at all would turn a slip of the hand into an edit.
+    // ends anywhere else is abandoned, not clamped: a pinned row must not land
+    // in the ordinary list by a slip of the hand.
     property bool pinDropValid:  false
     readonly property bool pinDragging: pinDragFrom >= 0
 
@@ -409,30 +266,9 @@ Item {
                                     from + Math.round(offset / root.libRowHeight)))
     }
 
-    // Whether that row is over the block at all, which is what decides whether
-    // the drop is taken. Any overlap counts: a row is libRowHeight tall and the
-    // block is pinnedCount of them, so a row whose top has not yet reached the
-    // bottom edge still has part of itself inside.
-    //
-    // This and pinSlotAt() have to answer about the same thing, and they used
-    // not to. pinSlotAt() clamps, so the target is always a legal slot and the
-    // indicator always points at one; the bound was measured against the
-    // *pointer* instead -- where in the row the press landed, plus the travel.
-    // Where in the row the press landed is invisible, and in a small block it is
-    // most of the room there is: a block of two is two rows tall, so a press
-    // half a row down and a pull of a row and a half put the pointer out of
-    // bounds while the line was still drawn under the bottom row, and the drop
-    // was thrown away with nothing said. Asked of the row, the two cannot come
-    // apart, and where the hand came down inside the handle stops meaning
-    // anything.
-    //
-    // In the block's own grid -- whole rows down from the top of the list -- and
-    // deliberately not in the row's drawn y. A row in travel has its new index
-    // for the whole 170ms the move/displaced transitions take while it is still
-    // drawn at its old place, so a reading off the drawn position is in the
-    // wrong frame for a drag begun inside that window, and the release was
-    // abandoned as "outside the block". `from` is an index and so is what
-    // pinSlotAt() returns; this stays on that side of the line.
+    // Whether that row is over the block at all, which decides whether the drop
+    // is taken. Any overlap counts. Asked of the row, as pinSlotAt() is, and in
+    // the block's own grid: a row in travel is still drawn at its old place.
     function pinOverBlock(from, offset) {
         var top = from * root.libRowHeight + offset
         return top > -root.libRowHeight
@@ -463,26 +299,22 @@ Item {
         var from = root.pinDragFrom
         var to   = root.pinDragTo
         var ok   = root.pinDropValid
-        // Read before the drag state is cleared, because clearing it releases
-        // any rows held during the drag and `rows` is what that rewrites. These
-        // two are the rows the gesture was made over, which is what it has to be
-        // answered in.
+        // Read before the drag state is cleared: clearing it releases any rows
+        // held during the drag and rewrites `rows`.
         var a = root.rows[from]
         var b = root.rows[to]
         cancelPinDrag()
         if (!ok || from < 0 || to < 0 || from === to) return
         if (!a || !b) return
-        // Row index and pin index line up today, but it is PinStore that is
-        // being reordered, so the move is expressed in its indices and not in
-        // the list's. PinStore persists it; LibraryIndex rebuilds off its
-        // `changed`, which is what reorders the rows on screen.
+        // It is PinStore that is reordered, so the move is in its indices and
+        // not the list's. LibraryIndex rebuilds off its `changed`.
         var fromPin = pins.indexOf(a.kind, a.id)
         var toPin   = pins.indexOf(b.kind, b.id)
         if (fromPin < 0 || toPin < 0 || fromPin === toPin) return
         pins.move(fromPin, toPin)
     }
 
-    // ── the pin menu (P2) ────────────────────────────────────────────────
+    // ── the pin menu ─────────────────────────────────────────────────────
 
     readonly property alias pinMenu: pinContextMenu
 
@@ -530,20 +362,9 @@ Item {
     }
 
     // ── the nav highlight, as one bar that travels ────────────────────────
-    //
-    // There is one indicator for the three rows and it moves between them. It
-    // used to be one per row, fading its own opacity and growing its own
-    // height, which is three indicators cross-fading: the highlight left one
-    // place and appeared in another with nothing travelling between the two
-    // (QA: "the highlighting bar can move up and not just fade out in one
-    // place and then fade in in the other place").
-    //
-    // Which row it is leaving, which it is arriving at, and how far along it
-    // is. Only `navT` is animated. The *geometry* is read live off the two
-    // rows on every frame, which is what makes a layout change - the panel
-    // resizing, the window changing height, a row's height changing - arrive
-    // in the frame it happens instead of being chased for 140ms by a bar that
-    // was told where the row used to be.
+    // One indicator for the three rows. Only `navT` is animated; the geometry
+    // is read live off the two rows on every frame, so a layout change arrives
+    // in the frame it happens.
     property Item navFrom: null
     property Item navTo:   null
     property real navT:    1
@@ -553,10 +374,8 @@ Item {
     property bool navResetting: false
     Behavior on navT {
         enabled: !root.navResetting
-        // 140ms is the sidebar's own short end - the rail slide and a row's
-        // travel in the list are 170 - because this is the smallest thing in
-        // the panel that moves and it moves on every click. The chips on
-        // Collection travel on the same number so the two read as one idea.
+        // The chips on Collection travel on the same 140, so the two read as
+        // one.
         NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
     }
 
@@ -568,13 +387,9 @@ Item {
         : currentPage === "collection" ? navCollection
         : null
 
-    // On screen at all, as one number: the bar fades and grows out of the row
-    // it is on rather than being there or not. Height as well as opacity,
-    // because at the far end of a fade alone a 3px bar is still a 3px bar,
-    // faintly, and the eye reads that as a smudge rather than as something
-    // leaving.
-    // Not readonly: a Behavior is a write interceptor, and the one on a
-    // read-only property has nothing it is allowed to write through.
+    // On screen at all, as one number, driving height as well as opacity: a
+    // faint 3px bar reads as a smudge. Not readonly: a Behavior is a write
+    // interceptor and cannot write through a read-only property.
     property real navPresence: currentNavItem !== null ? 1 : 0
     Behavior on navPresence {
         NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
@@ -585,10 +400,8 @@ Item {
     // slides in from the top of the panel on every launch.
     property bool navSettled: false
 
-    // Whether the bar was on a row when the page last changed - i.e. whether
-    // there is anything on screen for the next change to move. An album leaves
-    // it on none, and the row picked after that gets the bar back where it
-    // belongs rather than a bar materialising between two rows and sliding.
+    // Whether the bar was on a row when the page last changed. From a page that
+    // is none of the three, the next row gets the bar in place, without travel.
     property bool navOnARow: false
 
     onCurrentNavItemChanged: {
@@ -596,11 +409,9 @@ Item {
         root.navOnARow = (root.currentNavItem !== null)
     }
 
-    // `animate` false leaves navFrom at the destination, so the lerp below is
-    // degenerate and navT's value cannot be seen. That is the first placement,
-    // it is every change made while the sidebar is not on screen - fullscreen
-    // hides it outright, and a bar that travelled behind that would come back
-    // mid-flight - and it is the row picked from a page that was on none.
+    // `animate` false leaves navFrom at the destination, so nothing travels:
+    // the first placement, any change while the sidebar is hidden (fullscreen),
+    // and the row picked from a page that was on none.
     function retargetNav(animate) {
         var next = root.currentNavItem
         // Nothing is current: leave navTo where it is and let navPresence fade
@@ -672,10 +483,9 @@ Item {
 
             Item { Layout.fillWidth: true; Layout.preferredHeight: 24 }
 
-            // Named, because the one indicator above has to be able to ask a
-            // row where it is. Three ids and not a Repeater: these are three
-            // different pages with three different glyphs, and a model of them
-            // would be a list of one-offs.
+            // Named, because the one indicator above asks a row where it is.
+            // Three ids and not a Repeater: three pages with three glyphs make
+            // a model of one-offs.
             SideNavItem {
                 id: navHome
                 icon: "home"
@@ -709,26 +519,10 @@ Item {
             }
             Item { Layout.fillWidth: true; Layout.preferredHeight: 14 }
 
-            // ── the finder: search field plus type chips (S5, S8) ────────
-            //
-            // The slot's *height* travels with the slide rather than switching
-            // on at a threshold. The list underneath is now the same list the
-            // rail shows, so a block that appeared above it at full height
-            // would shove those covers down a step in the middle of a move
-            // that is supposed to be smooth.
-            //
-            // The finder itself is laid out at the size it will settle at and
-            // *scaled* into that slot, which is not the obvious way round.
-            // Resizing it to the slot instead would leave its content hanging
-            // out of it, and that content cannot be cut off: a Shape ignores
-            // an ancestor's `clip`, and the magnifier and all five chips are
-            // VectorIcons, i.e. Shapes. They would spill over the library list
-            // below and past the panel's edge for the length of every slide.
-            // Five chips also want 166px of finder, which is the whole reason
-            // Prefs::minSidebarWidth is 190, and the panel passes through
-            // every width under that on its way open. Scaling has nothing to
-            // spill, and at rest both scales are 1, so the settled sidebar is
-            // laid out exactly as it was.
+            // ── the finder: search field plus type chips ─────────────────
+            // The slot's height travels with the slide, so the list below does
+            // not jump. The finder is scaled into the slot at its settled size:
+            // resized, its icons would spill, as a Shape ignores `clip`.
             Item {
                 id: finderSlot
                 Layout.fillWidth: true
@@ -761,22 +555,10 @@ Item {
                 Layout.preferredHeight: Math.round(4 + 6 * root.wideness)
             }
 
-            // ── "New playlist" (S1, the one thing the list could not do) ──
-            //
-            // The sidebar lists the account's playlists and had no way to add
-            // one; creating is the only way a playlist enters the account from
-            // in here, since nothing in the interface favourites or
-            // unfavourites one. So the row belongs at the head of the list it
-            // adds to, between the finder and the library, where "add to this
-            // list" reads as what it is.
-            //
-            // The user's fork puts its + on a PLAYLISTS section heading. There
-            // is no such heading here - one flat, typed list is the whole of
-            // S1 - so the row is built like a library row instead: the same
-            // 44px rhythm, the same inset, a tile on the covers' centre line,
-            // and a label that fades in on `wideness` with everything else. At
-            // the rail it is a bare + in a 68px strip, which is exactly the
-            // bargain the rows below it make.
+            // ── "New playlist" ────────────────────────────────────────────
+            // At the head of the list it adds to and built like a library row:
+            // same height and inset, a tile on the covers' centre line, a label
+            // that fades in on `wideness`. At the rail it is a bare plus.
             Item {
                 id: newPlaylistRow
                 objectName: "sidebarNewPlaylist"
@@ -798,17 +580,9 @@ Item {
                     HoverHandler { id: newPlaylistHov; cursorShape: Qt.PointingHandCursor }
                     TapHandler  { onTapped: newPlaylistDialog.openEmpty() }
 
-                    // On the covers' centre line in both shapes of the
-                    // sidebar, which is the same arithmetic the covers
-                    // themselves use and comes out the same at both ends: a
-                    // 36px cover centred in a 68px rail sits at 16, and 16 is
-                    // also the sidebar's left inset, so nothing here travels
-                    // horizontally either.
-                    //
-                    // Outlined and smaller than a cover on purpose. This is an
-                    // action, not something in the library, and a filled tile
-                    // the size of the artwork below it would read as a row
-                    // that had lost its picture.
+                    // On the covers' centre line in both shapes, so nothing
+                    // travels sideways. Outlined and smaller than a cover: a
+                    // filled tile that size reads as a row without its picture.
                     Rectangle {
                         id: plusTile
                         objectName: "sidebarNewPlaylistTile"
@@ -847,31 +621,16 @@ Item {
                         elide: Text.ElideRight
                     }
 
-                    // No tooltip for the rail, and none anywhere else in this
-                    // panel either. It was the obvious thing to add and it is
-                    // unreachable: `hoverExpanded` watches a HoverHandler over
-                    // the whole panel, so pointing at this tile is already what
-                    // brings the full sidebar out, and the label arrives inside
-                    // 170ms - well before any tooltip delay worth having would
-                    // arm. The library rows below make the same bargain and
-                    // carry no tooltip for the same reason.
+                    // No tooltip: pointing at the rail already brings the full
+                    // sidebar out, and the label arrives before a tooltip delay
+                    // would arm.
                 }
             }
 
-            // ── the library list (S1, S2, S9) ────────────────────────────
-            //
-            // One list, in both shapes of the sidebar. It used to be two: a
-            // strip of 40px covers for the rail and a list of type glyphs and
-            // titles for the open sidebar, swapped at a threshold partway
-            // through the slide. That swap is what the user saw - the covers
-            // blinked out and the text blinked in, in the middle of an
-            // animation whose whole point was continuity.
-            //
-            // Now the row reflows instead. The cover is the same item at the
-            // same size throughout and only its x travels; the title, the
-            // finder and the chips fade in around it. Nothing below switches
-            // on `expanded`: it all lerps off `wideness`, which the panel's
-            // own width animation drives, so there is one clock.
+            // ── the library list ─────────────────────────────────────────
+            // One list in both shapes of the sidebar. The cover is the same
+            // item at the same size and only its x travels. Nothing below
+            // switches on `expanded`; it all lerps off `wideness`.
             ListView {
                 id: libList
                 objectName: "sidebarLibraryList"
@@ -880,13 +639,9 @@ Item {
                 clip: true
                 bottomMargin: 8
                 model: libModel
-                // This list draws no selection, but a ListView builds a
-                // default highlight item regardless and then *smooth-resizes*
-                // it toward the current row: an empty Item that paints
-                // nothing, trails the panel's width by a few hundred
-                // milliseconds and hangs out of a 68px rail the whole time it
-                // is catching up. Left untracked it stays 0 wide and costs
-                // nothing, which is what a highlight nobody draws should cost.
+                // This list draws no selection, but a ListView still builds a
+                // highlight item and smooth-resizes it toward the current row,
+                // hanging out of the rail meanwhile. Untracked it stays 0 wide.
                 highlightFollowsCurrentItem: false
                 // A library can run to thousands of rows, so nothing outside
                 // the viewport is kept alive.
@@ -896,17 +651,9 @@ Item {
 
                 delegate: LibraryRow { }
 
-                // S4/P3: the list reorders under the user constantly - pinning
-                // moves a row to the top, playing or liking something moves it
-                // up a tier - and until these the new order simply appeared.
-                //
-                // Only y is animated, and only on `move` and `displaced`: the
-                // row that was asked to move travels, and the rows it pushed
-                // past travel with it. `add` fades instead, because a row
-                // arriving has no previous place to travel from. There is no
-                // `remove` transition on purpose: a removed row's delegate
-                // would stay alive for the length of it, and the gap closing
-                // under `displaced` already says the row is gone.
+                // Only y is animated, on `move` and `displaced`. `add` fades:
+                // an arriving row has no previous place. No `remove`: it would
+                // keep the delegate alive, and the closing gap says enough.
                 move: Transition {
                     ScriptAction { script: root.libraryMoves++ }
                     NumberAnimation {
@@ -923,10 +670,9 @@ Item {
                         easing.type: Easing.OutCubic
                     }
                 }
-                // Not while the finder is filtering. A query replaces most of
-                // the list on every keystroke, and a fade that restarts from
-                // zero that often reads as the list flickering rather than as
-                // rows arriving.
+                // Not while the finder is filtering: a query replaces most of
+                // the list on every keystroke, and a fade restarting that often
+                // reads as flicker.
                 add: Transition {
                     enabled: !root.searching
                     NumberAnimation {
@@ -937,12 +683,9 @@ Item {
                     }
                 }
 
-                // P4: where the dragged row will land. Declared inside the
-                // list, which parents it to the content item, so it is
-                // positioned in content coordinates and points between the
-                // same two rows however far the list is scrolled. Only ever
-                // live while the sidebar is open, which is the only state a
-                // drag can start in.
+                // Where the dragged row will land. A child of the list is
+                // parented to the content item, so this is positioned in
+                // content coordinates however far the list is scrolled.
                 Rectangle {
                     objectName: "pinDropIndicator"
                     visible: root.pinDragging && root.pinDropValid
@@ -972,15 +715,10 @@ Item {
             }
         }
 
-        // ── footer: one row, which is the Settings button (S10) ────────
-        //
+        // ── footer: one row, which is the Settings button ──────────────
         // The whole row opens Settings, with the account name as its second
-        // line. It used to be an inert username with a gear button beside it,
-        // which gave the row two meanings and only one of them a target.
-        //
-        // Deliberately no avatar. The person drawing is the `artist` glyph
-        // now, so a person down here would read as an artist row; the avatar
-        // was taken out once already and this keeps it out.
+        // line. No avatar: the person drawing is the `artist` glyph, so a
+        // person here would read as an artist row.
         Rectangle {
             id: footer
             anchors.bottom: parent.bottom
@@ -999,8 +737,6 @@ Item {
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
 
-                // Treated as what it now is: a full-width row that does
-                // something, like the nav rows above it.
                 Rectangle {
                     anchors.fill: parent
                     anchors.leftMargin: 2
@@ -1020,9 +756,8 @@ Item {
                         strokeWidth: 1.8
                         anchors.verticalCenter: parent.verticalCenter
                         // 16 from the panel edge once open, centred in the
-                        // rail, and travelling between the two on the same
-                        // `wideness` as every other icon in the sidebar. The
-                        // row's own 8px of inset comes off the open position.
+                        // rail, travelling on `wideness`. The row's own 8px of
+                        // inset comes off the open position.
                         readonly property real railX:
                             Math.round((root.railWidth - 16 - width) / 2)
                         x: Math.round(railX + (8 - railX) * root.wideness)
@@ -1042,10 +777,9 @@ Item {
                         Text {
                             objectName: "sidebarSettingsLabel"
                             width: parent.width
-                            // qsTranslate rather than qsTr: this is the same
-                            // word the Settings panel heads itself with, and
-                            // a second entry in a finished catalogue would
-                            // only be the same translation typed twice.
+                            // qsTranslate, not qsTr: this is the word the
+                            // Settings panel heads itself with, so the
+                            // catalogue holds it once.
                             text: qsTranslate("SettingsPanel", "Settings")
                             color: Theme.textPrimary
                             font.pixelSize: 14
@@ -1068,9 +802,8 @@ Item {
                     HoverHandler { id: settingsHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: root.openSettings() }
 
-                    // In the rail the labels are not on screen, so this is
-                    // the only place the row says what it is; the shortcut
-                    // rides along, as it did on the gear.
+                    // In the rail the labels are not on screen, so this is the
+                    // only place the row says what it is.
                     ToolTip.visible: settingsHover.hovered
                     ToolTip.text: qsTr("Settings (Ctrl+,)")
                     ToolTip.delay: 450
@@ -1078,16 +811,10 @@ Item {
             }
         }
 
-        // ── the one nav indicator (S2) ────────────────────────────────
-        //
-        // A child of the panel and not of a row, because a bar that belongs to
-        // a row can only ever appear and disappear with it. It is the panel
-        // that owns the highlight now, and the rows only say where it goes.
-        //
-        // x is 0: each row insets its own fill by 8 and the bar used to hang
-        // 8 back out of it, which is the panel's left edge in both shapes of
-        // the sidebar. So there is nothing here that changes with the rail,
-        // and nothing to suppress when the panel resizes.
+        // ── the one nav indicator ─────────────────────────────────────
+        // A child of the panel and not of a row: a bar that belongs to a row
+        // can only appear and disappear with it. x is 0, the panel's left edge
+        // in both shapes, so nothing here changes with the rail.
         Rectangle {
             id: navMark
             objectName: "navCurrentIndicator"
@@ -1098,16 +825,9 @@ Item {
             opacity: root.navPresence
             visible: opacity > 0.001
 
-            // The two ends of the travel, in the panel's coordinates.
-            //
-            // `body.y` and not mapFromItem(): a function call is read once and
-            // then never again, and this has to follow the rows. body is
-            // anchored to the panel's own edges, so its y is the only step
-            // between a row's coordinates and the panel's.
-            //
-            // Half the row's inner box tall, which is the 0.5 the per-row
-            // marker used, measured off the row rather than off a constant so
-            // three rows of different heights would still be answered.
+            // The two ends of the travel, in the panel's coordinates. `body.y`
+            // and not mapFromItem(): a function call is read once, and this
+            // must follow the rows. Half the row's inner box tall.
             readonly property real fromH: root.navFrom ? Math.round((root.navFrom.height - 4) * 0.5) : 0
             readonly property real toH:   root.navTo   ? Math.round((root.navTo.height   - 4) * 0.5) : 0
             readonly property real fromY: root.navFrom ? body.y + root.navFrom.y + root.navFrom.height / 2 : 0
@@ -1134,7 +854,7 @@ Item {
         }
     }
 
-    // ── L3: the border is the resize handle ──────────────────────────────
+    // ── the border is the resize handle ──────────────────────────────────
 
     MouseArea {
         id: dragHandle
@@ -1184,21 +904,15 @@ Item {
     // ── navigation helpers ───────────────────────────────────────────────
 
     function glyphFor(kind) {
-        // Identity, now that a song has a glyph of its own: every kind the
-        // library lists is also a name VectorIcon draws. It stays a function
-        // because it is the one place that says so, and because the badges
-        // are asserted against it in tests/qml/tst_sidebar.qml.
+        // Identity: every kind the library lists is also a name VectorIcon
+        // draws. Kept as a function because tests/qml/tst_sidebar.qml asserts
+        // the badges against it.
         return kind
     }
 
     // Opens one library row. `data` is the row as LibraryIndex handed it over.
-    //
-    // Opening is not playing. This used to call library.markPlayed() here, so
-    // merely clicking a row floated it into the recently-played tier and the
-    // top of the sidebar filled up with things the user had looked at and not
-    // listened to. Recording a play is the player bar's job and only the player
-    // bar's - it listens to player.sourceChanged, which fires when something
-    // actually starts - so there is nothing to do here but navigate.
+    // Opening is not playing: recording a play is the player bar's job, off
+    // player.sourceChanged.
     function open(kind, id, data) {
         switch (kind) {
         case "playlist":
@@ -1242,24 +956,11 @@ Item {
     // tst_sidebar.qml can measure it. Nothing else reads it.
     readonly property alias settingsPanel: settingsPopup
 
-    // Its own file since it grew a picker for every 0.4.0 feature that had
-    // none; this file was already the longest in qml/.
     SettingsPanel { id: settingsPopup }
 
-    // The "New playlist" row above the library opens this; see
-    // NewPlaylistDialog.qml, which three places in the app share.
-    //
-    // Nothing is done with the answer here, deliberately. The bridge raises
-    // playlistCreated, Application hands that to LibraryIndex::addPlaylist,
-    // and the new row arrives in `library.entries` and through this list like
-    // every other row - stamped as of now, so it lands at the head of the
-    // unpinned block where the user will look for it. Reloading anything here
-    // would be a second path to the same row that could disagree with the
-    // first.
-    //
-    // A Popup is not a visual child of the sidebar once it reparents itself to
-    // the window overlay, so this alias is the only handle a test has on it -
-    // the same reason `settingsPanel` above exists.
+    // Nothing is done with the answer here: the bridge raises playlistCreated,
+    // LibraryIndex adds the row and it arrives through `library.entries` like
+    // every other. The alias is a test's only handle on the reparented Popup.
     readonly property alias playlistDialog: newPlaylistDialog
 
     NewPlaylistDialog { id: newPlaylistDialog }
@@ -1267,18 +968,16 @@ Item {
     // ── inline components ────────────────────────────────────────────────
 
     // One row of the library list, in both shapes of the sidebar. The cover is
-    // the whole of why this is one component and no longer two: it is the same
-    // item at the same size in the rail and beside a title, and only its x
-    // travels, so opening the sidebar moves it instead of destroying it and
-    // building something else in its place.
+    // the same item at the same size in the rail and beside a title, and only
+    // its x travels.
     component LibraryRow : Item {
         id: rowItem
         objectName: "libraryRow"
 
         required property int index
         // The `entry` role of libModel, which holds the whole library row.
-        // Kept under the old name as well: everything below, and the sidebar's
-        // tests, read the row through `modelData`.
+        // Everything below, and the sidebar's tests, read it through
+        // `modelData`.
         required property var entry
         readonly property var modelData: entry
 
@@ -1288,23 +987,18 @@ Item {
         readonly property bool   pinned: modelData.pinned === true
         readonly property bool   hasArt: (modelData.imageUrl || "").length > 0
 
-        // The break between the pinned block and the rest (P3/P5). Search
-        // results have no pinned block, so they have nothing to break.
-        //
-        // The row above is read out of `rows` rather than out of the model,
-        // and guarded: a rebuild writes `rows` before it reorders the model,
-        // so for the rest of that call a delegate can still be sitting on an
-        // index the new rows do not reach.
+        // The break between the pinned block and the rest; search results have
+        // no pinned block. The row above is read out of `rows` and guarded: a
+        // rebuild writes `rows` before it reorders the model.
         readonly property bool blockBreak: {
             if (root.searching || index <= 0 || pinned) return false
             var above = root.rows[index - 1]
             return above !== undefined && above.pinned === true
         }
 
-        // P4. There is nothing to reorder in a block of one, and nothing
-        // outside the block is draggable at all, which is half of why a
-        // pinned row cannot end up in the list below. A 68px rail has no room
-        // for a grip either, so the handle only exists once the labels do.
+        // Nothing to reorder in a block of one, and nothing outside the block
+        // is draggable. The rail has no room for a grip, so the handle exists
+        // only once the labels do.
         readonly property bool draggable: pinned && !root.searching
                                           && root.pinnedCount > 1 && root.showsWide
         readonly property bool dragging:  root.pinDragging && root.pinDragFrom === index
@@ -1326,9 +1020,8 @@ Item {
             anchors.topMargin: 5
             height: 1
             color: Theme.border
-            // One rule doing what the rail's short dash and the open list's
-            // full-width line used to do separately: it hugs the covers at the
-            // rail and stretches across the row as the panel opens.
+            // One rule for both shapes: it hugs the covers at the rail and
+            // stretches across the row as the panel opens.
             readonly property real railW: root.coverSize + 2
             readonly property real railX: Math.round((root.railWidth - railW) / 2)
             x: Math.round(railX + (root.coverLeft - railX) * root.wideness)
@@ -1354,10 +1047,9 @@ Item {
             HoverHandler { id: rowHov; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData) }
 
-            // P2. Right button only, so the tap handler above keeps every
-            // left-click; declared before the cover and the grip so a
-            // right-click over either still opens the menu. Neither of those
-            // takes mouse events, so the clicks fall through to here.
+            // Right button only, so the tap handler above keeps every
+            // left-click. Declared before the cover and the grip, so a
+            // right-click over either falls through to here.
             MouseArea {
                 objectName: "libraryRowMenuArea"
                 anchors.fill: parent
@@ -1370,9 +1062,8 @@ Item {
 
             Rectangle {
                 id: cover
-                // Named for the rail it used to belong to, which is the name
-                // tests/qml/tst_pinning.qml still reaches for. It is every
-                // row's cover now, in both shapes of the sidebar.
+                // Every row's cover, in both shapes of the sidebar. The name is
+                // the one tests/qml/tst_pinning.qml reaches for.
                 objectName: "railPinCover"
                 // Centred in the rail, at the row's content inset once open.
                 // Both are measured from the panel, so the row's own inset
@@ -1396,20 +1087,9 @@ Item {
                     // answers is another thing popping in.
                     visible: rowItem.hasArt
                     source: rowItem.hasArt ? "image://tidal/" + rowItem.modelData.imageUrl : ""
-                    // Decoded at twice the 36px box rather than at the 320 the
-                    // URL serves. This list is the whole library - 971 rows on
-                    // the owner's account - so without this every row holds a
-                    // full-size QImage for a thumbnail. Both dimensions, never
-                    // one: a width-only sourceSize reaches the provider as
-                    // 72x0, which QSize::isValid() accepts and
-                    // QImageReader::setScaledSize() turns into nothing.
-                    //
-                    // Safe against the crop, which MediaCard is not, because
-                    // every URL this list can hold is square by construction:
-                    // LibraryIndex builds all five kinds through coverUrl() or
-                    // artistPictureUrl(), both of which emit `%1/%2x%2.jpg`,
-                    // and Playlist::fromJson deliberately prefers squareImage
-                    // over the 3:2 `image` crop that 403s at square sizes.
+                    // Decoded at twice the box, not the 320 the URL serves.
+                    // Both dimensions: width alone reaches the provider as
+                    // 72x0. Safe on a crop as every URL in this list is square.
                     sourceSize: Qt.size(root.coverSize * 2, root.coverSize * 2)
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
@@ -1417,12 +1097,9 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
                 }
 
-                // The type, which the row no longer spells out beside the
-                // title now that the cover has that place. One glyph either
-                // way - a corner mark over artwork, the whole tile without it
-                // - so a row costs exactly what it cost before. That matters:
-                // the list is virtualised over libraries of thousands and the
-                // spec stress-tests it.
+                // The type. One glyph either way, a corner mark over artwork or
+                // the whole tile without it, so a row costs one glyph in a
+                // virtualised list of thousands.
                 Rectangle {
                     objectName: "libraryRowTypeBadge"
                     visible: rowItem.hasArt
@@ -1444,10 +1121,8 @@ Item {
                     strokeWidth: rowItem.hasArt ? 1.5 : 1.6
                     color: rowItem.pinned ? Theme.accent : Theme.textDim
                     // Centred in the badge, which is itself held off the
-                    // corner, so the glyph clears the cover's edge by the
-                    // badge's own padding plus that inset. One item drawn in
-                    // two places rather than two items, which is what keeps a
-                    // row costing one glyph however long the library is.
+                    // corner. One item drawn in two places, so a row costs one
+                    // glyph.
                     readonly property int badgePad: Math.round((root.coverBadge - width) / 2)
                                                     + root.coverBadgeInset
                     x: rowItem.hasArt ? parent.width - width - badgePad
@@ -1456,15 +1131,9 @@ Item {
                                       : Math.round((parent.height - height) / 2)
                 }
 
-                // A pinned cover keeps its ring wherever the break above has
-                // scrolled to, and in the rail it is the only thing left to
-                // tell it apart in a strip of bare artwork.
-                //
-                // Drawn here, as the cover's last child, rather than as the
-                // cover's own `border`: a Rectangle paints its border under
-                // its own children, and the artwork fills the whole box, so
-                // on every row that had a cover the ring was painted and then
-                // covered over. It was only ever visible on rows with no art.
+                // A pinned cover keeps its ring; in the rail nothing else tells
+                // it apart. Drawn as the last child: a Rectangle paints its own
+                // border under its children, and the art fills the box.
                 Rectangle {
                     objectName: "libraryRowRing"
                     anchors.fill: parent
@@ -1495,9 +1164,8 @@ Item {
                 elide: Text.ElideRight
             }
 
-            // P4: the drag affordance. Drawn on every pinned row rather than
-            // on hover alone, so the block says it can be reordered before
-            // anyone goes looking.
+            // The drag affordance, drawn on every pinned row and not on hover
+            // alone, so the block says it can be reordered.
             Item {
                 id: grip
                 objectName: "pinDragGrip"
@@ -1540,18 +1208,15 @@ Item {
                     }
                     onPositionChanged: function (mouse) {
                         if (!rowItem.dragging) return
-                        // The row travels with the pointer, but the event
-                        // arrives in the handle's own moving coordinates and
-                        // mapToItem puts it back, so this is the pointer
-                        // itself, in the list's content space.
+                        // The event arrives in the handle's own moving
+                        // coordinates; mapToItem puts the pointer back into the
+                        // list's content space.
                         var p = mapToItem(libList.contentItem, mouse.x, mouse.y)
                         root.pinDragOffset = p.y - dragArea.pressY
                         root.pinDragTo     = root.pinSlotAt(rowItem.index, root.pinDragOffset)
-                        // Confined to the pinned block, in both directions:
-                        // the list below it and the page beside it. The row
-                        // decides the first of those, the pointer the second --
-                        // leaving the sidebar sideways is leaving the sidebar
-                        // whatever the row is doing.
+                        // Confined to the pinned block: the row decides whether
+                        // it is still over the block, the pointer whether it
+                        // has left the sidebar sideways.
                         root.pinDropValid  =
                             root.pinOverBlock(rowItem.index, root.pinDragOffset)
                             && p.x >= 0 && p.x <= libList.width
@@ -1584,12 +1249,9 @@ Item {
 
         readonly property bool current: root.currentPage === page
 
-        // The row's own fill and ink cross-fade on the same 140ms the bar
-        // travels on, so the row arrives as one thing. They stay per-row
-        // deliberately: the current fill is the hover fill, and one travelling
-        // fill could not also be under the pointer somewhere else. The *bar* is
-        // what reads as a position, and that is the thing that moves - see
-        // navMark in the panel.
+        // The row's fill and ink cross-fade on the bar's 140ms. They stay
+        // per-row: the current fill is the hover fill, and one travelling fill
+        // could not also be under the pointer. See navMark.
         Layout.fillWidth: true
         Layout.preferredHeight: 44
 

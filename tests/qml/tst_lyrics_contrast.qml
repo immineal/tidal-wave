@@ -1,34 +1,9 @@
-// How readable the line you are on is, in numbers, on every palette the app
-// has.
-//
-// The user: "the highlighted lyrics line should really be white on black and
-// black on white instead of the accent colour, just to make it more readable,
-// right?" They were right, and the measurement says how right: the active line
-// was Theme.accent, which lands at 3.61-4.05:1 against the panel on the three
-// dark palettes. 14px type needs 4.5:1 to clear WCAG AA, so docked lyrics on
-// half the themes in this app were under the floor - the one line the eye is
-// supposed to be on was the one that failed.
-//
-// Theme.textPrimary is what "white on black and black on white" already means
-// in this codebase - #FFFFFF or #EEF5F0-ish on the dark ramps, #101010 or
-// #08111A-ish on the light ones - so the change reuses it rather than adding a
-// second token for the same colour. It measures 14.18-21.00:1 everywhere.
-//
-// Why a floor of 7 and not 4.5: 4.5 is the threshold the old colour missed, so
-// a case that only asked for 4.5 would be satisfied by the light palettes'
-// accents (4.34-5.99) and would therefore not catch a revert on the half of
-// the themes where it matters most. 7 is AAA, it is clear of every accent in
-// the table by a wide margin, and the ink that replaced them clears it by
-// twice over. Nothing in between is a number anybody chose.
-//
-// Eighteen rows: six palettes, each with the neutral grey ramp (the default)
-// and with the tinted grounds switched on, plus the true-black transform on the
-// three dark ones in both of those states. The light palettes are not in the
-// true-black rows because palette() refuses to apply it to them. The three
-// light palettes are luminance-inverted against the dark ones - the project has
-// measured that already - so one colour cannot be assumed to work for all six,
-// and this does not assume it: it reads back whatever Theme.textPrimary is on
-// each and measures that.
+// The contrast of the active lyric line against its ground, on every palette.
+// The line is drawn in Theme.textPrimary. The floor is 7:1 (WCAG AAA): the
+// accents reach 4.5:1 on some palettes, so a lower floor would not catch a
+// line painted in the accent. Eighteen rows: six palettes, each with neutral
+// and tinted greys, plus true black on the three dark ones. palette() does
+// not apply true black to a light palette.
 
 import QtQuick
 import QtQuick.Window
@@ -43,9 +18,8 @@ TestCase {
 
     readonly property int sidebarWidth: 220
 
-    // WCAG 2.1, the same arithmetic tests/tst_theme.cpp uses on the C++ side.
-    // Written out here rather than reached for, because what this file measures
-    // is the colour a *delegate* is painted in, which only exists in QML.
+    // WCAG 2.1, the same arithmetic tests/tst_theme.cpp uses. Written out
+    // here because the colour a delegate is painted in only exists in QML.
     function channel(c) {
         return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
     }
@@ -129,10 +103,8 @@ TestCase {
         return page
     }
 
-    // Every realised lyric line, with what the delegate actually draws. Taken
-    // off the delegates and not off the page's properties: the page saying
-    // "line 3 is the one" and the list painting line 3 in textSec is exactly
-    // the disagreement this file is for.
+    // Every realised lyric line, read off the delegates. The page's
+    // properties can name an active line that the list paints as inactive.
     function linesOf(page) {
         var view = findChild(page, "nowPlayingLyricsView")
         verify(view, "the lyric list was not found")
@@ -155,9 +127,8 @@ TestCase {
         var hit = []
         for (var i = 0; i < all.length; i++)
             if (all[i].active) hit.push(all[i])
-        // Exactly one, and it is the one the page says. A fixture where every
-        // line is active, or none is, would let a colour assertion below pass
-        // on a line nobody is looking at.
+        // Exactly one, and the one the page says. With every line active, or
+        // none, a colour assertion would pass on the wrong line.
         compare(hit.length, 1,
                 hit.length + " of " + all.length + " lyric lines call "
                 + "themselves active")
@@ -173,10 +144,8 @@ TestCase {
         fail("every realised line is the active one")
     }
 
-    // The ground the panel paints, which is what the words are read against
-    // while the panel is docked. Read back rather than assumed to be
-    // Theme.surface: the panel fades its own fill out in the reading view, and
-    // a case that assumed the fill would be measuring a colour nothing paints.
+    // The ground the words are read against while the panel is docked. Read
+    // back from the panel, which fades its own fill out in the reading view.
     function panelGround(page) {
         var panel = findChild(page, "nowPlayingLyricsPanel")
         verify(panel, "the lyrics panel was not found")
@@ -239,16 +208,13 @@ TestCase {
         var ground = panelGround(page)
         var ratio  = contrast(line.color, ground)
 
-        // The number first, because it is the deliverable and because a failure
-        // that reports the ratio says more than one that reports a hex code.
+        // The ratio first: a failure that reports it says more than a hex code.
         verify(ratio >= contrastFloor,
                row.tag + ": the active line is " + ratio.toFixed(2)
                + ":1 against the panel (" + line.color + " on " + ground
                + "), under the " + contrastFloor + ":1 this file holds it to")
 
-        // ...and then the token, by name as well as by number. The number alone
-        // would be satisfied by any near-white, and the point of the change was
-        // to reuse the one that already means this rather than invent a second.
+        // Then the token by name: the ratio alone would accept any near-white.
         compare(line.color.toString(),
                 ThemePalette.current.textPrimary.toString(),
                 row.tag + ": the active line is " + line.color
@@ -256,10 +222,9 @@ TestCase {
         verify(line.color.toString() !== ThemePalette.current.accent.toString(),
                row.tag + ": the active line is still the accent")
 
-        // And against the ground the reading view leaves behind when the panel's
-        // own fill fades out. Over cover art the top stop is clamped in C++ to a
-        // lightness this page's type stays legible against, so bg is the
-        // pessimistic case for a page with no artwork to tint it.
+        // And against the ground the reading view leaves when the panel's fill
+        // fades out. Over cover art the top stop is clamped in C++, so bg is the
+        // pessimistic case.
         var onPage = contrast(line.color, Theme.bg)
         verify(onPage >= contrastFloor,
                row.tag + ": the active line is " + onPage.toFixed(2)
@@ -273,11 +238,9 @@ TestCase {
                     + contrast(ThemePalette.current.accent, ground).toFixed(2))
     }
 
-    // The second cues, which the colour change is not allowed to have taken
-    // away. The active line is the only bold one and the only one at full
-    // strength, so it is told apart from its neighbours by weight and by
-    // opacity as well as by ink - and that matters more now than it did, since
-    // the hovered line shares the active line's colour.
+    // The second cues. The active line is the only bold one and the only one
+    // at full strength, so weight and opacity mark it as well as ink. The
+    // hovered line shares the active line's colour.
     function test_the_active_line_is_marked_by_more_than_colour_data() {
         return paletteRows()
     }
@@ -303,14 +266,12 @@ TestCase {
                row.tag + ": the active line is at " + active.opacity.toFixed(2)
                + " and an inactive one at " + inactive.opacity.toFixed(2)
                + ", so opacity tells the two apart no longer")
-        // ...and the ink still differs from an inactive line's, which is the
-        // first cue and the one that was just changed.
+        // The ink differs from an inactive line's, which is the first cue.
         verify(active.color.toString() !== inactive.color.toString(),
                row.tag + ": the active and inactive lines are both "
                + active.color)
-        // The inactive line's own readability is not what moved, but it is what
-        // the active one is read against, so a change that lifted one by
-        // flattening the other would show up here.
+        // The active line is read against the inactive ones, so a change that
+        // lifted one by flattening the other shows up here.
         var sep = contrast(active.color, inactive.color)
         verify(sep >= 1.5,
                row.tag + ": the active and inactive inks are only "

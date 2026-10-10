@@ -103,6 +103,9 @@ Prebuilt downloads for every platform are on the
 [latest release](https://github.com/immineal/tidal-wave/releases/latest).
 `ffmpeg` is optional, and only downloads and Chromecast need it.
 
+Each release carries a `SHA256SUMS` file. To check a download, put the two in
+one directory and run `sha256sum -c SHA256SUMS --ignore-missing`.
+
 <details open>
 <summary><b>Linux, Debian / Ubuntu / Mint (recommended)</b></summary>
 
@@ -115,11 +118,37 @@ sudo apt install ./tidal-wave-linux-x86_64.deb
 `apt` pulls in the Qt 6 runtime and the QML modules. Launch it from your app
 menu or run `tidal-wave`.
 
-Every Qt dependency in the package carries a floor taken from the Qt it was
-built against, so on an older distribution `apt` refuses the install and names
-what is missing. That is better than installing something that dies at load with
-`version 'Qt_6.12' not found`. If apt refuses, build from source below, which is
-far more forgiving.
+The package is built on Debian 12 and needs Qt 6.4 or newer. That means
+Debian 12 or later and Ubuntu 24.04 or later, which is also what Linux Mint 22
+and LMDE 6 are built on. It was checked by installing and starting it on
+Debian 12, Debian 13 and Ubuntu 24.04. On an older release `apt` refuses the
+install and names what is missing. Use the AppImage there.
+</details>
+
+<details>
+<summary><b>Linux, any distribution (AppImage)</b></summary>
+
+Download `tidal-wave-x86_64.AppImage`, then:
+
+```bash
+chmod +x tidal-wave-x86_64.AppImage
+./tidal-wave-x86_64.AppImage
+```
+
+Qt 6.12 and FFmpeg are inside, so no Qt has to be installed. The host supplies
+glibc 2.34 or newer, OpenGL and EGL, fontconfig, OpenSSL 3 with its CA
+certificates, libcom_err and libgpg-error. A desktop installation has all of
+them. On a minimal Debian or Ubuntu they are:
+
+```bash
+sudo apt install libgl1 libegl1 libfontconfig1 ca-certificates libcom-err2 libgpg-error0
+```
+
+The file mounts itself with FUSE. Where FUSE is missing, add
+`--appimage-extract-and-run`.
+
+It was checked by starting it in a clean container of Debian 12 and 13, Ubuntu
+22.04 and 24.04, Fedora 44 and AlmaLinux 9.
 </details>
 
 <details>
@@ -133,7 +162,7 @@ tar -xzf tidal-wave-linux-x86_64.tar.gz
 ```
 
 Install the runtime yourself. This build links Qt 6 Core, Gui, Widgets, Quick,
-Qml, QmlModels, Network, DBus, Multimedia, Svg, Concurrent and QuickControls2,
+Qml, QmlModels, Network, DBus, Multimedia, Svg and QuickControls2,
 and wants `ffmpeg` and `avahi` for Chromecast. The QML modules are the ones
 people miss: QtQuick, QtQuick.Shapes, QtQuick.Controls, QtQuick.Layouts,
 QtQuick.Window, QtQuick.Templates, QtQml.Models and QtQml.WorkerScript. On
@@ -144,9 +173,9 @@ often easier on these distros.
 <details>
 <summary><b>macOS (Apple Silicon)</b></summary>
 
-Download `tidal-wave-macos-x64.tar.gz` and unpack it. The `x64` in that filename
-is a leftover; the release is built on GitHub's `macos-latest` runner, which is
-Apple Silicon. On an Intel Mac, build from source.
+Download `tidal-wave-macos-arm64.tar.gz` and unpack it. The release is built on
+GitHub's `macos-latest` runner, which is Apple Silicon. On an Intel Mac, build
+from source.
 
 The app is unsigned, so macOS quarantines it. Clear that once:
 
@@ -189,7 +218,7 @@ with no German in it, which looks like a translation bug.
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release   # macOS: add -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
-cmake --build build --config Release --parallel
+cmake --build build --config Release --parallel 4
 ./build/tidal-wave                                # Windows: build\Release\tidal-wave.exe ; macOS: open build/tidal-wave.app
 ```
 

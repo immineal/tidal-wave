@@ -1,33 +1,9 @@
-// Renaming a playlist, and the picker that had been asking the network for
-// something it was standing next to.
-//
-// Two defects of the same shape, which is why they share a file: a playlist
-// write path whose interface existed and whose write did not.
-//
-//  * PlaylistPage's "Edit Playlist" dialog wrote the new title and description
-//    into two of the page's own properties and stopped. There was no call, no
-//    error path and no sign that anything was missing, so the rename was gone
-//    the moment the page was left - data loss with a confirmation attached.
-//    TidalClient::editPlaylist, TidalBridge::editPlaylist and the
-//    playlistUpdated signal behind it are all new; nothing like them existed.
-//
-//  * TrackRow's "Add to playlist" picker called fetchUserPlaylists on every
-//    open while bridge.getUserPlaylists() already held the same list, sorted,
-//    in memory. A playlist made a second ago in the sidebar was missing from
-//    the picker until a round trip answered.
-//
-// Everything here goes through the stubs in tests/TestStubs.h. No account is
-// touched and nothing reaches the network: StubBridge::editPlaylist mirrors
-// the real one, down to editing the favourites row in place rather than
-// re-appending it and to raising playlistUpdated separately for the sidebar,
-// which installTestStubs() hands to StubLibrary::updatePlaylist exactly as
-// Application::run() must hand the real pair to each other.
-//
-// The whole of the second half rests on StubBridge::fetchUserPlaylists having
-// stopped answering an empty array for every input. Before that the picker's
-// *list* could not be driven from a QML test at all - only the declared "New
-// playlist…" row above it - so "the picker shows the right playlists" and
-// "the picker shows nothing" were the same green.
+// Renaming a playlist, and the Add to playlist picker's source of rows.
+// PlaylistPage's Edit dialog has to send the rename through editPlaylist,
+// and both caches (the bridge's favourites list and the sidebar's library)
+// have to follow. TrackRow's picker reads bridge.getUserPlaylists() and only
+// fetches when that cache is empty. StubBridge::editPlaylist mirrors the real
+// one: it edits the favourites row in place and raises playlistUpdated.
 
 import QtQuick
 import QtQuick.Layouts
@@ -50,18 +26,9 @@ TestCase {
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
-    // The playlist under test is "p-mid", and it is deliberately neither the
-    // first nor the last row anywhere it appears.
-    //
-    // In the sidebar it sits *below* an unpinned album and below two pinned
-    // rows, so "renaming does not move the row" has somewhere to fail: a
-    // version that re-stamped the row, or that handed the rename to
-    // addPlaylist, would lift it to the head of the unpinned block and the
-    // order assertion would catch it. A fixture where the renamed row is
-    // already at the top cannot tell a correct rename from a re-stamp.
-    //
-    // The new title also sorts *first* alphabetically ("Abends am Fluss"),
-    // so a list that quietly re-collated on the rename would move it too.
+    // The playlist under test is p-mid, neither the first nor the last row
+    // anywhere it appears, so a rename that re-stamped or re-appended the row
+    // would move it. The new title also sorts first alphabetically.
     function makeEntries() {
         return [
             { kind: "playlist", id: "p-pin", title: "Angepinnte Liste",  subtitle: "",                 imageUrl: "cdn/pp.jpg", pinned: true,  trackCount: 4  },
@@ -72,13 +39,9 @@ TestCase {
         ]
     }
 
-    // The bridge's own cache, which is a different list from the sidebar's and
-    // has to be shown to move separately. "p-mid" is the middle row here too,
-    // so a stub (or a bridge) that removed and re-appended the renamed row
-    // instead of editing it in place would show up as a reordering.
-    //
-    // Each row carries a distinct numTracks and coverUrl, because a rename
-    // must not disturb either and a fixture of identical rows could not say so.
+    // The bridge's own cache, a different list from the sidebar's. p-mid is
+    // the middle row here too. Each row carries a distinct numTracks and
+    // coverUrl, because a rename must not disturb either.
     function makeCache() {
         return [
             { id: 401, uuid: "p-first", title: "Alte Liste",  description: "unberührt",
@@ -90,8 +53,8 @@ TestCase {
         ]
     }
 
-    // What fetchPlaylist() answers for the page under test. `type: "USER"` is
-    // the field that decides whether the Edit pill is drawn at all.
+    // What fetchPlaylist() answers for the page under test. The USER type
+    // decides whether the Edit pill is drawn at all.
     function makeHeader() {
         return { uuid: "p-mid", title: "Zugfahrt", description: "Für die Bahn",
                  numTracks: 31, duration: 5400, coverUrl: "cdn/c2.jpg", type: "USER" }
@@ -110,7 +73,7 @@ TestCase {
         app.setReducedMotionForTest(false)
         prefs.setSidebarWidthForTest(220)
         auth.setStateForTest(2)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest(makeEntries())
         library.setTracksForTest([])
         library.resetCallsForTest()
@@ -203,8 +166,7 @@ TestCase {
         return host
     }
 
-    // A PlaylistPage on "p-mid", with its Edit dialog already open on the
-    // playlist's current title and description.
+    // A PlaylistPage on p-mid, loaded from the header fixture.
     function makePage(host) {
         var page = createTemporaryObject(playlistC, host.pane, {})
         verify(page, "PlaylistPage did not load")
@@ -277,19 +239,18 @@ TestCase {
                 "the dialog opened complaining about something")
     }
 
-    // The same cap the create dialog applies, stopped at the keyboard rather
-    // than at the server. A paste is how a 4000-character title actually
-    // arrives, and setting .text is a paste as far as maximumLength is
-    // concerned, so this is the way in that matters.
+    // The same cap the create dialog applies, stopped at the keyboard.
+    // Setting .text counts as a paste for maximumLength, and a paste is how an
+    // over-long title arrives.
     function test_a_renamed_playlist_cannot_run_past_the_cap() {
         var host = showPane(1200)
         var page = makePage(host)
         var dlg  = openEditor(host, page)
 
         var field = inDialog(dlg, "editPlaylistTitleField")
-        var long = ""
-        for (var i = 0; i < 250; ++i) long += "x"
-        field.text = long
+        var tooLong = ""
+        for (var i = 0; i < 250; ++i) tooLong += "x"
+        field.text = tooLong
         settle(host.contentItem)
 
         compare(field.text.length, 100,
@@ -303,7 +264,6 @@ TestCase {
 
     // ── the rename actually leaves the machine ───────────────────────────
 
-    // The defect itself. Saving used to assign root.playlistTitle and stop.
     function test_saving_sends_the_rename_to_the_account() {
         var host = showPane(1200)
         var page = makePage(host)
@@ -319,9 +279,8 @@ TestCase {
                 "the rename never left the machine")
         compare(bridge.lastEditedUuidForTest(), "p-mid",
                 "the rename was sent for some other playlist")
-        // Trimmed, like the create dialog's: a name with three leading spaces
-        // is a name nobody meant to make. Both fields, because the description
-        // goes through the same field and the same server call.
+        // Trimmed, like the create dialog's. Both fields, because the
+        // description goes through the same server call.
         compare(bridge.lastEditedTitleForTest(), "Abends am Fluss",
                 "the padding went to the server with the name")
         compare(bridge.lastEditedDescriptionForTest(), "Neu beschrieben",
@@ -346,10 +305,8 @@ TestCase {
                 "the page kept the old description after a save that worked")
     }
 
-    // The case the old dialog could not have, because it never made a call:
-    // the server refuses the rename. Writing the new name onto the page here
-    // would be worse than the silence it replaces - it would be wrong rather
-    // than merely absent.
+    // The server refuses the rename. The new name must not be written onto
+    // the page.
     function test_a_refused_rename_is_not_shown_as_done() {
         bridge.setEditPlaylistOkForTest(false)
         var host = showPane(1200)
@@ -370,15 +327,14 @@ TestCase {
         var err = inDialog(dlg, "editPlaylistError")
         verify(err.visible && err.text.length > 0,
                "a refused rename said nothing; the error line reads \"" + err.text + "\"")
-        // ...and the text is still there, so the answer to a failure is one
-        // click and not retyping the name.
+        // The text is still there, so a retry is one click.
         compare(inDialog(dlg, "editPlaylistTitleField").text, "Abends am Fluss",
                 "the dialog threw away what was typed")
     }
 
-    // Reachable by pressing Return on an emptied field; the Save button is
-    // already dark for it. A key that silently does nothing reads as a broken
-    // dialog, and an empty name must certainly not be sent.
+    // Reachable by pressing Return on an emptied field, where the Save
+    // button is already disabled. It has to say what is missing, and an
+    // empty name must not be sent.
     function test_a_nameless_playlist_cannot_be_saved_data() {
         return [
             { tag: "nothing typed", typed: "" },
@@ -412,9 +368,8 @@ TestCase {
 
     // ── the two caches ───────────────────────────────────────────────────
 
-    // Cache one: the bridge's own favourites list, which is what the
-    // Collection grid reads. Without this the grid shows the old name until
-    // the next launch.
+    // Cache one: the bridge's own favourites list, which the Collection grid
+    // reads.
     function test_the_rename_reaches_the_collection_grid() {
         bridge.setUserPlaylistsForTest(makeCache())
         var host = showPane(1200)
@@ -442,19 +397,15 @@ TestCase {
         // The grid redrew itself off favoritePlaylistsChanged, with no refetch.
         compare(col.filteredPlaylists.length, 3,
                 "the rename changed how many playlists there are")
-        // The order first, so this has a failure of its own: a cache that
-        // removed and re-appended the row instead of editing it in place
-        // would shuffle the user's grid every time they fixed a typo, and
-        // asserting the title at a fixed index afterwards would otherwise
-        // swallow that case before this line ever ran.
+        // The order first, so it has a failure of its own: a cache that removed
+        // and re-appended the row would shuffle the grid on every rename.
         compare(cacheUuids().join(","), "p-first,p-mid,p-end",
                 "the renamed playlist moved in the grid; it holds "
                 + cacheTitles().join(", "))
         compare(col.filteredPlaylists[1].title, "Abends am Fluss",
                 "the grid still shows the old name; it holds " + cacheTitles().join(", "))
-        // ...and nothing else about the row moved with the name. The reply
-        // carries no body, so a bridge that rebuilt the row from what it had
-        // would blank both of these.
+        // Nothing else about the row moves with the name. The reply carries no
+        // body, so a bridge that rebuilt the row would blank both of these.
         compare(col.filteredPlaylists[1].numTracks, 31,
                 "the rename lost the playlist's track count")
         compare(col.filteredPlaylists[1].coverUrl, "cdn/c2.jpg",
@@ -487,15 +438,12 @@ TestCase {
 
         verify(rowTitles(sb).indexOf("Abends am Fluss") >= 0,
                "the sidebar still shows the old name; it holds " + rowTitles(sb).join(", "))
-        // Exactly where it was. A rename is not an acquisition: a version that
-        // re-stamped the row, or that handed the rename to addPlaylist, would
-        // lift it to the head of the unpinned block - and the new name sorts
-        // first alphabetically too, so a list that re-collated would move it
-        // as well.
+        // Exactly where it was. A row that was re-stamped or handed to
+        // addPlaylist would lead the unpinned block, and the new name sorts first
+        // alphabetically, so a re-collated list would move it too.
         compare(rowIds(sb).join(","), "p-pin,a-pin,a1,p-mid,p-end",
                 "renaming a playlist moved it in the sidebar")
-        // ...and it arrived by being handed across, not by re-reading the
-        // account.
+        // It arrived by being handed across, with no re-read of the account.
         compare(library.refreshCountForTest(), refreshesBefore,
                 "the sidebar re-paged the whole library to change one label")
         compare(bridge.userPlaylistFetchCountForTest(), 0,
@@ -505,8 +453,7 @@ TestCase {
     // ── the in-flight state ──────────────────────────────────────────────
 
     // A dialog that can be dismissed under a call that is still going to
-    // answer leaves the user unable to tell whether the rename took, which is
-    // the state the whole dialog was in before it had a call at all.
+    // answer leaves the user unable to tell whether the rename took.
     function test_the_dialog_is_shut_while_the_save_is_out() {
         bridge.setDeferEditPlaylistForTest(true)
         var host = showPane(1200)
@@ -558,9 +505,8 @@ TestCase {
         return list
     }
 
-    // The fixture probe for everything below: with the stub answering an empty
-    // array for every fetch, this list was empty whatever the account held, so
-    // no assertion about its contents could fail.
+    // The fixture probe for everything below: the picker's list fills from
+    // the stub.
     function test_the_picker_shows_the_playlists_the_account_has() {
         bridge.setUserPlaylistsForTest(makeCache())
         var host = showPane(1200)
@@ -572,8 +518,7 @@ TestCase {
         compare(list.itemAtIndex(0) !== null, true, "the picker's first row was never built")
     }
 
-    // The defect: it went back to the network every time, while the bridge was
-    // holding the same list sorted in memory.
+    // The bridge holds the same list, sorted, in memory.
     function test_the_picker_does_not_go_to_the_network_for_a_list_it_has() {
         bridge.setUserPlaylistsForTest(makeCache())
         var host = showPane(1200)
@@ -584,10 +529,8 @@ TestCase {
                 "the picker fetched the account's playlists although the bridge held them")
     }
 
-    // The consequence a user sees, and the reason the cache is the right
-    // source rather than merely the cheaper one: a playlist made a moment ago
-    // is in the bridge's list straight away, and was missing from the picker
-    // until a round trip answered.
+    // A playlist made a moment ago is in the bridge's list straight away, so
+    // the picker shows it without a round trip.
     function test_a_playlist_just_created_is_in_the_picker_at_once() {
         bridge.setUserPlaylistsForTest(makeCache())
         var host = showPane(1200)
@@ -596,8 +539,8 @@ TestCase {
         row.playlistPicker.close()
         settle(host.contentItem)
 
-        // Made somewhere else entirely - the sidebar's dialog, in the app -
-        // which is to say: through the bridge and not through this row.
+        // Made through the bridge, as the sidebar's dialog does, with this row
+        // not involved.
         bridge.createPlaylist("Ganz frisch", function (pl, err) {})
         settle(host.contentItem)
         compare(cacheTitles().length, 4, "the bridge did not take the new playlist")
@@ -627,15 +570,9 @@ TestCase {
                 "the picker asked for a page other than the first")
     }
 
-    // ...and then it has to use what comes back. This is the state the app is
-    // really in for the first second of a session: the account has playlists
-    // and the bridge's in-memory copy has not received them yet, which is
-    // precisely when the first picker opens.
-    //
-    // The case that could not be written at all until StubBridge's
-    // fetchUserPlaylists stopped answering an empty array for every input: the
-    // picker's list would have been empty here whatever the account held, and
-    // a picker that ignored the reply entirely would have passed.
+    // Then it has to use what comes back. For the first moment of a session
+    // the account has playlists and the bridge's in-memory copy has not
+    // received them yet.
     function test_the_picker_fills_from_the_fetch_when_the_cache_is_cold() {
         bridge.setUserPlaylistsForTest([])                 // still paging in
         bridge.setFetchedUserPlaylistsForTest(makeCache()) // what the account has
@@ -648,11 +585,8 @@ TestCase {
                   + pickerList(host).count + " of 3")
     }
 
-    // The stub itself, because the cases above lean on it and a stub
-    // that ignored its arguments would make them all pass for the wrong
-    // reason. The reported bug behind the fetch counter is a caller that
-    // asked for 30 of 50 playlists; a fetch that answered the whole list
-    // whatever it was asked could not reproduce it.
+    // The stub itself, because the cases above lean on it: a fetch that
+    // ignored limit and offset would make them pass for the wrong reason.
     function test_the_stubs_fetch_pages_the_way_the_endpoint_does() {
         bridge.setUserPlaylistsForTest(makeCache())
         var got = null
@@ -670,10 +604,6 @@ TestCase {
     }
 
     // ── and what the picker's rows then do ───────────────────────────────
-    //
-    // Reachable only now. With the stub answering empty, this list had no rows
-    // to press, so the picker's existing-playlist path - the common one - had
-    // never been exercised from a test at all.
 
     function test_pressing_a_row_files_the_song_in_that_playlist() {
         bridge.setUserPlaylistsForTest(makeCache())
@@ -682,8 +612,8 @@ TestCase {
 
         var list = pickerList(host)
         compare(list.count, 3, "the picker did not fill from the cache")
-        // The *second* row. Pressing the first could not tell "the row that was
-        // pressed" apart from "whatever the list happens to start with".
+        // The second row: pressing the first could not tell the pressed row from
+        // whatever the list starts with.
         var target = list.itemAtIndex(1)
         verify(target, "the picker's second row was never built")
         mouseClick(target)
@@ -693,14 +623,12 @@ TestCase {
         compare(bridge.lastAddedPlaylistForTest(), "p-mid",
                 "the song went into some other playlist than the row that was pressed")
         compare(bridge.lastAddedTrackIdForTest(), 9001, "some other song was added")
-        // ...and the row says so, naming the playlist it went into.
+        // The row says so, naming the playlist it went into.
         verify(row.lastConfirmation.indexOf("Zugfahrt") >= 0,
                "the row said \"" + row.lastConfirmation
                + "\" rather than naming the playlist the song went into")
     }
 
-    // The other half of that path: the server refuses the add. Reported, and
-    // reported as a failure.
     function test_a_refused_add_from_a_picker_row_is_not_called_a_success() {
         bridge.setUserPlaylistsForTest(makeCache())
         bridge.setAddToPlaylistOkForTest(false)

@@ -1,23 +1,9 @@
-// Getting into Now Playing, and back out of it again.
-//
-// The complaint this covers: clicking the bottom bar opens Now Playing, but
-// nothing on the bar says so, and once the page is up there is no obvious way
-// back. So the bar grew one explicit control - an up-arrow that opens Now
-// Playing - and the page grew its mirror image, a down-arrow that closes it,
-// plus a fullscreen toggle.
-//
-// What is deliberately *not* changed is the left group's existing behaviour:
-// the cover still opens Now Playing, every artist name is still its own link,
-// and the gaps between the names still fall through to Now Playing. Those
-// assertions live in tst_navigation.qml; the few repeated here are the ones
-// the new button could plausibly have broken.
-//
-// Three hosts, because three different things are under test:
-//   * playerBarHost  - the bar on its own, recording where a click would go.
-//   * nowPlayingHost - the page on its own, with the window surface it reaches
-//                      through Window.window (goBack, the fullscreen pair).
-//   * appWindowHost  - the real Main.qml, because the window state and the
-//                      Escape precedence are its logic and nobody else's.
+// Getting into Now Playing, and back out of it: the bar's up-arrow, the
+// page's down-arrow and the fullscreen toggle. Three hosts: playerBarHost
+// records where a click on the bar would go, nowPlayingHost gives the page the
+// window surface it reaches through Window.window, and appWindowHost is the
+// real Main.qml, which owns the window state and the Escape precedence.
+// The left group's own behaviour is covered by tst_navigation.qml.
 
 import QtQuick
 import QtQuick.Window
@@ -34,7 +20,7 @@ TestCase {
     // ── fixtures ─────────────────────────────────────────────────────────
 
     // The shape TidalBridge::trackToMap() produces. German names on purpose:
-    // track metadata is never translated (SPEC T3) but it is what has to fit.
+    // track metadata is never translated, and it is what has to fit.
     function trackWith(artists) {
         var names = []
         for (var i = 0; i < artists.length; i++) names.push(artists[i].name)
@@ -65,8 +51,7 @@ TestCase {
         auth.setStateForTest(2)   // LoggedIn: Main.qml gates its shortcuts on it
     }
 
-    // The four widths from SPEC-0.4.0 X3. 640 is the narrow end, where the bar
-    // has already shed its volume slider and its cast button.
+    // The four test widths. 640 is the narrow end of the supported range.
     function widthRows() {
         return [
             { tag: "640",  w: 640  },
@@ -241,11 +226,8 @@ TestCase {
         verify(btn.width >= 24 && btn.height >= 24,
                "the button is " + btn.width + "x" + btn.height + ", too small to aim at")
 
-        // It is not in the track info group any more. It sat beside Like,
-        // which acts on the track, while this opens a view; it belongs with
-        // the queue button, which is the other control that opens one. The
-        // left group's declared widths have not moved, so the transport is
-        // still where it was.
+        // The button opens a view, so it sits with the queue button and outside
+        // the track info group, whose declared widths stay as they are.
         var group = bar.trackInfoGroup
         compare(group.Layout.preferredWidth, 280,
                 "the left group's preferred width moved")
@@ -258,7 +240,6 @@ TestCase {
         }
     }
 
-    // Where it is now: immediately left of the queue button, at every width.
     function test_bar_button_sits_left_of_the_queue_button_data() { return widthRows() }
 
     function test_bar_button_sits_left_of_the_queue_button(row) {
@@ -275,8 +256,8 @@ TestCase {
                + " but the queue button starts at " + queueLeft.toFixed(1)
                + " at " + row.tag)
 
-        // Grouped, not merely ordered: nothing of the bar's own may sit
-        // between them. The gap is the right group's 8px spacing.
+        // Grouped: nothing of the bar's own may sit between them. The gap is the
+        // right group's spacing.
         verify(queueLeft - arrowRight <= 12,
                "there are " + (queueLeft - arrowRight).toFixed(1)
                + "px between the arrow and the queue button at " + row.tag)
@@ -289,7 +270,6 @@ TestCase {
         compare(host.navCalls.length, 0, "the button is not a navigation link")
     }
 
-    // The button is a shortcut to the page, not to the track's artist.
     function test_bar_button_is_not_an_artist_link() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -302,15 +282,9 @@ TestCase {
     }
 
     // ── and while the chrome resizes ─────────────────────────────────────
-    //
-    // Both of these controls sit in the bar's right-hand group. That group used
-    // to regroup at 720px - the volume slider's slot closed over 150ms and
-    // everything left of it travelled - and this case was about the pair
-    // surviving the move. The slider has left the bar for a hover flyout, so
-    // the group is 204px at every width and there is no move to survive. What
-    // is left to hold is that a resize never takes either control off the bar
-    // and never pulls them apart, measured every frame of one and clicked in
-    // the middle of it.
+    // Both controls sit in the bar's right-hand group, which keeps one width
+    // at every window width. A resize must never take either off the bar or
+    // pull them apart, measured every frame and clicked in the middle.
 
     function test_the_way_in_stays_grouped_while_the_bar_resizes() {
         var host = showHost(playerBarHost, 760, 200)
@@ -318,9 +292,7 @@ TestCase {
 
         host.width = 700
         // A Window's own width moves on assignment and the items inside it only
-        // on the next turn, so the frame of the assignment measures two
-        // different bars at once. That frame is also one in which nothing has
-        // been painted.
+        // on the next turn, so a frame is waited for before measuring.
         waitForRendering(host.contentItem)
         for (var i = 0; i < 14; i++) {
             var arrow = bar.nowPlayingButton
@@ -415,7 +387,6 @@ TestCase {
         compare(host.nowPlayingOpens, 0, "an artist click is not a Now Playing click")
     }
 
-    // The space after the last name belongs to the group, not to the name.
     function test_gap_after_the_names_opens_now_playing() {
         player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Ada" }]))
         var host = showHost(playerBarHost, 960, 200)
@@ -430,7 +401,6 @@ TestCase {
         compare(host.nowPlayingOpens, 1, "empty space opens Now Playing")
     }
 
-    // The per-name hover is the behaviour the new button was kept away from.
     function test_hover_underlines_only_the_name_under_the_pointer() {
         player.setCurrentTrackForTest(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -500,7 +470,7 @@ TestCase {
         compare(host.fullScreen, true)
         compare(host.backCalls, 0, "the fullscreen toggle is not the way out")
 
-        // The same button comes back out, and says so.
+        // The same button comes back out.
         centerClick(fs)
         compare(host.fullScreenToggles, 2)
         compare(host.fullScreen, false)
@@ -542,13 +512,9 @@ TestCase {
                   "the window came back from fullscreen un-maximised")
     }
 
-    // The window manager has its own ways out of fullscreen - a keybinding, a
-    // double-clicked titlebar - and nothing in Main.qml hears about those except
-    // the window's own visibility. `fullScreen` is assigned by enterFullScreen()
-    // and leaveFullScreen() rather than bound to `visibility`, because on Qt 6.4
-    // the binding reads stale for the rest of the turn it was written in; this
-    // is the case that still needs the signal, and without a test for it the
-    // handler could be deleted and the app's own two paths would not notice.
+    // The window manager has its own ways out of fullscreen, and Main.qml
+    // only hears of them through the window's visibility. fullScreen is
+    // assigned, never bound: on Qt 6.4 the binding reads stale within the turn.
     function test_the_window_manager_can_leave_fullscreen_too() {
         var win = showApp()
         win.navigate("nowplaying")
@@ -631,16 +597,9 @@ TestCase {
     }
 
     // ── F11 is a toggle, so it puts the view back as well ────────────────
-    //
-    // F11 opens Now Playing on its way into fullscreen, and leaving used to
-    // undo only the window: the user who pressed it inside a playlist came
-    // back to a windowed Now Playing instead of to the playlist they were in.
-    // The page fullscreen covered is recorded on the way in, the same way the
-    // window state it replaces is.
-    //
-    // Both pages the complaint named, and they are not the same case:
-    // getLoader() has an entry for the playlist and none for radio, so the two
-    // take different branches through navigate() on the way back.
+    // F11 opens Now Playing on its way into fullscreen, and leaving goes
+    // back to the page fullscreen covered. getLoader() has an entry for the
+    // playlist and none for radio, so the two take different branches.
     function test_fullscreen_from_another_page_collapses_now_playing_again_data() {
         return [
             { tag: "playlist", page: "playlist", type: "PlaylistPage",
@@ -671,17 +630,15 @@ TestCase {
         tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
                   "the window stayed fullscreen")
 
-        // That page, not just a page of the same kind: collapsing has to hand
-        // back the parameters it was opened with.
+        // That page, with the parameters it was opened with.
         tryVerify(function () {
             var item = findByType(win.contentItem, row.type)
             return item && item[row.key] === row.value
         }, 2000, "the user came back to a " + row.tag + ", but not the one they left")
     }
 
-    // Both presses inside one turn, which is the shape of the Qt 6.4 bug
-    // a2f03de fixed: deciding what to restore may not wait on
-    // visibilityChanged, which does not arrive until later on 6.4.
+    // Both presses inside one turn. Deciding what to restore may not wait on
+    // visibilityChanged, which arrives later on Qt 6.4.
     function test_two_presses_in_one_turn_still_land_back_on_the_playlist() {
         var win = showApp()
         win.navigate("playlist", { playlistUuid: "spaetschicht-2" })
@@ -695,9 +652,8 @@ TestCase {
                   "two F11s in one turn left the window fullscreen")
     }
 
-    // The other half of the toggle: pressed from inside Now Playing it has no
-    // navigation to undo, so it must not close the page the user was already
-    // on.
+    // Pressed from inside Now Playing, the toggle has no navigation to undo,
+    // so it must not close the page.
     function test_fullscreen_from_now_playing_stays_in_now_playing() {
         var win = showApp()
         win.navigate("playlist", { playlistUuid: "spaetschicht-3" })
@@ -713,14 +669,13 @@ TestCase {
     }
 
     // What comes back is this toggle's own navigation and nothing else. A
-    // window that reached fullscreen some other way - the window manager has
-    // its own keybinding - while showing some other page has nothing for F11
-    // to put back, so F11 only brings the window home.
+    // window that the window manager took fullscreen on another page has
+    // nothing for F11 to put back.
     function test_leaving_fullscreen_does_not_navigate_off_another_page() {
         var win = showApp()
         win.navigate("playlist", { playlistUuid: "spaetschicht-4" })
-        // Through the toggle once, so the recorded page is a stale "not Now
-        // Playing" by the time the window goes fullscreen on its own.
+        // Through the toggle once, so a stale recorded page exists by the time
+        // the window goes fullscreen on its own.
         win.toggleFullScreen()
         win.toggleFullScreen()
         compare(win.currentPage, "playlist",
@@ -740,33 +695,13 @@ TestCase {
     }
 
     // ── the chevron while the window is fullscreen ───────────────────────
-    //
-    // The chevron is goBack() and nothing else, and it is correct as it
-    // stands: the user's rule is that it "should always close full screen and
-    // close now playing", however fullscreen was entered, and that is what it
-    // does.
-    //
-    // It does it by accident of distance, though, which is why these two cases
-    // exist. Nothing in the button mentions fullscreen. What leaves fullscreen
-    // is one line at the top of Main.qml's navigate():
-    //
-    //     if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
-    //
-    // Delete that line and the chevron still closes the page, so every test
-    // about where the user lands still passes - and the window stays
-    // fullscreen on a page that draws no chrome and no sidebar, with the way
-    // back out gone with the page it belonged to. Verified by deleting it.
-    //
-    // Both ways into fullscreen, because they record different things on the
-    // way in: the page's own button, pressed from inside Now Playing, records
-    // "was already here"; F11 from another page records that page and
-    // navigates here.
+    // The chevron is goBack() and nothing else. What leaves fullscreen is
+    // navigate() in Main.qml, for any page other than Now Playing. Both ways
+    // into fullscreen are covered, because they record different pages.
 
-    // Now Playing rises out of the player bar, so in the application window
-    // there is a slide between asking for the page and the page being where it
-    // will be. Both helpers below are aimed at by a synthesized click, which is
-    // delivered at a position, so both wait for it to arrive first. A real
-    // pointer cannot press a button that has not finished coming up either.
+    // Now Playing slides up out of the player bar in the application window.
+    // A synthesized click is delivered at a position, so both helpers below
+    // wait for the page to arrive first.
     function arrivedNowPlaying(win) {
         tryVerify(function () { return win.nowPlayingness === 1 }, 2000,
                   "Now Playing never finished sliding up, so nothing on it can be aimed at")
@@ -830,8 +765,7 @@ TestCase {
         tryVerify(function () { return win.visibility !== Window.FullScreen }, 2000,
                   "the window itself stayed fullscreen after the chevron")
 
-        // That album, not just an album page: closing has to hand the
-        // parameters back with the page.
+        // That album, with the parameters it was opened with.
         tryVerify(function () {
             var item = findByType(win.contentItem, "AlbumPage")
             return item && item.albumId === 4242

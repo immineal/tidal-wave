@@ -26,10 +26,12 @@
 // The fixture is tst_dash's: one second of a 440 Hz tone as 16-bit mono FLAC in
 // fragmented MP4, from ffmpeg's own dash muxer. FLAC-in-MP4 is what Tidal
 // delivers, and -c:a copy to a native .flac is what the cast path does with it.
-// NOTHING HERE MAKES A SOUND: no QAudioOutput is constructed and nothing is ever
-// played; the output is read back only for its container and its duration.
+// NOTHING HERE MAKES A SOUND: no QAudioOutput is constructed (on Qt 6.4 a muted
+// one is, see the probe) and nothing is ever played; the output is read back
+// only for its container and its duration.
 
 #include <QTest>
+#include <QAudioOutput>
 #include <QByteArray>
 #include <QFile>
 #include <QHash>
@@ -248,6 +250,14 @@ private slots:
         // And it is a stream a receiver could decode. Loaded, never played, with
         // no audio output attached, so no device is opened.
         QMediaPlayer probe;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        // Except on Qt 6.4, whose GStreamer backend reports InvalidMedia unless
+        // the decoded audio has an output to link to. Muted, and never played.
+        QAudioOutput muted;
+        muted.setMuted(true);
+        muted.setVolume(0.0f);
+        probe.setAudioOutput(&muted);
+#endif
         probe.setSource(QUrl::fromLocalFile(path));
         QTRY_VERIFY_WITH_TIMEOUT(probe.mediaStatus() == QMediaPlayer::LoadedMedia
                                  || probe.mediaStatus() == QMediaPlayer::BufferedMedia

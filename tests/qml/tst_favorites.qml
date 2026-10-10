@@ -1,34 +1,9 @@
-// A favourite the server refuses, at all eleven places a user can ask for one.
-//
-// Liking a song, saving an album and following an artist are six bridge calls
-// made from eleven call sites across six files, and every one of them passed
-// `function (success) {}` and dropped the answer. Nothing in the interface lied
-// about it - this is the first thing these tests had to establish, because the
-// brief for the fix assumed the opposite. All three states are read back out of
-// the bridge (bridge.isTrackFavorite / isAlbumFavorite / isArtistFavorite) on
-// the bridge's own changed signal, and the bridge only writes those caches when
-// the server has said yes. So a refused favourite left the heart empty, the
-// pill reading "Save" and the tile in the grid, which is correct. It also left
-// no word at all, which is the actual defect: a press that does nothing and
-// says nothing is indistinguishable from a press that missed, and the cheaper
-// guess is to press again.
-//
-// So there is nothing to revert at any of the eleven sites, and these tests say
-// so in both directions: the state must *not* move on a refusal (which catches
-// anyone adding the optimistic flag the brief feared) and the refusal must be
-// reported (which catches the fix being removed). Each site is checked for the
-// call it sends as well, because the shared helper picks add or remove from the
-// state the host hands it and an inverted branch there would come back true.
-//
-// Everything goes through the stubs in tests/TestStubs.h. No account is
-// touched, nothing reaches the network, and no favourite is really set: the
-// whole of this file rests on StubBridge having gained a way to *refuse*. Until
-// it did, all six mutators always succeeded and always wrote their cache, so
-// "the server refused the like" was a state no fixture in this repo could put
-// the app in - which is how eleven dropped return values survived this long
-// with the test suite green. test_the_stub_can_refuse_at_all below pins that
-// switch, because every other assertion here is worthless if it silently stops
-// refusing.
+// A favourite the server refuses, at every place a user can ask for one.
+// The like, save and follow states are read back out of the bridge, which
+// only writes its caches when the server says yes. So on a refusal the state
+// must not move, and the refusal must be reported. Each site is also checked
+// for the call it sends, since the helper picks add or remove from the state.
+// StubBridge's refusal switch is pinned by test_the_stub_can_refuse_at_all.
 
 import QtQuick
 import QtQuick.Window
@@ -41,7 +16,7 @@ TestCase {
     name: "Favorites"
     when: windowShown
     // TestCase declares visible: false, which would leave every child
-    // unrendered - and a ToolTip never shows for an item in no window.
+    // unrendered, and a ToolTip never shows for an item in no window.
     visible: true
     width: 1280
     height: 900
@@ -53,8 +28,8 @@ TestCase {
     readonly property int trackId:  9101
     readonly property int albumId:  4242
     readonly property int artistId: 777
-    // A mix id is 30 lowercase hex characters, not a number. Invented, like
-    // everything else here; none of the owner's is in this file.
+    // A mix id is 30 lowercase hex characters. Invented, like everything
+    // else here.
     readonly property string mixId: "0a1b2c3d4e5f60718293a4b5c6d7e8"
 
     function makeTrack() {
@@ -80,11 +55,9 @@ TestCase {
                  coverUrl: "cdn/777.jpg" }
     }
 
-    // The six strings the shared helper can say. qsTranslate with the context
-    // the inline component lives in, which is the file it is declared in:
-    // ContextMenu.qml. Written out here rather than read off the object under
-    // test, so swapping two of them in the helper is a failure and not a
-    // tautology.
+    // The strings the shared helper can say, with the context of the file the
+    // inline component is declared in, ContextMenu.qml. Written out here, so
+    // swapping two of them in the helper is a failure.
     readonly property string likeFailed:     qsTranslate("ContextMenu", "Could not like the song",
                                                 "shown when adding a track to favourites failed")
     readonly property string unlikeFailed:   qsTranslate("ContextMenu", "Could not unlike the song",
@@ -112,15 +85,9 @@ TestCase {
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: mixC;        MixPage        { anchors.fill: parent } }
 
-    // NowPlayingPage delegates its sleep timer and its fullscreen toggle to the
-    // application window and reaches them through Window.window, so it cannot
-    // be instantiated bare. This mirrors exactly the surface Main.qml provides,
-    // as tst_credits.qml and tst_layout_player.qml do.
-    //
-    // It is a separate window, which is why the one test that checks the
-    // refusal reaches the *screen* uses the player bar instead: ToolTip.show()
-    // writes to the shared tool tip of whichever window the anchor is in, and
-    // testCase.ToolTip.toolTip is this one's.
+    // NowPlayingPage reaches its sleep timer and fullscreen toggle through
+    // Window.window, so it cannot be instantiated bare. Being a separate
+    // window, its tool tip is not testCase.ToolTip.toolTip.
     Component {
         id: nowPlayingHost
         Window {
@@ -175,9 +142,8 @@ TestCase {
     }
 
     // A mix page showing one mix, with its tracks already in hand. The hero
-    // lives in the ListView's header, so the holder has to be big enough - and
-    // the TestCase `visible: true` at the top of this file is what gets the
-    // header instantiated at all.
+    // lives in the ListView's header, which needs a big enough holder and a
+    // visible TestCase to be instantiated.
     function makeMixPage() {
         var holder = makeHolder()
         var page = createTemporaryObject(mixC, holder, {})
@@ -215,11 +181,8 @@ TestCase {
     }
 
     // Tab 1 is Albums, tab 2 Artists. The rows come from the bridge's own
-    // favourites lists rather than being written onto the page, so that a
-    // removal the stub accepts actually takes the tile out: a page whose
-    // filtered list was assigned by hand would keep every tile for ever and
-    // "the tile goes when it worked" would be the same green as "the tile never
-    // goes at all".
+    // favourites lists, so that a removal the stub accepts takes the tile
+    // out. A list assigned by hand would keep every tile.
     function makeCollection(tab) {
         var holder = makeHolder(1280, 800)
         var page = createTemporaryObject(collectionC, holder, {})
@@ -238,9 +201,8 @@ TestCase {
         return host
     }
 
-    // The tiles on a collection grid, found through the right-click area every
-    // MediaCard declares; its parent is the card. Same walk tst_pinning.qml
-    // uses.
+    // The tiles on a collection grid, found through the right-click area
+    // every MediaCard declares. Its parent is the card.
     function cardsOn(page) {
         var out = []
         collectNamed(page, "cardMenuArea", out)
@@ -294,18 +256,15 @@ TestCase {
         bridge.setUserPlaylistsForTest([])
         bridge.setMixFavoriteForTest(testCase.mixId, false)
         // One shared tool tip serves the whole window, so a leftover from the
-        // last test would answer the next one's "did it say anything?".
+        // last test would pass for the next one's message.
         testCase.ToolTip.toolTip.close()
     }
 
     // ── the fixture itself ───────────────────────────────────────────────
 
-    // Everything below asks the stub to refuse and then checks what the
-    // interface did about it. If the switch quietly stopped refusing, every one
-    // of those tests would be asserting against a success and would still be
-    // green on the "the state did not move" half, because a success the
-    // interface never heard about looks the same from outside. So the switch
-    // gets its own test, against the bridge and nothing else.
+    // Everything below asks the stub to refuse. If the switch stopped
+    // refusing, the state half of those tests would still pass, so the switch
+    // gets its own test against the bridge alone.
     function test_the_stub_can_refuse_at_all() {
         var answers = []
         bridge.setFavoriteOkForTest(false)
@@ -317,8 +276,7 @@ TestCase {
                 "a refused add wrote the cache anyway, so no test here can tell "
                 + "a refusal from a success")
 
-        // And the other way, so "it always answers false" is not what is being
-        // pinned.
+        // And the other way, so a switch that always answers false fails too.
         bridge.setFavoriteOkForTest(true)
         bridge.addTrackFavorite(testCase.trackId, function (ok) { answers.push(ok) })
         tryVerify(function () { return answers.length === 2 }, 2000,
@@ -328,9 +286,8 @@ TestCase {
                 "an accepted add did not write the cache")
     }
 
-    // The removals have to take the row out of the list the grids draw from,
-    // not only flip the id -> bool map, or "the tile leaves when the removal
-    // lands" cannot fail.
+    // A removal has to take the row out of the list the grids draw from as
+    // well as flip the id map, or the tile tests below could not fail.
     function test_an_accepted_removal_empties_the_grid_list() {
         bridge.setFavoriteAlbumsForTest([makeAlbumRow()])
         compare(bridge.searchFavoriteAlbums("").length, 1, "the fixture seeded no album")
@@ -358,8 +315,7 @@ TestCase {
                 "the bar said the wrong thing about a refused like")
         compare(bridge.lastFavoriteCallForTest(), "addTrack:" + testCase.trackId,
                 "the bar sent the wrong call")
-        // The half the brief expected to be broken: nothing optimistic to take
-        // back, so nothing may have moved.
+        // Nothing is set optimistically, so nothing may have moved.
         compare(bar.isLiked, false, "a refused like filled the heart anyway")
         compare(btn.icon, "heart", "a refused like drew a filled heart")
     }
@@ -403,7 +359,7 @@ TestCase {
         compare(btn.icon, "heart-filled", "a refused unlike drew an empty heart")
     }
 
-    // The message has to reach the screen and not only the property the other
+    // The message has to reach the screen as well as the property the other
     // tests read. ToolTip.show() writes to the one shared tool tip of the
     // anchor's window, which here is this TestCase's.
     function test_a_refusal_reaches_the_screen_and_goes_away() {
@@ -436,14 +392,9 @@ TestCase {
 
         tryVerify(function () { return bar.isLiked }, 2000,
                   "an accepted like never filled the heart")
-        // Given long enough to be wrong in. A tool tip does not come up the
-        // instant show() is called - the attached `delay` of whichever item it
-        // is anchored to applies, and the longest one in this app is 600ms - so
-        // an earlier version of this check looked after 100ms, found nothing,
-        // and passed while the tool tip was still on its way. It stayed green
-        // with the success guard removed from the helper, which is the whole
-        // thing it is here to catch. Everything past the longest delay in the
-        // tree, with room to spare.
+        // A tool tip comes up only after the attached delay of the item it is
+        // anchored to, and the longest one in this app is 600ms. The wait has to
+        // outlast it, or the check passes while the tool tip is on its way.
         wait(1200)
         verify(!tip.visible, "a successful like put a tool tip on the screen: "
                + tip.text)
@@ -571,16 +522,8 @@ TestCase {
     }
 
     // ── MixPage: the Save pill ───────────────────────────────────────────
-    //
-    // The owner's longest-standing complaint, reported twice. A track radio
-    // saved on another device arrived in the sidebar as a mix and opened on this
-    // page - hero, artwork, a right-click pin - with no way to unsave it, and no
-    // way to save a new one either, because "Start radio" opened a second viewer
-    // with no mix id to save.
-    //
-    // The pill is the missing half. It reads its state back out of the bridge
-    // and never writes it, so a refusal has nothing to undo - only something to
-    // say, which is the rule this whole file exists for.
+    // The pill reads its state back out of the bridge and never writes it,
+    // so a refusal has nothing to undo, only something to say.
 
     function test_the_mix_page_draws_a_save_pill_at_all() {
         var page = makeMixPage()
@@ -624,8 +567,8 @@ TestCase {
                 "the mix page reported a successful save as a failure")
     }
 
-    // The half the owner asked for by name: a mix that is already saved has to
-    // offer the way back out, and the press has to send a *remove*.
+    // A mix that is already saved has to offer the way back out, and the
+    // press has to send a remove.
     function test_an_already_saved_mix_offers_the_way_out() {
         bridge.setMixFavoriteForTest(testCase.mixId, true)
         var page = makeMixPage()
@@ -675,12 +618,9 @@ TestCase {
         compare(page.isSaved, false)
     }
 
-    // Saving and pinning are two different things and the hero has to keep
-    // saying so. The pill is Tidal's own favourites list, shared with every
-    // other client; the right-click menu is PinStore, which is local to this
-    // machine and never leaves it. They were conflated once already - the hero's
-    // pin was read as "the way to unsave" and there was no way to unsave at all -
-    // so this pins the distinction rather than leaving it to a comment.
+    // Saving and pinning are two different things. The pill is Tidal's own
+    // favourites list, shared with every other client. The right-click menu
+    // is PinStore, which is local to this machine.
     function test_saving_a_mix_is_not_pinning_it() {
         var page = makeMixPage()
         var pill = named(page, "mixSavePill")
@@ -819,10 +759,8 @@ TestCase {
     }
 
     // ── CollectionPage: the two grids' Remove rows ───────────────────────
-    //
-    // These two sites are removals only - a tile in these grids is in the
-    // library by definition - so the state the host hands the helper is `true`
-    // at both, and an add going out from here would be a bug of its own.
+    // These two sites are removals only: a tile in these grids is in the
+    // library by definition, so the host hands the helper true at both.
 
     function test_the_collection_album_grid_reports_a_refused_removal() {
         bridge.setFavoriteAlbumsForTest([makeAlbumRow()])
@@ -922,8 +860,8 @@ TestCase {
         compare(bar.favoriteAction.lastMessage, testCase.likeFailed)
     }
 
-    // A reply that never arrives leaves the callback's argument undefined, which
-    // has to count as refused rather than as "not false".
+    // A reply that never arrives leaves the callback's argument undefined,
+    // which has to count as refused.
     function test_an_undefined_answer_counts_as_refused() {
         var bar = makeBar()
         bar.favoriteAction._refused(undefined, bar, "nope")
@@ -934,9 +872,8 @@ TestCase {
                 "a true answer was taken for a failure")
     }
 
-    // The record belongs to the press that is in flight, not to the one before
-    // it: a refusal followed by a success must not leave the old message
-    // standing where a later reader would take it for the current state.
+    // The record belongs to the press in flight: a refusal followed by a
+    // success must not leave the old message standing.
     function test_a_new_press_clears_the_last_refusal() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()

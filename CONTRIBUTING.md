@@ -14,7 +14,7 @@ downloads and cast transcoding.
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
+cmake --build build --parallel 4
 ```
 
 Qt from the Qt installer is not on CMake's search path, so point at the kit you
@@ -25,7 +25,7 @@ have: `-DCMAKE_PREFIX_PATH="$HOME/Qt/6.12.0/gcc_64"`. On macOS,
 
 ```bash
 cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON
-cmake --build build-tests --parallel
+cmake --build build-tests --parallel 4
 QT_QPA_PLATFORM=offscreen ctest --test-dir build-tests --output-on-failure
 ```
 
@@ -60,7 +60,27 @@ So: no `import QtCore` or `Settings` (6.5), no `Shape.CurveRenderer` (6.6), no
 `Component.onCompleted` behind a version check, where a failure costs you the
 property and leaves the page standing.
 
-## Two other quiet failures
+The 6.4 QML parser also refuses a set of old reserved words as names, where
+6.12 takes them: `long`, `int`, `short`, `byte`, `char`, `float`, `double`,
+`boolean`, `final`, `native`, `goto`, `abstract`, `volatile`, `transient`,
+`synchronized`, `throws`, `public`, `private`, `protected`, `package`,
+`interface` and `implements`. A `var long` is "Expected token `identifier'"
+there and the whole file fails to load. In a test file that is one `compile()`
+failure in place of every case in it.
+
+On 6.4 a Layout nested in another Layout can keep a stale arrangement. When its
+members change in the same step that resizes it, the next frame finds it at an
+unchanged size and does not arrange it again, and a member that has just become
+visible is painted at 0,0. A plain `Item` between the two makes the inner one a
+top-level layout, which always arranges itself.
+
+A `Shape` that leaves a scene and comes back crashes 6.4's software renderer,
+and every icon in a menu does that when the menu reopens. The software renderer
+is what the "Software rendering" setting selects and what the offscreen tests
+run on. Build the `Shape` in a `Loader` that is active while the item has a
+window, the way `VectorIcon.qml` and `AppMark.qml` do.
+
+## Three other quiet failures
 
 A new file under `qml/` must be listed in `QML_FILES` in `CMakeLists.txt`.
 Otherwise it never reaches the module's resources and the import resolves to
@@ -73,6 +93,11 @@ rounds of fixes. The suite stayed green because `tests/TestStubs.h` had
 declared its own `indexOf` as `Q_INVOKABLE`.
 `tests/tst_qml_cpp_calls.cpp` now checks every `obj.method(` call in `qml/`
 against the real meta-objects.
+
+A translation call written inside a QML comment counts as a call site.
+`tests/tst_shortcuts.cpp` reads the `.qml` files as text and does not strip
+comments, so a `qsTr` call with a quoted string in a comment is checked against
+the catalogue like real code. Describe the call in words.
 
 ## CI
 

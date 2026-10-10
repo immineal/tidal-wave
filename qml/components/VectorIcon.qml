@@ -25,14 +25,16 @@ Item {
     // "track" is not drawn as a path; see trackStrip below for why.
     readonly property bool isSnappedBars: name === "track"
 
-    Shape {
+    // The Shape is built anew each time the icon enters a scene. Qt 6.4's
+    // software renderer crashes on one that left a scene and came back, as
+    // every glyph in a menu does when the menu reopens.
+    Loader {
         id: shapeItem
         visible: !root.isSnappedBars
         width: 24
         height: 24
         anchors.centerIn: parent
-        antialiasing: true
-        smooth: true
+        active: root.Window.window !== null
 
         transform: Scale {
             origin.x: 12
@@ -41,62 +43,43 @@ Item {
             yScale: (root.height * 0.85) / 24
         }
 
-        ShapePath {
-            strokeColor: root.color
-            strokeWidth: root.isFilled
-                         ? 0
-                         : (root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth)
-            fillColor: root.isFilled ? root.color : "transparent"
-            capStyle: ShapePath.RoundCap
-            joinStyle: ShapePath.RoundJoin
-            PathSvg { path: root._pathFor(root.name) }
-        }
+        sourceComponent: Shape {
+            antialiasing: true
+            smooth: true
 
-        // Solid detail drawn on top of a stroked glyph.
-        ShapePath {
-            strokeWidth: 0
-            fillColor: root.color
-            PathSvg { path: root._accentFor(root.name) }
-        }
+            ShapePath {
+                strokeColor: root.color
+                strokeWidth: root.isFilled
+                             ? 0
+                             : (root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth)
+                fillColor: root.isFilled ? root.color : "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: root._pathFor(root.name) }
+            }
 
-        // Stroked detail drawn on top of a filled glyph.
-        ShapePath {
-            strokeColor: root.color
-            strokeWidth: root._overlayFor(root.name) === "" ? 0 : root.strokeWidth
-            fillColor: "transparent"
-            capStyle: ShapePath.RoundCap
-            joinStyle: ShapePath.RoundJoin
-            PathSvg { path: root._overlayFor(root.name) }
+            // Solid detail drawn on top of a stroked glyph.
+            ShapePath {
+                strokeWidth: 0
+                fillColor: root.color
+                PathSvg { path: root._accentFor(root.name) }
+            }
+
+            // Stroked detail drawn on top of a filled glyph.
+            ShapePath {
+                strokeColor: root.color
+                strokeWidth: root._overlayFor(root.name) === "" ? 0 : root.strokeWidth
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: root._overlayFor(root.name) }
+            }
         }
     }
 
-    // The seven-bar "track" strip, snapped to whole device pixels.
-    //
-    // It used to be seven stroked lines in the Shape above, and it looked
-    // wrong at the sizes it is actually used at. The Mac measured why, and it
-    // is not the geometry: Qt renders that Shape with NO antialiasing at all -
-    // every rendered column comes out coverage 0.00 or 1.00, on screen and
-    // through grabToImage alike - so each 1.8-unit round-capped stroke is a
-    // pixel-snapped rectangle whose width is 1, 2 or 3 device px depending
-    // purely on where its edges fall. `antialiasing: true` on the Shape does
-    // nothing here (default GeometryRenderer, no MSAA). It came out clean only
-    // where the device pitch landed within about 0.1 of an integer - W=18 at
-    // DPR 2, W=12 at DPR 3, both pitch 4.08 - and ragged everywhere else: at
-    // W=12 on a Retina panel bars 2, 3, 5 and 6 were 1px against the others'
-    // 2px, and at DPR 1 the 12-18px sizes could not hold seven bars at all.
-    //
-    // Turning antialiasing on was tried and is worse. With CurveRenderer at
-    // W=12 the gaps between bars never reach zero coverage, so the strip reads
-    // as grey mush: the ink evens out and the bars stop being separate, which
-    // is the opposite of the thing worth fixing.
-    //
-    // So the strip computes its geometry in device pixels and leaves the
-    // rasteriser nothing to decide. Pitch is the nearest whole number of
-    // device px to the ideal 3.2 units, never below 2 - two being a 1px bar
-    // and a 1px gap, the tightest seven can be drawn and still read as seven -
-    // and the bar is half the pitch rounded up. Every bar is then the same
-    // width and every gap the same width, at any size and any
-    // devicePixelRatio, which is the property the path version could not hold.
+    // The seven-bar "track" strip, snapped to whole device pixels. As a stroked
+    // path the bars come out 1, 2 or 3 device px wide depending on where their
+    // edges fall. Here pitch and bar are whole device px, so all bars match.
     Item {
         id: trackStrip
         visible: root.isSnappedBars
@@ -110,24 +93,9 @@ Item {
         readonly property int stripDev: 6 * trackStrip.pitchDev + trackStrip.barDev
         width: trackStrip.stripDev / trackStrip.dpr
 
-        // Positioned in whole device px rather than by anchors.centerIn.
-        // Anchoring centres on a fractional logical offset, and the non-AA
-        // rasteriser then snaps each edge independently, which drifted the
-        // strip by up to a device pixel horizontally and wobbled the bar
-        // centres by 1 to 1.5 px vertically - measured on a Retina panel. The
-        // symmetric silhouette is the entire point of this glyph, so the
-        // arithmetic is done here instead of being left to the rasteriser.
-        //
-        // At W=12 on a DPR 1 screen seven bars do not fit: the tightest strip
-        // is 6*2+1 = 13 device px and the box is 12. Measured consequence,
-        // rather than the one first written here: the box holds SIX bars and
-        // the seventh falls outside it. That is clipped rather than left to
-        // paint over whatever sits beside the icon, which is the one thing
-        // worse than losing the bar. Six is also a long way better than what
-        // the stroked path managed at that size, which was two.
-        //
-        // Only non-Retina screens reach this, and only at the 12px Now Playing
-        // button; everything else fits with room to spare.
+        // Positioned in whole device px, not by anchors.centerIn, which centres
+        // on a fractional offset and lets each edge snap independently. Clipped
+        // where seven bars do not fit the box (12px at DPR 1).
         clip: trackStrip.stripDev > Math.round(root.width * trackStrip.dpr)
         x: Math.round((root.width * trackStrip.dpr - trackStrip.stripDev) / 2)
            / trackStrip.dpr
@@ -135,20 +103,16 @@ Item {
 
         readonly property int boxDev: Math.round(root.height * trackStrip.dpr)
 
-        // Every bar's height is given the same parity as the box, so
-        // (box - height) is even and the bar sits on one exact centre line
-        // instead of half a pixel either side of it. Mixed parities are what
-        // made the bars lean at 14-16 px.
+        // Every bar's height gets the same parity as the box, so (box - height)
+        // is even and the bar sits on one exact centre line.
         function barHeightDev(i) {
             var h = Math.round(2 * trackStrip.halfUnits[i] * trackStrip.unit * trackStrip.dpr)
             if (((trackStrip.boxDev - h) % 2 + 2) % 2 !== 0) h += 1
             return Math.max(1, h)
         }
 
-        // Half-heights in grid units, taken from the path this replaces, so
-        // the silhouette is unchanged: every bar centred on the middle line,
-        // which is what tells this apart from the now-playing bars that stand
-        // on a baseline.
+        // Half-heights in grid units. Every bar is centred on the middle line,
+        // which tells this apart from the now-playing bars on their baseline.
         readonly property var halfUnits: [3, 6.5, 4, 9, 5, 7.5, 2.5]
 
         Repeater {
@@ -160,10 +124,6 @@ Item {
                 antialiasing: false
                 x: index * trackStrip.pitchDev / trackStrip.dpr
                 width: trackStrip.barDev / trackStrip.dpr
-                // Snapped the same way as the widths, so a bar cannot land on
-                // a half pixel and come out grey at one size and solid at the
-                // next - and parity-matched to the box so every bar shares one
-                // centre line exactly.
                 readonly property int hDev: trackStrip.barHeightDev(index)
                 height: hDev / trackStrip.dpr
                 y: ((trackStrip.boxDev - hDev) / 2) / trackStrip.dpr
@@ -180,29 +140,12 @@ Item {
         case "heart":
         case "heart-filled":
             return "M 19 14 C 21 11 22 8 19 5 C 16 2 13 5 12 6 C 11 5 8 2 5 5 C 2 8 3 11 5 14 L 12 21 Z"
-        // "a track": a short waveform strip, the way a rendered audio file
-        // looks. Seven bars, every one of them centred on y=12, so the strip
-        // is symmetric about a centre line -- that symmetry is the whole
-        // distinction from the now-playing bars below, which stand on a
-        // baseline, and it is all that is left to tell the two apart once
-        // reduced motion takes the animation away.
-        //
-        // Pitch 3.2 rather than a rounder number. VectorIcon draws the 24
-        // unit grid into width * 0.85, so at the 15-16px this is used at one
-        // unit comes to about 0.57px; 3.2 of them put the bars just under two
-        // device pixels apart, which is a 1px bar with a 1px gap. That is the
-        // tightest a strip of seven can be drawn and still read as seven.
-        //
-        // This replaced "music", a pair of beamed eighth notes: Western staff
-        // notation standing in for four unrelated meanings. Do not bring it
-        // back; each of its old sites now names what it actually meant.
+        // A waveform strip: seven bars, each centred on y=12. That symmetry is
+        // what tells it from the now-playing bars, which stand on a baseline.
+        // Pitch 3.2 is a 1px bar with a 1px gap at the 15-16px it is used at.
         case "track":
             return "M 2.4 9 V 15 M 5.6 5.5 V 18.5 M 8.8 8 V 16 M 12 3 V 21"
                  + " M 15.2 7 V 17 M 18.4 4.5 V 19.5 M 21.6 9.5 V 14.5"
-        // One person glyph, for artists. There used to be two near-identical
-        // ones -- "artist" (a circle on a shoulders arc) and "user" -- which
-        // were indistinguishable at 18px. This is the better-drawn of the two;
-        // "user" is gone, along with the sidebar avatar that was its only use.
         case "artist":
             return "M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z"
         case "settings":
@@ -231,8 +174,7 @@ Item {
             return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3 M 11 11 L 12 10 V 14 M 10 14 H 14"
         case "clock":
             return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 6 V 12 L 16 14"
-        // A list with a note on it. The old "queue" was three bare lines,
-        // identical to a hamburger menu, so it read as "menu" not "up next".
+        // Three bare lines read as a hamburger menu, so _accentFor adds a mark.
         case "queue":
             return "M 3 6 H 21 M 3 12 H 21 M 3 18 H 13"
         case "playlist":
@@ -264,18 +206,14 @@ Item {
             return "M 15 5 L 8 12 L 15 19"
         case "chevron-right":
             return "M 9 5 L 16 12 L 9 19"
-        // The same chevron mirrored across the diagonal rather than rotated at
-        // runtime: a Scale/Rotation transform on the Shape would round the
-        // stroke onto a different pixel grid, and at 16px that is the
-        // difference between a crisp arrow and a soft one.
+        // The same chevron mirrored, not rotated at runtime: a transform on
+        // the Shape rounds the stroke onto a different pixel grid.
         case "chevron-up":
             return "M 5 15 L 12 8 L 19 15"
         case "chevron-down":
             return "M 5 9 L 12 16 L 19 9"
-        // Four corner brackets, arms pointing out of the frame; the exit
-        // state is the same four corners with the arms turned inwards. The
-        // corners take the 2-unit radius the home and settings glyphs use, so
-        // the frame belongs to the same set.
+        // Four corner brackets, arms pointing out of the frame; the exit state
+        // turns the arms inwards. Corner radius 2, as on home and settings.
         case "fullscreen":
             return "M 9 3 H 5 A 2 2 0 0 0 3 5 V 9"
                  + " M 15 3 H 19 A 2 2 0 0 1 21 5 V 9"
@@ -302,40 +240,20 @@ Item {
             return "M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20"
         case "check":
             return "M 5 12 L 10 17 L 19 7"
-        // A sheet over a sheet, for "Copy link".
-        //
-        // The chain link this replaced is the usual drawing for a link and it
-        // cannot be drawn at this size: two half-rings of 2.8px radius with a
-        // sub-pixel stroke close into one flat oval with a bar through it,
-        // which is what the 16px grab showed. Two offset rounded rectangles
-        // are straight edges and one radius, they survive the same grab, and
-        // the verb is the half of the label worth drawing anyway.
+        // A sheet over a sheet, for "Copy link". A chain link cannot be drawn
+        // at this size: its two half-rings close into one flat oval.
         case "copy":
             return "M 10 8.5 H 19.5 A 2 2 0 0 1 21.5 10.5 V 20 A 2 2 0 0 1 19.5 22 H 10 A 2 2 0 0 1 8 20 V 10.5 A 2 2 0 0 1 10 8.5 Z"
                  + " M 5 15.5 A 2 2 0 0 1 3 13.5 V 4 A 2 2 0 0 1 5 2 H 14.5 A 2 2 0 0 1 16.5 4 V 6"
-        // A screen with its bottom left corner opened up, and the signal
-        // rising out of that corner: dot, inner arc, outer arc, all centred
-        // on (2.5, 19.5).
-        //
-        // The arcs were half this size and crowded against the screen's
-        // lines. Three gaps set the drawing now and they are within a tenth
-        // of a unit of each other: dot to inner arc 3.6, inner to outer 3.7,
-        // outer arc to the two line ends it sits between 3.5. Even spacing is
-        // what survives being drawn at 16px; uneven spacing turns into one
-        // smudge and one hole. Growing the arcs to R=8.5 is what
-        // costs the screen its left edge: all that is left of it is a stub
-        // under the top left corner, which the outer arc now rises to meet.
-        // The screen itself grew to 2.5..21.5 x 3.5..19.5 to pay for that, so
-        // the bottom edge is still long enough to read as one.
+        // A screen with its bottom left corner opened up and the signal rising
+        // out of it: dot, inner arc, outer arc, all centred on (2.5, 19.5). The
+        // three gaps are even, which is what stays legible at 16px.
         case "cast":
             return "M 2.5 7.5 V 5 A 1.5 1.5 0 0 1 4 3.5 H 20 A 1.5 1.5 0 0 1 21.5 5 V 18 A 1.5 1.5 0 0 1 20 19.5 H 14.5"
                  + " M 2.5 14.7 A 4.8 4.8 0 0 1 7.3 19.5"
                  + " M 2.5 11 A 8.5 8.5 0 0 1 11 19.5"
-        // The mark on the one row of a menu where a misclick costs something,
-        // so it has to be the one thing a bin can be and nothing else: lid,
-        // handle, tapered body, two ribs. The ribs are what stop it reading
-        // as a cup at 16px, and the 2-unit body corners are the same radius
-        // the home and settings glyphs are built on.
+        // A bin: lid, handle, tapered body, two ribs. The ribs stop it reading
+        // as a cup at 16px.
         case "trash":
             return "M 4 6.5 H 20"
                  + " M 9.5 6.5 V 4.5 A 1.5 1.5 0 0 1 11 3 H 13 A 1.5 1.5 0 0 1 14.5 4.5 V 6.5"
@@ -360,30 +278,9 @@ Item {
     }
 
     // ── "this is playing" ────────────────────────────────────────────────
-    //
-    // Not a path, because it moves: five bars rising and falling like an
-    // equaliser. The queue and every track row show it on the one row that is
-    // playing, which is also why its cost does not matter -- a 5000 row list
-    // has exactly one of these alive in it.
-    //
-    // Five bars and not three, and standing on a baseline rather than centred.
-    // Both of those are the "track" waveform's opposite on purpose: at seven
-    // bars against five the count alone is not a difference anyone reads at
-    // 14px, so the structure has to carry it. A waveform is symmetric about
-    // its centre line; this stands on the floor and only its tops move.
-    //
-    // The heights can also come from the audio instead of from the schedule
-    // below. That is a preference, it is off by default, and when it is off
-    // not one line of this changes behaviour: `Spectrum.active` is false,
-    // the SequentialAnimation runs exactly as it always has, and the Behavior
-    // added for the live path is disabled. See src/player/SpectrumAnalyzer.h.
-    //
-    // Under reduced motion the durations collapse to zero and `loops` to one,
-    // so the sequence runs through in a single frame and parks on each bar's
-    // resting height -- a still, uneven skyline rather than nothing at all,
-    // the way the spinners park instead of disappearing. Each bar's last step
-    // is what makes that shape: it ends on `rest`, never on a peak or a
-    // trough, so the parked figure is the same one every time.
+    // Five bars standing on a baseline, where the "track" strip is seven bars
+    // centred on a line, so the two differ by structure. Under reduced motion
+    // the sequence runs once and parks each bar on its `rest` height.
     component PlayingIndicator : Item {
         id: ind
 
@@ -396,38 +293,23 @@ Item {
         implicitWidth: 16
         implicitHeight: 14
 
-        // Derived from the width so a host can size this like any other
-        // glyph and the bars can never reach past their own box. Five bars
-        // and four gaps of three quarters of a bar come to exactly 8 bar
-        // widths.
+        // Derived from the width, so the bars never reach past their own box.
+        // Five bars and four gaps of three quarters of a bar are 8 bar widths.
         readonly property real barWidth: width / 8
         readonly property real gap: barWidth * 0.75
 
         // ── live levels ──────────────────────────────────────────────────
-        //
-        // True only while the preference is on *and* audio is arriving, so a
-        // paused track, a gap between two tracks, and a build older than
-        // Qt 6.8 all fall back to the animation rather than to five dead
-        // bars. The singleton is reached the way Theme reaches ThemePalette;
-        // a context property would be undefined in the hosts that
-        // instantiate this indicator on its own.
-        //
-        // Reduced motion wins over the spectrum. A live spectrogram is
-        // continuous movement, which is the one thing that preference is
-        // asking for less of, so there the bars park on their resting
-        // skyline as before.
+        // True only while the preference is on and audio is arriving. A paused
+        // track, a gap between tracks and a build before Qt 6.8 fall back to
+        // the animation. Reduced motion wins over the spectrum.
         readonly property bool useSpectrum: Spectrum.active && !Theme.reduceMotion
 
-        // A band at zero still draws something. Five bars collapsed to
-        // nothing during a quiet passage would read as "stopped", which is
-        // the one thing this mark must never say while a track is playing --
-        // the same reason the bars park on a rest height instead of
-        // vanishing when paused.
+        // A band at zero still draws something: five bars collapsed to nothing
+        // in a quiet passage would read as stopped.
         readonly property real minFrac: 0.12
 
-        // Short-circuits before touching Spectrum.levels, so while the
-        // feature is off no binding in here depends on it and the levels
-        // changing could not cost anything even if they did.
+        // Short-circuits before touching Spectrum.levels, so while the feature
+        // is off no binding in here depends on it.
         function levelAt(i) {
             if (!useSpectrum) return 0
             var v = Spectrum.levels[i]
@@ -446,7 +328,7 @@ Item {
             Repeater {
                 // Heights as fractions of the box, so the figure is the same
                 // at any size. The resting row is uneven on purpose: five
-                // bars of one height is a bar chart, not an equaliser.
+                // bars of one height read as a bar chart.
                 model: [
                     { rest: 0.45, peak: 1.00, trough: 0.20, ms: 420 },
                     { rest: 0.80, peak: 0.55, trough: 1.00, ms: 320 },
@@ -458,8 +340,7 @@ Item {
                 delegate: Rectangle {
                     id: bar
                     required property var modelData
-                    // Which band this bar shows. Bass on the left, as every
-                    // equaliser has been drawn since they had sliders.
+                    // Which band this bar shows, bass on the left.
                     required property int index
 
                     readonly property real restH:   ind.height * modelData.rest
@@ -473,10 +354,9 @@ Item {
                         ind.height * (ind.minFrac
                                       + (1 - ind.minFrac) * ind.levelAt(bar.index))
 
-                    // A Row only places its children horizontally, so the
-                    // floor is set here. Not an anchor: `parent` is null
-                    // while a Repeater is building its delegate, and the
-                    // warning that produces fails tests/tst_firstrun.cpp.
+                    // A Row places its children only horizontally, so the
+                    // floor is set here. Not an anchor: `parent` is null while
+                    // a Repeater builds its delegate, and that warns.
                     y: ind.height - bar.height
                     width: ind.barWidth
                     height: bar.restH
@@ -488,10 +368,9 @@ Item {
                     // back if the box is resized while the bars are still.
                     onRestHChanged: if (!seq.running && !ind.useSpectrum) bar.height = bar.restH
 
-                    // Spectrum mode drives the height by assignment, the same
-                    // way the animation does, rather than by a conditional
-                    // binding on `height` -- a binding there would be dropped
-                    // by the animation's first write and never come back.
+                    // Spectrum mode assigns the height, like the animation. A
+                    // conditional binding on `height` would be dropped by the
+                    // animation's first write and never come back.
                     onSpecHChanged: if (ind.useSpectrum) bar.height = bar.specH
 
                     // Leaving the live path: the animation restarts by itself
@@ -503,12 +382,9 @@ Item {
                         else if (!seq.running) bar.height = bar.restH
                     }
 
-                    // Only ever enabled on the live path, so the animated
-                    // path below is untouched. The analyser publishes at
-                    // 25 Hz and the screen draws at 60; without this the
-                    // bars step rather than move. Through Theme.dur() like
-                    // every other duration in the app, though reduced motion
-                    // has already switched the live path off above.
+                    // Enabled only on the live path. The analyser publishes at
+                    // 25 Hz and the screen draws at 60; without this the bars
+                    // step where they should move.
                     Behavior on height {
                         enabled: ind.useSpectrum
                         NumberAnimation {

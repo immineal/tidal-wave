@@ -64,6 +64,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QWindow>
+#include <memory>
 
 #include "TestStubs.h"
 
@@ -253,7 +254,8 @@ private slots:
         QQmlApplicationEngine engine;
         installTestStubs(&engine, this);
 
-        QQuickWindow *win = hostWindow(engine, QStringLiteral(R"(
+        // Declared after the engine, so it is destroyed first. See hostWindow().
+        const std::unique_ptr<QQuickWindow> win = hostWindow(engine, QStringLiteral(R"(
             import QtQuick
             import TidalWave
             Window {
@@ -270,7 +272,7 @@ private slots:
                  "the spinner is not turning on a focused window, so this case "
                  "cannot say anything about an unfocused one");
 
-        if (!deactivate(win))
+        if (!deactivate(win.get()))
             QSKIP("this platform will not move keyboard focus off a window, so "
                   "'still drawing while unfocused' cannot be driven here");
 
@@ -284,7 +286,8 @@ private slots:
         QQmlApplicationEngine engine;
         installTestStubs(&engine, this);
 
-        QQuickWindow *win = hostWindow(engine, QStringLiteral(R"(
+        // Declared after the engine, so it is destroyed first. See hostWindow().
+        const std::unique_ptr<QQuickWindow> win = hostWindow(engine, QStringLiteral(R"(
             import QtQuick
             import TidalWave
             Window {
@@ -311,7 +314,7 @@ private slots:
                      "the bars never moved on a focused window, so this case "
                      "cannot say anything about an unfocused one");
 
-        if (!deactivate(win))
+        if (!deactivate(win.get()))
             QSKIP("this platform will not move keyboard focus off a window, so "
                   "'still drawing while unfocused' cannot be driven here");
 
@@ -367,27 +370,27 @@ private slots:
     }
 
 private:
-    // Builds `source` as a Window on `engine` and shows it. Returned window is
-    // owned by the test object, so it outlives the call.
-    QQuickWindow *hostWindow(QQmlEngine &engine, const QString &source) {
-        auto *component = new QQmlComponent(&engine, this);
-        component->setData(source.toUtf8(),
-                           QUrl(QStringLiteral("qrc:/tst_frame_gating/host.qml")));
-        if (component->isError()) {
-            for (const QQmlError &e : component->errors())
+    // Builds `source` as a Window on `engine` and shows it. The caller owns the
+    // window and must destroy it before the engine: Qt 6.4 segfaults when an
+    // animation writes to an item whose engine is gone.
+    std::unique_ptr<QQuickWindow> hostWindow(QQmlEngine &engine, const QString &source) {
+        QQmlComponent component(&engine);
+        component.setData(source.toUtf8(),
+                          QUrl(QStringLiteral("qrc:/tst_frame_gating/host.qml")));
+        if (component.isError()) {
+            for (const QQmlError &e : component.errors())
                 qWarning() << e.toString();
             return nullptr;
         }
-        QObject *obj = component->create();
-        if (!obj) return nullptr;
-        obj->setParent(this);
-        auto *win = qobject_cast<QQuickWindow *>(obj);
+        std::unique_ptr<QObject> obj(component.create());
+        auto *win = qobject_cast<QQuickWindow *>(obj.get());
         if (!win) return nullptr;
+        obj.release();
         win->show();
         win->requestActivate();
         if (!QTest::qWaitForWindowExposed(win, 2000))
             qWarning("host window was never exposed");
-        return win;
+        return std::unique_ptr<QQuickWindow>(win);
     }
 
     // Moves keyboard focus off `win` onto a second window. False means the

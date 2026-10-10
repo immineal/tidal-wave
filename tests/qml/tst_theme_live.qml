@@ -3,12 +3,8 @@ import QtTest
 import TidalWave
 
 // The end-to-end half of the theme contract: changing prefs.theme must repaint
-// what QML actually draws.
-//
-// This exists because tst_theme.cpp passed while theme switching was entirely
-// broken in the app. It only called the free palette functions, so it never
-// touched the QML singleton, which is where the bug was: Qt built its own
-// ThemePalette with a null Prefs and nothing ever repainted.
+// what QML draws. tests/tst_theme.cpp only calls the free palette functions,
+// so it cannot see a ThemePalette singleton the engine built without Prefs.
 TestCase {
     id: root
     name: "ThemeLive"
@@ -36,8 +32,8 @@ TestCase {
         }
 
         // The step above the page. Sky's tinted bg is #FFFFFF and so is the
-        // neutral light ramp's, so bg alone cannot see the colour switch move
-        // on that one theme - surface can, on all six.
+        // neutral light ramp's, so bg alone cannot see the colour switch move on
+        // that theme. Surface can, on all six.
         Rectangle {
             id: surfaceProbe
             anchors.centerIn: parent
@@ -45,7 +41,7 @@ TestCase {
             color: Theme.surface
         }
 
-        // ...and the same for a filled danger button.
+        // The same for a filled danger button.
         Rectangle {
             anchors.top: parent.top
             width: 60; height: 20
@@ -68,8 +64,8 @@ TestCase {
     }
 
     function test_singleton_sees_prefs() {
-        // If this is null the engine built its own instance and create() was
-        // skipped, which is the failure this file was written for.
+        // If this is empty, the engine built its own instance and create() was
+        // skipped.
         verify(ThemePalette.current !== undefined)
         verify(Object.keys(ThemePalette.current).length > 0)
     }
@@ -105,19 +101,14 @@ TestCase {
 
         compare(ThemePalette.isDark, data.dark)
 
-        // The accent is what always moves, and this assertion used to be about
-        // the page. With the greys neutral - which is the default - the three
-        // dark palettes share one ramp and the three light ones share another,
-        // so switching from Sea to Pine is a change of accent and the page
-        // genuinely stays where it was. Watching bg here would have made the
-        // design read as a dead picker.
+        // The accent always moves. With the greys neutral, the default, the
+        // three dark palettes share one ramp and the three light ones another,
+        // so the page stays where it is between two of the same mode.
         verify(chip.color.toString() !== beforeAccent,
                data.name + " did not change the accent away from sea's")
 
-        // The page moves when it has somewhere to move to: always with the
-        // tinted grounds on, and otherwise only when the pick crosses from the
-        // dark ramp to the light one. The negative branch is the design stated
-        // as an assertion rather than left implied.
+        // The page moves with the tinted grounds on, or when the pick crosses
+        // from the dark ramp to the light one. Otherwise it must stay.
         if (data.tinted || !data.dark) {
             verify(probe.color.toString() !== before,
                    data.name + " did not change the background away from sea")
@@ -127,16 +118,13 @@ TestCase {
                     + "while the greys are neutral")
         }
 
-        // Not "the text colour changed": Sea and Sky are not the
-        // only pair that can share an ink, so only the ground legitimately
-        // differs. What must hold is that the binding tracks the palette.
+        // Two palettes can share an ink, so the text is not required to change.
+        // What must hold is that the binding tracks the palette.
         compare(label.color.toString(), ThemePalette.current.textPrimary.toString())
-        // The binding has to agree with the table, not merely have moved.
+        // The binding has to agree with the table.
         compare(probe.color.toString(), ThemePalette.current.bg.toString())
     }
 
-    // Light themes are the reason the token layer exists, so prove a light
-    // ground really produces dark text rather than white on white.
     function test_light_theme_inverts_text() {
         prefs.theme = "sky"
         verify(!ThemePalette.isDark)
@@ -146,9 +134,8 @@ TestCase {
         verify(fgLum < 0.5, "the sky text is not dark")
     }
 
-    // The end-to-end version of the same guard: every colour token has to
-    // arrive in QML as the palette's value. A token whose binding silently
-    // never ran reads as black here, which is what onAccent and onRed did.
+    // Every colour token has to arrive in QML as the palette's value. A token
+    // whose binding never ran reads as black here.
     function test_every_token_reaches_qml_data() {
         return [
             { tag: "sea",  name: "sea" },
@@ -177,10 +164,9 @@ TestCase {
         }
     }
 
-    // The ink on a filled chip is white in every theme now, and QML is where
-    // that has to be true: the C++ table was always right about onAccent too,
-    // and the binding still painted black. Reading it back off a real
-    // Rectangle's label is the only check that covers the whole path.
+    // The ink on a filled chip is white in every theme. Read back off a real
+    // Rectangle's label, because the C++ table can be right while the binding
+    // paints black.
     function test_ink_on_a_fill_is_white_data() {
         return [
             { tag: "sea",  name: "sea" },
@@ -208,11 +194,8 @@ TestCase {
     }
 
     // ── the pure-black switch ────────────────────────────────────────────
-    //
-    // Same argument as the rest of this file: the C++ table can be perfectly
-    // right about the black variant and the app can still never show it, so
-    // these read the colour back off a Rectangle that is bound the way the
-    // app's are.
+    // The C++ table can be right about the black variant while the app never
+    // shows it, so these read the colour back off a bound Rectangle.
 
     function test_pure_black_repaints_data() {
         return [
@@ -233,20 +216,18 @@ TestCase {
         compare(probe.color.toString(), "#000000",
                 data.name + ": the page is not actually black")
         compare(probe.color.toString(), ThemePalette.current.bg.toString())
-        // The type did not come down with the ground: a black page with grey
-        // text would be the transform overreaching.
+        // The type must not come down with the ground.
         compare(label.color.toString(), ThemePalette.current.textPrimary.toString())
         verify(label.color.r > 0.8, data.name + ": the ink went dark along with the page")
 
-        // ...and it goes back.
+        // And it goes back.
         prefs.oledBlack = false
         verify(probe.color.toString() !== "#000000",
                data.name + ": turning the switch off left the page black")
     }
 
-    // Nothing to pull down on a light theme, so the setting must leave the
-    // window exactly as it was. Settings hides the switch there; this is the
-    // half that makes hiding it honest.
+    // There is nothing to pull down on a light theme, so the setting must
+    // leave the window as it is. Settings hides the switch there.
     function test_pure_black_does_nothing_on_a_light_theme_data() {
         return [
             { tag: "sky",  name: "sky" },
@@ -269,10 +250,7 @@ TestCase {
     }
 
     // ── the colour switch ────────────────────────────────────────────────
-    //
-    // Same argument as the pure-black block above: the C++ table can be
-    // perfectly right about both ramps and the app can still never show one of
-    // them, so these read the colour back off Rectangles bound the way the
+    // As above: these read the colour back off Rectangles bound the way the
     // app's are.
 
     function test_the_colour_switch_repaints_data() {
@@ -305,16 +283,15 @@ TestCase {
                 data.name + ": the colour switch moved the accent")
         compare(label.color.toString(), ThemePalette.current.textPrimary.toString())
 
-        // ...and it goes back.
+        // And it goes back.
         prefs.tintedGreys = false
         compare(surfaceProbe.color.toString(), beforeSurface,
                 data.name + ": turning the switch off did not come back")
         compare(probe.color.toString(), before)
     }
 
-    // The state the app actually starts in, read off the window: one ground per
-    // mode, six accents. This is the design the whole switch hangs off, so it
-    // is asserted against what QML paints and not only against the table.
+    // The state the app starts in, read off the window: one ground per mode,
+    // six accents.
     function test_the_neutral_state_shares_one_ground_per_mode() {
         prefs.tintedGreys = false
         var accents = {}
@@ -332,15 +309,13 @@ TestCase {
                 accents[accent] = name
             }
         }
-        // ...and the two ramps are not each other.
+        // The two ramps differ from each other.
         prefs.theme = "sea"
         const dark = probe.color.toString()
         prefs.theme = "sky"
         verify(probe.color.toString() !== dark, "the dark and light ramps are one ramp")
     }
 
-    // An unknown name must still paint something rather than leaving the
-    // window unstyled.
     function test_unknown_theme_still_paints() {
         prefs.theme = "no-such-theme"
         verify(Object.keys(ThemePalette.current).length > 0)

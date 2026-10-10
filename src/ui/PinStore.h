@@ -42,7 +42,7 @@ public:
     // Daily Discovery and New Arrivals, both destinations worth having there in
     // their own right - and from then on the block, and the fact that rows go
     // into it, are simply visible. It used to be Daily Discovery alone, because
-    // New Arrivals could not be opened at all when this was written (39b1465).
+    // New Arrivals could not be opened at all when this was written (073a043).
     //
     // They cannot be written down, because a mix id is minted per account, so
     // the mix list has to be fetched first. Application hands in the client's

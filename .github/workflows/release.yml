@@ -3,72 +3,62 @@ name: Build and Release
 on:
   release:
     types: [published]
-  # A rehearsal: the same builds, started by hand, with nothing uploaded.
+  # A rehearsal: the same builds and checks, with nothing uploaded to a release.
   workflow_dispatch:
 
+# Read-only by default. Only the publish job may write to a release.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
+  # One archive per platform, each built against the Qt installer's Qt.
+  desktop:
+    name: ${{ matrix.asset_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # One Qt for all three platforms (see ci.yml) — keep the two in sync.
+        # Windows is held at 6.10.3 because aqtinstall cannot install a newer
+        # one; ci.yml has the measurement. Keep the two files in sync.
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             asset_name: tidal-wave-linux-x86_64.tar.gz
             qt: '6.12.0'
           - os: windows-latest
             asset_name: tidal-wave-windows-x64.zip
-            qt: '6.12.0'
+            qt: '6.10.3'
           - os: macos-latest
-            asset_name: tidal-wave-macos-x64.tar.gz
+            asset_name: tidal-wave-macos-arm64.tar.gz
             qt: '6.12.0'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt }}
-          # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
-          # ship in the base desktop install (aqt has no separate 'qtsvg' module).
-          # qttools was dropped as a separate module: `aqt list-qt linux
-          # desktop --modules 6.12.0 linux_gcc_64` does not list it for 6.12,
-          # and asking for it fails the whole install step. lrelease ships in
-          # the base desktop package now. TIDALWAVE_REQUIRE_TRANSLATIONS below
-          # turns a Qt without it into a configure error rather than a build
-          # that silently ships English only.
+          # The only add-on module needed. lrelease ships in the base install,
+          # and TIDALWAVE_REQUIRE_TRANSLATIONS below fails the build without it.
           modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+          sudo apt-get install -y libasound2-dev libavahi-client-dev
 
       - name: Configure and build
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
           cmake --build build --config Release --parallel 4
 
+      # The binary alone: it runs where Qt 6.12 is installed. The .deb and the
+      # AppImage below are the packages that bring or declare their runtime.
       - name: Package binary (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          tar -czf ${{ matrix.asset_name }} -C build tidal-wave TidalWave
-          # Also build a .deb with the correct runtime dependencies declared.
-          (cd build && cpack -G DEB)
-          # CPACK_DEBIAN_FILE_NAME is DEB-DEFAULT, so the file is named
-          # tidal-wave_<version>_amd64.deb. The old tidal-wave-*-Linux.deb
-          # glob stopped matching when that was set, and this step failed
-          # silently enough that releases shipped with no .deb at all.
-          deb=$(ls build/*.deb)
-          mv "$deb" ./tidal-wave-linux-x86_64.deb
+        if: matrix.os == 'ubuntu-24.04'
+        run: tar -czf ${{ matrix.asset_name }} -C build tidal-wave TidalWave
 
       - name: Package binary (macOS)
         if: matrix.os == 'macos-latest'
@@ -83,15 +73,159 @@ jobs:
         run: |
           windeployqt --qmldir qml build\Release\tidal-wave.exe
           Copy-Item -Path build\TidalWave -Destination build\Release\TidalWave -Recurse
+
+          # The C++ runtime that the binary and Qt link. A fresh Windows has
+          # none, and the program then exits before it draws anything.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $found = & $vswhere -latest -products * -find 'VC\Redist\MSVC\**\x64\Microsoft.VC*.CRT\vcruntime140.dll'
+          $newest = $found | Where-Object { ($_ -split '\\')[-4] -match '^\d+(\.\d+)+$' } |
+                    Sort-Object { [version]($_ -split '\\')[-4] } | Select-Object -Last 1
+          if (-not $newest) { throw 'No Visual C++ runtime was found on this runner.' }
+          Copy-Item -Path (Join-Path (Split-Path $newest) '*.dll') -Destination build\Release
+          foreach ($dll in 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            if (-not (Test-Path "build\Release\$dll")) { throw "$dll is missing from the archive." }
+          }
+
+          # Import libraries and the static QML library are linker by-products.
+          Get-ChildItem build\Release -Recurse -Include *.lib, *.exp, *.pdb, *.ilk | Remove-Item
           Compress-Archive -Path build\Release\* -DestinationPath ${{ matrix.asset_name }}
 
-      - name: Upload binaries to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+      # Handed to the publish job, which is the only one that uploads.
+      - name: Keep the archive for the publish job
+        uses: actions/upload-artifact@v7
         with:
-          # The .deb glob only matches on Linux; unmatched globs are ignored.
-          files: |
-            ${{ matrix.asset_name }}
-            *.deb
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+          if-no-files-found: error
+          compression-level: 0
+
+  # Built in a Debian 12 container: the dependency floors come from the Qt and
+  # the compiler of the build, and a package built on this runner asks for
+  # Qt 6.12, which no Debian or Ubuntu release can install.
+  deb:
+    name: tidal-wave-linux-x86_64.deb
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Fails when the floors read higher than libqt6core6 6.4, libstdc++6 12.
+      - name: Build the package
+        run: packaging/build-deb.sh
+
+      # A bare image each time, so apt has to resolve the Depends list itself.
+      - name: Install and start it on every supported distribution
+        run: |
+          for image in debian:bookworm debian:trixie ubuntu:24.04; do
+            packaging/verify-deb.sh "$image"
+          done
+
+      # The name the README and earlier releases use.
+      - name: Give the package its release name
+        run: mv dist/tidal-wave_*_amd64.deb tidal-wave-linux-x86_64.deb
+
+      - name: Keep the package for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: tidal-wave-linux-x86_64.deb
+          path: tidal-wave-linux-x86_64.deb
+          if-no-files-found: error
+          compression-level: 0
+
+  # Qt 6.12 and FFmpeg bundled, built on Ubuntu 22.04 for its older glibc.
+  appimage:
+    name: tidal-wave-x86_64.AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build the AppImage
+        run: packaging/build-appimage.sh
+
+      # Fedora by number: a tag that moves would change this check under a
+      # release. AlmaLinux 9 has glibc 2.34, the oldest the AppImage runs on.
+      - name: Start it on every supported distribution
+        run: |
+          for image in debian:bookworm debian:trixie ubuntu:24.04 ubuntu:22.04 fedora:44 almalinux:9; do
+            packaging/verify-appimage.sh "$image"
+          done
+
+      # One name across releases, so a link to the latest download keeps working.
+      - name: Give the AppImage its release name
+        run: mv dist/tidal-wave-*-x86_64.AppImage tidal-wave-x86_64.AppImage
+
+      - name: Keep the AppImage for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: tidal-wave-x86_64.AppImage
+          path: tidal-wave-x86_64.AppImage
+          if-no-files-found: error
+          compression-level: 0
+
+  # Runs after a failed build too, so that the missing files are named once
+  # here. Nothing is uploaded unless all five are present.
+  publish:
+    name: Checksums and upload
+    needs: [desktop, deb, appimage]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      # Allowed to fail: with no artifacts at all, the next step says so.
+      - name: Collect what the build jobs kept
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: tidal-wave-*
+          path: release
+          merge-multiple: true
+
+      - name: Check that all five files are there
+        run: |
+          mkdir -p release
+          cd release
+          missing=0
+          for file in \
+            'tidal-wave-linux-x86_64.deb' \
+            'tidal-wave-x86_64.AppImage' \
+            'tidal-wave-linux-x86_64.tar.gz' \
+            'tidal-wave-macos-arm64.tar.gz' \
+            'tidal-wave-windows-x64.zip'
+          do
+            if ! compgen -G "$file" > /dev/null; then
+              echo "::error::Missing from the release: $file"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "A build job above failed. Nothing is uploaded."
+            exit 1
+          fi
+
+      # Relative names, so `sha256sum -c SHA256SUMS` works next to a download.
+      - name: Write SHA256SUMS
+        run: |
+          cd release
+          sha256sum tidal-wave-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload to the release
+        if: github.event_name == 'release'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" release/* --clobber
+
+      # The rehearsal's result: the set a release would have received.
+      - name: Keep the set as one artifact (rehearsal)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-rehearsal
+          path: release/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true

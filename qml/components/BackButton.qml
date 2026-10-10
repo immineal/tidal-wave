@@ -6,19 +6,12 @@ Rectangle {
     id: root
     width: 36; height: 36; radius: 18
 
-    // Where this sits decides the treatment, and it sits in two places. On
-    // Album, Playlist and Mix it is over a hero that is a tint of the page. On
-    // Artist it is genuinely over the artist photo.
-    //
-    // It used to be a near-opaque disc of theme ink, which survived both but
-    // read as a bright blob on the dark themes. An outlined ghost is quiet on
-    // a flat hero and still holds its edge over a photo, because the border
-    // carries the shape when the fill alone would not.
+    // Sits over a flat hero tint on Album, Playlist and Mix and over the photo
+    // on Artist. The border carries the shape where the fill alone would not.
     readonly property color ink: Theme.textPrimary
 
     // Named so tests/qml/tst_reduced_motion.qml can assert the fade between
-    // them without naming a palette token. That test is about the animation,
-    // and these ends have now moved twice.
+    // them without naming a palette token.
     readonly property color restFill:
         Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.55)
     readonly property color hoveredFill:
@@ -39,9 +32,7 @@ Rectangle {
     Behavior on color       { ColorAnimation { duration: Theme.dur(100) } }
     Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
 
-    // Drawn, not set in a font. The arrow was "←", which renders differently
-    // or not at all wherever the font behind it is missing; that is the same
-    // trap the app mark was pulled out of.
+    // Drawn, so the arrow does not depend on a font that has the glyph.
     VectorIcon {
         anchors.centerIn: parent
         name: "chevron-left"
