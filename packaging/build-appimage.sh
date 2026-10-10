@@ -166,11 +166,10 @@ echo "=== entry point ==="
 rm -rf "$APPDIR/AppRun" "$APPDIR/AppRun.wrapped" "$APPDIR/apprun-hooks"
 cat > "$APPDIR/AppRun" <<'APPRUN_EOF'
 #!/bin/sh
-# XDG_DATA_DIRS lets QIcon::fromTheme("tidal-wave") find the bundled icon, with
-# the host's directories ahead of it. The binary is started by its real path
-# because argv[0] names the X11 WM_CLASS that StartupWMClass has to match.
+# The binary is started by its real path because argv[0] names the X11
+# WM_CLASS that StartupWMClass has to match. XDG_DATA_DIRS is left alone: the
+# tray is drawn by the desktop, which has to find the icon by name itself.
 here="$(dirname "$(readlink -f "$0")")"
-export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:$here/usr/share"
 exec "$here/usr/bin/tidal-wave" "$@"
 APPRUN_EOF
 chmod +x "$APPDIR/AppRun"
