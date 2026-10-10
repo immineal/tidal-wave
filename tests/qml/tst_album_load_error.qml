@@ -1,28 +1,8 @@
-// An album the API refuses to serve.
-//
-// The report was "it loaded an empty album page", from a row in the sidebar.
-// The cause is a saved album whose id the API no longer answers for: both
-// `albums/<id>` and `albums/<id>/items` reply 404, because the edition that was
-// favourited has since been delisted while the favourites endpoint goes on
-// listing it. Reached from Search the same record opens, because search finds a
-// live edition under a different id, and opening it that way does not repair
-// the saved one. So the page is reached with a real id, asks for it, and is
-// told no - which is a state the API will produce for any library that is a few
-// years old, not a one-off.
-//
-// What it did with "no" was nothing: both callbacks in AlbumPage.loadAlbum()
-// read `if (!err)` and dropped the reason, so `albumData` stayed {} and
-// `tracks` stayed [] while `loading` went false - the page's empty initial
-// state, with no spinner and no message. A dead record and a broken app look
-// identical from there.
-//
-// `bridge` is the stub from tests/TestStubs.h, whose two album fetches could
-// not fail at all until this file needed them to.
-//
-// The five cases after those are about what the panel offers to *do* with such
-// a record - find the edition that replaced it, and get the dead one out of the
-// library, including while that removal is still out - which is the other half
-// of a page not looking broken.
+// An album the API refuses to serve: albums/<id> and albums/<id>/items both
+// answer 404 for an edition that has been delisted while the favourites
+// endpoint goes on listing it. The page has to say so, and offer to find the
+// live edition and to remove the dead one from the library.
+// The bridge stub is the one from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Window
@@ -36,27 +16,22 @@ TestCase {
     width: 1000
     height: 800
     // TestCase declares visible: false, and an invisible tree reports every
-    // item invisible - including the panel this file is about. Same reason
-    // tst_hero_from_id.qml sets it.
+    // item invisible, including the panel this file is about.
     visible: true
 
-    // Invented, like every fixture here: no id of the owner's is in this file.
+    // Invented, like every fixture here.
     readonly property int deadAlbumId: 900000001
     readonly property int liveAlbumId: 900000002
 
-    // The title the favourites endpoint goes on answering with for the dead id,
-    // and the only name the page can put in front of the user once both of its
-    // own fetches have been refused. Invented too.
+    // The title the favourites endpoint goes on answering with for the dead
+    // id, and the only name the page has once both of its fetches are refused.
     readonly property string deadTitle: "Abendrunde am Deich"
 
     Component { id: holderC; Item { } }
     Component { id: albumC;  AlbumPage { anchors.fill: parent } }
 
-    // A host with a router in it. The two buttons below navigate, and the page
-    // reaches the router as Window.window.navigate() - which the harness's own
-    // window does not have, so a press inside the Item holder above would throw
-    // instead of being recorded. Same stand-in tests/qml/tst_search.qml hosts
-    // its page in.
+    // A host with a router in it. The two buttons navigate through
+    // Window.window.navigate(), which the harness's own window does not have.
     Component {
         id: winHostC
         Window {
@@ -97,15 +72,12 @@ TestCase {
     }
 
     function cleanup() {
-        // resetForTest() takes the headers with it, plus the three favourite
-        // maps, the refusal switch and the call log. It leaves the favourites
-        // *lists* alone, so the seeded row below would otherwise outlive the
-        // case that seeded it and name an album the next case never saved.
+        // resetForTest() leaves the favourites lists alone, so the seeded row is
+        // cleared here or it would outlive the case that seeded it.
         bridge.resetForTest()
         bridge.setFavoriteAlbumsForTest([])
     }
 
-    // The bug, in the one shape the user met it in.
     function test_an_album_the_server_refuses_says_so() {
         bridge.setHeaderErrorForTest("server replied: Not Found")
 
@@ -118,8 +90,8 @@ TestCase {
         compare(page.loading, false,
                 "a refused album left the page loading for ever")
 
-        // Asserted before the properties behind it, so a page that says
-        // nothing fails on *that* and not on a missing property name.
+        // Asserted before the properties behind it, so a page that says nothing
+        // fails here and never on a missing property name.
         var panel = errorPanelOf(page)
         verify(panel.visible,
                "an album that cannot be loaded drew its empty initial state and said nothing")
@@ -128,11 +100,9 @@ TestCase {
         verify(heading, "the failure panel has no heading")
         verify(heading.text.length > 0, "the failure panel says nothing")
 
-        // Visible and sized, not merely visible. A direct child of a Layout
-        // that sets `width`/`height` instead of Layout.preferredWidth/Height
-        // is laid out at nothing, and an item of no size still answers
-        // `visible: true` - so a panel that cannot be read would pass every
-        // assertion above it.
+        // Sized as well as visible. A direct child of a Layout that sets width
+        // and height in place of Layout.preferredWidth/Height is laid out at
+        // nothing, and an item of no size still answers visible: true.
         var detail = findChild(page, "albumLoadErrorDetail")
         verify(detail, "the failure panel has no second line")
         verify(heading.width > 100 && heading.height > 10,
@@ -151,7 +121,6 @@ TestCase {
                "a page with no header, no tracks and a refusal did not call itself failed")
     }
 
-    // The other side of it: a page that loaded must not accuse anyone.
     function test_an_album_that_loads_shows_no_failure() {
         bridge.setAlbumForTest({ title: "Abendrunde", artists: "Eine Band",
                                  coverUrl: "cdn/alb.jpg", numTracks: 1 },
@@ -171,8 +140,8 @@ TestCase {
     }
 
     // An empty answer is not a refusal. The panel is gated on what the server
-    // said, not on the page being bare - otherwise an album still in flight,
-    // or one that genuinely answers with nothing, is called dead.
+    // said, so an album still in flight, or one that answers with nothing, is
+    // never called dead.
     function test_an_empty_answer_without_an_error_is_not_a_failure() {
         var page = openAlbum(testCase.liveAlbumId)
 
@@ -184,24 +153,12 @@ TestCase {
     }
 
     // ── what the panel offers to do about it ────────────────────────────
-    //
-    // Saying "this album is gone" was the half that was missing; this is the
-    // other half. A dead favourite is a record the user cannot open, cannot
-    // play, and could not get rid of either: every route to "remove from the
-    // library" in this app goes through a page that will not load, so the one
-    // page that knows the album is dead was also the one page with nothing to
-    // press. It carries two buttons now - the title handed to Search, where the
-    // live edition turns up under another id, and the removal itself.
-    //
-    // The title cannot come from the album: both fetches for it were refused.
-    // It comes from the favourites row that is still being listed - which is
-    // the row Unsave deletes, so the two interact, and the second case below is
-    // where that interaction is pinned down.
+    // The panel carries two buttons: the title handed to Search, where the
+    // live edition turns up under another id, and the removal. The title comes
+    // from the favourites row, which is the row Unsave deletes.
 
     // The library row the favourites endpoint goes on answering with, and the
-    // flag isAlbumFavorite() reads. Both, because they are two caches in the
-    // real bridge as well: the list is what a title is read out of and the flag
-    // is what "this is saved" is asked of.
+    // flag isAlbumFavorite() reads. They are two caches in the real bridge too.
     function seedDeadFavourite() {
         bridge.setFavoriteAlbumsForTest([{ id: testCase.deadAlbumId,
                                            title: testCase.deadTitle,
@@ -238,9 +195,7 @@ TestCase {
         var find = buttonOn(win.page, "albumLoadErrorFind", "Find album")
 
         verify(find.visible, "an album that is gone offered no way to look for it")
-        // Sized, not merely visible, for the reason the two lines above it are
-        // checked that way: a Layout child that sets width/height is laid out
-        // at nothing and still answers visible true.
+        // Sized as well as visible, for the Layout reason given in the first case.
         verify(find.width > 60 && find.height > 20,
                "the Find album button was laid out at no size: "
                + find.width + "x" + find.height)
@@ -284,9 +239,8 @@ TestCase {
         verify(!unsave.visible,
                "Unsave is still on offer for an album that has already been unsaved")
 
-        // The query it carries is read out of the row the removal just deleted,
-        // so this is the assertion a live binding fails: the button would lose
-        // its title - and itself - at the very moment the removal landed.
+        // The query is read out of the row the removal just deleted, so a live
+        // binding would lose the title, and the button, as the removal lands.
         var find = buttonOn(page, "albumLoadErrorFind", "Find album")
         verify(find.visible, "unsaving the album took the search button with it")
         clickCenter(find)
@@ -319,14 +273,9 @@ TestCase {
     }
 
     // ── while the DELETE is still out ───────────────────────────────────
-    //
-    // The press is the only move left on this page, and over a real network the
-    // answer to it is a second or two away. That window did not exist in any
-    // test until the stub could hold a reply: the callback ran before
-    // mouseClick() returned, so the line that says it is working, the button
-    // greying out and the guard against a second press were three pieces of
-    // code nothing could execute - and a user who presses again because nothing
-    // has happened yet is the ordinary case, not an odd one.
+    // Over a real network the answer to the press is a moment away. The stub
+    // holds the reply, so the progress line, the disabled button and the guard
+    // against a second press can be exercised.
     function test_a_removal_still_in_flight_says_so_and_takes_no_second_press() {
         seedDeadFavourite()
         bridge.setDeferFavoriteRepliesForTest(true)
@@ -347,9 +296,7 @@ TestCase {
                "a removal that is still out said nothing, so the press is "
                + "indistinguishable from one that did not land")
         // A frame first: the line joins the column as it gains its text, and
-        // until the layout has been polished again it is still at the implicit
-        // width it had while it was out of the layout - which is the width of
-        // whatever string it happens to hold, not the width it is given.
+        // until the layout is polished again it keeps its implicit width.
         waitForRendering(win.contentItem, 2000)
         verify(said.width > 100 && said.height > 10,
                "the progress line was laid out at no size: "
@@ -361,10 +308,9 @@ TestCase {
                 "the button is still live while its own removal is out, so the pointer "
                 + "can send a second one")
 
-        // Both routes to a second removal, because they are two separate
-        // guards: `enabled` closes the pointer path, and the function refuses on
-        // its own for everything else that can reach it (a key, a shortcut, a
-        // binding that fires twice).
+        // Both routes to a second removal, because they are two guards: enabled
+        // closes the pointer path, and the function refuses on its own for a key,
+        // a shortcut or a binding that fires twice.
         clickCenter(unsave)
         page.unsaveDeadAlbum()
         compare(bridge.favoriteCallsForTest(), 1,

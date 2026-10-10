@@ -1,30 +1,9 @@
-// Layout regression tests for section C of the handoff (L6, L7, L11, L12, L13).
-//
-// Every page is built at the four widths the layout audit used:
-//   640  the new minimum window width, "usable" rather than pretty
-//   820  Prefs::railBreakpoint, where the sidebar collapses to the rail
-//   960  half of one of the user's 1920x1200 monitors, the width that has to
-//        be *correct*, not merely usable
-//   1280 a comfortable width, to catch things that only break when wide
-// The width is applied to the page itself, i.e. to the content pane. The real
-// pane is narrower than the window by the sidebar, so a page that passes at
-// 640 here is still fine in a 640 window.
-//
-// The grid tests below do not use that list. A card clipped at the window edge
-// is the one thing that may never happen, and the widths that did it were not
-// the round ones, so those sweep 640 to 3840 instead.
-//
-// Two blanket assertions run over every page at every width:
-//   * no visible child sticks out of its parent horizontally, and
-//   * no visible Text reports itself truncated unless it has an elide mode,
-//     i.e. nothing is silently clipped.
-// On top of that each of L6/L7/L11/L12/L13 has its own named test.
-//
-// The auth/bridge/player/downloader/cast/app globals are the stubs from
-// tests/TestStubs.h and return empty results, so every page is filled with
-// test data by hand after it is created. The stubs answer synchronously, so a
-// property that a loadX() overwrites (tracks, albumData, …) must be assigned
-// *after* the id that triggers the load.
+// Layout tests for the pages. Each page is built at four content-pane widths:
+// 640 (the minimum window), 820 (Prefs::railBreakpoint), 960 and 1280. The
+// grid tests sweep 640 to 3840 instead. Two blanket assertions run everywhere:
+// no visible child sticks out of its parent horizontally, and no Text without
+// an elide mode is truncated. The stubs from tests/TestStubs.h answer
+// synchronously, so a property a load overwrites is assigned after its id.
 
 import QtQuick
 import QtQuick.Controls
@@ -146,9 +125,8 @@ TestCase {
         return (item.objectName && item.objectName.length > 0) ? item.objectName : ("" + item)
     }
 
-    // A horizontally scrollable view is *meant* to be wider than its viewport,
-    // so its content is not an overflow. Nothing inside it is checked either:
-    // off-screen delegates are the whole point of the thing.
+    // A horizontally scrollable view is meant to be wider than its viewport,
+    // so its content is not an overflow and nothing inside it is checked.
     function scrollsHorizontally(item) {
         return item.contentWidth !== undefined && item.contentX !== undefined
                && item.contentWidth > item.width + 1
@@ -158,18 +136,9 @@ TestCase {
         return item.truncated !== undefined && item.elide !== undefined && item.text !== undefined
     }
 
-    // The deliberate overdraws, each named rather than inferred from clipping
-    // so that nothing else picks the exemption up:
-    //
-    //   * the ring that rounds an artist's artwork is wider than the art on
-    //     purpose, and the art box clips it back;
-    //   * Collection's travelling tab highlight is one pill, drawn as a slice
-    //     inside each chip - every chip holds the *whole* pill and shows the
-    //     part of it that is over itself, so the box of a chip that the pill is
-    //     not on sits wherever the pill is, with nothing of it on screen;
-    //   * and the accent-ink copy of a chip's label is positioned inside that
-    //     same clip, so it starts left of its window whenever the pill covers
-    //     the right-hand part of the chip.
+    // The deliberate overdraws, each named so nothing else picks the
+    // exemption up: the ring round an artist's artwork, the slice of the
+    // travelling tab pill each chip holds, and the chip's accent-ink label.
     function drawnOutsideOnPurpose(item) {
         return item.objectName === "cardArtCorners"
             || item.objectName === "collectionTabPillSlice"
@@ -202,10 +171,9 @@ TestCase {
         }
     }
 
-    // The travelling tab highlight as it is drawn, in the tab row's own
-    // coordinates. Every chip holds the whole pill and shows the part of it
-    // that is over itself, in a window that starts 2px outside the chip - which
-    // is where that 2 comes from - so any chip's slice reports the whole pill.
+    // The travelling tab highlight as drawn, in the tab row's coordinates.
+    // Every chip holds the whole pill in a window that starts 2px outside the
+    // chip, so any chip's slice reports the whole pill.
     function drawnPill(tabs) {
         var chip = tabs.children[0]
         if (!chip) return null
@@ -231,7 +199,7 @@ TestCase {
         return null
     }
 
-    // ── L11 / blanket audit: the four hero pages ────────────────────────────
+    // ── blanket audit: the four hero pages ──────────────────────────────────
 
     function test_album_page_fits() {
         for (var i = 0; i < widths.length; ++i) {
@@ -298,7 +266,7 @@ TestCase {
         }
     }
 
-    // ── L6 / L12: CollectionPage, all five tabs ─────────────────────────────
+    // ── CollectionPage, all five tabs ───────────────────────────────────────
 
     function fillCollection(page, tab) {
         page.activeTab = tab           // this calls updateFilteredContent(), which
@@ -321,8 +289,8 @@ TestCase {
         }
     }
 
-    // L6: the header needed ~1083px against a 740px pane. The search field now
-    // sits on its own row under the tabs and stretches to the pane width.
+    // The search field sits on its own row under the tabs and stretches to
+    // the pane width.
     function test_collection_search_is_on_its_own_row() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
@@ -345,15 +313,9 @@ TestCase {
         }
     }
 
-    // L6: the tab highlight is one pill that travels, and where it comes to
-    // rest is a layout question - the chips are text-width, and at 640 the row
-    // wraps onto a second line, which is the one place a highlight aimed with
-    // an index times a constant would land on nothing.
-    //
-    // The widths are swept because the five chips are five different widths -
-    // each is its label plus its count - and the pill has to be each of them in
-    // turn; 640 is the one that wraps, and the wrap is what makes the pill's y
-    // worth asserting at all.
+    // The tab highlight is one pill that travels to the active chip. The
+    // chips are text-width and five different widths, and at 640 the row
+    // wraps onto a second line, which is why the pill's y is asserted.
     function test_collection_tab_pill_lands_on_the_chip() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
@@ -372,11 +334,8 @@ TestCase {
                 if (chip.y > 1) wrapped = true
 
                 // tryVerify, because the pill is still travelling when the tab
-                // is set: this case is about where it stops. Exactly on the
-                // chip and not within a pixel of it - a pill that stops a
-                // fraction short leaves a sliver of the resting surface down
-                // one edge of the chip, and it is the ink check below that
-                // would go on to fail by a pixel and read as a different bug.
+                // is set. Exactly on the chip: a pill that stops a fraction
+                // short leaves a sliver of the resting surface down one edge.
                 tryVerify(function () {
                     var c = tabs.children[tab]
                     var p = drawnPill(tabs)
@@ -389,8 +348,7 @@ TestCase {
                 + chip.width.toFixed(1) + "x" + chip.height.toFixed(1))
 
                 // The accent's ink copy covers the chip exactly when the pill
-                // does, which is what keeps the label on the fill its ink was
-                // chosen for; off the chip it is not drawn at all.
+                // does, and off the chip it is not drawn at all.
                 var ink = findByName(chip, "collectionTabInk")
                 verify(ink, "@" + w + ": chip " + tab + " has no accent-ink copy")
                 compare(Math.round(ink.width),  Math.round(chip.width),
@@ -407,8 +365,6 @@ TestCase {
         }
     }
 
-    // L12: the grid used a fixed 184px cell, which left up to 140px of ragged
-    // gutter in a 740px pane. The cells now split the pane evenly.
     function test_collection_grid_fills_the_pane() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
@@ -432,13 +388,9 @@ TestCase {
         }
     }
 
-    // ── L13 revised: the row holds still while the window moves ─────────────
-    //
-    // Cards used to be sized from the row width so the row always ended on a
-    // deliberate sliver of the next one. That made every card resize
-    // continuously while the window was dragged, which the user found far
-    // noisier than a clean cut. Cards are a fixed size now and the row clips;
-    // the scrollbar carries the "there is more" cue instead.
+    // ── the row holds still while the window moves ──────────────────────────
+    // Cards are a fixed size and the row clips, so nothing resizes while the
+    // window is dragged. The scrollbar carries the cue that there is more.
     function test_horizontal_section_cards_do_not_resize_with_the_window() {
         var holder = createTemporaryObject(holderC, testCase, { width: 1600, height: 320 })
         var sec = createTemporaryObject(sectionC, holder, { items: makeAlbums(14) })
@@ -446,8 +398,8 @@ TestCase {
         settle(holder)
 
         var sizes = {}
-        // One pixel at a time: a size that only twitches between round numbers
-        // is exactly the thing being complained about.
+        // One pixel at a time, to catch a size that twitches between round
+        // numbers.
         for (var w = 640; w <= 1600; w += 1) {
             holder.width = w
             sizes[sec.cardSize] = true
@@ -458,12 +410,9 @@ TestCase {
                 + Object.keys(sizes).join(", "))
     }
 
-    // A thumbnail in a list is drawn at 36px and the cover URL serves 320, so
-    // without a sourceSize every row of a long list holds a full-size decoded
-    // image. The budget is the box doubled, for a 2x screen, and it has to
-    // name both dimensions: a width-only sourceSize reaches the image provider
-    // as 72x0, which QSize::isValid() accepts and QImageReader::setScaledSize()
-    // turns into nothing at all.
+    // A list thumbnail is drawn small while the cover URL serves a large
+    // image, so the decode is budgeted at twice the box for a 2x screen. Both
+    // dimensions: a width-only sourceSize reaches the provider with height 0.
     function test_a_list_thumbnail_decodes_at_the_size_it_is_drawn() {
         var row = makeRow(900)
         var cover = findByName(row, "trackRowCover")
@@ -482,11 +431,9 @@ TestCase {
                + " for a box of " + box + ": more than a 2x screen can show")
     }
 
-    // A card's hover affordances have to survive being put in a row. Hover
-    // delivery stops at the first item that takes it, and the topmost child of
-    // a section covers every card in it, so one stray hoverEnabled MouseArea
-    // over the whole row silently kills the wash, the play button and the
-    // pointing-hand cursor on every card on the home page.
+    // Hover delivery stops at the first item that takes it, and the topmost
+    // child of a section covers every card in it, so one hoverEnabled
+    // MouseArea over the row would kill every card's hover affordances.
     function test_a_card_inside_a_row_still_hovers() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 320 })
         var sec = createTemporaryObject(sectionC, holder, { items: makeAlbums(4) })
@@ -509,7 +456,7 @@ TestCase {
         settle(holder)
     }
 
-    // ── L7: TrackRow columns and the hover jitter ───────────────────────────
+    // ── TrackRow columns and the hover jitter ───────────────────────────────
 
     function makeRow(w) {
         var holder = createTemporaryObject(holderC, testCase, { width: 1300, height: 120 })
@@ -554,8 +501,8 @@ TestCase {
         }
     }
 
-    // The hover buttons used to be laid out only while hovered, so the title
-    // resized under the pointer. Their space is reserved now, hovered or not.
+    // The hover buttons' space is reserved, hovered or not, so the title
+    // holds still.
     function test_trackrow_title_does_not_move_on_hover() {
         var row = makeRow(900)
         var title = findByName(row, "trackTitle")
@@ -575,7 +522,7 @@ TestCase {
         settle(row)
     }
 
-    // ── L11: PillButton sizes to its label ──────────────────────────────────
+    // ── PillButton sizes to its label ───────────────────────────────────────
 
     function test_pillbutton_fits_a_german_label() {
         var holder = createTemporaryObject(holderC, testCase, { width: 600, height: 80 })
@@ -624,15 +571,9 @@ TestCase {
         return given
     }
 
-    // The absolute one. Two sweeps, because they catch different things.
-    //
-    // The first runs the page's own grid arithmetic at every single pixel from
-    // 640 to 3840. It is cheap enough to be exhaustive, and exhaustive is the
-    // point: the widths that used to break were never the round ones.
-    //
-    // The second resizes one live page across the same range and measures the
-    // cards that come out of it, which is the only way to catch the GridView or
-    // a delegate disagreeing with the arithmetic above it.
+    // Two sweeps. The first runs the page's own grid arithmetic at every
+    // pixel from 640 to 3840. The second resizes one live page across the
+    // range and measures the cards, to catch the GridView disagreeing.
     function test_collection_grid_never_clips_a_card() {
         var page = makePane(collectionC, 1000)
         fillCollection(page, 1)
@@ -661,9 +602,9 @@ TestCase {
                    "@" + w + ": a " + page.gridCardSize(cell) + "px card in a " + cell + "px cell")
         }
 
-        // Now the real thing, resized rather than rebuilt: a card built at one
-        // width and then shown at another is exactly how the broken ones got
-        // made. 48 albums so even a 3840px pane has a full row to measure.
+        // The live page, resized without being rebuilt, since a card built at one
+        // width is then shown at another. 48 albums so even a 3840px pane has a
+        // full row to measure.
         var holder = createTemporaryObject(holderC, testCase, { width: 640, height: paneHeight })
         var live = createTemporaryObject(collectionC, holder, {})
         verify(live, "the page was not created")
@@ -705,11 +646,9 @@ TestCase {
 
     // ── one row, one art box, one baseline ─────────────────────────────────
 
-    // The art box used to be a ColumnLayout child carrying a plain height, and
-    // a layout only reads that the first time it measures a child: a card built
-    // while its grid was still settling kept the stale box and drew its title
-    // across its cover. Covers of three different shapes go in to prove the
-    // other half of it, that nothing about the picture can move the layout.
+    // A layout reads a child's plain height only the first time it measures
+    // it, so the art box must take its size from the layout. Covers of three
+    // shapes go in to show that the picture cannot move the layout.
     function test_grid_cards_share_a_box_and_a_baseline() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
@@ -749,8 +688,6 @@ TestCase {
         }
     }
 
-    // The same for a horizontal row, which is where the QA screenshot came
-    // from: four cards of one album, the third of them smaller and lower.
     function test_section_cards_share_a_box_and_a_baseline() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
@@ -793,9 +730,8 @@ TestCase {
 
     // ── the artist card is a disc, and the hover has to know it ─────────────
 
-    // Everything the hover draws has to stay on the circle: the wash, the play
-    // button and the focus ring. The button used to be anchored to the bottom
-    // right of the bounding box, which on a disc is a corner that is not there.
+    // Everything the hover draws has to stay on the circle: the wash, the
+    // play button and the focus ring. A disc has no bottom right corner.
     function test_artist_card_hover_stays_in_the_circle() {
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
         var card = createTemporaryObject(mediaCardC, holder, {
@@ -830,8 +766,7 @@ TestCase {
         verify(play, "the play button was not found")
         verify(play.visible, "the play button did not appear on hover")
 
-        // Dead centre of the art, and far enough inside it that the whole
-        // button is on the disc rather than straddling its edge.
+        // Dead centre of the art, with the whole button on the disc.
         var p = play.mapToItem(art, play.width / 2, play.height / 2)
         var off = Math.sqrt(Math.pow(p.x - cx, 2) + Math.pow(p.y - cy, 2))
         var reach = Math.max(play.width, play.height) / 2
@@ -843,7 +778,6 @@ TestCase {
         settle(holder)
     }
 
-    // A square card keeps the corner the hover was designed around.
     function test_album_card_keeps_its_corner_play_button() {
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
         var card = createTemporaryObject(mediaCardC, holder, {
@@ -870,24 +804,9 @@ TestCase {
         settle(holder)
     }
 
-    // The collection grid's dead space, measured rather than reasoned about.
-    //
-    // A ~200px empty gutter was reported at "some very specific window
-    // widths". Two explanations have now died against numbers: an exact-fit
-    // rounding theory, and a sweep of the grid's own arithmetic
-    // (gridSpace/gridColumns/gridCell/gridLeft/gridRight) which showed the
-    // total margin cannot exceed 2*gridEdge plus a rounding remainder smaller
-    // than the column count - about 60px - at any pane width from 320 to 2400.
-    //
-    // So this stops arguing and measures the live GridView instead, which is
-    // the only thing that can see the difference between what the arithmetic
-    // says and what the item actually lays out. It asserts the bound the
-    // arithmetic promises; if the gutter is real, this is what will print the
-    // width it happens at and the four numbers that explain it.
-    //
-    // The grid is filled with enough albums to span several rows at every
-    // width tested, so empty space on the right cannot simply be "ran out of
-    // items" - that would be a short collection, not a layout defect.
+    // The collection grid's dead space, measured on the live GridView. The
+    // grid's arithmetic bounds the total margin at 2*gridEdge plus a rounding
+    // remainder smaller than the column count. Enough albums for several rows.
     function test_the_collection_grid_leaves_no_dead_gutter_data() {
         var rows = []
         for (var w = 640; w <= 2000; w += 8)
@@ -919,10 +838,8 @@ TestCase {
                + " cell=" + grid.cellWidth.toFixed(0)
                + " cols=" + page.gridColumns(grid.width) + "]")
 
-        // ...and the cells must actually fill the space the margins leave,
-        // which is the half the margin arithmetic alone cannot see: a grid
-        // that lays out fewer columns than were budgeted for leaves the
-        // difference empty on the right without either margin growing.
+        // The cells must fill the space the margins leave: a grid that lays out
+        // fewer columns than budgeted leaves the difference empty on the right.
         var cols = page.gridColumns(grid.width)
         var used = cols * grid.cellWidth
         var avail = grid.width - grid.leftMargin - grid.rightMargin

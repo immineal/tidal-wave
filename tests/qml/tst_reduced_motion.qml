@@ -1,25 +1,9 @@
-// X6, second half: every animation in the app respects the platform's
-// reduced-motion preference.
-//
-// What is asserted here is behaviour, never source text. Counting
-// `Behavior on` lines would pass the day someone adds the twenty-sixth
-// animation and forgets, so each case below drives a real component and
-// measures the property itself:
-//
-//   * with the preference on, the property is already on its target value in
-//     the frame the change was made, and
-//   * with it off, the very same property is still travelling a frame later
-//     and only arrives afterwards.
-//
-// Instant, not absent: reduced motion collapses a duration to zero rather
-// than switching the animation off, so a transition still starts and still
-// finishes and anything waiting on the end of one keeps working. The spinner
-// case guards the other half of that rule — an indefinite "still working"
-// indicator must stop moving without disappearing.
-//
-// `app` is the stub from tests/TestStubs.h. app.setReducedMotionForTest() is
-// the only way in, because the real Application reads the preference off the
-// desktop once at startup and offers no setter.
+// Every animation in the app respects the platform's reduced-motion
+// preference. Each case drives a real component and measures the property:
+// with the preference on it is on its target in the frame of the change, with
+// it off it is still travelling a frame later. Reduced motion collapses a
+// duration to zero and keeps the animation, so a transition still finishes.
+// app.setReducedMotionForTest() on the stub is the only way in.
 
 import QtQuick
 import QtQuick.Layouts
@@ -38,12 +22,13 @@ TestCase {
     width: 1280
     height: 800
 
-    // Prefs::railWidth and the default sidebar width, repeated so a silent
-    // change to either is a failure here rather than a tautology.
+    // Prefs::railWidth and the default sidebar width, repeated so a change
+    // to either fails here.
     readonly property int railWidth: 68
     readonly property int defaultSidebar: 220
 
-    // The slowest animation any case below drives, plus room for a slow box.
+    // The slowest animation any case below drives, plus room for a slow
+    // machine.
     readonly property int settleMs: 2000
 
     function init() {
@@ -111,10 +96,9 @@ TestCase {
             height: 700
             color: "black"
             property alias sidebar: sb
-            // The page the sidebar is built on, for the cases about the first
-            // placement: handed in at creation, because a page assigned
-            // afterwards is a move and those cases are about what happens
-            // before there has been one.
+            // The page the sidebar is built on, handed in at creation: a page
+            // assigned afterwards is a move, and the first-placement cases are
+            // about what happens before any move.
             property string startPage: "home"
 
             RowLayout {
@@ -135,9 +119,8 @@ TestCase {
         }
     }
 
-    // X3's two breakpoint layouts. Now Playing delegates its sleep timer to
-    // Window.window, so it cannot be instantiated bare; this mirrors exactly
-    // the surface Main.qml provides, as tst_layout_player.qml's host does.
+    // Now Playing delegates its sleep timer to Window.window, so it cannot
+    // be instantiated bare. This mirrors the surface Main.qml provides.
     Component {
         id: nowPlayingHostC
         Window {
@@ -201,11 +184,9 @@ TestCase {
         compare(Theme.dur(170), 170)
     }
 
-    // The guard has to hold up in a host that never installed `app` at all —
-    // an unqualified name that is not there throws a ReferenceError, and
-    // tests/tst_firstrun.cpp fails the build on any QML warning. This builds
-    // the same expression Theme uses against a global that is deliberately
-    // not installed anywhere.
+    // The guard has to hold in a host that never installed app: an
+    // unqualified name that is not there throws a ReferenceError. This builds
+    // the expression Theme uses against a global that is installed nowhere.
     function test_the_guard_survives_a_missing_global() {
         failOnWarning(/ReferenceError/)
         failOnWarning(/is not defined/)
@@ -243,7 +224,7 @@ TestCase {
         probe.destroy()
     }
 
-    // ── L4: the sidebar rail hover-expand ────────────────────────────────
+    // ── the sidebar rail hover-expand ────────────────────────────────────
 
     function test_rail_expansion_data() {
         return [
@@ -284,8 +265,7 @@ TestCase {
                       settleMs, "the slide never finished")
         }
 
-        // And back. A collapse that is instant one way and animated the other
-        // would be worse than either.
+        // And back: the collapse follows the same rule.
         mouseMove(host.contentItem, 600, 300)
         oneFrame()
 
@@ -300,15 +280,10 @@ TestCase {
         }
     }
 
-    // ── X3: the two layouts that rearrange at a breakpoint ───────────────
-    //
-    // Now Playing stacks its cover above its text below 1000px and the player
-    // bar sheds its volume slider below 720. Both used to re-form between two
-    // frames; both travel now, off one property with one Behavior, the same
-    // shape as the sidebar's slide. So both have to answer the same question
-    // this file asks of everything else: with the preference on, the layout is
-    // the new layout in the frame the width changed -- not half way through the
-    // move, and not left behind at the old one.
+    // ── the layout that rearranges at a breakpoint ───────────────────────
+    // Now Playing stacks its cover above its text below 1000px, travelling
+    // off one property with one Behavior. With the preference on, the layout
+    // is the new layout in the frame the width changed.
 
     function test_now_playing_restack_data() { return test_rail_expansion_data() }
 
@@ -341,8 +316,7 @@ TestCase {
         compare(page.infoY, Math.round(page.coverSize + page.stackGap),
                 "the settled page is not stacked")
 
-        // And back. A rearrangement that is instant one way and animated the
-        // other would be worse than either.
+        // And back: going back follows the same rule.
         host.width = 1280
         oneFrame()
 
@@ -359,12 +333,8 @@ TestCase {
                 "the page did not settle back on its side-by-side layout")
     }
 
-    // The bar used to shed its inline volume slider at 720px, the slot it left
-    // closed over 150ms, and this was the case that held reduced motion to
-    // doing that in one frame. The slider has left the bar for a hover flyout
-    // and nothing in the right-hand group animates any more, so the only motion
-    // the volume still has is the flyout's own 120ms opacity fade - and that is
-    // what reduced motion now has to make instant.
+    // The only motion the volume has in the bar is the flyout's opacity
+    // fade, which reduced motion has to make instant.
     function test_player_bar_volume_flyout_fade_data() { return test_rail_expansion_data() }
 
     function test_player_bar_volume_flyout_fade(row) {
@@ -388,8 +358,7 @@ TestCase {
             tryVerify(function () { return bar.hoverVolumePopup.opacity === 1 }, settleMs,
                       "the flyout never finished fading in")
         }
-        // And the slider inside it is a real control either way, not a ghost
-        // left over from the transition.
+        // The slider inside it is a real control either way.
         verify(bar.hoverVolumeSlider.visible && bar.hoverVolumeSlider.height >= 60,
                "the flyout is " + bar.hoverVolumeSlider.height.toFixed(1)
                + "px tall, which is not a slider to aim at")
@@ -430,10 +399,9 @@ TestCase {
 
     // ── a page transition ────────────────────────────────────────────────
 
-    // Navigating between pages is a Loader swap with no animation of its own,
-    // so the one transition a page animates is the login card resizing as the
-    // auth state moves on. 220px (signed out) to 400px (waiting for the
-    // device code) is the tallest jump it makes.
+    // Navigating between pages is a Loader swap with no animation of its
+    // own. The one transition a page animates is the login card resizing as
+    // the auth state moves on, 220px to 400px at its tallest jump.
     function test_page_transition_data() { return test_rail_expansion_data() }
 
     function test_page_transition(row) {
@@ -467,17 +435,9 @@ TestCase {
 
     // ── an indefinite "still working" indicator ──────────────────────────
 
-    // A spinner or a pulse says "still working", so reduced motion must not
-    // delete it: it stops moving and stands still, and it is still on screen.
-    //
-    // The login dots are the case measured here rather than the download
-    // spinners, because a RotationAnimator is driven by the render thread and
-    // the offscreen platform this suite runs under never advances one — its
-    // `rotation` reads 0 forever whatever the preference says, so it can
-    // neither pass nor fail honestly. The dots are an ordinary
-    // SequentialAnimation on the GUI thread and answer truthfully. Both are
-    // shaped the same way (`loops: Theme.reduceMotion ? 1 : Animation.Infinite`
-    // against a zero duration), so this covers the idiom.
+    // A spinner or a pulse must stand still under reduced motion and stay on
+    // screen. The login dots are measured: a RotationAnimator is driven by the
+    // render thread, which the offscreen platform never advances.
 
     function visibleDots(page) {
         var out = []
@@ -495,7 +455,7 @@ TestCase {
 
     function test_indefinite_indicator(row) {
         app.setReducedMotionForTest(row.reduced)
-        // PendingDevice: "Waiting for you to log in…", with the pulsing dots.
+        // PendingDevice: the waiting state, with the pulsing dots.
         auth.setStateForTest(1)
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -527,9 +487,8 @@ TestCase {
         }
     }
 
-    // The download spinners cannot have their rotation measured here (see
-    // above), but the half that matters most is still checkable: reduced
-    // motion must leave the busy mark on screen rather than remove it.
+    // The spinners' rotation cannot be measured here (see above), but
+    // reduced motion must leave the busy mark on screen.
     function test_the_busy_spinner_is_still_on_screen() {
         app.setReducedMotionForTest(true)
 
@@ -545,13 +504,9 @@ TestCase {
         verify(spinner.width > 0 && spinner.height > 0,
                "the spinner was collapsed to nothing")
 
-        // The other half of the contract, read off the animation rather than
-        // timed. A clock is no use here: a zero-length turn and a 900ms one
-        // have both finished by the time anything could look, so "it stopped"
-        // is true either way and says nothing. The two numbers do say it —
-        // reduced motion collapses the turn to zero length, and takes the
-        // endless repeat with it, because a zero duration against
-        // Animation.Infinite is a spin loop rather than a still dial.
+        // Read off the animation, since a clock cannot tell a zero-length turn
+        // from a finished one. Reduced motion sets the duration to zero and the
+        // loops to one: zero duration with Animation.Infinite is a spin loop.
         var rot = findInData(overlay, "loadingSpinnerRotation")
         verify(rot, "the spinner has no named rotation to check")
         compare(rot.duration, 0,
@@ -560,14 +515,9 @@ TestCase {
                 "a zero-length turn repeated forever is a spin loop, not stillness")
     }
 
-    // Whether the spinner *turns* is what the case above cannot ask, and it
-    // went unasserted for long enough that its `running` binding could sit
-    // broken: a rotation that never stops is indistinguishable from a correct
-    // one until you look at the frames, which this platform has none of (see
-    // the note above). `running` is the honest proxy — with motion allowed it
-    // is on exactly while the overlay is on screen, and off the moment it is
-    // not, because an indefinite animation behind a hidden overlay runs for
-    // the life of the app.
+    // Whether the spinner turns cannot be seen on this platform, so running
+    // is the proxy: on exactly while the overlay is on screen. An indefinite
+    // animation behind a hidden overlay would run for the life of the app.
     function test_the_busy_spinner_runs_only_while_it_is_on_screen() {
         app.setReducedMotionForTest(false)
 
@@ -593,12 +543,9 @@ TestCase {
                "the spinner kept rotating after the overlay was hidden")
     }
 
-    // The now-playing bars are the other indefinite indicator, and the only
-    // one whose stillness has to stay *legible*: with the animation gone it
-    // is all that distinguishes "this is playing" from the track waveform
-    // next to it in the same row. tst_menus_and_glyphs asserts the shape it
-    // parks at; this asserts that it parks at all, and that it really does
-    // move when it is allowed to.
+    // The now-playing bars are the other indefinite indicator. Parked, they
+    // are all that tells a playing row from the track waveform beside it.
+    // tst_menus_and_glyphs asserts the parked shape; this asserts the parking.
     Component {
         id: playingIndicatorC
         Item {
@@ -657,19 +604,16 @@ TestCase {
     }
 
     // ── things that rearrange ────────────────────────────────────────────
-    //
-    // The cases above are all one property easing to a new value. These five
-    // are the other kind: something changes *place* or is replaced outright,
-    // and the question is whether it arrives or is simply drawn there.
+    // The cases above are one property easing to a new value. In these,
+    // something changes place or is replaced outright.
 
     Component { id: queuePanelC;   QueuePanel   { open: false } }
     Component { id: collectionC;   CollectionPage { anchors.fill: parent } }
     Component { id: searchC;       SearchPage   { anchors.fill: parent } }
     Component { id: trackRowC;     TrackRow     { } }
 
-    // Now Playing's way in and out belongs to the window and not to the page -
-    // what has to outlive the navigation is the Loader - so this one case needs
-    // the real Main.qml, as tst_nowplaying_access.qml's window tests do.
+    // Now Playing's way in and out belongs to the window: the Loader has to
+    // outlive the navigation, so that case needs the real Main.qml.
     Component { id: appHostC; Main { } }
 
     function collectByName(item, name, out) {
@@ -696,9 +640,8 @@ TestCase {
         return playedSecond ? [b, a, c] : [a, b, c]
     }
 
-    // S4/P3: pinning, playing or liking something moves a row to a different
-    // tier, so the sidebar's library list reorders while it is being looked at.
-    // It is the list in the app that reorders most often.
+    // Pinning, playing or liking something moves a row to a different tier,
+    // so the sidebar's library list reorders while it is being looked at.
     function test_library_reorder_travels_data() { return test_rail_expansion_data() }
 
     function test_library_reorder_travels(row) {
@@ -744,19 +687,16 @@ TestCase {
                       "the row never arrived at the top")
         }
 
-        // Asked of a count rather than of a "still moving" flag, and asked
-        // after the waiting is over: a count cannot be stepped over by a slow
-        // poll, so this says whether the reorder went through the view's move
-        // transition however loaded the machine is. Reduced motion runs the
-        // transition too, at zero length, so it holds either way.
+        // Asked of a count, after the waiting is over: a slow poll cannot step
+        // over a count. Reduced motion runs the move transition too, at zero
+        // length, so this holds either way.
         verify(sb.libraryMoves > movesBefore,
                "the list did not animate the reorder at all - the row teleported")
         tryVerify(function () { return Math.round(libraryRowFor(sb, "a1").y) === step },
                   settleMs, "the row that was pushed down never reached its place")
     }
 
-    // L9: the queue overlay. It used to appear and disappear between two
-    // frames; it slides in off the right edge instead, under the scrim fading
+    // The queue overlay slides in off the right edge, under the scrim fading
     // up with it.
     function test_queue_panel_slides_data() { return test_rail_expansion_data() }
 
@@ -774,9 +714,8 @@ TestCase {
 
         var list = findByName(qp, "queuePanelList")
         verify(list, "the panel has no list to measure")
-        // Measured off the list rather than off `openness`: the slide is a
-        // transform, and this is the only reading that proves the transform is
-        // wired to it.
+        // Measured off the list: the slide is a transform, and only this reading
+        // proves the transform is wired to openness.
         function inset() { return list.mapToItem(qp, 0, 0).x }
 
         qp.open = true
@@ -849,7 +788,7 @@ TestCase {
 
     // A tab switch and a re-sort both replace the whole content area. The
     // views are modelled on JS arrays, which a view can only read as a reset,
-    // so what is asserted is the fade and not a reorder.
+    // so the fade is what is asserted.
     function test_collection_content_fades_in_data() { return test_rail_expansion_data() }
 
     function test_collection_content_fades_in(row) {
@@ -897,17 +836,9 @@ TestCase {
     }
 
     // ── the sidebar's Home / Search / Collection highlight ───────────────
-    //
-    // There was a 3px bar per row, each fading its own opacity and growing its
-    // own height. That is three bars cross-fading: the highlight left one row
-    // and appeared on another with nothing travelling between the two (QA: "the
-    // highlighting bar can move up and not just fade out in one place and then
-    // fade in in the other place"). There is one bar now, and it moves.
-    //
-    // So what is measured here is a position, and the reading that tells a
-    // travel from a cross-fade is the one taken *between* the two rows: a
-    // highlight that fades is only ever at one end or the other, whatever its
-    // opacity is doing.
+    // One bar serves the three rows, and it moves between them. The reading
+    // that tells a travel from a cross-fade is the one taken between the two
+    // rows: a highlight that fades is only ever at one end or the other.
 
     function navItemFor(sb, page) {
         var items = collectByName(sb, "sideNavItem", [])
@@ -922,19 +853,8 @@ TestCase {
     function rowCentre(bar, item) { return item.mapToItem(bar.parent, 0, 0).y + item.height / 2 }
 
     // True once the value has been seen strictly between its two ends.
-    //
-    // Sampled in a loop and not read after a fixed wait: one reading can only
-    // catch a travel it happens to land inside, and a 140ms one has about eight
-    // frames on an idle box and fewer on a loaded one. Giving up the moment the
-    // value is at the far end keeps a case that has already failed from costing
-    // the whole loop.
-    //
-    // The ends are read at every sample rather than measured once up front,
-    // which matters wherever they move: a tab chip loses its bold weight in the
-    // frame it is deselected, so the chips after it all shift left, and against
-    // the ends as they were before the click a pill that never moved at all
-    // reads as being between them. Probed - with the travel cut to a single
-    // frame, the version that measured the ends once passed.
+    // Sampled in a loop, and the ends are read at every sample: a tab chip
+    // changes width when it is deselected, which moves the chips after it.
     function sawBetween(read, readA, readB) {
         for (var i = 0; i < 200; ++i) {
             var v = read(), a = readA(), b = readB()
@@ -963,9 +883,7 @@ TestCase {
         var search = navItemFor(sb, "search")
         verify(home && search, "the nav rows were not found")
 
-        // One bar for the three rows. One per row is the cross-fade this case
-        // exists to rule out, and it would answer everything below from
-        // whichever row was asked.
+        // One bar for the three rows. One per row could only cross-fade.
         var bars = collectByName(sb, "navCurrentIndicator", [])
         compare(bars.length, 1, "the highlight is not one indicator: found " + bars.length)
         var bar = bars[0]
@@ -983,9 +901,8 @@ TestCase {
         sb.currentPage = "search"
 
         if (row.reduced) {
-            // Sampled rather than read once: "no intermediate position" is a
-            // claim about every frame of the switch, and a single reading taken
-            // after one of them says nothing about the others.
+            // Sampled: no intermediate position is a claim about every frame of
+            // the switch.
             for (var i = 0; i < 12; ++i) {
                 verify(Math.abs(barCentre(bar) - toY) <= 1,
                        "reduced motion: sample " + i + " had the bar at "
@@ -993,9 +910,9 @@ TestCase {
                 wait(4)
             }
         } else {
-            // Read in the turn of the write, before the Behavior's first tick -
-            // see the note in the rail case above. Still on Home means it did
-            // not jump; the sampling below is what says it moved.
+            // Read in the turn of the write, before the Behavior's first tick.
+            // Still on Home means it did not jump. The sampling below shows it
+            // moved.
             verify(Math.abs(barCentre(bar) - fromY) <= 1,
                    "the bar jumped to Search instead of setting off from Home")
             verify(sawBetween(function () { return barCentre(bar) },
@@ -1010,8 +927,7 @@ TestCase {
                 "the arrived bar is not half the row's inner box")
 
         // And away: an album is none of the three rows. The bar leaves from
-        // where it is rather than travelling off to nowhere, which is the half
-        // of this that a position alone cannot say.
+        // where it is and does not travel.
         sb.currentPage = "album"
         if (row.reduced) {
             oneFrame()
@@ -1029,9 +945,8 @@ TestCase {
         }
 
         // And back. From a page that was on no row there is nothing on screen
-        // to move, so the bar belongs on the row that was picked from the first
-        // frame it is visible in - not sliding in from the row it left, which
-        // is where a travel measured from the last target would start it.
+        // to move, so the bar is on the picked row from the first frame it is
+        // visible in.
         sb.currentPage = "collection"
         var coll = navItemFor(sb, "collection")
         verify(coll, "the Collection row was not found")
@@ -1046,10 +961,9 @@ TestCase {
                   "the bar never came back")
     }
 
-    // The first placement is not a move. A bar that animates it starts at the
-    // top of the panel and slides down to the row on every launch - and the
-    // sidebar is hidden outright in fullscreen, so a travel started behind that
-    // would come back halfway.
+    // The first placement is not a move, so the bar must not slide down from
+    // the top of the panel. The sidebar is also hidden in fullscreen, and a
+    // travel started behind that would come back halfway.
     function test_nav_highlight_starts_where_it_belongs() {
         var host = createTemporaryObject(shellHost, testCase, { startPage: "collection" })
         verify(host, "the sidebar host window was not created")
@@ -1063,11 +977,9 @@ TestCase {
         var home = navItemFor(sb, "home")
         verify(coll && home, "the nav rows were not found")
 
-        // Sampled from before the first frame, because that is where a slide
-        // would be. The early readings are taken before the column has laid
-        // anything out, when every row is at 0 and the bar agrees with all of
-        // them - which is why the check at the end is that the rows did get
-        // laid out and the bar is on the right one.
+        // Sampled from before the first frame, where a slide would be. Before
+        // layout every row is at 0 and the bar agrees with all of them, so the
+        // end checks that the rows did get laid out.
         for (var i = 0; i < 40; ++i) {
             verify(Math.abs(barCentre(bar) - rowCentre(bar, coll)) <= 1,
                    "sample " + i + ": the bar slid into place - it was at "
@@ -1083,63 +995,24 @@ TestCase {
     }
 
     // ── Search's tabs: one pill, travelling ──────────────────────────────
-    //
-    // Search's chips used to do what Collection's did before 7174fcd: the one
-    // being left faded back to nothing while the one arriving faded up to the
-    // accent, so the highlight was briefly nowhere and nothing ever crossed the
-    // gap between the two (QA: "the highlighting bar can move up and not just
-    // fade out in one place and then fade in in the other place"). It is one
-    // accent pill now and it moves between them - the same thing the sidebar's
-    // bar does between its rows and Collection's pill does between its chips,
-    // on the same 140ms, so the three read as one idea.
-    //
-    // The pill is one whole item here and not Collection's per-chip slices:
-    // Search's chips are in a Row, which lays out every visible child it has,
-    // so the pill cannot be *in* the row - but it can be the row's sibling,
-    // which is what Collection's Flow left nowhere for. One item means the
-    // crossing of the 4px gaps needs no arranging at all; it is asserted below
-    // anyway, as the one pill every reading comes from.
-    //
-    // What the ink has to answer changes with the fill, and the answer is a
-    // stronger one rather than a weaker one. A fading chip cannot fade its
-    // label - the two inks are luminance-inverted against the two fills on the
-    // three light palettes, dark ink on a bare row becoming white ink on an
-    // accent chip - so the ink stepped at the fill's halfway point and took one
-    // frame at 2.1:1, and the step is what this case used to assert. A
-    // *travelling* fill cannot be answered by a step at all: whichever ink a
-    // half-covered label picked, half of its glyphs would be on the wrong fill
-    // for as long as the pill's edge took to cross them, which is far longer
-    // than a frame. So the label is drawn twice, each copy clipped to its own
-    // fill, and what is asserted below is that no accent ink is ever drawn
-    // anywhere but on the accent, at every phase of a travel and not only at
-    // its two ends.
-    //
-    // That subsumes the reading it replaces. "Every reading of the ink is one
-    // of the two inks and never between them" is still checked, at every
-    // sample and on both copies - the chip's own is the resting ink exactly,
-    // the clipped copy is the accent's ink exactly - and the new half is the
-    // one a step could never give: *which* of the two is on a given pixel is
-    // decided by where the pill is rather than by a clock.
+    // One accent pill moves between the chips, as the row's sibling: a Row
+    // lays out every visible child. Each label is drawn twice, clipped to its
+    // own fill, so accent ink is only ever drawn on the accent, mid-travel too.
 
     function searchChipOf(tabs, i) { return tabs.children[i] }
 
-    // The pill itself. Read off the item that is drawn and not off the host's
-    // markX/markW, because a lag put between the host's numbers and the thing
-    // on screen would not show in the host's numbers. Probed: a Behavior on
-    // the pill's own x takes the reduced-motion sampling and the mid-travel
-    // ink below red, and markX - which is a lerp of two chips' boxes, and
-    // nothing a Behavior on the Rectangle can reach - says the same thing
-    // throughout.
+    // The pill itself, read off the item that is drawn: a lag between the
+    // host's markX/markW and the thing on screen would not show in the host's
+    // numbers.
     function searchPillItem(tabs) { return findByName(tabs.parent, "searchTabPill") }
 
     // A chip's box in the pill's own coordinates, so the two are comparable.
-    // mapToItem and not an assumption about where the row sits inside its host.
     function searchChipBox(pill, chip) {
         var p = chip.mapToItem(pill.parent, 0, 0)
         return { x: p.x, y: p.y, w: chip.width, h: chip.height }
     }
 
-    // Is the pill exactly on this chip?
+    // Whether the pill is exactly on this chip.
     function searchPillOn(pill, chip) {
         if (!pill || !chip) return false
         var c = searchChipBox(pill, chip)
@@ -1155,12 +1028,9 @@ TestCase {
                + (pill.visible ? "" : " (not drawn)")
     }
 
-    // "" when every chip's accent-ink copy is inside the pill, every chip's own
-    // label is still the resting ink, and no chip has gone back to painting an
-    // accent fill of its own - or what was wrong with the first one that did.
-    // The three are the same question asked of the three layers: the ink on
-    // screen at any pixel is the one its fill was chosen for, and there is only
-    // one fill.
+    // Empty when every chip's accent-ink copy is inside the pill, every
+    // chip's own label is the resting ink, and no chip paints an accent fill
+    // of its own. Otherwise what was wrong with the first one.
     function searchInkIsOnTheAccent(tabs, pill) {
         if (!pill) return "there is no pill to compare the ink against"
         for (var i = 0; i < 6; ++i) {
@@ -1206,24 +1076,21 @@ TestCase {
         verify(tabs, "the search tab row was not found")
         // children[1] is the Tracks chip: a Repeater's delegates stack before
         // the Repeater itself in its parent's children, and the pill is the
-        // row's sibling rather than one of the row's children, so nothing here
-        // has been pushed along.
+        // row's sibling.
         var all    = searchChipOf(tabs, 0)
         var tracks = searchChipOf(tabs, 1)
         verify(all && tracks, "there are no chips to measure")
         compare(sPage.activeTab, 0, "the page did not open on the first tab")
 
-        // One pill for the six chips. One per chip is the cross-fade this case
-        // exists to rule out, and it would answer everything below from
-        // whichever chip was asked.
+        // One pill for the six chips. One per chip could only cross-fade.
         var pills = collectByName(sPage, "searchTabPill", [])
         compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
         var pill = pills[0]
 
         tryVerify(function () { return searchPillOn(pill, all) }, settleMs,
                   "the pill never settled on the first chip: " + searchPillSays(pill))
-        // The chips carry no fill of their own any more - if one of them still
-        // filled, everything below could pass with two highlights on screen.
+        // The chips carry no fill of their own. If one did, everything below
+        // could pass with two highlights on screen.
         compare(all.color.a, 0,
                 "the current chip is filled as well as marked, got " + all.color)
         compare(tracks.color.a, 0,
@@ -1238,8 +1105,8 @@ TestCase {
         sPage.activeTab = 1
 
         if (row.reduced) {
-            // Every sample, not one: "no intermediate position" is a claim
-            // about all of them.
+            // Every sample: no intermediate position is a claim about all of
+            // them.
             for (var i = 0; i < 12; ++i) {
                 verify(searchPillOn(pill, tracks),
                        "reduced motion: sample " + i + " - " + searchPillSays(pill)
@@ -1248,16 +1115,14 @@ TestCase {
                 wait(4)
             }
         } else {
-            // Read in the turn of the write, before the Behavior's first tick -
-            // see the note in the rail case above. Still on the old chip means
-            // it did not jump; the sampling below is what says it moved.
+            // Read in the turn of the write, before the Behavior's first tick.
+            // Still on the old chip means it did not jump. The sampling below
+            // shows it moved.
             verify(Math.abs(pill.x - fromX) <= 1,
                    "the pill jumped to the new chip instead of setting off: "
                    + searchPillSays(pill))
-            // Both ends re-read at every sample. Search's labels never go bold,
-            // so its chips do not resize under the pill the way Collection's
-            // do - but a reading against ends measured once is a question about
-            // the ends, and this one is about the pill.
+            // Both ends are re-read at every sample, so the reading is about the
+            // pill and never about ends measured once.
             verify(sawBetween(function () { return pill.x },
                               function () { return searchChipBox(pill, all).x },
                               function () { return searchChipBox(pill, tracks).x }),
@@ -1269,10 +1134,9 @@ TestCase {
         compare(searchInkIsOnTheAccent(tabs, pill), "",
                 "the ink is not where the accent is after the travel")
 
-        // The ink again, this time sampled through a whole travel rather than
-        // at its ends: a half-covered label is exactly the state a stepped ink
-        // gets wrong, and it only exists in the middle. Four chips' worth, so
-        // the pill is over a label that is neither end for most of it.
+        // The ink again, sampled through a whole travel: a half-covered label
+        // only exists in the middle. Four chips' worth, so the pill is over a
+        // label that is neither end for most of it.
         sPage.activeTab = 5
         var last = searchChipOf(tabs, 5)
         verify(last, "there is no Mixes chip")
@@ -1286,18 +1150,9 @@ TestCase {
                   "the pill never reached the last chip: " + searchPillSays(pill))
     }
 
-    // Opened on a tab that is not the first: the pill is there, not on its way
-    // there. Same rule as the sidebar's bar and Collection's pill, and the one
-    // a lerp between two live boxes gets wrong by sliding out of the row's left
-    // edge on every query that brings the row back.
-    //
-    // The query and the tab are set in the turn the page was made in, and not
-    // handed to createTemporaryObject as initial properties: a QVariantMap
-    // arrives sorted, so `activeTab` would be applied before `query` and the
-    // row would still be hidden when the tab changed - which is a different
-    // guard, and the one the case below this is about. Here the row is on
-    // screen and nothing has been rendered yet, which is the one placement
-    // that is an initialisation rather than a move.
+    // Opened on a tab that is not the first: the pill is there, with no
+    // travel. The query and the tab are set after creation, because initial
+    // properties arrive sorted and activeTab would be applied before query.
     function test_search_tab_pill_starts_where_it_belongs() {
         var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
         var page = createTemporaryObject(searchC, holder)
@@ -1310,10 +1165,9 @@ TestCase {
         var pill = searchPillItem(tabs)
         verify(pill, "there is no pill")
 
-        // From before the first frame. The early readings are taken before the
-        // Row has placed anything, when every chip is at 0 and the pill agrees
-        // with all of them - so the end of this checks that they did get placed
-        // and that the pill is on the right one.
+        // From before the first frame. Before the Row has placed anything every
+        // chip is at 0 and the pill agrees with all of them, so the end checks
+        // that they did get placed.
         for (var i = 0; i < 40; ++i) {
             var chip = searchChipOf(tabs, 2)
             verify(chip, "the Albums chip was not built")
@@ -1330,15 +1184,9 @@ TestCase {
     }
 
 
-    // A tab picked while the row is off screen - the query cleared, the page
-    // on another of the shell's pages, the row simply not there - is where it
-    // belongs the moment the row comes back, rather than crossing it on the
-    // way in. The same guard the sidebar's bar has for fullscreen, which hides
-    // the panel outright while the page behind it goes on changing.
-    //
-    // The tab and the query are set in one turn with nothing rendered between
-    // them, because a travel started behind the hidden row has 140ms to finish
-    // in: let a frame pass first and the bug walks straight through.
+    // A tab picked while the row is off screen is where it belongs the
+    // moment the row comes back. The tab and the query are set in one turn
+    // with nothing rendered between them.
     function test_search_tab_pill_does_not_cross_a_hidden_row() {
         var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
         var page = createTemporaryObject(searchC, holder)
@@ -1376,41 +1224,15 @@ TestCase {
     }
 
     // ── Collection's tabs: one pill, travelling ──────────────────────────
-    //
-    // Collection's chips used to do what Search's did: the one being left
-    // faded back to the resting surface while the one arriving faded up to the
-    // accent. Both halves of that are a highlight that is briefly nowhere, and
-    // nothing ever crosses the gap between the two chips.
-    //
-    // It is one accent pill now and it moves between them, which is the same
-    // thing the sidebar's bar does and on the same 140ms. Drawn as a slice
-    // inside each chip rather than as the one item Search's row can afford,
-    // because a Flow lays out anything added to it; the pair of cases below is
-    // otherwise the pair above, asked of the other page.
-    //
-    // That changes what the ink has to answer, and makes it a stronger answer
-    // rather than a weaker one. The fading chip could not fade its label - the
-    // two inks are luminance-inverted against the two fills on the three light
-    // palettes - so the ink stepped at the fill's halfway point and took one
-    // frame at 2.1:1. A travelling fill cannot step at all: whichever ink a
-    // half-covered label picked, half of its glyphs would be on the wrong fill
-    // for as long as the pill's edge took to cross them, which is far longer
-    // than a frame. So the label is drawn twice, each copy clipped to its own
-    // fill, and what is asserted below is that no accent ink is ever drawn
-    // anywhere but on the accent - at every phase of the travel, not just at
-    // the two ends.
+    // One accent pill moves between the chips, drawn as a slice inside each
+    // chip, because a Flow lays out anything added to it. The label is drawn
+    // twice, each copy clipped to its own fill, as on the Search page.
 
     function chipOf(tabs, i) { return tabs.children[i] }
 
-    // The pill as it is actually drawn, in the row's coordinates.
-    //
-    // Read back out of a chip's slice and not off the row's own markX/markW:
-    // every chip holds the whole pill and shows the part of it over itself, so
-    // the slice is the thing on screen, and a lag put between the row's numbers
-    // and the slice would not show in the row's numbers. The window the slice
-    // sits in starts 2px outside the chip, which is where that 2 comes from.
-    // Probed - against the version that read the row's numbers, a Behavior on
-    // the slice's x passed every case here.
+    // The pill as it is drawn, in the row's coordinates. Read out of a
+    // chip's slice: every chip holds the whole pill and shows the part over
+    // itself, in a window that starts 2px outside the chip.
     function drawnPill(tabs) {
         var chip = chipOf(tabs, 0)
         if (!chip) return null
@@ -1420,7 +1242,8 @@ TestCase {
                  w: slice.width, h: slice.height }
     }
 
-    // Is the pill exactly on this chip? Both are in the row's coordinates.
+    // Whether the pill is exactly on this chip. Both are in the row's
+    // coordinates.
     function pillOn(tabs, chip) {
         var p = drawnPill(tabs)
         if (!p) return false
@@ -1450,10 +1273,9 @@ TestCase {
         return ""
     }
 
-    // "" when every chip's accent-ink copy is inside the pill and every chip's
-    // own label is still the resting ink, or what was wrong with the first one
-    // that was not. Both are the same question asked of the two layers: the ink
-    // on screen at any pixel is the one its fill was chosen for.
+    // Empty when every chip's accent-ink copy is inside the pill and every
+    // chip's own label is the resting ink. Otherwise what was wrong with the
+    // first one.
     function inkIsOnTheAccent(tabs) {
         var pill = drawnPill(tabs)
         if (!pill) return "there is no pill to compare the ink against"
@@ -1494,9 +1316,8 @@ TestCase {
         verify(tracks && albums, "there are no chips to measure")
         compare(page.activeTab, 0, "the page did not open on the first tab")
 
-        // The chips no longer carry the highlight themselves - if one of them
-        // still filled, everything below could pass with two highlights on
-        // screen at once.
+        // The chips do not carry the highlight themselves. If one filled,
+        // everything below could pass with two highlights on screen.
         tryVerify(function () { return pillOn(tabs, tracks) }, settleMs,
                   "the pill never settled on the first chip: " + pillSays(tabs))
         verify(sameColor(tracks.color, Theme.surfaceHigh),
@@ -1513,8 +1334,8 @@ TestCase {
         page.activeTab = 1
 
         if (row.reduced) {
-            // Every sample, not one: "no intermediate position" is a claim
-            // about all of them.
+            // Every sample: no intermediate position is a claim about all of
+            // them.
             for (var i = 0; i < 12; ++i) {
                 verify(pillOn(tabs, albums),
                        "reduced motion: sample " + i + " - " + pillSays(tabs)
@@ -1537,9 +1358,8 @@ TestCase {
         compare(inkIsOnTheAccent(tabs), "", "the ink is not where the accent is after the travel")
         compare(slicesAgree(tabs), "", "the chips do not draw one pill between them")
 
-        // The ink again, this time sampled through a whole travel rather than
-        // at its ends: a half-covered label is exactly the state a stepped ink
-        // gets wrong, and it only exists in the middle.
+        // The ink again, sampled through a whole travel: a half-covered label
+        // only exists in the middle.
         page.activeTab = 4
         for (var j = 0; j < 60; ++j) {
             var wrong = inkIsOnTheAccent(tabs)
@@ -1551,9 +1371,8 @@ TestCase {
                   "the pill never reached the last chip: " + pillSays(tabs))
     }
 
-    // Opened on a tab that is not the first: the pill is there, not on its way
-    // there. Same rule as the sidebar's bar, and the one a lerp between two
-    // live boxes gets wrong by sliding out of the row's left edge.
+    // Opened on a tab that is not the first: the pill is there, with no
+    // travel.
     function test_collection_tab_pill_starts_where_it_belongs() {
         var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })
         var page = createTemporaryObject(collectionC, holder, { activeTab: 2 })
@@ -1562,10 +1381,9 @@ TestCase {
         var tabs = findByName(page, "collectionTabsRow")
         verify(tabs, "the collection tab row was not found")
 
-        // From before the first frame. The early readings are taken before the
-        // Flow has placed anything, when every chip is at 0 and the pill agrees
-        // with all of them - so the end of this checks that they did get placed
-        // and that the pill is on the right one.
+        // From before the first frame. Before the Flow has placed anything every
+        // chip is at 0 and the pill agrees with all of them, so the end checks
+        // that they did get placed.
         for (var i = 0; i < 40; ++i) {
             var chip = chipOf(tabs, 2)
             verify(chip, "the Artists chip was not built")
@@ -1581,14 +1399,9 @@ TestCase {
     }
 
     // ── Now Playing rising out of the player bar ─────────────────────────
-    //
-    // It appeared and disappeared outright, both ways. It travels up out of the
-    // bar that opened it and sinks back down into it, which is the direction the
-    // bar's chevron already points.
-    //
-    // The number is read off the window and the position off the page, because
-    // the number alone would pass with the transform unwired - the same pair the
-    // queue panel's case reads.
+    // The page travels up out of the bar that opened it and sinks back down
+    // into it. The number is read off the window and the position off the
+    // page, because the number alone would pass with the transform unwired.
 
     function test_now_playing_rises_from_the_player_bar_data() {
         return test_rail_expansion_data()
@@ -1628,8 +1441,7 @@ TestCase {
         verify(page, "navigating to Now Playing did not build the page")
 
         // How far down the page is drawn from where it comes to rest. Measured
-        // off the page and not off the number: the slide is a transform, and this
-        // is the only reading that proves the transform is wired to it.
+        // off the page, which shows that the transform is wired.
         function drop() { return page.mapToItem(win.contentItem, 0, 0).y }
 
         if (row.reduced) {
@@ -1649,8 +1461,8 @@ TestCase {
             compare(Math.round(drop()), 0, "the page did not come to rest filling the area")
         }
 
-        // And back down into the bar. The page has to outlive the navigation for
-        // that, which is the whole reason this is hosted on the window.
+        // And back down into the bar. The page has to outlive the navigation
+        // for that.
         win.goBack()
         compare(win.currentPage, "home", "going back did not leave Now Playing")
 
@@ -1670,8 +1482,8 @@ TestCase {
         }
     }
 
-    // The lyric being sung is kept in the middle of the panel. Every line
-    // change used to write the scroll offset outright, so the words jumped.
+    // The lyric being sung is kept in the middle of the panel, and a line
+    // change scrolls to it.
     function test_lyrics_scroll_travels_data() { return test_rail_expansion_data() }
 
     function test_lyrics_scroll_travels(row) {
@@ -1681,8 +1493,7 @@ TestCase {
         var page = host.page
 
         // The bridge stub answers fetchLyrics with nothing by design, so the
-        // page's own lyrics state is written here instead. Same as
-        // tests/qml/tst_layout_player.qml does it.
+        // page's own lyrics state is written here.
         var lines = []
         for (var i = 0; i < 40; ++i)
             lines.push({ ms: i * 5000,
@@ -1708,18 +1519,9 @@ TestCase {
             return Math.abs(it.mapToItem(view, 0, it.height / 2).y - view.height / 2)
         }
 
-        // Twenty lines on: far enough that centring is clamped at neither end.
-        //
-        // Driven by hand rather than by waiting for the sync timer, which is
-        // what calls this in the app. Waiting for the timer means waiting, and
-        // a poll that runs long on a loaded machine can step over the whole
-        // scroll and read the end of it as "it never moved". Nothing elapses
-        // between the call below and the reading after it, so there is no
-        // window to miss. That the timer calls it is tst_layout_player.qml's
-        // business - it asserts the sung line ends up centred.
-        // The position moves first so the sync timer agrees with the line
-        // below. Left at zero it would decide line 0 was the one being sung and
-        // scroll straight back on its next tick.
+        // Twenty lines on, so centring is clamped at neither end. Driven by hand:
+        // waiting for the sync timer could step over the whole scroll. The
+        // position moves first, or the timer would scroll back to line 0.
         player.setPositionForTest(20 * 5000)
         page.currentLyricLine = 20
         page.centreLyricLine(20, true)

@@ -1,15 +1,6 @@
 // The quality badge, in the player bar and in Now Playing.
-//
-// Reported during QA: "the audio quality label seems to be empty in the visual
-// tests". The app was innocent. `StubPlayer::qualityLabel()` returned {} for
-// every input, and because both badges are gated on
-// `player.audioQuality.length > 0` rather than on the label, a quality that was
-// set made the badge *visible and empty* - a coloured box with no word in it.
-// Every visual shot and every assertion that had ever looked at that badge was
-// looking at nothing, and passing.
-//
-// So every test here is about the badge's text. A test that only checked
-// `visible` is precisely the test that let this through.
+// Both badges show whenever a quality is set, so every test here reads the
+// badge's text: a visible badge can still be empty.
 
 import QtQuick
 import QtQuick.Controls
@@ -26,9 +17,8 @@ TestCase {
     // visible == false and the assertions below vacuous.
     visible: true
 
-    // Tier code to the word the user should read. Written out rather than taken
-    // from player.qualityLabel(), because deriving the expectation from the
-    // thing under test is how an empty stub passed in the first place.
+    // Tier code to the word shown. Written out, because an expectation taken
+    // from player.qualityLabel() would pass against an empty stub.
     readonly property var tiers: [
         { code: "HI_RES_LOSSLESS", label: "Max" },
         { code: "LOSSLESS",        label: "Lossless" },
@@ -57,9 +47,7 @@ TestCase {
         wait(1)
     }
 
-    // The player bar's badge also gates on `hasTrack`, so a quality with no
-    // track showing is not the case under test here - that is what
-    // test_no_quality_means_no_badge covers from the other side.
+    // The player bar's badge also gates on hasTrack, so a track is always set.
     function build(which, quality) {
         var host = createTemporaryObject(holderC, testCase,
                                         { width: testCase.width, height: testCase.height })
@@ -101,17 +89,15 @@ TestCase {
 
     // ── the two cases that are not a tier ───────────────────────────────────
 
-    // Nothing has streamed yet. The badge must be *gone*, not empty: an empty
-    // coloured box is the bug this file exists for, and it is what the user saw.
+    // Nothing has streamed yet, so the badge is hidden and no empty box is drawn.
     function test_no_quality_means_no_badge() {
         var page = build("bar", "")
         var b = badge(page)
         if (b) verify(!b.visible, "an empty badge was drawn with no quality set")
     }
 
-    // An unknown code is echoed rather than swallowed, which is what the real
-    // Player does: a tier Tidal adds later should show as itself rather than
-    // leaving a blank badge behind.
+    // An unknown code is shown as it is, as the real Player does, so a tier
+    // Tidal adds later does not leave a blank badge.
     function test_an_unknown_tier_is_echoed() {
         var page = build("bar", "SOMETHING_NEW")
         compare(badgeText(page).text, "SOMETHING_NEW",

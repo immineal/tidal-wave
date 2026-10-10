@@ -1,20 +1,9 @@
-// components/ArtistLinks.qml everywhere it is not the player bar or Now
-// Playing — those two are tests/qml/tst_navigation.qml's, and they went on
-// passing unchanged when the two copies became one component.
-//
-// The user, for the third time: the selector belongs "in the album view and
-// wherever else it is currently still just an unhighlighted thing that just
-// leads to the first artist in the accent color". So: a track row, a queue row,
-// the album hero and the sticky header it collapses into, and the "Go to
-// artist" entry of a track row's menu, which is a submenu once a track has
-// more than one credited artist.
-//
-// Every host stands in for Main.qml, which owns the router: a line reaches it
-// as Window.window.navigate(page, params), and the hosts record the calls
-// instead of routing, so a test can say exactly where a click would have gone.
-//
-// German names on purpose: track metadata is never translated (SPEC T3) but it
-// is what has to fit, and German names are long.
+// components/ArtistLinks.qml everywhere except the player bar and Now
+// Playing, which tests/qml/tst_navigation.qml covers: a track row, a queue
+// row, the album hero and its sticky header, and the row menu's artist entry.
+// Every host stands in for Main.qml's router and records navigate() calls,
+// so a test can say where a click would go.
+// German names on purpose: metadata is never translated, and they are long.
 
 import QtQuick
 import QtQuick.Controls
@@ -53,8 +42,8 @@ TestCase {
         }
     }
 
-    // A map from before artistList existed: a recently-played entry restored
-    // from disk, or anything a caller built by hand.
+    // A map with no artistList: an entry restored from disk, or one a caller
+    // built by hand.
     function trackWithoutList() {
         return {
             id: 99, title: "Ohne Liste", artists: "Erika Mustermann, Gastsängerin",
@@ -244,8 +233,8 @@ TestCase {
         compare(host.playCalls, 0)
     }
 
-    // The row's own job survives: the names took the clicks that land on them
-    // and nothing else.
+    // The names take only the clicks that land on them. The rest of the row
+    // still plays.
     function test_track_row_still_plays_from_the_rest_of_the_line() {
         var host = makeRow(trackWith(testCase.twoArtists))
         var names = visibleNamed(host.row, "trackRowArtistName")
@@ -280,14 +269,14 @@ TestCase {
         host.row.rowMenu.close()
     }
 
-    // The row dresses itself on hover — the play glyph replaces the track
-    // number. Pointing at a name must not read as leaving the row.
+    // On hover the play glyph replaces the track number. Pointing at a name
+    // must not read as leaving the row.
     function test_track_row_stays_hovered_over_a_name() {
         var host = makeRow(trackWith(testCase.twoArtists))
         var names = visibleNamed(host.row, "trackRowArtistName")
         compare(names.length, 2, "each artist needs its own target in a track row")
-        // Park the pointer below the row first, so "hovered" below is this
-        // test's doing and not wherever the pointer happened to already be.
+        // Park the pointer below the row first, so the hover asserted below is
+        // this test's doing.
         mouseMove(host.contentItem, 400, 150)
         wait(0)
         verify(!host.row.hovered, "the pointer could not be moved off the row")
@@ -309,8 +298,8 @@ TestCase {
         verify(!names[0].font.underline, "only the hovered name should be underlined")
     }
 
-    // A map that predates artistList still shows its artists, as one link to
-    // the one artist it can name.
+    // A map with no artistList still shows its artists, as one link to the
+    // one artist it can name.
     function test_track_row_without_artist_list_falls_back_to_one_link() {
         var host = makeRow(trackWithoutList())
         compare(visibleNamed(host.row, "trackRowArtistName").length, 0,
@@ -319,7 +308,7 @@ TestCase {
         verify(joined && joined.visible, "the joined artists line should stand in")
         compare(joined.text, "Erika Mustermann, Gastsängerin")
 
-        // Near the left edge: the hit target follows the words, not the column.
+        // Near the left edge, because the hit target follows the words.
         mouseClick(joined, 6, Math.round(joined.height / 2))
         compare(host.navCalls.length, 1, "the fallback still opens the lead artist")
         compare(host.navCalls[0].params.artistId, 11)
@@ -379,9 +368,8 @@ TestCase {
         verify(!names[0].font.underline, "only the hovered name should be underlined")
     }
 
-    // An album map with no artistList — one the app built by hand, or an older
-    // cache — keeps the one link it always had, to the lead artist, and
-    // effectiveArtistId still recovers that id off the tracklist.
+    // An album map with no artistList keeps one link, to the lead artist, and
+    // effectiveArtistId recovers that id off the tracklist.
     function test_album_hero_without_artist_list_falls_back_to_the_lead() {
         var host = makeAlbum({ title: "Nachtfahrt", artists: "Erika Mustermann", coverUrl: "" },
                              [trackWith(testCase.twoArtists)])
@@ -395,9 +383,9 @@ TestCase {
         compare(host.navCalls[0].params.artistId, 11)
     }
 
-    // The sticky header is full size the whole time and only fades in, so
-    // while it is invisible its links must be neither hit targets nor tab
-    // stops — they sit over the top of the hero.
+    // The sticky header is full size the whole time and only fades in. While
+    // invisible it sits over the hero, so its links must be neither hit
+    // targets nor tab stops.
     function test_album_sticky_header_links_are_dead_until_it_is_shown() {
         var host = makeAlbum({ title: "Nachtfahrt", artists: "Erika Mustermann, Gastsängerin",
                                artistId: 11, artistList: testCase.twoArtists, coverUrl: "" },
@@ -484,8 +472,6 @@ TestCase {
         return out.join(" | ")
     }
 
-    // One credited artist: the row it has always been, no submenu and no extra
-    // hover to get at it.
     function test_go_to_artist_is_a_plain_row_for_one_artist() {
         var host = makeRow(trackWith([{ id: 11, name: "Erika Mustermann" }]))
         var menu = openRowMenu(host)
@@ -507,8 +493,6 @@ TestCase {
         menu.close()
     }
 
-    // More than one, and the names go in a submenu instead of the one row
-    // picking the lead for you.
     function test_go_to_artist_becomes_a_submenu_for_several() {
         var host = makeRow(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -561,8 +545,8 @@ TestCase {
         menu.close()
     }
 
-    // A credit with no usable id is dropped rather than becoming a row that
-    // does nothing — the same way the text links skip it for tab focus.
+    // A credit with no usable id gets no row, the same way the text links
+    // skip it for tab focus.
     function test_go_to_artist_submenu_drops_credits_with_no_id() {
         var host = makeRow(trackWith([
             { id: 11, name: "Erika Mustermann" },
@@ -580,8 +564,6 @@ TestCase {
         menu.close()
     }
 
-    // Two credits but only one of them usable is one action, not a submenu of
-    // one.
     function test_go_to_artist_collapses_when_only_one_credit_is_usable() {
         var host = makeRow(trackWith([
             { id: 0,  name: "Unbekannt" },
@@ -602,7 +584,6 @@ TestCase {
         menu.close()
     }
 
-    // No usable id at all: the row stays where it was, and does nothing.
     function test_go_to_artist_is_dead_when_nothing_is_reachable() {
         var host = makeRow(trackWith([{ id: 0, name: "Unbekannt" }]))
         var menu = openRowMenu(host)
@@ -619,8 +600,8 @@ TestCase {
         menu.close()
     }
 
-    // A track map with no artistList has exactly one credit it can name, so it
-    // gets the direct action — the behaviour the entry had before the submenu.
+    // A track map with no artistList has exactly one credit it can name, so
+    // it gets the direct action.
     function test_go_to_artist_without_an_artist_list_is_the_direct_action() {
         var host = makeRow(trackWithoutList())
         var menu = openRowMenu(host)

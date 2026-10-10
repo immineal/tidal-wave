@@ -1,26 +1,8 @@
-// What the app is allowed to draw, and how wide a menu is allowed to get.
-//
-// Three things are pinned down here.
-//
-//   1. No Text the app shows contains a character outside Basic Latin, bar a
-//      short allowlist of real punctuation. Emoji and dingbats render
-//      differently on every machine, drag in a colour font, and sit on a
-//      different baseline from the words beside them; the app has a drawn
-//      icon set and that is where a mark belongs. This is the guard that
-//      stops them coming back one glyph at a time.
-//
-//   2. A menu is as wide as its longest item, between a floor and a ceiling,
-//      and at the ceiling the label elides rather than the menu growing off
-//      the screen. The reported bug was a German label cut mid-word by a
-//      hardcoded width; the fix has to be about the mechanism, so the long
-//      label here is far longer than any real one.
-//
-//   3. The glyphs render at 16px -- the size menus and list rows use -- with
-//      every painted pixel inside the icon's own box and something actually
-//      painted. A VectorIcon with a name nobody drew is silently blank, which
-//      is the one failure mode a reader cannot see in a diff.
-//
-// The globals (bridge, player, pins, ...) are the stubs from tests/TestStubs.h.
+// What the app may draw as text, and how wide a menu may get. No Text holds
+// a character outside Basic Latin, bar a short allowlist of punctuation. A
+// menu is as wide as its longest item, between a floor and a ceiling, where
+// the label elides. Every glyph the menus and rows name draws something, and
+// only inside its own box. The globals are the stubs from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Controls
@@ -40,72 +22,28 @@ TestCase {
     visible: true
 
     // ── what counts as punctuation ───────────────────────────────────────
-    //
-    // Everything else outside U+0020..U+007E is iconography by this test's
-    // reckoning. Each of these is a mark that stands for nothing clickable,
-    // replaces no word, and would be wrong to draw:
-    //
-    //   U+2026 …  ellipsis. Says an action opens something that asks for
-    //             more ("Download…"), and marks text still arriving
-    //             ("Searching for devices…"). It is punctuation in both.
-    //   U+00B7 ·  middot. Run-in separator: "12 tracks · Shuffled", the
-    //             window title, the sidebar's tool tip.
-    //   U+2022 •  bullet. The same separator on the album and playlist
-    //             hero lines. Two characters for one job is untidy, but
-    //             both are separators and renaming either re-keys a
-    //             translated string for no gain.
-    //   U+2013 –  en dash. Between the two halves of the window title, and
-    //             alone as the Now Playing title when there is no track.
+    // Everything else outside U+0020..U+007E counts as iconography. Allowed:
+    // U+2026 ellipsis, U+00B7 middot and U+2022 bullet as run-in separators,
+    // and U+2013 en dash in the window title and the empty Now Playing title.
     readonly property string punctuation: "…·•–"
 
-    // The two sort chips read "A→Z" and "Z→A". The arrow there is not a mark
-    // standing in for a control: nothing about it is clickable, it is part of
-    // the name of a sort order the way a range is written "Mon–Fri", and it
-    // is read aloud as "A to Z". Spelling it out would be longer, no clearer,
-    // and would re-key two entries of a finished catalogue. Exempted as whole
-    // strings rather than by allowing the arrow everywhere, so the next
-    // "View all →" still fails.
+    // The two sort chips name a sort order with an arrow, as a range is
+    // written. Exempted as whole strings, so an arrow in any other label
+    // still fails.
     readonly property var exemptStrings: ["A→Z", "Z→A"]
 
     // What this platform calls the app's shortcuts, removed from a label
-    // before it is scanned.
-    //
-    // This is not a hole in the allowlist, it is the allowlist asking the
-    // right question. On macOS QKeySequence::NativeText renders the modifier
-    // keys as the symbols Apple puts on the keyboard - the Mac measured the
-    // chips as carrying U+2318 COMMAND, U+2325 OPTION, U+238B ESCAPE and the
-    // four arrows - and those are not decoration the app chose, they are the
-    // name of the key. Refusing them would mean printing "Cmd+," on a machine
-    // where every other application prints the symbol, which is the bug this
-    // panel's shortcut table was built to fix in the first place.
-    //
-    // Subtracted by exact string rather than by allowing the characters
-    // anywhere, so a stray arrow written into a label still fails, and so the
-    // set is whatever this platform actually produces rather than a list of
-    // code points that would rot the next time Apple adds one. The chips join
-    // several sequences with " / ", which is why this removes substrings
-    // instead of comparing whole labels.
+    // before it is scanned. On macOS QKeySequence::NativeText renders
+    // modifier keys as symbols, and those are the names of the keys.
     function withoutKeyNames(s) {
         var ids = Shortcuts.ids(), names = []
         for (var k = 0; k < ids.length; ++k) {
             var d = Shortcuts.display(ids[k])
             if (d && d.length > 0) names.push(d)
         }
-        // Whole tokens, not substrings. Subtracting substrings looked right
-        // and was wrong twice over, both found by negative probes on the Mac:
-        //
-        //   * Order mattered. "←" (seekBack) is subtracted before "⌥←" (back),
-        //     so the arrow went first and the "⌥" was left stranded as an
-        //     offender - a real chip failing.
-        //   * Worse, it did not catch what it claimed to. "→", "←", "↑" and
-        //     "↓" are each a COMPLETE display() string on their own, so
-        //     substring subtraction deleted an arrow from anywhere, and a
-        //     label reading "Weiter →" passed. The guard's whole purpose is to
-        //     stop exactly that.
-        //
-        // A chip joins its sequences with " / ", so every part of a chip is
-        // one key name exactly. If any part is not, this is not a chip and the
-        // whole label is scanned as written.
+        // Whole tokens only: an arrow alone is a complete key name, so removing
+        // substrings would let a stray arrow through. A chip joins its sequences
+        // with a spaced slash, and every part must be exactly one key name.
         var parts = s.split(" / ")
         for (var i = 0; i < parts.length; ++i)
             if (names.indexOf(parts[i]) === -1) return s
@@ -131,9 +69,8 @@ TestCase {
             && typeof obj.elide === "number"
     }
 
-    // Every Text in a tree, visible or not: a label that is hidden at this
-    // instant is still shipped, and the Like/Unlike pair is exactly the kind
-    // of thing only one half of which is ever on screen at a time.
+    // Every Text in a tree, visible or not: a label hidden at this instant
+    // is still shipped.
     function collectTexts(item, out) {
         if (!item) return out
         var kids = item.children
@@ -226,9 +163,8 @@ TestCase {
         SettingsPanel { }
     }
 
-    // NowPlayingPage delegates its sleep timer to Window.window, so it
-    // warns its way through a plain TestCase parent. The same stand-in
-    // window tst_nowplaying_access uses.
+    // NowPlayingPage delegates its sleep timer to Window.window, so it needs
+    // a window that answers for it.
     Component {
         id: nowPlayingHostC
         Window {
@@ -252,8 +188,7 @@ TestCase {
     }
 
     // A menu built out of the shared entry row, with labels this test
-    // chooses: the only way to aim a label at the ceiling without waiting for
-    // a language that happens to be long enough.
+    // chooses.
     Component {
         id: probeMenuC
         // Built exactly the way the app builds a menu, including the
@@ -261,15 +196,9 @@ TestCase {
         // letting the menu hang that far past the window edge.
         Menu {
             id: probe
-            // Guarded exactly the way the app guards it, and for the reason
-            // the app states: `popupType` and `Popup.Item` are both Qt 6.8,
-            // and a declarative assignment on an older Qt does not warn -- it
-            // makes this whole type unavailable, and with it every test in
-            // this file. A Debian 12 box on Qt 6.4.2 failed the file that way
-            // ("Cannot assign to non-existent property popupType"). The
-            // `this.` is load-bearing: a bare identifier that names no
-            // property is a ReferenceError, not undefined, and it aborts the
-            // handler. See qml/components/ContextMenu.qml for the long form.
+            // popupType and Popup.Item are Qt 6.8. A declarative assignment on an
+            // older Qt makes the whole type unavailable, so it is assigned here.
+            // this. is needed: a bare unknown identifier is a ReferenceError.
             Component.onCompleted: {
                 if (this.popupType !== undefined) this.popupType = Popup.Item
             }
@@ -370,8 +299,7 @@ TestCase {
     }
 
     // The Settings panel is a Popup: it has to be opened before there is a
-    // tree to walk, and its contents are under contentItem rather than under
-    // the panel itself.
+    // tree to walk, and its contents are under contentItem.
     function test_the_settings_panel_ships_no_text_glyph() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var panel = createTemporaryObject(settingsC, holder, {})
@@ -384,8 +312,6 @@ TestCase {
         panel.close()
     }
 
-    // A pill names an icon now; handing it a character has to leave it with no
-    // icon at all rather than quietly drawing one.
     function test_a_pill_takes_an_icon_name_not_a_character() {
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 80 })
         var pill = createTemporaryObject(pillC, holder, { text: "Abspielen", icon: "play" })
@@ -395,9 +321,8 @@ TestCase {
         verify(pill.icon === "play", "the pill lost its icon name")
     }
 
-    // The menus are the point of the exercise, so they are opened and swept
-    // rather than left to the component sweeps above, which never build them:
-    // TrackRow's menu is behind a Loader that is deliberately inactive.
+    // The menus are opened and swept here, because the component sweeps
+    // above never build them: TrackRow's menu is behind an inactive Loader.
     function test_an_open_track_menu_ships_no_text_glyph() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var row = createTemporaryObject(trackRowC, holder, {
@@ -436,8 +361,8 @@ TestCase {
 
     function test_a_menu_grows_to_its_longest_label() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
-        // Comfortably longer than "Zur Warteschlange hinzufügen" and still
-        // under the ceiling, so growth is what is being measured.
+        // Longer than the longest shipped label and still under the ceiling, so
+        // growth is what is measured.
         var label = "Aus der Wiedergabeliste entfernen"
         var menu = createTemporaryObject(probeMenuC, holder, { longLabel: label })
         verify(menu, "the probe menu was not created")
@@ -459,7 +384,6 @@ TestCase {
         menu.close()
     }
 
-    // A short menu must not shrink to the width of its words.
     function test_a_short_menu_keeps_its_floor() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var menu = createTemporaryObject(probeMenuC, holder, { longLabel: "Pin" })
@@ -470,8 +394,6 @@ TestCase {
         menu.close()
     }
 
-    // The ceiling, and what happens at it: the label gives way, the menu does
-    // not. 300 characters is not a language, it is the mechanism.
     function test_an_absurd_label_elides_instead_of_growing_the_menu() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var label = ""
@@ -531,8 +453,6 @@ TestCase {
         menu.close()
     }
 
-    // The real menu, with the real labels, in the language the bug was
-    // reported in: nothing in it may be clipped.
     function test_the_real_track_menu_clips_nothing() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var row = createTemporaryObject(trackRowC, holder, {
@@ -555,9 +475,8 @@ TestCase {
 
     // ── 3. the marks ─────────────────────────────────────────────────────
 
-    // Every name the menus and rows ask for, plus the one drawn for this
-    // change. A typo in a name is a blank icon and nothing else, which is why
-    // "something is actually drawn" is half of what this asserts.
+    // Every name the menus and rows ask for. A typo in a name is a blank
+    // icon and nothing else, so each one also has to draw something.
     readonly property var iconNames: [
         "trash", "play", "pause", "more", "track", "chevron-left", "chevron-right",
         "heart", "heart-filled", "shuffle", "edit", "download", "check", "x",
@@ -575,9 +494,8 @@ TestCase {
     }
 
     // Every number in a glyph's path, so the grid it is drawn on can be
-    // checked. Arc flags and radii are numbers too, and they are all in the
-    // same 0..24 range as the coordinates, so no attempt is made to tell them
-    // apart: anything over 24 is out of the grid whatever it was meant to be.
+    // checked. Arc flags and radii are in the same 0..24 range as the
+    // coordinates, so they are not told apart.
     function pathNumbers(path) {
         var out = []
         var re = /-?\d+(?:\.\d+)?/g
@@ -586,21 +504,9 @@ TestCase {
         return out
     }
 
-    // This is the "inside its bounds at 16px" assertion, and it is made on
-    // the path rather than on pixels on purpose.
-    //
-    // VectorIcon draws into a fixed 24-unit Shape and scales it by
-    // width * 0.85 / 24, centred. At 16px that is 13.6px of drawing in a 16px
-    // box: 1.2px of margin on each side, against a stroke whose half-width
-    // comes to 0.6px. So a path that stays inside the 24 grid cannot leave
-    // the box at 16px -- or at any other size, which a pixel count could not
-    // tell you.
-    //
-    // Counting pixels at 16px is not an option here anyway: under the
-    // offscreen platform the tests run on, a Shape stroke under about one
-    // device pixel rasterises to nothing at all, so every stroked glyph in
-    // the set grabs as a blank square. The 48px grab below is what proves the
-    // path draws something.
+    // Made on the path, on purpose. VectorIcon scales a fixed 24-unit Shape,
+    // so a path inside the 24 grid cannot leave the box at any size. Under
+    // the offscreen platform a thin Shape stroke at 16px rasterises to nothing.
     function test_every_mark_stays_inside_the_24_grid_data() { return markCases() }
 
     function test_every_mark_stays_inside_the_24_grid(data) {
@@ -657,11 +563,8 @@ TestCase {
     }
 
     // ── 4. the note is gone ──────────────────────────────────────────────
-    //
-    // "music" was a pair of beamed eighth notes standing in for four
-    // unrelated meanings: a track, an empty shelf, a missing cover, and an
-    // avatar. It is Western staff notation rather than a symbol for audio and
-    // it is not coming back, so this is the guard rather than a grep.
+    // The music glyph is retired: no component may ask for it, and VectorIcon
+    // has no path for it.
 
     function isVectorIcon(obj) {
         return obj && typeof obj._pathFor === "function"
@@ -685,9 +588,8 @@ TestCase {
         compare(probe.iconItem._accentFor("music"), "")
     }
 
-    // Every component in the app, swept for the name. A VectorIcon nobody
-    // drew a path for is silently blank, so a leftover "music" would not show
-    // up as anything at all in a screenshot.
+    // Every component, swept for the name. A VectorIcon with no path is
+    // silently blank, so a leftover would not show in a screenshot.
     function test_no_component_asks_for_the_note_data() {
         return test_no_component_ships_a_text_glyph_data()
     }
@@ -704,9 +606,8 @@ TestCase {
         for (var i = 0; i < icons.length; ++i) {
             var n = icons[i].name
             if (n === "music") named.push(data.tag)
-            // And nothing else silently blank either, which is the failure
-            // mode retiring a glyph creates: every call site has to have been
-            // given a name that draws.
+            // Nothing else may be silently blank either: every call site names
+            // a glyph that draws.
             if (n !== "" && icons[i]._pathFor(n) === "" && icons[i]._accentFor(n) === "")
                 blank.push(n)
         }
@@ -737,18 +638,13 @@ TestCase {
         panel.close()
     }
 
-    // ── 5. the two marks the note was replaced by ────────────────────────
-    //
-    // "a track" and "this is playing" sit next to each other in a track row,
-    // and at five bars against seven the count is not something anyone reads
-    // at 14px. The animation carries the difference while it is running, and
-    // under reduced motion it is not, so the structure has to: a waveform is
-    // symmetric about its centre line, the playing bars stand on a floor.
-    // Both halves of that are asserted below, on geometry rather than on
-    // pixels.
+    // ── 5. the track mark and the playing mark ───────────────────────────
+    // The two sit next to each other in a track row. Under reduced motion
+    // only structure tells them apart: a waveform is symmetric about its
+    // centre line, and the playing bars stand on a floor.
 
-    // "M x y1 V y2" per bar, which is the only shape the waveform's path
-    // takes. Returns [{x, top, bottom}].
+    // One move and one vertical line per bar, the only shape the waveform's
+    // path takes. Returns [{x, top, bottom}].
     function barsInPath(path) {
         var out = []
         var re = /M\s+(-?[\d.]+)\s+(-?[\d.]+)\s+V\s+(-?[\d.]+)/g
@@ -775,7 +671,7 @@ TestCase {
             heights.push(bars[i].bottom - bars[i].top)
             if (i > 0) verify(bars[i].x > bars[i - 1].x, "the bars are out of order")
         }
-        // A rendered audio file, not a comb: the heights have to differ.
+        // The heights have to differ, as a waveform's do.
         var distinct = {}
         for (var k = 0; k < heights.length; ++k) distinct[heights[k].toFixed(2)] = true
         verify(Object.keys(distinct).length >= 5,
@@ -818,8 +714,8 @@ TestCase {
     }
 
     function test_the_playing_mark_stands_on_a_baseline_with_motion_off() {
-        // init() already switched reduced motion on; said out loud because
-        // the whole point of this case is the parked state.
+        // init() already switched reduced motion on. Repeated because this
+        // case is about the parked state.
         app.setReducedMotionForTest(true)
         var holder = createTemporaryObject(holderC, testCase, { width: 200, height: 200 })
         var probe = createTemporaryObject(playingProbeC, holder, {})
@@ -839,8 +735,8 @@ TestCase {
                    "bar " + i + " sits at " + bars[i].bottom.toFixed(2)
                    + " while the first is at " + floor.toFixed(2)
                    + ", so there is no baseline")
-            // Parked, not vanished: a "this is playing" mark that disappears
-            // under reduced motion says the wrong thing about a playing row.
+            // Parked and still drawn: a playing row keeps its mark under
+            // reduced motion.
             verify(bars[i].h > 1,
                    "bar " + i + " parked at " + bars[i].h.toFixed(2) + "px, which is nothing")
             // And inside its own box, like any other mark.
@@ -893,16 +789,9 @@ TestCase {
         verify(Object.keys(playTops).length > 1, "the playing mark is a flat block")
     }
 
-    // The "track" strip draws seven bars of one width, separated by gaps of
-    // one width, at every size it is used at.
-    //
-    // This is the property the stroked-path version could not hold, and the
-    // reason is worth keeping next to the test: Qt rasterises that Shape with
-    // no antialiasing, so each stroke snapped to whole pixels and its width
-    // became a function of where its edges happened to land. The Mac measured
-    // bars of 2,1,1,2,1,1,2 device px at W=12 on a Retina panel, and gaps that
-    // were never uniform except at one size. Averages and totals would both
-    // have passed that; only comparing every bar to every other catches it.
+    // The track strip draws seven bars of one width, separated by gaps of
+    // one width, at every size it is used at. Qt rasterises a stroked Shape
+    // without antialiasing, so every bar is compared against every other.
     function test_the_track_strip_has_uniform_bars_and_gaps_data() {
         return [
             { tag: "12 - Now Playing button",  w: 12 },
@@ -930,21 +819,9 @@ TestCase {
             verify(bars[i].height > 0, row.tag + ": bar " + i + " has no height")
         }
 
-        // Every bar's edges land on whole device pixels.
-        //
-        // The obvious assertion here - that all seven share one centre line -
-        // is VACUOUS, and was written and discarded before this one. A bar's
-        // centre is y + h/2, and y is (box - h) / 2, so the centre is box / 2
-        // algebraically, whatever the parity. The QML properties are always
-        // exactly centred; the drift the Mac measured on a Retina panel (bar
-        // centres spread 1 to 1.5 device px, the strip reading as leaning at
-        // 14-16 px) happens one layer down, when the non-antialiased
-        // rasteriser snaps a FRACTIONAL y to the pixel grid.
-        //
-        // So what has to be true is that nothing is fractional in device
-        // space, which is exactly what the parity adjustment in VectorIcon
-        // buys and is a thing a test can actually see. Removing that
-        // adjustment fails this.
+        // Every bar's edges land on whole device pixels. The QML properties are
+        // always exactly centred. The drift happens one layer down, when the
+        // rasteriser snaps a fractional y, which VectorIcon's parity fix prevents.
         var dpr = Math.max(1, Screen.devicePixelRatio)
         for (var c = 0; c < bars.length; ++c) {
             var yDev = bars[c].y * dpr
@@ -977,15 +854,9 @@ TestCase {
         }
     }
 
-    // The key-name subtraction must not become a hole in the guard.
-    //
-    // Every row here was run as a probe on a Mac, where display() actually
-    // produces symbols; on Linux it is ASCII and the first two rows cannot
-    // fail, which is precisely why the expectations are written down rather
-    // than inferred from a passing run. The substring version this replaced
-    // ACCEPTED "Weiter →" - it deleted an arrow from anywhere, because "→" is
-    // a complete shortcut string on its own - and REJECTED the real "⌥← / ⎋"
-    // chip, because it subtracted "←" first and stranded the "⌥".
+    // The key-name subtraction must not become a hole in the guard. On Linux
+    // display() is ASCII and the first two rows cannot fail, so the
+    // expectations are written down for macOS, where it produces symbols.
     function test_the_key_name_subtraction_is_not_a_hole_data() {
         var ids = Shortcuts.ids()
         var oneChip = ids.length > 0 ? Shortcuts.display(ids[0]) : ""
@@ -1018,16 +889,12 @@ TestCase {
     }
 
     // ── 6. every entry of every menu carries an icon ─────────────────────
-    //
-    // Three menus exist: the shared pin menu (sidebar rows, media cards and
-    // the four page heroes all open this one), the track row's own, and the
-    // queue row's. Each is opened here with every one of its entries visible,
-    // so an entry added later without an icon fails rather than shipping as
-    // the one blank row in a column of marks.
+    // Three menus exist: the shared pin menu, the track row's and the queue
+    // row's. Each is opened with every entry visible, so an entry added
+    // without an icon fails.
 
-    // A menu's entries, by walking the Menu rather than its item tree: a
-    // MenuSeparator is an item with no iconName and no label, and a hidden
-    // entry is not on screen to be missing anything.
+    // A menu's entries, by walking the Menu: a MenuSeparator has no iconName,
+    // and a hidden entry is skipped.
     function entriesOf(menu) {
         var out = []
         for (var i = 0; i < menu.count; ++i) {
@@ -1076,8 +943,7 @@ TestCase {
     }
 
     // Every label on one column, and every icon on one column before it,
-    // measured off the opened menu rather than read off the source: a row
-    // that pads itself differently is the regression this is here for.
+    // measured off the opened menu.
     function checkOneColumn(menu, tag) {
         var items = entriesOf(menu)
         verify(items.length > 1, tag + ": one entry cannot be out of column with itself")
@@ -1184,9 +1050,9 @@ TestCase {
         return null
     }
 
-    // The queue row's menu, which is per delegate. Reached through the
-    // delegate rather than from the panel, and with findChild() for the last
-    // step because a Popup is a QObject and not in any item's children.
+    // The queue row's menu is per delegate. Reached through the delegate,
+    // with findChild() for the last step because a Popup is a QObject and
+    // not in any item's children.
     function test_every_entry_of_the_queue_menu_carries_an_icon() {
         var holder = createTemporaryObject(holderC, testCase, { width: 420, height: 700 })
         player.setCurrentTrackForTest(makeTrack())
@@ -1206,11 +1072,8 @@ TestCase {
     }
 
     // ── 7. the icon takes the row's colour ───────────────────────────────
-    //
-    // Every icon reads entry.ink, the same binding the label reads, so the
-    // destructive row's bin is red and a disabled row's mark dims with its
-    // words. Asserted against the label beside it rather than against a
-    // literal, because the point is that the two cannot drift apart.
+    // Every icon reads entry.ink, the binding the label reads. Asserted
+    // against the label beside it, so the two cannot drift apart.
 
     function test_the_destructive_row_draws_a_red_icon() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -1258,12 +1121,9 @@ TestCase {
     }
 
     // ── 8. the icon column does not cost a label ─────────────────────────
-    //
-    // Every row is 26px narrower than it was now that it carries an icon and
-    // the gutter it sits in. These are the longest labels the app ships, in
-    // the language they are longest in, read out of i18n/tidal-wave_de.ts:
-    // none of them may elide, and the menu may not have to reach past
-    // Theme.menuMaxWidth to manage it.
+    // The icon and its gutter take width from every row. These are the
+    // longest labels the app ships, from i18n/tidal-wave_de.ts: none may
+    // elide, and the menu may not pass Theme.menuMaxWidth.
     function test_the_longest_label_the_app_ships_fits_beside_an_icon_data() {
         return [
             { tag: "Add to queue",      label: "Zur Warteschlange hinzufügen" },

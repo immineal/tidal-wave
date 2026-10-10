@@ -1,25 +1,9 @@
-// Making a playlist, which until now the app could not do at all.
-//
-// Everything below the interface has been in place and tested for a while -
-// TidalClient::createPlaylist, TidalBridge::createPlaylist, the playlistCreated
-// signal it raises and LibraryIndex::addPlaylist on the far end - with nothing
-// in qml/ ever calling it. What is covered here is the half that was missing:
-// the three entry points, the dialog they share, and the two lists that have to
-// show the new playlist without anybody pressing refresh.
-//
-// `bridge` and `library` are the stubs from tests/TestStubs.h, and StubBridge's
-// createPlaylist mirrors the real one: on a success it appends to the
-// favourites cache (which is what CollectionPage reads) and raises
-// favoritePlaylistsChanged, and separately raises playlistCreated, which
-// installTestStubs() hands to StubLibrary::addPlaylist exactly as
-// Application::run() hands the real pair to each other. Nothing here reaches
-// the network and no account is touched; the stub's error, uuid and deferral
-// hooks are how each of the dialog's outcomes is reached.
-//
-// The "without a refresh" cases count library.refreshCountForTest() as well as
-// asserting that the row arrived: a dialog that re-paged the whole account
-// after every create would show the right thing for the wrong reason, and
-// avoiding exactly that is why the live hand-across exists.
+// Making a playlist: the three entry points, the dialog they share, and the
+// two lists that have to show the new playlist without a refresh.
+// StubBridge::createPlaylist mirrors the real one: on success it appends to
+// the favourites cache, raises favoritePlaylistsChanged, and raises
+// playlistCreated, which installTestStubs() hands to StubLibrary::addPlaylist.
+// The stub's error, uuid and deferral hooks reach each of the dialog's outcomes.
 
 import QtQuick
 import QtQuick.Layouts
@@ -39,20 +23,16 @@ TestCase {
     height: 900
 
     readonly property int settleMs: 2000
-    // NewPlaylistDialog.maxTitleLength, repeated so a silent change to the cap
-    // is a failure here rather than a tautology.
+    // NewPlaylistDialog.maxTitleLength, repeated so a change to the cap fails
+    // here.
     readonly property int titleCap: 100
     // Prefs::railBreakpoint, same reason.
     readonly property int railBreak: 820
 
     // ── fixtures ─────────────────────────────────────────────────────────
-    //
-    // Two pinned rows at the head, deliberately. A created playlist belongs at
-    // the top of the *unpinned* block and not at the top of the list, and a
-    // fixture with no pins cannot tell those two apart. The unpinned titles
-    // both start with A so that a created playlist named "Zugfahrt" cannot
-    // reach the front alphabetically either: the only thing that can put it
-    // there is its date.
+    // Two pinned rows at the head, because a created playlist belongs at the
+    // top of the unpinned block. The unpinned titles both start with A, so a
+    // playlist named Zugfahrt can only reach the front by its date.
 
     function makeEntries() {
         return [
@@ -167,10 +147,9 @@ TestCase {
         }
     }
 
-    // A bare window for the cases that are not about the sidebar. `navigate`
-    // is Main.qml's, so a page that navigates does not hit an undefined
-    // function on the window - and so a page that is not supposed to navigate
-    // can be shown not to.
+    // A bare window for the cases that are not about the sidebar. It has
+    // Main.qml's navigate(), so a navigation is recorded and one that should
+    // not happen can be asserted.
     Component {
         id: pageHost
         Window {
@@ -189,10 +168,9 @@ TestCase {
         host.width = w
         host.visible = true
         waitForRendering(host.contentItem, settleMs)
-        // Park the pointer clear of the rail: a freshly shown window inherits
-        // whatever position the last synthesized event left behind, and under
-        // the offscreen platform that is often inside the sidebar, which would
-        // hover-expand it before the test asked for anything.
+        // Park the pointer clear of the rail: a freshly shown window inherits the
+        // position of the last synthesized event, which under the offscreen
+        // platform is often inside the sidebar and would hover-expand it.
         mouseMove(host.contentItem, w - 8, host.height - 8)
         wait(1)
         tryVerify(function () {
@@ -212,8 +190,7 @@ TestCase {
         return host
     }
 
-    // A dialog on its own, for the cases that are about the dialog and not
-    // about who opened it.
+    // A dialog on its own, for the cases that are about the dialog itself.
     function makeDialog() {
         var host = showPane(1200)
         var dlg = createTemporaryObject(dialogC, host.pane, {})
@@ -245,8 +222,7 @@ TestCase {
         compare(inDialog(dlg, "newPlaylistCreate").enabled, false,
                 "Create is live with " + row.tag + " in the field")
 
-        // ...and pressing Return anyway has to say what is missing. A Return
-        // that does nothing at all reads as a broken dialog.
+        // Pressing Return anyway has to say what is missing.
         dlg.submit()
         var err = inDialog(dlg, "newPlaylistError")
         verify(err.visible && err.text.length > 0,
@@ -275,10 +251,8 @@ TestCase {
                   "the dialog stayed up after a successful create")
     }
 
-    // The over-long case, stopped at the keyboard. A field that takes 400
-    // characters and then fails is a worse answer than one that stops, and a
-    // paste - which is how a title that long actually arrives - has to be
-    // stopped by the same rule.
+    // The over-long case, stopped at the keyboard. A paste, which is how a
+    // title that long arrives, has to be stopped by the same rule.
     function test_a_name_cannot_run_past_the_cap() {
         var dlg = makeDialog()
         var field = inDialog(dlg, "newPlaylistField")
@@ -297,14 +271,9 @@ TestCase {
                 "an over-long title reached the server")
     }
 
-    // The dialog is clamped to the window, and the window's declared minimum is
-    // 640x600 (SPEC L10, Main.qml). At that size the clamp is the binding that
-    // decides the width, and two pill buttons whose labels run long in German
-    // are the thing most likely to push past it.
-    //
-    // Hit targets and focus rings are drawn a few px outside their item on
-    // purpose, so an overflow only counts past that - the same slack
-    // tst_sidebar and tst_layout_pages allow.
+    // The dialog is clamped to the window, whose declared minimum is 640x600
+    // (Main.qml). Hit targets and focus rings are drawn a few px outside
+    // their item on purpose, so an overflow only counts past this slack.
     readonly property real overflowSlack: 8
 
     function audit(item, label, out) {
@@ -314,9 +283,8 @@ TestCase {
             if (!c || c.visible === false || typeof c.width !== "number" || c.width <= 0) continue
             var here = label + " > " + (c.objectName.length > 0
                                         ? c.objectName : ("" + c).split("(")[0])
-            // Mapped rather than read off x and width: a VectorIcon is a Shape
-            // drawn at its design size and scaled down by a transform, so its
-            // own `width` still says 24 while the transform leaves it 13.
+            // Mapped, because a VectorIcon is a Shape drawn at its design size and
+            // scaled down by a transform, so its own width overstates it.
             var l = c.mapToItem(item, 0, 0).x
             var r = c.mapToItem(item, c.width, 0).x
             if (r < l) { var swap = l; l = r; r = swap }
@@ -339,10 +307,9 @@ TestCase {
         verify(dlg, "NewPlaylistDialog did not load")
         dlg.openEmpty()
         tryVerify(function () { return dlg.visible }, settleMs, "the dialog never opened")
-        // The widest it ever gets, all at once: the long label on the Create
-        // button, a German error line on the row below the field, and a name
-        // past counterShowsFrom so the counter is out beside that error rather
-        // than instead of it.
+        // The widest it ever gets: the long label on the Create button, a German
+        // error line below the field, and a name past counterShowsFrom so the
+        // counter is out beside that error.
         var field = inDialog(dlg, "newPlaylistField")
         field.text = "Ein ziemlich langer Name für eine Playlist, aufgenommen im Sommer 1998 "
                    + "an der Ostsee"
@@ -359,13 +326,8 @@ TestCase {
         dlg.busy = false
     }
 
-    // ...and the clamp that keeps it inside the window does work.
-    //
-    // 360px is below the app's own 640 minimum, deliberately. At 640 the clamp
-    // never binds - 640-48 is 592 and the dialog only wants 380 - so a width
-    // assertion taken there passes whether the clamp is present or not, which
-    // is a test of nothing. A guard can only be watched working in the state it
-    // guards against.
+    // 360px is below the app's 640 minimum on purpose. At 640 the clamp
+    // never binds, so a width assertion there passes with or without it.
     function test_the_dialog_is_clamped_to_a_window_narrower_than_itself() {
         var host = showPane(360)
         var dlg = createTemporaryObject(dialogC, host.pane, {})
@@ -383,8 +345,8 @@ TestCase {
         verify(faults.length === 0, faults.join("\n  "))
     }
 
-    // The counter is for the end of the field and nowhere else: on a two-word
-    // name it would be noise.
+    // The counter is for the end of the field: on a short name it would be
+    // noise.
     function test_the_counter_keeps_out_of_a_short_name_s_way() {
         var dlg = makeDialog()
         inDialog(dlg, "newPlaylistField").text = "Strandfahrt"
@@ -394,10 +356,8 @@ TestCase {
     }
 
     // ── the dialog: while the call is out ────────────────────────────────
-    //
-    // Only reachable with the reply held. The stub answers in the same turn
-    // otherwise, so the gap between asking and being answered would not exist
-    // for a test to look into.
+    // Only reachable with the reply held: the stub otherwise answers in the
+    // same turn.
     function test_the_dialog_says_it_is_working_while_the_call_is_out() {
         bridge.setDeferCreatePlaylistForTest(true)
         var dlg = makeDialog()
@@ -419,7 +379,7 @@ TestCase {
         compare(dlg.closePolicy, Popup.NoAutoClose,
                 "the dialog can still be dismissed mid-flight")
 
-        // ...and a second press must not make a second playlist.
+        // A second press must not make a second playlist.
         dlg.submit()
         compare(bridge.createPlaylistCallsForTest(), 1,
                 "submitting twice sent two playlists")
@@ -454,9 +414,8 @@ TestCase {
                 "a failed create still put a row in the collection")
     }
 
-    // A 200 that parsed to nothing. The bridge refuses to call that a win - it
-    // would announce a playlist that is not there and hand out an id nothing
-    // can open - and so must the dialog.
+    // A 200 that parsed to nothing. The bridge treats that as a failure, and
+    // so must the dialog.
     function test_a_reply_with_no_playlist_in_it_is_a_failure() {
         bridge.setCreatePlaylistUuidForTest("")
         var dlg = makeDialog()
@@ -472,7 +431,6 @@ TestCase {
     }
 
     // Typing is the user answering the complaint, so the complaint goes away.
-    // Left up through the correction, an error line stops being read.
     function test_typing_clears_the_complaint() {
         bridge.setCreatePlaylistErrorForTest("503 Service Unavailable")
         var dlg = makeDialog()
@@ -488,8 +446,6 @@ TestCase {
                 "the complaint survived the correction")
     }
 
-    // Reopening onto the last failed attempt would be a dialog that remembers
-    // a mistake.
     function test_reopening_forgets_the_name_that_failed() {
         bridge.setCreatePlaylistErrorForTest("503 Service Unavailable")
         var dlg = makeDialog()
@@ -506,14 +462,9 @@ TestCase {
                 "the dialog reopened with the last failure still on it")
     }
 
-    // The same thing, but over the complaint the *empty* field earns.
-    //
-    // It needs its own case and it has to be this complaint. Clearing the name
-    // on the way in fires the field's own onTextChanged, which takes any error
-    // down with it - so a dialog that had forgotten to reset `errorText`
-    // would still look right in the test above, where the field had a name in
-    // it. Here the field is empty both times, nothing changes, and the reset
-    // is the only thing that can clear the line.
+    // The same over the complaint an empty field earns. Clearing the name on
+    // the way in fires onTextChanged, which hides any error, but here the
+    // field is empty both times, so only the errorText reset can clear it.
     function test_reopening_forgets_a_complaint_about_an_empty_name() {
         var dlg = makeDialog()
         dlg.submit()                     // Return on an empty field
@@ -550,8 +501,7 @@ TestCase {
                "the New playlist row must sit above the library list")
     }
 
-    // At the rail there is no room for a label, so the tile stands on its own
-    // - the same bargain every library row below it makes.
+    // At the rail there is no room for a label, so the tile stands on its own.
     function test_the_rail_keeps_the_plus_and_drops_the_label() {
         var host = showShell(640)
         var sb = host.sidebar
@@ -564,8 +514,7 @@ TestCase {
                 "a 68px rail is drawing the New playlist label")
     }
 
-    // Half of what the plumbing comments called untested: the row has to
-    // arrive in the sidebar on its own, with nothing re-paged.
+    // The row has to arrive in the sidebar on its own, with nothing re-paged.
     function test_making_one_from_the_sidebar_lands_at_the_top_of_the_library() {
         var host = showShell(1280)
         var sb = host.sidebar
@@ -589,16 +538,14 @@ TestCase {
         var after = rowIds(sb)
         verify(after.indexOf("uuid-created-1") >= 0,
                "the new playlist never reached the sidebar; it holds " + after.join(","))
-        // Third, not first: the two pinned rows keep the head of the list and a
-        // created playlist leads the block below them. "Zugfahrt" also cannot
-        // get there alphabetically past "Abendrot" and "Alte Liste", so the
-        // only thing that can put it third is its date.
+        // Third: the two pinned rows keep the head of the list and a created
+        // playlist leads the block below them. Zugfahrt cannot get there
+        // alphabetically, so only its date can put it third.
         compare(after.join(","), "p-pin,a-pin,uuid-created-1,a1,p-old",
                 "the new playlist did not lead the unpinned block")
         compare(sb.rows[2].title, "Zugfahrt", "the row came through under the wrong name")
 
-        // ...and it arrived by being handed across, not by re-reading the
-        // account.
+        // It arrived by being handed across, with no re-read of the account.
         compare(library.refreshCountForTest(), refreshesBefore,
                 "the sidebar re-paged the whole library to show one new row")
         compare(bridge.userPlaylistFetchCountForTest(), 0,
@@ -636,8 +583,7 @@ TestCase {
                 + (btn.visible ? "shown" : "hidden") + ", which it should not be")
     }
 
-    // An account with no playlists is exactly the account that needs to make
-    // one, and this empty state used to be a dead end.
+    // An account with no playlists is the one that most needs to make one.
     function test_the_empty_state_is_not_a_dead_end() {
         bridge.setUserPlaylistsForTest([])
         var c = makeCollection(1000, 3)
@@ -650,9 +596,8 @@ TestCase {
                   "the empty state's button opened nothing")
     }
 
-    // The other half the plumbing comments called untested. The page already
-    // listens to favoritePlaylistsChanged; what had never been shown is that
-    // creating a playlist raises it and the grid grows by one on its own.
+    // The page listens to favoritePlaylistsChanged. Creating a playlist has
+    // to raise it, and the grid grows by one on its own.
     function test_making_one_from_the_collection_shows_it_in_the_grid() {
         bridge.setUserPlaylistsForTest(makePlaylists(2))
         var c = makeCollection(1000, 3)
@@ -674,8 +619,7 @@ TestCase {
                 + playlistTitles().join(", "))
         compare(c.page.filteredPlaylists[2].title, "Zugfahrt",
                 "the grid gained a row, but not the playlist that was made")
-        // The page stays where it was. Being thrown onto an empty playlist
-        // page would take the user off the list they were curating.
+        // The page stays where it is: no tab change and no navigation.
         compare(c.page.activeTab, 3, "creating a playlist moved the tab")
         compare(c.host.lastNavigation, null,
                 "creating a playlist navigated away from the collection")
@@ -701,8 +645,6 @@ TestCase {
         verify(newRow.visible, "the picker's New playlist row is not drawn")
     }
 
-    // With no playlists at all the picker was a title bar over an empty box:
-    // the one step that needs a playlist most, and no way forward from it.
     function test_the_picker_is_not_a_dead_end_with_no_playlists() {
         bridge.setUserPlaylistsForTest([])
         var p = makePicker()
@@ -711,9 +653,6 @@ TestCase {
                "an account with no playlists gets an empty picker and no way on")
     }
 
-    // The whole point of making one from here: the song goes into it. A
-    // playlist created empty, with the track left behind, would make this row
-    // a detour rather than a shortcut.
     function test_making_one_from_the_picker_puts_the_track_in_it() {
         bridge.setUserPlaylistsForTest([])
         var p = makePicker()
@@ -736,22 +675,18 @@ TestCase {
         compare(bridge.lastAddedPlaylistForTest(), "uuid-created-1",
                 "the song went into some other playlist")
         compare(bridge.lastAddedTrackIdForTest(), 9001, "some other song was added")
-        // ...and the row says so, naming the playlist it went into.
+        // The row says so, naming the playlist it went into.
         verify(p.row.lastConfirmation.indexOf("Zugfahrt") >= 0,
                "the row said \"" + p.row.lastConfirmation
                + "\" rather than naming the playlist the song went into")
-        // ...and the picker goes with it, rather than being left behind over
-        // the page with the job already done.
+        // The picker closes with it.
         var pickerRow = findByName(p.host.contentItem, "pickerNewPlaylistRow")
         verify(!pickerRow || !pickerRow.visible,
                "the picker stayed up after the song had been filed")
     }
 
-    // The playlist is made and the *add* then fails, which is the one case a
-    // confirmation fired on the way out would get wrong. Every caller of
-    // addTracksToPlaylist in the app throws the server's answer away, so until
-    // now a failed add was silent; it must not instead be announced as a
-    // success.
+    // The playlist is made and the add then fails. That must be reported as
+    // a failure, never announced as a success.
     function test_a_failed_add_is_not_reported_as_a_success() {
         bridge.setUserPlaylistsForTest([])
         bridge.setAddToPlaylistOkForTest(false)
@@ -768,8 +703,7 @@ TestCase {
                   "the dialog stayed up after a successful create")
         settle(p.host.contentItem)
 
-        // The playlist itself was made - that call succeeded - so the dialog is
-        // right to have closed.
+        // The create call succeeded, so the dialog is right to have closed.
         compare(bridge.createPlaylistCallsForTest(), 1, "no playlist was made")
         compare(bridge.addToPlaylistCallsForTest(), 1, "the add was never attempted")
         verify(p.row.lastConfirmation.length > 0,

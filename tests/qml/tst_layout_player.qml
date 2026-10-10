@@ -1,20 +1,9 @@
-// Layout regression tests for the player chrome: the Now Playing page, the
-// bottom player bar, the queue panel and the Settings popup.
-//
-// Everything is measured at 640 / 820 / 960 / 1280 (SPEC-0.4.0 X3), at both the
-// 600px window minimum and a tall 1200px window. 960x1200 is the size that
-// matters most: the user runs two 1920x1200 monitors, so half-screen is
-// 960x1200.
-//
-// NowPlayingPage and QueuePanel live beside the sidebar in Main.qml, so they
-// never get the whole window. The hosts below reproduce that with the same
-// 220px sidebar Main.qml hands out today, which is the pessimistic case until
-// the rail (SPEC L2) narrows it to 68 below 820. PlayerBar does span the whole
-// window, so it is hosted at the full width.
-//
-// NowPlayingPage delegates its sleep timer to Window.window, so it cannot be
-// instantiated bare; nowPlayingHost mirrors exactly the surface Main.qml
-// provides, which is also the list tests/TestStubs.h documents.
+// Layout tests for the player chrome: the Now Playing page, the bottom player
+// bar, the queue panel and the Settings popup, at 640 / 820 / 960 / 1280 wide
+// and at 600 and 1200 tall. NowPlayingPage and QueuePanel sit beside the
+// sidebar in Main.qml, so their hosts take the same 220px off the window.
+// PlayerBar spans the whole window. NowPlayingPage reaches its sleep timer
+// through Window.window, so nowPlayingHost mirrors that surface.
 
 import QtQuick
 import QtQuick.Window
@@ -30,15 +19,12 @@ TestCase {
     // Main.qml's sidebar width. Pages get the window minus this.
     readonly property int sidebarWidth: 220
 
-    // Several controls draw their focus ring with `anchors.margins: -4`, a
-    // deliberate four-pixel bleed rather than a layout failure, so an overflow
-    // only counts past that. The faults this guards against are 54px and 58px.
+    // Several controls draw their focus ring with anchors.margins: -4, a
+    // deliberate four-pixel bleed, so an overflow only counts past that.
     readonly property real overflowSlack: 4.5
 
     // How far apart the Now Playing page's two blocks have to be to count as
-    // clear of each other. Settled, they are: the column gap is 64 side by side
-    // and the stack gap 32 one above the other, so this is a floor under both
-    // and not a figure either layout is built to.
+    // clear of each other. A floor under both layouts' gaps.
     readonly property int blockClearance: 8
 
     // ── fixtures ─────────────────────────────────────────────────────────
@@ -81,8 +67,7 @@ TestCase {
         cast.setDevicesForTest([{ id: "d1", name: "Living Room Speaker" }])
     }
 
-    // The four widths from SPEC-0.4.0 X3, each at the 600px window minimum and
-    // at the 1200px the user's monitors actually give.
+    // The four widths, each at the 600px window minimum and at 1200px.
     function sizeRows() {
         var rows = []
         var widths = [640, 820, 960, 1280]
@@ -111,16 +96,9 @@ TestCase {
                 out.push(here + " x=" + c.x.toFixed(1) + " w=" + c.width.toFixed(1)
                          + " but parent is " + item.width.toFixed(1) + " wide")
             }
-            // A VectorIcon is checked, but not opened. Inside it the glyph is a
-            // fixed 24x24 Shape centred in the icon and brought down to size by
-            // a Scale transform, so below 24px its x and width read as a wild
-            // overflow and it paints nowhere near there: at a 14px icon the
-            // Shape is at x=-5 and 24 wide, and the ink lands between 1 and 13.
-            // This walker compares untransformed geometry, which is the right
-            // thing everywhere else and cannot answer that question here.
-            // tests/qml/tst_menus_and_glyphs.qml asks it properly, from a grab,
-            // for every glyph in the app:
-            // test_every_mark_draws_and_only_inside_its_box.
+            // A VectorIcon is checked but not opened: its glyph is a fixed
+            // 24x24 Shape under a Scale transform, so its untransformed geometry
+            // reads as an overflow. tst_menus_and_glyphs.qml checks the ink.
             if (typeof c._pathFor === "function") continue
             collectOverflow(c, here, out)
         }
@@ -179,10 +157,8 @@ TestCase {
             property int    sleepTimeLeft: 0
             property bool   sleepIsFading: false
             property bool   sleepFadeOut: true
-            // What the popup asked for, not just that it asked: the Start
-            // button below moved out of the slider's label row and a button
-            // that looks right and starts the wrong timer would otherwise
-            // read as a pass.
+            // What the popup asked for, as well as that it asked, so a button that
+            // starts the wrong timer fails.
             property int  lastSleepMinutes: -1
             property bool lastSleepAtEnd: false
             function startSleepTimer(minutes, stopAtEnd) {
@@ -191,9 +167,8 @@ TestCase {
                 lastSleepAtEnd = stopAtEnd === true
             }
             function cancelSleepTimer() { sleepTimerActive = false }
-            // Main.qml's own formatter, not a constant: one case below counts
-            // the pill down and a fixed string would have hidden the thing it
-            // is looking for.
+            // Main.qml's own formatter: one case below counts the pill down, which
+            // a fixed string would hide.
             function formatSleepTime(seconds) {
                 var h = Math.floor(seconds / 3600)
                 var m = Math.floor((seconds % 3600) / 60)
@@ -205,11 +180,9 @@ TestCase {
             function navigate(page, params) {}
             function goBack() {}
 
-            // Fullscreen lives on the application window too (Main.qml), and the
-            // page can only ask: it reads Window.window.fullScreen and calls
-            // Window.window.toggleFullScreen(). Mirror that surface, nothing
-            // more - the real one also hides the sidebar and the player bar, and
-            // the page's own geometry is what these cases measure.
+            // Fullscreen lives on the application window too: the page reads
+            // Window.window.fullScreen and calls Window.window.toggleFullScreen().
+            // The real one also hides the sidebar and the player bar.
             property bool fullScreen: false
             function toggleFullScreen() { fullScreen = !fullScreen }
 
@@ -217,9 +190,7 @@ TestCase {
             NowPlayingPage {
                 id: np
                 // Fullscreen hides the sidebar in Main.qml, and a Layout skips an
-                // invisible item entirely, so the page gets that width back. The
-                // reading view cases below measure the page against the screen,
-                // so the host has to hand it the screen.
+                // invisible item, so the page gets that width back.
                 x: npWin.fullScreen ? 0 : testCase.sidebarWidth
                 width: Math.max(0, npWin.width
                                    - (npWin.fullScreen ? 0 : testCase.sidebarWidth))
@@ -269,13 +240,9 @@ TestCase {
         }
     }
 
-    // A VolumeSlider on its own, so the handle arithmetic is measured with
-    // nothing else in the way. `value` is a plain property here and `moved`
-    // writes it back, which is what both hosts do through the player.
-    //
-    // One host for both orientations: the point of the cases below is that the
-    // two are the same arithmetic, and a second host would be the first place
-    // the two could be given different numbers.
+    // A VolumeSlider on its own. value is a plain property here and moved
+    // writes it back, as both hosts do through the player. One host for both
+    // orientations, so the two cannot be given different numbers.
     Component {
         id: volumeSliderHost
         Window {
@@ -311,17 +278,9 @@ TestCase {
         }
     }
 
-    // The size goes in as an initial property rather than being assigned after
-    // creation, which is not a detail. Assigned after, nowPlayingHost came up at
-    // the 960 it declares - 960 less the sidebar is under the 1000px breakpoint,
-    // so the page was born stacked - and every 1280 row then measured it part
-    // way through the 170ms rearrangement out of that, because waitForRendering()
-    // waits for a frame and not for an animation. Which frame it landed on
-    // depended on the machine, so the resting-layout cases below were measuring
-    // a moving layout, differently on every box. Built at its final size there
-    // is nothing to move: `stackness` starts at the value its width asks for,
-    // and a Behavior does not animate an initial binding. The cases that do want
-    // the move drive it themselves, through sweepPage().
+    // The size goes in as an initial property. Assigned after creation, the
+    // page would be born at the host's declared size and measured part way
+    // through its rearrangement: waitForRendering() does not wait for it.
     function showHost(component, w, h) {
         var host = createTemporaryObject(component, testCase,
                                          { width: w, height: h })
@@ -370,11 +329,9 @@ TestCase {
     }
 
     // ── crossing the stack breakpoint ────────────────────────────────────
-    //
-    // The page used to re-form between two frames; it travels now, off the one
-    // `stackness` clock. Both halves of that are worth a test, and only one of
-    // them is the end state: a case that measures the settled geometry alone
-    // passes just as well on the version that snapped.
+    // The page travels between its two layouts off the one stackness clock.
+    // A case that measured the settled geometry alone would pass on a page
+    // that snapped.
 
     // Everything one frame of the move has to agree about.
     function samplePage(page) {
@@ -396,20 +353,16 @@ TestCase {
             // coordinates, which is the figure the page has to be scrollable to.
             infoBottom: info.mapToItem(page, 0, info.height).y,
             reach:      Math.max(cover.y + cover.height, info.y + info.height),
-            // Read here and not in the checker: the samples are taken across
-            // the move and looked at once it is over, so anything the checker
-            // reads off the page itself would be the settled value measured
-            // against a mid-flight snapshot.
+            // Read here: the samples are looked at once the move is over, so
+            // anything the checker read off the page then would be the settled
+            // value.
             bodyReserve: page.bodyHeight,
             contentWidth: page.contentWidth,
             reserved:   cover.parent.height,
             contentH:   flick.contentHeight,
-            // The whole tree, not just the pair. checkSample() measures the two
-            // blocks' own geometry, and that stayed correct through a frame in
-            // which a grandchild of the text column - the seek bar's duration
-            // label - sat 116px outside it. The settled cases cannot see that
-            // either, because by the time they look the move is over. See the
-            // note in qml/components/SeekBar.qml.
+            // The whole tree as well as the pair: a grandchild of the text
+            // column can sit outside it for a frame while the two blocks' own
+            // geometry stays correct.
             overflow:   collectOverflow(page, "NowPlayingPage", [])
         }
     }
@@ -418,19 +371,14 @@ TestCase {
     function checkSample(page, s, previous, where) {
         var reach = Math.max(s.coverY + s.coverSize, s.infoY + s.infoHeight)
         // What the page reserves for the pair is exactly what the pair reaches,
-        // on every frame: not the average of the two layouts, which is less
-        // than the taller block needs halfway through and leaves the bottom of
-        // the text column unreachable, and not the stacked height from the
-        // first frame, which is the sidebar's "black bar where it will expand
-        // to" again.
+        // on every frame. An average of the two layouts would be less than the
+        // taller block needs halfway through.
         verify(Math.abs(s.bodyReserve - reach) <= 1,
                where + ": the page reserves " + s.bodyReserve.toFixed(1)
                + " for blocks that reach " + reach.toFixed(1) + " (t=" + s.t.toFixed(3) + ")")
-        // And the container that holds the reservation never runs ahead of
-        // them. It is allowed to be one polish behind, and only behind: a
-        // QQuickLayout answers at polish time, so the height it has realised is
-        // sometimes last frame's, which is the safe side of this -- it is never
-        // holding space the blocks have not got to yet.
+        // The container that holds the reservation never runs ahead of them. It
+        // may be one polish behind, because a QQuickLayout answers at polish
+        // time.
         var had = previous ? Math.max(reach, previous.reach) : reach
         verify(s.reserved <= had + 1,
                where + ": the container is " + s.reserved.toFixed(1)
@@ -438,8 +386,7 @@ TestCase {
                + " (t=" + s.t.toFixed(3) + ")")
         // Neither block hangs out of the page sideways at any point, and the
         // text column's right edge is the page margin at every value of
-        // stackness -- which is why the two ends of that lerp are written as a
-        // pair rather than each on its own.
+        // stackness.
         verify(s.coverX >= -0.5 && s.coverX + s.coverSize <= s.bodyWidth + 0.5,
                where + ": the cover is at " + s.coverX.toFixed(1) + ".."
                + (s.coverX + s.coverSize).toFixed(1) + " inside " + s.bodyWidth.toFixed(1))
@@ -450,8 +397,6 @@ TestCase {
                where + ": the text column ends at "
                + (s.infoX + s.infoWidth).toFixed(1) + " and the page's content is "
                + s.contentWidth.toFixed(1) + " wide, so there is a gap at one margin")
-        // And nothing anywhere under either block hangs out of its parent on the
-        // way, which is a different question from the two above.
         verify(s.overflow.length === 0,
                where + " (t=" + s.t.toFixed(3) + "): something inside the page "
                + "overflowed mid-move:\n  " + s.overflow.join("\n  "))
@@ -464,10 +409,9 @@ TestCase {
                   2000, "the page never settled before the sweep began")
         var rows = []
         host.width = to
-        // After the frame, not before it: the width is a binding and the layout
-        // under it answers at polish time, so sampling in the same turn as the
-        // write catches the old layout in the new window and says nothing about
-        // the animation either way.
+        // After the frame: the width is a binding and the layout under it
+        // answers at polish time, so sampling in the turn of the write catches
+        // the old layout in the new window.
         for (var i = 0; i < 15; i++) {
             wait(16)
             rows.push(samplePage(page))
@@ -486,9 +430,7 @@ TestCase {
     }
 
     function test_now_playing_restacks_without_reserving_ahead_data() {
-        // Tall and short, because the short window is the one that scrolls and
-        // therefore the one where the reservation is something the user can
-        // run into.
+        // Tall and short: the short window is the one that scrolls.
         return [
             { tag: "to stacked, tall",       from: 1280, to: 1180, h: 1200, end: 1 },
             { tag: "to side by side, tall",  from: 1180, to: 1280, h: 1200, end: 0 },
@@ -524,8 +466,7 @@ TestCase {
 
         compare(rows[rows.length - 1].t, row.end,
                 "the move has to finish on the layout, not near it")
-        // Settled, the bottom of the text column is somewhere the page can
-        // actually be scrolled to.
+        // Settled, the bottom of the text column can be scrolled to.
         var last = rows[rows.length - 1]
         verify(last.infoBottom + page.pageMargin <= last.contentH + 1,
                row.tag + ": the column ends at " + last.infoBottom.toFixed(1)
@@ -546,7 +487,7 @@ TestCase {
 
     function test_now_playing_lands_on_the_swept_layout(row) {
         // In from the other side of the breakpoint, so every width is reached
-        // by a transition rather than by being born at it.
+        // by a transition.
         var opposite = row.w < 1220 ? 1280 : 820
         var host = showHost(nowPlayingHost, opposite, row.h)
         var page = host.page
@@ -599,24 +540,9 @@ TestCase {
     }
 
     // ── one volume cluster, at every width ───────────────────────────────
-    //
-    // The bar used to shed a 90px inline slider below 720px and hand the
-    // volume to a hover flyout from there down, which meant the bar's volume
-    // was two controls depending on how wide the window was. It is one now:
-    // the speaker, the readout and the picker at every width, and the slider
-    // on hover at every width. tst_output_picker.qml drives the hover; this is
-    // about what the layout does with the three that stay.
-    //
-    // 164px: the 36px speaker-over-readout stack, the 32px picker, the two 32px
-    // view buttons and the four 8px gaps, which is also why the old 720px
-    // breakpoint has gone. It existed to buy back 98px that the group no longer
-    // asks for.
-    //
-    // It was 204 while the speaker sat beside the readout. Stacking them put
-    // the glyph over the number in 36px of width instead of 32 + 8 + 44 = 84,
-    // and the 40px that bought back is the whole of what makes the band below
-    // move and what hands the track info 240px at the 640px window minimum
-    // where it used to get 200.
+    // The bar shows the speaker, the readout and the picker at every width,
+    // and the slider on hover. 164px: the 36px speaker-over-readout stack, the
+    // 32px picker, the two 32px view buttons and the four 8px gaps.
     readonly property int barVolumeGroupWidth: 164
 
     function test_player_bar_keeps_one_volume_cluster_data() { return sizeRows() }
@@ -629,20 +555,14 @@ TestCase {
                "the level must stay readable at " + row.tag)
         verify(bar.outputButton.visible,
                "the output button must be on screen at " + row.tag)
-        // Nothing inline, at any width. A slider under the bar would mean the
-        // hover one is a second control rather than the only one.
+        // Nothing inline, at any width: the hover slider is the only one.
         var strays = collectVisibleNamed(bar, "volumeSliderHandle", [])
         compare(strays.length, 0,
                 row.tag + ": the bar draws " + strays.length + " inline slider(s)")
 
-        // The group is the same width at every one of them, measured from the
-        // volume stack's left edge to the queue button's right. A group whose
-        // width moved with the window is the breakpoint coming back.
-        //
-        // From the stack and not from the speaker inside it: the speaker is 32
-        // wide and centred in a 36px stack, so measuring the glyph under-reports
-        // the group by the two pixels the readout is wider on each side - which
-        // is a thing a reader of this file should not have to know.
+        // The group is the same width at every window width, measured from the
+        // volume stack's left edge to the queue button's right. From the stack,
+        // because the speaker is narrower than the stack it is centred in.
         var left  = bar.volumeStack.mapToItem(bar, 0, 0).x
         var right = bar.queueButton.mapToItem(bar, bar.queueButton.width, 0).x
         compare(Math.round(right - left), barVolumeGroupWidth - 8,
@@ -651,23 +571,9 @@ TestCase {
     }
 
     // ── the speaker over the readout ─────────────────────────────────────
-    //
-    // The user, on the horizontal cluster: "If there is enough space, and in the
-    // bottom bar there definitely is, it makes more sense to put the speaker at
-    // the top and the percentage at the bottom, or the other way around, so that
-    // when you hover it, the bar is over both of them and not just over one of
-    // them. Over the middle would also look weird, and there is enough vertical
-    // space, also in full screen now playing and in full screen."
-    //
-    // So: two rows, one above the other, sharing a vertical centre line, with
-    // nothing between them - the gap is paid inside the readout as top padding,
-    // so the pair is one unbroken hover target and the pointer cannot fall
-    // through a dead strip on its way from the glyph to the number.
-    //
-    // Both places and both homes. The bar builds its stack out of IconButton
-    // and a Text; the page builds its own out of an Item with a VectorIcon and
-    // a Text, and the two files do not share that code - only the flyout above
-    // it and the output picker beside it are shared. So each is measured.
+    // Two rows on one vertical centre line with no strip between them: the
+    // gap is top padding inside the readout, so the pair is one hover target.
+    // The bar and the page build their stacks separately, so each is measured.
     function stackShape(root, speaker, readout) {
         var sTop = speaker.mapToItem(root, 0, 0)
         var rTop = readout.mapToItem(root, 0, 0)
@@ -678,16 +584,14 @@ TestCase {
     }
 
     function checkStacked(s, where) {
-        // The speaker is above the readout, not beside it: the readout begins
-        // below the speaker's top edge and ends below its bottom one. Not "the
-        // readout begins where the speaker ends" any more - see the strip check
-        // at the end of this function for what the bar does instead and why.
+        // The speaker is above the readout: the readout begins below the
+        // speaker's top edge and ends below its bottom one.
         verify(s.ry > s.sy + 0.5 && s.ry + s.rh > s.sy + s.sh + 0.5,
                where + ": the speaker spans y " + s.sy.toFixed(1) + "-"
                + (s.sy + s.sh).toFixed(1) + " and the readout " + s.ry.toFixed(1)
                + "-" + (s.ry + s.rh).toFixed(1)
                + " - the two are not one above the other")
-        // ...and they are NOT beside each other: the two boxes share x.
+        // They are not beside each other: the two boxes share x.
         verify(s.rx < s.sx + s.sw && s.sx < s.rx + s.rw,
                where + ": the speaker spans x " + s.sx.toFixed(1) + "-"
                + (s.sx + s.sw).toFixed(1) + " and the readout " + s.rx.toFixed(1)
@@ -698,14 +602,8 @@ TestCase {
                where + ": the speaker is centred at " + sc.toFixed(1)
                + " and the readout at " + rc.toFixed(1))
         // No strip between them, which is what makes the two one hover target.
-        // One-sided on purpose, and it was not always: the gap is paid inside
-        // the readout as its own top padding, so in Now Playing the two boxes
-        // meet exactly - and in the bar they now overlap, because the bar's
-        // readout is lifted over the 7px of empty box under its IconButton
-        // glyph (PlayerBar.volumeSpeakerBoxSlack) so that the two places draw
-        // the same gap. An overlap belongs to both of them, which is the whole
-        // of the promise. A gap belongs to neither, and is where a pointer on
-        // its way down from the glyph to the number drops the flyout.
+        // The two boxes may overlap, as they do in the bar. A gap belongs to
+        // neither, and a pointer crossing it drops the flyout.
         verify(s.ry <= s.sy + s.sh + 0.5,
                where + ": there is a " + (s.ry - (s.sy + s.sh)).toFixed(1)
                + "px strip between the speaker and the readout that belongs to "
@@ -721,22 +619,13 @@ TestCase {
         var bar = host.bar
         checkStacked(stackShape(bar, bar.volumeButton, bar.volumePercentText),
                      "the bar at " + row.tag)
-        // And the stack is as wide as the wider of the two, so the cluster is a
-        // fixed object and not one that grows with the glyph's hit target.
+        // The stack is as wide as the wider of the two.
         compare(Math.round(bar.volumeStack.width), 36,
                 row.tag + ": the bar's volume stack is "
                 + bar.volumeStack.width.toFixed(1) + "px wide")
         // The two rows cover the stack from its top edge to its bottom one, so
-        // there is no strip anywhere inside it that neither of them hovers. A
-        // `spacing` on the column would open one in the middle, and that is
-        // caught by checkStacked above; this is the other two places it could
-        // open, at the ends.
-        //
-        // This was "the stack is exactly the two rows added up" and cannot be
-        // any more: the bar lifts its readout 7px over the empty bottom of the
-        // speaker's tap target and hands the 7px back as the readout's bottom
-        // padding, so the box is the same 53px it always was while the two rows
-        // now measure 60 between them. The sum was only ever a proxy for this.
+        // no strip inside it is hovered by neither. checkStacked catches a gap
+        // in the middle; these are the two ends.
         var speakerTop = bar.volumeButton.mapToItem(bar.volumeStack, 0, 0).y
         var readoutEnd = bar.volumePercentText.mapToItem(
                              bar.volumeStack, 0, bar.volumePercentText.height).y
@@ -777,8 +666,8 @@ TestCase {
                 + "px around " + pct.contentHeight.toFixed(1)
                 + "px of text, so the " + page.volumeStackGap
                 + "px gap is not being paid as its padding")
-        // The picker did not join them. Three in a column takes the transport
-        // row from 64 to 71, which is the measurement that kept it out.
+        // The picker stays beside the stack: three in a column would make the
+        // transport row taller.
         var out = findChild(cluster, "nowPlayingOutputButton")
         var o = out.mapToItem(page, 0, 0)
         var m = mute.mapToItem(page, 0, 0)
@@ -787,15 +676,9 @@ TestCase {
                + o.x.toFixed(1) + " against a speaker at " + m.x.toFixed(1))
     }
 
-    // The point of the stack: the flyout stands over both rows of it rather
-    // than over the glyph alone. That is the whole of what the user asked for,
-    // and it is a property of the popup's *parent* - parented to the speaker
-    // the popup is centred on 32px of glyph, parented to the stack it is
-    // centred on the 36px both rows share.
-    //
-    // Measured as horizontal coverage and not as "the parent is volStack": the
-    // popup could be reparented, re-centred or given a different width and the
-    // question the user asked would still be the one below.
+    // The flyout stands over both rows of the stack, which depends on the
+    // popup's parent: parented to the stack it is centred on the width both
+    // rows share. Measured as horizontal coverage.
     function flyoutCoversBoth(host, root, flyout, speaker, readout, where) {
         // A Popup's x is in its parent's coordinates, so the window is the one
         // frame all three can be compared in.
@@ -811,16 +694,9 @@ TestCase {
                where + ": the flyout spans x " + fL.toFixed(1) + "-"
                + fR.toFixed(1) + " and does not cover the readout at "
                + r.x.toFixed(1) + "-" + (r.x + readout.width).toFixed(1))
-        // And it is above both of them, which is the other half of "over": a
-        // popup drawn across the pair would hide what it is reporting.
-        //
-        // Against the top of whichever row is higher, not against the speaker's.
-        // The flyout is positioned relative to its parent, and with the speaker
-        // on top those two are the same number - which is itself a reason the
-        // speaker is the one on top: the popup clears the whole stack whether it
-        // is parented to the stack or to the speaker in it, so the choice of
-        // parent cannot quietly become a bug. Written against the higher row so
-        // that swapping the order *would* be caught.
+        // And it is above both of them: a popup drawn across the pair would hide
+        // what it reports. Checked against the top of whichever row is higher,
+        // so that swapping the order of the rows would be caught.
         var stackTop = Math.min(s.y, r.y)
         verify(fB <= stackTop + 0.5,
                where + ": the flyout's bottom edge is at " + fB.toFixed(1)
@@ -857,33 +733,9 @@ TestCase {
     }
 
     // ── the vertical room the second row is spent out of ─────────────────
-    //
-    // "there is enough vertical space, also in full screen now playing and in
-    // full screen". Measured rather than taken on trust, at every size the two
-    // places are drawn at, because what pays for the second row is different in
-    // each:
-    //
-    //   the bar      an 82px bar around a 59px left group. The stack is 53 -
-    //                a 32px IconButton over a 28px readout lifted 7px into the
-    //                empty bottom of it, which is 32 - 7 + 28 - so the bar has
-    //                29px of slack and the group 6. The readout is 28 and not
-    //                the old 21 because it carries the 7px of the lift back as
-    //                bottom padding, which is what leaves the box at the 53 it
-    //                has always been; see PlayerBar.volumeSpeakerBoxSlack.
-    //   the page,    the transport row is 64 tall because the play button in
-    //   riding       the middle of it is. The stack is 39, so the row carries it
-    //                with 25px to spare and does not grow by a pixel: the
-    //                cluster's height has no effect on the column's at all.
-    //   the page,    a line of its own, which does grow - from 32 to 39. The
-    //   own row      column it is in is already taller than the shortest page
-    //                the app allows and scrolls, so the 7px is 7px of scroll and
-    //                not an overflow. Held to that by collectOverflow below.
-    //
-    // The threshold, for the record: the stack would start costing the page
-    // height the moment it passed the transport row's 64, which the two-row
-    // stack reaches at a 46px readout against the 21 it draws. The three-row
-    // version - picker included - measures 71 and does, which is why the picker
-    // stays beside the stack.
+    // What pays for the second row differs by place. In the bar the stack
+    // fits inside the bar's height. Riding the transport row it is shorter
+    // than the play button. On a row of its own it makes that row taller.
     function test_the_bar_has_the_room_for_two_rows_data() { return sizeRows() }
 
     function test_the_bar_has_the_room_for_two_rows(row) {
@@ -898,23 +750,17 @@ TestCase {
                row.tag + ": the volume stack reaches y="
                + (top + stack.height).toFixed(1) + " in an "
                + bar.height + "px bar")
-        // Two rows, really: a stack no taller than one of them is a stack that
-        // folded back into a row and would pass every box check above.
+        // Two rows: a stack that folded back into one row would pass every box
+        // check above.
         verify(stack.height >= bar.volumeButton.height + 8,
                row.tag + ": the stack is " + stack.height.toFixed(1)
                + "px tall around a " + bar.volumeButton.height
                + "px speaker, which is not two rows")
     }
 
-    // The case above has a branch per home, and a file in which every size rode
-    // the transport row would run only one of them and say nothing about the
-    // other. So: both homes occur among the widths this file measures.
-    //
-    // One window resized rather than fourteen built, because what is being
-    // counted is which answer each width gives and not how any of them looks.
-    // The reading-view rows are not in here: at 1280 and 1920 the page is the
-    // whole screen and every one of them rides, which the case above reports
-    // through page.volumeInTransport anyway.
+    // The page case has a branch per home, so both homes have to occur among
+    // the widths this file measures. One window is resized, since only the
+    // answer each width gives is counted.
     function test_both_volume_homes_occur_at_the_widths_this_file_measures() {
         var host = showHost(nowPlayingHost, 1920, 1200)
         var widths = [640, 820, 960, 1280, 1920]
@@ -949,8 +795,8 @@ TestCase {
                + "px tall, which is not two rows")
 
         if (page.volumeInTransport) {
-            // The row is the play button's height and nothing else's, which is
-            // the whole of why the second row costs the column nothing here.
+            // The row is the play button's height, so the second row costs the
+            // column nothing.
             compare(Math.round(trow.height), Math.round(play.height),
                     row.tag + ": the transport row is " + trow.height.toFixed(1)
                     + "px around a " + play.height + "px play button, so the "
@@ -970,34 +816,15 @@ TestCase {
                    + "px around a " + cluster.height.toFixed(1) + "px cluster")
         }
 
-        // And nothing anywhere is hanging out of its parent, which is where a
-        // second row the page could not pay for would show up.
         var faults = collectOverflow(page, "NowPlayingPage", [])
         verify(faults.length === 0,
                reportFor("the page overflows with the volume stacked", row, faults))
     }
 
     // ── what the stack hands back to the track info ──────────────────────
-    //
-    // Not a thing the user asked for, and the reason the measurement is here:
-    // the right-hand group going from 204 to 164 is 40px the bar's left group
-    // gets instead, and the left group is where the title elides.
-    //
-    // b1ee02a shipped a compromise it wrote down - "At 640 that leaves the track
-    // info on its 200px minimum against the 280 it asks for, so the title elides
-    // between 640 and 675". Measured on that build, the left group ran from
-    // 200px at a 640px window to 235 at 675 and 236 at 676, one pixel of group
-    // per pixel of window: 236 is the width at which the eliding stopped.
-    //
-    // Stacking hands the group 240 at the 640px minimum, so there is no window
-    // the app allows in which the title has less room than it had where the
-    // eliding stopped. The band has moved below Main.qml's minimum and is
-    // unreachable.
-    //
-    // 236 and not "no longer truncated": which title truncates depends on the
-    // title, and the fixture's is 358.7px and truncates past 1280 either way.
-    // What is a property of the layout rather than of a string is how much room
-    // the group gets, so that is what is pinned.
+    // The narrower right-hand group gives the bar's left group more room,
+    // and the left group is where the title elides. Which title truncates
+    // depends on the title, so the room the group gets is what is pinned.
     readonly property int leftGroupWhereElidingStopped: 236
 
     function test_stacking_hands_the_title_back_the_elided_band() {
@@ -1008,8 +835,7 @@ TestCase {
                "at the 640px window minimum the track info gets "
                + left.width.toFixed(1) + "px, where the eliding band it was "
                + "shipped with only cleared at " + leftGroupWhereElidingStopped)
-        // And the 40px really came from the volume: the group is 164 here too,
-        // so this is not a case that passes because the bar got wider.
+        // The room came from the volume group, which is its one width here too.
         var gl = bar.volumeStack.mapToItem(bar, 0, 0).x
         var gr = bar.queueButton.mapToItem(bar, bar.queueButton.width, 0).x
         compare(Math.round(gr - gl), barVolumeGroupWidth - 8,
@@ -1017,21 +843,9 @@ TestCase {
                 + "px at the window minimum")
     }
 
-    // The two blocks cross through each other halfway through the move: they
-    // swap both axes at once and each is most of the width of the page, so
-    // there is no path between the two layouts that keeps them apart. The
-    // clearance to spend is the 64px column gap across and the 32px stack gap
-    // down, against a cover of around 400px and 480px of travel; measured at
-    // every size below, the text column can be at most 8-19% of the way across
-    // while it is anywhere in the first 90% of its way down. What is arranged
-    // instead is which of them is on top, and that is what this pins: the
-    // artwork passes over the text, never the other way round, so the title is
-    // never drawn across album art.
-    //
-    // The other half of it is that the overlap belongs to the move and to
-    // nothing else -- settled, at every width and height, the two are clear by
-    // `blockClearance`. A layout change that quietly let them touch at rest
-    // would fail here even though both of them fit the page.
+    // The two blocks cross through each other halfway through the move, so
+    // paint order is arranged: the artwork passes over the text, and the
+    // title is never drawn across album art. Settled, they are clear.
     function rectsOf(s) {
         return {
             cover: { l: s.coverX, r: s.coverX + s.coverSize,
@@ -1078,10 +892,9 @@ TestCase {
         for (var i = 0; i < rows.length; i++) {
             if (separationOf(rows[i]) >= blockClearance) continue
             overlapped++
-            // Wherever they are not clear of each other, paint order has to be
-            // unambiguous and has to put the artwork on top. Siblings with
-            // equal z paint in declaration order, and the text column is
-            // declared second, so the z is what does this and not luck.
+            // Wherever they are not clear of each other, the artwork has to be on
+            // top. Siblings with equal z paint in declaration order, and the text
+            // column is declared second, so the z has to do it.
             verify(cover.parent === info.parent,
                    row.tag + ": the blocks are no longer siblings, so their paint "
                    + "order is not a z comparison any more")
@@ -1098,23 +911,14 @@ TestCase {
                row.tag + ": settled, the two blocks are only "
                + separationOf(last).toFixed(1) + "px apart, which is inside the "
                + blockClearance + "px they are supposed to keep")
-        // And the overlap really is confined to the move, so this case is
-        // measuring the thing it claims to.
+        // The overlap is confined to the move.
         verify(overlapped < rows.length,
                row.tag + ": every sample overlapped, including the settled one")
     }
 
     // ── the bar resizing ─────────────────────────────────────────────────
-    //
-    // There used to be a breakpoint here. The bar shed its inline slider at
-    // 720px and the slot it left behind closed over 150ms, and most of the
-    // cases in this spot were about that move not leaving a gap behind it.
-    //
-    // There is no move any more: the right-hand group is 164px at every width
-    // it is drawn at, so what a resize does to it is nothing at all. That is
-    // the stronger promise and it is the one measured here - sampled every
-    // frame of a resize, because "nothing moves" is only worth asserting
-    // against the frames in which something could.
+    // The right-hand group is one width at every window width, so a resize
+    // moves nothing in it. Sampled every frame of a resize.
 
     function barSample(bar) {
         var vol = bar.volumeButton
@@ -1124,10 +928,8 @@ TestCase {
         var q   = bar.queueButton
         var arrow = bar.nowPlayingButton
         return {
-            // The group is right-aligned, so where a control sits relative to
-            // the bar's right edge is the figure that does not move when the
-            // window does: it is the regroup on its own, with the resize that
-            // caused it taken out.
+            // The group is right-aligned, so a control's distance from the bar's
+            // right edge is the figure that does not move with the window.
             volFromRight:   bar.width - vol.mapToItem(bar, vol.width, 0).x,
             pctFromRight:   bar.width - pct.mapToItem(bar, pct.width, 0).x,
             outFromRight:   bar.width - out.mapToItem(bar, out.width, 0).x,
@@ -1138,8 +940,8 @@ TestCase {
             // between them is horizontal and these two are y.
             volBottom: vol.mapToItem(bar, 0, vol.height).y,
             pctTop:    pct.mapToItem(bar, 0, 0).y,
-            // The far ends of the pair as well, because a resize is exactly
-            // when a layout could open a hole at one of them.
+            // The far ends of the pair as well: a resize could open a hole at one
+            // of them.
             volTop:    vol.mapToItem(bar, 0, 0).y,
             pctBottom: pct.mapToItem(bar, 0, pct.height).y,
             stackTop:    stack.mapToItem(bar, 0, 0).y,
@@ -1150,9 +952,7 @@ TestCase {
     }
 
     function checkBarSample(bar, s, first, where) {
-        // Every control in the group keeps its distance from the right-hand
-        // edge, whatever the bar is doing. Anything that shrank or grew with
-        // the window would show up here.
+        // Every control in the group keeps its distance from the right-hand edge.
         var axes = ["volFromRight", "pctFromRight", "outFromRight",
                     "queueFromRight"]
         for (var i = 0; i < axes.length; i++)
@@ -1160,24 +960,20 @@ TestCase {
                    where + ": " + axes[i] + " moved from "
                    + first[axes[i]].toFixed(1) + " to " + s[axes[i]].toFixed(1)
                    + " while the bar resized")
-        // And the speaker and the readout stay against each other, which is
-        // what makes them one hover target. Stacked, that is the readout's top
-        // edge at or above the speaker's bottom one. Above, here: the bar lifts
-        // its readout over the empty bottom of the speaker's tap target, and an
-        // overlap belongs to both of them. Only below is a strip that belongs to
-        // neither.
+        // The speaker and the readout stay against each other: the readout's top
+        // edge is at or above the speaker's bottom one. An overlap belongs to
+        // both, and only a gap below is a strip that belongs to neither.
         verify(s.pctTop - s.volBottom <= 0.5,
                where + ": a " + (s.pctTop - s.volBottom).toFixed(1)
                + "px strip opened up between the speaker and the readout")
-        // ...and the pair still reaches both ends of the stack it is in.
+        // The pair still reaches both ends of the stack it is in.
         verify(s.volTop <= s.stackTop + 0.5 && s.pctBottom >= s.stackBottom - 0.5,
                where + ": the pair spans y " + s.volTop.toFixed(1) + "-"
                + s.pctBottom.toFixed(1) + " in a stack spanning "
                + s.stackTop.toFixed(1) + "-" + s.stackBottom.toFixed(1)
                + ", so part of the stack is hovered by neither of them")
         // The two controls that open a view are the ones a squeezed bar drops
-        // off the end first, so they are checked at every sample and not only
-        // at rest.
+        // off the end first, so they are checked at every sample.
         verify(s.queueRight <= bar.width + 0.5,
                where + ": the queue button ends at " + s.queueRight.toFixed(1)
                + " in a " + bar.width + "px bar")
@@ -1190,13 +986,9 @@ TestCase {
         waitForRendering(host.contentItem)
         var rows = []
         host.width = to
-        // One frame before the first sample. Setting a Window's width moves
-        // the window's own property at once and the items in it on the next
-        // polish pass, so the frame of the assignment is one in which `bar.width`
-        // and the controls' positions are measuring two different bars - which
-        // says nothing about this code, and is the one frame in which no
-        // window has been painted either. A 320px jump reads as a 304px
-        // overflow there and nowhere else.
+        // One frame before the first sample. Setting a Window's width moves the
+        // window's own property at once and the items in it on the next polish
+        // pass, so in the frame of the assignment the two disagree.
         waitForRendering(host.contentItem)
         for (var i = 0; i < 14; i++) {
             rows.push(barSample(bar))
@@ -1207,10 +999,8 @@ TestCase {
     }
 
     function test_player_bar_resizes_without_regrouping_data() {
-        // Across the width the breakpoint used to be at, both ways, and a
-        // jump of the size a tiling shortcut makes: half a screen to the
-        // window minimum in one frame, which is what used to hang the queue
-        // button 38px off the end of the window for 150ms.
+        // A two-pixel resize both ways, and a jump of the size a tiling
+        // shortcut makes: half a screen to the window minimum in one frame.
         return [
             { tag: "past the old breakpoint", from: 721, to: 719 },
             { tag: "back past it",            from: 719, to: 721 },
@@ -1231,8 +1021,7 @@ TestCase {
                reportFor("Player bar overflows after " + row.tag, row, faults))
     }
 
-    // The widths the suite already sweeps, reached by a transition rather than
-    // by being born at them.
+    // The widths the suite sweeps, each reached by a transition.
     function test_player_bar_lands_on_the_swept_layout_data() { return sizeRows() }
 
     function test_player_bar_lands_on_the_swept_layout(row) {
@@ -1253,20 +1042,9 @@ TestCase {
     }
 
     // ── the volume slider's handle, both ways round ──────────────────────
-    //
-    // The user hit this at max volume: the handle was sliced in half. It was
-    // positioned at `value * track.width - 5`, so half of it hung outside the
-    // control at both ends -- 5px past the right edge at full volume -- and the
-    // bar's volume slot clips, so what was left on screen was half a knob. The
-    // handle's centre travels between the two radii now, which is the whole fix
-    // and the thing these cases pin.
-    //
-    // Every one of them runs twice, once per orientation. That is the reason
-    // the upright slider is a mode on the same component rather than a second
-    // file: one piece of arithmetic, measured once, and a vertical copy of
-    // this bug cannot be introduced without a vertical copy of these failing.
-    // The two axes are read through `along` and `across` so each case is
-    // written once as well.
+    // The handle's centre travels between the two radii, so no part of it
+    // hangs outside the control at either end. Every case runs once per
+    // orientation, with the two axes read through along and across.
 
     // Everything about a sample that depends on which way the slider runs.
     // `along` is the axis the value travels on, `across` the other one, and
@@ -1280,7 +1058,7 @@ TestCase {
         var hBR = handle.mapToItem(slider, handle.width, handle.height)
         var fTL = fill.mapToItem(slider, 0, 0)
         var fBR = fill.mapToItem(slider, fill.width, fill.height)
-        // Upright, "the loud end" is the top and the value grows towards
+        // Upright, the loud end is the top and the value grows towards
         // smaller y, so the axis is read backwards from the far edge. Every
         // case below is then written once, in the direction the value runs.
         var span = vertical ? slider.height : slider.width
@@ -1365,10 +1143,8 @@ TestCase {
                + p.fillFar.toFixed(2) + " in a " + p.span + "px slider")
     }
 
-    // The inset the travel needs must not cost the ends: pressing the quiet
-    // end still means silence and the loud end still means full. Upright, the
-    // loud end is the top, which is the half of the mapping that an inverted
-    // axis gets wrong without noticing.
+    // The inset the travel needs must not cost the ends: the quiet end still
+    // reaches 0 and the loud end 1. Upright, the loud end is the top.
     function test_volume_slider_ends_are_reachable_data() {
         return [{ tag: "across", vertical: false },
                 { tag: "upright", vertical: true }]
@@ -1391,18 +1167,15 @@ TestCase {
         compare(host.moves, 2, row.tag + ": a press at the loud end should move it")
         compare(host.lastMoved, 1, row.tag + ": the loud end has to reach exactly 1")
 
-        // And the middle lands near the middle rather than half a handle away.
+        // And the middle lands near the middle.
         mouseClick(slider, mid.x, mid.y)
         verify(Math.abs(host.lastMoved - 0.5) <= 0.08,
                row.tag + ": a press at the midpoint gave "
                + host.lastMoved.toFixed(3))
     }
 
-    // The same thing where the user met it: a real slider, at max volume, in
-    // the popup that is the only place one is drawn now. There is no clipping
-    // slot left to slice the knob, but there is a 10px popup padding, and a
-    // handle that hung half out of its control would be drawn over the popup's
-    // own border instead.
+    // The same in the hover popup, with a real slider at max volume. A handle
+    // that hung out of its control would be drawn over the popup's border.
     function test_hover_volume_handle_is_whole_at_max() {
         player.setVolume(1)
         var host = showHost(playerBarHost, 960, 200)
@@ -1426,12 +1199,8 @@ TestCase {
     }
 
     // ── lyrics ───────────────────────────────────────────────────────────
-    //
-    // The lyrics used to be poured into the artwork's square. In a short window
-    // that square floors at 180px, so what the user got was a 185x195 box
-    // floating in the middle of the hero with the whole width of the page empty
-    // beside it and lines wrapping after four words. The slot has two shapes
-    // now, one clock between them, and the list gets a measure.
+    // The lyrics slot has two shapes with one clock between them, and the
+    // list gets a measure of its own instead of the artwork's square.
 
     // The page's own lyrics state is writable, which is how a test gets timed
     // lyrics: the bridge stub answers fetchLyrics with nothing, by design.
@@ -1473,7 +1242,7 @@ TestCase {
         var host = showHost(nowPlayingHost, row.w, row.h)
         var page = host.page
         settlePage(page)
-        // The square the lyrics used to be served in.
+        // The artwork's square, to compare against.
         var square = page.coverSize
 
         openLyrics(host)
@@ -1483,26 +1252,23 @@ TestCase {
         verify(box && panel && view, "the lyrics panel was not found")
         verify(panel.visible, "the lyrics panel did not open")
 
-        // All the width the page has, up to the measure. This is the half of
-        // the complaint that was "the entire width of the page empty to its
-        // left and right": at 640 the artwork already took the whole content
-        // width, so there is no width there to win, and the gain is the height.
+        // All the width the page has, up to the measure. At 640 the artwork
+        // already took the whole content width, so the gain there is height.
         verify(Math.abs(box.width - Math.min(page.contentWidth, page.lyricsMeasure)) <= 1,
                row.tag + ": the lyrics got " + box.width.toFixed(1)
                + "px of a " + page.contentWidth.toFixed(1) + "px page, capped at "
                + page.lyricsMeasure)
         verify(box.height >= 280 - 0.5,
                row.tag + ": the lyrics column is only " + box.height.toFixed(1) + "px tall")
-        // More room than the square it replaced, at every size. Stacking is
-        // part of opening the lyrics, and stacking can shrink the cover, so this
-        // is measured against the square the lyrics were actually served in.
+        // More room than the artwork's square, at every size. Opening the lyrics
+        // stacks the page, which can shrink the cover, so the square is read
+        // before they open.
         verify(box.width * box.height > square * square,
                row.tag + ": the lyrics got " + box.width.toFixed(1) + "x"
                + box.height.toFixed(1) + " where the artwork square was "
                + square.toFixed(1) + ", which is no more room than before")
-        // And never smaller than the artwork it is standing in for right now,
-        // which is what lets the crossfade leave the cover at its own size while
-        // the slot grows around it.
+        // And never smaller than the artwork it stands in for, so the crossfade
+        // can leave the cover at its own size while the slot grows around it.
         verify(box.width >= page.coverSize - 0.5 && box.height >= page.coverSize - 0.5,
                row.tag + ": the " + box.width.toFixed(1) + "x" + box.height.toFixed(1)
                + " slot cannot hold the " + page.coverSize.toFixed(1) + "px cover")
@@ -1510,7 +1276,7 @@ TestCase {
         verify(box.x >= -0.5 && box.x + box.width <= page.contentWidth + 0.5,
                row.tag + ": the lyrics column is at " + box.x.toFixed(1) + ".."
                + (box.x + box.width).toFixed(1) + " in " + page.contentWidth.toFixed(1))
-        // And the list really has that measure, not just the panel.
+        // And the list has that measure, as well as the panel.
         verify(view.width >= box.width - 33,
                row.tag + ": the panel is " + box.width.toFixed(1)
                + " but the list only got " + view.width.toFixed(1))
@@ -1518,16 +1284,9 @@ TestCase {
         verify(faults.length === 0, reportFor("Now Playing overflows with lyrics", row, faults))
     }
 
-    // The list uses the WHOLE panel, and keeps room for the chips as content
-    // margins rather than as a hole in the viewport.
-    //
-    // This case used to assert the opposite - that the list stopped above the
-    // chips - and that is what shipped. It worked and it cost the thing it was
-    // protecting: the bottom of the panel stayed permanently empty, the last
-    // line of a song could never reach it, and the user reported the box as
-    // looking broken. "Nothing is drawn under the chip" was never the
-    // requirement; "a tap on the chip does not also seek" was, and that is held
-    // by the exclusive grab and measured by the case below.
+    // The list uses the whole panel and keeps room for the chips as content
+    // margins. A tap on a chip must not also seek, which the exclusive grab
+    // holds and the case below measures.
     function test_the_lyric_list_uses_the_whole_panel_data() { return sizeRows() }
 
     function test_the_lyric_list_uses_the_whole_panel(row) {
@@ -1540,15 +1299,15 @@ TestCase {
         verify(toggle.visible, "the toggle has to stay reachable with lyrics open")
 
         // The viewport reaches the bottom of the panel, bar the panel's own
-        // inset. If a band ever comes back, this is what fails.
+        // inset.
         var viewBottom  = view.mapToItem(panel, 0, view.height).y
         verify(viewBottom >= panel.height - 20,
                row.tag + ": the list ends at " + viewBottom.toFixed(1)
                + " in a panel " + panel.height.toFixed(1)
                + " tall, so the bottom of the box cannot show words")
 
-        // ...and the room the chips need is content margin, so a line can still
-        // be scrolled clear of them instead of being stuck underneath.
+        // The room the chips need is content margin, so a line can be scrolled
+        // clear of them.
         verify(view.bottomMargin >= 30,
                row.tag + ": the list reserves no content room at the bottom ("
                + view.bottomMargin + "), so the last line cannot clear the chips")
@@ -1562,21 +1321,12 @@ TestCase {
     }
 
     // ── the reading view ─────────────────────────────────────────────────
-    //
-    // Fullscreen with a panel open is not a second fullscreen and has no control
-    // of its own: the chrome row's button is still the only one, and this is what
-    // it shows. The user asked for exactly that - "lass uns den fullscreen
-    // einfach das anzeigen wenn lyrics an sind und der user auf fullscreen ist" -
-    // after finding that the lyrics panel's own fullscreen button "just do[es]
-    // the same thing as the button that's like four centimetres to the top
-    // right".
+    // Fullscreen with a panel open is the reading view. It has no control of
+    // its own: the chrome row's fullscreen button is the only one.
 
-    // Screen sizes, not window sizes: fullscreen is the whole screen and the
-    // sidebar is gone with it. 1920x1200 is the user's own monitor.
-    //
-    // `roomy` is whether the page has any height to give the words in the first
-    // place. At 600 it has not - the text column alone is taller than that - so
-    // there the reading view can only be asked not to make things worse.
+    // Screen sizes: fullscreen is the whole screen, with the sidebar gone.
+    // roomy is whether the page has any height to give the words. At 600 the
+    // text column alone is taller than that.
     function fullScreenRows() {
         return [
             { tag: "1920x1200", w: 1920, h: 1200, roomy: true  },
@@ -1592,17 +1342,13 @@ TestCase {
         waitForRendering(host.contentItem)
     }
 
-    // The size the first lyric line is really painted at, off the delegate and
-    // not off the page's property for it: the page asking for 28 and the list
-    // drawing 14 is exactly the kind of disagreement a layout test is for, and
-    // reading only the property passed with the delegate reverted to a literal.
+    // The size the first lyric line is painted at, read off the delegate:
+    // the page's property can ask for one size while the list draws another.
     function lyricLinePixelSize(page) {
         var view = findChild(page, "nowPlayingLyricsView")
         if (!view) return -1
-        // Whichever delegate the view happens to have realised, not index 0: the
-        // list re-wraps when the measure changes and the first line is not
-        // always one of them, which would read as "the type is gone" when the
-        // type is fine.
+        // Whichever delegate the view has realised: the list re-wraps when the
+        // measure changes, and index 0 is not always one of them.
         var kids = view.contentItem ? view.contentItem.children : []
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i]
@@ -1638,9 +1384,8 @@ TestCase {
         var page = openLyrics(host)
         var docked = panelShape(page)
 
-        // Docked, the words are the smaller half of the page: the text column is
-        // taller than the panel. That is the thing being changed, so it is
-        // measured rather than assumed.
+        // Docked, the words are the smaller half of the page: the text column
+        // is taller than the panel.
         verify(docked.h < docked.info,
                row.tag + ": docked, the panel is already " + docked.h.toFixed(1)
                + " against a " + docked.info.toFixed(1)
@@ -1652,7 +1397,7 @@ TestCase {
 
         var reading = panelShape(page)
 
-        // All the width the page has, up to the measure - which is held in
+        // All the width the page has, up to the measure, which is held in
         // characters, so at twice the type it is twice the pixels.
         verify(reading.size === 2 * docked.size,
                row.tag + ": the lyric line is set at " + reading.size
@@ -1672,9 +1417,8 @@ TestCase {
                row.tag + ": the words are no wider than the " + docked.w.toFixed(1)
                + "px they had docked")
 
-        // And all the height the page can spare, with nothing capping it: the
-        // 560 the docked panel stops at is gone, and the floor and the room are
-        // all that are left.
+        // And all the height the page can spare, with no cap: only the floor and
+        // the room limit it.
         var spare = Math.max(page.coverSize, 280, page.stackedCoverRoom)
         verify(Math.abs(reading.h - spare) <= 0.5,
                row.tag + ": the panel is " + reading.h.toFixed(1)
@@ -1695,13 +1439,9 @@ TestCase {
                row.tag + ": the text column still stands " + reading.info.toFixed(1)
                + "px tall, so the words gained nothing from the fold")
 
-        // And the volume has not folded. It did once; shown what the fold was
-        // worth the user kept it, because the volume slider is something they
-        // reach for with the mouse rather than with the arrow keys. This is the
-        // assertion that stops it being folded again, and it follows the
-        // controls: the volume is not a row of its own any more at these
-        // widths, it rides the right-hand end of the transport row, and the
-        // guarantee is about wherever volumeHome() finds it.
+        // The volume has not folded: it is reached for with the mouse. The
+        // guarantee is about wherever volumeHome() finds it, which at these
+        // widths is the right-hand end of the transport row.
         verify(volume.implicitHeight > 1,
                row.tag + ": " + volume.objectName + " asks for "
                + volume.implicitHeight.toFixed(1)
@@ -1719,10 +1459,7 @@ TestCase {
                row.tag + ": " + volume.objectName + " is drawn at "
                + volumeOpacity.toFixed(2) + " opacity in the reading view")
         // At these widths the volume's home is the transport row, so the row
-        // has to keep its own height too: fold that and the volume folds with
-        // it, which is the trade the user turned down. The cluster cannot be
-        // folded from inside a row whose tallest child is the 64px play
-        // button, so this is where that half of the promise is held.
+        // has to keep its own height too, or the volume folds with it.
         var transport = findChild(page, "nowPlayingTransportRow")
         verify(transport, row.tag + ": the transport row was not found")
         verify(Math.abs(transport.height - transport.implicitHeight) <= 0.5,
@@ -1730,10 +1467,8 @@ TestCase {
                + "px tall against the " + transport.implicitHeight.toFixed(1)
                + "px it asks for, so the volume folded with it")
 
-        // ...and the cluster inside it is the whole cluster at its whole
-        // width, not a squeezed version of one. The slider that used to be
-        // measured here lives in the hover flyout now, so what is left to
-        // keep is the three controls and the width they agree on.
+        // The cluster inside it is the whole cluster at its whole width: the
+        // three controls and the width they agree on.
         var readingCluster = volumeCluster(page)
         compare(readingCluster.width, page.volumeClusterWidth,
                 row.tag + ": the volume cluster is " + readingCluster.width.toFixed(1)
@@ -1745,9 +1480,8 @@ TestCase {
         verify(readingPct && readingPct.visible,
                row.tag + ": the reading view lost the level readout")
 
-        // Where the page has the height to give, the words are now the biggest
-        // thing on it, which is the whole point and the opposite of the docked
-        // measurement above.
+        // Where the page has the height to give, the words are the biggest
+        // thing on it.
         if (row.roomy)
             verify(reading.h > reading.info,
                    row.tag + ": the panel is " + reading.h.toFixed(1)
@@ -1759,10 +1493,9 @@ TestCase {
                reportFor("the reading view overflows", row, faults))
     }
 
-    // The chrome row and the transport stay, and they stay at full strength.
-    // The user picked this over a cinematic mode that hides them and brings them
-    // back on mouse move, so that skipping and scrubbing do not cost a mouse
-    // move first. Nothing here may fade.
+    // The chrome row and the transport stay at full strength, so that
+    // skipping and scrubbing do not cost a mouse move first. Nothing here
+    // may fade.
     function test_reading_view_never_fades_the_chrome_data() { return fullScreenRows() }
 
     function test_reading_view_never_fades_the_chrome(row) {
@@ -1791,10 +1524,8 @@ TestCase {
         }
     }
 
-    // One column at every width. Opening a panel already stacks the page
-    // whatever the window is doing, so the reading view has no second
-    // arrangement to get wrong - and the two blocks still have to be clear of
-    // each other once it has settled.
+    // One column at every width: opening a panel already stacks the page.
+    // The two blocks still have to be clear of each other once settled.
     function test_reading_view_is_one_column_at_every_width_data() {
         var rows = []
         var widths = [640, 820, 960, 1280, 1920]
@@ -1818,9 +1549,8 @@ TestCase {
                + " where the panel ends at " + (box.y + box.height).toFixed(1))
     }
 
-    // The panel's own fullscreen button is gone. The user: "then we also don't
-    // need the separate full screen icon in the lyrics thing, right?" - it did
-    // the same thing as the chrome row's, which is visible the whole time now.
+    // The lyrics panel has no fullscreen button of its own: the chrome row's
+    // does the same thing and is always visible.
     function test_the_lyrics_panel_has_no_fullscreen_button_of_its_own() {
         var host = showHost(nowPlayingHost, 1920, 1200)
         var page = openLyrics(host)
@@ -1840,10 +1570,8 @@ TestCase {
                   "the chrome row's button did not put the page into the reading view")
     }
 
-    // The reading view is fullscreen *with a panel*, so a panel that closes
-    // itself has to take the reading view with it. Otherwise a track with no
-    // lyrics leaves a fullscreen page laid out around a panel that is not
-    // there any more.
+    // The reading view is fullscreen with a panel, so a panel that closes
+    // itself has to take the reading view with it.
     function test_a_track_without_lyrics_leaves_the_reading_view_data() {
         return fullScreenRows()
     }
@@ -1872,8 +1600,6 @@ TestCase {
         verify(art && art.visible, row.tag + ": the artwork did not come back")
     }
 
-    // And it is reversible: leaving fullscreen puts every number back exactly
-    // where it was, rather than leaving the page in a third state.
     function test_leaving_fullscreen_puts_the_panel_back_data() { return fullScreenRows() }
 
     function test_leaving_fullscreen_puts_the_panel_back(row) {
@@ -1885,9 +1611,8 @@ TestCase {
         host.fullScreen = false
         verify(!page.readingView,
                row.tag + ": leaving fullscreen did not leave the reading view")
-        // Asked before settlePage(), which waits on this among other things and
-        // would otherwise report a page stuck in the reading view as "never
-        // settled" without saying what it was stuck in.
+        // Asked before settlePage(), which waits on this among other things
+        // and would not say what the page was stuck in.
         tryVerify(function () { return page.readingness === 0 }, 3000,
                   row.tag + ": the page is still drawing the reading view "
                   + "after leaving fullscreen")
@@ -1943,25 +1668,9 @@ TestCase {
     }
 
     // ── the volume ───────────────────────────────────────────────────────
-    //
-    // The user: "in the full screen with the lyrics, the volume bar is in a
-    // really weird space. Generally, it looking like a second scrub bar and
-    // being almost the same length isnt doing it for me". It was a full-width
-    // row two blocks under the seek bar, so it was a second bar of almost the
-    // same length at every width, not only in the reading view.
-    //
-    // It is a short fixed-width cluster now - the mute/level speaker, the
-    // percentage stacked under it and the output picker beside the pair, 78px
-    // of them - with two homes: the
-    // right-hand end of the transport row where the column can carry it, and a
-    // short right-aligned row of its own where it cannot. The cases below hold
-    // both homes to the same promises.
-    //
-    // The slider is not in it at all any more. "it can also go into its hover
-    // to show bar state, no? also I want that hovered bar to be vertical not
-    // horizontal" - so it comes up over the page, upright, when the speaker or
-    // the readout is pointed at. tst_output_picker.qml drives that hover; what
-    // is measured here is the row the hover leaves behind.
+    // The volume is a short fixed-width cluster: the speaker, the percentage
+    // under it and the output picker beside the pair. It has two homes: the
+    // right-hand end of the transport row, or a short row of its own.
 
     // The outermost block the volume is living in right now. This is what the
     // fold and the fade are asked about, so it has to be the block the page
@@ -2021,42 +1730,32 @@ TestCase {
                                            "nowPlayingPlayButton", "nowPlayingNext",
                                            "nowPlayingRepeat"]
 
-    // Every resting size the page is measured at, windowed and in the reading
-    // view: the complaint was about the reading view and then "generally", so
-    // both get the same cases.
+    // Every resting size the page is measured at, windowed and in the
+    // reading view.
     function volumeRows() {
         var rows = []
         var win = sizeRows()
         for (var i = 0; i < win.length; i++)
             rows.push({ tag: win[i].tag, w: win[i].w, h: win[i].h, reading: false })
-        // sizeRows() stops at 1280, and 1280 less the sidebar lays the page out
-        // side by side on a 480px column - too narrow for the cluster. The
-        // user's monitor is 1920, so a maximised window is where the volume
-        // rides the transport row outside the reading view, and without this
-        // row nothing windowed would ever measure that.
+        // sizeRows() stops at 1280, where the side-by-side column is too
+        // narrow for the cluster. A 1920 window is where the volume rides the
+        // transport row outside the reading view.
         rows.push({ tag: "1920x1200", w: 1920, h: 1200, reading: false })
         var fs = fullScreenRows()
         for (var j = 0; j < fs.length; j++)
             rows.push({ tag: fs[j].tag + " reading", w: fs[j].w, h: fs[j].h,
                         reading: true })
-        // Fullscreen with nothing open, which is a third state and not either of
-        // the two above: the sidebar is gone so the page has the whole screen,
-        // but there is no panel, so the page is side by side wherever it is wide
-        // enough and the artwork takes 420 of the width the column would
-        // otherwise have. The user named it separately - "also in full screen
-        // now playing and in full screen" - and nothing measured it.
+        // Fullscreen with nothing open is a third state: the sidebar is gone,
+        // but there is no panel, so the page is side by side wherever it is
+        // wide enough.
         for (var k = 0; k < fs.length; k++)
             rows.push({ tag: fs[k].tag + " fullscreen", w: fs[k].w, h: fs[k].h,
                         reading: false, full: true })
         rows.push({ tag: "640x600 fullscreen", w: 640, h: 600,
                     reading: false, full: true })
-        // fullScreenRows() starts at 1280, because the reading view is a thing
-        // you enter on a monitor. The volume's own arithmetic is the one part of
-        // it that can still change answer at a small size, so the smallest
-        // window Main.qml allows gets a reading row here and only here: at 640
-        // fullscreen the column is 544 against the 532 the transport row needs,
-        // so even the narrowest reading view carries the cluster on the row and
-        // the second row of the stack costs the words nothing.
+        // fullScreenRows() starts at 1280. The volume's arithmetic can still
+        // change answer at a small size, so the smallest window Main.qml allows
+        // gets a reading row here.
         rows.push({ tag: "640x600 reading", w: 640, h: 600, reading: true })
         return rows
     }
@@ -2070,10 +1769,9 @@ TestCase {
         return host
     }
 
-    // The complaint itself: nothing in the volume reads as a second scrub bar.
-    // It is stronger than it was, because there is no horizontal bar left in
-    // the row at all - three controls and a readout, 78px of them, against a
-    // seek bar that is the width of the column.
+    // Nothing in the volume reads as a second scrub bar: there is no
+    // horizontal bar in the row, and the cluster is far narrower than the
+    // seek bar.
     function test_the_volume_is_not_a_second_scrub_bar_data() { return volumeRows() }
 
     function test_the_volume_is_not_a_second_scrub_bar(row) {
@@ -2094,11 +1792,9 @@ TestCase {
                 + "px against a " + seek.width.toFixed(1)
                 + "px seek bar, which is the second-scrub-bar look again")
 
-        // And the cluster as a whole is the fixed object the transport row's
-        // arithmetic is written against. The page computes that width from
-        // parts it does not own - PlayerBar.OutputPicker is 32 square at size
-        // 20 because it rounds `size + 12` up - so the sum is measured here
-        // rather than trusted.
+        // The cluster is the fixed object the transport row's arithmetic is
+        // written against. The page computes that width from parts it does not
+        // own, so the sum is measured here.
         compare(cluster.implicitWidth, page.volumeClusterWidth,
                 row.tag + ": the cluster measures "
                 + cluster.implicitWidth.toFixed(1)
@@ -2107,8 +1803,7 @@ TestCase {
                 row.tag + ": the cluster was laid out at "
                 + cluster.width.toFixed(1) + "px")
 
-        // Flush with the right-hand edge of the text column in both homes, so
-        // it reads as parked rather than floating.
+        // Flush with the right-hand edge of the text column in both homes.
         var right = cluster.mapToItem(page, cluster.width, 0).x
         var info  = findChild(page, "nowPlayingInfoColumn")
         var infoRight = info.mapToItem(page, info.width, 0).x
@@ -2117,12 +1812,9 @@ TestCase {
                + " where the column ends at " + infoRight.toFixed(1))
     }
 
-    // The regression most likely to slip past the eye. The cluster is a fixed
-    // object that the transport buttons are placed against, so anything in it
-    // that measures itself walks them sideways - and the percentage runs from
-    // "0%" to "100%". It carried `width: 36` for that already and the 36 never
-    // took, because a Text has an implicit width of its own and the layout
-    // reads that instead.
+    // The cluster is a fixed object the transport buttons are placed against,
+    // so the percentage text must not change its width. A Text has an
+    // implicit width of its own, which a layout reads over a plain width.
     function test_the_play_button_does_not_move_with_the_volume_text_data() {
         return volumeRows()
     }
@@ -2144,7 +1836,7 @@ TestCase {
             player.setVolume(volumes[i])
             seen.push({ at: Math.round(volumes[i] * 100) + "%", x: centre() })
         }
-        // And muted, which is the one that reads "0%" whatever the volume is.
+        // And muted, which reads as zero whatever the volume is.
         player.setMuted(true)
         seen.push({ at: "muted", x: centre() })
         player.setMuted(false)
@@ -2156,9 +1848,6 @@ TestCase {
                    + " at " + seen[0].at + " - it is drifting with the volume text")
     }
 
-    // Wherever it is, it is clear of the buttons. A cluster that overlapped the
-    // repeat button, or hung off the end of the column, would be worse than the
-    // row it replaced.
     function test_the_volume_clears_the_transport_buttons_data() { return volumeRows() }
 
     function test_the_volume_clears_the_transport_buttons(row) {
@@ -2180,18 +1869,14 @@ TestCase {
                    + b.y.toFixed(1) + " " + b.w.toFixed(1) + "x" + b.h.toFixed(1))
         }
 
-        // And nothing anywhere on the page is hanging out of its parent, which
-        // is where a cluster that did not fit would show up.
         var faults = collectOverflow(page, "NowPlayingPage", [])
         verify(faults.length === 0,
                reportFor("the page overflows with the volume cluster", row, faults))
     }
 
-    // The narrow fallback, stated. Below transportWithVolumeWidth the transport
-    // row cannot carry the cluster without eating into the buttons, so the
-    // cluster drops to a row of its own - at the same short width, pushed right
-    // rather than stretched back across the column. The transport row is then
-    // exactly what it was before any of this, play button in the middle.
+    // Below transportWithVolumeWidth the transport row cannot carry the
+    // cluster, so the cluster drops to a row of its own, at the same short
+    // width and right-aligned.
     function test_the_volume_drops_to_its_own_row_when_the_column_is_narrow_data() {
         return volumeRows()
     }
@@ -2209,28 +1894,24 @@ TestCase {
                    + 2 * page.volumeClusterWidth
         compare(page.transportWithVolumeWidth, needed,
                 row.tag + ": the page's own budget does not add up")
-        // The page decides off the width the column settles at, which is the
-        // width it has here and only here: at rest the two are the same number,
-        // and the case is written to say so rather than to assume it.
+        // The page decides off the width the column settles at. At rest that is
+        // the width it has.
         compare(page.settledInfoWidth, page.infoWidth,
                 row.tag + ": the column has not settled")
         compare(page.volumeInTransport, page.settledInfoWidth >= needed,
                 row.tag + ": at " + page.infoWidth.toFixed(1)
                 + "px of column the volume is in the wrong home")
 
-        // Either way, the play button is in the middle of the column. That is
-        // what the counterweight at the other end of the row is for, and it is
-        // also why the row asks for 532 before it will take the cluster at all:
-        // where the column cannot pay for both, the volume moves instead of the
-        // play button.
+        // Either way, the play button is in the middle of the column, which the
+        // counterweight at the other end of the row is for. Where the column
+        // cannot pay for both, the volume moves and the play button stays.
         var playCentre = play.mapToItem(trow, play.width / 2, 0).x
         verify(Math.abs(playCentre - trow.width / 2) <= 0.5,
                row.tag + ": the play button is at " + playCentre.toFixed(1)
                + " in a " + trow.width.toFixed(1) + "px row")
-        // ...and the shuffle button is still flush with the left-hand edge of
-        // the column, where the title and the seek bar start. The counterweight
-        // goes after it for exactly that reason; in front of it the row would
-        // have 78px of nothing before the first control.
+        // The shuffle button is flush with the left-hand edge of the column,
+        // where the title and the seek bar start. The counterweight goes after
+        // it for that reason.
         var shuffle = findChild(page, "nowPlayingShuffle")
         var shuffleX = shuffle.mapToItem(trow, 0, 0).x
         verify(Math.abs(shuffleX) <= 0.5,
@@ -2240,7 +1921,7 @@ TestCase {
         if (page.volumeInTransport) {
             compare(home.objectName, "nowPlayingVolumeCluster",
                     row.tag + ": the column has room for the cluster on the row")
-            // The row really does hold everything it was budgeted for.
+            // The row holds everything it was budgeted for.
             verify(trow.width + 0.5 >= needed,
                    row.tag + ": the transport row is " + trow.width.toFixed(1)
                    + "px and needs " + needed)
@@ -2248,8 +1929,8 @@ TestCase {
                    row.tag + ": the transport row wants "
                    + trow.implicitWidth.toFixed(1) + " and has "
                    + trow.width.toFixed(1))
-            // And the counterweight really is the cluster's width, which is the
-            // whole mechanism the centring rests on.
+            // The counterweight is the cluster's width, which the centring rests
+            // on.
             var weight = findChild(page, "nowPlayingTransportWeight")
             verify(weight && weight.visible,
                    row.tag + ": the counterweight is not there")
@@ -2260,8 +1941,8 @@ TestCase {
             compare(home.objectName, "nowPlayingVolumeRow",
                     row.tag + ": the column is too narrow to carry the cluster")
             verify(home.visible, row.tag + ": the volume's own row is not showing")
-            // Nothing was taken from the transport: it is the row it always was,
-            // counterweight and all out of the way.
+            // Nothing is taken from the transport, and the counterweight is
+            // hidden.
             var idle = findChild(page, "nowPlayingTransportWeight")
             verify(idle && !idle.visible,
                    row.tag + ": the counterweight is holding width in a row "
@@ -2270,8 +1951,7 @@ TestCase {
                    row.tag + ": the transport row wants "
                    + trow.implicitWidth.toFixed(1) + " where the page budgets "
                    + page.transportMinWidth)
-            // And the fallback is a short right-aligned cluster, not the
-            // full-width bar it replaced.
+            // The fallback is a short right-aligned cluster.
             var cluster = volumeCluster(page)
             verify(cluster.width < home.width,
                    row.tag + ": the fallback row's cluster fills the whole "
@@ -2402,22 +2082,9 @@ TestCase {
         checkVolumeInPlace(page, row.tag + " and back", !row.riding)
     }
 
-    // The cost of writing the cluster once and placing it twice: two mute
-    // buttons, two readouts, two output pickers and two flyouts exist, and
-    // only one of each may be on screen. A control that is drawn twice is a
-    // second focus ring, a second thing to click, and - because Qt only keeps
-    // an item out of the tab chain while it is really invisible - a tab stop
-    // on a control the user cannot see.
-    //
-    // Counted rather than looked up by name: the live name is handed to
-    // whichever copy is showing, so a page showing both would answer a
-    // by-name lookup perfectly well and say nothing.
-    // Whether an item is anywhere under `ancestor`. Not `item.parent ===`: the
-    // speaker and the readout are a row deeper than the picker beside them now,
-    // because they live in the stack rather than directly in the cluster, and
-    // what the case below is asking is which of the two clusters an on-screen
-    // control belongs to - which is a question about the subtree and not about
-    // one hop.
+    // Whether an item is anywhere under ancestor. The speaker and the
+    // readout are a level deeper than the picker beside them, so one hop
+    // through parent is not enough.
     function isInside(item, ancestor) {
         var p = item
         while (p) {
@@ -2436,6 +2103,9 @@ TestCase {
         return out
     }
 
+    // The cluster is written once and placed twice, so two of each control
+    // exist and only one may be on screen. Counted, because the live name is
+    // handed to whichever copy is showing.
     function test_only_one_set_of_volume_controls_is_on_screen_data() {
         return volumeRows()
     }
@@ -2456,10 +2126,8 @@ TestCase {
                    + " on screen is not the one in the live cluster")
         }
 
-        // And the live mute button is still the keyboard control it was: it
-        // takes focus, and Return and Space still mute. It came across from the
-        // old row with its handlers and its focus ring and nothing here is
-        // allowed to have dropped them.
+        // The live mute button is a keyboard control: it takes focus, and
+        // Return and Space mute.
         var mute = findChild(page, "nowPlayingMuteButton")
         verify(mute.activeFocusOnTab,
                row.tag + ": the mute button has left the tab chain")
@@ -2473,43 +2141,12 @@ TestCase {
     }
 
     // ── where the volume's two homes change over ─────────────────────────
-    //
-    // The cluster went from 226px to 106 when the slider left it for a flyout,
-    // and from 106 to 78 when the speaker was stacked over the readout. That
-    // takes transportWithVolumeWidth from 828 to 588 to 532, and each step moves
-    // the widths at which the transport row can carry the cluster. The user has
-    // accepted that there is a band where the volume drops to a row of its own;
-    // what they have not accepted is one nobody measured. These are the measured
-    // edges, at the 1200px height the user's monitors give and behind Main.qml's
-    // 220px sidebar, so the numbers are window widths and not page widths.
-    //
-    //    600 - 847   its own row   (stacked, the column is the whole page)
-    //    848 - 1219  rides the transport row
-    //   1220 - 1331  its own row   (side by side, the column is only 433-531)
-    //   1332 and up  rides the transport row
-    //
-    // The 1220 edge is not the volume's: that is where the page stops stacking
-    // and hands most of its width to the artwork, and it has sat at 1220 through
-    // both changes. The two that moved this time are 904 -> 848 and 1388 ->
-    // 1332, both of them down by 56, which is twice the 28px the cluster lost -
-    // the cluster is charged for twice over, once at each end of the row,
-    // because the counterweight that keeps the play button centred is its width.
-    // (The step before moved the same two edges down by 240, twice 120.)
-    //
-    // One window, resized, and read without settling the restack on purpose.
-    // Both sides of volumeInTransport are closed-form - settledInfoWidth at
-    // one end and gapFor(settledInfoWidth) at the other - so the answer at a
-    // width does not depend on how the page got to it, and that is worth
-    // pinning as much as the numbers are. It did depend on it until this
-    // change: the threshold was built out of the *live* transportSpacing, so
-    // a 1920 window dragged down to 840 answered 840 with the 524 it was
-    // passing through and put the cluster on a row that a window born at 840
-    // does not give it.
-    //
-    // The one turn of the event loop is not the restack: a Window's own width
-    // property moves on assignment and the items inside it only on the next
-    // turn, so without it every probe below would be answered about the width
-    // before.
+    // The window widths at which the cluster changes home, behind the 220px
+    // sidebar: 848, 1220 (where the page goes side by side) and 1332. The
+    // answer at a width must not depend on how the page got there.
+
+    // One turn of the event loop: a Window's width property moves on
+    // assignment and the items inside it only on the next turn.
     function widthAnswer(host, w) {
         host.width = w
         wait(0)
@@ -2539,10 +2176,9 @@ TestCase {
         var host = showHost(nowPlayingHost, 1920, 1200)
         var page = host.page
 
-        // The arithmetic the edges come out of, measured rather than trusted:
-        // the page adds up parts it does not own. Asked of a wide window,
-        // because the transport's own gap tightens to 8 in a column under
-        // 344px and the sum goes to 524 with it.
+        // The arithmetic the edges come out of, measured, because the page adds
+        // up parts it does not own. Asked of a wide window: the transport's gap
+        // tightens in a narrow column.
         compare(page.volumeStackWidth, 36, "the stack's budget")
         compare(page.volumeClusterWidth, 78, "the cluster's budget")
         compare(page.transportSpacing, 16, "the transport's resting gap")
@@ -2560,19 +2196,16 @@ TestCase {
         var up2 = firstWidthWhere(host, down + 1, 1700, true)
         compare(up2, 1332, "the side-by-side column picks it up at " + up2)
 
-        // And it stays picked up from there to the user's own maximised
-        // window, which is the width that mattered to them.
+        // And it stays on the transport row from there up to a maximised 1920
+        // window.
         verify(widthAnswer(host, 1920),
                "a maximised window on a 1920 monitor does not carry the volume")
     }
 
     // ── the volume moves without the mouse ───────────────────────────────
-    //
-    // Three things set the volume from outside this page: the sleep timer's
-    // fade (qml/Main.qml calls player.setVolume on a timer), MPRIS
-    // (src/mpris/MprisPlayer.cpp), and the Up/Down shortcuts, which are
-    // application-wide. The readout and the slider are both bound to the
-    // player rather than to each other, and this is what says so.
+    // The sleep timer's fade, MPRIS and the Up/Down shortcuts set the volume
+    // from outside this page. The readout and the slider are both bound to
+    // the player, never to each other.
     function test_the_volume_follows_a_change_from_outside_data() {
         return [{ tag: "riding the transport row", w: 1920, h: 1200 },
                 { tag: "on its own row",           w: 1280, h: 1200 }]
@@ -2587,8 +2220,8 @@ TestCase {
         var pct = volumePercentIn(page)
         compare(pct.text, "70%", row.tag + ": the fixture did not start at 70%")
 
-        // The flyout has to follow it while it is open, which is the case the
-        // sleep timer's fade actually meets: it runs while the page is up.
+        // The flyout has to follow while it is open, as it is during the sleep
+        // timer's fade.
         var flyout = volumeFlyoutIn(page)
         var mute = findChild(volumeCluster(page), "nowPlayingMuteButton")
         var p = mute.mapToItem(host.contentItem, mute.width / 2, mute.height / 2)
@@ -2611,8 +2244,8 @@ TestCase {
                + " and is now at " + nowY.toFixed(1)
                + ", so turning the volume down did not move it down")
 
-        // And muting from outside - Ctrl+M, or MPRIS - reads as silence in
-        // both of them rather than only in the icon.
+        // Muting from outside (Ctrl+M, or MPRIS) reads as silence in both of
+        // them.
         player.setMuted(true)
         wait(0)
         compare(pct.text, "0%", row.tag + ": a muted player still reads loud")
@@ -2621,12 +2254,9 @@ TestCase {
         wait(0)
         compare(pct.text, "33%", row.tag + ": unmuting lost the level")
     }
-    // The user: "closing the lyrics tab skips to the line that the lyrics switch
-    // button is over." Both tap handlers were on the default DragThreshold
-    // policy, which takes no exclusive grab, so one tap was delivered to the
-    // chip and to the lyric line under it: the panel closed and playback jumped.
-    // Asserting only that the panel closed would pass with the bug present, so
-    // what this measures is that nothing seeked.
+    // One tap must go to the chip alone. Without an exclusive grab it also
+    // reaches the lyric line under the chip and seeks, so this measures that
+    // nothing seeked.
     function test_lyrics_toggle_closes_without_seeking() {
         var host = showHost(nowPlayingHost, 960, 1200)
         var page = openLyrics(host)
@@ -2707,18 +2337,9 @@ TestCase {
     }
 
     // ── the sleep timer pill ─────────────────────────────────────────────
-    //
-    // The two ends of this pill are padded differently on purpose, and this is
-    // the end that is NOT the clock's. The leading side lines the glyph up with
-    // the cap (see the concentricity case below); the trailing side ends in
-    // text, which has no round outline to line up with, so it keeps the corner
-    // radius and the pill is tighter at the icon than at the label.
-    //
-    // This case used to assert the opposite - that BOTH ends pad by the corner
-    // radius - from an argument about the clearance at the content's own top
-    // corner. The user looked at the result and said the spacing was still
-    // wrong, so the rule was wrong, and asserting it here only made it harder
-    // to change.
+    // The two ends of this pill are padded differently on purpose. The
+    // leading side lines the glyph up with the cap. The trailing side ends in
+    // text, so it pads by the corner radius.
     function test_sleep_timer_pill_pads_its_text_end_data() {
         return [
             { tag: "idle",         active: false, atEnd: false, left: 0 },
@@ -2738,8 +2359,8 @@ TestCase {
         verify(pill && content, "the sleep timer pill was not found")
         verify(pill.visible, "the sleep timer pill should be on screen")
 
-        // What the pill actually draws: Theme.radiusChip is a "fully round"
-        // sentinel and Qt clamps it to half the shorter side.
+        // What the pill draws: Theme.radiusChip is a fully-round sentinel, and
+        // Qt clamps it to half the shorter side.
         var r = Math.min(pill.radius, pill.height / 2, pill.width / 2)
         var lead  = content.mapToItem(pill, 0, 0).x
         var trail = pill.width - (lead + content.width)
@@ -2757,9 +2378,8 @@ TestCase {
                + "px in a " + pill.height + "px pill, with nothing above or below it")
     }
 
-    // A pill that breathes in and out once a second is worse than one with odd
-    // padding: "10:00" and "9:59" are different widths and the pill is sized
-    // from that label.
+    // The countdown label changes width from one second to the next, and the
+    // pill is sized from that label, so the pill has to reserve room.
     function test_sleep_timer_pill_does_not_jitter_while_counting() {
         var host = showHost(nowPlayingHost, 1280, 1200)
         host.sleepTimerActive      = true
@@ -2771,62 +2391,28 @@ TestCase {
         var label = findChild(host.page, "nowPlayingSleepTimerLabel")
         verify(label, "the countdown label was not found")
 
-        // Settle before taking the baseline. The pill has just come out of its
-        // idle "Sleep Timer" state, which is a different width, and
-        // Layout.preferredWidth needs a polish pass to land. Capturing `first`
-        // one wait(0) after the flip pinned the *idle* width, so every later
-        // sample disagreed with it and the case failed somewhere in the middle
-        // of the sweep rather than at the start - which is what a real jitter
-        // would look like, and it was not one. It passed alone and failed in a
-        // full run, because tst_qml runs every QML file in one process and the
-        // timing differs under load.
-        //
-        // Third attempt at this, so the reasoning is written down. The
-        // baseline and the samples must be taken THE SAME WAY, and twice they
-        // were not:
-        //   1. baseline after one wait(0), samples after wait(0)  -> baseline
-        //      pinned the idle width and every later sample disagreed.
-        //   2. baseline from a poll loop that stopped when two reads matched,
-        //      samples after waitForRendering -> the poll loop cannot tell a
-        //      settled width from a STALE one, because an unchanged value
-        //      reads as two equal polls either way. On macOS that latched 124
-        //      and the real 10:00 width was 94, deterministically, failing on
-        //      the very first sample - which is seconds[0], the same 600 the
-        //      baseline was taken at. Found by the Mac; on Linux the same bug
-        //      only showed up under full-suite load.
-        // So: one rendered frame for the baseline, exactly as for the samples.
+        // The baseline and the samples are taken the same way, after one rendered
+        // frame. The pill has just left its idle state, which is a different
+        // width, and Layout.preferredWidth needs a polish pass to land.
         host.sleepTimeLeft = seconds[0]
         waitForRendering(pill)
         var first = pill.width
-        // ...and prove the baseline itself is not stale, rather than assuming
-        // a rendered frame is enough. A width still on its way to somewhere
-        // else moves between two frames; a settled one does not. This is the
-        // assertion that would have caught both earlier attempts.
+        // The baseline must not be stale: a width still on its way moves
+        // between two frames, and a settled one does not.
         waitForRendering(pill)
         compare(pill.width, first,
                 "the pill was still settling when the baseline was taken: "
                 + pill.width.toFixed(1) + " one frame after " + first.toFixed(1))
-        // And it must be reserving, not merely stable: a pill that had stopped
-        // reserving entirely would hold one width here too, by being wrong the
-        // same way every time.
+        // And it must be reserving: a pill that had stopped reserving would
+        // hold one width here too.
         verify(first >= pill.height + label.implicitWidth,
                "the pill is stable but no longer reserves room for the digits")
 
         for (var i = 0; i < seconds.length; i++) {
             host.sleepTimeLeft = seconds[i]
-            // waitForRendering, not wait(0). The claim being tested is about
-            // what the user sees, and what the user sees is frames. wait(0)
-            // returns in the middle of a turn, between the text changing and
-            // the width binding that depends on it re-evaluating, so it can
-            // read a width that no frame was ever painted with - which is
-            // exactly what it did: 87 against a settled 119, intermittently,
-            // only under full-suite load, and never once in isolation.
-            //
-            // That is the second time this case has reported a jitter that did
-            // not exist. The first was the baseline being taken before the pill
-            // came out of idle, fixed above. Sampling a rendered frame answers
-            // the real question, and still fails on a pill that genuinely
-            // breathes, because a real jitter survives into the frame.
+            // waitForRendering, because wait(0) returns in the middle of a turn,
+            // between the text changing and the width binding re-evaluating, and
+            // can read a width no frame was painted with.
             waitForRendering(pill)
             compare(pill.width, first,
                     "the pill resized at \"" + label.text + "\": "
@@ -2834,25 +2420,9 @@ TestCase {
         }
     }
 
-    // The clock and the pill's left cap are two circles, and the user drew the
-    // gap they wanted between them twice: first "the clock icon is weirdly
-    // spaced at the top and bottom in relation to how it's spaced on the left
-    // in a fully rounded pill", then, over a screenshot, "the spacing from the
-    // very left of the pill to the left border of the clock, and then the
-    // padding on the top and bottom of the clock icon, so that the circular
-    // outline of the pill aligns with the circular outline of the clock icon
-    // with some padding."
-    //
-    // That is concentricity: the glyph's centre on the centre of the cap's
-    // arc, which makes the ring of air around the clock the same width all the
-    // way round the left end. Measured off a render of the pill before this
-    // was fixed, the clock's painted rim sat 16px from the pill's left edge
-    // and 4px from its top - so the three gaps this checks were 14 / 2 / 2
-    // taken on the glyph's box.
-    //
-    // The box, not the paint: VectorIcon draws its glyph inside its own item
-    // at a fixed inset, so an equal box gap is an equal paint gap, and the box
-    // is what layout can be held to.
+    // The clock is concentric with the pill's left cap, so the ring of air
+    // around it is the same width all round. Measured on the glyph's box:
+    // VectorIcon draws its glyph at a fixed inset inside its own item.
     function test_sleep_timer_glyph_is_concentric_with_the_cap_data() {
         return [
             { tag: "idle",         active: false, atEnd: false, left: 0 },
@@ -2880,11 +2450,11 @@ TestCase {
         fuzzyCompare(icon.width, icon.height, 0.5,
                      row.tag + ": the clock's box is " + icon.width.toFixed(1)
                      + "x" + icon.height.toFixed(1) + ", so it is not drawn round")
-        // Centred vertically, which is the easy half.
+        // Centred vertically.
         fuzzyCompare(top, bot, 0.5,
                      row.tag + ": the clock sits " + top.toFixed(1)
                      + "px below the top and " + bot.toFixed(1) + "px above the bottom")
-        // And the half that was wrong: the leading gap is the same ring.
+        // The leading gap is the same ring.
         fuzzyCompare(left, top, 0.5,
                      row.tag + ": " + left.toFixed(1) + "px from the pill's left edge "
                      + "against " + top.toFixed(1) + "px above the clock, so the cap's "
@@ -2894,24 +2464,18 @@ TestCase {
         verify(top >= 4,
                row.tag + ": only " + top.toFixed(1)
                + "px of air around a clock in a " + pill.height + "px pill")
-        // The glyph is drawn at the size it is declared at. In a RowLayout the
-        // layout imposes a child's implicit size over any plain width/height,
-        // and VectorIcon's implicit size is 24 - which is how a clock meant to
-        // be 12 came to be painted at 24 in a 28px pill, 2px clear of the top
-        // and 14px clear of the side. The same trap as the pill's own
-        // implicitWidth, one level down.
+        // The glyph is drawn at the size it is declared at. A RowLayout imposes
+        // a child's implicit size over a plain width/height, and VectorIcon's
+        // implicit size is 24.
         verify(icon.width <= pill.height - 8,
                row.tag + ": the clock is " + icon.width.toFixed(1)
                + "px in a " + pill.height + "px pill, which is the layout "
                + "imposing VectorIcon's implicit 24 over the size asked for")
     }
 
-    // What a colour actually lands on the screen as. The sleep timer pill's
-    // counting fill is the accent at an alpha, and its hover is the same accent
-    // at a higher one, so r/g/b are identical in both states and only the
-    // compositing tells them apart. Over Theme.bg because that is what the Now
-    // Playing page draws behind the pill - checked against a grab, where the
-    // counting fill came out (7,41,53) and this returns (7,41,53).
+    // What a colour lands on the screen as. The pill's counting fill and its
+    // hover are the same accent at two alphas, so only the compositing tells
+    // them apart. Over Theme.bg, which the page draws behind the pill.
     function colorOverBg(c) {
         var g = Theme.bg
         return Qt.rgba(g.r + (c.r - g.r) * c.a,
@@ -2920,9 +2484,8 @@ TestCase {
                        1)
     }
 
-    // Max channel difference between two colours once they are on the screen,
-    // 0..255. "Did it change" is a question about what a user can see, so the
-    // answer wants a scale with a threshold on it.
+    // Max channel difference between two colours once they are on screen,
+    // 0..255, so a visible change can be given a threshold.
     function colorDelta(a, b) {
         var x = colorOverBg(a), y = colorOverBg(b)
         return Math.round(255 * Math.max(Math.abs(x.r - y.r),
@@ -2930,12 +2493,8 @@ TestCase {
                                          Math.abs(x.b - y.b)))
     }
 
-    // The pill opens a popup, and until now it was the only control in this row
-    // that gave no sign of being a control. The user: "this button still has
-    // the wrong spacing and should also have a hover."
-    //
-    // Both states, because the counting pill is already tinted and a hover that
-    // only shows up on the idle one is half a hover.
+    // The pill opens a popup, so it has to answer the pointer like a control.
+    // Both states, because the counting pill is already tinted.
     function test_sleep_timer_pill_answers_the_pointer_data() {
         return [
             { tag: "idle",     active: false, left: 0 },
@@ -2953,43 +2512,29 @@ TestCase {
         verify(pill, "the sleep timer pill was not found")
         waitForRendering(pill)
 
-        // The two colours the pill is built from, read off the pill rather than
-        // sampled while the pointer is somewhere - the same way the
-        // ChromeButton hover is checked in tst_reduced_motion.qml. Sampling was
-        // tried first and it is how this case nearly shipped vacuous: the
-        // pointer is wherever the last case left it, which is the middle of
-        // this very pill, so the "resting" sample came back as the hover colour
-        // and the test compared it against itself.
+        // The two colours the pill is built from, read off the pill. Sampling
+        // would start from wherever the last case left the pointer, which can be
+        // the middle of this pill.
         var restFill    = pill.restFill
         var hoverFill   = pill.hoverFill
         var restBorder  = pill.restBorder
         var hoverBorder = pill.hoverBorder
 
-        // The design claim, before any pointer is involved: a hover nobody can
-        // see is not one. The floor is 12 of 255 on the ground the pill is
-        // drawn on, which this pill clears by a long way in both states - the
-        // idle fill steps 30 -> 56 and the counting fill 53 -> 73 in the blue,
-        // both off a grab. It is set where it is because the obvious token for
-        // the counting state, accentWash, steps 6, and a guard that let that
-        // through would be agreeing with a hover nobody can find. Written at 6
-        // first, which accentWash passed exactly.
+        // The hover has to be visible: at least 12 of 255 on the ground the pill
+        // is drawn on. The accentWash token would step only 6 here.
         verify(colorDelta(hoverFill, restFill) >= 12
                || colorDelta(hoverBorder, restBorder) >= 12,
                row.tag + ": the hover is " + hoverFill + " against a resting "
                + restFill + " and " + hoverBorder + " against " + restBorder
                + ", which is not a change anyone will find")
 
-        // How long a pointer move needs before the colour it causes can be
-        // read: the fade is Theme.dur(100), and the hover is only delivered
-        // when the scene next draws. tryVerify is no use for it - it polls a
-        // property without ever letting a frame out, and an unflushed hover
-        // looks exactly like a control that has none.
+        // How long a pointer move needs before its colour can be read: the fade
+        // is Theme.dur(100), and the hover is only delivered when the scene next
+        // draws. tryVerify would poll without letting a frame out.
         var settle = Theme.dur(100) + 240
 
-        // Park the pointer off the pill, in TWO moves. The first synthesized
-        // move into a freshly shown window does not land - the window takes it
-        // as the pointer arriving at a position it is already at - and a park
-        // that did not land leaves the pill hovered for the rest of the case.
+        // Park the pointer off the pill, in two moves. The first synthesized
+        // move into a freshly shown window does not land.
         mouseMove(pill, -40, -40)
         wait(settle)
         mouseMove(pill, -60, -60)
@@ -3010,8 +2555,6 @@ TestCase {
                 row.tag + ": under the pointer the border is " + pill.border.color
                 + " rather than its hover border " + hoverBorder)
 
-        // And it lets go again, rather than latching the first time it is
-        // touched.
         mouseMove(pill, -40, -40)
         wait(settle)
         compare(colorDelta(pill.color, restFill), 0,
@@ -3037,19 +2580,9 @@ TestCase {
         return null
     }
 
-    // The sleep timer popup's primary action. "Start" was a 12px accent word
-    // at the end of the custom slider's label row, with a hit target the size
-    // of the word, in a popup where every other action - six duration chips,
-    // "Stop at End of Track", "Cancel Sleep Timer" - is a full-width box. The
-    // user: "make the start button in the menu a little bit more present and
-    // maybe with a play icon or something and bigger and more prominent."
-    //
-    // "Primary" is not a thing a layout test can read, so this asks the three
-    // questions it stands for here: is it as wide as the popup lets anything
-    // be, is it taller than the options it is the primary among, and does it
-    // carry a mark rather than being bare type. The old word failed all three,
-    // measured by putting it back: 30px wide where the popup offers 236, 17px
-    // tall against a 28px duration chip, and no glyph at all.
+    // The sleep timer popup's primary action. Three things stand for primary
+    // here: it is as wide as the popup allows, taller than the options it is
+    // primary among, and it carries a glyph.
     function test_sleep_timer_start_is_the_primary_action_in_the_popup() {
         var host = showHost(nowPlayingHost, 960, 1200)
         var popup = findChild(host.page, "nowPlayingSleepTimerPopup")
@@ -3074,9 +2607,7 @@ TestCase {
                + "offers " + popup.availableWidth.toFixed(1)
                + ", so it is not the full-width action every other row is")
 
-        // Taller than what it is primary among, by enough to see. The chips
-        // are 28 and the two full-width rows 32; a button that merely matched
-        // them would be one more row.
+        // Taller than the options it is primary among, by enough to see.
         verify(start.height >= option.height + 8,
                "Start is " + start.height.toFixed(1) + "px tall against a "
                + option.height.toFixed(1) + "px duration chip, which is not a "
@@ -3089,8 +2620,7 @@ TestCase {
                + glyph.width.toFixed(1) + "x" + glyph.height.toFixed(1)
                + ", which draws nothing")
 
-        // And it still starts the timer the slider is showing. The control
-        // moved out of that row, so the wiring is worth re-asking.
+        // And it starts the timer the slider is showing.
         compare(host.lastSleepMinutes, -1, "nothing should have started yet")
         mouseClick(start, Math.round(start.width / 2),
                    Math.round(start.height / 2))
@@ -3107,15 +2637,12 @@ TestCase {
 
     // ── the sleep timer popup's edge behaviour ───────────────────────────
 
-    // The popup hangs off the pill and used to open downwards unconditionally.
-    // At the 600px window minimum there is not that much window under the pill,
-    // so it ran off the bottom of the screen - and 7931658, which gave it a
-    // Start button, made it taller and so made it worse. It flips above the
-    // pill now when it has to.
+    // The popup hangs off the pill and opens downwards where there is room.
+    // At the 600px window minimum there is not, so it flips above the pill.
 
-    // Where a popup actually sits. Its own x/y are in its `parent`'s
-    // coordinates - the pill's, here - so they say nothing about whether it is
-    // on screen; this is the same rectangle in window coordinates.
+    // Where a popup sits. Its own x/y are in its parent's coordinates, the
+    // pill's here, so they say nothing about whether it is on screen. This
+    // is the same rectangle in window coordinates.
     function popupRectInWindow(host, popup) {
         var p = popup.parent.mapToItem(host.contentItem, popup.x, popup.y)
         return { x: p.x, y: p.y, w: popup.width, h: popup.height,
@@ -3137,10 +2664,8 @@ TestCase {
 
     function test_sleep_timer_popup_stays_in_the_window_data() { return sizeRows() }
 
-    // The case that encodes the bug: wherever the pill ends up, the whole
-    // popup is inside the window. Which side of the pill it opens on is the
-    // next case down; this one does not care, it only cares that all of it is
-    // reachable.
+    // Wherever the pill ends up, the whole popup is inside the window. Which
+    // side of the pill it opens on is the next case's business.
     function test_sleep_timer_popup_stays_in_the_window(row) {
         var host = showHost(nowPlayingHost, row.w, row.h)
         var winW = host.contentItem.width
@@ -3153,8 +2678,7 @@ TestCase {
         verify(r.bottom <= winH + 0.5,
                "the sleep timer popup hangs " + (r.bottom - winH).toFixed(1)
                + "px off the BOTTOM of the window at " + row.tag + where)
-        // Worse than hanging off the bottom: the title and the rows read first
-        // are the ones that go.
+        // Off the top would cut the title and the first rows.
         verify(r.y >= -0.5,
                "the sleep timer popup hangs " + (-r.y).toFixed(1)
                + "px off the TOP of the window at " + row.tag + where)
@@ -3164,8 +2688,8 @@ TestCase {
                + " in a window " + winW.toFixed(1) + "px wide")
     }
 
-    // Which side, and the gap, in both directions - because it is meant to be
-    // one rule rather than two, and the pill stays the anchor either way.
+    // Which side, and the gap, in both directions. The pill is the anchor
+    // either way.
     function test_sleep_timer_popup_opens_below_where_there_is_room() {
         var host = showHost(nowPlayingHost, 960, 1200)
         var pill = findChild(host.page, "nowPlayingSleepTimerButton")
@@ -3223,8 +2747,6 @@ TestCase {
         verify(faults.length === 0, reportFor("Queue panel overflows", row, faults))
     }
 
-    // L9: the panel had no scrim and no MouseArea, so clicks landed on the page
-    // underneath it.
     function test_queue_panel_scrim_swallows_clicks() {
         var host = showHost(queueHost, 960, 1200)
         var qp = host.panel
@@ -3235,7 +2757,6 @@ TestCase {
         compare(host.dismissals, 1, "clicking the scrim should dismiss the queue")
     }
 
-    // A click on the panel itself is the panel's business, not the scrim's.
     function test_queue_panel_body_does_not_dismiss() {
         var host = showHost(queueHost, 960, 1200)
         var qp = host.panel
@@ -3244,12 +2765,9 @@ TestCase {
         compare(host.dismissals, 0, "clicking the panel should not dismiss it")
     }
 
-    // The swallowing MouseArea sits behind the panel's content, so the content
-    // still gets its clicks first. "Clear" is a bare Text with a handler on
-    // it, which is the thing most likely to be eaten by a MouseArea
-    // underneath. It empties the *manual* queue now - the list the user built
-    // - and is only offered while there is one, so the fixture has to make
-    // one first.
+    // The swallowing MouseArea sits behind the panel's content, so the
+    // content gets its clicks first. Clear is a bare Text with a handler,
+    // offered only while there is a manual queue, so the fixture makes one.
     function test_queue_panel_content_still_gets_clicks() {
         player.setManualForTest([makeTrack(90), makeTrack(91)])
         var host = showHost(queueHost, 960, 1200)
@@ -3275,8 +2793,6 @@ TestCase {
 
     // ── settings popup ───────────────────────────────────────────────────
 
-    // L10: the popup was a fixed 480x640 against a 600px window minimum, so it
-    // did not fit the window it lives in.
     function test_settings_popup_fits_minimum_window() {
         var host = showHost(sideBarHost, 640, 600)
         host.sidebar.openSettings()

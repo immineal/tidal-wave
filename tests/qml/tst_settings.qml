@@ -1,27 +1,9 @@
-// The Settings panel: the interface for the 0.4.0 features that shipped with
-// no way to reach them - theme, language, what the close button does, audio
-// output, hardware acceleration, the update check, and the privacy block.
-//
-// The panel lives in qml/components/SettingsPanel.qml and is reached through
-// SideBar.openSettings(), exposed as SideBar.settingsPanel. That is the same
-// surface tst_layout_player.qml and tst_sidebar.qml already measure, so it is
-// what is hosted here too: extracting the popup out of SideBar.qml must not
-// change anything either of those files can see.
-//
-// Three doubles are built below instead of taken from tests/TestStubs.h,
-// because that file is owned by another agent this round and none of the three
-// can be read as it stands:
-//   * there is no `i18n` stub at all, and the shared QML context never
-//     installs one;
-//   * StubPlayer has no availableAudioDevices(), so there is nothing for the
-//     panel to re-read when it opens;
-//   * StubUpdateCheck counts checkNow() in a plain C++ member, which is not a
-//     Q_PROPERTY and therefore invisible to QML.
-// Each goes in through the property the panel already has for it, exactly the
-// way tst_update_prompt.qml hands UpdatePrompt its own `check`.
-//
-// prefs is the real StubPrefs, because the theme assertions need the object
-// ThemePalette is wired to - a double there would let a dead switch pass.
+// The Settings panel, qml/components/SettingsPanel.qml, reached through
+// SideBar.openSettings() and exposed as SideBar.settingsPanel. Three doubles
+// are built below, because tests/TestStubs.h has no i18n stub, StubPlayer has
+// no availableAudioDevices(), and StubUpdateCheck's call count is invisible to
+// QML. Each goes in through the property the panel has for it. prefs is the
+// real StubPrefs, the object ThemePalette is wired to.
 
 import QtQuick
 import QtQuick.Layouts
@@ -38,25 +20,23 @@ TestCase {
     // Main.qml's window minimum. The popup has to fit inside it.
     readonly property int minWindowW: 640
     readonly property int minWindowH: 600
-    // The popup clamps to the overlay with 32px on every side (SPEC L10).
+    // The popup clamps to the overlay with 32px on every side.
     readonly property int popupInset: 64
 
     // Main.qml's sidebar width.
     readonly property int sidebarWidth: 220
 
-    // A real binding on the palette singleton, the same shape every file in
-    // the app uses. Picking a theme has to move this, not just prefs.theme.
+    // A real binding on the palette singleton, the shape every file in the
+    // app uses. Picking a theme has to move this as well as prefs.theme.
     Rectangle {
         id: probe
         width: 1; height: 1
         color: Theme.bg
     }
 
-    // A second one, on the step above the page. The pure-black switch takes bg
-    // to #000000 whichever grey ramp is underneath it, so the probe above
-    // cannot tell the two ramps apart once that switch is on - and the order
-    // the two were flipped in is exactly what has to be invisible. surface is
-    // where it would show.
+    // A second one, on the step above the page. The pure-black switch takes
+    // bg to #000000 over either grey ramp, so only surface can show which
+    // ramp is underneath.
     Rectangle {
         id: surfaceProbe
         width: 1; height: 1
@@ -64,9 +44,8 @@ TestCase {
     }
 
     // And one on the accent, which is what picking a theme moves. In the
-    // neutral state - the default - the three dark palettes share a grey ramp
-    // and the three light ones share another, so choosing Pine while on Sea is
-    // a change of accent and nothing else: the page does not move, by design.
+    // neutral state the palettes of one mode share a grey ramp, so a pick
+    // within a mode changes the accent and nothing else.
     Rectangle {
         id: accentProbe
         width: 1; height: 1
@@ -87,9 +66,9 @@ TestCase {
         }
     }
 
-    // Player::availableAudioDevices(): the "System default" sentinel first
-    // with an empty id, then the real devices, one of them flagged as the one
-    // the OS currently treats as default.
+    // Player::availableAudioDevices(): the System default sentinel first,
+    // with an empty id, then the real devices, one of them flagged as the
+    // one the OS treats as default.
     QtObject {
         id: audioStub
 
@@ -111,7 +90,7 @@ TestCase {
         ]
     }
 
-    // UpdateCheck: the switch and the one invokable behind "Check now".
+    // UpdateCheck: the switch and the one invokable behind Check now.
     QtObject {
         id: updateStub
         property bool enabled: true
@@ -297,9 +276,9 @@ TestCase {
         return sv.contentItem
     }
 
-    // A control further down the panel than the viewport reaches is still
-    // "visible", but a click on it would land outside the popup and dismiss
-    // it. Bring it into view first.
+    // A control below the viewport still reports itself visible, but a click
+    // on it would land outside the popup and dismiss it. Bring it into view
+    // first.
     function scrollTo(panel, item) {
         var flick = scrollerOf(panel)
         var y = item.mapToItem(flick.contentItem, 0, 0).y
@@ -314,9 +293,9 @@ TestCase {
         settle(panel.contentItem)
     }
 
-    // Every swatch in the grid, keyed by the theme it belongs to. Re-read
-    // rather than cached: flipping the colour switch rebuilds the Repeater, so
-    // tiles collected before a flip are destroyed objects afterwards.
+    // Every swatch in the grid, keyed by its theme. Re-read each time:
+    // flipping the colour switch rebuilds the Repeater and destroys the tiles
+    // collected before it.
     function swatchesByTheme(panel) {
         var tiles = collectByName(panel.contentItem, "settingsThemeOption", [])
         var out = {}
@@ -341,7 +320,6 @@ TestCase {
 
     // ── 1. the theme picker ──────────────────────────────────────────────
 
-    // All six palettes, each with a swatch, so the choice can be made by eye.
     function test_every_theme_is_offered_with_a_swatch() {
         var h = openPanel(1280, 1200)
         var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
@@ -370,7 +348,6 @@ TestCase {
         h.panel.close()
     }
 
-    // Dark and light are told apart, not mixed into one undifferentiated grid.
     function test_dark_and_light_themes_are_grouped() {
         var h = openPanel(1280, 1200)
         var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
@@ -396,9 +373,8 @@ TestCase {
     }
 
     // The two halves are columns side by side, and the nth tile of one sits
-    // on the same line as the nth tile of the other, so each line reads as
-    // one colour family: Sea with Sky, Pine with Sand, Rust with Clay.
-    // Stack the halves instead and the pairing is gone.
+    // on the same line as the nth tile of the other, so each line reads as one
+    // colour family: Sea with Sky, Pine with Sand, Rust with Clay.
     function test_the_two_columns_read_as_hue_rows() {
         var h = openPanel(1280, 1200)
         var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
@@ -411,7 +387,7 @@ TestCase {
         var b = collectByName(lightGroup, "settingsThemeOption", [])
         compare(a.length, b.length, "the two columns are not the same length")
 
-        // Beside, not below.
+        // Side by side.
         var ax = darkGroup.mapToItem(h.panel.contentItem, 0, 0).x
         var bx = lightGroup.mapToItem(h.panel.contentItem, 0, 0).x
         verify(Math.abs(ax - bx) > 40,
@@ -434,13 +410,8 @@ TestCase {
     }
 
     // The swatch table in the panel is a hand copy of three columns of the
-    // C++ one, and it drifted two accent revisions behind before anyone
-    // looked. Picking a theme and reading the live palette back is the only
-    // check that can catch that.
-    //
-    // Both grey ramps, because available() answers for whichever one is in
-    // force: a swatch that is right in the tinted state and wrong in the
-    // neutral one is the same class of bug with a switch in front of it.
+    // C++ one, so each swatch is compared against the live palette. Both grey
+    // ramps, because available() answers for whichever one is in force.
     function test_every_swatch_matches_the_palette_it_claims_data() {
         return [
             { tag: "neutral", tinted: false },
@@ -475,16 +446,9 @@ TestCase {
         return rows
     }
 
-    // Picking writes prefs.theme, and the live binding on the palette repaints.
-    //
-    // The accent is what is measured, not the page. This used to watch bg, and
-    // it had to change the day the greys went neutral by default: within a mode
-    // the six now share their grounds and differ only by accent, so picking
-    // Pine while on Sea repaints the accent and leaves bg exactly where it was.
-    // That is the design rather than a regression - so the probe moved to the
-    // token the choice is actually about, and the page is only asserted to move
-    // where it genuinely has to, which is a pick that crosses between the dark
-    // palettes and the light ones.
+    // Picking writes prefs.theme, and the live binding on the palette
+    // repaints. The accent is what is measured: within a mode the palettes
+    // share their grounds, so the page only moves on a pick that crosses modes.
     function test_picking_a_theme(row) {
         // Start somewhere else, or picking the current theme is a no-op and
         // the repaint cannot be seen. Crossing modes for half the rows, staying
@@ -519,9 +483,8 @@ TestCase {
         h.panel.close()
     }
 
-    // ...and in the tinted state it does move the page, on every pick, because
-    // there each palette carries its own grounds. The other half of the pair
-    // above: together they say the grid means something in both states.
+    // In the tinted state every pick moves the page, because each palette
+    // carries its own grounds.
     function test_picking_a_theme_in_the_tinted_state_repaints_the_page_data() {
         return test_picking_a_theme_data()
     }
@@ -551,9 +514,8 @@ TestCase {
 
     // ── 1b. the pure-black switch ────────────────────────────────────────
 
-    // It belongs to the dark column, and on a light theme it is gone rather
-    // than greyed out: there is nothing to work out about how to enable it,
-    // so there is nothing to invite the user to try.
+    // The switch belongs to the dark themes. On a light theme it is hidden,
+    // since there is no way to enable it there.
     function test_the_pure_black_switch_is_hidden_on_a_light_theme_data() {
         return [
             { tag: "sky",  name: "sky" },
@@ -593,8 +555,7 @@ TestCase {
         verify(note && note.visible && note.text.length > 0,
                "the switch is offered with no explanation of what it does")
 
-        // Below both palette columns and across the whole card, not tucked
-        // into the dark one: at half width it read as a seventh dark theme.
+        // Below both palette columns and across the whole card.
         var groups = collectByName(h.panel.contentItem, "settingsThemeGroup", [])
         var tiles = collectByName(h.panel.contentItem, "settingsThemeOption", [])
         var lowest = 0
@@ -609,7 +570,7 @@ TestCase {
                    "the switch is no wider than one palette column")
         }
 
-        // Centred against both lines of its label, not hung off the first.
+        // Centred against both lines of its label.
         var note = findByName(h.panel.contentItem, "settingsOledNote")
         var tMid = toggle.mapToItem(block, 0, 0).y + toggle.height / 2
         verify(Math.abs(tMid - block.height / 2) <= 1.5,
@@ -619,9 +580,8 @@ TestCase {
         h.panel.close()
     }
 
-    // Flipping it writes the setting and the live palette follows, the same
-    // way picking a theme does. The probe is the proof: a switch that stores
-    // a bool and repaints nothing is the bug this whole file exists for.
+    // Flipping it writes the setting and the live palette follows. The probe
+    // shows the repaint, which a switch that only stored a bool would not do.
     function test_flipping_the_pure_black_switch_repaints() {
         prefs.theme = "pine"
         prefs.oledBlack = false
@@ -649,9 +609,8 @@ TestCase {
 
     // ── 1c. the colour switch ────────────────────────────────────────────
 
-    // Unlike the pure-black one it is offered on every theme, because there is
-    // no theme where it does nothing: all six share a grey ramp with the other
-    // two on their side until it is turned on.
+    // Offered on every theme, because it has an effect on all of them: the
+    // palettes of one mode share a grey ramp until it is turned on.
     function test_the_colour_switch_is_offered_on_every_theme_data() {
         var rows = []
         var avail = ThemePalette.available()
@@ -679,8 +638,8 @@ TestCase {
         h.panel.close()
     }
 
-    // Under the grid rather than beside it, and across the whole card: it
-    // changes what every swatch above it shows, so it belongs to both columns.
+    // Under the grid and across the whole card: it changes what every swatch
+    // above it shows, so it belongs to both columns.
     function test_the_colour_switch_sits_under_the_whole_grid() {
         var h = openPanel(1280, 1200)
 
@@ -709,9 +668,8 @@ TestCase {
         h.panel.close()
     }
 
-    // Flipping it writes the setting and the live palette follows, the same way
-    // picking a theme does. The probe is the proof: a switch that stores a bool
-    // and repaints nothing is the bug this whole file exists for.
+    // Flipping it writes the setting and the live palette follows, as the
+    // probe shows.
     function test_flipping_the_colour_switch_repaints() {
         prefs.theme = "pine"
         prefs.oledBlack = false
@@ -738,11 +696,8 @@ TestCase {
         h.panel.close()
     }
 
-    // The grid has to show the truth about what it is offering. In the neutral
-    // state the three darks are one ground and three accents, and so are the
-    // three lights; after a flip all six grounds differ. A grid that still
-    // showed the tinted grounds after the flip would be the panel describing a
-    // palette the app is not painting.
+    // The grid shows what the app paints. In the neutral state each mode is
+    // one ground and three accents. After a flip all six grounds differ.
     function test_the_colour_switch_flips_the_grid() {
         prefs.theme = "sea"
         prefs.tintedGreys = false
@@ -765,8 +720,8 @@ TestCase {
         verify(String(sw.sea.color) !== String(sw.sky.color),
                "the dark and light ramps are the same colour")
 
-        // ...and the accent is then what the choice is actually between, so the
-        // six dots have to differ.
+        // The accent is what the choice is between, so the six dots have to
+        // differ.
         var seen = {}
         var all = darks.concat(lights)
         for (i = 0; i < all.length; i++) {
@@ -794,7 +749,6 @@ TestCase {
         h.panel.close()
     }
 
-    // Reopened, the switch shows what was stored rather than its own default.
     function test_the_colour_switch_shows_the_stored_setting() {
         prefs.tintedGreys = true
         var h = openPanel(1280, 1200)
@@ -815,10 +769,8 @@ TestCase {
         h2.panel.close()
     }
 
-    // The whimsy, and the part of it that was taken back out: the track is a
-    // rainbow, and it holds still. The turning version was built, seen and
-    // rejected - "it just adds visual noise" - so this pins the gradient as
-    // static rather than slow. A reintroduced animation fails it.
+    // The track is a rainbow, and it holds still: the gradient is static,
+    // and an animation on it fails this.
     function test_the_rainbow_is_static_and_has_no_frame_around_it() {
         app.setReducedMotionForTest(false)
         prefs.tintedGreys = true
@@ -829,9 +781,8 @@ TestCase {
         var rainbow = findByName(toggle, "toggleRainbow")
         verify(rainbow && rainbow.visible)
 
-        // Actually a rainbow, and not an accent fill: seven stops round the
-        // wheel, the first and the last on the same hue so the strip joins up,
-        // which leaves six distinct colours.
+        // Seven stops round the wheel, the first and the last on the same hue so
+        // the strip joins up, which leaves six distinct colours.
         verify(rainbow.gradient, "the rainbow track carries no gradient")
         compare(rainbow.gradient.stops.length, 7, "the rainbow has the wrong number of stops")
         var distinct = {}
@@ -840,8 +791,7 @@ TestCase {
         compare(Object.keys(distinct).length, 6,
                 "the rainbow is " + Object.keys(distinct).length + " colours")
 
-        // Still. Sampled across a span many times the old 6 s turn's per-frame
-        // step, so a slowed-down animation would be caught rather than passed.
+        // Still. Sampled over a span long enough to catch a slow animation.
         var before = []
         for (var b = 0; b < 7; b++) before.push(String(rainbow.gradient.stops[b].color))
         wait(400)
@@ -849,9 +799,8 @@ TestCase {
             compare(String(rainbow.gradient.stops[c].color), before[c],
                     "stop " + c + " moved: the rainbow is animating again")
 
-        // And no thin solid ring around it. The gradient is the control; a
-        // border read as a frame bolted onto it. Focus is the one exception
-        // and is checked separately below.
+        // No solid ring around it: the gradient is the control. Focus is the
+        // one exception.
         var track = rainbow.parent
         verify(!toggle.activeFocus, "this half of the case assumes the toggle is not focused")
         compare(track.border.width, 0,
@@ -863,7 +812,7 @@ TestCase {
         compare(track.border.width, 1,
                 "switched off, the toggle lost the border every other toggle has")
 
-        // ...and no other switch in the panel grew one.
+        // No other switch in the panel is painted as a rainbow.
         prefs.theme = "sea"
         var black = findByName(h.panel.contentItem, "settingsOledToggle")
         verify(black && black.visible)
@@ -874,14 +823,8 @@ TestCase {
         h.panel.close()
     }
 
-    // X6: the rainbow is identical under reduced motion, because there is no
-    // motion left to reduce.
-    //
-    // This case used to assert that reduced motion stopped the turning without
-    // deleting the colour. The turning is gone for everyone now, so what is
-    // worth pinning is that the reduced-motion path did not take the colour
-    // with it when the animation was removed - which is the way this would
-    // plausibly break.
+    // The rainbow is identical under reduced motion: the reduced-motion path
+    // must not take the colour away.
     function test_reduced_motion_keeps_the_rainbow_exactly_as_it_is() {
         prefs.tintedGreys = true
 
@@ -908,11 +851,9 @@ TestCase {
         h.panel.close()
     }
 
-    // Both switches move the grounds, so the page you land on must not depend
-    // on which one you reached for first. Driven through the two controls,
-    // because this is the version of it a user can actually perform; the
-    // palette-level proof is theTwoSwitchesComposeInEitherOrder() in
-    // tests/tst_theme.cpp.
+    // Both switches move the grounds, so the resulting page must not depend
+    // on which was flipped first. Driven through the two controls here; the
+    // palette-level proof is in tests/tst_theme.cpp.
     function test_the_two_switches_land_on_the_same_page_in_either_order() {
         prefs.theme = "pine"
         prefs.oledBlack = false
@@ -943,9 +884,9 @@ TestCase {
         compare(surfaceProbe.color.toString(), blackFirstSurface,
                 "the step above the page depends on which switch was flipped first")
 
-        // ...and the pure-black switch still reaches black over the neutral
-        // ramp, which is the state it would quietly stop working in if the two
-        // transforms were applied the other way round.
+        // The pure-black switch still reaches black over the neutral ramp, the
+        // state that would break if the two transforms were applied in the other
+        // order.
         clickItem(h.panel, colour)
         verify(prefs.oledBlack && !prefs.tintedGreys)
         compare(probe.color.toString(), "#000000",
@@ -963,7 +904,7 @@ TestCase {
         compare(valuesOf(combo.options).join(","), "system,en,de",
                 "the language picker offers " + valuesOf(combo.options).join(","))
         compare(combo.count, 3)
-        // The current setting is what it shows, not whatever came first.
+        // It shows the current setting.
         compare(combo.currentIndex, 0, "\"system\" is the stored language")
         h.panel.close()
     }
@@ -996,10 +937,8 @@ TestCase {
 
     // ── 3. the close button ──────────────────────────────────────────────
 
-    // Closing the window used to be minimise-to-tray and nothing else, which
-    // surprises everyone who reads a close button on a Linux desktop as "quit".
-    // The switch is the whole point of this section, so it has to read the
-    // setting and write it back, not just look like a switch.
+    // The switch for what closing the window does has to read the setting
+    // and write it back.
     function test_close_button_switch_writes_prefs() {
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsQuitOnCloseToggle")
@@ -1020,8 +959,6 @@ TestCase {
         h.panel.close()
     }
 
-    // The other direction: a profile that already has it on has to come up with
-    // the switch on, or the panel is lying about what the close button will do.
     function test_close_button_switch_shows_the_stored_setting() {
         prefs.quitOnClose = true
         var h = openPanel(1280, 1200)
@@ -1030,8 +967,7 @@ TestCase {
         h.panel.close()
     }
 
-    // The switch lives in its own section, after Appearance, rather than in
-    // Performance, which is about the renderer.
+    // The switch lives in its own section. Performance is about the renderer.
     function test_the_close_button_has_its_own_section() {
         var h = openPanel(1280, 1200)
         var sections = collectByName(h.panel.contentItem, "settingsSection", [])
@@ -1049,10 +985,9 @@ TestCase {
         h.panel.close()
     }
 
-    // With no tray icon a close quits whatever the switch says, which is the one
-    // case the switch cannot change - so the note has to say so. Always there,
-    // and the row is never hidden: the setting is remembered and starts working
-    // the moment a tray turns up, which it can do long after login.
+    // With no tray icon a close quits whatever the switch says, so the note
+    // has to say so. The row is never hidden: the setting is remembered and
+    // starts working once a tray turns up, which can be long after login.
     function test_the_close_button_note_covers_the_no_tray_case() {
         var h = openPanel(1280, 1200)
         var note = findByName(h.panel.contentItem, "settingsQuitOnCloseNote")
@@ -1073,10 +1008,9 @@ TestCase {
         h.panel.close()
     }
 
-    // An eighth section is more content in a panel that was already taller than
-    // any window it fits in, so the two things that save it - scrolling to the
-    // end, and the close button in the pinned header - are checked again with it
-    // in place rather than left to the sections above.
+    // The panel is taller than any window it fits in, so scrolling to the
+    // end and the close button in the pinned header are checked with this
+    // section in place.
     function test_the_panel_still_scrolls_and_closes_with_the_window_section() {
         var h = openPanel(minWindowW, minWindowH)
         var flick = scrollerOf(h.panel)
@@ -1101,8 +1035,8 @@ TestCase {
 
     // ── 4. the audio output picker ───────────────────────────────────────
 
-    // Devices come and go, so the list is read again every time the panel is
-    // opened rather than once when it is built.
+    // Devices come and go, so the list is read again every time the panel
+    // is opened.
     function test_audio_devices_are_reread_on_open() {
         var h = openPanel(1280, 1200)
         var first = audioStub.reads
@@ -1137,8 +1071,8 @@ TestCase {
         h.panel.close()
     }
 
-    // isDefault says which real device the sentinel currently resolves to, and
-    // the panel has to say so rather than leaving "System default" opaque.
+    // isDefault says which real device the sentinel resolves to, and the
+    // panel has to name it.
     function test_system_default_names_the_device_it_resolves_to() {
         var h = openPanel(1280, 1200)
         var note = findByName(h.panel.contentItem, "settingsAudioDefaultNote")
@@ -1184,8 +1118,8 @@ TestCase {
         h.panel.close()
     }
 
-    // Qt picks the scene graph backend once at startup, so the note is part of
-    // the panel and not a tooltip someone has to find with the pointer.
+    // Qt picks the scene graph backend once at startup, so the note is always
+    // visible in the panel.
     function test_restart_note_is_always_visible() {
         var h = openPanel(1280, 1200)
         var note = findByName(h.panel.contentItem, "settingsRestartNote")
@@ -1194,24 +1128,9 @@ TestCase {
         verify(note.text.length > 0)
         verify(note.text.toLowerCase().indexOf("restart") !== -1,
                "the note says \"" + note.text + "\", which does not mention a restart")
-        // Next to the control, not somewhere else in the panel - asked as what
-        // lies between them rather than as how far apart they are.
-        //
-        // This was `|note.y - toggle.y| < 80`. The row between the two holds a
-        // stock Slider, which is the one control in this panel whose height
-        // comes from the Controls style rather than from the panel, and the app
-        // runs Fusion on every Qt but 6.4, where it runs Basic - see
-        // Application::applyQuickControlsStyle(). Basic's slider asks for 40px
-        // of height - a 28px handle on 6px of padding - where Fusion's asks for
-        // 13, so the row is 40px tall there and 20 here, and that one row is the
-        // whole difference between the note sitting 82px below the toggle on
-        // Debian 12 and 62px below it on 6.12. The layout is the same on both;
-        // only the slider's chrome is not, so a pixel bound here answered which
-        // style the Qt version handed out.
-        //
-        // The order in the card answers the actual question, and answers it more
-        // narrowly: the note has to come straight after the two rows it speaks
-        // for, which a note merely sitting within 80px of the toggle need not.
+        // Next to the control, asserted as the order of rows in the card. A pixel
+        // bound would depend on the Controls style: the row between holds a stock
+        // Slider, which is taller under Basic (Qt 6.4) than under Fusion.
         var toggle = findByName(h.panel.contentItem, "settingsHwAccelToggle")
         var slider = findByName(h.panel.contentItem, "settingsUiScaleSlider")
         verify(toggle && slider, "the performance controls were not found")
@@ -1228,7 +1147,7 @@ TestCase {
                "the card has " + rows.length + " visible rows, with the toggle at "
                + ti + ", interface size at " + si + " and the note at " + ni
                + ": the restart note is nowhere near the toggle it belongs to")
-        // And below it, not above.
+        // And below it.
         var flick = scrollerOf(h.panel)
         verify(note.mapToItem(flick.contentItem, 0, 0).y
                > toggle.mapToItem(flick.contentItem, 0, 0).y,
@@ -1262,13 +1181,8 @@ TestCase {
     }
 
     // ── the header, which does not scroll ────────────────────────────────
-    //
-    // It used to be the first row of the scrolling column, so a section or
-    // two down there was nothing saying what the panel was and no visible way
-    // out of it. It sits outside the ScrollView now; the cases below are
-    // about it being outside rather than merely drawn on top, because a
-    // header laid over a scrolling item lets the content show through at its
-    // edges.
+    // The header sits outside the ScrollView. A header laid over a scrolling
+    // item would let the content show through at its edges.
 
     // How far the panel can scroll, and a scroll to the bottom of it.
     function scrollToEnd(panel) {
@@ -1285,15 +1199,14 @@ TestCase {
         var sv = findByName(h.panel.contentItem, "settingsScroll")
         verify(sv, "the panel has no scroll view")
 
-        // Not a descendant of it, which is the whole difference between a
-        // fixed header and one drawn over the content.
+        // Not a descendant of the ScrollView.
         var p = header.parent
         while (p) {
             verify(p !== sv, "the header is still inside the ScrollView")
             p = p.parent
         }
 
-        // And the content starts below it rather than under it.
+        // And the content starts below it.
         var headerBottom = header.mapToItem(h.panel.contentItem, 0, header.height).y
         var scrollTop = sv.mapToItem(h.panel.contentItem, 0, 0).y
         verify(scrollTop >= headerBottom - 0.5,
@@ -1316,8 +1229,6 @@ TestCase {
         h.panel.close()
     }
 
-    // The way out has to be reachable from the bottom of the panel, which is
-    // the whole reason the header was pinned.
     function test_the_close_button_still_closes_from_the_bottom() {
         var h = openPanel(1280, 800)
         scrollToEnd(h.panel)
@@ -1329,7 +1240,6 @@ TestCase {
                   "the close button in the pinned header did not close the panel")
     }
 
-    // Escape still works, and so does reopening from the sidebar footer.
     function test_escape_still_closes_and_the_panel_reopens() {
         var h = openPanel(1280, 800)
         keyClick(Qt.Key_Escape)
@@ -1361,8 +1271,8 @@ TestCase {
         h.panel.close()
     }
 
-    // The scrollbar gutter belongs to the scrolling area, not to the whole
-    // panel: it must not run up past the header.
+    // The scrollbar gutter belongs to the scrolling area and must not run up
+    // past the header.
     function test_the_scrollbar_runs_alongside_the_scrolling_area_only() {
         var h = openPanel(1280, 800)
         var bar = findByName(h.panel.contentItem, "settingsScrollBar")
@@ -1377,9 +1287,9 @@ TestCase {
         h.panel.close()
     }
 
-    // The top edge of the scroll area fades once something has scrolled under
-    // it, the way the bottom edge already does, so a half-cut line reads as
-    // "there is more above" rather than as a broken word.
+    // The top edge of the scroll area fades once something has scrolled
+    // under it, as the bottom edge does, so a half-cut line reads as more
+    // content above.
     function test_the_top_edge_fades_only_once_something_has_scrolled() {
         var h = openPanel(1280, 800)
         var fade = findByName(h.panel.contentItem, "settingsTopFade")
@@ -1398,10 +1308,8 @@ TestCase {
 
     // ── the order of the panel ───────────────────────────────────────────
 
-    // Top to bottom, by where the sections actually land rather than by the
-    // order they are declared in. The shortcuts sit above the privacy notice:
-    // the notice is long prose and the natural end of the panel, and a
-    // reference table buried under it is a reference table nobody finds.
+    // Top to bottom, by where the sections land. The shortcuts sit above the
+    // privacy notice, which is long prose and the natural end of the panel.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
         "account,appearance,window,playback,performance,updates,feedback,shortcuts,privacy"
@@ -1429,8 +1337,6 @@ TestCase {
         h.panel.close()
     }
 
-    // The same thing said the way the user said it, so the reason survives
-    // even if the list above is ever rewritten.
     function test_shortcuts_sit_above_the_privacy_note() {
         var h = openPanel(1280, 1200)
         var shortcuts = null, privacy = null
@@ -1459,12 +1365,9 @@ TestCase {
     }
 
     // ── the two ways out ─────────────────────────────────────────────────
-    //
-    // The panel can now open a prefilled GitHub issue and a prefilled email.
-    // Neither of those is a thing a test may actually do, so what is asserted
-    // here is the URL each button hands to app.openUrl() - which is where the
-    // app's part of the job ends. Nothing in this file opens a browser, a mail
-    // client, or a connection.
+    // The panel can open a prefilled GitHub issue and a prefilled email. What
+    // is asserted is the URL each button hands to app.openUrl(). Nothing in
+    // this file opens a browser, a mail client or a connection.
 
     readonly property string feedbackMailbox: "tidal-wave@linu.li"
     readonly property string issuePrefix:
@@ -1488,7 +1391,8 @@ TestCase {
         return null
     }
 
-    // The URL the last click handed to app.openUrl(), or "" if it handed none.
+    // The URL the last click handed to app.openUrl(), or an empty string if
+    // it handed none.
     function urlFromClick(panel, item) {
         var before = app.openedUrlsForTest().length
         clickItem(panel, item)
@@ -1499,8 +1403,8 @@ TestCase {
         return app.lastOpenedUrlForTest()
     }
 
-    // Both routes live in a section of their own, between Updates - the other
-    // row here that reaches off this machine - and the shortcuts table.
+    // Both routes live in a section of their own, between Updates and the
+    // shortcuts table.
     function test_the_feedback_section_sits_between_updates_and_the_shortcuts() {
         var h = openPanel(1280, 1200)
         var sections = collectByName(h.panel.contentItem, "settingsSection", [])
@@ -1519,9 +1423,8 @@ TestCase {
         h.panel.close()
     }
 
-    // Side by side in one row, both of them something a person can actually get
-    // to: visible, inside the card, scrollable into the viewport, and on the tab
-    // ring rather than mouse-only.
+    // Side by side in one row, and both reachable: visible, inside the card,
+    // scrollable into the viewport, and on the tab ring.
     function test_both_feedback_rows_are_reachable() {
         var h = openPanel(minWindowW, minWindowH)
         var section = feedbackSection(h.panel)
@@ -1547,8 +1450,7 @@ TestCase {
             seen.push({ x: btn.mapToItem(section, 0, 0).x,
                         y: btn.mapToItem(section, 0, 0).y })
         }
-        // Side by side, which is what the user asked for: same line, one after
-        // the other.
+        // Side by side: same line, one after the other.
         compare(seen[0].y.toFixed(0), seen[1].y.toFixed(0),
                 "the two feedback buttons are stacked, not side by side")
         verify(seen[0].x < seen[1].x,
@@ -1558,8 +1460,8 @@ TestCase {
         h.panel.close()
     }
 
-    // The GitHub route: the repository slug, and a template already filled in
-    // with the four things a report always has to be chased for.
+    // The GitHub route: the repository slug, and a template prefilled with
+    // the version details.
     function test_the_github_route_opens_a_prefilled_issue() {
         var h = openPanel(1280, 1200)
         var btn = findByName(h.panel.contentItem, "settingsIssueButton")
@@ -1570,9 +1472,9 @@ TestCase {
                "the issue URL is \"" + url + "\", which does not start with "
                + issuePrefix)
 
-        // Percent-encoded, not merely assembled. A raw space or newline makes an
-        // unusable URL, and a raw "#" - the body is Markdown, so it has several
-        // - cuts everything after it off as a fragment.
+        // Percent-encoded. A raw space or newline makes an unusable URL, and a
+        // raw hash, of which the Markdown body has several, cuts everything after
+        // it off as a fragment.
         verify(url.indexOf(" ") === -1, "the issue URL carries a raw space: " + url)
         verify(url.indexOf("\n") === -1, "the issue URL carries a raw newline")
         verify(url.indexOf("#") === -1,
@@ -1598,10 +1500,9 @@ TestCase {
             verify(text.indexOf(mustSay[i]) !== -1,
                    "the issue body never mentions \"" + mustSay[i] + "\":\n" + text)
 
-        // Compiled against and running now are two different questions, and a
-        // body that answers them with one line cannot tell them apart - which is
-        // the gap four bugs came out of. Both labels have to be there, whether
-        // or not the two numbers happen to be equal on this machine.
+        // Compiled against and running now are two different questions. Both
+        // labels have to be there, whether or not the two numbers are equal on
+        // this machine.
         verify(text.indexOf("compiled against") !== -1,
                "the issue body does not say which Qt the build was compiled "
                + "against:\n" + text)
@@ -1617,9 +1518,9 @@ TestCase {
         h.panel.close()
     }
 
-    // The mail route: one address, the project's own, and a subject naming the
-    // app and the version. No body - and above all no credential, because the
-    // app never signs in to that mailbox.
+    // The mail route: the project's own address and a subject naming the app
+    // and the version. No body and no credential: the app never signs in to
+    // that mailbox.
     function test_the_email_route_opens_a_prefilled_draft() {
         var h = openPanel(1280, 1200)
         var btn = findByName(h.panel.contentItem, "settingsEmailButton")
@@ -1643,12 +1544,8 @@ TestCase {
         h.panel.close()
     }
 
-    // One address, and it is the box made for this.
-    //
-    // The user chose their git address first and then explicitly took that back,
-    // so a personal address reaching a shipped binary is the failure this guards:
-    // every "@" the feedback feature puts in front of a user, or into a URL, has
-    // to belong to the project mailbox.
+    // Every address the feedback feature puts in front of a user, or into a
+    // URL, has to be the project mailbox.
     function test_only_the_project_mailbox_is_ever_named() {
         var h = openPanel(1280, 1200)
         compare(Feedback.mailAddress(), feedbackMailbox,
@@ -1657,8 +1554,8 @@ TestCase {
         var haystack = [Feedback.mailUrl(), Feedback.issueUrl(),
                         decodeURIComponent(paramOf(Feedback.issueUrl(), "body"))]
 
-        // Everything the panel actually shows, feedback rows and privacy block
-        // alike: the address is printed to the user in both.
+        // Everything the panel shows: the address is printed in the feedback
+        // rows and in the privacy block.
         var texts = collectTexts(h.panel.contentItem, [])
         for (var i = 0; i < texts.length; ++i) haystack.push(texts[i].text)
 
@@ -1678,20 +1575,17 @@ TestCase {
         h.panel.close()
     }
 
-    // The privacy block names every destination and says what each one gets, so
-    // a feature that puts the user's words in front of a third party has to be
-    // in it - and has to be in it accurately. The app sends nothing here: it
-    // hands a URL to a program the user chose, and that program does the
-    // talking, after the user presses send.
+    // The privacy block names every destination and says what each one gets,
+    // so it has to cover the feedback routes accurately. The app sends
+    // nothing: it hands a URL to a program the user chose.
     function test_the_privacy_block_covers_the_two_feedback_routes() {
         var h = openPanel(1280, 1200)
         var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
         var all = ""
         for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
 
-        // Only wording this feature put there. "browser" and "no account data"
-        // were both already in the block, for the update check, so asserting
-        // either would prove nothing about this paragraph.
+        // Only wording specific to the feedback paragraph, so a match proves
+        // that paragraph is there.
         var mustSay = [
             // Which program gets handed the URL...
             "mail client",
@@ -1739,8 +1633,8 @@ TestCase {
         h.panel.close()
     }
 
-    // The panel is longer than any window it fits in, so the privacy block has
-    // to be reachable by scrolling rather than clipped off the bottom.
+    // The panel is longer than any window it fits in, so the privacy block
+    // has to be reachable by scrolling.
     function test_privacy_text_scrolls_into_view() {
         var h = openPanel(minWindowW, minWindowH)
         var flick = scrollerOf(h.panel)
@@ -1773,15 +1667,13 @@ TestCase {
         return rows
     }
 
-    // L10, restated here because everything above added content to the popup:
-    // it is clamped to the overlay, never to its own idea of how tall it is.
+    // The popup is clamped to the overlay, whatever its content's height.
     function test_popup_fits(row) {
         var h = openPanel(row.w, row.h)
         var popup = h.panel
 
-        // Sized against the window, not against the 220px sidebar it is
-        // declared inside. Reading the sidebar made it 156px wide, which fits
-        // every window there is and is still unusable.
+        // Sized against the window, never against the sidebar it is declared
+        // inside.
         compare(Math.round(popup.width), Math.min(480, row.w - popupInset),
                 "popup width in a " + row.tag + " window")
         compare(Math.round(popup.height), Math.min(640, row.h - popupInset),
@@ -1812,8 +1704,7 @@ TestCase {
     }
 
     // Nothing in the panel may be cut off: a label that neither wraps nor
-    // elides has no graceful degradation left, and German runs 20 to 35
-    // percent longer than every string written here.
+    // elides has no fallback, and German runs longer than the English here.
     function test_no_label_is_cut_off() {
         var h = openPanel(minWindowW, minWindowH)
         var faults = collectClipped(h.panel.contentItem, "SettingsPanel", [])
@@ -1823,8 +1714,8 @@ TestCase {
 
     // ── 8. the filter chip ───────────────────────────────────────────────
 
-    // The chip filters kind: "track" and every other string in the app says
-    // track, so the chip says track too.
+    // The chip filters the track kind, and every other string in the app
+    // says track.
     function test_library_filter_chip_says_track() {
         var host = createTemporaryObject(sideBarHost, testCase)
         host.width = 1280

@@ -1,19 +1,8 @@
 // A detail page opened with nothing but an id has to label itself.
-//
-// The complaint: "Playing from: <a mix>" in Now Playing opened a mix whose
-// tracks were there but whose hero was blank - no title, no cover. That link
-// navigates with `{ mixId: player.sourceId }` and nothing else, and MixPage's
-// title/subtitle/coverUrl were filled only by whichever caller happened to have
-// them in hand. The sidebar had them, so every other route in looked fine.
-//
-// So these tests never pass a title or a cover. They set the id, which is all
-// the failing route sets, and then ask what the hero says. The playlist branch
-// of that same link had the same hole and additionally sent `playlistType: ""`,
-// which told the page a playlist the user owns is read-only.
-//
-// `bridge` is the stub from tests/TestStubs.h. It answers synchronously, so
-// anything a load would overwrite must be assigned *before* the id that
-// triggers the load, not after - the same rule tst_layout_pages.qml states.
+// These tests never pass a title or a cover: they set the id and then ask
+// what the hero says. The bridge stub from tests/TestStubs.h answers
+// synchronously, so anything a load would overwrite must be assigned before
+// the id that triggers the load.
 
 import QtQuick
 import QtQuick.Controls
@@ -42,9 +31,9 @@ TestCase {
         return holder
     }
 
-    // A mix as `pages/mix` describes it in its MIX_HEADER module, with the
-    // artwork already resolved to the URL the cover loads from. Invented, like
-    // every fixture here: no id, title or image of the user's is in this file.
+    // A mix as pages/mix describes it in its MIX_HEADER module, with the
+    // artwork resolved to the URL the cover loads from. Every fixture here is
+    // invented.
     function mixHeader(id, title) {
         return { id: id, title: title, subtitle: "Zwei Stunden Nachtmusik",
                  coverUrl: "cdn/" + id + ".jpg", mixType: "DISCOVERY_MIX" }
@@ -88,7 +77,6 @@ TestCase {
 
     // ── mix ──────────────────────────────────────────────────────────────
 
-    // The reported bug, as the user hit it: the id alone, nothing else.
     function test_mix_opened_with_only_an_id_fills_its_own_hero() {
         bridge.setMixPageForTest(mixHeader("mx-1", "Meine Entdeckungen"), makeTracks(5))
 
@@ -123,9 +111,8 @@ TestCase {
     }
 
     // A video mix answers VIDEO_LIST where a normal mix answers TRACK_LIST, so
-    // its track list reads as empty - which is how eight tiles once opened
-    // blank. An unreadable track module may not cost the page its header: a
-    // titled page over an empty list says something, a blank one says nothing.
+    // its track list reads as empty. An unreadable track module must not cost
+    // the page its header.
     function test_mix_header_survives_a_track_list_it_cannot_read() {
         var header = mixHeader("mx-3", "Mein Video-Mix 1")
         header.mixType = "VIDEO_DAILY_MIX"
@@ -142,15 +129,9 @@ TestCase {
     }
 
     // ── what the page calls itself ──────────────────────────────────────
-    //
-    // The owner, on the viewer a saved track radio opened in: "it looks like an
-    // album except it says mix at the top and has the track radio thumbnail on
-    // the top left". This page is now the *only* viewer for a track radio, so
-    // the heading has to say which of the two it is showing.
-    //
-    // On the mixType and never on the title: the title arrives in the account's
-    // language, so matching one breaks in German (see MixTypes in
-    // src/api/Models.h, and the ordering cases in tests/tst_mixes.cpp).
+    // This page is the only viewer for a track radio, so the heading says
+    // which of the two it shows. It goes by the mixType, never by the title,
+    // which arrives in the account's language (MixTypes in src/api/Models.h).
 
     function test_a_track_radio_is_headed_radio_and_not_mix() {
         var header = mixHeader("mx-radio", "Weit hinter dem Horizont")
@@ -179,10 +160,8 @@ TestCase {
                 "a DISCOVERY_MIX was relabelled a radio")
     }
 
-    // The caller may know before the request comes back - the sidebar row and
-    // the row menu's "Start radio" both carry it - and the heading must not flip
-    // from "Mix" to "Radio" when a header that says nothing about the type
-    // lands.
+    // The caller may know the type before the request comes back, and a
+    // header that says nothing about the type must not change the heading.
     function test_a_header_without_a_type_keeps_the_callers() {
         bridge.setMixPageForTest({ id: "mx-6", title: "Weit hinter dem Horizont" },
                                  makeTracks(2))
@@ -198,7 +177,6 @@ TestCase {
                 "a typeless header blanked the caller's mixType")
     }
 
-    // And the other way: the response is the authority when it does say.
     function test_the_response_corrects_the_caller() {
         var header = mixHeader("mx-7", "Meine Entdeckungen")
         header.mixType = "DISCOVERY_MIX"
@@ -214,9 +192,8 @@ TestCase {
                 "the caller's guess outranked what the server said")
     }
 
-    // The other half: a response with tracks and no header leaves whatever the
-    // caller passed standing, rather than blanking a good title with an empty
-    // one. The sidebar does pass a title, and it must not flicker away.
+    // A response with tracks and no header leaves standing whatever the
+    // caller passed. The sidebar passes a title, and it must not flicker away.
     function test_mix_keeps_a_callers_title_when_the_response_has_no_header() {
         bridge.setMixPageForTest({}, makeTracks(3))
 
@@ -234,7 +211,6 @@ TestCase {
         compare(page.tracks.length, 3, "the tracks did not load")
     }
 
-    // And a request that fails outright must not blank it either.
     function test_mix_keeps_a_callers_title_when_the_request_fails() {
         bridge.setMixPageForTest(mixHeader("mx-5", "sollte nie ankommen"), makeTracks(4))
         bridge.setHeaderErrorForTest("network unreachable")
@@ -254,10 +230,9 @@ TestCase {
     // the slow reply for the mix just left arrives into the page now showing a
     // different one. It must not retitle it.
     function test_a_reply_for_the_mix_just_left_does_not_retitle_the_one_now_open() {
-        // The first request is the slow one: held, while the second is let
-        // through at once. That ordering is the whole point - a stale reply
-        // that lands *before* the good one is harmless, because the good one
-        // overwrites it.
+        // The first request is held while the second is let through at once. A
+        // stale reply that lands before the good one is harmless, because the
+        // good one overwrites it.
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setMixPageForTest(mixHeader("mx-6", "Erste Auswahl"), makeTracks(2))
 
@@ -287,9 +262,8 @@ TestCase {
 
     // ── playlist ─────────────────────────────────────────────────────────
 
-    // Same hole, one line above the mix one in NowPlayingPage's source: the
-    // playlist branch navigates with the uuid and the player's cached name,
-    // and sends `coverUrl: ""` outright.
+    // Now Playing opens a playlist with its uuid and the player's cached
+    // name, and with no cover.
     function test_playlist_opened_with_only_a_uuid_fills_its_own_hero() {
         bridge.setPlaylistForTest({ uuid: "pl-1", title: "Spätschicht",
                                     description: "Für lange Abende",
@@ -312,9 +286,8 @@ TestCase {
                 "the page asked about some other playlist")
     }
 
-    // Not cosmetic, this one. `playlistType` decides whether the page lets the
-    // user edit the playlist, and the Now Playing link sent "", which reads as
-    // EDITORIAL: the user's own playlist opened read-only.
+    // playlistType decides whether the page lets the user edit the playlist,
+    // and an empty type reads as EDITORIAL, which is read-only.
     function test_playlist_opened_with_only_a_uuid_learns_that_it_is_editable() {
         bridge.setPlaylistForTest({ uuid: "pl-2", title: "Eigene Liste",
                                     description: "", numTracks: 3, duration: 600,
@@ -350,7 +323,6 @@ TestCase {
                 "a failed request blanked the cover the caller passed")
     }
 
-    // The same race on the playlist side.
     function test_a_reply_for_the_playlist_just_left_does_not_retitle_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setPlaylistForTest({ uuid: "pl-4", title: "Erste Liste", description: "",
@@ -378,8 +350,8 @@ TestCase {
                 "the playlist the user left retitled the playlist they are on")
         compare(heroCoverOf(page), "image://tidal/cdn/pl-5.jpg",
                 "the playlist the user left overwrote its cover")
-        // And not its editability either, which is the half that would let the
-        // user try to change a playlist that is not theirs.
+        // Nor its editability, which would let the user try to change a playlist
+        // that is not theirs.
         compare(page.playlistType, "EDITORIAL",
                 "the playlist the user left overwrote its type")
     }
