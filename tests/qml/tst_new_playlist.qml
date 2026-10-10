@@ -282,9 +282,9 @@ TestCase {
     function test_a_name_cannot_run_past_the_cap() {
         var dlg = makeDialog()
         var field = inDialog(dlg, "newPlaylistField")
-        var long = ""
-        for (var i = 0; i < 250; ++i) long += "x"
-        field.text = long
+        var tooLong = ""
+        for (var i = 0; i < 250; ++i) tooLong += "x"
+        field.text = tooLong
         settle(dlg.contentItem)
 
         compare(field.text.length, titleCap,

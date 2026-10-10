@@ -287,9 +287,9 @@ TestCase {
         var dlg  = openEditor(host, page)
 
         var field = inDialog(dlg, "editPlaylistTitleField")
-        var long = ""
-        for (var i = 0; i < 250; ++i) long += "x"
-        field.text = long
+        var tooLong = ""
+        for (var i = 0; i < 250; ++i) tooLong += "x"
+        field.text = tooLong
         settle(host.contentItem)
 
         compare(field.text.length, 100,

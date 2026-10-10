@@ -4,9 +4,9 @@ For someone with a Mac and a day or two. Tidal Wave is built and used on Linux,
 so most of what follows has never been executed once. Treat everything here as
 a question rather than a regression.
 
-The repository is public, so start by cloning the branch:
+The repository is public, so start by cloning the release:
 
-    git clone --branch beta-0.4.0 https://github.com/immineal/tidal-wave.git
+    git clone --branch v0.4.0 https://github.com/immineal/tidal-wave.git
     cd tidal-wave
 
 ## What is already known to be absent

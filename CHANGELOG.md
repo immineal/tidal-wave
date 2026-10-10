@@ -119,4 +119,4 @@ milestones and not a semver promise about an API.
 0.3.1 and everything before it predate this file. See the
 [releases page](https://github.com/immineal/tidal-wave/releases) and `git log`.
 
-[0.4.0]: https://github.com/immineal/tidal-wave/compare/v0.3.1...main
+[0.4.0]: https://github.com/immineal/tidal-wave/compare/v0.3.1...v0.4.0

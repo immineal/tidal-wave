@@ -9,6 +9,9 @@ set(CMAKE_AUTORCC ON)
 # Tests are opt-in: a plain `cmake -B build -S .` builds exactly what it always
 # did (app only, no Qt6::Test/QuickTest requirement).
 option(TIDALWAVE_BUILD_TESTS "Build tests" OFF)
+# Read further down, where the catalogues are compiled. Declared here so that
+# it shows up in cmake-gui and `cmake -LH` like the option beside it.
+option(TIDALWAVE_REQUIRE_TRANSLATIONS "Fail the configure step when lrelease is missing" OFF)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core

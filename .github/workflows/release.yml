@@ -16,21 +16,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One Qt for all three platforms (see ci.yml) — keep the two in sync.
+        # Windows is held at 6.10.3 because aqtinstall cannot install a newer
+        # one; ci.yml has the measurement. Keep the two files in sync.
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             asset_name: tidal-wave-linux-x86_64.tar.gz
             qt: '6.12.0'
           - os: windows-latest
             asset_name: tidal-wave-windows-x64.zip
-            qt: '6.12.0'
+            qt: '6.10.3'
           - os: macos-latest
             asset_name: tidal-wave-macos-x64.tar.gz
             qt: '6.12.0'
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -47,10 +48,10 @@ jobs:
           modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev libasound2-dev libavahi-client-dev
+          sudo apt-get install -y libasound2-dev libavahi-client-dev
 
       - name: Configure and build
         run: |
@@ -58,7 +59,7 @@ jobs:
           cmake --build build --config Release --parallel 4
 
       - name: Package binary (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           tar -czf ${{ matrix.asset_name }} -C build tidal-wave TidalWave
           # Also build a .deb with the correct runtime dependencies declared.
