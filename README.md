@@ -103,6 +103,9 @@ Prebuilt downloads for every platform are on the
 [latest release](https://github.com/immineal/tidal-wave/releases/latest).
 `ffmpeg` is optional, and only downloads and Chromecast need it.
 
+Each release carries a `SHA256SUMS` file. To check a download, put the two in
+one directory and run `sha256sum -c SHA256SUMS --ignore-missing`.
+
 <details open>
 <summary><b>Linux, Debian / Ubuntu / Mint (recommended)</b></summary>
 
@@ -115,11 +118,37 @@ sudo apt install ./tidal-wave-linux-x86_64.deb
 `apt` pulls in the Qt 6 runtime and the QML modules. Launch it from your app
 menu or run `tidal-wave`.
 
-Every Qt dependency in the package carries a floor taken from the Qt it was
-built against, so on an older distribution `apt` refuses the install and names
-what is missing. That is better than installing something that dies at load with
-`version 'Qt_6.12' not found`. If apt refuses, build from source below, which is
-far more forgiving.
+The package is built on Debian 12 and needs Qt 6.4 or newer. That means
+Debian 12 or later and Ubuntu 24.04 or later, which is also what Linux Mint 22
+and LMDE 6 are built on. It was checked by installing and starting it on
+Debian 12, Debian 13 and Ubuntu 24.04. On an older release `apt` refuses the
+install and names what is missing. Use the AppImage there.
+</details>
+
+<details>
+<summary><b>Linux, any distribution (AppImage)</b></summary>
+
+Download `tidal-wave-<version>-x86_64.AppImage`, then:
+
+```bash
+chmod +x tidal-wave-*-x86_64.AppImage
+./tidal-wave-*-x86_64.AppImage
+```
+
+Qt 6.12 and FFmpeg are inside, so no Qt has to be installed. The host supplies
+glibc 2.34 or newer, OpenGL and EGL, fontconfig, OpenSSL 3 with its CA
+certificates, libcom_err and libgpg-error. A desktop installation has all of
+them. On a minimal Debian or Ubuntu they are:
+
+```bash
+sudo apt install libgl1 libegl1 libfontconfig1 ca-certificates libcom-err2 libgpg-error0
+```
+
+The file mounts itself with FUSE. Where FUSE is missing, add
+`--appimage-extract-and-run`.
+
+It was checked by starting it in a clean container of Debian 12 and 13, Ubuntu
+22.04 and 24.04, Fedora 44 and AlmaLinux 9.
 </details>
 
 <details>
