@@ -10,6 +10,8 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QHostAddress>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QSet>
 #include <QString>
 #include <QTcpServer>
@@ -209,6 +211,33 @@ private slots:
                             .arg(slowOut.elapsedMs)
                             .arg(TidalApi::kTransferTimeoutMs)));
         QCOMPARE(slowSrv.answered, 91);
+    }
+
+    // Qt before 6.8 cannot keep an HTTP/2 connection to the audio CDN alive
+    // past a few segment requests, so media fetches there stay on HTTP/1.1.
+    void mediaFetchesStayOffHttp2OnOlderQt()
+    {
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.body = QByteArray(16, 'x');
+
+        TidalApi    api;
+        TidalClient client{&api};
+        bool done = false;
+        QNetworkReply *reply = client.fetchRaw(QUrl(srv.base() + QStringLiteral("1.mp4")),
+                                               [&done](QByteArray, QString) { done = true; });
+        QVERIFY(reply);
+        const QVariant allowed =
+            reply->request().attribute(QNetworkRequest::Http2AllowedAttribute);
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+        QVERIFY2(allowed.isValid() && !allowed.toBool(),
+                 "a media fetch on this Qt may negotiate HTTP/2, which the audio "
+                 "CDN drops after a few requests");
+#else
+        QVERIFY2(!allowed.isValid() || allowed.toBool(),
+                 "HTTP/2 is switched off for media fetches on a Qt that handles it");
+#endif
+        QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
     }
 };
 

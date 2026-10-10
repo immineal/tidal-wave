@@ -264,7 +264,14 @@ void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, c
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {
-    auto *reply = m_nam->get(makeRequest(url));
+    QNetworkRequest req = makeRequest(url);
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    // Older Qt's HTTP/2 header compression falls out of step with the audio
+    // CDN after a few requests and the server drops the connection, so a
+    // lossless track never arrives. HTTP/1.1 carries no such state.
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+#endif
+    auto *reply = m_nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
