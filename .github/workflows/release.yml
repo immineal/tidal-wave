@@ -3,6 +3,8 @@ name: Build and Release
 on:
   release:
     types: [published]
+  # A rehearsal: the same builds, started by hand, with nothing uploaded.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -84,6 +86,7 @@ jobs:
           Compress-Archive -Path build\Release\* -DestinationPath ${{ matrix.asset_name }}
 
       - name: Upload binaries to Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           # The .deb glob only matches on Linux; unmatched globs are ignored.
