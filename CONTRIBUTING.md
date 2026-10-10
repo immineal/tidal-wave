@@ -60,6 +60,14 @@ So: no `import QtCore` or `Settings` (6.5), no `Shape.CurveRenderer` (6.6), no
 `Component.onCompleted` behind a version check, where a failure costs you the
 property and leaves the page standing.
 
+The 6.4 QML parser also refuses a set of old reserved words as names, where
+6.12 takes them: `long`, `int`, `short`, `byte`, `char`, `float`, `double`,
+`boolean`, `final`, `native`, `goto`, `abstract`, `volatile`, `transient`,
+`synchronized`, `throws`, `public`, `private`, `protected`, `package`,
+`interface` and `implements`. A `var long` is "Expected token `identifier'"
+there and the whole file fails to load. In a test file that is one `compile()`
+failure in place of every case in it.
+
 ## Two other quiet failures
 
 A new file under `qml/` must be listed in `QML_FILES` in `CMakeLists.txt`.
