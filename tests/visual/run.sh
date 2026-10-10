@@ -2,7 +2,7 @@
 #
 # Screenshot harness: what 0.4.0 actually looks like.
 #
-# Two halves, because no single one of them can reach everything:
+# Three parts, because no single one of them can reach everything:
 #
 #   login   The real build-t/tidal-wave binary, launched the way a brand new
 #           install sees it - empty HOME, no saved Tidal session - on a private
@@ -18,10 +18,14 @@
 #           tests/visual/CMakeLists.txt, and grabbed with QQuickItem::grabToImage
 #           (via QtQuickTest's grabImage).
 #
+#   store   The five store screenshots: Main.qml whole, 1280x800, on the
+#           invented library in tests/visual/store/. Same runner as shots.
+#
 # Usage
-#   tests/visual/run.sh                  both halves
+#   tests/visual/run.sh                  all of them
 #   tests/visual/run.sh login            only the real-binary login shots
 #   tests/visual/run.sh shots            only the component shots
+#   tests/visual/run.sh store            only the five store screenshots
 #   tests/visual/run.sh --clean          also throw the harness build away first
 #   tests/visual/run.sh --keep           leave the sandbox behind for poking at
 #   DWELL=12 tests/visual/run.sh         seconds to let each app launch live
@@ -375,36 +379,55 @@ if wanted login; then
     fi
 fi
 
+# ── the shot runner, shared by the two sets below ───────────────────────────
+
+RUNNER_BUILT=0
+
+# build_runner <half> -> 0 with tst_shots built, 1 after saying why not
+build_runner() {
+    [ "$RUNNER_BUILT" -eq 1 ] && return 0
+
+    if [ "$CLEAN" -eq 1 ]; then
+        info "removing $HARNESS_BUILD"
+        rm -rf "$HARNESS_BUILD"
+        CLEAN=0
+    fi
+
+    if ! command -v cmake >/dev/null 2>&1; then
+        skip "$1" "cmake is not installed"
+        return 1
+    elif ! command -v Xvfb >/dev/null 2>&1; then
+        skip "$1" "Xvfb is not installed, and using the real display would touch the developer's session"
+        return 1
+    fi
+
+    # Qt is not on the default search path on this box; take the prefix the
+    # developer's own build was configured with rather than guessing.
+    prefix=$(grep -m1 '^CMAKE_PREFIX_PATH:' "$REPO_ROOT/build-t/CMakeCache.txt" 2>/dev/null \
+             | cut -d= -f2-)
+    cfg_args=(-B "$HARNESS_BUILD" -S "$SELF_DIR" -DCMAKE_BUILD_TYPE=Debug)
+    [ -n "$prefix" ] && cfg_args+=(-DCMAKE_PREFIX_PATH="$prefix")
+
+    info "configuring and building the shot runner in $HARNESS_BUILD"
+    if ! cmake "${cfg_args[@]}" >"$SCRATCH/cmake-configure.log" 2>&1; then
+        fail "$1" "cmake configure failed; see $SCRATCH/cmake-configure.log"
+        tail -20 "$SCRATCH/cmake-configure.log" | sed 's/^/         /'
+        return 1
+    elif ! cmake --build "$HARNESS_BUILD" --parallel 4 >"$SCRATCH/cmake-build.log" 2>&1; then
+        fail "$1" "cmake build failed; see $SCRATCH/cmake-build.log"
+        tail -20 "$SCRATCH/cmake-build.log" | sed 's/^/         /'
+        return 1
+    fi
+    RUNNER_BUILT=1
+}
+
 # ── half two: the components, against the test stubs ────────────────────────
 
 if wanted shots; then
     head2 "components, against tests/TestStubs.h"
 
-    if [ "$CLEAN" -eq 1 ]; then
-        info "removing $HARNESS_BUILD"
-        rm -rf "$HARNESS_BUILD"
-    fi
-
-    if ! command -v cmake >/dev/null 2>&1; then
-        skip shots "cmake is not installed"
-    elif ! command -v Xvfb >/dev/null 2>&1; then
-        skip shots "Xvfb is not installed, and using the real display would touch the developer's session"
-    else
-        # Qt is not on the default search path on this box; take the prefix the
-        # developer's own build was configured with rather than guessing.
-        prefix=$(grep -m1 '^CMAKE_PREFIX_PATH:' "$REPO_ROOT/build-t/CMakeCache.txt" 2>/dev/null \
-                 | cut -d= -f2-)
-        cfg_args=(-B "$HARNESS_BUILD" -S "$SELF_DIR" -DCMAKE_BUILD_TYPE=Debug)
-        [ -n "$prefix" ] && cfg_args+=(-DCMAKE_PREFIX_PATH="$prefix")
-
-        info "configuring and building the shot runner in $HARNESS_BUILD"
-        if ! cmake "${cfg_args[@]}" >"$SCRATCH/cmake-configure.log" 2>&1; then
-            fail shots "cmake configure failed; see $SCRATCH/cmake-configure.log"
-            tail -20 "$SCRATCH/cmake-configure.log" | sed 's/^/         /'
-        elif ! cmake --build "$HARNESS_BUILD" --parallel 4 >"$SCRATCH/cmake-build.log" 2>&1; then
-            fail shots "cmake build failed; see $SCRATCH/cmake-build.log"
-            tail -20 "$SCRATCH/cmake-build.log" | sed 's/^/         /'
-        elif ! start_xvfb 1700 1400; then
+    if build_runner shots; then
+        if ! start_xvfb 1700 1400; then
             skip shots "no free X display between :90 and :99, or Xvfb never came up"
         else
             # Bigger than any scene, because grabToImage renders the item's own
@@ -426,6 +449,54 @@ if wanted shots; then
             grep -a 'title x,' "$log" | sed 's/^.*qml: /       /'
             reap_all
             guard_check shots
+        fi
+    fi
+fi
+
+# ── the store screenshots: the whole window, on invented data ───────────────
+
+STORE_SHOTS=(home collection album nowplaying search)
+
+if wanted store; then
+    head2 "store screenshots, Main.qml on the invented library"
+
+    if build_runner store; then
+        # The 1280x800 window is drawn at 2x in the top half. The bottom half
+        # is where a new X server parks its pointer, clear of anything hoverable.
+        if ! start_xvfb 2600 3300; then
+            skip store "no free X display between :90 and :99, or Xvfb never came up"
+        else
+            info "private display $DISP (pid $XVFB_PID) at 2600x3300"
+            sandbox store
+            log=$BOX/logs/store.log
+            # Gone first, so a picture left by an earlier run cannot stand in
+            # for one this run failed to write.
+            for shot in "${STORE_SHOTS[@]}"; do rm -f "$OUT/store_$shot.png"; done
+            # Twice the pixels, averaged back down when each shot is saved: at
+            # 1x the app's hairline icon strokes come out broken.
+            scale=2
+            # Qt packs its glyph atlas in QSet order, which is random per
+            # process unless the seed is pinned, and the text pixels follow it.
+            seed=0
+            env -i "${BOX_ENV[@]}" DISPLAY="$DISP" TW_SHOT_OUT="$OUT" \
+                QT_SCALE_FACTOR=$scale QT_HASH_SEED=$seed \
+                timeout -s TERM 300 "$HARNESS_BUILD/tst_shots" \
+                -input "$SELF_DIR/store" >"$log" 2>&1
+            status=$?
+            missing=()
+            for shot in "${STORE_SHOTS[@]}"; do
+                [ -s "$OUT/store_$shot.png" ] || missing+=("store_$shot.png")
+            done
+            if [ "$status" -ne 0 ]; then
+                fail store "the shot runner exited $status"
+                grep -aE '^(FAIL|QFATAL|QWARN)' "$log" | head -20 | sed 's/^/         /'
+            elif [ ${#missing[@]} -gt 0 ]; then
+                fail store "not written: ${missing[*]}"
+            else
+                pass store "$(grep -m1 '^Totals:' "$log")"
+            fi
+            reap_all
+            guard_check store
         fi
     fi
 fi

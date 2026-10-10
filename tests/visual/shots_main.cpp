@@ -45,6 +45,7 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QFont>
 #include <QGuiApplication>
 #include <QConicalGradient>
@@ -55,9 +56,14 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickImageProvider>
+#include <QQuickItem>
+#include <QQuickItemGrabResult>
+#include <QQuickWindow>
 #include <QSurfaceFormat>
+#include <QTimer>
 
 #include "TestStubs.h"
+#include "StoreArt.h"
 
 #include "I18n.h"
 #include "Prefs.h"
@@ -72,6 +78,13 @@ public:
     ShotArtProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
 
     QImage requestImage(const QString &id, QSize *size, const QSize &requested) override {
+        // The store set has its own art; every other id keeps the wash below.
+        if (storeart::handles(id)) {
+            const QImage cover = storeart::render(id, requested);
+            if (size) *size = cover.size();
+            return cover;
+        }
+
         const int w = requested.width()  > 0 ? requested.width()  : 600;
         const int h = requested.height() > 0 ? requested.height() : 600;
 
@@ -106,6 +119,37 @@ public:
 };
 
 } // namespace
+
+// Saves an item at one pixel per logical pixel, averaged down from however
+// many device pixels it was drawn with. On a 2x display that is the
+// antialiasing the 1px icon strokes need.
+class ShotGrabber : public QObject {
+    Q_OBJECT
+
+public:
+    using QObject::QObject;
+
+    Q_INVOKABLE bool save(QQuickItem *item, const QString &path) {
+        if (!item) return false;
+        const QSharedPointer<QQuickItemGrabResult> grab = item->grabToImage();
+        if (!grab) return false;
+        QEventLoop loop;
+        connect(grab.data(), &QQuickItemGrabResult::ready, &loop, &QEventLoop::quit);
+        QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+        loop.exec();
+        const QImage drawn = grab->image();
+        if (drawn.isNull() || !item->window()) return false;
+        // Over the window's own colour, which is what shows through wherever
+        // the item paints nothing.
+        QImage flat(drawn.size(), QImage::Format_RGB32);
+        flat.setDevicePixelRatio(drawn.devicePixelRatio());
+        flat.fill(item->window()->color());
+        QPainter(&flat).drawImage(0, 0, drawn);
+        return flat.scaled(item->size().toSize(), Qt::IgnoreAspectRatio,
+                           Qt::SmoothTransformation)
+                   .save(path);
+    }
+};
 
 class ShotSetup : public QObject {
     Q_OBJECT
@@ -153,6 +197,7 @@ public slots:
         ctx->setContextProperty(QStringLiteral("i18n"), m_i18n);
         ctx->setContextProperty(QStringLiteral("shotOutDir"),
                                 qEnvironmentVariable("TW_SHOT_OUT"));
+        ctx->setContextProperty(QStringLiteral("shotGrabber"), new ShotGrabber(this));
     }
 
 private:
