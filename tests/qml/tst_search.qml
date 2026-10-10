@@ -58,7 +58,7 @@ TestCase {
     function init() {
         app.setReducedMotionForTest(true)   // no fades to wait out
         auth.setStateForTest(2)             // LoggedIn
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         auth.setHasSavedCredentialsForTest(false)
         library.setEntriesForTest([])
         library.setTracksForTest([])
@@ -1285,10 +1285,10 @@ TestCase {
         search(win, "kend")
 
         compare(orderNames(win.page)[0], "Artists",
-                "this case records a known departure from the agreed example "
-                + "(`kend` -> default). If it starts passing as written in "
-                + "HANDOFF.md, the rule changed and this case is the one to "
-                + "delete - not the example.")
+                "this case records a known departure from the rule's own "
+                + "example (`kend` -> default order). If the order is the "
+                + "default now, the rule changed and this case is the one "
+                + "to delete.")
         compare(win.page.scoreKind(3, win.page.artists, "kend"), 311)
         compare(win.page.scoreKind(4, win.page.playlists, "kend"), 207)
     }
@@ -1458,8 +1458,7 @@ TestCase {
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "Tracks led on a query that matches only the artist column, "
-                + "which is the widening LibraryIndex and SPEC-0.4.0 both "
-                + "refused")
+                + "which is the widening LibraryIndex refuses")
         compare(win.page.scoreKind(1, win.page.tracks, "beispielkapelle"), 0,
                 "a track scored on something other than its title")
     }

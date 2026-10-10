@@ -96,7 +96,7 @@ TestCase {
         app.setReducedMotionForTest(false)
         prefs.setSidebarWidthForTest(220)
         auth.setStateForTest(2)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest(makeEntries())
         library.setTracksForTest([])
         library.resetCallsForTest()

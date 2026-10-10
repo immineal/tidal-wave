@@ -3083,7 +3083,7 @@ TestCase {
                + "button that stands out from the options above it")
 
         var glyph = findGlyph(start)
-        verify(glyph, "Start carries no glyph, and the user asked for one")
+        verify(glyph, "Start carries no glyph")
         verify(glyph.name.length > 0 && glyph.width > 0 && glyph.height > 0,
                "Start's glyph is \"" + glyph.name + "\" at "
                + glyph.width.toFixed(1) + "x" + glyph.height.toFixed(1)

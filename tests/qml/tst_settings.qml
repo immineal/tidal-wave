@@ -136,7 +136,7 @@ TestCase {
         prefs.quitOnClose = false
         prefs.setSidebarWidthForTest(sidebarWidth)
         app.setReducedMotionForTest(true)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest([])
         pins.setItemsForTest([])
 

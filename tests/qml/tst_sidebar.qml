@@ -85,7 +85,7 @@ TestCase {
     function init() {
         prefs.setSidebarWidthForTest(defaultSidebar)
         app.setReducedMotionForTest(false)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest(makeEntries())
         library.setTracksForTest(makeTracks())
         library.resetCallsForTest()
@@ -1219,14 +1219,14 @@ TestCase {
     // ── S10: the footer ──────────────────────────────────────────────────
 
     function test_footer_shows_the_username_and_no_avatar() {
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         var host = showHost(1280, 700)
         var sb = host.sidebar
         settle(host.contentItem)
 
         var name = findByName(sb, "sidebarAccountName")
         verify(name && name.visible, "the footer has no account name")
-        compare(name.text, "linus", "the footer must show the username, not the email")
+        compare(name.text, "robin", "the footer must show the username, not the email")
         verify(name.text.indexOf("@") === -1, "that looks like an email address")
         compare(collectByName(sb, "sidebarAvatar", []).length, 0,
                 "the avatar icon was dropped on purpose")

@@ -51,7 +51,7 @@ TestCase {
         prefs.setSidebarWidthForTest(defaultSidebar)
         auth.setStateForTest(2)          // LoggedIn
         auth.setHasSavedCredentialsForTest(false)
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         library.setEntriesForTest([])
         library.setTracksForTest([])
         pins.setItemsForTest([])

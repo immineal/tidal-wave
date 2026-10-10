@@ -83,7 +83,7 @@ TestCase {
     function init() {
         prefs.setSidebarWidthForTest(220)
         app.setReducedMotionForTest(true)   // no slide to wait out
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
         pins.setItemsForTest([])            // fires applyPins() through the Connections
         library.setTracksForTest(makeTracks())
         library.resetCallsForTest()
