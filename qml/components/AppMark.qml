@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Window
 import TidalWave
 
 // The app mark: three parallel bands on a rounded accent tile, the same
@@ -56,46 +57,13 @@ Item {
         // rather than a sharp tile small and a near-circle large.
         radius: Theme.radiusMark * root._side / 64
 
-        Shape {
-            id: bands
-            objectName: "appMarkBands"
+        // The Shape is built anew each time the mark enters a scene. Qt 6.4's
+        // software renderer crashes on one that left a scene and came back.
+        Loader {
             width: 64
             height: 64
-            antialiasing: true
-            smooth: true
+            active: root.Window.window !== null
 
-            // Retina found the limit of `antialiasing: true` on its own. The
-            // geometry renderer flattens these curves into triangles and leaves
-            // the smoothing to the window's multisampling, which the app asks
-            // for 4 samples of - and 4 samples is 4 coverage levels, which on a
-            // shallow curve at 2x reads as visible stair-stepping rather than as
-            // a soft edge. The curve renderer Qt 6.6 added computes coverage
-            // analytically in the fragment shader instead, so the edge is smooth
-            // at any scale factor and it needs no multisampling and no layer.
-            //
-            // Set here and not on VectorIcon: a layer or a heavier renderer is
-            // per-item cost, VectorIcon is drawn once per row in virtualised
-            // lists that are hundreds of rows long, and the mark is large, few
-            // and the worst offender. Deliberately NOT `layer.samples`, which is
-            // the other way to fix this: that puts an FBO under every item it is
-            // set on, and measured on the software backend it made this edge
-            // *worse*, dropping it from 93 distinct coverage levels to 42,
-            // because an MSAA resolve quantises what was an analytic edge.
-            //
-            // Assigned rather than declared, and guarded by the property's own
-            // existence, because preferredRendererType arrived in Qt 6.6 and this
-            // project still builds against the 6.4 on Debian bookworm, where
-            // declaring it would be a "cannot assign to non-existent property"
-            // at load - the same class of breakage as commit 2e78e32. The `in`
-            // test is false there and short-circuits before Shape.CurveRenderer
-            // is ever named, so 6.4 sees no warning and no change. The software
-            // backend ignores the preference entirely; its output is unchanged
-            // byte for byte, which is what keeps Prefs::softwareRendering the
-            // same drawing as before.
-            Component.onCompleted: {
-                if ("preferredRendererType" in bands)
-                    bands.preferredRendererType = Shape.CurveRenderer
-            }
             // Drawn at the design size and scaled as a whole, the way
             // VectorIcon does it, so the numbers above are the only ones.
             transform: Scale {
@@ -103,23 +71,63 @@ Item {
                 yScale: tile.height / 64
             }
 
-            // Filled, not stroked: a stroked wave shows a rounded line end
-            // where it meets the tile edge. Each band spans the full 0..64, so
-            // its flat ends sit exactly on that edge and never show.
-            ShapePath {
-                strokeWidth: 0
-                fillColor: root.brandInk
-                PathSvg { path: root._band(root._centres[0]) }
-            }
-            ShapePath {
-                strokeWidth: 0
-                fillColor: root.brandInk
-                PathSvg { path: root._band(root._centres[1]) }
-            }
-            ShapePath {
-                strokeWidth: 0
-                fillColor: root.brandInk
-                PathSvg { path: root._band(root._centres[2]) }
+            sourceComponent: Shape {
+                id: bands
+                objectName: "appMarkBands"
+                antialiasing: true
+                smooth: true
+
+                // Retina found the limit of `antialiasing: true` on its own. The
+                // geometry renderer flattens these curves into triangles and leaves
+                // the smoothing to the window's multisampling, which the app asks
+                // for 4 samples of - and 4 samples is 4 coverage levels, which on a
+                // shallow curve at 2x reads as visible stair-stepping rather than as
+                // a soft edge. The curve renderer Qt 6.6 added computes coverage
+                // analytically in the fragment shader instead, so the edge is smooth
+                // at any scale factor and it needs no multisampling and no layer.
+                //
+                // Set here and not on VectorIcon: a layer or a heavier renderer is
+                // per-item cost, VectorIcon is drawn once per row in virtualised
+                // lists that are hundreds of rows long, and the mark is large, few
+                // and the worst offender. Deliberately NOT `layer.samples`, which is
+                // the other way to fix this: that puts an FBO under every item it is
+                // set on, and measured on the software backend it made this edge
+                // *worse*, dropping it from 93 distinct coverage levels to 42,
+                // because an MSAA resolve quantises what was an analytic edge.
+                //
+                // Assigned rather than declared, and guarded by the property's own
+                // existence, because preferredRendererType arrived in Qt 6.6 and this
+                // project still builds against the 6.4 on Debian bookworm, where
+                // declaring it would be a "cannot assign to non-existent property"
+                // at load - the same class of breakage as commit 2e78e32. The `in`
+                // test is false there and short-circuits before Shape.CurveRenderer
+                // is ever named, so 6.4 sees no warning and no change. The software
+                // backend ignores the preference entirely; its output is unchanged
+                // byte for byte, which is what keeps Prefs::softwareRendering the
+                // same drawing as before.
+                Component.onCompleted: {
+                    if ("preferredRendererType" in bands)
+                        bands.preferredRendererType = Shape.CurveRenderer
+                }
+
+                // Filled, not stroked: a stroked wave shows a rounded line end
+                // where it meets the tile edge. Each band spans the full 0..64, so
+                // its flat ends sit exactly on that edge and never show.
+                ShapePath {
+                    strokeWidth: 0
+                    fillColor: root.brandInk
+                    PathSvg { path: root._band(root._centres[0]) }
+                }
+                ShapePath {
+                    strokeWidth: 0
+                    fillColor: root.brandInk
+                    PathSvg { path: root._band(root._centres[1]) }
+                }
+                ShapePath {
+                    strokeWidth: 0
+                    fillColor: root.brandInk
+                    PathSvg { path: root._band(root._centres[2]) }
+                }
             }
         }
     }

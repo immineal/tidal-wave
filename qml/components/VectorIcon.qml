@@ -25,14 +25,16 @@ Item {
     // "track" is not drawn as a path; see trackStrip below for why.
     readonly property bool isSnappedBars: name === "track"
 
-    Shape {
+    // The Shape is built anew each time the icon enters a scene. Qt 6.4's
+    // software renderer crashes on one that left a scene and came back, as
+    // every glyph in a menu does when the menu reopens.
+    Loader {
         id: shapeItem
         visible: !root.isSnappedBars
         width: 24
         height: 24
         anchors.centerIn: parent
-        antialiasing: true
-        smooth: true
+        active: root.Window.window !== null
 
         transform: Scale {
             origin.x: 12
@@ -41,32 +43,37 @@ Item {
             yScale: (root.height * 0.85) / 24
         }
 
-        ShapePath {
-            strokeColor: root.color
-            strokeWidth: root.isFilled
-                         ? 0
-                         : (root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth)
-            fillColor: root.isFilled ? root.color : "transparent"
-            capStyle: ShapePath.RoundCap
-            joinStyle: ShapePath.RoundJoin
-            PathSvg { path: root._pathFor(root.name) }
-        }
+        sourceComponent: Shape {
+            antialiasing: true
+            smooth: true
 
-        // Solid detail drawn on top of a stroked glyph.
-        ShapePath {
-            strokeWidth: 0
-            fillColor: root.color
-            PathSvg { path: root._accentFor(root.name) }
-        }
+            ShapePath {
+                strokeColor: root.color
+                strokeWidth: root.isFilled
+                             ? 0
+                             : (root._fat.indexOf(root.name) !== -1 ? root.strokeWidth * 1.45 : root.strokeWidth)
+                fillColor: root.isFilled ? root.color : "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: root._pathFor(root.name) }
+            }
 
-        // Stroked detail drawn on top of a filled glyph.
-        ShapePath {
-            strokeColor: root.color
-            strokeWidth: root._overlayFor(root.name) === "" ? 0 : root.strokeWidth
-            fillColor: "transparent"
-            capStyle: ShapePath.RoundCap
-            joinStyle: ShapePath.RoundJoin
-            PathSvg { path: root._overlayFor(root.name) }
+            // Solid detail drawn on top of a stroked glyph.
+            ShapePath {
+                strokeWidth: 0
+                fillColor: root.color
+                PathSvg { path: root._accentFor(root.name) }
+            }
+
+            // Stroked detail drawn on top of a filled glyph.
+            ShapePath {
+                strokeColor: root.color
+                strokeWidth: root._overlayFor(root.name) === "" ? 0 : root.strokeWidth
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg { path: root._overlayFor(root.name) }
+            }
         }
     }
 
