@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "ImageProvider.h"
 #include "CoverColor.h"
 #include <QNetworkReply>
@@ -22,8 +24,8 @@ QQuickImageResponse *TidalImageProvider::requestImageResponse(
 ImageResponse::ImageResponse(const QString &id, const QUrl &url, const QSize &size)
     : m_id(id), m_size(size)
 {
-    // Create QNAM on the calling thread (QQuickPixmapReader) so there's no
-    // cross-thread parent/child relationship when the reply is created.
+    // The QNAM is created on the calling thread (QQuickPixmapReader), so the
+    // reply has no cross-thread parent.
     auto *nam = new QNetworkAccessManager();
     auto *reply = nam->get(QNetworkRequest(url));
     connect(reply, &QNetworkReply::finished, this, [this, reply, nam]() {
@@ -35,16 +37,9 @@ ImageResponse::ImageResponse(const QString &id, const QUrl &url, const QSize &si
             QImageReader reader(&buf);
             if (m_size.isValid()) reader.setScaledSize(m_size);
             m_image = reader.read();
-            // The fullscreen Now Playing page paints a gradient derived from
-            // the artwork, and this is the one place in the app where a cover
-            // exists as a QImage on a thread that is not the GUI thread. The
-            // store skips an id it already has, so this costs a 32x32 downscale
-            // once per cover and nothing on every later load of the same one.
-            //
-            // Unconditional, rather than gated on the preference: the colour
-            // has to be here the moment somebody turns the preference on, and
-            // by then Qt's pixmap cache is holding the artwork and this
-            // provider will never be asked for it again.
+            // Records the cover's colour off the GUI thread, once per cover.
+            // Not gated on the preference: once Qt's pixmap cache holds the
+            // artwork this provider is not called for it again.
             if (!m_image.isNull())
                 CoverColorStore::instance()->record(m_id, m_image);
         }

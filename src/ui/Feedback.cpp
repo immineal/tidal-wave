@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Feedback.h"
 
 #include "UpdateCheck.h"
@@ -9,21 +11,16 @@
 
 namespace {
 
-// The mailbox the project keeps for this, on the maintainer's own domain. The
-// app only ever hands it to a mail client; it never logs in to it, so there is
-// nothing here for a password to be needed for.
+// The project's feedback mailbox. Only ever handed to a mail client.
 constexpr auto kMailbox = "tidal-wave@linu.li";
 
-// Everything outside the unreserved set, encoded. QUrl::toPercentEncoding with
-// no exclusions is the strict reading: a space becomes %20 rather than +, and a
-// newline becomes %0A, which is what GitHub's form and every mail client expect
-// in a query value.
+// Encodes everything outside the unreserved set: a space becomes %20 and a
+// newline %0A, as GitHub's form and mail clients expect in a query value.
 QString enc(const QString &s) {
     return QString::fromLatin1(QUrl::toPercentEncoding(s));
 }
 
-// "v0.4.0" - the way the Account card prints it, so a report and the panel the
-// user read it off agree.
+// The version with a leading "v", as the Settings panel prints it.
 QString tagged(const QString &version) {
     return version.isEmpty() ? version : QLatin1String("v") + version;
 }
@@ -41,9 +38,7 @@ QString Feedback::appVersion() const {
 }
 
 QString Feedback::operatingSystem() const {
-    // "Arch Linux", "Debian GNU/Linux 12 (bookworm)", "macOS 15.1". Qt reads it
-    // off /etc/os-release and friends, so it is the name the user's own system
-    // calls itself rather than a kernel string nobody recognises.
+    // The name the system gives itself, such as the distribution's.
     return QSysInfo::prettyProductName();
 }
 
@@ -52,9 +47,8 @@ QString Feedback::qtCompiledVersion() const {
 }
 
 QString Feedback::qtRuntimeVersion() const {
-    // Not the same as the line above, and that is the point: a .deb built
-    // against 6.12 can be running on the 6.11 the distribution installed, and a
-    // report carrying one number cannot show it.
+    // Can differ from the compiled version: a package built against one Qt
+    // may run on the one the distribution installed.
     return QLatin1String(qVersion());
 }
 
@@ -74,17 +68,14 @@ QString Feedback::issueUrlFor(const QString &title, const QString &body) {
 }
 
 QString Feedback::mailUrlFor(const QString &subject) {
-    // The address is left alone. RFC 6068 wants the addr-spec literal in the
-    // path, "@" included; percent-encoding it gives some clients an address
-    // they cannot parse.
+    // The address is not encoded: RFC 6068 wants the addr-spec literal, "@"
+    // included, and some clients cannot parse an encoded one.
     return QStringLiteral("mailto:%1?subject=%2")
         .arg(QLatin1String(kMailbox), enc(subject));
 }
 
 QString Feedback::issueTitleFor(const QString &version) {
-    // A title that is a whole sentence even if the user never touches it: a
-    // prefilled "Short summary here" left in place is an issue titled "Short
-    // summary here".
+    // A usable title even if the user never edits it.
     return tr("Problem with Tidal Wave %1").arg(tagged(version));
 }
 
@@ -94,10 +85,8 @@ QString Feedback::mailSubjectFor(const QString &version) {
 
 QString Feedback::issueBodyFor(const QString &version, const QString &os,
                                const QString &qtCompiled, const QString &qtRuntime) {
-    // GitHub renders the body as Markdown, so the two blanks are headings with
-    // nothing under them: a form with a visible gap in it is answered, and a
-    // paragraph of instructions is deleted unread. The headings are translated;
-    // the "###" and the bullets are not, because they are not words.
+    // GitHub renders the body as Markdown. The headings are translated, the
+    // "###" and the bullets are not.
     const QString h = QStringLiteral("### ");
     const QString b = QStringLiteral("- ");
     QStringList lines;

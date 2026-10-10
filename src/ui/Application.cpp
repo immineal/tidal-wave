@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Application.h"
 #include "ui/SignalWatcher.h"
 #include "ui/I18n.h"
@@ -76,39 +78,33 @@ static void silenceAlsa() {
 }
 
 static QtMessageHandler originalMessageHandler = nullptr;
-// Decided once in silenceLogsAndAlsa(); see audioServerAbsent() for the rule.
+// Set once in silenceLogsAndAlsa().
 static bool suppressAudioServerNoise = false;
 
-// Whether this machine is offering no audio server at all.
-//
-// The two connect errors below are only noise when there is nothing to connect
-// to. Someone who is running PipeWire or PulseAudio and still cannot reach it
-// has a real fault, and the one line saying so is the only clue they get, so
-// that case is left alone and only a machine with no server anywhere goes
-// quiet. Env first: being pointed at a server explicitly counts as having one.
+// True when no audio server is offered at all. A connect error on a machine
+// that runs PipeWire or PulseAudio is a real fault and stays in the log.
+// An explicit server in the environment counts as having one.
 static bool audioServerAbsent() {
 #if defined(Q_OS_LINUX)
     if (qEnvironmentVariableIsSet("PULSE_SERVER") || qEnvironmentVariableIsSet("PIPEWIRE_REMOTE"))
         return false;
     const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
     if (runtime.isEmpty())
-        return false;  // nothing to go on, so assume there is a server and keep the log
+        return false;  // nothing to go on: assume a server and keep the log
     return !QFile::exists(runtime + QStringLiteral("/pipewire-0"))
         && !QFile::exists(runtime + QStringLiteral("/pulse/native"));
 #else
-    // Neither server exists on Windows or macOS, so nothing to suppress.
     return false;
 #endif
 }
 
 static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     if (msg.contains(QStringLiteral("spaVisitChoice"))) {
-        return; // Ignore and silence this log message completely
+        return;
     }
     if (suppressAudioServerNoise && Application::isAudioServerStartupNoise(msg)) {
         return;
     }
-    // Not gated on anything: this one is printed on every launch, everywhere.
     if (Application::isMediaBackendStartupNoise(msg)) {
         return;
     }
@@ -121,32 +117,21 @@ static void myMessageHandler(QtMsgType type, const QMessageLogContext &context, 
 }
 
 static void silenceLogsAndAlsa() {
-    // Silence Qt Multimedia / FFmpeg logs
     QLoggingCategory::setFilterRules(QStringLiteral("qt.multimedia*=false"));
 
-    // The PipeWire and PulseAudio connect errors escape that rule, so they get
-    // their own gate in the handler below. Sampled here, before anything has
-    // had a chance to start an audio server, which is also when the answer is
-    // cheapest to get.
+    // The PipeWire and PulseAudio connect errors escape that rule. Sampled
+    // here, before anything can have started an audio server.
     suppressAudioServerNoise = audioServerAbsent();
 
-    // Intercept and filter out "spaVisitChoice" log messages
     originalMessageHandler = qInstallMessageHandler(myMessageHandler);
 
-    // Silence ALSA stderr warnings/errors (e.g. spaVisitChoice: parse error).
-    // ALSA is Linux-only; the dlopen is a no-op elsewhere but skip it for clarity.
 #ifdef Q_OS_LINUX
     silenceAlsa();
 #endif
 }
 
-// Locates one of the bundled icon files in the Qt resource system.
-//
-// The QML module's RESOURCES prefix moved from ":/TidalWave/..." to
-// ":/qt/qml/TidalWave/..." when QTP0001 was set to NEW (commit 9b2d27f). A
-// hardcoded single path silently broke the tray icon when that happened, so we
-// probe both prefixes and return whichever actually exists - future policy
-// churn can't blank the tray again.
+// The QML module's resource prefix depends on CMake policy QTP0001, so both
+// prefixes are probed.
 static QString appIconResourcePath(const QString &fileName) {
     const QStringList candidates = {
         QStringLiteral(":/qt/qml/TidalWave/assets/") + fileName,
@@ -160,26 +145,9 @@ static QString appIconResourcePath(const QString &fileName) {
 }
 
 #ifdef Q_OS_LINUX
-// Copies the bundled icon into the user's hicolor theme, so an app started
-// straight out of a build tree still has a named icon to hand the tray.
-//
-// Linux only, and not because of the paths. QIcon::hasThemeIcon() is false on
-// macOS whatever is installed, since there is no XDG icon theme to look in, so
-// the guard below could never be satisfied there and every single launch wrote a
-// fresh hicolor tree into ~/Library/Application Support/icons that nothing on
-// the system would ever read.
-//
-// This only ever runs when the theme has no "tidal-wave" in it, which is the
-// important part. It used to run on every single launch and rescale the
-// embedded PNG over whatever `cmake --install` had written, so one stale binary
-// left in ~/.local/bin would stamp old artwork back over a freshly installed
-// icon on every start. That is the loop the old logo kept coming back through,
-// and why fixing the asset alone never stuck. An installed icon now wins.
-//
-// The files are copied, never rescaled: the SVG is what the desktop should
-// render at an arbitrary size, and a raster upscaled from the 128 (the old code
-// wrote a 256 that way) is worse than letting it do that, while still being
-// preferred over the SVG by the icon lookup.
+// Copies the bundled icon into the user's hicolor theme so a run from a build
+// tree has a named icon. Linux only: macOS has no XDG icon theme. Call it only
+// when the theme lacks the icon, so an installed one is never overwritten.
 static void exportIconToUserTheme(const QString &iconName) {
     const QString base = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                          + QStringLiteral("/icons/hicolor");
@@ -199,8 +167,7 @@ static void exportIconToUserTheme(const QString &iconName) {
             continue;
         const QString path = QStringLiteral("%1/%2.%3")
                                  .arg(dir, iconName, QString::fromLatin1(c.suffix));
-        // QFile::copy refuses to overwrite, and a half-written file from a
-        // previous run would otherwise be kept for ever.
+        // QFile::copy refuses to overwrite.
         QFile::remove(path);
         if (QFile::copy(res, path)) {
             QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner
@@ -209,47 +176,28 @@ static void exportIconToUserTheme(const QString &iconName) {
         }
     }
 
-    // Force Qt's icon-theme loader to re-scan, so the file just written is
-    // found on this launch rather than the next one; the index it built a
-    // moment ago does not have it.
+    // Makes Qt's icon-theme loader re-scan, so the new file is found now.
     if (wrote && !QIcon::themeName().isEmpty())
         QIcon::setThemeName(QIcon::themeName());
 }
 #endif // Q_OS_LINUX
 
-// Returns the application icon as a *named* theme icon ("tidal-wave").
-//
-// KDE Plasma's system tray uses the StatusNotifierItem (SNI) protocol. A tray
-// icon supplied only as a serialized pixmap (what you get from QIcon(":/...png"))
-// frequently renders blank on Plasma 6, even though the same QIcon works fine for
-// the window/taskbar icon (those go through X11's native _NET_WM_ICON). SNI hosts
-// render reliably when the icon is referenced by NAME and resolved from the icon
-// theme. So the icon has to be in the theme, and the tray has to be handed a
-// named icon rather than a pixmap. Normally `cmake --install` puts it there (see
-// the hicolor install rules in CMakeLists.txt); exportIconToUserTheme() is the
-// fallback for when nobody has.
+// The icon by theme name. A StatusNotifierItem tray (Plasma 6) can render a
+// pixmap-only icon blank, so the tray needs a name the theme resolves.
 static QIcon loadAppIcon() {
     const QString iconName = QStringLiteral("tidal-wave");
 #ifdef Q_OS_LINUX
     if (!QIcon::hasThemeIcon(iconName))
         exportIconToUserTheme(iconName);
 #endif
-    // Named themed icon (so SNI sends IconName), with the embedded pixmap as a
-    // fallback for non-KDE trays / if theme lookup fails.
+    // The embedded pixmap is the fallback when the theme lookup fails.
     return QIcon::fromTheme(iconName,
                             QIcon(appIconResourcePath(QStringLiteral("icon.png"))));
 }
 
-// Whether the desktop has asked for less animation (SPEC X6).
-//
-// Qt has no cross-platform hint for this - QStyleHints carries nothing of the
-// kind as of 6.12 - so the two Linux desktops that do expose one are read
-// directly out of their config files. Both are plain INI, so there is no new
-// dependency and nothing to fail at runtime; an absent or unreadable file just
-// means "no preference". Windows (SPI_GETCLIENTAREAANIMATION) and macOS
-// (NSWorkspace.accessibilityDisplayShouldReduceMotion) expose one too and are
-// not read yet; the environment override below works everywhere in the
-// meantime.
+// Whether the desktop asks for less animation. Qt has no hint for this up to
+// 6.12, so the KDE and GTK settings are read from their INI files. Windows and
+// macOS are not read; the environment override works everywhere.
 static bool detectReducedMotion() {
     const QByteArray forced = qgetenv("TIDALWAVE_REDUCED_MOTION");
     if (!forced.isEmpty())
@@ -259,8 +207,7 @@ static bool detectReducedMotion() {
     const QString cfg =
         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     if (!cfg.isEmpty()) {
-        // KDE: System Settings > Accessibility, the animation speed slider at
-        // its left-hand end, which writes a factor of 0.
+        // KDE: the animation speed slider at its slowest writes a factor of 0.
         QSettings kde(cfg + QStringLiteral("/kdeglobals"), QSettings::IniFormat);
         const QVariant factor = kde.value(QStringLiteral("KDE/AnimationDurationFactor"));
         if (factor.isValid() && factor.toDouble() <= 0.0)
@@ -277,28 +224,13 @@ static bool detectReducedMotion() {
 }
 
 #if defined(Q_OS_UNIX)
-// A Unix socket address is a path in a fixed-size field, and bind() refuses
-// anything that does not fit in it with its terminator.
-//
-// The size of that field is not the same everywhere, which is what this used to
-// get wrong: it was written out as a literal 107, which is Linux's
-// sizeof(sun_path) - 1. Apple's sun_path is 104 bytes, so on macOS the real
-// limit is two shorter than the number here and a path in between passed
-// socketDirFits() and then failed to bind - which is exactly the failure this
-// check exists to prevent. Taken from the header instead of written out, so it
-// cannot be wrong on a platform nobody has compiled for yet either.
-//
-// Two rather than one, because the question is not what the kernel will take but
-// what QLocalServer will, and those turn out to differ by a byte. Measured on
-// Qt 6.12 and Linux, where sizeof(sun_path) is 108: a raw bind() succeeds at 107
-// bytes and fails at 108, while QLocalServer::listen() succeeds at 106 and fails
-// at 107 with "Name error". QLocalServer is what binds this address, so its
-// answer is the one that matters, and a byte of headroom costs nothing - the
-// addresses this picks in practice are around 62 bytes.
+// The longest socket path QLocalServer will bind. Taken from the header since
+// sun_path differs per platform (108 bytes on Linux, 104 on macOS). Minus two:
+// QLocalServer::listen() fails one byte before a raw bind() does.
 static constexpr int kUnixSocketPathMax = int(sizeof(sockaddr_un::sun_path)) - 2;
 
-// Candidate directory for the socket: it has to exist and the finished path
-// has to fit sun_path, measured in bytes, not characters.
+// The directory has to exist and the finished path has to fit sun_path,
+// counted in bytes.
 static bool socketDirFits(const QString &dir, const QString &leaf) {
     if (dir.isEmpty())
         return false;
@@ -317,19 +249,9 @@ int Application::unixSocketPathMax() {
 #endif
 }
 
-// Where the single-instance rendezvous socket lives for this user.
-//
-// The old flat "TidalWaveSingleInstanceSocket" had two faults. It carried no
-// uid, so two people signed into one machine fought over one file in a shared
-// /tmp and the loser never got a window. And QLocalServer resolves a bare name
-// against $TMPDIR, so a long enough $TMPDIR pushes the address past sun_path,
-// bind() fails, and every launch from then on is a fresh instance.
-//
-// Hence the uid in the name, and on Unix an explicit directory: $XDG_RUNTIME_DIR
-// first, which is per-user, mode 0700, short, and where runtime sockets belong;
-// then the temp dir, honouring $TMPDIR the way the old code did; then /tmp,
-// which always fits. The result is an absolute path, which QLocalServer and
-// QLocalSocket both take as the address itself.
+// The uid is in the name so two users on one machine do not share a socket.
+// An absolute path, since QLocalServer resolves a bare name against $TMPDIR,
+// which can push the address past sun_path.
 QString Application::singleInstanceSocketName() {
 #if defined(Q_OS_UNIX)
     const QString leaf = QStringLiteral("TidalWave-%1").arg(static_cast<uint>(::getuid()));
@@ -342,13 +264,10 @@ QString Application::singleInstanceSocketName() {
         if (socketDirFits(dir, leaf))
             return dir + QLatin1Char('/') + leaf;
     }
-    // Only reachable if even /tmp is missing. Hand back the shortest address
-    // there is and let the caller report the failure.
+    // Only reachable if even /tmp is missing; the caller reports the failure.
     return QStringLiteral("/tmp/") + leaf;
 #else
-    // Windows named pipes are a flat namespace under \\.\pipe\ with no path
-    // length worth guarding, but the namespace is machine-wide, so the name
-    // still has to say who it belongs to.
+    // The Windows pipe namespace is machine-wide, so the name carries the user.
     const QString name = qEnvironmentVariable("USERNAME");
     QString user;
     for (const QChar c : name) {
@@ -369,11 +288,8 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
     if (server->serverError() != QAbstractSocket::AddressInUseError)
         return false;
 
-    // The address is taken. A socket file outlives the process that made it,
-    // so after a crash or a kill -9 this fails on a machine where nothing is
-    // listening at all, and the old blind removeServer() before listen() cured
-    // that by being willing to evict a live instance too. Knock first instead:
-    // only an address that refuses a connection is stale.
+    // A socket file outlives a crashed process. Only an address that refuses
+    // a connection is stale; removing it blindly would evict a live instance.
     QLocalSocket probe;
     probe.connectToServer(socketName);
     if (probe.waitForConnected(250)) {
@@ -386,35 +302,21 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
 }
 
 bool Application::shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose) {
-    // With a tray icon, closing the window hides it and the tray brings it
-    // back. With no tray there is nothing to click and no way to quit short of
-    // killing the process, so the close has to be a quit.
-    //
-    // The preference is the other way into the same answer, for the people who
-    // read a close button on a Linux desktop as "quit" and were surprised to
-    // find the app still running. It cannot turn the no-tray rule off, which is
-    // why it is an or and not the whole condition.
+    // Without a tray a hidden window cannot be brought back, so the close has
+    // to quit whatever the preference says.
     return !trayAvailable || quitOnClose;
 }
 
 bool Application::isAudioServerStartupNoise(const QString &msg) {
-    // Both come out of libQt6Multimedia through qInfo()/qWarning() on the
-    // *default* logging category, which is exactly why the qt.multimedia*=false
-    // rule in silenceLogsAndAlsa() never touched them. Matched on the stable
-    // half of each line; the reason ("Host is down") is appended by Qt.
+    // Qt Multimedia logs both on the default category, which no
+    // qt.multimedia rule reaches. Qt appends the reason, so match the start.
     return msg.contains(QLatin1String("Failed to connect to pipewire instance"))
         || msg.contains(QLatin1String("pa_context_connect() failed"));
 }
 
 bool Application::isMediaBackendStartupNoise(const QString &msg) {
-    // Debian 12's Qt 6.4.2 ffmpeg media plugin opens with a bare
-    //     >>>> listing codecs
-    // on qDebug()'s *default* category, so neither qt.multimedia*=false nor
-    // anything else category-based reaches it - only "default=false" does, and
-    // that would silence the app's own messages too. It is a leftover debug print
-    // in the plugin, not information, and selecting the FFmpeg backend on 6.4
-    // (see src/main.cpp) is what makes it appear, so it is filtered here rather
-    // than left to spoil an otherwise empty stderr.
+    // The Qt 6.4 FFmpeg plugin prints this on the default category, so no
+    // category rule can silence it without silencing the app's own messages.
     return msg.startsWith(QLatin1String(">>>> listing codecs"));
 }
 
@@ -428,35 +330,28 @@ double Application::snapScaleFactor(double factor) {
 double Application::scaleFactorCeilingFor(const ScreenMetrics &screen) {
     if (screen.widthPx <= 0 || screen.heightPx <= 0)
         return kMaxScaleFactor;
-    // The window is sized in logical pixels, so the device pixels it asks for
-    // are its logical size times the factor. Invert that for each axis.
+    // The window is sized in logical pixels: device pixels = logical * factor.
     const double byWidth  = (screen.widthPx  * kWindowFitFraction) / kDefaultWindowWidth;
     const double byHeight = (screen.heightPx * kWindowFitFraction) / kDefaultWindowHeight;
     const double fits = std::min(byWidth, byHeight);
-    // Floor, not round, to the step: the point is that the window fits, and
-    // rounding up here would defeat it by a quarter step.
+    // Floor to the step: rounding up could make the window too large to fit.
     const double stepped = std::floor(fits / kScaleFactorStep) * kScaleFactorStep;
     return std::clamp(stepped, kMinScaleFactor, kMaxScaleFactor);
 }
 
 double Application::autoScaleFactor(const ScreenMetrics &screen) {
-    // The platform has already said something, so it knows its display better
-    // than any rule here can: a compositor with per-output scaling, or an OS with
-    // real DPI awareness. This is the branch that keeps a Wayland session and a
-    // Retina Mac correct without naming either of them.
+    // A platform that already scales (Wayland per-output, macOS) is left alone.
     if (screen.platformDpr > 0 && !qFuzzyCompare(screen.platformDpr, 1.0))
         return kMinScaleFactor;
 
-    // No usable density: nothing to derive from. Qt reports physicalDpi equal to
-    // logicalDpi when the platform gives it no physical size at all, so this is
-    // also the EDID-is-absent case.
+    // Qt reports physicalDpi equal to logicalDpi when the platform gives it no
+    // physical size, so equality means there is no density to derive from.
     if (!(screen.physicalDpi > 0) || !std::isfinite(screen.physicalDpi))
         return kMinScaleFactor;
     if (screen.logicalDpi > 0
         && qFuzzyCompare(screen.physicalDpi, screen.logicalDpi))
         return kMinScaleFactor;
-    // A monitor claiming a density no panel has is lying - a projector with no
-    // EDID, a KVM, a VM with a made-up physical size. Refuse rather than guess.
+    // A density no panel has means a made-up physical size (projector, KVM, VM).
     constexpr double kAbsurdDpi = 1000.0;
     if (screen.physicalDpi > kAbsurdDpi)
         return kMinScaleFactor;
@@ -464,31 +359,26 @@ double Application::autoScaleFactor(const ScreenMetrics &screen) {
     const double wanted = snapScaleFactor(screen.physicalDpi / kAutoTargetDpi);
     if (wanted < kAutoEngageAt)
         return kMinScaleFactor;
-    // ...and never a factor that puts the default window off the screen.
     return std::min(wanted, scaleFactorCeilingFor(screen));
 }
 
 double Application::resolveScaleFactor(const ScreenMetrics &screen, double userFactor) {
-    // The user's own number, on any platform. The fit ceiling still applies to
-    // it: a 3.0 chosen on a 4K panel and then carried to a 1366x768 projector
-    // would otherwise open a window whose controls - including the slider that
-    // would undo it - are off the screen, and there is no way back from that.
+    // The fit ceiling applies to the user's factor too: a window larger than
+    // the screen would put the slider that undoes it out of reach.
     if (userFactor > 0) {
         const double chosen = std::min(snapScaleFactor(userFactor),
                                        scaleFactorCeilingFor(screen));
         return qFuzzyCompare(chosen, 1.0) ? 0.0 : chosen;
     }
     const double automatic = autoScaleFactor(screen);
-    // 1.0 means "leave Qt alone" rather than "set the factor to 1": pinning it
-    // would stop Qt following a screen it would otherwise have followed.
+    // 1.0 is returned as 0, meaning leave Qt alone: pinning the factor to 1
+    // would stop Qt following the screen.
     return qFuzzyCompare(automatic, 1.0) ? 0.0 : automatic;
 }
 
 bool Application::scaleFactorSetInEnvironment() {
-    // Someone launching the app with one of these has decided deliberately, and
-    // outranks both the stored setting and the automatic rule. QT_USE_PHYSICAL_DPI
-    // and the rounding policy are in the list for the same reason even though
-    // they name a rule rather than a number: both change what Qt computes.
+    // Any of these outranks the stored setting and the automatic rule. The
+    // last two name a rule and also change what Qt computes.
     for (const char *var : { "QT_SCALE_FACTOR",
                              "QT_SCREEN_SCALE_FACTORS",
                              "QT_ENABLE_HIGHDPI_SCALING",
@@ -505,9 +395,8 @@ double Application::maxUsableScaleFactor() const {
     const QScreen *s = QGuiApplication::primaryScreen();
     if (!s)
         return kMaxScaleFactor;
-    // The screen's size in *device* pixels. geometry() is already divided by
-    // whatever factor is in force, so multiply it back out - otherwise the cap
-    // would shrink every time the user raised the slider.
+    // geometry() is already divided by the factor in force, so multiply it
+    // back out to get device pixels.
     const double dpr = s->devicePixelRatio() > 0 ? s->devicePixelRatio() : 1.0;
     ScreenMetrics m;
     m.widthPx  = int(s->geometry().width()  * dpr);
@@ -516,8 +405,8 @@ double Application::maxUsableScaleFactor() const {
 }
 
 namespace {
-// Set once by applyScaleFactor(), read by the Settings panel. Not guarded:
-// written before any thread but the main one exists, and only read afterwards.
+// Set once by applyScaleFactor() before any other thread exists, then only
+// read, so no lock.
 Application::ScaleSource g_scaleSource = Application::ScaleSource::None;
 double                   g_scaleFactor = 1.0;
 }
@@ -539,24 +428,19 @@ void Application::applyScaleFactor() {
         return;
     }
 
-    // QSettings needs these to find the same file Prefs will later open. They
-    // are statics, so they work before any QCoreApplication exists, and run()
-    // setting them again to the same values costs nothing.
+    // QSettings needs these to find the file Prefs opens later. They are
+    // statics and work before any QCoreApplication exists.
     QCoreApplication::setOrganizationName(QStringLiteral("TidalWave"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("tidalwave.com"));
     QCoreApplication::setApplicationName(QStringLiteral("Tidal Wave"));
-    // Read straight out of QSettings rather than through Prefs: Prefs is a
-    // QObject the app owns and nothing should exist yet at this point. The key is
-    // the one the Settings slider writes; 0, and anything unparseable, is Auto.
+    // Prefs is a QObject and does not exist yet, so read the key directly.
+    // 0 and anything unparseable mean Auto.
     const double userFactor =
         QSettings().value(QStringLiteral("ui/scaleFactor"), 0.0).toDouble();
 
-    // Measuring the screen needs a QGuiApplication, and the factor has to be in
-    // the environment before the real one is built, so the measurement is taken
-    // by a throwaway that is destroyed again before anything else happens. Qt
-    // reads the scale factor once, while the application object is being
-    // constructed, and never looks at it again - which is the whole reason this
-    // cannot simply live in run().
+    // Qt reads the scale factor once, while the application object is built.
+    // Measuring the screen needs a QGuiApplication, so a throwaway one
+    // measures and is destroyed before the real one exists.
     ScreenMetrics screen;
     {
         int   probeArgc = 1;
@@ -570,16 +454,11 @@ void Application::applyScaleFactor() {
             screen.widthPx     = s->geometry().width();
             screen.heightPx    = s->geometry().height();
         }
-        // Mixed densities across monitors are a real setup and this cannot serve
-        // both: QT_SCALE_FACTOR is one number for the whole process, and a
-        // display system that does per-output scaling properly has already been
-        // deferred to by the devicePixelRatio branch above. So the primary screen
-        // decides - it is the one the window opens on - and the Settings slider
-        // is how the remaining cases get settled by eye.
+        // QT_SCALE_FACTOR is one number for the whole process, so with mixed
+        // densities the primary screen decides.
 
-        // Qt queues work on the application object for its event loop, such as
-        // switching on delivery for a session bus the platform theme opened.
-        // The probe has no loop, and work left on it is discarded with it.
+        // The probe has no event loop, and work Qt queued on it (such as
+        // enabling delivery on a session bus) would be discarded with it.
         QCoreApplication::sendPostedEvents();
     }
     if (screen.widthPx <= 0)
@@ -589,18 +468,14 @@ void Application::applyScaleFactor() {
     if (factor <= 0)
         return;
 
-    // Which of the two got us here. "Automatic" is specifically the case where
-    // the platform advertised nothing and the density was derived from the
-    // panel - that is the one worth telling the user about, because it is why
-    // this app is a different size from every other app on their screen.
+    // Automatic means the platform advertised nothing and the factor was
+    // derived from the panel's density.
     g_scaleSource = (userFactor > 0) ? ScaleSource::User : ScaleSource::Automatic;
     g_scaleFactor = factor;
 
     qputenv("QT_SCALE_FACTOR", QByteArray::number(factor));
-    // PassThrough so the factor chosen above is the factor used: a rounding
-    // policy would quietly turn 2.5 into 2 or 3. Measured as already the default
-    // on Linux/xcb, but stated rather than assumed because it is not the default
-    // on Windows.
+    // PassThrough so a fractional factor is used as chosen. It is not the
+    // default on Windows.
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 }
@@ -608,72 +483,33 @@ void Application::applyScaleFactor() {
 QStringList Application::uiFontFamilies() {
     QStringList wanted{ QStringLiteral("Inter") };
 #ifdef Q_OS_MACOS
-    // Asked for rather than written out: this is the family QPlatformTheme
-    // reports for the system UI font, which is what macOS actually wants text
-    // set in, and it survives Apple renaming it.
+    // The system UI font is looked up by role, since its family name changes.
     const QString systemUi = QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
     if (!systemUi.isEmpty())
         wanted << systemUi;
-    // Shipped with every macOS there has ever been, for the case above
-    // returning something the database then cannot resolve.
+    // Present on every macOS, in case the database cannot resolve the above.
     wanted << QStringLiteral("Helvetica Neue");
 #else
     wanted << QStringLiteral("DejaVu Sans");
 #endif
 
-    // The generic is deliberately NOT in this list. "sans-serif" is not a
-    // family on macOS, and a generic name is exactly the kind of thing the
-    // filter below would throw away anyway; it is expressed as a style hint by
-    // the caller instead, which is the one form that cannot be missing on any
-    // platform.
+    // No generic name here: "sans-serif" is not a family on macOS. The caller
+    // sets it as a style hint.
     QStringList present;
     for (const QString &f : std::as_const(wanted)) {
         if (QFontDatabase::hasFamily(f))
             present << f;
     }
-    // A machine with none of them still has to be handed something, and the
-    // system UI font is the one name that is always real. Falling back to an
-    // empty list would reintroduce the very cost this function exists to avoid.
+    // Never return an empty list: the system UI font is always a real family.
     if (present.isEmpty())
         present << QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
     return present;
 }
 
 void Application::applyQuickControlsStyle() {
-    // See the long note at the call site in run() for why Linux is left on
-    // whatever Qt picks. The decision itself is here, in one place, because the
-    // test harnesses have to make exactly the same one: a test engine running the
-    // native macOS style while the app ran Basic produced 1431 style warnings in
-    // the suite against 0 in the app, and three test failures that were about the
-    // style rather than about the product.
-    //
-    // Safe to call more than once and from any harness; QQuickStyle only has to
-    // be set before the first Controls type is created.
-    //
-    // Fusion on every platform and every version except 6.4, where it is Basic.
-    // Fusion is what Qt 6.12 already picks on Linux, so it is the look the app
-    // is tuned against and the one all 51 visual baselines capture - forcing
-    // Basic there moved 5.1 million pixels across 24 of them, the Settings
-    // panel alone changing on 845k of its 1.15M, because everything taking a
-    // colour from the style palette rather than a Theme token went grey.
-    //
-    // 6.4 is the exception because Fusion's Popup calls polish() inside
-    // updatePolish() there, which hangs rather than misdraws.
-    //
-    // CORRECTION, measured on a Debian box running Qt 6.4.2: the sentence that
-    // used to stand here - "Basic has no such bug" - is FALSE. A full run on
-    // 6.4.2 produced 1992 warnings, every one of them naming
-    // Controls/Basic/Popup.qml, and the word Fusion appears in that log zero
-    // times. Basic was already the style and Basic looped too. The polish loop
-    // is a Popup/Layout interaction on 6.4, not a property of either style, and
-    // pinning Basic never avoided it.
-    //
-    // The pin stays, because the reason it is here is not only that bug: Fusion
-    // is what Qt already picks on Linux and what every visual baseline is drawn
-    // against, and on 6.4 it is the style whose Popup was seen to hang outright
-    // rather than merely warn. The actual loop is fixed where it belongs, at
-    // the one Popup that drove it - see the note on the output picker's
-    // menuHeight in qml/components/PlayerBar.qml.
+    // Fusion is what Qt picks on Linux and what the visual baselines are drawn
+    // against. Basic on Qt 6.4, where Fusion's Popup can hang in a polish loop.
+    // Has to run before the first Controls type is created.
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 #else
@@ -685,50 +521,17 @@ void Application::addEmbeddedQmlImportPath(QQmlEngine *engine) {
     if (!engine)
         return;
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    // RESOURCE_PREFIX "/qt/qml" in CMakeLists.txt puts the module's qmldir at
-    // qrc:/qt/qml/TidalWave/qmldir, which is where every Qt from 6.5 on looks:
-    // 6.5 added "qrc:/qt/qml" to QQmlImportDatabase's built-in import paths. Qt
-    // 6.4 did not have it, and its defaults are only the Qt installation's qml
-    // directory, "qrc:/qt-project.org/imports" and applicationDirPath(). So on
-    // 6.4 `import TidalWave` found no qmldir at all; the C++ QML_ELEMENT types
-    // still resolved, because those come from the static plugin's type
-    // registration rather than the qmldir, and every QML file in the module -
-    // Theme, PlayerBar, QueuePanel, all 31 - did not.
-    //
-    // That failed in two different ways, which is why it went unnoticed for so
-    // long. A binary run out of its own build tree got away with it: the build
-    // tree has a TidalWave/qmldir beside the executable, so applicationDirPath()
-    // covered for the missing path and the app came up looking perfect. The
-    // *installed* binary in /usr/bin has no such neighbour and stopped dead -
-    //
-    //     QQmlApplicationEngine failed to load component
-    //     qrc:/qt/qml/TidalWave/qml/Main.qml:527:9: PlayerBar is not a type
-    //
-    // - and run() returned -1 with no window. A test binary had no neighbour
-    // either, but QuickTest's own engine keeps going: there the singleton
-    // `Theme` was simply never defined, so every colour binding in every file
-    // under test evaluated to undefined and the Rectangles painted their
-    // built-in white. tests/qml/tst_theme_live.qml is the file that says so out
-    // loud (20 failures on 6.4, none on 6.12), but it was never a theme bug.
-    //
-    // Guarded rather than unconditional because on 6.5+ this path is already in
-    // the list and addImportPath() prepends: re-adding it would put the app's
-    // resources ahead of the Qt installation's own modules for no reason.
+    // "qrc:/qt/qml" became a built-in import path in Qt 6.5. On 6.4 the
+    // module's qmldir is not found without it and no QML type resolves.
+    // On 6.5+ addImportPath() would only move it ahead of Qt's own modules.
     engine->addImportPath(QStringLiteral("qrc:/qt/qml"));
 #endif
 }
 
 bool Application::reallyQuit() const {
-    // Main.qml reads this in onClosing, imperatively, which is why the missing
-    // notify on the tray half of the answer costs nothing, and merely hides
-    // the window whenever it is false. That is right only while a tray icon can bring the window
-    // back, so with no tray a close counts as a quit. Asked here, at the
-    // moment of the close, rather than cached at startup: a StatusNotifier
-    // host can appear or vanish long after login and Qt has no signal for it.
-    // The preference is read at that same moment and for the same reason, so a
-    // close right after the switch was flipped does what the switch says. Null
-    // until run() builds it, and this is a property QML can reach, so the
-    // dereference is guarded rather than assumed.
+    // Evaluated at the moment of the close: a tray host can appear or vanish
+    // at any time and Qt has no signal for it. m_prefs is null until run()
+    // builds it, and QML can read this before then.
     return m_reallyQuit
         || shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable(),
                                    m_prefs && m_prefs->quitOnClose());
@@ -741,55 +544,26 @@ int Application::run(int argc, char **argv) {
     silenceLogsAndAlsa();
 
     QApplication::setApplicationName("Tidal Wave");
-    // R1: the real version, so Settings and the About line cannot drift.
     QApplication::setApplicationVersion(QStringLiteral(TIDALWAVE_VERSION));
     QApplication::setOrganizationName("TidalWave");
-    // Only macOS reads this, and it is what QSettings builds the preferences
-    // domain from there. Unset, QSettings derived the same domain from the
-    // organization name anyway - it lowercases it and prepends "com.", giving
-    // the com.tidalwave that was already in ~/Library/Preferences - so saying it
-    // out loud moves no file and orphans nobody's settings. It is here so the
-    // domain is a decision rather than a side effect of how the organization
-    // happens to be spelled, and so it visibly matches the bundle identifier in
-    // CMakeLists.txt. QSettings on Linux keys off the organization *name*, so
-    // this does not touch ~/.config/TidalWave.
+    // Only macOS reads this: QSettings builds the preferences domain from it.
+    // It matches the bundle identifier in CMakeLists.txt.
     QApplication::setOrganizationDomain("tidalwave.com");
-    // The basename of the installed .desktop entry, which is the app id and not
-    // the binary name. Qt hands this to the compositor as xdg_toplevel's app id
-    // on Wayland, and publishes it as _KDE_NET_WM_DESKTOP_FILE and
-    // _GTK_APPLICATION_ID on X11; each is how the taskbar finds the entry and
-    // so the icon. It must equal packaging/io.github.immineal.TidalWave.desktop
-    // and the metainfo <launchable> exactly - tests/firstrun/run.sh fails if it
-    // drifts. It is *not* what X11's WM_CLASS is built from, so the entry's
-    // StartupWMClass stays "tidal-wave"; see the comment in the .desktop file.
+    // The basename of the installed .desktop entry, which is how the taskbar
+    // finds the icon. Must equal the file in packaging/ and the metainfo
+    // <launchable>. X11's WM_CLASS is not built from it.
     QApplication::setDesktopFileName("io.github.immineal.TidalWave");
 
-    // Behind a corporate proxy every request used to hang with nothing said,
-    // because Qt ignores the system proxy unless asked. This only flips a
-    // switch; the configuration is read lazily, per query, so it costs nothing
-    // here and has to be set before the first request goes out.
-    //
-    // What it does not cover: on Unix, Qt reads http_proxy/https_proxy/
-    // all_proxy/no_proxy from the environment, and a PAC script or the
-    // GNOME/KDE proxy dialogs only reach it when Qt was built against
-    // libproxy. Windows and macOS read the real system settings, PAC included.
-    // Nowhere does it cover a proxy that wants credentials, since the app has
-    // no dialog to ask for them (credentials inside the proxy URL do work).
-    // Nor does it cover playback: QMediaPlayer streams through the FFmpeg
-    // backend, which does its own HTTP and never sees QNetworkProxy.
+    // Qt ignores the system proxy by default. Has to be set before the first
+    // request. Playback is not covered: the FFmpeg backend does its own HTTP
+    // and never sees QNetworkProxy.
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
-    // Before anything that could own a temp file or unsaved state exists, so
-    // a logout arriving mid-startup is still a clean quit. A desktop that is
-    // shutting down sends SIGTERM and then stops waiting; without this the
-    // process simply died, ~Player never ran, and the session went unsaved
-    // while the playing track was left behind in the temp directory.
+    // Before anything that owns a temp file or unsaved state exists, so a
+    // SIGTERM from a logout mid-startup is still a clean quit.
     if (!installSignalHandlers()) {
 #if defined(Q_OS_UNIX)
-        // Only worth saying where there were signals to catch. On Windows this
-        // answers false by design - there is no SIGTERM to install for, and
-        // Qt already turns WM_QUERYENDSESSION into an ordinary quit - so
-        // warning there would be a line on every single launch about nothing.
+        // On Windows this is false by design, so warn on Unix only.
         qWarning().noquote()
             << QStringLiteral("tidal-wave: could not install signal handlers; "
                               "a logout or shutdown will not save the session.");
@@ -797,51 +571,41 @@ int Application::run(int argc, char **argv) {
     }
 
     // Prefs first: QSettings needs the names above, and the scene graph backend
-    // below is chosen once, before any window exists, and never revisited.
+    // below is chosen once, before any window exists.
     m_prefs = new Prefs(this);
-    // Before the engine, so the tray menu and any startup error are already
-    // translated. The engine is handed over below for live retranslation.
+    // Before the engine, so the tray menu and any startup error are translated.
     m_i18n = new I18n(m_prefs, this);
-    // Only reads QSettings here, so it needs nothing but the org/app names set
-    // above. The network request waits until the engine has loaded, below.
     m_update = new UpdateCheck(this);
 
-    // Someone debugging a graphics problem from the shell outranks the stored
-    // setting, so an explicit backend in the environment is left alone.
+    // An explicit backend in the environment outranks the stored setting.
     const bool backendForced = qEnvironmentVariableIsSet("QT_QUICK_BACKEND")
                             || qEnvironmentVariableIsSet("QSG_RHI_BACKEND");
 
     if (m_prefs->softwareRendering() && !backendForced) {
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
     } else {
-        // 4x multisampling is GPU work, so it is pointless once the raster
-        // backend is drawing.
+        // Multisampling is GPU work, pointless under the raster backend.
         QSurfaceFormat format;
         format.setSamples(4);
         QSurfaceFormat::setDefaultFormat(format);
     }
 
-    // Read once: the desktop's animation setting is not something that has to
-    // be followed live, and a binding that changes mid-slide is worse than one
-    // that does not.
+    // Read once at startup.
     m_reducedMotion = detectReducedMotion();
 
-    // Left off, always: Qt samples this flag when the last window goes and
-    // cannot be asked to reconsider, while whether a close should quit depends
-    // on a tray that may not exist yet. So the decision is made per close, in
-    // reallyQuit() and in the lastWindowClosed handler further down.
+    // Always off: whether a close quits depends on a tray that may not exist
+    // yet, so reallyQuit() and lastWindowClosed answer it per close.
     QApplication::setQuitOnLastWindowClosed(false);
     const QIcon appIcon = loadAppIcon();
     QApplication::setWindowIcon(appIcon);
 
-    // Single-instance check
     const QString socketName = singleInstanceSocketName();
     QLocalSocket socket;
     socket.connectToServer(socketName);
     if (socket.waitForConnected(500)) {
         socket.write("show");
         socket.waitForBytesWritten(500);
-        return 0; // exit since an instance is already running
+        return 0; // an instance is already running
     }
 
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
@@ -857,13 +621,8 @@ int Application::run(int argc, char **argv) {
             });
         });
     } else {
-        // Carry on deliberately. Single instance is a convenience, not a
-        // requirement: without the lock the app still works, it just stops
-        // handing a second launch to the first window. Refusing to start over
-        // a socket would turn a cosmetic problem into "it does not launch".
-        // What is not acceptable is the silence the old code had, where it
-        // ignored listen()'s return value and an address too long for sun_path
-        // turned every launch into a new copy with nothing on stderr to say so.
+        // Carry on without the lock: the app still works, a second launch
+        // just opens a second window. Say so on stderr.
         qWarning().noquote()
             << QStringLiteral("tidal-wave: no single-instance lock at %1 (%2). "
                               "Another launch will open a second window.")
@@ -871,49 +630,17 @@ int Application::run(int argc, char **argv) {
         server->deleteLater();
     }
 
-    // The font stack, most specific first. Inter is what the design is drawn
-    // in; the rest is what a machine without it falls back to.
-    //
-    // The list had no macOS member at all, and none of Inter, DejaVu Sans or
-    // the generic "sans-serif" resolves there. Qt reacted by going looking for
-    // a family literally called "Sans Serif", not finding one, and spending
-    // about 55 ms populating its font-family alias table before warning about
-    // it - on every single launch. So the platform's own UI font goes in ahead
-    // of the generic, and the generic itself is expressed as a style hint
-    // rather than as a family name, which is the one form that cannot be a
-    // missing family on any platform.
+    // The generic family goes in as a style hint. As a family name it is
+    // missing on macOS, and Qt then builds its alias table and warns.
     const QStringList families = uiFontFamilies();
     QFont defaultFont(families.first());
     defaultFont.setFamilies(families);
     defaultFont.setStyleHint(QFont::SansSerif);
     QApplication::setFont(defaultFont);
 
-    // Qt Quick Controls' customisation only works under a style that defers to
-    // it, and the native styles do not. On macOS the default style silently
-    // threw away the indicator, contentItem and background this app gives its
-    // ComboBox - three QML warnings and a Settings panel that genuinely rendered
-    // wrong - and there is no per-control way to opt out. Setting a
-    // non-native style is the only fix. It has to happen before the first
-    // Controls type is loaded.
-    //
-    // This line and its include spent the project commented out, and the reason
-    // was mechanical rather than a judgement about the style: QQuickStyle lives
-    // in Qt6::QuickControls2, which CMakeLists.txt had never linked, so the
-    // include did not resolve and the call could not compile. The component is
-    // in the find_package() list now.
-    //
-    // Not on Linux, though, which is the part that is easy to get wrong. The
-    // assumption this was nearly restored under - that Basic is what Qt picks on
-    // Linux anyway, so naming it costs nothing - is false on Qt 6.12, where the
-    // default here resolves to Fusion. Forcing Basic was measured through
-    // tests/visual: 24 of 51 screenshots moved, the Settings panel changed on
-    // 845006 of its 1152000 pixels, and what changed was contrast - anything
-    // taking its colour from the style's palette rather than from a Theme token
-    // came out grey where it is near-white today, across the sidebar and the
-    // panel. Against a noise floor of 6490 changed pixels over all 51 shots,
-    // that is a regression, not a rounding error. Linux ships; Linux is left on
-    // whatever Qt chooses, and both Fusion and Basic honour customisation, so
-    // nothing there needs this.
+    // The native styles (the macOS default) ignore a control's custom
+    // indicator, contentItem and background, so a non-native style is set.
+    // Has to happen before the first Controls type is loaded.
     applyQuickControlsStyle();
 
     m_api    = new TidalApi(this);
@@ -921,78 +648,51 @@ int Application::run(int argc, char **argv) {
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
     m_player = new Player(m_client, this);
-    // Follows the system default output live, or the device chosen in Settings.
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
-    // The sidebar's model and the pins it orders itself by. LibraryIndex asks
-    // PinStore where each row belongs, so the store is built first.
+    // LibraryIndex asks PinStore where each row belongs, so the store is
+    // built first.
     m_pins    = new PinStore(this);
-    // What the one-shot default pin points at. Set before any setUserId(),
-    // which is what runs that shot; see PinStore::setMixSource.
+    // Has to be set before any setUserId(), which runs the default pin.
     m_pins->setMixSource([client = m_client](PinStore::MixesHandler done) {
         client->fetchHomeMixes(std::move(done));
     });
     m_library = new LibraryIndex(m_client, m_pins, this);
-    // Liking an album from its page reached TidalBridge and stopped there: the
-    // Save button flipped to "Saved" while the sidebar went on showing the
-    // library it had paged in at sign-in. The sidebar has its own copy, so the
-    // one row has to be handed across as it is saved or unsaved.
+    // The sidebar keeps its own copy of the library, separate from the
+    // bridge's favourites cache, so each change is handed across by row.
     connect(m_bridge, &TidalBridge::favoriteAlbumAdded,  m_library, &LibraryIndex::addAlbum);
     connect(m_bridge, &TidalBridge::favoriteArtistAdded, m_library, &LibraryIndex::addArtist);
     connect(m_bridge, &TidalBridge::favoriteTrackAdded,  m_library, &LibraryIndex::addTrack);
-    // The fourth kind, added with MixPage's Save pill. A track radio saved from
-    // that pill has to appear in the sidebar at once, and an unsaved one has to
-    // leave it - and until the pill existed a mix could only ever arrive, at
-    // sign-in, and never go.
     connect(m_bridge, &TidalBridge::favoriteMixAdded,    m_library, &LibraryIndex::addMix);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
-    // Creating a playlist is the same gap: there is no favourite action for
-    // playlists anywhere, so creating one is the only way a playlist row
-    // appears, and createPlaylist reached neither list.
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
-    // A rename is the same gap a third time. The sidebar's copy of the library
-    // is a different list from the bridge's favourites cache, and
-    // favoritePlaylistsChanged does not reach it - so without this line a
-    // rename shows on the Collection grid and on the page it was typed on, and
-    // the sidebar keeps the old name until the next launch. Deliberately not
-    // routed through addPlaylist: that stamps addedAt, which would lift a
-    // playlist to the top of the sidebar for the crime of being renamed.
+    // Not through addPlaylist: that stamps addedAt and would lift a renamed
+    // playlist to the top of the sidebar.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
-    // And a fourth time, for a playlist that gained or lost a track. This is the
-    // one the user reported: two songs went onto a new playlist and the picker
-    // still called it empty, because the count is cached in both of these lists
-    // and the add path wrote to neither.
-    //
-    // Deliberately not routed through updatePlaylist either. That one returns
-    // early when the title and description already match, which after a track
-    // add they always do, so the count would be dropped on the floor by the
-    // consumer rather than by the missing connect.
+    // Not through updatePlaylist: it returns early when title and description
+    // match, which they do after a track add, and the count would be lost.
     connect(m_bridge, &TidalBridge::playlistStatsChanged, m_library,
             &LibraryIndex::refreshPlaylistMeta);
 #ifdef Q_OS_LINUX
-    // Chromecast output relies on Avahi (Linux mDNS); build/enable only there.
+    // Chromecast discovery relies on Avahi, so Linux only.
     m_cast = new CastManager(m_client, m_player, this);
 #endif
 #ifdef Q_OS_LINUX
-    // MPRIS is a Linux/D-Bus-only desktop-integration protocol. There's no
-    // session bus on Windows/macOS, so constructing it there is dead init.
+    // MPRIS needs a D-Bus session bus, so Linux only.
     m_mpris  = new MprisManager(m_player, this);
 #endif
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
-        // Pins are stored per account and the library is that account's
-        // library, so both have to know who signed in before the first page is
-        // fetched.
+        // Pins and library are per account: set the user before the first
+        // page is fetched.
         m_pins->setUserId(m_auth->userId());
         m_library->setUserId(m_auth->userId());
         m_library->refresh();
     });
 
     connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
-        // Stop the background tracklist index where it stands rather than let
-        // it keep running against an account that just signed out. It resumes
-        // from the disk cache on the next sign-in.
+        // Do not keep indexing against an account that just signed out.
         if (s == Auth::State::LoggedOut)
             m_library->cancelIndexing();
     });
@@ -1003,22 +703,14 @@ int Application::run(int argc, char **argv) {
         createTrayIcon(appIcon);
 
 #ifdef Q_OS_MACOS
-    // The way back from a hidden window on macOS: a Dock click. See
-    // eventFilter() for why it has to be a filter on the application object.
+    // A Dock click is the way back from a hidden window; see eventFilter().
     qApp->installEventFilter(this);
 #endif
 
 #ifdef Q_OS_LINUX
-    // A tray that is not there yet. On Plasma, or any session whose bar starts
-    // after the autostarted app, the StatusNotifier host registers seconds or
-    // minutes late, and the old code sampled availability once and gave up for
-    // the rest of the session. Qt has no signal for it, and it picks the tray
-    // backend when QSystemTrayIcon is constructed, so an icon built before the
-    // host exists stays inert for good and has to be built again afterwards.
-    // Watching the bus name is what is left. Constructing it unconditionally
-    // instead is not: on a platform with no native tray at all (Wayland with
-    // no host, offscreen) Qt falls back to its X11 implementation and warns
-    // about a signal the plugin does not have, on every launch.
+    // The StatusNotifier host can register long after an autostarted app. Qt
+    // has no signal for it and picks the tray backend when QSystemTrayIcon is
+    // constructed, so the icon is built once the bus name appears.
     auto *trayWatcher = new QDBusServiceWatcher(QStringLiteral("org.kde.StatusNotifierWatcher"),
                                                 QDBusConnection::sessionBus(),
                                                 QDBusServiceWatcher::WatchForRegistration, this);
@@ -1028,13 +720,8 @@ int Application::run(int argc, char **argv) {
     });
 #endif
 
-    // The other half of the no-tray case, and what keeps the app from being
-    // stranded while the paragraph above is still waiting. reallyQuit() makes
-    // Main.qml accept the close instead of hiding it, and this ends the
-    // process once that window is gone. Both ask about the tray at that
-    // moment, so a host that turned up, or died, since startup gets the right
-    // answer. Qt emits this signal whatever quitOnLastWindowClosed is set to,
-    // which is why that flag can stay off.
+    // Ends the process once a close was accepted with no tray. Qt emits this
+    // signal whatever quitOnLastWindowClosed is set to.
     connect(qApp, &QGuiApplication::lastWindowClosed, this, [this]() {
         if (shouldQuitOnWindowClose(QSystemTrayIcon::isSystemTrayAvailable(),
                                     m_prefs->quitOnClose()))
@@ -1042,8 +729,7 @@ int Application::run(int argc, char **argv) {
     });
 
     m_engine = new QQmlApplicationEngine(this);
-    // Before anything is loaded: on Qt 6.4 the module's own qmldir is not on the
-    // default import path, and without this the load below finds no types.
+    // Before anything is loaded; Qt 6.4 needs it to find the module.
     addEmbeddedQmlImportPath(m_engine);
     m_i18n->setEngine(m_engine);
     m_engine->addImageProvider(QStringLiteral("tidal"), new TidalImageProvider());
@@ -1061,32 +747,20 @@ int Application::run(int argc, char **argv) {
     ctx->setContextProperty(QStringLiteral("downloader"), m_downloader);
     ctx->setContextProperty(QStringLiteral("pins"),    m_pins);
     ctx->setContextProperty(QStringLiteral("library"), m_library);
-    // `cast` is Linux-only; register it as null elsewhere (m_cast is an
-    // incomplete type off-Linux since CastManager.h isn't included there).
+    // Null off Linux, where CastManager is an incomplete type.
     QObject *castObj = nullptr;
 #ifdef Q_OS_LINUX
     castObj = m_cast;
 #endif
     ctx->setContextProperty(QStringLiteral("cast"), castObj);
     ctx->setContextProperty(QStringLiteral("app"),    this);
-    // Not "update": QQuickItem and QQuickWindow both have an update() slot,
-    // and an unqualified name in QML finds the enclosing objects before it
-    // reaches the context. Under the ApplicationWindow - which is every
-    // object in the app - a bare `update` is that slot, so the context
-    // property would be shadowed everywhere and silently read as undefined.
+    // Not "update": QQuickItem and QQuickWindow have an update() slot, which
+    // an unqualified name in QML finds before the context property.
     ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
 
-    // loadFromModule() is the right call - it asks the module for its root
-    // component instead of naming a resource path - but it only arrived in Qt
-    // 6.5, and a build on Debian bookworm's Qt 6.4.2 got to 143 of 149 objects
-    // before stopping on exactly this line. The URL below is the same component
-    // reached the long way round. The prefix is the one CMakeLists.txt now pins
-    // with RESOURCE_PREFIX so that it is the same on every Qt - see the comment
-    // there, and note that getting this prefix wrong does not fail loudly: the
-    // import resolves nothing, every type reports "is not a type", and the line
-    // below this one returns -1 with no window and no message. The file keeps
-    // the "qml/" of its path in the source tree (the generated qmldir maps Main
-    // to qml/Main.qml).
+    // loadFromModule() arrived in Qt 6.5. The URL is the same component; its
+    // prefix has to match RESOURCE_PREFIX in CMakeLists.txt, and a wrong one
+    // fails with no message.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_engine->loadFromModule("TidalWave", "Main");
 #else
@@ -1094,10 +768,7 @@ int Application::run(int argc, char **argv) {
 #endif
     if (m_engine->rootObjects().isEmpty()) return -1;
 
-    // After the engine, so the GitHub request is never in front of the first
-    // frame. It throttles itself to once a day, is asynchronous, and fails
-    // silently, so there is nothing here to guard. Whatever it learns is for
-    // the next launch: the prompt Main.qml just decided on read the cache.
+    // After the engine, so the request is never ahead of the first frame.
     m_update->startupCheck();
 
     return QApplication::exec();
@@ -1107,9 +778,7 @@ int Application::run(int argc, char **argv) {
 
 bool Application::installSignalHandlers() {
     if (!m_signals) m_signals = new SignalWatcher(this);
-    // Through quit() and not straight to QCoreApplication::quit(), so a
-    // signal takes the identical path to the tray's Quit item: it is an
-    // ordinary quit, and reallyQuit() must agree that it is one.
+    // Through quit(), so reallyQuit() is true as for the tray's Quit item.
     connect(m_signals, &SignalWatcher::quitRequested,
             this, &Application::quit, Qt::UniqueConnection);
     return m_signals->install();
@@ -1124,9 +793,8 @@ void Application::quit() {
 void Application::openUrl(const QString &url) {
     if (url.isEmpty()) return;
 #if defined(Q_OS_LINUX)
-    // On Linux/Wayland with Qt 6.12, QDesktopServices::openUrl triggers a use-after-free
-    // crash in QDesktopUnixServices::openUrl due to an asynchronous xdgActivationTokenCreated
-    // callback accessing a destroyed stack frame. Using xdg-open directly avoids this completely.
+    // On Wayland with Qt 6.12, QDesktopServices::openUrl can crash with a
+    // use-after-free in its activation-token callback. xdg-open avoids it.
     if (QProcess::startDetached(QStringLiteral("xdg-open"), { url })) {
         return;
     }
@@ -1140,13 +808,8 @@ void Application::createTrayIcon(const QIcon &icon) {
 
     QIcon trayArt = icon;
 #ifdef Q_OS_MACOS
-    // The macOS menu bar is a row of monochrome glyphs that follow the bar's
-    // own appearance. A full-colour icon sits in it as a blue tile among them
-    // and does not invert when the bar does. Marking the icon as a mask is what
-    // makes Qt hand AppKit a template image, so the system draws the shape in
-    // the current menu-bar colour rather than our pixels. Apple-only: on Linux
-    // a mask would throw the brand colour away and hand the StatusNotifier host
-    // a silhouette, which is not what any of those trays expect.
+    // A mask makes Qt hand AppKit a template image, drawn in the menu bar's
+    // own colour. macOS only: a Linux tray expects the coloured icon.
     trayArt.setIsMask(true);
 #endif
 
@@ -1190,32 +853,17 @@ bool Application::hasVisibleWindow() const {
     return false;
 }
 
-// Clicking the Dock icon of an app whose windows are all hidden, which on macOS
-// is the only way back to one.
-//
-// Closing the window hides it there rather than quitting, because
-// QSystemTrayIcon::isSystemTrayAvailable() is true on macOS and that is the
-// branch a tray takes. With nothing handling the reopen, the menu bar item was
-// then the only route back and a Dock click did nothing at all.
-//
-// AppKit asks applicationShouldHandleReopen:, which Qt turns into an application
-// state change to Qt::ApplicationActive. That reaches us as these two events,
-// and both are listened for: ApplicationActivate is the one documented for this,
-// ApplicationStateChange is the one that is not deprecated. Qt sends either of
-// them to the QApplication object and to nothing else, which is why this is an
-// event filter installed on qApp and not an override of Application::event() -
-// Application is a plain QObject living beside the QApplication, not the
-// application itself, so it is never sent these on its own.
+// Shows the window again on a Dock click. Qt reports the reopen as an
+// activation and sends it only to the QApplication object, so this is a
+// filter on qApp and not an override of event().
 bool Application::eventFilter(QObject *watched, QEvent *event) {
     const bool becameActive =
         event->type() == QEvent::ApplicationActivate
         || (event->type() == QEvent::ApplicationStateChange
             && QGuiApplication::applicationState() == Qt::ApplicationActive);
 
-    // Only when there is nothing on screen to come back to. An ordinary
-    // activation - Command-Tab, or clicking a window that is already up - is
-    // also an activate, and raising and re-focusing a window the user is
-    // already looking at would be the app fighting them for it.
+    // Only when nothing is visible: Command-Tab to a window that is already
+    // up is an activation too.
     if (watched == qApp && becameActive && !hasVisibleWindow())
         showWindow();
 

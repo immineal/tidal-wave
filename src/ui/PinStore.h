@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QQmlEngine>
@@ -7,22 +9,11 @@
 
 #include "api/Models.h"
 
-// Items the user pinned above the sidebar library, persisted per Tidal account.
-// A pin is {kind, id, title, subtitle, imageUrl}; kind is one of
-// "album" | "playlist" | "artist" | "mix". Order is user-defined (drag).
-//
-// The subtitle holds a datum Tidal sent and never a string this app rendered,
-// because the row is read back in a later session: a translation would be in
-// the wrong language and a count would be the wrong number, and neither is
-// recomputable from what the row holds. A playlist has no such datum - its
-// tiles draw qsTr("%n track(s)") over LibraryIndex's live `trackCount` - so a
-// playlist pin carries no subtitle at all, and a row written by a build that
-// stored one loses it on load. See storableSubtitle() in the .cpp.
-//
-// The list goes into QSettings as a JSON array under a per-account key, so
-// signing into a second account swaps the whole block rather than merging it,
-// and a value written by some other build can be rejected outright instead of
-// being half-read into the sidebar.
+// Items the user pinned above the sidebar library, persisted per Tidal account
+// as a JSON array in QSettings. A pin is {kind, id, title, subtitle, imageUrl};
+// kind is "album" | "playlist" | "artist" | "mix". Order is user-defined.
+// The subtitle is a datum Tidal sent, never rendered text; a playlist pin
+// carries none. See storableSubtitle() in the .cpp.
 class PinStore : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -31,29 +22,18 @@ class PinStore : public QObject {
 public:
     explicit PinStore(QObject *parent = nullptr);
 
-    // Pins are stored under the signed-in account, so they follow the user.
+    // Loads that account's pins and runs the one-shot default pin.
     void setUserId(qint64 uid);
     qint64 userId() const { return m_userId; }
 
-    // Where the one-shot default pins find something to point at. Pinning is
-    // the one feature in the sidebar with nothing on screen to announce it: the
-    // only way to find it is to guess that a library row has a context menu. So
-    // an account that has never had a pin is given the two personalised mixes -
-    // Daily Discovery and New Arrivals, both destinations worth having there in
-    // their own right - and from then on the block, and the fact that rows go
-    // into it, are simply visible. It used to be Daily Discovery alone, because
-    // New Arrivals could not be opened at all when this was written (073a043).
-    //
-    // They cannot be written down, because a mix id is minted per account, so
-    // the mix list has to be fetched first. Application hands in the client's
-    // fetch; a test hands in a canned list and the store never goes near a
-    // network. Set this before setUserId(), which is what starts the one shot.
+    // Where the one-shot default pins come from. An account that never had a
+    // pin gets its two personalised mixes; mix ids are per account, so the
+    // list has to be fetched. Set this before setUserId().
     using MixesHandler = std::function<void(QList<Tidal::Mix>, QString)>;
     using MixSource    = std::function<void(MixesHandler)>;
     void setMixSource(MixSource src) { m_mixSource = std::move(src); }
 
-    // Whether this account has already had its one shot, however it turned out.
-    // The sidebar does not read this; it is here so a test can state the rule.
+    // Whether this account has had its one shot, however it turned out.
     bool wasSeeded() const;
 
     QVariantList items() const;
@@ -66,27 +46,13 @@ public:
                             const QString &subtitle, const QString &imageUrl);
     Q_INVOKABLE void move(int from, int to);
 
-    // Position in the pinned block, or -1. LibraryIndex reads this to order
-    // the pinned rows and to keep them out of the list below (P5).
-    //
-    // Q_INVOKABLE because SideBar.qml's endPinDrag() calls it to turn the two
-    // row indices the gesture was made in into PinStore indices before asking
-    // for the move. It was not invokable for three rounds of "the pins still do
-    // not move": QML got `undefined` for both, `undefined === undefined` passed
-    // the `fromPin === toPin` guard, and the function returned before move().
-    // The indicator was always right; the commit never happened. No warning is
-    // printed anywhere a user would see.
-    //
-    // It survived because tests/TestStubs.h declares its own indexOf
-    // Q_INVOKABLE, so every QML test drove a stub that was *more* capable than
-    // the real class. tests/tst_qml_cpp_calls.cpp now compares what qml/ calls
-    // against these meta-objects, so the stub cannot cover for the real type
-    // again.
+    // Position in the pinned block, or -1. LibraryIndex orders the pinned
+    // rows by it. Has to stay Q_INVOKABLE: SideBar.qml calls it for a drag,
+    // and a non-invokable method reads as undefined in QML with no warning.
     Q_INVOKABLE int indexOf(const QString &kind, const QString &id) const;
 
-    // The four things that can be pinned. Anything else is dropped on the way
-    // in and on the way out of storage, so neither a stale settings file nor a
-    // mistyped QML call can put a row in the block that has no type icon.
+    // The four kinds that can be pinned. Anything else is dropped on the way
+    // into and out of storage.
     static bool isValidKind(const QString &kind);
 
 signals:
@@ -96,7 +62,7 @@ private:
     void load();
     void save() const;
 
-    // The one shot, run from setUserId(). Pins both personalised mixes.
+    // Run from setUserId(). Pins both personalised mixes, once per account.
     void seedDefaultPin();
     void markSeeded() const;
 

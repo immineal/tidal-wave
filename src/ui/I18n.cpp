@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "I18n.h"
 #include "Prefs.h"
 
@@ -7,7 +9,7 @@
 #include <QQmlEngine>
 
 namespace {
-// The source language. Strings are written in it, so it needs no catalogue.
+// The source language, the one the strings are written in.
 const QLatin1String kSource("en");
 }
 
@@ -29,14 +31,12 @@ QString I18n::resolveLanguage(const QString &pref, const QLocale &systemLocale) 
     if (supported.contains(pref)) return pref;
     if (pref != QLatin1String("system")) return kSource;
 
-    // QLocale::name() is "de_AT"; the catalogues are per language, so match on
-    // the language part and let every regional variant find the same file.
+    // Catalogues are per language, so every regional variant finds the same
+    // file.
     const QString language = QLocale::languageToCode(systemLocale.language());
     if (supported.contains(language)) return language;
 
-    // uiLanguages() carries the user's ordered preference list, which on Linux
-    // is LANGUAGE=de:en and is richer than the single locale. Worth a look
-    // before giving up.
+    // uiLanguages() is the user's ordered preference list (LANGUAGE on Linux).
     const QStringList uiLanguages = systemLocale.uiLanguages();
     for (const QString &tag : uiLanguages) {
         const QString base = tag.left(2).toLower();
@@ -58,13 +58,9 @@ void I18n::apply() {
     }
     m_loaded = false;
 
-    // English gets a catalogue too, which is not the obvious choice. Plural
-    // sources are written as "%n track(s)", the shorthand lupdate expects a
-    // catalogue to resolve; with no English catalogue installed Qt falls back
-    // to the source text verbatim and the UI reads "14 track(s)". So en.ts
-    // carries the two numerus forms and nothing else, and every ordinary
-    // string still falls through to the source because lrelease drops the
-    // untranslated entries.
+    // English has a catalogue too: plural sources are written "%n track(s)"
+    // and only a catalogue resolves the numerus forms. Every other string
+    // falls through to the source text.
     if (m_appTranslator.load(QStringLiteral(":/i18n/tidal-wave_%1.qm").arg(next))) {
         m_loaded = true;
         if (app) app->installTranslator(&m_appTranslator);
@@ -74,9 +70,8 @@ void I18n::apply() {
     }
 
     if (next != kSource) {
-        // Qt's own strings (the standard dialog buttons, QLineEdit's context
-        // menu) ship separately and are absent on some installs, so a miss
-        // here is not worth warning about.
+        // Qt's own strings ship separately and may be absent, so a miss here
+        // is not warned about.
         const QString qtDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
         if (m_qtTranslator.load(QLocale(next), QStringLiteral("qtbase"),
                                 QStringLiteral("_"), qtDir)) {
@@ -84,17 +79,15 @@ void I18n::apply() {
         }
     }
 
-    // Re-evaluates every qsTr() binding in the loaded QML tree. Only available
-    // once the engine exists; before that there is nothing live to retranslate.
+    // Re-evaluates every qsTr() binding in the loaded QML tree.
     if (m_engine) m_engine->retranslate();
 
     emit languageApplied();
 }
 
 QVariantList I18n::availableLanguages() const {
-    // Only "System" is translated. The other two are endonyms on purpose: a
-    // language picker names each language in that language, so someone who
-    // cannot read the current one can still find theirs.
+    // Only "System" is translated. A language picker names each language in
+    // that language.
     return {
         QVariantMap{{QStringLiteral("code"),  QStringLiteral("system")},
                     {QStringLiteral("label"), tr("System")}},

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "PinStore.h"
 
 #include <QJsonArray>
@@ -7,14 +9,11 @@
 
 namespace {
 
-// One key per account (P6). TidalBridge already namespaces its per-user state
-// as user_<id>/..., so this follows the same shape.
+// One key per account, in the user_<id>/ namespace TidalBridge uses.
 QString pinsKey(qint64 uid) { return QStringLiteral("user_%1/pins").arg(uid); }
 
-// The one-shot marker for the default pin. Separate from the pin list, because
-// the question it answers is not "is this pinned" but "has this account been
-// offered it", and those differ the moment the user unpins the thing: an empty
-// list with the marker set is a user who said no.
+// The one-shot marker for the default pin. Separate from the pin list: an
+// empty list with the marker set means the user unpinned the default.
 QString seedKey(qint64 uid) { return QStringLiteral("user_%1/pinsSeeded").arg(uid); }
 
 constexpr auto kKind     = "kind";
@@ -23,26 +22,9 @@ constexpr auto kTitle    = "title";
 constexpr auto kSubtitle = "subtitle";
 constexpr auto kImageUrl = "imageUrl";
 
-// A pin's subtitle is only ever a datum that came from Tidal - an album's
-// artists, a mix's own subtitle - and never a string this app rendered. A row
-// here is written to QSettings and read back in some later session, so anything
-// in it has to still be true then: a translation outlives the locale it was
-// made in, and a number outlives whatever it counted. There is no pass over
-// storage that could refresh either, because there is nothing in the row to
-// recompute them from.
-//
-// A playlist is the one kind with no such datum. What every playlist tile draws
-// under the title is qsTr("%n track(s)") over a cached count, and that rendered
-// text is what used to be handed to pin() and written down - so a playlist
-// pinned in German read back "31 Titel" in an English run, and said 31 for ever
-// after a track was added. The count the UI wants is already live on
-// LibraryIndex's `trackCount` role, which qml formats at draw time (see
-// Entry::trackCount), so the honest thing to keep here is nothing.
-//
-// Applied on the way in and on the way back out, so a row written by a build
-// that did store the count stops carrying it as well. Nothing is rewritten on
-// disk by loading it: save() runs on the next pin, unpin or drag, which is also
-// when the row would next have been wrong.
+// A stored subtitle has to be a datum from Tidal, never text this app
+// rendered: a translation or a count goes stale in storage. A playlist has no
+// such datum, so its subtitle is dropped on the way in and on load.
 QString storableSubtitle(const QString &kind, const QString &subtitle) {
     return kind == QLatin1String("playlist") ? QString() : subtitle;
 }
@@ -67,8 +49,7 @@ void PinStore::setUserId(qint64 uid) {
 }
 
 bool PinStore::wasSeeded() const {
-    // Signed out there is no account to seed, and nowhere to record that it was
-    // done, so the answer that stops anything from happening is the safe one.
+    // Signed out there is no account to seed.
     if (m_userId <= 0) return true;
     return QSettings().value(seedKey(m_userId), false).toBool();
 }
@@ -81,11 +62,8 @@ void PinStore::markSeeded() const {
 void PinStore::seedDefaultPin() {
     if (m_userId <= 0 || wasSeeded()) return;
 
-    // An account that already has pins has been curated, and dropping a row the
-    // user never asked for into the middle of the ones they chose is worse than
-    // leaving the feature unannounced - they have evidently found it. Marked
-    // done rather than left open, so the network is never asked a question whose
-    // answer cannot change the outcome.
+    // An account that already has pins gets no default one, and is marked
+    // done so the mix list is not fetched for nothing.
     if (!m_items.isEmpty()) { markSeeded(); return; }
 
     if (!m_mixSource) return;
@@ -94,38 +72,21 @@ void PinStore::seedDefaultPin() {
     m_mixSource([this, uid](QList<Tidal::Mix> mixes, QString err) {
         // Another account signed in, or signed out, while the request was out.
         if (uid != m_userId) return;
-        // A failed request is not an answer about this account. Left for the
-        // next launch rather than spent.
+        // A failed request is retried on the next launch.
         if (!err.isEmpty()) return;
-        // Neither is an empty list: Tidal generates these mixes from listening
-        // history, so a new account has none yet and will have some later.
+        // So is an empty list: Tidal generates these mixes from listening
+        // history, and a new account has none yet.
         if (mixes.isEmpty()) return;
-        // Pinning something by hand in the seconds the request was out counts
-        // as finding the feature.
+        // The user pinned something by hand while the request was out.
         if (!m_items.isEmpty()) { markSeeded(); return; }
 
-        // Spent whether or not this account has either mix, because the list
-        // came back and that is the authoritative answer. Without it, a user
-        // who unpins a seeded row would be handed it again on the next launch,
-        // for ever - and that holds for unpinning one of the two as much as for
-        // unpinning both, which is why the marker is per account and not per
-        // seeded row.
+        // Marked whether or not either mix exists, so a seeded row the user
+        // unpins is not handed back on the next launch.
         markSeeded();
 
-        // Daily Discovery first, then New Arrivals. The wanted types are walked
-        // in that order rather than the list being walked once, because
-        // `pages/my_collection_my_mixes` makes no promise about the order it
-        // answers in and this is the first thing on screen.
-        //
-        // By mixType, never by title: every one of these titles arrives in the
-        // account's own language ("Meine Neuheiten"), so a title match would
-        // seed nothing at all for most users.
-        //
-        // An account that has one of the two and not the other gets the one it
-        // has. Half a pair is still a destination worth having pinned, and it
-        // still announces that the block exists - which is the whole point -
-        // whereas insisting on both would leave an account that never generates
-        // a Daily Discovery never told about pinning at all.
+        // Walked by wanted type, since the endpoint promises no order. Matched
+        // by mixType: titles arrive in the account's language. An account
+        // with only one of the two gets that one.
         for (const char *wanted : {Tidal::MixTypes::DailyDiscovery,
                                    Tidal::MixTypes::NewArrivals}) {
             for (const Tidal::Mix &m : mixes) {
@@ -166,8 +127,7 @@ void PinStore::pin(const QString &kind, const QString &id, const QString &title,
 
     const int at = indexOf(kind, id);
     if (at >= 0) {
-        // Already pinned. Refresh the label and the art, which may have been
-        // stale, but leave the position alone: the order is the user's.
+        // Already pinned: refresh the label and art, keep the position.
         if (m_items.at(at).toMap() == row) return;
         m_items[at] = row;
     } else {
@@ -193,7 +153,6 @@ void PinStore::toggle(const QString &kind, const QString &id, const QString &tit
 
 void PinStore::move(int from, int to) {
     // A drag that ends where it started, or outside the list, is not an edit.
-    // Treating it as one would rewrite settings and repaint on every drop.
     if (from == to) return;
     if (from < 0 || from >= m_items.size()) return;
     if (to   < 0 || to   >= m_items.size()) return;
@@ -210,8 +169,7 @@ void PinStore::load() {
     const QString raw = settings.value(pinsKey(m_userId)).toString();
     if (raw.isEmpty()) return;
 
-    // Anything unreadable counts as "no pins". Losing the pinned block is
-    // annoying and recoverable; refusing to draw the sidebar is neither.
+    // Anything unreadable counts as no pins.
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(raw.toUtf8(), &err);
     if (err.error != QJsonParseError::NoError || !doc.isArray()) return;
@@ -236,9 +194,8 @@ void PinStore::load() {
 }
 
 void PinStore::save() const {
-    // Signed out there is no account to hang the list on. Pinning still works
-    // in memory so the sidebar behaves, but nothing is written where the next
-    // account would pick it up.
+    // Signed out, pins live in memory only, so the next account cannot pick
+    // them up.
     if (m_userId <= 0) return;
 
     QJsonArray arr;

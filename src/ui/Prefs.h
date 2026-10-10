@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QQmlEngine>
@@ -5,8 +7,7 @@
 #include <QString>
 
 // Persisted application preferences, exposed to QML as the `prefs` context
-// property. Everything here survives a restart via QSettings; nothing here is
-// per-Tidal-account (PinStore handles what is).
+// property. Stored in QSettings; nothing here is per Tidal account.
 class Prefs : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -14,68 +15,42 @@ class Prefs : public QObject {
 
     // One of the palette names defined in src/ui/ThemePalette.cpp.
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
-    // Pull the chosen dark theme's grounds down to true black, for OLED
-    // screens. On a light theme it does nothing, and Settings hides the
-    // switch rather than greying it out. On by default, because the palette
-    // it produces from the default theme is the one the user settled on.
+    // Pulls a dark theme's grounds down to true black. Does nothing on a
+    // light theme.
     Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
-    // Paint the chosen theme in its own grounds and type instead of in the
-    // neutral grey ramp its mode shares with the other two. Off by default: the
-    // six palettes are one grey ramp per mode and six accents until this is
-    // turned on, which is the design the user settled on. Unlike the switch
-    // above it does something on all six, so Settings always shows it.
+    // Paints the theme in its own grounds and type. Off, it uses the neutral
+    // grey ramp its mode shares. Applies to all six themes.
     Q_PROPERTY(bool tintedGreys READ tintedGreys WRITE setTintedGreys NOTIFY tintedGreysChanged)
     // "system", "en" or "de".
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
-    // Width of the expanded sidebar, in logical pixels. Clamped to
-    // [minSidebarWidth, maxSidebarWidth]; the user drags the sidebar border.
+    // Width of the expanded sidebar in logical pixels, clamped to
+    // [minSidebarWidth, maxSidebarWidth].
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     // Qt device id of the chosen audio output, or empty to follow the system
-    // default (which is the default, and what most people want).
+    // default.
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
-    // Draw the interface on the CPU instead of the GPU. Off by default; Qt
-    // chooses the scene graph backend once at startup, so a change only takes
+    // Qt chooses the scene graph backend once at startup, so a change takes
     // effect on the next launch.
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
-    // The interface scale. 0 means Auto, and Auto is a real value rather than
-    // the absence of one, so someone who picks 2.0 can still ask for automatic
-    // behaviour back afterwards. Otherwise kMinScaleFactor..kMaxScaleFactor in
-    // kScaleFactorStep increments.
-    //
-    // Qt reads the scale factor once, before the QApplication exists, which is
-    // why Application reads this same key straight out of QSettings rather than
-    // through this object, and why changing it only takes effect at next
-    // launch. The Settings row says so.
+    // The interface scale. 0 means Auto, otherwise kMinScaleFactor to
+    // kMaxScaleFactor. Qt reads the factor before the QApplication exists, so
+    // Application reads this key from QSettings and a change needs a restart.
     Q_PROPERTY(double uiScale READ uiScale WRITE setUiScale NOTIFY uiScaleChanged)
-    // Let the window's close button end the process instead of hiding the
-    // window in the tray. Off by default, which is the behaviour the app has
-    // always had; with no tray icon a close quits whatever this says, because
-    // there would be nothing left to click.
+    // The close button ends the process and does not hide to the tray. With
+    // no tray icon a close quits whatever this says.
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
-    // The fullscreen Now Playing page pulls a colour out of the cover art and
-    // uses it as the top of its background gradient, instead of the accent
-    // wash it uses docked. On by default: the page was deliberately cleared of
-    // accent-coloured content so this could go behind it. Only fullscreen -
-    // docked, the page paints exactly what it always has, whatever this says.
-    //
-    // The colour is clamped into the lightness band the palette's own grounds
-    // already occupy before it is painted, so no cover can make the page
-    // illegible; see src/ui/CoverColor.h and tests/tst_covercolor.cpp.
+    // The fullscreen Now Playing page tops its gradient with a colour from
+    // the cover art. The colour is clamped for legibility; see CoverColor.h.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
-    // The five "now playing" bars show a very coarse spectrogram of what is
-    // actually playing instead of their own animation. Off by default, and off
-    // is byte for byte the behaviour the app has always had: nothing is
-    // attached to the QMediaPlayer and the bars keep their fixed schedule.
-    // Needs Qt 6.8 for QAudioBufferOutput; below that Spectrum.available is
-    // false, the switch does nothing, and the Settings row hides itself.
+    // The now-playing bars show a coarse spectrum of the audio. Needs Qt 6.8
+    // (QAudioBufferOutput); below that the switch does nothing.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
 
-    // 190, not a round 180: the five filter chips need 166px of finder and the
-    // finder is the sidebar less 24. Narrower than this and the chips had to
-    // resize during the last few pixels of a drag, which read as twitchy.
+    // The five filter chips need 166px of finder, and the finder is the
+    // sidebar less 24.
     static constexpr int minSidebarWidth = 190;
     static constexpr int maxSidebarWidth = 420;
     // Below this window width the sidebar collapses to the icon rail.
@@ -107,13 +82,12 @@ public:
     void setCoverGradient(bool v);
     void setSpectrumBars(bool v);
 
-    // Exposed so QML can lay out against the same numbers the C++ side uses.
+    // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
     Q_INVOKABLE int maxSidebar() const   { return maxSidebarWidth; }
     Q_INVOKABLE int railBreak() const    { return railBreakpoint; }
     Q_INVOKABLE int rail() const         { return railWidth; }
 
-    // PROJECT_VERSION, so the Settings panel stops claiming v0.1-alpha.
     Q_INVOKABLE QString appVersion() const;
 
 signals:

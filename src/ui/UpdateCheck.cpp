@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "UpdateCheck.h"
 
 #include <QJsonDocument>
@@ -11,11 +13,9 @@
 
 namespace {
 
-// The repository the update check reads releases from, and the one a feedback
-// issue is filed against: Feedback (src/ui/Feedback.cpp) reaches it through
-// repoSlug() rather than writing it down again. One edit here is the whole move
-// if the project ever changes hands or names; CPACK_PACKAGE_HOMEPAGE_URL in
-// CMakeLists.txt has to agree with it.
+// The repository releases are read from and feedback issues are filed
+// against. The only copy; CPACK_PACKAGE_HOMEPAGE_URL in CMakeLists.txt has to
+// agree with it.
 constexpr auto kRepoSlug = "immineal/tidal-wave";
 
 constexpr auto kLastCheck = "update/lastCheck";
@@ -48,8 +48,7 @@ Parsed parseVersion(const QString &raw) {
             out.pre = pre.split(QLatin1Char('.'), Qt::SkipEmptyParts);
     }
 
-    // A component that is not a number reads as zero rather than failing the
-    // whole comparison: a tag nobody expected should never crash a launch.
+    // A component that is not a number reads as zero.
     const QStringList parts = core.split(QLatin1Char('.'), Qt::SkipEmptyParts);
     for (const QString &p : parts) {
         bool ok = false;
@@ -107,8 +106,7 @@ UpdateCheck::UpdateCheck(QObject *parent)
     , m_releaseUrl(m_settings.value(QLatin1String(kUrl)).toString())
     , m_skippedVersion(m_settings.value(QLatin1String(kSkipped)).toString())
 {
-    // The cache decides what this launch offers. Whatever the network says
-    // later is for the launch after this one.
+    // The cache decides what this launch offers.
     m_updateAvailable = shouldOffer(m_latestVersion,
                                     QStringLiteral(TIDALWAVE_VERSION),
                                     m_skippedVersion) && m_enabled;
@@ -198,8 +196,8 @@ void UpdateCheck::skipThisVersion() {
 }
 
 void UpdateCheck::remindLater() {
-    // Forget the release but keep the timestamp. Nothing is offered now, and
-    // the next check that runs puts the offer back for the launch after it.
+    // Forget the release but keep the timestamp: the next check that runs
+    // puts the offer back.
     const bool had = !m_latestVersion.isEmpty() || !m_releaseUrl.isEmpty();
     m_latestVersion.clear();
     m_releaseUrl.clear();
@@ -250,15 +248,14 @@ void UpdateCheck::handleReply(int httpStatus, const QByteArray &body, bool rateL
         markChecked();
         return;
     }
-    // Being offline is not something to report. The timestamp is left alone so
-    // that coming back online is enough to get a check on the next launch.
+    // A failure is silent and leaves the timestamp alone, so the next launch
+    // checks again.
     if (httpStatus != 200) return;
 
     markChecked();
 
     const Release r = parseRelease(body);
-    // A draft, a prerelease or a broken payload leaves the cache as it was:
-    // the newest release worth offering is still whatever was found last.
+    // A draft, a prerelease or a broken payload leaves the cache as it was.
     if (!r.isValid()) return;
 
     const bool changed = (r.tag != m_latestVersion) || (r.url != m_releaseUrl);

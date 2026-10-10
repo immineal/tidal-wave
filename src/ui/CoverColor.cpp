@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "CoverColor.h"
 
 #include <QCoreApplication>
@@ -11,9 +13,8 @@
 namespace coverart {
 namespace {
 
-// sRGB transfer function, both ways. Every average and every mix below is done
-// in linear light: averaging gamma-encoded channels is what turns two bright
-// colours into something darker than either of them.
+// sRGB transfer function, both ways. Every average and mix below is done in
+// linear light; averaging gamma-encoded channels darkens the result.
 double toLinear(double v) {
     return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
 }
@@ -29,14 +30,9 @@ QColor fromLinear(double r, double g, double b) {
                   qRound(toGamma(b) * 255.0));
 }
 
-// A linear-light mix, with the 8-bit rounding pushed in one direction.
-//
-// `roundDown` is the whole reason this is not three lines inline. The clamp
-// promises its result is inside the band, and rounding to nearest can put a
-// colour a quantisation step outside it - a step that is 0.27 of an L* unit
-// next to black, which is exactly where the dark palettes' band ends. Flooring
-// when darkening and ceiling when lightening makes the promise exact, at a
-// cost of at most one 255th of a channel.
+// A linear-light mix with directional 8-bit rounding: floor when darkening,
+// ceiling when lightening. Rounding to nearest could land one quantisation
+// step outside the band the clamp promises.
 QColor mixLinear(const QColor &c, const QColor &towards, double t, bool roundDown) {
     auto channel = [&](double from, double to) {
         const double scaled = toGamma(from * (1.0 - t) + to * t) * 255.0;
@@ -49,9 +45,8 @@ QColor mixLinear(const QColor &c, const QColor &towards, double t, bool roundDow
                   channel(toLinear(c.blueF()),  toLinear(towards.blueF())));
 }
 
-// The grey nearest the middle of a band. Only reached by a band narrower than
-// one 8-bit step, which no palette in src/ui/ThemePalette.cpp has; it is here
-// so that clampToBand() has an answer rather than a loop that cannot converge.
+// The grey nearest the middle of a band. Only reached by a band narrower
+// than one 8-bit step, so clampToBand() always has an answer.
 QColor greyInBand(double yLo, double yHi) {
     const double wanted = 0.5 * (yLo + yHi);
     int best = 0;
@@ -102,15 +97,14 @@ QColor dominant(const QImage &image) {
     if (small.isNull()) return {};
 
     std::array<Bin, kHueBins> bins{};
-    // Everything opaque, unweighted - the fallback for a sleeve with no hue.
+    // Everything opaque, unweighted: the fallback for a cover with no hue.
     double anyR = 0.0, anyG = 0.0, anyB = 0.0, anyN = 0.0;
 
     for (int y = 0; y < small.height(); ++y) {
         const QRgb *row = reinterpret_cast<const QRgb *>(small.constScanLine(y));
         for (int x = 0; x < small.width(); ++x) {
             const QRgb px = row[x];
-            // Half-transparent and below is a hole in the artwork, not a
-            // colour: a rounded corner or a logo's alpha channel.
+            // Half-transparent and below is a hole in the artwork.
             if (qAlpha(px) < 128) continue;
 
             const double lr = toLinear(qRed(px)   / 255.0);
@@ -132,9 +126,8 @@ QColor dominant(const QImage &image) {
         }
     }
 
-    // Pick on a smoothed score so one flat colour sitting on a bin boundary is
-    // not beaten by a spread-out one, then average over the same three bins so
-    // the halves of a split hue come back together.
+    // Score and average over three bins, so a flat colour on a bin boundary
+    // is not split in two.
     int winner = -1;
     double best = 0.0;
     for (int i = 0; i < kHueBins; ++i) {
@@ -170,14 +163,10 @@ QColor clampToBand(const QColor &c, const QColor &bg, const QColor &limit) {
     const double y = relativeLuminance(out);
     if (y > yHi) {
         // Y is linear in a linear-light mix, so this factor lands on yHi
-        // exactly. Towards black, which scales every channel alike and so
-        // keeps the hue and the saturation the artwork had.
+        // exactly. Mixing towards black keeps hue and saturation.
         out = mixLinear(out, QColor(Qt::black), 1.0 - yHi / y, /*roundDown=*/true);
     } else if (y < yLo) {
-        // Upwards there is no equivalent: raising luminance past what the
-        // channels can carry means adding white, which costs saturation. A
-        // light theme is where this runs, and a pastel is the right answer
-        // there anyway.
+        // Raising luminance means adding white, which costs saturation.
         out = mixLinear(out, QColor(Qt::white), (yLo - y) / (1.0 - y), /*roundDown=*/false);
     } else {
         return out;
@@ -201,12 +190,10 @@ CoverColorStore *CoverColorStore::instance() {
     static CoverColorStore *store = nullptr;
     QMutexLocker locked(&guard);
     if (!store) {
-        // Never deleted: it outlives every page that reads it, and tearing a
-        // QObject down from under a loader thread at exit buys nothing.
+        // Never deleted: a loader thread may still use it at exit.
         store = new CoverColorStore;
-        // The first caller may be the image loader thread. Push the object
-        // onto the application thread so that `recorded` reaches the GUI as a
-        // queued call rather than running CoverTint's slot off-thread.
+        // The first caller may be the image loader thread. On the application
+        // thread, `recorded` reaches CoverTint as a queued call.
         if (QCoreApplication::instance()
             && store->thread() != QCoreApplication::instance()->thread())
             store->moveToThread(QCoreApplication::instance()->thread());
@@ -260,8 +247,7 @@ CoverTint::CoverTint(QObject *parent)
 {
     connect(CoverColorStore::instance(), &CoverColorStore::recorded,
             this, [this](const QString &id) {
-                // The cover this object is waiting for usually finishes
-                // downloading after the page has already asked for it.
+                // The cover usually arrives after the page requested it.
                 if (id == m_coverId) refresh();
             });
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Prefs.h"
 #include "ThemePalette.h"
 #include <QCoreApplication>
@@ -19,17 +21,9 @@ constexpr auto kSpectrumBars = "ui/spectrumBars";
 
 Prefs::Prefs(QObject *parent)
     : QObject(parent)
-    // The default comes from the palette table rather than a second copy of
-    // the name here, so the two cannot disagree about which theme ships.
+    // The theme defaults come from the palette table, so there is one copy.
     , m_theme(m_settings.value(kTheme, theme::defaultTheme()).toString())
     , m_oledBlack(m_settings.value(kOled, theme::defaultOledBlack()).toBool())
-    // The migration story for this one is the absence of a key: a settings file
-    // written before the colour switch existed says nothing about the greys, and
-    // nothing resolves to the default, which is the neutral ramp - and the
-    // neutral ramp is also roughly what those builds painted, because the
-    // grounds in kSpecs only gained their tint in this release. A key holding
-    // something that is not a bool at all lands there too, rather than on
-    // garbage: QVariant::toBool() of nonsense is false.
     , m_tintedGreys(m_settings.value(kTinted, theme::defaultTintedGreys()).toBool())
     , m_language(m_settings.value(kLanguage, QStringLiteral("system")).toString())
     , m_sidebarWidth(m_settings.value(kSidebar, 220).toInt())
@@ -37,35 +31,22 @@ Prefs::Prefs(QObject *parent)
     , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
     , m_uiScale(m_settings.value(kUiScale, 0.0).toDouble())
     , m_quitOnClose(m_settings.value(kQuitOnClose, false).toBool())
-    // True, not false: a settings file written before this key existed says
-    // nothing about it, and absence has to resolve to the state a fresh
-    // install is in - which is on. Same migration-by-absence as tintedGreys,
-    // in the other direction.
+    // A missing key means on, the state of a fresh install.
     , m_coverGradient(m_settings.value(kCoverGradient, true).toBool())
-    // False, deliberately and permanently: the whole feature is opt in, and a
-    // missing key resolving to false is what every existing settings file does
-    // anyway.
+    // Opt in: a missing key means off.
     , m_spectrumBars(m_settings.value(kSpectrumBars, false).toBool())
 {
-    // A width written by a future build, or a corrupted settings file, must not
-    // leave the sidebar unusable.
+    // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
 
-    // A theme name the last build wrote and this one does not know: the six
-    // names from before the rename, and "deep", which was a palette of its own
-    // and maps onto the pure-black switch. Either way the app comes back
-    // looking exactly as it was left rather than falling through to the
-    // default. Written back immediately: leaving the old name in the file would
-    // make the migration run again every launch and quietly undo a later change
-    // of mind about the switch.
+    // A theme name from an older build is migrated and written back at once.
+    // Left in the file, the migration would run on every launch and undo a
+    // later change to the pure-black switch.
     if (theme::migrated(m_theme, &m_theme, &m_oledBlack)) {
         m_settings.setValue(kTheme, m_theme);
         m_settings.setValue(kOled, m_oledBlack);
-        // The resolved colour state goes down as well, even though nothing
-        // migrates it. "Deep" promises a particular set of pixels - Sea's old
-        // grounds pulled to black, which is the neutral ramp in black - and
-        // leaving that to a default would let a later change to what a fresh
-        // install gets move an old user's palette out from under them.
+        // The resolved colour state is pinned too, so a later change of the
+        // default cannot move a migrated palette.
         m_settings.setValue(kTinted, m_tintedGreys);
     }
 }
@@ -122,9 +103,8 @@ void Prefs::setSoftwareRendering(bool v) {
 }
 
 void Prefs::setUiScale(double v) {
-    // +1 on both sides: qFuzzyCompare is documented as unusable when either
-    // operand is zero, and zero is Auto - the value this property spends most
-    // of its life holding.
+    // +1 on both sides: qFuzzyCompare does not work when an operand is zero,
+    // and zero is Auto.
     if (qFuzzyCompare(v + 1.0, m_uiScale + 1.0)) return;
     m_uiScale = v;
     m_settings.setValue(kUiScale, v);
