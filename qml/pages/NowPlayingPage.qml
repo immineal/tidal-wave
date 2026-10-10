@@ -415,7 +415,7 @@ Rectangle {
     // And whether the row can hold it *this frame*, which is the same question
     // at rest and a different one for 170ms. The lerp between a wide stacked
     // column and a narrow side-by-side one passes through widths narrower than
-    // either end - 411 on the way to a settled 864 - and a nested Layout will
+    // either end - 411 on the way to a settled 864 - and a Layout will
     // not shrink below what its children ask for: it lays them out at their
     // full width inside a column that has not got there yet, which is an
     // overflow and not a squeeze. So the home is settled, and the cluster waits
@@ -2320,65 +2320,74 @@ Rectangle {
                         onSeeked: (ms) => player.seek(ms)
                     }
 
-                    RowLayout {
-                        objectName: "nowPlayingTransportRow"
-                        Layout.fillWidth: true; spacing: root.transportSpacing
-                        CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
-                        // The cluster's counterweight. Nothing is drawn here:
-                        // it is the width the volume takes at the other end,
-                        // spent on this side so that the two fillWidth spacers
-                        // stay equal and the play button stays in the middle of
-                        // the column. The row is only ever given the cluster
-                        // when it has the width for both, so this never has to
-                        // give anything back.
-                        //
-                        // Invisible and not zero-width: a RowLayout keeps the
-                        // spacing around a zero-width child and only drops it
-                        // for an invisible one, and sixteen stray pixels here
-                        // would put the row over the width the page budgets it
-                        // at every size that has no cluster to balance.
-                        Item {
-                            objectName: "nowPlayingTransportWeight"
-                            visible: root.volumeClusterFits
-                            Layout.preferredWidth: root.volumeClusterWidth
-                        }
-                        Item { Layout.fillWidth: true }
-                        CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
-                        Rectangle {
-                            id: npPlayPause
-                            objectName: "nowPlayingPlayButton"
-                            width: 64; height: 64; radius: 32; color: Theme.textPrimary
-                            border.width: activeFocus ? 2 : 0
-                            border.color: Theme.accent
-                            activeFocusOnTab: true
-                            Keys.onReturnPressed: player.playPause()
-                            Keys.onSpacePressed:  player.playPause()
-                            VectorIcon {
-                                anchors.centerIn: parent
-                                name: player.playing ? "pause" : "play"
-                                color: Theme.bg
-                                width: 32
-                                height: 32
-                                strokeWidth: 1.5
+                    // A plain parent makes the row a top-level layout, which
+                    // polishes itself. Nested, Qt 6.4 skips a layout that kept
+                    // its size, as this one does when the volume joins it.
+                    Item {
+                        Layout.fillWidth: true
+                        implicitHeight: npTransportButtons.implicitHeight
+                        RowLayout {
+                            id: npTransportButtons
+                            objectName: "nowPlayingTransportRow"
+                            anchors.fill: parent
+                            spacing: root.transportSpacing
+                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                            // The cluster's counterweight. Nothing is drawn here:
+                            // it is the width the volume takes at the other end,
+                            // spent on this side so that the two fillWidth spacers
+                            // stay equal and the play button stays in the middle of
+                            // the column. The row is only ever given the cluster
+                            // when it has the width for both, so this never has to
+                            // give anything back.
+                            //
+                            // Invisible and not zero-width: a RowLayout keeps the
+                            // spacing around a zero-width child and only drops it
+                            // for an invisible one, and sixteen stray pixels here
+                            // would put the row over the width the page budgets it
+                            // at every size that has no cluster to balance.
+                            Item {
+                                objectName: "nowPlayingTransportWeight"
+                                visible: root.volumeClusterFits
+                                Layout.preferredWidth: root.volumeClusterWidth
                             }
-                            scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
-                            HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
-                            TapHandler   { onTapped: player.playPause() }
-                        }
-                        CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
-                        Item { Layout.fillWidth: true }
-                        CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+                            Item { Layout.fillWidth: true }
+                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
+                            Rectangle {
+                                id: npPlayPause
+                                objectName: "nowPlayingPlayButton"
+                                width: 64; height: 64; radius: 32; color: Theme.textPrimary
+                                border.width: activeFocus ? 2 : 0
+                                border.color: Theme.accent
+                                activeFocusOnTab: true
+                                Keys.onReturnPressed: player.playPause()
+                                Keys.onSpacePressed:  player.playPause()
+                                VectorIcon {
+                                    anchors.centerIn: parent
+                                    name: player.playing ? "pause" : "play"
+                                    color: Theme.bg
+                                    width: 32
+                                    height: 32
+                                    strokeWidth: 1.5
+                                }
+                                scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
+                                HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
+                                TapHandler   { onTapped: player.playPause() }
+                            }
+                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
+                            Item { Layout.fillWidth: true }
+                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
 
-                        // The volume, where the row is wide enough to hold
-                        // it. Invisible, not folded: a Layout drops an
-                        // invisible child and its spacing outright, so the row
-                        // is exactly the row it always was when the cluster is
-                        // not here, and the cluster is never a squeezed version
-                        // of itself.
-                        VolumeControls {
-                            objectName: "nowPlayingVolumeCluster"
-                            visible: root.volumeClusterFits
-                            Layout.alignment: Qt.AlignVCenter
+                            // The volume, where the row is wide enough to hold
+                            // it. Invisible, not folded: a Layout drops an
+                            // invisible child and its spacing outright, so the row
+                            // is exactly the row it always was when the cluster is
+                            // not here, and the cluster is never a squeezed version
+                            // of itself.
+                            VolumeControls {
+                                objectName: "nowPlayingVolumeCluster"
+                                visible: root.volumeClusterFits
+                                Layout.alignment: Qt.AlignVCenter
+                            }
                         }
                     }
 

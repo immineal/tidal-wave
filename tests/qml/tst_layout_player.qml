@@ -2283,6 +2283,125 @@ TestCase {
         }
     }
 
+    // ── the volume after the window has moved ────────────────────────────
+    //
+    // The cases above measure a window born at its size. These arrive at one,
+    // so the cluster changes home in the step that resizes the transport row.
+    function volumeMoveRows() {
+        // Each pair is a size that puts the volume on its own row, then one
+        // that carries it on the transport row. 640 is the narrowest window
+        // Main.qml allows, and the only one here with the row's 8px gap.
+        var pairs = [
+            [{ tag: "640 windowed", w: 640, h: 600 },
+             { tag: "640 fullscreen", w: 640, h: 600, full: true }],
+            [{ tag: "840", w: 840, h: 1200 }, { tag: "860", w: 860, h: 1200 }],
+            [{ tag: "640", w: 640, h: 1200 }, { tag: "900", w: 900, h: 1200 }]
+        ]
+        var rows = []
+        for (var i = 0; i < pairs.length; i++) {
+            var own = pairs[i][0], riding = pairs[i][1]
+            rows.push({ tag: own.tag + " to " + riding.tag,
+                        from: own, to: riding, riding: true })
+            rows.push({ tag: riding.tag + " to " + own.tag,
+                        from: riding, to: own, riding: false })
+        }
+        return rows
+    }
+
+    // A frame is asked for and then waited on. With none pending,
+    // waitForRendering() on Qt 6.4 sits out its five seconds.
+    function settleVolumeHost(host) {
+        settlePage(host.page)
+        host.update()
+        waitForRendering(host.contentItem)
+    }
+
+    // Each pair differs in exactly one of width and fullscreen, so every move
+    // is a single assignment.
+    function moveVolumeHost(host, to) {
+        host.fullScreen = to.full === true
+        host.width = to.w
+        wait(0)
+        settleVolumeHost(host)
+    }
+
+    function checkVolumeInPlace(page, where, riding) {
+        compare(page.volumeInTransport, riding,
+                where + ": the volume is in the wrong home")
+        var cluster = volumeCluster(page)
+        var info    = findChild(page, "nowPlayingInfoColumn")
+        var weight  = findChild(page, "nowPlayingTransportWeight")
+        var play    = findChild(page, "nowPlayingPlayButton")
+        verify(info && weight && play, where + ": the transport row was not found")
+
+        var infoBox = boxIn(page, info)
+        var clusterBox = boxIn(page, cluster)
+        var right = clusterBox.x + clusterBox.w
+        verify(Math.abs(right - (infoBox.x + infoBox.w)) <= 0.5,
+               where + ": the cluster ends at " + right.toFixed(1)
+               + " where the column ends at " + (infoBox.x + infoBox.w).toFixed(1))
+
+        compare(weight.visible, riding,
+                where + ": the counterweight is " + (riding ? "missing" : "still there"))
+        if (riding)
+            compare(weight.width, cluster.width,
+                    where + ": the counterweight is " + weight.width.toFixed(1)
+                    + " against a " + cluster.width.toFixed(1) + "px cluster")
+
+        // The row reads left to right with nothing on top of anything. Left
+        // edges are compared because the counterweight has no height to box.
+        var names = ["nowPlayingShuffle"]
+        if (riding) names.push("nowPlayingTransportWeight")
+        names.push("nowPlayingPrevious", "nowPlayingPlayButton",
+                   "nowPlayingNext", "nowPlayingRepeat")
+        if (riding) names.push("nowPlayingVolumeCluster")
+        var edge = infoBox.x, before = "the edge of the column"
+        for (var i = 0; i < names.length; i++) {
+            var item = findChild(page, names[i])
+            verify(item && item.visible, where + ": " + names[i] + " is not showing")
+            var b = boxIn(page, item)
+            verify(b.x >= edge - 0.5,
+                   where + ": " + names[i] + " starts at " + b.x.toFixed(1)
+                   + " and " + before + " ends at " + edge.toFixed(1))
+            // On its own row the cluster sits under the buttons, clear of them.
+            verify(riding || !boxesMeet(clusterBox, b),
+                   where + ": the volume cluster runs into " + names[i])
+            edge = b.x + b.w
+            before = names[i]
+        }
+        verify(edge <= infoBox.x + infoBox.w + 0.5,
+               where + ": the row ends at " + edge.toFixed(1)
+               + " in a column that ends at " + (infoBox.x + infoBox.w).toFixed(1))
+
+        var centre = play.mapToItem(page, play.width / 2, 0).x
+        verify(Math.abs(centre - (infoBox.x + infoBox.w / 2)) <= 0.5,
+               where + ": the play button is at " + centre.toFixed(1)
+               + " in a column centred on " + (infoBox.x + infoBox.w / 2).toFixed(1))
+    }
+
+    function test_the_volume_is_in_place_after_the_window_moves_data() {
+        return volumeMoveRows()
+    }
+
+    function test_the_volume_is_in_place_after_the_window_moves(row) {
+        // Born in the state the row starts from, so the first thing measured
+        // after a move is the move the row is named for.
+        var host = createTemporaryObject(nowPlayingHost, testCase,
+                                         { width: row.from.w, height: row.from.h,
+                                           fullScreen: row.from.full === true })
+        verify(host, "host window was not created")
+        host.visible = true
+        var page = host.page
+        settleVolumeHost(host)
+        checkVolumeInPlace(page, row.from.tag + ", before moving", !row.riding)
+
+        moveVolumeHost(host, row.to)
+        checkVolumeInPlace(page, row.tag, row.riding)
+
+        moveVolumeHost(host, row.from)
+        checkVolumeInPlace(page, row.tag + " and back", !row.riding)
+    }
+
     // The cost of writing the cluster once and placing it twice: two mute
     // buttons, two readouts, two output pickers and two flyouts exist, and
     // only one of each may be on screen. A control that is drawn twice is a
