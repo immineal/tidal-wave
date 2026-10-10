@@ -67,7 +67,7 @@ TestCase {
         cast.setDevicesForTest([{ id: "d1", name: "Living Room" }])
 
         auth.setStateForTest(2)              // LoggedIn; the sidebar needs it
-        auth.setUsernameForTest("linus")
+        auth.setUsernameForTest("robin")
 
         library.setEntriesForTest(S.libraryEntries())
         library.setTracksForTest([])
