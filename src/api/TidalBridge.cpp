@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include <algorithm>
 #include "TidalBridge.h"
 #include <QJSEngine>
@@ -17,10 +19,7 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     setPreferredQuality(saved);
 
     connect(m_client, &TidalClient::userIdChanged, this, [this](qint64 uid) {
-        // The recents are keyed by account and so are a different list before
-        // and after a sign-in - including "none at all" while there is no
-        // account. Anything showing them has to be told, or the search page
-        // keeps whatever it read when it was built.
+        // The recents are keyed by account, so the list changes with it.
         emit recentSearchesChanged();
         if (uid > 0) {
             loadFavoriteTrackIds();
@@ -32,7 +31,7 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
             m_favoriteArtists.clear();
             m_favoritePlaylists.clear();
             // Invalidated as well as cleared, so a reply still out for the
-            // account being left cannot fill the set behind the sign-out.
+            // account being left cannot fill the set after the sign-out.
             ++m_favMixesLoadGen;
             m_favoriteMixIds.clear();
             emit favoriteTracksChanged();
@@ -80,11 +79,9 @@ void TidalBridge::call(QJSValue &cb, const QJSValueList &args) {
 
 // ─── Converters ────────────────────────────────────
 
-// Every artist, so a credit line can make each name its own link (SPEC N2)
-// instead of sending every name to the lead. The joined `artists` string and
-// the single `artistId` beside it stay exactly as they were: the string is what
-// a window title and an MPRIS payload want, and the first id is what
-// Player::trackFromMap reads back.
+// Every artist, so a credit line can make each name its own link. The joined
+// `artists` string and the single `artistId` stay beside it: MPRIS reads the
+// string and Player::trackFromMap reads the first id.
 static QVariantList artistsToVariantList(const QList<Artist> &artists) {
     QVariantList out;
     for (const Artist &a : artists) {
@@ -113,14 +110,8 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["explicit_"]   = t.explicit_;
     m["quality"]     = t.audioQuality;
     m["popularity"]  = t.popularity;
-    // This track's radio, as a mix id, or "" when the response did not carry
-    // one. Put in the map rather than on a new TrackRow property on purpose:
-    // all seven pages that build a row already pass the whole map as
-    // `trackData`, so the id reaches every one of them with no call site to
-    // change - and a page this app has not written yet gets it for free. See
-    // Track::trackMixId for why it may legitimately be empty.
+    // May be "": see Track::trackMixId.
     m["trackMixId"]  = t.trackMixId;
-    // pre-computed display
     int s = t.duration % 60, mm = t.duration / 60;
     m["durationStr"] = QString("%1:%2").arg(mm).arg(s, 2, 10, QChar('0'));
     return m;
@@ -132,7 +123,6 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["title"]       = a.title;
     m["artists"]     = a.artistNames();
     m["artistId"]    = a.artists.isEmpty() ? 0LL : a.artists[0].id;
-    // An album is credited to a list too, and the hero shows it.
     m["artistList"]  = artistsToVariantList(a.artists);
     m["coverUrl"]    = a.coverUrl(320);
     m["coverUrl640"] = a.coverUrl(640);
@@ -177,9 +167,7 @@ QVariantMap TidalBridge::mixToMap(const Mix &m_) {
     m["title"]    = m_.title;
     m["subtitle"] = m_.subTitle;
     m["coverUrl"] = m_.coverUrl(320);
-    // The only handle on *which* mix this is that QML may branch on: the title
-    // arrives in the account's language (MixTypes in Models.h says so at
-    // length), so anything comparing against one breaks in German.
+    // What QML may branch on. The title is localised.
     m["mixType"]  = m_.mixType;
     return m;
 }
@@ -318,10 +306,7 @@ void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
         res["artists"]   = artistsToList(r.artists);
         res["playlists"] = playlistsList(r.playlists);
         res["mixes"]     = mixesList(r.mixes);
-        // The five totals. TidalClient has always parsed them and this method
-        // dropped all four of the ones that existed, which is why the page had
-        // no end-of-list state to offer: a kind whose last page happens to be
-        // full is indistinguishable from one with more behind it.
+        // The totals tell the page a full last page from one with more behind it.
         res["totalTracks"]    = r.totalTracks;
         res["totalAlbums"]    = r.totalAlbums;
         res["totalArtists"]   = r.totalArtists;
@@ -332,23 +317,8 @@ void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
 }
 
 // ─── Recent searches ───────────────────────────────
-//
-// Beside the recents LibraryIndex already keeps, and in the same place: a
-// QSettings value under a per-account key, written whole on every change.
-// LibraryIndex uses "user_<id>/library/lastPlayed" for what the user played;
-// this is "user_<id>/search/recentQueries" for what they searched. Same store,
-// same per-account scoping, same "serialise the lot, it is tiny" approach -
-// a JSON array of strings rather than LibraryIndex's JSON object only because
-// this list is ordered and has no values to carry.
-//
-// Not a file beside the album-track cache (LibraryIndex::trackCachePath), which
-// is the other half of how LibraryIndex persists: that file exists because a
-// whole library's tracklists are megabytes and do not belong in a settings
-// file. Eight strings do.
-//
-// Nothing is logged. markPlaylistPlayed() a few lines up prints the uuid it
-// records; the equivalent here would print what the user searched for, so
-// there is deliberately no qDebug in any of these four.
+// A JSON array in QSettings under a per-account key, written whole on every
+// change. No qDebug in any of these: it would print what the user searched.
 QString TidalBridge::recentSearchesKey() const {
     return QStringLiteral("user_%1/search/recentQueries").arg(m_client->userId());
 }
@@ -364,8 +334,7 @@ QStringList TidalBridge::recentSearches() const {
         const QString q = v.toString();
         if (!q.isEmpty()) out.append(q);
     }
-    // A file edited by hand, or written by a future version with a bigger cap,
-    // must not make the empty state scroll.
+    // A stored list longer than the cap must not make the empty state scroll.
     while (out.size() > kRecentSearchCap) out.removeLast();
     return out;
 }
@@ -401,7 +370,6 @@ void TidalBridge::clearRecentSearches() {
     saveRecentSearches({});
 }
 
-// See the header for the two rules beyond "prepend and truncate".
 QStringList withRecentSearch(QStringList recents, const QString &query, int cap) {
     const QString q = query.trimmed();
     if (q.isEmpty() || cap <= 0) return recents;
@@ -409,9 +377,8 @@ QStringList withRecentSearch(QStringList recents, const QString &query, int cap)
     recents.removeIf([&q](const QString &e) {
         return e.compare(q, Qt::CaseInsensitive) == 0;
     });
-    // The newest entry, if this query is a longer spelling of it, is the same
-    // search still being typed - so it is replaced rather than kept above the
-    // thing it was a prefix of.
+    // A query that extends the newest entry is the same search still being
+    // typed, so it replaces that entry. Only the newest is checked.
     if (!recents.isEmpty()
         && q.size() > recents.first().size()
         && q.startsWith(recents.first(), Qt::CaseInsensitive))
@@ -433,26 +400,19 @@ void TidalBridge::addTrackFavorite(qlonglong trackId, QJSValue cb) {
             emit favoriteTracksChanged();
             m_client->fetchTrack(trackId, [this](Track t, QString err) {
                 if (err.isEmpty() && t.id > 0) {
-                    // Don't add a second row if it's already in the list (e.g.
-                    // re-liking a track that was loaded during paging).
+                    // The track may already be in the list from paging.
                     const bool exists = std::any_of(
                         m_favoriteTracks.cbegin(), m_favoriteTracks.cend(),
                         [&](const Track &x) { return x.id == t.id; });
                     if (!exists) {
-                        // Which end is "newest" depends on how far loading has
-                        // got. fetchFavoriteTracks asks for order=DATE without
-                        // a direction, so the endpoint answers oldest first and
-                        // the pager appends in that order; the list is only
-                        // turned round once the last page is in. So: front when
-                        // the order has settled, back while it has not, and
-                        // either way the song the user just liked ends up at
-                        // the top of the Tracks tab rather than the bottom.
+                        // The list is oldest first while paging and reversed
+                        // when the last page lands, so the newest end is the
+                        // back until then and the front after.
                         if (m_favTracksSettled) m_favoriteTracks.prepend(t);
                         else                    m_favoriteTracks.append(t);
                         emit favoriteTracksChanged();
                     }
-                    // The sidebar's copy dedups for itself, so it is told
-                    // whether or not this list already had the track.
+                    // Outside the guard: LibraryIndex dedups for itself.
                     emit favoriteTrackAdded(t);
                 }
             });
@@ -486,20 +446,11 @@ void TidalBridge::addMixFavorite(const QString &mixId, QJSValue cb) {
     if (mixId.isEmpty()) { call(cb, { false }); return; }
     m_client->addMixFavorite(mixId, [this, mixId, cb](bool success) mutable {
         if (success) {
-            // The cache first, because isMixFavorite() is what the pill reads
-            // and the pill flipping to "Saved" *is* the confirmation - the same
-            // gap addAlbumFavorite was fixed for.
+            // The cache first: isMixFavorite() is what the Save pill reads.
             m_favoriteMixIds.insert(mixId);
             emit favoriteMixesChanged();
-            // And the sidebar's own copy of the library, which keeps its own
-            // mix list and hears nothing from the signal above. The row has to
-            // be re-read, as addAlbumFavorite re-reads its album: this call is
-            // handed an id and nothing else, and a row invented out of the id
-            // would put an untitled line in the sidebar.
-            //
-            // `pages/mix` is the only endpoint that describes one mix, so the
-            // track list comes back with the header and is dropped. That is a
-            // real cost and it is paid once, on a deliberate save.
+            // LibraryIndex needs the whole row, and `pages/mix` is the only
+            // endpoint that describes one mix. Its track list is dropped.
             m_client->fetchMixPage(mixId, [this](Mix mix, QList<Track>, QString err) {
                 if (err.isEmpty() && !mix.id.isEmpty()) emit favoriteMixAdded(mix);
             });
@@ -539,31 +490,19 @@ QVariantMap TidalBridge::favoriteAlbumById(qlonglong albumId) const {
 void TidalBridge::addAlbumFavorite(qlonglong albumId, QJSValue cb) {
     m_client->addAlbumFavorite(albumId, [this, albumId, cb](bool success) mutable {
         if (success) {
-            // The server accepted it, but isAlbumFavorite() answers from
-            // m_favoriteAlbums, so without this the Save button stayed on
-            // "Save" and the album never appeared in the collection until the
-            // next full fetch. removeAlbumFavorite has always maintained the
-            // list; only the add side was missing it.
+            // isAlbumFavorite() answers from m_favoriteAlbums, so the album
+            // is fetched and added to it.
             m_client->fetchAlbum(albumId, [this](Album a, QString err) {
                 if (err.isEmpty() && a.id > 0) {
                     const bool exists = std::any_of(
                         m_favoriteAlbums.cbegin(), m_favoriteAlbums.cend(),
                         [&](const Album &x) { return x.id == a.id; });
                     if (!exists) {
-                        // Front, not back. This list is newest-saved first -
-                        // the endpoint is asked for order=DATE&DESC and the
-                        // pages are appended in that order - so appending put
-                        // the album the user had just saved at the *oldest*
-                        // end. The collection grid's default sort is "the order
-                        // the library arrived in", so on a library of any size
-                        // the album did appear, thousands of rows down, which
-                        // is indistinguishable from not appearing at all.
+                        // Front: this list is newest-saved first.
                         m_favoriteAlbums.prepend(a);
                         emit favoriteAlbumsChanged();
                     }
-                    // And the sidebar, which keeps a copy of its own. Emitted
-                    // outside the guard above: the two lists dedup separately,
-                    // so one having the album says nothing about the other.
+                    // Outside the guard: LibraryIndex dedups for itself.
                     emit favoriteAlbumAdded(a);
                 }
             });
@@ -595,10 +534,8 @@ bool TidalBridge::isArtistFavorite(qlonglong artistId) const {
 void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
     m_client->addArtistFavorite(artistId, [this, artistId, cb](bool success) mutable {
         if (success) {
-            // Same gap as albums had: Follow reported success and then read
-            // back as not-following, because isArtistFavorite() answers from
-            // m_favoriteArtists. There is no fetchArtist, so the detail
-            // endpoint supplies the three fields an Artist needs.
+            // isArtistFavorite() answers from m_favoriteArtists. There is no
+            // fetchArtist, so the detail endpoint supplies the Artist fields.
             m_client->fetchArtistDetail(artistId, [this](ArtistDetail d, QString err) {
                 if (err.isEmpty() && d.id > 0) {
                     const bool exists = std::any_of(
@@ -609,7 +546,7 @@ void TidalBridge::addArtistFavorite(qlonglong artistId, QJSValue cb) {
                     a.name    = d.name;
                     a.picture = d.picture;
                     if (!exists) {
-                        // Front, for the reason given in addAlbumFavorite.
+                        // Front: this list is newest first.
                         m_favoriteArtists.prepend(a);
                         emit favoriteArtistsChanged();
                     }
@@ -637,26 +574,19 @@ void TidalBridge::removeArtistFavorite(qlonglong artistId, QJSValue cb) {
 
 void TidalBridge::createPlaylist(const QString &title, QJSValue cb) {
     m_client->createPlaylist(title, [this, cb](Playlist p, QString err) mutable {
-        // Creating one updated neither this list nor the sidebar's, so the
-        // playlist existed on the server and nowhere in the interface until the
-        // next launch. Gated on the server having actually made it: a failed
-        // POST must not leave a phantom row.
+        // Gated on the server having made it: a failed POST must not leave a
+        // phantom row.
         if (err.isEmpty() && !p.uuid.isEmpty()) {
             const bool exists = std::any_of(
                 m_favoritePlaylists.cbegin(), m_favoritePlaylists.cend(),
                 [&](const Playlist &x) { return x.uuid == p.uuid; });
             if (!exists) {
-                // Appended, not prepended as the three favourites above are:
-                // every reader of this list runs it through sortPlaylists(),
-                // which orders by max(last played, Playlist::addedAt), so where
-                // a row sits in the raw list decides nothing. It does mean a
-                // created playlist leads the row only if the POST response
-                // carried `created`; nothing here can supply that date itself.
+                // Position in the raw list decides nothing: every reader
+                // runs it through sortPlaylists().
                 m_favoritePlaylists.append(p);
                 emit favoritePlaylistsChanged();
             }
-            // Outside the guard, as with the favourites: the sidebar keeps its
-            // own list and dedups for itself.
+            // Outside the guard: LibraryIndex dedups for itself.
             emit playlistCreated(p);
         }
         call(cb, { qjsEngine(this)->toScriptValue(playlistToMap(p)),
@@ -669,10 +599,6 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
 {
     m_client->editPlaylist(uuid, title, description,
         [this, uuid, title, description, cb](bool success) mutable {
-        // The same two caches createPlaylist above updates, and for the same
-        // reason: the dialog's own page already shows the new name, and
-        // without these the sidebar and the Collection grid would go on
-        // showing the old one until the next launch.
         if (success) {
             bool found = false;
             for (int i = 0; i < m_favoritePlaylists.size(); ++i) {
@@ -682,17 +608,9 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
                 found = true;
                 break;
             }
-            // Gated on the row being there. A rename reorders nothing - every
-            // reader sorts by max(last played, addedAt) and neither moved - so
-            // this is purely "redraw the label", and saying so about a
-            // playlist this list has never heard of would be a lie the grid
-            // would have to resolve by refetching.
             if (found) emit favoritePlaylistsChanged();
 
-            // Outside the guard, as playlistCreated is: the sidebar's copy of
-            // the library is a different list, filled from a different call,
-            // and whether this one happens to hold the row says nothing about
-            // whether that one does.
+            // Outside the guard: LibraryIndex keeps its own list.
             Playlist renamed;
             renamed.uuid        = uuid;
             renamed.title       = title;
@@ -704,48 +622,13 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
 }
 
 // ── a playlist's own numbers, after its contents changed ────────────────────
-//
-// Re-reads `playlists/<uuid>` and merges the fields a contents change moves into
-// the favourites cache here and, through playlistStatsChanged, into the
-// sidebar's separate copy. Both ends run mergePlaylistMeta(), which is where the
-// field list and the exclusions live.
-//
-// **Why a round trip and not arithmetic.** A count this already holds plus one
-// looks cheaper, and it is wrong:
-//
-//   * TidalClient::addTrackToPlaylist posts `onDuplicateFound=SKIP`. A song
-//     already on the playlist is accepted by the server and added to nothing, so
-//     a successful reply does not mean the playlist grew. The picker does not
-//     hide playlists that already hold the track, so this is one click away, and
-//     "+1 every time" would trade a count that is always 0 for a count that
-//     drifts upward and can never be reconciled from the interface.
-//   * `duration` cannot be computed at all. This method is handed a track id,
-//     not a length.
-//   * nor can `image`, which Tidal regenerates from the playlist's first tracks.
-//
-// **Why this is not the round trip that was deliberately removed.** That one was
-// per *picker open* - a read on the hot path, which left the list blank until it
-// answered, every single time the menu was used. This is per accepted *mutation*:
-// the mutation has already cost two requests (the etag, then the post), the user
-// asked for it by hand, and it runs after the callback has already reported the
-// result, so nothing on screen is waiting for it.
+// A round trip, because the count cannot be computed: the add posts
+// `onDuplicateFound=SKIP`, so a successful reply does not mean the playlist
+// grew. Duration and image cannot be derived from a track id either.
 void TidalBridge::refreshPlaylistMeta(const QString &uuid) {
     if (uuid.isEmpty()) return;
     m_client->fetchPlaylist(uuid, [this, uuid](Playlist fresh, QString err) {
-        // A reply that failed or came back about something else is not news
-        // about this playlist, and writing it in would blank the row with the
-        // parse of an error body.
-        //
-        // The first half is belt and braces rather than a live guard, and is
-        // recorded as such because a mutation proved it: TidalClient::fetchPlaylist
-        // answers `cb({}, err)` on every failure, so an error always arrives with
-        // a default-constructed Playlist whose uuid is empty, and the second half
-        // already refuses that. Removing the `err` test changes no behaviour and
-        // no fixture can be built that says otherwise - the state it guards
-        // against cannot be produced by the only implementation. It stays because
-        // "the reply failed" and "the reply is about something else" are two
-        // different reasons to walk away and a reader should not have to derive
-        // one from the other.
+        // A failed reply, or one about another playlist, would blank the row.
         if (!err.isEmpty() || fresh.uuid != uuid) return;
 
         bool changed = false;
@@ -754,42 +637,25 @@ void TidalBridge::refreshPlaylistMeta(const QString &uuid) {
             changed = mergePlaylistMeta(m_favoritePlaylists[i], fresh);
             break;
         }
-        // Gated on something having moved, as the rename path is: the four
-        // readers of this list each rebuild a grid or a row off the signal, and
-        // a playlist whose numbers the server confirmed unchanged is not a
-        // redraw.
         if (changed) emit favoritePlaylistsChanged();
 
-        // Outside the guard, as playlistCreated and playlistUpdated are: the
-        // sidebar keeps its own list, filled from its own paging, and whether
-        // this one happens to hold the row says nothing about whether that one
-        // does.
+        // Both outside the `changed` guard: LibraryIndex keeps its own list,
+        // and a page showing this playlist may hold the stale figure itself.
         emit playlistStatsChanged(fresh);
-        // And the QML-facing half of the same news, which says which playlist it
-        // was. Also outside the `changed` guard: a page that is showing this
-        // playlist wants the confirmation even when the cache had nothing to
-        // learn, because its own figure may be the stale one.
         emit playlistStatsRefreshed(uuid);
     });
 }
 
 void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
     m_client->addTrackToPlaylist(uuid, trackId, [this, uuid, cb](bool success) mutable {
-        // The caller is answered first and the refresh goes out behind it. A
-        // picker that waited for the second request before saying "Added" would
-        // be slower than the one that said nothing.
+        // The caller is answered first; the refresh goes out behind it.
         call(cb, { success });
-        // Gated on the server having accepted it. A refused post must not move
-        // a count, and re-reading the header after one would at best confirm
-        // what is already cached and at worst cost a request per failure.
         if (success) refreshPlaylistMeta(uuid);
     });
 }
 
 void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
     m_client->removeTrackFromPlaylist(uuid, itemIndex, [this, uuid, cb](bool success) mutable {
-        // The mirror of the add above, and the same bug: taking a song off a
-        // playlist left every cached count one too high.
         call(cb, { success });
         if (success) refreshPlaylistMeta(uuid);
     });
@@ -811,9 +677,7 @@ void TidalBridge::fetchTrackRadio(qlonglong trackId, QJSValue cb) {
 void TidalBridge::fetchTrackMix(qlonglong trackId, QJSValue cb) {
     if (trackId <= 0) { call(cb, { QString(), QStringLiteral("no track") }); return; }
     m_client->fetchTrack(trackId, [this, cb](Track t, QString err) mutable {
-        // A track Tidal serves but gives no radio for answers "" and no error.
-        // The caller treats both the same - it falls back to the list viewer -
-        // but they are different facts and are not folded together here.
+        // A track with no radio answers "" and no error.
         call(cb, { qjsEngine(this)->toScriptValue(t.trackMixId),
                    qjsEngine(this)->toScriptValue(err) });
     });
@@ -907,8 +771,8 @@ QVariantList TidalBridge::searchFavoritePlaylists(const QString &query) const {
 }
 
 void TidalBridge::loadFavoriteTrackIds() {
-    // Invalidate any in-flight tracks-paging chain so its stale callbacks stop
-    // appending after this reset (otherwise the old chain re-adds page 0).
+    // Invalidates any paging chain in flight, so its callbacks stop appending
+    // after this reset.
     ++m_favTracksLoadGen;
 
     m_favTracksSettled = false;
@@ -927,15 +791,10 @@ void TidalBridge::loadFavoriteTrackIds() {
 void TidalBridge::loadFavoriteMixIds() {
     const int gen = ++m_favMixesLoadGen;
     m_favoriteMixIds.clear();
-    // Not merged with loadFavoriteTrackIds(): that one walks four offset-paged
-    // v1 endpoints and this is one cursor-paged v2 chain that TidalClient already
-    // runs to completion for us. One list, one assignment, one signal.
     m_client->fetchFavoriteMixes([this, gen](QList<Mix> mixes, QString err) {
         if (gen != m_favMixesLoadGen) return;
-        // A failed load leaves the set empty, which reads as "nothing is saved".
-        // That is the right way round: it offers a Save on a mix that may already
-        // be saved, and saving an already-saved mix is harmless, whereas guessing
-        // the other way would offer an Unsave that could not work.
+        // A failed load leaves the set empty, so a saved mix offers Save.
+        // That is harmless; an Unsave on an unsaved mix could not work.
         if (!err.isEmpty()) return;
         for (const Mix &m : mixes)
             if (!m.id.isEmpty()) m_favoriteMixIds.insert(m.id);
@@ -947,20 +806,18 @@ void TidalBridge::loadNextFavoriteTracksPage(int offset) {
     if (m_client->userId() == 0) return;
     const int gen = m_favTracksLoadGen;
     m_client->fetchFavoriteTracks([this, offset, gen](QList<Track> tracks, QString err) {
-        // A newer load has superseded this chain — stop before touching state.
+        // A newer load has superseded this chain.
         if (gen != m_favTracksLoadGen) return;
         if (!err.isEmpty() || tracks.isEmpty()) {
-            // The last page. Until here the list is in the endpoint's order,
-            // which is oldest like first; from here it is newest first, which
-            // is what every reader of it expects.
+            // The last page. The endpoint answers oldest first and every
+            // reader expects newest first.
             std::reverse(m_favoriteTracks.begin(), m_favoriteTracks.end());
             m_favTracksSettled = true;
             emit favoriteTracksChanged();
             return;
         }
         for (const auto &t : tracks) {
-            // Skip tracks already seen this load — overlapping API windows
-            // (order=DATE) would otherwise duplicate boundary items.
+            // Overlapping API windows (order=DATE) can repeat boundary items.
             if (m_favoriteTrackIds.contains(t.id)) continue;
             m_favoriteTrackIds.insert(t.id);
             m_favoriteTracks.append(t);
@@ -1044,8 +901,7 @@ void sortPlaylistsByRecency(QList<Playlist> &playlists, const QVariantMap &playt
 void TidalBridge::sortPlaylists(QList<Playlist> &playlists) const {
     QVariantMap playtimes;
     const qint64 uid = m_client->userId();
-    // The play times are kept per account, so without a session there are none
-    // to read; the playlists' own addedAt still orders them.
+    // Play times are kept per account. Without a session addedAt alone orders.
     if (uid > 0) {
         QSettings settings;
         playtimes = settings.value(

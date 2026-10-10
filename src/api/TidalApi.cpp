@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "TidalApi.h"
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -7,17 +9,8 @@
 TidalApi::TidalApi(QObject *parent) : QObject(parent) {
     m_nam = new QNetworkAccessManager(this);
     m_nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
-    // On the manager rather than on each request, so there is no second place
-    // to forget: it reaches makeRequest()'s GETs, postApiForm()'s POSTs and the
-    // OAuth host requests in post(), which builds a QNetworkRequest of its own.
-    // Measured, not assumed - a manager-level timeout does apply to a request
-    // that sets none of its own, GET and POST alike. See kTransferTimeoutMs for
-    // why the number is what it is, and why an idle timeout is the instrument.
-    //
-    // Note what this does not cover: QMediaPlayer streams through the FFmpeg
-    // backend, which does its own HTTP. On this app's path that no longer
-    // matters, because DashFetcher fetches every byte through here and hands
-    // the backend a local file.
+    // Set on the manager so it covers every request, including the ones
+    // post() builds itself.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
     m_nam->setTransferTimeout(std::chrono::milliseconds(kTransferTimeoutMs));
 #else
@@ -49,16 +42,11 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
     QUrl url(kApiBaseV2 + endpoint);
     QUrlQuery q = params;
-    // The same country code every other call carries. getDoc() adds it to each
-    // GET; this is the PUT's copy of that line, and not an assumption that the
-    // endpoint needs one: it is tolerated everywhere else in this API and
-    // leaving it off would make this the single request in the app that is
-    // country-less.
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
 
     QNetworkRequest req = makeRequest(url);
-    // Empty body, so Qt sends Content-Length: 0 rather than omitting the header.
+    // An empty body makes Qt send Content-Length: 0.
     auto *reply = m_nam->put(req, QByteArray());
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
@@ -129,7 +117,7 @@ void TidalApi::getDoc(const QString &base, const QString &endpoint,
 void TidalApi::post(const QString &endpoint, const QByteArray &body,
                     const QMap<QString,QString> &extraHeaders, JsonCallback cb) {
     QUrl url(kAuthBase + endpoint);
-    // Auth endpoints must NOT receive X-Tidal-Token or Authorization headers
+    // Auth endpoints must not receive X-Tidal-Token or Authorization headers.
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader,
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 KHTML, like Gecko Chrome/131 Safari/537.36");

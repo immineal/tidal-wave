@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QString>
 #include <QList>
@@ -11,36 +13,26 @@ namespace Tidal {
 enum class AudioQuality { Low96k, Low320k, Lossless, HiResLossless };
 enum class MediaType { Track, Album, Artist, Playlist, Mix };
 
-// Tidal reports dates as ISO-8601 strings ("2024-05-01T10:00:00.000+0000").
-// An unparseable or absent one answers 0, because an invalid QDateTime's
-// toMSecsSinceEpoch() is not defined and would be sorted on as if it were a
-// real instant.
+// Tidal reports dates as ISO-8601 strings. An unparseable or absent one
+// answers 0: toMSecsSinceEpoch() on an invalid QDateTime is undefined.
 inline qint64 isoToMSecs(const QString &iso) {
     if (iso.isEmpty()) return 0;
     const QDateTime dt = QDateTime::fromString(iso, Qt::ISODate);
     return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
 }
 
-// The `mixType` constants the app acts on. Every other value is carried through
-// as whatever string the page sent; the ones seen in the captured responses the
-// tests are built from are DAILY_MIX ("My Mix 1".."My Mix 8") and ARTIST_MIX
-// (one radio station per artist).
+// The `mixType` values the app acts on. Any other value is carried through as
+// the string the page sent.
 namespace MixTypes {
 inline constexpr auto DailyDiscovery = "DISCOVERY_MIX";   // "My Daily Discovery"
 inline constexpr auto NewArrivals    = "NEW_RELEASE_MIX"; // "My New Arrivals"
-// "My Video Mix 1".."My Video Mix 7". Dropped from the generated list only - see
-// parseMixPage(). A saved one is kept like any other saved mix.
+// Dropped from the generated list only, see parseMixPage(). A saved one is
+// kept like any other saved mix.
 inline constexpr auto VideoDailyMix  = "VIDEO_DAILY_MIX";
-// A track's radio station, as a mix. This is the one that closes the two-viewer
-// split: `tracks/<id>` carries this mix's id under `mixes.TRACK_MIX`, so a
-// track's radio *is* a mix with an id, and the app can open it on MixPage -
-// where it can be saved and unsaved - instead of on the bare list RadioPage
-// draws from `tracks/<id>/radio`, which answers no identity at all.
+// A track's radio station. `tracks/<id>` carries its id under
+// `mixes.TRACK_MIX`, so a radio can open on MixPage and be saved.
 inline constexpr auto TrackMix       = "TRACK_MIX";
-// The artist equivalent, listed for the same reason the key is: it is the other
-// value `mixes` can carry (tidalapi/mix.py names both). Nothing reads an artist
-// radio yet; the constant is here so the two keys are written down in one place
-// rather than one here and one in a string literal.
+// The other key `mixes` can carry. Nothing reads an artist radio yet.
 inline constexpr auto ArtistMix      = "ARTIST_MIX";
 } // namespace MixTypes
 
@@ -48,12 +40,12 @@ struct Artist {
     qint64 id = 0;
     QString name;
     QString picture; // UUID for art
-    // When this user followed the artist, in ms since epoch, 0 when the
-    // response carried no date. See Album::addedAt.
+    // When this user followed the artist, in ms since epoch. 0 when the
+    // response carried no date.
     qint64  addedAt = 0;
 
-    // `wrapper` is the favourites row the artist arrived in, where there was
-    // one: users/<id>/favorites/artists answers {"created": …, "item": {…}}.
+    // `wrapper` is the favourites row the artist arrived in, if any:
+    // users/<id>/favorites/artists answers {"created": …, "item": {…}}.
     static Artist fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Artist a;
         a.id   = j["id"].toVariant().toLongLong();
@@ -73,18 +65,14 @@ struct Album {
     QString releaseDate;
     QString audioQuality;
     QString type;       // ALBUM / SINGLE / EP / COMPILATION
-    // The two lines the sleeve carries and nothing in the app used to: the
-    // rights line ("(P) 1975 ...") verbatim as the label worded it, and the
-    // barcode. Both only arrive on albums/<id>; the album object nested inside
-    // a track or a favourites row carries neither, which is why a page that
-    // wants them has to fetch the album.
+    // The rights line and the barcode. Both arrive only on albums/<id>; an
+    // album nested in a track or a favourites row carries neither.
     QString copyright;
     QString upc;
     QList<Artist> artists;
-    // When this user saved the album, in ms since epoch, 0 when the response
-    // carried no date. Half of the sidebar's ordering key - see the comment on
-    // LibraryIndex::rebuild(). Deliberately not releaseDate: that is when the
-    // record came out, and an old album saved today has to rank as saved today.
+    // When this user saved the album, in ms since epoch. 0 when the response
+    // carried no date. Half of the sidebar's ordering key, so it must not be
+    // releaseDate.
     qint64  addedAt = 0;
 
     QString coverUrl(int size = 320) const {
@@ -94,11 +82,8 @@ struct Album {
         return QStringLiteral("https://resources.tidal.com/images/%1/%2x%2.jpg").arg(u).arg(size);
     }
 
-    // `wrapper` is the favourites row the album arrived in, where there was one:
-    // users/<id>/favorites/albums answers {"created": …, "item": {…}}, and the
-    // "created" is this user's save date. The album object inside it carries no
-    // date of its own, so passing only the unwrapped album throws the save date
-    // away - which is what the sidebar was doing.
+    // `wrapper` is the favourites row the album arrived in, if any. Its
+    // "created" is this user's save date; the album inside carries no date.
     static Album fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Album a;
         a.id           = j["id"].toVariant().toLongLong();
@@ -135,20 +120,9 @@ struct Track {
     QString audioQuality;
     Album   album;
     QList<Artist> artists;
-    // This track's radio, as a mix id - "" when the response did not say.
-    //
-    // Tidal hands every track a `mixes` object keyed by mix type, and the
-    // TRACK_MIX entry is the id of the station "Start radio" means. Having it
-    // is what lets one viewer serve both: MixPage can be opened on the id, and
-    // a mix has a save state, where `tracks/<id>/radio` answers a plain track
-    // list with no identity on it at all.
-    //
-    // Deliberately allowed to be empty. It is NOT established that every
-    // listing endpoint carries `mixes` - album items, playlist items and search
-    // results have not been checked against a live response, and this must not
-    // be found out by calling the user's account - so an absent id is a normal
-    // case, not a fault, and TrackRow falls back to the old RadioPage route
-    // when it sees one.
+    // This track's radio as a mix id, from `mixes.TRACK_MIX`. Empty is a
+    // normal case: a listing endpoint may omit `mixes`, and TrackRow then
+    // falls back to RadioPage.
     QString trackMixId;
 
     static Track fromJson(const QJsonObject &j) {
@@ -161,17 +135,13 @@ struct Track {
         t.explicit_    = j["explicit"].toBool();
         t.popularity   = j["popularity"].toInt();
         t.audioQuality = j["audioQuality"].toString();
-        // {"TRACK_MIX": "001603cb31f1842e052770e0ad7647", ...}: 30 lowercase hex
-        // characters, nothing like a numeric track id. Read through toObject()
-        // so a response that spells `mixes` as anything else - or omits it,
-        // which most listing endpoints may well do - yields "" rather than
-        // warning or throwing.
+        // A hex string, unlike a numeric track id. A missing `mixes` yields "".
         t.trackMixId   = j["mixes"].toObject()[MixTypes::TrackMix].toString();
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());
         for (const auto &v : j["artists"].toArray())
             t.artists.append(Artist::fromJson(v.toObject()));
-        // Fallback: some endpoints include top-level artistId when artist objects lack id
+        // Some endpoints send a top-level artistId when the artist objects lack an id.
         if (!t.artists.isEmpty() && t.artists[0].id == 0) {
             qint64 fallback = j["artistId"].toVariant().toLongLong();
             if (fallback > 0) t.artists[0].id = fallback;
@@ -196,21 +166,11 @@ struct Track {
     }
 };
 
-// Who made one recording, and the small print that goes with it.
-//
-// Assembled from three responses rather than one, because no single endpoint
-// carries all of it (see TidalClient::fetchTrackCredits):
-//
-//   tracks/<id>/credits  the contributor groups, as a top-level JSON array
-//   tracks/<id>          the track's own rights line and its ISRC
-//   albums/<id>          the release date in full, the barcode, and the
-//                        album's rights line as a fallback for the track's
-//
-// albums/<id>/credits exists too and answered zero groups for every album
-// probed against this account, so the per-track endpoint is the only one built
-// on here.
+// Who made one recording, and the small print that goes with it. Assembled
+// from tracks/<id>/credits, tracks/<id> and albums/<id>, because no single
+// endpoint carries all of it. See TidalClient::fetchTrackCredits.
 struct CreditGroup {
-    QString type;               // "Producer", "Bass guitar" - the label's word
+    QString type;               // the label's word, e.g. "Producer"
     QList<Artist> contributors; // id and name; the id is not always an artist
 };
 
@@ -218,12 +178,11 @@ struct TrackCredits {
     QList<CreditGroup> groups;
     QString copyright;   // the rights line, verbatim
     QString isrc;        // this recording
-    QString releaseDate; // the album's, in full: "2017-09-22", not just a year
+    QString releaseDate; // the album's, as a full date
     QString upc;         // the album's barcode
 
-    // Whether there is anything at all to put on screen. A track with no
-    // contributor groups still has a release date and a rights line, and that
-    // is worth a panel; nothing at all is not.
+    // A track with no contributor groups can still have a date and a rights
+    // line to show.
     bool isEmpty() const {
         return groups.isEmpty() && copyright.isEmpty()
             && releaseDate.isEmpty() && isrc.isEmpty() && upc.isEmpty();
@@ -251,10 +210,9 @@ struct Playlist {
     int     duration  = 0;
     QString image;  // UUID
     QString type;   // USER / EDITORIAL
-    // When this user acquired the playlist — created it or saved someone
-    // else's — in ms since epoch, 0 when the response carried no usable date.
-    // Half of the ordering key in sortPlaylistsByRecency(), and of the
-    // sidebar's in LibraryIndex::rebuild().
+    // When this user created or saved the playlist, in ms since epoch. 0 when
+    // the response carried no usable date. Half of the ordering key in
+    // sortPlaylistsByRecency() and in LibraryIndex::rebuild().
     qint64  addedAt = 0;
 
     QString coverUrl(int size = 320) const {
@@ -264,12 +222,9 @@ struct Playlist {
         return QStringLiteral("https://resources.tidal.com/images/%1/%2x%2.jpg").arg(u).arg(size);
     }
 
-    // `wrapper` is the favourites row the playlist arrived in, where there was
-    // one. Its "created" is when *this* user saved the playlist, while the
-    // playlist's own "created" is the original author's and can be years old,
-    // so the wrapper's date wins. "lastUpdated" is deliberately not consulted:
-    // it moves every time anyone adds a track, which would reorder the home row
-    // behind the user's back.
+    // `wrapper` is the favourites row the playlist arrived in, if any. Its
+    // "created" is this user's save date and wins over the playlist's own,
+    // which is the author's. "lastUpdated" moves on every edit and is not read.
     static Playlist fromJson(const QJsonObject &j, const QJsonObject &wrapper = QJsonObject()) {
         Playlist p;
         p.uuid        = j["uuid"].toString();
@@ -277,10 +232,9 @@ struct Playlist {
         p.description = j["description"].toString();
         p.numTracks   = j["numberOfTracks"].toInt();
         p.duration    = j["duration"].toInt();
-        // squareImage is the 1:1 art tidal serves at WxW sizes (what coverUrl
-        // requests below); the plain "image" field is a 3:2 widescreen crop
-        // that 403s at square dimensions, so prefer squareImage.
-        p.image       = j["squareImage"].toString(j["image"].toString());
+        // squareImage is the 1:1 art coverUrl() asks for. The plain "image" is
+        // a 3:2 crop that answers 403 at square sizes.
+        p.image      = j["squareImage"].toString(j["image"].toString());
         p.type        = j["type"].toString();
         p.addedAt     = isoToMSecs(wrapper["created"].toString());
         if (p.addedAt == 0)
@@ -289,57 +243,17 @@ struct Playlist {
     }
 };
 
-// Writes onto `dst` the fields that a change to a playlist's *contents* moves,
-// and nothing else. Answers whether any of them actually changed, so a caller
-// can skip the redraw when the reply said what it already knew.
-//
-// This exists because adding or removing a track moves three fields at once and
-// the app keeps the playlist row in two places. `TidalBridge::m_favoritePlaylists`
-// feeds the Home row, the Collection grid and the "Add to playlist" picker;
-// `LibraryIndex::m_playlists` feeds the sidebar. Every earlier fix to that split
-// - favourites, create, rename - was written twice and had to agree twice. This
-// one is written once and both ends call it, so the two caches cannot drift on
-// these fields and the exclusions below cannot be honoured in one place and
-// forgotten in the other.
-//
-// What moves, and why each one:
-//
-//   * numTracks - the reported bug. A playlist the user had just put two songs
-//     into still read "0 tracks" in the picker.
-//   * duration  - moves by the length of the song on the same event, and no
-//     caller can supply it: the bridge is handed a track *id*.
-//   * image     - a USER playlist's cover is a mosaic Tidal regenerates from the
-//     first few tracks, so filling an empty playlist gives it artwork and
-//     emptying one takes it away.
-//   * title     - free with the same reply, and it self-heals a rename made on
-//     another device.
-//
-// What is deliberately left alone:
-//
-//   * addedAt. This is the trap, and it has a commit behind it: `playlists/<uuid>`
-//     carries no favourites wrapper, so `fromJson` falls back to the playlist's
-//     own `created` - the *original author's* date, which on a followed playlist
-//     can be years old. Half the sidebar's ordering key is max(last played,
-//     addedAt), so copying it would sink a playlist to the bottom of the library
-//     for the crime of having a song dropped on it. A rejected fork patch did
-//     exactly that by replacing the whole cached row.
-//   * uuid, which is the identity the caller matched on, and type, which cannot
-//     change.
-//   * description, which the rename path owns. A reply fetched around a rename
-//     that has been accepted locally but not yet acknowledged would put the old
-//     text back.
+// Copies the fields a change to a playlist's contents moves and answers
+// whether any changed. addedAt stays: `fresh` carries the author's date, which
+// would sink the row in the sidebar. description belongs to the rename path.
 inline bool mergePlaylistMeta(Playlist &dst, const Playlist &fresh) {
     bool changed = false;
     if (dst.numTracks != fresh.numTracks) { dst.numTracks = fresh.numTracks; changed = true; }
     if (dst.duration  != fresh.duration)  { dst.duration  = fresh.duration;  changed = true; }
     if (dst.image     != fresh.image)     { dst.image     = fresh.image;     changed = true; }
     if (!fresh.title.isEmpty() && dst.title != fresh.title) {
-        // Guarded where the other three are not: a title is the one field whose
-        // empty value is never a fact about the playlist. Tidal will not hold a
-        // nameless playlist, so "" here means the reply did not parse, and
-        // blanking the label would leave an unidentifiable row. An empty
-        // numTracks, duration or image each really do describe a playlist that
-        // has just had its last track taken out.
+        // Tidal holds no nameless playlist, so an empty title means the reply
+        // did not parse. The other three can truly be empty.
         dst.title = fresh.title;
         changed = true;
     }
@@ -351,25 +265,18 @@ struct Mix {
     QString title;
     QString subTitle;
     QString cover;  // UUID
-    // When this user saved the mix, in ms since epoch, 0 when the response
-    // carried no date - which is every mix that came from a `pages/*` feed. Only
-    // v2/favorites/mixes says, and it says it per item as `dateAdded`. Half of
-    // the sidebar's ordering key, as for Album::addedAt.
+    // When this user saved the mix, in ms since epoch. Only v2/favorites/mixes
+    // carries it, as `dateAdded`; a mix from a `pages/*` feed has 0.
     qint64  addedAt = 0;
-    // Which generated mix this is. The only handle on a particular mix that
-    // code can match on: `title` arrives in the account's language, and the id
-    // is an opaque string the account's own pages carry, so neither can be
-    // written down anywhere. (The two example ids that used to stand here as
-    // evidence came from a fabricated fixture; they are gone with it.)
+    // The only handle code can match a generated mix on: `title` is localised
+    // and the id is opaque and per account.
     QString mixType;
 
     bool isDailyDiscovery() const { return mixType == QLatin1String(MixTypes::DailyDiscovery); }
     bool isNewArrivals()    const { return mixType == QLatin1String(MixTypes::NewArrivals); }
     bool isVideoMix()       const { return mixType == QLatin1String(MixTypes::VideoDailyMix); }
-    // A radio station: the mix Tidal builds out of one track. The hero says
-    // "Radio" rather than "Mix" for one of these, because that is what the user
-    // asked for and what every other surface in the app calls it.
-    bool isTrackMix()       const { return mixType == QLatin1String(MixTypes::TrackMix); }
+    // A radio station: the mix Tidal builds out of one track.
+    bool isTrackMix()      const { return mixType == QLatin1String(MixTypes::TrackMix); }
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};
@@ -384,13 +291,10 @@ struct Mix {
         m.id       = j["id"].toString();
         m.title    = j["title"].toString();
         m.subTitle = j["subTitle"].toString();
-        // A plain string on every endpoint that labels a mix at all -
-        // "DISCOVERY_MIX", not an object. It used to be read as one, purely to
-        // look for artwork inside it; that lookup therefore always came up
-        // empty and is gone. detailImages is the hero-sized set that really
-        // does sit beside `images` on the v2 shape.
+        // A plain string on every endpoint that labels a mix.
         m.mixType  = j["mixType"].toString();
-        // Try multiple known image locations in the API response
+        // The art sits in one of three places depending on the endpoint.
+        // detailImages is the hero-sized set on the v2 shape.
         auto tryImages = [&](const QJsonObject &imgs) {
             if (m.cover.isEmpty() && imgs.contains("LARGE"))
                 m.cover = imgs["LARGE"].toObject()["url"].toString();
@@ -402,11 +306,8 @@ struct Mix {
         tryImages(j["images"].toObject());
         tryImages(j["detail"].toObject()["images"].toObject());
         tryImages(j["detailImages"].toObject());
-        // v2/favorites/mixes only. Its dates carry six fractional digits
-        // ("2026-06-08T19:33:03.142667Z"), which Qt::ISODate parses and rounds to
-        // the millisecond; `updated` sits beside it and is deliberately not read,
-        // because Tidal regenerates these daily and the sidebar would reshuffle
-        // itself every morning.
+        // v2/favorites/mixes only. `updated` beside it is not read: Tidal
+        // regenerates mixes daily and the sidebar would reshuffle each time.
         m.addedAt = isoToMSecs(j["dateAdded"].toString());
         return m;
     }
@@ -450,24 +351,17 @@ struct SearchResults {
     QList<Album>    albums;
     QList<Artist>   artists;
     QList<Playlist> playlists;
-    // Mixes are a sixth kind the catalogue can answer with, filtered the way
-    // the Home row filters them: a VIDEO_DAILY_MIX is dropped before it ever
-    // reaches this struct, because the app cannot play one (see
-    // TidalClient::parseSearchMixes and the long note on parseMixPage).
+    // Video mixes are dropped before they reach this list, because the app
+    // cannot play one. See TidalClient::parseSearchMixes.
     QList<Mix>      mixes;
 
-    // How many the server says it has, per kind, out of `totalNumberOfItems`
-    // beside each list. These used to be parsed and then thrown away one layer
-    // up, which left the page with no way to know it had reached the end of a
-    // kind: a short page and the last page look identical when the only thing
-    // you can count is what you were handed.
+    // The server's `totalNumberOfItems` per kind. Paging needs it: a short
+    // page and the last page look the same otherwise.
     int totalTracks    = 0;
     int totalAlbums    = 0;
     int totalArtists   = 0;
     int totalPlaylists = 0;
-    // The count *before* the video filter, so "20 of 57" stays honest about
-    // what paging has left to ask for. The page never shows it; it bounds the
-    // run (see SearchPage's `_more`).
+    // The count before the video filter, so it bounds paging. Never shown.
     int totalMixes     = 0;
 };
 

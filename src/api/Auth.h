@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QDateTime>
@@ -28,23 +30,17 @@ public:
     qint64  userId()          const { return m_userId; }
     QString countryCode()     const { return m_countryCode; }
 
-    // Attempt device flow login
     Q_INVOKABLE void startDeviceFlow();
-    // Cancel pending auth
     Q_INVOKABLE void cancelDeviceFlow();
-    // Log out
     Q_INVOKABLE void logout();
 
     // Called on startup with persisted tokens
     void loadCredentials();
 
-    // Pure, and covered by tst_auth: picks what the sidebar shows for the
-    // signed-in account. Public so the test can reach it without a session.
+    // What the sidebar shows for the signed-in account. Public for tst_auth.
     static QString displayNameFrom(const QJsonObject &u);
 
-    // How the token expiry is written to and read from credentials.json.
-    // Public for the same reason: the round trip is the thing worth testing and
-    // it needs no network. See the comments on the definitions.
+    // How the token expiry is stored in credentials.json. Public for tst_auth.
     static QString   expiryToString(const QDateTime &when);
     static QDateTime expiryFromString(const QString &stored);
 

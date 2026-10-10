@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QNetworkAccessManager>
@@ -13,11 +15,9 @@ class TidalApi : public QObject {
     Q_OBJECT
 public:
     using JsonCallback = std::function<void(QJsonObject, QString /*error*/)>;
-    // For the endpoints whose whole body is a bare JSON array rather than an
-    // object with an "items" key. tracks/<id>/credits is one: it answers
-    // [{type, contributors:[…]}, …] at the top level, so QJsonDocument::object()
-    // reads it as {} and every field comes back empty with no error to show for
-    // it.
+    // For endpoints whose body is a bare JSON array, such as
+    // tracks/<id>/credits. QJsonDocument::object() reads those as {} with no
+    // error.
     using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
 
@@ -27,47 +27,26 @@ public:
     void setCountryCode(const QString &cc);
     QString countryCode() const { return m_countryCode; }
 
-    // Low-level GET/POST
-    //
-    // `virtual` for one reason, and nothing in the app overrides it: it is the
-    // test seam one level below TidalClient. tst_artist_discography drives the
-    // real TidalClient against a subclass that answers canned JSON per query,
-    // which is the only way to hold fetchArtistAlbums() to the three `filter`
-    // values it has to send, to the offsets it has to page through, and to what
-    // it does when one of those three requests fails. A fake one level up -
-    // overriding TidalClient's own method - could not see any of that, which is
-    // exactly the "stub that cannot express the bug" this tree keeps growing.
+    // Virtual as a test seam only: tests answer canned JSON per query from a
+    // subclass and drive the real TidalClient against it.
     virtual void get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
-    // The same GET against the v2 host. A handful of endpoints only exist there -
-    // favorites/mixes is one - and they are cursor-paged rather than
-    // offset-paged, so they are not drop-in replacements for their v1 siblings.
+    // The same GET against the v2 host. Its endpoints are cursor-paged, so
+    // they are no drop-in replacements for their v1 siblings.
     void getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
-    // A v2 PUT whose arguments ride in the query string and whose body is empty.
-    //
-    // That is not a style choice: v2/favorites/mixes/add and .../remove are
-    // specified that way (tidalapi/user.py::add_mixes and remove_mixes send
-    // method="PUT" with `params` and no `data`), and they are the only callers.
-    // A form body would be a different request.
-    //
-    // The reply is parsed the way postApiForm() parses one, so an `error` key in
-    // a 200 is still an error - but a 200 is *not* taken as success by the
-    // caller: see TidalClient::mixFavoriteAccepted().
+    // A v2 PUT with its arguments in the query string and an empty body, which
+    // is what v2/favorites/mixes/add and .../remove require. A 200 is no proof
+    // of success: see TidalClient::mixFavoriteAccepted().
     void putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     // The same v1 GET, for a body that is an array at the top level.
     void getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb);
-    // A GET against the track-manifest host, which is neither api.tidal.com nor
-    // the same API version as anything else here, and is the only place that
-    // will still hand this client a FLAC manifest. The body is JSON:API -
-    // {data: {attributes: {...}}} - rather than the flat objects every other
-    // endpoint answers with. Takes the same auth headers, and tolerates the
-    // countryCode this adds to every request (checked against the live host:
-    // identical response with it and without).
+    // A GET against the track-manifest host, the only one that serves a FLAC
+    // manifest. The body is JSON:API: {data: {attributes: {...}}}.
     void getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // post() and postForm() target the OAuth host and send no auth headers.
     void post(const QString &endpoint, const QByteArray &body,
               const QMap<QString,QString> &extraHeaders, JsonCallback cb);
     void postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
-    // POST against the authenticated API host (api.tidal.com), unlike post()/postForm()
-    // which target the OAuth host (auth.tidal.com) and deliberately omit auth headers.
+    // POST against the authenticated API host.
     void postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
     void deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     void getEtag(const QString &endpoint, std::function<void(QString /*etag*/, QString /*error*/)> cb);
@@ -80,27 +59,9 @@ public:
     static constexpr auto kAuthBase   = "https://auth.tidal.com/v1/";
     static constexpr auto kOpenApiBase = "https://openapi.tidal.com/v2/";
 
-    // How long a request may go without a single byte arriving before it is
-    // given up on. Nothing on the playback path had one, so a manifest or a
-    // segment request that connected and then went quiet never finished: the
-    // callback that clears Player::loading() was never called, the player
-    // reported a load for the life of the process, and because the now-playing
-    // spinner is an indefinite animation one stuck row kept the render loop at
-    // 60 fps for as long as the window was up.
-    //
-    // It is an *idle* timeout and not a budget for the transfer, which is what
-    // makes it safe on the lossless path, where DashFetcher downloads a whole
-    // track before the first note and a long hi-res one legitimately takes
-    // minutes. Measured on Qt 6.12 rather than taken from the documentation: a
-    // body delivered in 64-byte chunks 400 ms apart ran 4021 ms to completion
-    // under a 1000 ms timeout and lost none of it. So the number only has to
-    // exceed the longest silence a *working* server leaves in the middle of
-    // answering, not the longest transfer anyone might ask for.
-    //
-    // 15 s because Tidal's API and CDN answer in well under a second, so this
-    // is two orders of magnitude of headroom, and because it is the same number
-    // UpdateCheck already waits on GitHub - one answer in the tree to "how long
-    // do we wait on a server that has stopped talking" rather than two.
+    // How long a request may go without a byte arriving. It is an idle timeout
+    // and no budget for the transfer, so a whole-track download that takes
+    // minutes is safe. Without it a stalled request never calls back.
     static constexpr int kTransferTimeoutMs = 15000;
 
 private:
@@ -111,9 +72,7 @@ private:
     QNetworkRequest makeRequest(const QUrl &url);
     void getFrom(const QString &base, const QString &endpoint,
                  const QUrlQuery &params, JsonCallback cb);
-    // What getFrom() and getArray() share: the URL, the country code, the
-    // request and the parse, handing back the whole document so the caller can
-    // decide whether it wanted an object or an array out of it.
+    // What getFrom() and getArray() share. Hands back the whole document.
     void getDoc(const QString &base, const QString &endpoint,
                 const QUrlQuery &params,
                 std::function<void(QJsonDocument, QString /*error*/)> cb);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Auth.h"
 #include <QDir>
 #include <QFile>
@@ -71,9 +73,8 @@ void Auth::pollForToken() {
 
     m_api->postForm("oauth2/token", form, [this](QJsonObject obj, QString err) {
         if (!err.isEmpty()) {
-            // "authorization_pending" is normal - keep polling
+            // Pending is the normal answer until the user confirms: keep polling.
             if (obj["error"].toString() == "authorization_pending") return;
-            // "slow_down" means increase interval
             if (obj["error"].toString() == "slow_down") {
                 m_pollInterval += 5;
                 m_pollTimer->setInterval(m_pollInterval * 1000);
@@ -113,8 +114,8 @@ void Auth::refreshAccessToken() {
                 emit sessionExpired();
                 setState(State::LoggedOut);
             } else {
-                // Transient network failure (e.g. system just booted and network is not yet up).
-                // Retry in 5 seconds if not yet logged in without discarding saved session.
+                // No error body means the network failed, e.g. right after
+                // boot. Retry and keep the saved session.
                 if (m_state != State::LoggedIn && !m_refreshToken.isEmpty()) {
                     QTimer::singleShot(5000, this, &Auth::refreshAccessToken);
                 }
@@ -129,7 +130,7 @@ void Auth::refreshAccessToken() {
         m_tokenExpiry = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
         saveCredentials();
-        // Schedule next refresh 60s before expiry
+        // Next refresh 60 s before expiry.
         qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
         if (msec > 0) m_refreshTimer->start(msec);
 
@@ -139,9 +140,8 @@ void Auth::refreshAccessToken() {
     });
 }
 
-// Tidal's "username" field is the account's email address on most accounts, so
-// it is the last thing to reach for, not the first: a profile name or a real
-// name is what belongs in the sidebar. An address is never shown.
+// Tidal's "username" is the email address on most accounts, so it comes last
+// and an address is never shown.
 QString Auth::displayNameFrom(const QJsonObject &u) {
     const QString profile = u["profileName"].toString().trimmed();
     if (!profile.isEmpty()) return profile;
@@ -156,23 +156,15 @@ QString Auth::displayNameFrom(const QJsonObject &u) {
     return {};
 }
 
-// The expiry is written as UTC, because a bare wall clock is not an instant: a
-// machine that crosses a timezone between the write and the read sees a live
-// token as expired, or a dead one as current, by the difference between the two
-// offsets. Both of those land in refreshAccessToken() and recover while the
-// refresh token holds - so this costs a wasted round trip rather than a sign-out
-// - but it also mis-schedules m_refreshTimer by the same hours, and a stored
-// instant has no business depending on where the laptop was.
+// Written as UTC: a bare wall clock read back in another timezone shifts the
+// expiry, and with it m_refreshTimer, by the difference in offsets.
 QString Auth::expiryToString(const QDateTime &when) {
     if (!when.isValid()) return {};
     return when.toUTC().toString(Qt::ISODate);
 }
 
-// Both formats are read: ISODate takes the trailing Z or offset when there is
-// one, and a value written before the change above carries neither, so Qt reads
-// it as the local time it was in fact written as. That is deliberately *not*
-// reinterpreted as UTC - it would move every existing install's expiry by its
-// own offset - and the first saveCredentials() after this rewrites it with one.
+// A stored value without Z or offset is local time and is read as local time.
+// Reading it as UTC would shift an existing install's expiry by its offset.
 QDateTime Auth::expiryFromString(const QString &stored) {
     return QDateTime::fromString(stored, Qt::ISODate);
 }
@@ -216,13 +208,11 @@ void Auth::fetchSession() {
 
         saveCredentials();
 
-        // Schedule token refresh
         qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
         if (msec > 0) m_refreshTimer->start(msec);
 
-        // Emit before flipping state to LoggedIn: QML reacts to the state
-        // change by immediately fetching user-scoped data (playlists, etc),
-        // which requires TidalClient::userId to already be set via this signal.
+        // Emit before the state flips: QML fetches user-scoped data on the
+        // state change, and TidalClient::userId is set by this signal.
         emit loginSucceeded();
         setState(State::LoggedIn);
     });
@@ -250,14 +240,12 @@ void Auth::loadCredentials() {
     m_api->setAccessToken(m_accessToken);
     m_api->setCountryCode(m_countryCode);
 
-    // If token already expired, refresh immediately
     if (QDateTime::currentDateTime() >= m_tokenExpiry) {
         refreshAccessToken();
     } else {
-        // Valid token: transition to LoggedIn immediately so UI renders home page
+        // A valid token logs in at once; the session is validated behind it.
         emit loginSucceeded();
         setState(State::LoggedIn);
-        // Validate session and refresh user info in the background
         fetchSession();
         qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
         if (msec > 0) m_refreshTimer->start(msec);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QHash>
@@ -16,41 +18,9 @@ class TidalClient;
 class TidalBridge;
 class PinStore;
 
-// The sidebar's model: every playlist, album, artist and mix the user saved, in
-// one flat list, plus the local search index over them.
-//
-// Ordering is the pinned block, in pin order, and then one list - no divider, no
-// groups, no A-Z tier - sorted newest first on the most recent of (last played,
-// date added). The user asked for exactly that: "it makes more sense to just
-// sort everything by when it was added. Instead of A to Z", and "playing from
-// something and (re)saving it should both just put it at the top with the same
-// priority". So the two are one signal on one timestamp: re-saving an old album
-// lifts it exactly as playing it would, and nothing resets on a restart.
-//
-// Play times are tracked locally for all four kinds, because Tidal exposes no
-// cross-device play history (users/{id}/history is 404 and users/{id}/activity
-// only reports favourites added), so phone plays cannot contribute. The date
-// added comes from the favourites rows on every sign-in, which is what makes the
-// order reproducible across launches rather than only for this session.
-//
-// A mix the user saved carries its own date (v2/favorites/mixes reports
-// `dateAdded` per item) and ranks with everything else. One that Tidal merely
-// generated has no date - nobody added it, and Tidal regenerates the set - so it
-// files at the end of the list, by title, until it is played or pinned.
-//
-// Search covers songs as well as the four library kinds. Liked songs come down
-// with the rest of the library, so they answer at once; the tracklists of saved
-// albums are pulled in one album at a time in the background and cached to
-// disk, and a search run while that is half finished answers from whatever is
-// indexed so far. Artist top tracks are deliberately not indexed.
-//
-// A result is always something whose own title the user typed. Spec S7 had an
-// artist hit also listing that artist's albums and songs, and a song hit also
-// listing its album; the user could not tell those rows from real hits and
-// withdrew the whole idea. Do not put it back without asking.
-//
-// Everything this class fetches goes through the protected virtuals below, so
-// the tests can drive it with no network and no Tidal session.
+// The sidebar's model: every saved playlist, album, artist and mix in one flat
+// list, plus the local search index over them and over songs. Order is the
+// pinned block, then newest first on max(last played, date added).
 class LibraryIndex : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -62,11 +32,10 @@ public:
     explicit LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent = nullptr);
     ~LibraryIndex() override;
 
-    // Tidal caps a favourites response at 100 items whatever `limit` asks for;
-    // 50 keeps each round trip small enough that the first page paints fast.
+    // Tidal caps a favourites response at 100 items whatever `limit` asks for.
     static constexpr int pageSize = 50;
-    // A hard stop on paging. Short pages and repeated pages already end a run;
-    // this is the backstop for an API that does neither.
+    // A backstop on paging for an API that sends neither a short page nor a
+    // repeated one.
     static constexpr int maxPages = 100;
 
     QVariantList entries() const;
@@ -83,100 +52,48 @@ public:
     // Records a play so the entry floats to the top of the library list.
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id);
 
-    // Records that a song was played. Deliberately a second door rather than a
-    // kind markPlayed() accepts: a song play must reach the Tracks chip and
-    // nothing else. See markPlayed() and entriesForKinds() in the .cpp.
-    //
-    // Ignored for a song that is not in the library. The chip lists the
-    // library's songs, not a play history, so a song played once from somebody
-    // else's playlist has nothing to float to the top of - and not recording it
-    // is what keeps the stored play times bounded by the library.
+    // Records a song play. It reaches the Tracks chip and nothing else, and
+    // is ignored for a song outside the library, which keeps the stored play
+    // times bounded by the library.
     Q_INVOKABLE void markTrackPlayed(const QString &id);
 
-    // One row the user just added to, or removed from, their library.
-    //
-    // The sidebar is a *second* copy of the account's favourites - TidalBridge
-    // keeps the first, and the two page the same four endpoints independently -
-    // so liking an album only ever reached the bridge: the album page's Save
-    // button flipped to "Saved" and the sidebar went on showing the list it had
-    // fetched at sign-in. These are how the one row gets across.
-    //
-    // Applied to the local lists rather than by re-paging the endpoint, for the
-    // same reason TidalBridge appends rather than re-reading: the row is already
-    // in hand, and a re-page would both cost a round trip and have to trust the
-    // favourites list to already reflect a POST that has only just been
-    // acknowledged.
-    // Saving an album also pulls its tracklist into the search index, one
-    // album, without disturbing a background index run already going.
+    // One row the user just added to their library, applied to the local
+    // lists without re-paging. TidalBridge keeps a separate copy of the
+    // favourites. Saving an album also indexes its tracklist.
     void addAlbum (const Tidal::Album  &a);
     void addArtist(const Tidal::Artist &a);
     void addTrack (const Tidal::Track  &t);
-    // A mix the user just saved - in practice a track radio, since that is the
-    // only mix the interface can save. Stamped as of now, like the three above,
-    // so it sorts to the top of the sidebar where a thing just acquired belongs.
-    //
-    // `Mix::addedAt` on the payload is not trusted for that: the row comes from
-    // `pages/mix`, which carries no date at all, so it would be 0 and the mix
-    // would land at the bottom of the list.
+    // A mix the user just saved, stamped as of now. `Mix::addedAt` on the
+    // payload is 0, because `pages/mix` carries no date.
     void addMix   (const Tidal::Mix    &m);
-    // A playlist the user just created. Creating is the only way a playlist
-    // enters the account from here - there is no favourite action for
-    // playlists anywhere in the interface - and TidalBridge::createPlaylist
-    // reached neither its own list nor this one, so a new playlist would have
-    // been missing from the sidebar until the next launch.
+    // A playlist the user just created.
     void addPlaylist(const Tidal::Playlist &p);
-    // A playlist the user just renamed from its own page. Only `uuid`, `title`
-    // and `description` are read: an edit answers with no body, so the bridge
-    // has no artwork or track count to send and replacing the row wholesale
-    // would blank both. Nothing else about the row moves either - in
-    // particular `addedAt` is left alone, because a rename is not an
-    // acquisition and re-stamping it would send the playlist to the top of the
-    // sidebar for having been given a new name.
+    // A playlist the user just renamed. Only `uuid`, `title` and
+    // `description` are read, and `addedAt` stays, so the row keeps its place.
     void updatePlaylist(const Tidal::Playlist &p);
     // A playlist that just gained or lost a track, carrying the header the
-    // server answered with. The counterpart of TidalBridge's own merge into its
-    // own list, and the fourth hand-across this split between the two caches has
-    // needed: without it this copy of the row would keep the old count while the
-    // bridge's copy carried the new one.
-    //
-    // Separate from updatePlaylist above because that one is about a rename and
-    // would refuse this outright - it returns early when the title and the
-    // description already match, which after a track add they do. The field list
-    // and, more importantly, the fields that must *not* be written live in
-    // mergePlaylistMeta(), which both ends call rather than each keeping its own
-    // idea of them.
+    // server answered with. Writes what mergePlaylistMeta() copies and
+    // nothing else.
     void refreshPlaylistMeta(const Tidal::Playlist &p);
-    // `kind` is album/artist/track/mix. Not playlists: nothing in the interface
-    // unfavourites one. Mixes joined the list when MixPage gained its Save pill -
-    // before that a saved track radio could reach the sidebar and never leave it.
+    // `kind` is album/artist/track/mix. Nothing in the interface unfavourites
+    // a playlist.
     void removeEntry(const QString &kind, const QString &id);
 
-    // The library list filtered by kind, with nothing typed. `kinds` empty gives
-    // the same thing the `entries` property does.
-    //
-    // This exists because `entries` holds the four *browsable* kinds and songs
-    // are kept out of it on purpose - a library has thousands of them and they
-    // would bury everything else. The finder's Tracks chip was therefore
-    // filtering a list that has no tracks in it and showing "Nothing saved yet",
-    // while the same chip worked the moment anything was typed, because search()
-    // does visit the track entries. Asking for a kind explicitly is a different
-    // request from browsing, so this answers it and the property stays as it is.
+    // The library list filtered by kind, with nothing typed. Empty `kinds`
+    // gives what `entries` does. Songs are kept out of `entries`, so the
+    // Tracks chip asks here.
     Q_INVOKABLE QVariantList entriesForKinds(const QStringList &kinds) const;
 
-    // Filters the library by title. `kinds` is an empty list for everything,
-    // otherwise a subset of album/playlist/artist/mix/track. Rows come back
-    // best match first; the ranking is described above `matchScore` in the
-    // .cpp, and each row carries the `score` it was ordered by.
+    // Filters the library by title, best match first. `kinds` is empty for
+    // everything, otherwise a subset of album/playlist/artist/mix/track. A
+    // row is always something whose own title matched, and carries its `score`.
     Q_INVOKABLE QVariantList search(const QString &query, const QStringList &kinds) const;
 
-    // Stops the background tracklist index where it stands and keeps what it
-    // already has, on disk as well, so the next run resumes rather than starts
-    // over. Signing out or switching account should call it.
+    // Stops the background tracklist index and keeps what it has, on disk as
+    // well, so the next run resumes. Call it on sign-out or account switch.
     Q_INVOKABLE void cancelIndexing();
 
-    // Saved albums whose tracklist is in the search index, from the disk cache
-    // or from this session. The sidebar does not show it; the tests use it to
-    // see how far the lazy index has got.
+    // Saved albums whose tracklist is in the search index. Used by tests.
     Q_INVOKABLE int indexedAlbumCount() const;
 
 signals:
@@ -192,9 +109,7 @@ protected:
     using MixesCb     = std::function<void(QList<Tidal::Mix>,      QString)>;
 
     // The only six places this class reaches the network. They forward to
-    // TidalClient; a test subclass overrides them and serves its own pages,
-    // which is the only way to exercise paging that has to terminate on a
-    // server that keeps repeating itself.
+    // TidalClient; a test subclass overrides them and serves its own pages.
     virtual void fetchPlaylistPage(int offset, int limit, PlaylistsCb cb);
     virtual void fetchAlbumPage   (int offset, int limit, AlbumsCb    cb);
     virtual void fetchArtistPage  (int offset, int limit, ArtistsCb   cb);
@@ -206,7 +121,7 @@ protected:
 
 private:
     // One row of the sidebar, or one song in the search index. The folded and
-    // collated forms are computed once here rather than on every keystroke.
+    // collated forms are computed once, here.
     struct Entry {
         QString kind;
         QString id;
@@ -223,47 +138,22 @@ private:
         QString foldTitle;           // case- and accent-folded, for matching
         int     pinIndex   = -1;
         qint64  lastPlayed = 0;
-        // When this user added the thing to their library, in ms since epoch,
-        // from the `created` on the favourites row it arrived in, or a saved
-        // mix's own `dateAdded`. 0 for a generated mix (nobody added it) and for
-        // a song (the favourites row is not carried that far - see likeIndex
-        // below, which is the record songs do have).
+        // When this user added the thing, in ms since epoch. 0 for a generated
+        // mix and for a song.
         qint64  addedAt    = 0;
-        // max(lastPlayed, addedAt): the whole of the sidebar's ordering below
-        // the pinned block. Computed once per rebuild() rather than inside the
-        // comparator, because a library runs to a thousand rows and rebuild()
-        // runs on every pin, play and like.
+        // max(lastPlayed, addedAt): the sidebar's ordering below the pinned
+        // block. Computed once per rebuild(), outside the comparator.
         qint64  recency    = 0;
-        // Tracks only: the user liked this one, rather than it turning up in
-        // the tracklist of a saved album. Liking is a deliberate act, so it
-        // counts for more when the results are ranked.
+        // Tracks only: liked, as opposed to found in a saved album's
+        // tracklist. Liked songs rank higher in search.
         bool    liked      = false;
-        // Liked tracks only, -1 otherwise: where this song sits in the
-        // favourites list. The endpoint answers order=DATE oldest first and the
-        // pager keeps that order, so a higher number is a more recent like.
-        // That is the only record of when a song was liked that reaches this
-        // far, and it covers likes made on another device - which is why it is
-        // still the Tracks chip's order for every song this app has not seen
-        // happen to, under songRecency below.
+        // Liked tracks only, -1 otherwise: the position in the favourites
+        // list, which is oldest first, so a higher number is a newer like. It
+        // covers likes made on another device.
         int     likeIndex  = -1;
-        // Tracks only: the most recent of (played here, liked here), in ms
-        // since epoch, 0 when this app has witnessed neither. The Tracks chip's
-        // first sort key; see entriesForKinds().
-        //
-        // Deliberately not `recency`, and deliberately not `lastPlayed`. Those
-        // two order the library list, which must not move because a song
-        // played: rebuild() sorts a thousand rows and runs on every pin, play
-        // and like. `lastPlayed` is also what search() reads for its
-        // familiarity bonus, and a song play is not meant to re-rank search
-        // results either. So this is a third field rather than a reuse, and the
-        // separation is the point.
-        //
-        // The two halves are not the same kind of fact and cannot be. A play
-        // happened at a known instant, because this app watched it; a like has
-        // only an order, because Tidal exposes no date per favourite that
-        // reaches here - which is why a like made in this app is stamped where
-        // it happens (addTrack) and a like made on the phone falls back to
-        // likeIndex.
+        // Tracks only: the most recent of (played here, liked here), 0 when
+        // this app saw neither. The Tracks chip's first sort key. Kept apart
+        // from `recency` and `lastPlayed`, which a song play must not move.
         qint64  songRecency = 0;
 
         QString key() const { return kind + QLatin1Char(':') + id; }
@@ -282,24 +172,19 @@ private:
 
     void startTrackIndex();
     void stepTrackIndex(int gen);
-    // One album's tracklist, fetched on its own rather than through the queue.
-    // startTrackIndex() is the wrong tool for a single album: it bumps
-    // m_indexGen and rebuilds the queue, which abandons every reply a run
-    // already has in flight and asks for those albums again. This rides the
-    // generation that is current instead, so a sign-out, an account switch or a
-    // fresh refresh still discards the reply, and a run in progress is left
-    // exactly as it was.
+    // One album's tracklist, fetched outside the queue. It rides the current
+    // m_indexGen, so a run in progress is left alone; startTrackIndex() would
+    // bump it and abandon every reply in flight.
     void indexOneAlbum(qint64 albumId);
     void indexAlbum(qint64 albumId, const QList<Tidal::Track> &tracks);
 
-    // "Now", but never equal to or behind anything already recorded. See the
-    // definition: a play and a save inside one millisecond would otherwise tie.
+    // Now, but always later than anything already recorded, so a play and a
+    // save inside one millisecond cannot tie.
     qint64 stampNow() const;
 
     void loadRecents();
     void saveRecents() const;
-    // Drops the play times of songs that have left the library. See the .cpp:
-    // this is the bound on how much a song play can ever store.
+    // Drops the play times of songs that have left the library.
     void pruneSongPlays();
     void loadTrackCache();
     void saveTrackCache() const;
@@ -311,8 +196,7 @@ private:
     static Entry entryFor(const Tidal::Mix &m);
     static Entry entryFor(const Tidal::Track &t, qint64 albumId);
     static void  finishEntry(Entry &e);
-    // One row as QML reads it. `score` is only meaningful in a search result;
-    // the plain library list leaves it at zero.
+    // One row as QML reads it. `score` is zero outside a search result.
     static QVariantMap toRow(const Entry &e, int score);
 
     TidalClient *m_client = nullptr;

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "TidalClient.h"
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -37,11 +39,9 @@ QList<Track> TidalClient::parseTracks(const QJsonObject &root) {
     return out;
 }
 
-// The favourites endpoints answer {"created": …, "item": {…}} per row, and the
-// "created" is the date *this* user saved the item. The album and artist objects
-// inside carry no date of their own (checked against a live response: neither
-// has a "created" key), so the row has to reach fromJson() along with the item
-// or the save date is gone - and the sidebar's ordering is built on it.
+// The favourites endpoints answer {"created": …, "item": {…}} per row. The
+// row goes to fromJson() with the item, because only the row carries the save
+// date the sidebar orders on.
 QList<Album> TidalClient::parseAlbums(const QJsonObject &root) {
     QList<Album> out;
     for (const auto &v : root["items"].toArray()) {
@@ -70,11 +70,8 @@ QList<Playlist> TidalClient::parsePlaylists(const QJsonObject &root) {
     QList<Playlist> out;
     for (const auto &v : root["items"].toArray()) {
         const QJsonObject row = v.toObject();
-        // The favourites and playlistsAndFavoritePlaylists endpoints wrap each
-        // playlist in a row that carries the date this user added it. That row
-        // has to reach Playlist::fromJson(), which prefers it over the
-        // playlist's own creation date; passing only the unwrapped playlist
-        // threw the one date that says "the user touched this" away.
+        // The wrapping row carries the date this user added the playlist, so
+        // it goes to Playlist::fromJson() with the item.
         QJsonObject item = row;
         QJsonObject wrapper;
         if (row.contains("playlist"))  { item = row["playlist"].toObject(); wrapper = row; }
@@ -89,25 +86,15 @@ QList<Playlist> TidalClient::parsePlaylists(const QJsonObject &root) {
 
 QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
     QList<Mix> mixes;
-    // Navigate the nested page structure
     for (const auto &row : root["rows"].toArray()) {
         for (const auto &module : row.toObject()["modules"].toArray()) {
             auto mod = module.toObject();
             if (mod["type"].toString() != "MIX_LIST") continue;
             for (const auto &item : mod["pagedList"].toObject()["items"].toArray()) {
                 const Mix mix = Mix::fromJson(item.toObject());
-                // The app cannot play a video mix. Nothing in src/ or qml/ touches
-                // video at all, and `pages/mix` answers a VIDEO_DAILY_MIX with a
-                // VIDEO_LIST module of 50 items of type "Music Video" where a
-                // DAILY_MIX answers a TRACK_LIST - so fetchMixTracks(), which
-                // reads TRACK_LIST modules, finds nothing and the tile opens an
-                // empty mix. my_collection_my_mixes sends eight of seventeen, two
-                // of them sharing the title "My Video Mix 7", so the duplicate
-                // goes with them. Delete this `continue` to let them through.
-                //
-                // Only here, on the *generated* list. parseSavedMixes() keeps a
-                // video mix, because the user put it there on purpose and
-                // silently dropping something they saved is the worse failure.
+                // The app cannot play a video mix: `pages/mix` answers one with
+                // a VIDEO_LIST module and the tile would open empty. Dropped on
+                // the generated list only; parseSavedMixes() keeps a saved one.
                 if (mix.isVideoMix()) continue;
                 mixes.append(mix);
             }
@@ -117,17 +104,12 @@ QList<Mix> TidalClient::parseMixPage(const QJsonObject &root) {
 }
 
 Mix TidalClient::parseMixHeader(const QJsonObject &root) {
-    // The same rows-of-modules walk as parseMixPage(), looking for the one
-    // module that describes the page rather than a list on it. The mix hangs
-    // off `mix`, and carries the id, title, subTitle, mixType and images that
-    // Mix::fromJson already knows how to read.
     for (const auto &row : root["rows"].toArray())
         for (const auto &module : row.toObject()["modules"].toArray()) {
             const QJsonObject mod = module.toObject();
             if (mod["type"].toString() != "MIX_HEADER") continue;
             const Mix mix = Mix::fromJson(mod["mix"].toObject());
-            // A header with nothing under it is not an answer: keep walking
-            // rather than handing back a blank mix that looks like one.
+            // An empty header is no answer: keep walking.
             if (!mix.id.isEmpty() || !mix.title.isEmpty()) return mix;
         }
     return {};
@@ -138,10 +120,7 @@ QList<Track> TidalClient::parseMixTracks(const QJsonObject &root) {
     for (const auto &row : root["rows"].toArray())
         for (const auto &module : row.toObject()["modules"].toArray()) {
             const QJsonObject mod = module.toObject();
-            // TRACK_LIST and nothing else. A video mix's VIDEO_LIST holds
-            // "Music Video" items this app has no way to play - see
-            // parseMixPage() - and reading it would be worse than reading
-            // nothing.
+            // TRACK_LIST only. A VIDEO_LIST holds items the app cannot play.
             if (mod["type"].toString() != "TRACK_LIST") continue;
             tracks.append(parseTracks(mod["pagedList"].toObject()));
         }
@@ -149,14 +128,9 @@ QList<Track> TidalClient::parseMixTracks(const QJsonObject &root) {
 }
 
 QList<Mix> TidalClient::parseSavedMixes(const QJsonObject &root) {
-    // v2/favorites/mixes. Nothing like the `pages/*` feeds: a flat "items" array
-    // whose entries *are* the mixes - no {"item": {…}} wrapper, unlike the v1
-    // favourites endpoints - and each carries the `dateAdded` the sidebar orders
-    // on. No "totalNumberOfItems" either; see nextCursor() for how paging ends.
-    //
-    // Nothing is filtered. A TRACK_MIX or ARTIST_MIX here is a radio station the
-    // user saved, which is a saved mix like any other and is the thing they
-    // noticed was missing from the Collection.
+    // A flat "items" array whose entries are the mixes, with no {"item": {…}}
+    // wrapper and no "totalNumberOfItems". Nothing is filtered: a saved radio
+    // station is a saved mix like any other.
     QList<Mix> mixes;
     for (const auto &v : root["items"].toArray()) {
         const QJsonObject obj = v.toObject();
@@ -166,17 +140,9 @@ QList<Mix> TidalClient::parseSavedMixes(const QJsonObject &root) {
 }
 
 QString TidalClient::nextCursor(const QJsonObject &page, const QString &previous) {
-    // This endpoint pages on an opaque cursor and reports no total, so there is no
-    // arithmetic that says "done". Three things end a run:
-    //
-    //   * an empty page. Nothing more can come of asking again.
-    //   * the cursor the page was just fetched with, which would fetch the same
-    //     page for ever. (LibraryIndex has the same guard on the offset-paged
-    //     endpoints, for the same reason.)
-    //   * no cursor at all - the last page answers `"cursor": null`, which reads
-    //     back as an empty string. That needs no branch of its own: an empty
-    //     cursor returned is what the caller stops on. The temptation is to treat
-    //     "no new cursor" as "ask again with the old one"; that is an endless run.
+    // Three things end a run: an empty page, a repeat of the cursor this page
+    // was fetched with, and no cursor at all. The last page answers
+    // `"cursor": null`, which reads back as "" and is what the caller stops on.
     const QString cursor = page["cursor"].toString();
     if (page["items"].toArray().isEmpty()) return {};
     if (cursor == previous) return {};
@@ -184,17 +150,9 @@ QString TidalClient::nextCursor(const QJsonObject &page, const QString &previous
 }
 
 QList<Mix> TidalClient::mergeMixLists(const QList<QList<Mix>> &lists) {
-    // One row per mix id, never per title: titles arrive translated, and
-    // my_collection_my_mixes proves they are not unique even inside one response
-    // (two different mixes both called "My Video Mix 7").
-    //
-    // The first list to carry an id fixes that mix's position, which is why
-    // fetchHomeMixes passes the generated list first: it is the one that holds
-    // "My Mix 1".."My Mix 8" as a run, and taking the saved list first would
-    // break the run apart wherever a mix happens to be saved. The saved record
-    // still wins on one field - `dateAdded`, which only it has, and which the
-    // sidebar's ordering needs. Everything else (title, subtitle, artwork) is the
-    // same mix either way.
+    // Keyed on the id, never the title: titles are localised and not unique
+    // within one response. The first list fixes the position, so
+    // fetchHomeMixes passes the generated list first to keep its run together.
     QList<Mix> out;
     QHash<QString, qsizetype> seen;
     for (const QList<Mix> &list : lists) {
@@ -214,14 +172,8 @@ QList<Mix> TidalClient::mergeMixLists(const QList<QList<Mix>> &lists) {
 }
 
 QList<Mix> TidalClient::orderMixes(QList<Mix> mixes) {
-    // "My Daily Discovery" first, then "My New Arrivals", then the order the
-    // lists were walked in.
-    //
-    // The ranking is on mixType, never on the title: every one of these titles
-    // arrives translated, so matching "My Daily Discovery" would put the two
-    // back behind the rest for every user not reading the app in English.
-    // Stable, so everything else keeps the order it came in, which is what the
-    // Collection grid shows on its default (unsorted) setting.
+    // Ranked on mixType, never on the title, which is localised. Stable, so
+    // everything else keeps the order it came in.
     const auto rank = [](const Mix &m) {
         if (m.isDailyDiscovery()) return 0;
         if (m.isNewArrivals())    return 1;
@@ -246,8 +198,6 @@ void TidalClient::fetchSavedMixes(MixesCallback cb, const QString &cursor,
                                   QList<Mix> acc, int page)
 {
     QUrlQuery q;
-    // 50 is the server's maximum, not a preference: limit=100 answers 400
-    // "getMixes.limit: must be less than or equal to 50".
     q.addQueryItem("limit", QString::number(kSavedMixesPageSize));
     if (!cursor.isEmpty()) q.addQueryItem("cursor", cursor);
     m_api->getV2(QStringLiteral("favorites/mixes"), q,
@@ -266,14 +216,8 @@ void TidalClient::fetchSavedMixes(MixesCallback cb, const QString &cursor,
 }
 
 void TidalClient::fetchHomeMixes(MixesCallback cb) {
-    // Both lists, merged on the mix id. The generated feed has the eight "My Mix
-    // N" that are not saved; v2/favorites/mixes has whatever the user saved,
-    // including "My New Arrivals" - which is on no `pages/*` feed the app reads -
-    // and any radio station they saved. Neither is a subset of the other.
-    //
-    // This is the one place that decides what the Collection's Mixes tab holds.
-    // Dropping a source is deleting one of the two fetches below and the matching
-    // argument to mergeMixLists(); nothing else has to change.
+    // The generated feed and the saved list, merged on the mix id. Neither is
+    // a subset of the other.
     struct Pending {
         QList<Mix> generated;
         QList<Mix> saved;
@@ -285,10 +229,9 @@ void TidalClient::fetchHomeMixes(MixesCallback cb) {
     const auto finish = [cb, pending]() {
         if (--pending->outstanding > 0) return;
         const QList<Mix> mixes = mergeMixLists({pending->generated, pending->saved});
-        // One source failing must not empty the tab: whatever the other answered
-        // is better than nothing, and PinStore spends its one seeding shot on an
-        // empty list only when that was a real answer. The error is reported only
-        // when neither source yielded anything.
+        // One source failing must not empty the tab. The error is reported
+        // only when neither yielded anything, so an empty list without an
+        // error is a real answer.
         if (mixes.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
         cb(mixes, {});
     };
@@ -311,10 +254,8 @@ void TidalClient::fetchMixPage(const QString &mixId, MixPageCallback cb) {
     q.addQueryItem("deviceType", "BROWSER");
     m_api->get(QStringLiteral("pages/mix"), q, [cb](QJsonObject root, QString err) {
         if (!err.isEmpty()) { cb({}, {}, err); return; }
-        // Two independent walks of the same response, so that a page missing
-        // one module still delivers the other: a video mix has a header and a
-        // VIDEO_LIST this app cannot read, and that must still label the page
-        // rather than answering nothing at all.
+        // Two independent walks, so a page missing one module still delivers
+        // the other.
         cb(parseMixHeader(root), parseMixTracks(root), {});
     });
 }
@@ -339,19 +280,12 @@ void TidalClient::fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) 
     QUrlQuery q;
     q.addQueryItem("limit",  QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
-    // Newest saved first. Without an order the endpoint answers order=NAME, so
-    // the collection opened alphabetically and anything just saved landed in
-    // the middle of it. The date lives on the favourites row, not on the album
-    // the row wraps, and nothing here parses it, so this ordering has to come
-    // from the server: a client-side sort has no timestamp to sort on.
+    // Newest saved first. Without an order the endpoint answers order=NAME.
     q.addQueryItem("order",  "DATE");
     q.addQueryItem("orderDirection", "DESC");
 
-    // If the server will not take the ordering, fall back to an unordered
-    // request rather than letting the collection come back empty. The order
-    // params have not been exercised against a live account, and a rejected
-    // parameter would otherwise turn a cosmetic preference into a library that
-    // does not load at all.
+    // If the server rejects the ordering, retry unordered so the collection
+    // still loads.
     const QString path = QStringLiteral("users/%1/favorites/albums").arg(m_userId);
     QUrlQuery plain;
     plain.addQueryItem("limit",  QString::number(limit));
@@ -370,11 +304,10 @@ void TidalClient::fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset
     QUrlQuery q;
     q.addQueryItem("limit", QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
-    // Newest followed first, for the same reason as the albums above.
+    // Newest followed first, with the same unordered retry as the albums.
     q.addQueryItem("order", "DATE");
     q.addQueryItem("orderDirection", "DESC");
 
-    // Same fallback as the albums above.
     const QString path = QStringLiteral("users/%1/favorites/artists").arg(m_userId);
     QUrlQuery plain;
     plain.addQueryItem("limit",  QString::number(limit));
@@ -411,9 +344,7 @@ void TidalClient::fetchPlaylistTracks(const QString &uuid, TracksCallback cb) {
 void TidalClient::fetchPlaylist(const QString &uuid,
     std::function<void(Playlist, QString)> cb)
 {
-    // The same object the favourites endpoints wrap, served on its own, so
-    // there is no row to unwrap and no save date to recover: Playlist::fromJson
-    // reads the playlist's own fields and leaves addedAt at 0.
+    // Served without a favourites row, so there is no save date here.
     m_api->get(QStringLiteral("playlists/%1").arg(uuid), {},
         [cb](QJsonObject root, QString err) {
             if (!err.isEmpty()) { cb({}, err); return; }
@@ -474,23 +405,15 @@ void TidalClient::fetchArtistDetail(qint64 artistId,
         });
 }
 
-// The union of several album lists, in the order the lists were given, one row
-// per album id. Unlike a mix a release has nothing to merge *into* the kept
-// record - the three filtered responses carry the same fields - so the first
-// one to carry an id simply wins, which is what keeps the albums at the front
-// of the list and the compilations behind them.
-//
-// The dedup is not theoretical: a release can answer to two filters at once
-// (an EP that the unfiltered request also lists, a compilation that is also
-// filed as "other"), and without this the discography would show it twice.
+// A release can answer to two filters at once, so the lists are deduplicated
+// on the album id. The first list to carry an id wins.
 QList<Album> TidalClient::mergeAlbumLists(const QList<QList<Album>> &lists) {
     QList<Album> out;
     QSet<qint64> seen;
     for (const QList<Album> &list : lists) {
         for (const Album &a : list) {
-            // id 0 is "the response carried no id", which parseAlbums already
-            // drops; kept rather than collapsed so a future caller cannot have
-            // several distinct releases merged into one by a missing field.
+            // id 0 means no id: kept, so distinct releases are never merged
+            // by a missing field.
             if (a.id != 0) {
                 if (seen.contains(a.id)) continue;
                 seen.insert(a.id);
@@ -511,8 +434,8 @@ void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
     m_api->get(QStringLiteral("artists/%1/albums").arg(artistId), q,
         [this, artistId, filter, cb, offset, acc](QJsonObject root, QString err) mutable {
             if (!err.isEmpty()) {
-                // Whatever the earlier pages of *this* filter delivered is
-                // still worth having; the error is only news when nothing is.
+                // The earlier pages are still delivered; only an empty run
+                // is an error.
                 cb(acc, acc.isEmpty() ? err : QString());
                 return;
             }
@@ -528,18 +451,8 @@ void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
 }
 
 void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
-    // One discography, three requests. See kFilterEpsAndSingles: the unfiltered
-    // request answers the albums and nothing else, which is why the Singles &
-    // EPs section of ArtistPage had been empty - and therefore invisible -
-    // since it was written. The page's own sectioning is unchanged; it was
-    // never given anything to section.
-    //
-    // Merged here and not in QML on purpose: ArtistPage opens this beside
-    // fetchArtistDetail() and fetchArtistTopTracks() behind one `loading` flag
-    // and one superseded-request guard, so three replies arriving separately
-    // would each have had to avoid clearing `loading` early and avoid blanking
-    // the other two. One reply out of here keeps that page exactly as correct
-    // as it already was. Same Pending/finish shape as fetchHomeMixes().
+    // One discography, three requests: see kFilterEpsAndSingles. Merged here
+    // so that ArtistPage gets one reply behind its one `loading` flag.
     struct Pending {
         QList<Album> albums;
         QList<Album> epsAndSingles;
@@ -553,10 +466,8 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         if (--pending->outstanding > 0) return;
         const QList<Album> all = mergeAlbumLists(
             {pending->albums, pending->epsAndSingles, pending->compilations});
-        // One filter failing must not empty the page: an artist whose albums
-        // came back and whose compilations did not still has a discography,
-        // and ArtistPage's loadFailed only fires when nothing at all arrived.
-        // The error is reported only when none of the three yielded anything.
+        // One filter failing must not empty the page. The error is reported
+        // only when none of the three yielded anything.
         if (all.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
         cb(all, {});
     };
@@ -588,16 +499,12 @@ void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {
 
 // ─── Search ────────────────────────────────────────
 
-// The `mixes` node of a search response. See the header for why the video
-// filter is here and why nothing is reordered.
 QList<Mix> TidalClient::parseSearchMixes(const QJsonObject &node) {
     QList<Mix> out;
     for (const auto &v : node["items"].toArray()) {
         QJsonObject item = v.toObject();
-        // The favourites endpoints wrap each item in a row carrying a date;
-        // search does not, but unwrapping costs one branch and parsePlaylists
-        // already hedges the same way, so a wrapped shape cannot silently
-        // yield a list of blank mixes.
+        // Search does not wrap its items. Unwrapping anyway guards against a
+        // wrapped shape yielding blank mixes.
         if (item.contains("item")) item = item["item"].toObject();
         const Mix mix = Mix::fromJson(item);
         if (mix.id.isEmpty()) continue;
@@ -713,11 +620,8 @@ bool TidalClient::mixFavoriteAccepted(const QJsonObject &reply, const QString &m
 }
 
 void TidalClient::fetchFavoriteMixes(MixesCallback cb) {
-    // The saved half of fetchHomeMixes() on its own. The merged list cannot
-    // serve here: it folds the generated feed in, and a generated mix is not
-    // something the user saved and cannot be unsaved - so answering "is this
-    // mix a favourite" off the merge would offer an Unsave on all eight of
-    // "My Mix 1".."My Mix 8".
+    // The saved list alone. The merged list also holds generated mixes,
+    // which were never saved and cannot be unsaved.
     fetchSavedMixes(std::move(cb));
 }
 
@@ -725,8 +629,8 @@ void TidalClient::addMixFavorite(const QString &mixId, std::function<void(bool)>
     if (mixId.isEmpty()) { cb(false); return; }
     m_api->putV2(mixFavoriteEndpoint(true), mixFavoriteQuery({mixId}),
         [cb, mixId](QJsonObject reply, QString err) {
-            // Both halves. An error is a refusal, and so is a 200 whose
-            // addedItems does not name the mix.
+            // An error is a refusal, and so is a 200 whose addedItems does
+            // not name the mix.
             cb(err.isEmpty() && mixFavoriteAccepted(reply, mixId, true));
         });
 }
@@ -745,9 +649,9 @@ void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
     fetchStreamManifest(trackId, m_quality, std::move(cb));
 }
 
-// The delivery format Tidal names in a manifest, in the tier vocabulary the rest
-// of the app speaks: Player::audioQuality() and Downloader::srcTier both compare
-// StreamManifest::codec against these exact strings.
+// Maps the manifest's delivery format to the tier strings that
+// Player::audioQuality() and Downloader::srcTier compare
+// StreamManifest::codec against.
 static QString tierForFormat(const QString &format) {
     if (format == QStringLiteral("FLAC_HIRES")) return QStringLiteral("HI_RES_LOSSLESS");
     if (format == QStringLiteral("FLAC"))       return QStringLiteral("LOSSLESS");
@@ -764,12 +668,11 @@ QStringList TidalClient::manifestFormats(AudioQuality q) {
     switch (q) {
         case AudioQuality::Low96k:  return {QStringLiteral("HEAACV1")};
         case AudioQuality::Low320k: return {QStringLiteral("AACLC")};
-        // FLAC alone, deliberately: the endpoint hands back the best format it is
-        // offered that the track has, so adding FLAC_HIRES here would give a
-        // 24-bit stream to the setting labelled "Lossless (16-bit)".
+        // FLAC alone: the endpoint returns the best format offered, so adding
+        // FLAC_HIRES would give the 16-bit setting a 24-bit stream.
         case AudioQuality::Lossless: return {QStringLiteral("FLAC")};
-        // Both, equally deliberately: FLAC_HIRES on its own falls back to AAC on
-        // a track with no hi-res master, and most tracks have none.
+        // Both: FLAC_HIRES alone falls back to AAC on a track with no hi-res
+        // master.
         case AudioQuality::HiResLossless:
             return {QStringLiteral("FLAC"), QStringLiteral("FLAC_HIRES")};
     }
@@ -777,15 +680,13 @@ QStringList TidalClient::manifestFormats(AudioQuality q) {
 }
 
 StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString *err) {
-    // Cleared up front, so a caller reusing a QString cannot read a stale
-    // message as this call's failure.
+    // Cleared up front, so a reused QString cannot carry a stale message.
     if (err) err->clear();
 
     const QJsonObject attrs = root["data"].toObject()["attributes"].toObject();
 
-    // There is no assetpresentation parameter on this endpoint - the old one had
-    // it, and errored rather than answer with a clip. Here the body says what it
-    // gave, so refusing a preview is this function's job.
+    // This endpoint has no assetpresentation parameter. The body says what it
+    // gave, so a preview is refused here.
     const QString presentation = attrs["trackPresentation"].toString();
     if (presentation != QStringLiteral("FULL")) {
         if (err) *err = tr("Tidal returned only a preview of this track, not the whole track.");
@@ -812,11 +713,9 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     m.replayGainTrack = attrs["trackAudioNormalizationData"].toObject()["replayGain"].toDouble();
     m.replayGainAlbum = attrs["albumAudioNormalizationData"].toObject()["replayGain"].toDouble();
 
-    // The delivered format, sample rate and bit depth live in the Representation
-    // id - "FLAC,44100,16", "FLAC_HIRES,96000,24", or a bare "AACLC" with neither
-    // number. Nowhere else in this response carries them; the old endpoint had
-    // them as top-level fields. attributes.formats names the format too, and is
-    // the fallback, but only the id has the numbers.
+    // Format, sample rate and bit depth live only in the Representation id:
+    // "FLAC,44100,16", or a bare "AACLC" with neither number.
+    // attributes.formats names the format too and is the fallback.
     QString format;
     const QJsonArray formats = attrs["formats"].toArray();
     if (!formats.isEmpty()) format = formats.first().toString();
@@ -829,9 +728,8 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
         if (end > from) {
             const QStringList bits = m.url.mid(from, end - from).split(QLatin1Char(','));
             if (!bits.first().isEmpty()) format = bits.first();
-            // Left at the CD defaults when the id carries no numbers, or carries
-            // ones that do not parse: 0 would read as "not hi-res" only by
-            // accident, and Downloader picks its PCM width off bitDepth.
+            // Left at the CD defaults when the id has no usable numbers:
+            // Downloader picks its PCM width off bitDepth.
             if (bits.size() >= 3) {
                 bool ok = false;
                 const int rate = bits[1].toInt(&ok);
@@ -846,30 +744,16 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
 }
 
 void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb) {
-    // The FLAC tiers do not come from tracks/<id>/playbackinfopostpaywall any
-    // more. Measured against the live API on 2026-10-04, on this client id and a
-    // current session, that endpoint answers an audioquality=LOSSLESS request
-    // with audioQuality HIGH and a 320 kbps AAC manifest on 27 of 27 catalogue
-    // tracks - including tracks whose mediaMetadata.tags say LOSSLESS, and with
-    // the identical manifestHash it returns for audioquality=HIGH, so the two
-    // settings were fetching one identical file. It is not the account (the same
-    // token is served 24/192 FLAC), the region, or the tracks, and no parameter
-    // changes it; a misspelt audioquality 404s, so the server reads the value and
-    // downgrades it deliberately. v2/trackManifests serves the same 27 tracks as
-    // FLAC on the same token. See tests/tst_stream_manifest.cpp.
-    //
-    // The lossy tiers stay here: the old endpoint still serves those honestly,
-    // and serves them as a single BTS file rather than DASH segments that have to
-    // be joined before the first note.
+    // tracks/<id>/playbackinfopostpaywall answers a LOSSLESS request with
+    // 320 kbps AAC for this client id, so the FLAC tiers go to
+    // v2/trackManifests. The lossy tiers stay: they come as one BTS file.
     if (usesTrackManifests(quality)) {
         QUrlQuery q;
         for (const QString &format : manifestFormats(quality))
             q.addQueryItem("formats", format);
         q.addQueryItem("manifestType", "MPEG_DASH");
         q.addQueryItem("uriScheme",    "DATA");
-        // adaptive=false keeps it to one Representation. There is nothing to
-        // adapt to here - DashFetcher pulls every segment before a note plays and
-        // ignores any Representation after the first.
+        // One Representation: DashFetcher ignores any after the first.
         q.addQueryItem("adaptive",     "false");
         q.addQueryItem("usage",        "PLAYBACK");
 
@@ -912,7 +796,7 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
             QByteArray manifestData = QByteArray::fromBase64(manifestB64);
 
             if (mimeType == "application/vnd.tidal.bts") {
-                // BTS format: JSON with URL array
+                // BTS: JSON with a URL array.
                 auto bts = QJsonDocument::fromJson(manifestData).object();
                 auto urls = bts["urls"].toArray();
                 if (!urls.isEmpty()) {
@@ -921,8 +805,8 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
                     m.mimeType = bts["mimeType"].toString();
                 }
             } else {
-                // MPD format: MPEG-DASH manifest XML
-                m.type     = StreamManifest::MPD;
+                // MPD: the MPEG-DASH manifest XML itself.
+                m.type    = StreamManifest::MPD;
                 m.url      = QString::fromUtf8(manifestData);
                 m.mimeType = "application/dash+xml";
             }
@@ -952,9 +836,8 @@ void TidalClient::createPlaylist(const QString &title,
 void TidalClient::editPlaylist(const QString &uuid, const QString &title,
     const QString &description, std::function<void(bool)> cb)
 {
-    // Both fields go every time, even the one the dialog did not touch. The
-    // endpoint replaces what it is sent rather than merging it, so posting
-    // only the title would clear the description.
+    // Both fields go every time: the endpoint replaces what it is sent, so
+    // posting only the title would clear the description.
     m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
         [this, uuid, title, description, cb](QString etag, QString err) {
             if (!err.isEmpty()) { cb(false); return; }
@@ -1019,12 +902,9 @@ void TidalClient::fetchLyrics(qint64 trackId, std::function<void(QString, bool, 
 void TidalClient::fetchTrackCredits(qint64 trackId,
     std::function<void(TrackCredits, QString)> cb)
 {
-    // The contributor list first, because it is the only one of the three whose
-    // failure is worth refusing the panel over: it is what the user asked to
-    // see, and if it did not arrive the network is not answering. The two
-    // requests chained behind it are additions to a result that already exists,
-    // so their errors are swallowed and their fields stay empty rather than
-    // throwing away credits that did arrive.
+    // The contributor list first: only its failure fails the call. The two
+    // requests chained behind it add to the result, so their errors are
+    // swallowed and their fields stay empty.
     QUrlQuery q;
     q.addQueryItem("includeContributors", "true");
     m_api->getArray(QStringLiteral("tracks/%1/credits").arg(trackId), q,
@@ -1047,10 +927,8 @@ void TidalClient::fetchTrackCredits(qint64 trackId,
                         albumId = track["album"].toObject()["id"]
                                       .toVariant().toLongLong();
                     }
-                    // streamStartDate is deliberately not read here. It is when
-                    // this account's catalogue got the track, not when the
-                    // record came out: probed against a 1975 album it answered
-                    // 2026-07-01. The release date is the album's.
+                    // streamStartDate is when the catalogue got the track, so
+                    // it is not read. The release date is the album's.
                     if (albumId <= 0) { cb(*out, {}); return; }
 
                     m_api->get(QStringLiteral("albums/%1").arg(albumId), {},
