@@ -25,6 +25,7 @@
 //
 // NOTHING HERE MAKES A SOUND. No QAudioOutput is ever constructed - the decoded
 // samples arrive through QAudioBufferOutput, which cannot reach the sound card.
+// Qt 6.4 is the one exception: decodeSilently() attaches a muted output there.
 // The app's own Player *does* own a QAudioOutput, which is why these tests drive
 // DashFetcher plus a QMediaPlayer of their own rather than a Player.
 //
@@ -38,6 +39,7 @@
 
 #include <QTest>
 #include <QAudioBuffer>
+#include <QAudioOutput>
 #include <QByteArray>
 #include <QEventLoop>
 #include <QFile>
@@ -345,6 +347,15 @@ Decoded decodeSilently(const QString &path, int timeoutMs = 20000)
     Decoded out;
     QMediaPlayer player;
     QEventLoop loop;
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4's GStreamer backend only links the decoded audio when an output is
+    // attached, and reports InvalidMedia without one. Muted at zero volume.
+    QAudioOutput muted;
+    muted.setMuted(true);
+    muted.setVolume(0.0f);
+    player.setAudioOutput(&muted);
+#endif
 
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
     QAudioBufferOutput tap;
