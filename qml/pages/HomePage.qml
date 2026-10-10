@@ -26,7 +26,6 @@ Rectangle {
         onTriggered: root.greeting = root.greetingFor(new Date().getHours())
     }
 
-    // Access the window root for navigation
     function appWindow() { return Window.window }
 
 
@@ -35,16 +34,9 @@ Rectangle {
     // How many tiles a row holds before "View all" is the only way to the rest.
     readonly property int rowLimit: 12
 
-    // The three favourite rows change while this page is alive. The Loader that
-    // holds HomePage is never torn down, so a row built at login kept whatever
-    // it was built with: an album saved from its own page was missing from
-    // Saved Albums, and playing a playlist did not move it to the front, until
-    // the app was restarted.
-    //
-    // The bridge pages the whole favourites set into memory at login and keeps
-    // that copy current on every add and remove, so a refresh reads it instead
-    // of going back to the network. It is the same source Collection reads,
-    // which is what makes the two pages agree.
+    // The Loader that holds this page is never torn down, so the favourite rows
+    // follow the bridge's signals. A refresh reads the bridge's in-memory
+    // favourites, the same source Collection reads.
     Connections {
         target: bridge
         function onFavoriteAlbumsChanged()    { refreshDebounce.restart() }
@@ -52,10 +44,8 @@ Rectangle {
         function onFavoritePlaylistsChanged() { refreshDebounce.restart() }
     }
 
-    // Each kind emits once when its first page lands and again when its last
-    // one does, and saving a single album emits twice more, so the three
-    // handlers above coalesce into one pass instead of rebuilding three rows
-    // five times.
+    // Each kind emits several times for one change, so the three handlers
+    // coalesce into one pass.
     Timer {
         id: refreshDebounce
         interval: 120
@@ -89,9 +79,8 @@ Rectangle {
         artists      = firstOf(bridge.searchFavoriteArtists(""), artistItem)
     }
 
-    // The first fill goes to the network. The cache the refresh reads is still
-    // being paged in at this point - the page mounts the moment auth completes,
-    // which is also when that paging starts - so reading it here would race it.
+    // The first fill goes to the network: the cache refreshRows() reads is
+    // still being paged in when this page mounts.
     function loadContent() {
         loading = true
         bridge.fetchHomeMixes(function(mixList, err) {
@@ -134,12 +123,9 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            // A ColumnLayout takes a child's preferred height from
-            // Layout.preferredHeight, so a spacer with a plain height depends
-            // on the layout happening to cache its first measurement. Every
-            // gap on this page is one of these, and each one above a row that
-            // can be empty is hidden with it: otherwise a user with no
-            // playlists got that row's gap twice over.
+            // A ColumnLayout sizes a child from Layout.preferredHeight, so
+            // every gap on this page sets that. A gap above a row that can be
+            // empty hides with it.
             Item { Layout.preferredHeight: 24 }
 
             Text {
@@ -162,11 +148,9 @@ Rectangle {
                     subtitle: item.subtitle, coverUrl: item.coverUrl,
                     mixType: item.mixType || ""
                 })
-                // Declaring the source is what records the play: the player
-                // bar listens to player.sourceChanged and is the only place
-                // markPlayed() is called from. Inside the callback and after
-                // the guard, so a fetch that fails or comes back empty cannot
-                // record a play that never happened.
+                // Declaring the source is what records the play: the player bar
+                // listens to player.sourceChanged. After the guard, so a failed
+                // or empty fetch records nothing.
                 onItemPlayClicked: (idx, item) => {
                     bridge.fetchMixTracks(item.id, function(tracks, err) {
                         if (err || tracks.length === 0) return
@@ -242,7 +226,6 @@ Rectangle {
     }
 
     function navigateTo(page, params) {
-        // Walk up to the ApplicationWindow to call navigate()
         Window.window.navigate(page, params)
     }
 

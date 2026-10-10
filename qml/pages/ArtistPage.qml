@@ -8,16 +8,9 @@ Rectangle {
     id: root
     color: Theme.bg
 
-    // How much of this pane's width is only on loan. Below Prefs::railBreakpoint
-    // the sidebar collapses to its 68px rail and hands the page back the ~150px
-    // it had been using, so the pane gets *wider* as the window gets narrower:
-    // the pane's width does not fall with the window's, it has a step in it.
-    // Any column that switches on the pane therefore un-hides itself halfway
-    // down a drag. The track rows' album column dropped out at an 892px window,
-    // came back at 819 when the rail took over, and went again at 740, which is
-    // the flicker the user saw. Subtracting the loan measures the breakpoint
-    // against a width that only ever shrinks with the window, and across the
-    // step it is the same number on both sides, so nothing jumps there either.
+    // The width the collapsed sidebar hands back. Below the rail breakpoint the
+    // pane gets wider as the window narrows, so a breakpoint subtracts this to
+    // measure against a width that only shrinks with the window.
     readonly property int sidebarReclaim: {
         var w = Window.window ? Window.window.width : 0
         return (w > 0 && w < prefs.railBreak())
@@ -32,29 +25,17 @@ Rectangle {
     property bool showAllTracks: false
     property bool isFollowing: false
 
-    // What the last load was told, "" when it was served. All three fetches
-    // used to read `if (!err)` and drop this, which is the same bug AlbumPage
-    // had in 0361ac1: an artist the API refuses - a followed artist whose page
-    // has since been withdrawn answers 404 for the detail, the top tracks and
-    // the discography alike - left every one of this page's sections invisible
-    // behind a hero with an empty 36px name in it. That is the page's empty
-    // initial state, so a dead record and a broken app looked identical.
+    // What the last load was told, "" when it was served.
     property string loadError: ""
 
-    // Nothing came back at all. This page draws nothing of its own: the hero is
-    // artistData, and the Popular rows, both discography sections, About and
-    // Related Artists each hide themselves when their list is empty - so unlike
-    // MixPage and PlaylistPage there is no caller-supplied title left standing
-    // to say what the user is looking at. Gated on what the server said rather
-    // than on the page being bare, so an artist still in flight, or one Tidal
-    // really has nothing filed under, is not accused of being gone.
+    // Nothing came back at all. Every section hides when its list is empty, so
+    // a refused artist would be a blank page. Gated on what the server said, so
+    // an artist still in flight or with nothing filed is not called gone.
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && !artistData.name
         && topTracks.length === 0 && albums.length === 0
 
-    // The first reason and not the last. The three calls fail together on an
-    // artist the API no longer answers for, and the three strings say the same
-    // thing; whichever lands first is the one worth keeping.
+    // The first reason is kept: all three calls fail with the same message.
     function noteLoadError(err) {
         if (root.loadError.length === 0) root.loadError = err
     }
@@ -70,9 +51,7 @@ Rectangle {
     }
 
     // The Follow pill's one call, and what it says when the server refuses it.
-    // isFollowing above is read back from the bridge and never written here, so
-    // a refusal has nothing to undo - only something to say. See
-    // ContextMenu.FavoriteAction.
+    // isFollowing is read back from the bridge and never written here.
     readonly property alias favoriteAction: artistFav
     ContextMenu.FavoriteAction { id: artistFav }
 
@@ -86,14 +65,9 @@ Rectangle {
     function loadArtist() {
         loading = true
         loadError = ""
-        // Which artist these three replies are about; see MixPage.loadMix().
-        // Main.qml reuses this page item when one artist navigates to another -
-        // Related Artists is a whole row of exactly that - so a slow reply for
-        // the artist just left used to overwrite the one now on screen. It
-        // matters more now than it did: a *failed* reply for the artist the user
-        // has already left would otherwise put the panel below over a page that
-        // is loading perfectly well. A superseded request is not a failure, so
-        // it is checked first and on its own.
+        // Which artist these three replies are about. Main.qml reuses this page
+        // item when one artist navigates to another, so a reply for the artist
+        // just left must not touch the one on screen. Checked before the error.
         var requested = artistId
         bridge.fetchArtistDetail(artistId, function(d, err) {
             if (requested !== root.artistId) return
@@ -109,27 +83,16 @@ Rectangle {
             if (requested !== root.artistId) return
             root.loading = false
             if (err) { root.noteLoadError(err); return }
-            // One reply, three requests: TidalClient::fetchArtistAlbums sends
-            // the unfiltered request, EPSANDSINGLES and COMPILATIONS and hands
-            // back the union, because the unfiltered one answers the albums
-            // alone. The merge is there and not here precisely so that this
-            // callback stays the single place that clears `loading` and the
-            // single place the superseded-request guard above has to cover.
-            //
-            // Tidal's artist/albums endpoint lists every edition of a release
-            // (Standard, Deluxe, Explicit, retailer-exclusives …) as separate ids,
-            // so the discography shows the same cover many times. Collapse them by
-            // artwork + base title (title minus trailing "(…)"/"[…]" qualifiers).
-            // Different covers are kept apart, so genuinely distinct releases like
-            // "Fearless" vs "Fearless (Taylor's Version)" still both show.
+            // TidalClient::fetchArtistAlbums merges its three requests, so this
+            // callback is the only place that clears `loading`. Tidal lists
+            // every edition of a release under its own id: collapse them.
             root.albums = root.dedupeEditions(a)
         })
     }
 
-    // Title without trailing edition qualifiers, e.g.
-    // "1989 (Deluxe Edition) [Explicit]" -> "1989". Only strips parenthetical/
-    // bracketed suffixes, so "(Taylor's Version)" collapses editions of that
-    // re-recording together but never merges it with the original album.
+    // Title without trailing edition qualifiers: "1989 (Deluxe Edition)
+    // [Explicit]" becomes "1989". Only trailing parenthesised or bracketed
+    // suffixes are stripped.
     function baseTitle(t) {
         var s = ("" + (t || "")).toLowerCase().trim()
         for (var k = 0; k < 2; k++)
@@ -137,17 +100,9 @@ Rectangle {
         return s
     }
 
-    // Which of the two discography sections a release belongs in: true for the
-    // Singles & EPs row, false for the Albums row. `type` is what Tidal files
-    // the release as and it reaches here intact - Album::fromJson reads it and
-    // TidalBridge::albumToMap passes it on - while the track count is only the
-    // fallback for a response that omitted it, and a poor one: it misfiles a
-    // four-track EP as an album. So the type has to be the rule doing the work
-    // and the count only the backstop.
-    //
-    // One function rather than a predicate per section, because dedupeEditions()
-    // keys on this answer too: three copies of the rule would be three chances
-    // for it to drift.
+    // True for the Singles & EPs row, false for the Albums row. Tidal's `type`
+    // is the rule and the track count only a fallback for a response that omits
+    // it. dedupeEditions() keys on this answer too.
     function isSingleOrEp(a) {
         var t = a.type || ""
         if (t === "SINGLE" || t === "EP") return true
@@ -155,19 +110,9 @@ Rectangle {
         return (a.numTracks || 1) <= 3
     }
 
-    // Collapse duplicate album editions, keying on artwork + base title so that
-    // same-release editions merge while distinct releases (different covers) stay.
-    //
-    // Which section the release is in is part of the key, and has to be now
-    // that the list is the union of three filtered responses rather than one.
-    // A lead single very often carries its album's artwork and the album's
-    // title, so on artwork + title alone the single and the album collapse into
-    // each other and whichever of the two lost is a row the user can no longer
-    // reach. Editions still merge, because two editions of one release are on
-    // the same side of that split. Releases the three responses genuinely share
-    // are already down to one row before this runs: mergeAlbumLists() dedupes
-    // those on the album id, which this cannot do - two editions are two ids,
-    // which is the whole reason this function exists.
+    // Collapses editions of one release, keyed on artwork and base title. The
+    // section is part of the key: a lead single often carries its album's
+    // artwork and title, and the two must stay separate rows.
     function dedupeEditions(list) {
         var seen = ({})
         var out = []
@@ -188,19 +133,16 @@ Rectangle {
         anchors.fill: parent
         rightPadding: 14
         contentWidth: availableWidth
-        // A blank hero is not worth leaving behind the panel below: its Play
-        // and Follow pills would still be hit targets and tab stops over an
-        // artist that does not exist, and Follow would post a favourite for an
-        // id the API will not answer for. Hidden rather than covered, because
-        // an invisible item is neither. Same call as AlbumPage's tracklist.
+        // Hidden, not covered: behind the error panel the Play and Follow pills
+        // would still be hit targets and tab stops for an artist the API will
+        // not answer for.
         visible: !root.loadFailed
 
         ColumnLayout {
             width: parent.width
             spacing: 0
 
-            // Hero. Grows with its content rather than sitting at a fixed
-            // 320, so a wrapped name or a wrapped pill row still fits.
+            // Hero. Grows with its content, so a wrapped name or pill row fits.
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: Math.max(320, heroCol.implicitHeight + 56)
@@ -227,8 +169,7 @@ Rectangle {
 
                 ColumnLayout {
                     id: heroCol
-                    // Anchored right as well: without it the name had no width
-                    // to work with and a long one ran off the page.
+                    // Anchored right too, so a long name has room to wrap.
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
@@ -248,8 +189,7 @@ Rectangle {
                         styleColor: Theme.artScrimStrong
                     }
 
-                    // A Flow, so the pills wrap instead of running off the
-                    // hero once a German label makes them wider.
+                    // A Flow, so the pills wrap when a translation widens them.
                     Flow {
                         id: heroActions
                         Layout.fillWidth: true
@@ -266,15 +206,14 @@ Rectangle {
                             text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
                             icon: root.isFollowing ? "heart-filled" : "heart"
                             accent: root.isFollowing
-                            // On the action row, not the pill, for the reason
-                            // the hero's pin menu gives on the same item.
+                            // On the action row, which has clear space above.
                             onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
                                                                       heroActions)
                         }
                     }
                 }
 
-                // P2: a right-click on the hero pins what the page is showing.
+                // A right-click on the hero pins what the page is showing.
                 MouseArea {
                     objectName: "heroPinArea"
                     anchors.fill: parent
@@ -352,8 +291,7 @@ Rectangle {
                     return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
                 })
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
-                // Declares the source, so the player bar records the play. See
-                // the same change in HomePage.
+                // Declares the source, so the player bar records the play.
                 onItemPlayClicked: function(i, item) {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {
                         if (err || tracks.length === 0) return
@@ -459,8 +397,8 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    // P2. The pin carries the labels and the artwork the page is showing, so
-    // the sidebar row reads the same as the page it came from.
+    // The pin carries the labels and the artwork the page is showing, so the
+    // sidebar row reads the same as the page it came from.
     readonly property alias pinMenu: heroPinMenu
 
     function showHeroPinMenu(x, y) {
@@ -471,23 +409,14 @@ Rectangle {
     ContextMenu {
         id: heroPinMenu
         objectName: "heroPinMenu"
-        // No trackSource, so the menu offers no queue actions here. An artist
-        // is not a tracklist: the only thing to queue would be the top ten,
-        // which is a chart position rather than anything the user picked, so
-        // "add this artist to the queue" would not mean what it says. Play and
-        // Shuffle in the hero still play those tracks, which is honest because
-        // the button says play, not queue. Pinning is unaffected.
+        // No trackSource, so no queue actions: an artist is not a tracklist.
 
         // The hero's action row, which has the page above it to draw over.
         confirmAnchor: heroActions
     }
 
     // What the page says when there is nothing to draw and a reason for it.
-    // Persistent, not a tool tip, for the reason AlbumPage's twin gives: this
-    // *is* the page, and it is wrong for as long as the user is looking at it.
-    //
-    // Declared before the back-button bar below so the bar stays on top of it -
-    // the one control that still means something here is the way out.
+    // Declared before the back-button bar so the bar stays on top.
     Rectangle {
         objectName: "artistLoadError"
         anchors.fill: parent
@@ -501,10 +430,8 @@ Rectangle {
 
             VectorIcon {
                 Layout.alignment: Qt.AlignHCenter
-                // Layout.preferredWidth/Height and not width/height: a direct
-                // child of a Layout is sized by the Layout, and a plain width
-                // is simply overwritten - which is how five of these on
-                // CollectionPage drew at VectorIcon's implicit 24.
+                // A Layout owns the size of its direct children, so a plain
+                // width would be overwritten.
                 Layout.preferredWidth: 40
                 Layout.preferredHeight: 40
                 name: "artist"
@@ -523,19 +450,13 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            // Deliberately not the server's own string, which is a Qt network
-            // error with the whole request URL in it. What the user can act on
-            // is that the page is gone, not that a GET returned 404 - and the
-            // reason the artist is still in their library is that Tidal keeps
-            // answering for them in the favourites list and nowhere else.
+            // Not the server's own string, which is a Qt network error with the
+            // request URL in it.
             Text {
                 objectName: "artistLoadErrorDetail"
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
-                // One long literal and not a concatenation: lupdate extracts
-                // the source text, and two literals joined by a plus are an
-                // expression it cannot read, so the string would ship
-                // untranslatable in every language.
+                // One long literal: lupdate cannot read a concatenation.
                 text: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
                 color: Theme.textSec
                 font.pixelSize: 13

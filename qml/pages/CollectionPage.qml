@@ -21,31 +21,9 @@ Rectangle {
     // for order=DATE. It is not persisted, so it is 0 on every visit.
     property int  sortMode: 0
 
-    // Grid metrics, shared by the four grids below. A grid of width w is split
-    //
-    //     leftMargin | columns x cellWidth | rightMargin
-    //
-    // and every one of those four numbers comes out of w alone. That matters:
-    // the previous pass measured the space for the cells as
-    // `width - leftMargin - rightMargin`, which is the same arithmetic reading
-    // back the margins it is there to decide. Whether those had been assigned
-    // when the binding first ran decided how many columns were counted, and a
-    // grid that counts its columns against the full width and then has 48px of
-    // inset applied under it has one column more than it has room for. Nothing
-    // depends on an assignment order any more.
-    //
-    // columns lands nearest the 184 the cards were drawn at, then backs off
-    // while a cell would fall under gridMinCell. cellWidth is *floored*, so
-    // columns * cellWidth is never wider than the space between the two edge
-    // insets - that, and nothing else, is what guarantees the last column
-    // cannot cross the viewport at any width.
-    //
-    // Flooring leaves a remainder of 0..columns-1 px over. It is split between
-    // the two edge insets rather than left to pile up on the right, so the
-    // gutter outside the first card and the gutter outside the last match to
-    // within the odd pixel. The smallest either of them gets is gridEdge, and
-    // the card sits a further gridGutter/2 inside its cell, so the overlaid
-    // scrollbar never reaches the artwork.
+    // Grid metrics for the four grids below, all derived from the grid's width
+    // alone. cellWidth is floored, so the columns never cross the viewport, and
+    // the remainder is split between the two edge insets.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
     readonly property int gridGutter: 24     // breathing room in a cell, split either side of the card
@@ -66,10 +44,8 @@ Rectangle {
     function gridLeft(w) {
         return gridEdge + Math.floor((gridSpace(w) - gridColumns(w) * gridCell(w)) / 2)
     }
-    // Chosen so that width - leftMargin - rightMargin is exactly
-    // columns * cellWidth. That difference is the figure GridView itself
-    // divides by cellWidth to decide how many columns to lay out, so it can
-    // never arrive at one more than was budgeted for.
+    // Chosen so that width - leftMargin - rightMargin is exactly columns *
+    // cellWidth, the figure GridView divides by cellWidth to count its columns.
     function gridRight(w) {
         return Math.max(0, w - gridLeft(w) - gridColumns(w) * gridCell(w))
     }
@@ -77,17 +53,9 @@ Rectangle {
     function gridCardSize(cell) { return Math.max(1, cell - gridGutter) }
 
     // ── the content area changing under the tabs and the sort pills ──────
-    //
-    // A tab switch and a re-sort both replace what the content area shows
-    // outright, and until this they replaced it between two frames.
-    //
-    // A fade and not a reorder, deliberately. Every view below is modelled on
-    // a JS array, and a ListView or GridView can only read a new array as a
-    // model *reset* - probed on Qt 6.12: reordering a five-item array fires
-    // `populate` once per row and `move` not at all - so there is no reorder
-    // for the view to animate. Re-sorting also moves nearly every tile at
-    // once, which is a different thing from one row changing tier in the
-    // sidebar: the content is new, and arriving is what it should look like.
+    // A tab switch and a re-sort both replace the content outright, so it fades
+    // in. Every view is modelled on a JS array, which a view can only read as a
+    // model reset, so there is no reorder to animate.
     property real contentIn: 1
     NumberAnimation {
         id: contentEntry
@@ -104,15 +72,8 @@ Rectangle {
         contentEntry.restart()
     }
     onSortModeChanged: contentEntry.restart()
-    // The four favourites tabs count what the bridge already holds; mixes used
-    // to be fetched only on the way into their own tab, and the tab label reads
-    // the same list the grid does. So the row of tabs said "Mixes (0)" to
-    // everyone who had not been in there yet - including anyone arriving from
-    // "View all" on the home row, which points straight at it. A tab that
-    // reports itself empty is not a tab anyone opens, which is most of why the
-    // two mixes at the end of that row could not be got at. Fetched on the way
-    // in instead; the Loader only builds this page once the user is signed in,
-    // and only ever builds it once.
+    // Mixes are fetched on the way in, since the tab label counts the same list
+    // the grid shows.
     Component.onCompleted: {
         updateFilteredContent()
         loadMixes()
@@ -138,11 +99,8 @@ Rectangle {
     }
 
     // The two grids' Remove rows, and what they say when the server refuses.
-    // Both are removals only, so `true` is passed for the current state at both
-    // sites - a tile in this grid is in the library by definition. The grids
-    // redraw off the bridge's own signals, so a refusal leaves the tile where it
-    // is; without this it also left no word, and a tile that stays after
-    // "Remove from library" reads as a click that missed.
+    // Both are removals only, so `true` is passed for the current state. The
+    // grids redraw off the bridge's signals, so a refused tile stays put.
     readonly property alias favoriteAction: collectionFav
     ContextMenu.FavoriteAction { id: collectionFav }
 
@@ -185,10 +143,8 @@ Rectangle {
             Layout.rightMargin: 24
             spacing: 16
 
-            // A Flow, not a Row: five tab labels plus their counts come to ~526px
-            // in English and more in German, which is already more than the
-            // pane has at 640. They wrap to a second line instead of running
-            // off the edge, and the sort pills stay on the right.
+            // A Flow, not a Row: five tab labels with counts are wider than the
+            // pane at 640, so they wrap. The sort pills stay right.
             Flow {
                 id: tabsRow
                 objectName: "collectionTabsRow"
@@ -197,25 +153,9 @@ Rectangle {
                 spacing: 4
 
                 // ── the highlight, as one pill that travels ────────────────
-                //
-                // The accent fill used to belong to the chip: the one being
-                // left faded back to the resting surface while the one arriving
-                // faded up to the accent, so the highlight was briefly nowhere
-                // and nothing ever crossed the gap between the two (QA: "not
-                // just fade out in one place and then fade in in the other
-                // place"). There is one pill now and it moves, the same way the
-                // sidebar's bar moves between its three rows and on the same
-                // 140ms, so the two read as one idea.
-                //
-                // Which chip it is leaving, which it is arriving at, and how far
-                // along it is. Only `markT` is animated. The geometry is read
-                // live off the two chips, which matters more here than in the
-                // sidebar: these chips are text-width and their text carries a
-                // count, so typing in the collection's search box rewrites all
-                // five widths while nothing has been selected. An animated width
-                // would spend 140ms per keystroke chasing a pill that is not
-                // going anywhere; a lerp between two live boxes is simply right
-                // in the frame the box changes.
+                // One pill that moves between the chips. Only `markT` is
+                // animated: the geometry is read live off the two chips, whose
+                // widths change with every count.
                 property Item markFrom: null
                 property Item markTo:   null
                 property real markT:    1
@@ -233,10 +173,9 @@ Rectangle {
                     NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
                 }
 
-                // The end it set off from - the destination itself when there is
-                // nothing to set off from, which makes the lerp degenerate and
-                // markT unobservable. That is the first placement, and it is
-                // also a model rebuild.
+                // The end it set off from, or the destination itself when there
+                // is none, which makes the lerp degenerate. That covers the
+                // first placement and a model rebuild.
                 readonly property Item markA: markFrom ? markFrom : markTo
                 readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
                 readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
@@ -254,10 +193,8 @@ Rectangle {
                     tabsRow.markT = 1
                 }
 
-                // Inside the row rather than on the page's root: an id is only
-                // bound once the object exists, and activeTab can be handed to
-                // the page as an initial property, i.e. before this row is here
-                // to answer.
+                // Inside the row, not on the page's root: activeTab can arrive
+                // as an initial property, before this row exists.
                 Connections {
                     target: root
                     function onActiveTabChanged() { tabsRow.retarget(tabsRow.markSettled) }
@@ -272,17 +209,15 @@ Rectangle {
                     id: tabsRepeater
                     model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                     // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive as well as when
-                    // the tab changes.
+                    // pill is aimed again as the chips arrive.
                     onItemAdded: function (index, item) { tabsRow.retarget(false) }
                     Rectangle {
                         id: collectionTab
                         required property string modelData
                         required property int    index
                         height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusChip
-                        // Every chip rests on the same surface now, including
-                        // the current one: what marks it is the pill above,
-                        // which is drawn here in pieces.
+                        // Every chip rests on the same surface, including the
+                        // current one. The pill marks it, drawn here in slices.
                         color: Theme.surfaceHigh
                         border.width: collectionTab.activeFocus ? 2 : 0
                         border.color: Theme.accent
@@ -299,18 +234,9 @@ Rectangle {
                             && inkWindow.y <= tl.y
                             && inkWindow.y + inkWindow.height >= tl.y + tl.height
 
-                        // This chip's slice of the pill.
-                        //
-                        // One Rectangle per chip rather than one pill over the
-                        // row, because the row is a Flow and anything added to
-                        // it is laid out by it. Each chip draws the whole pill
-                        // and shows the part of it that falls inside this
-                        // window, so the five slices add up to one pill.
-                        //
-                        // The window reaches 2px past the chip, which is half
-                        // the row's 4px gap, so two neighbours' windows meet in
-                        // the middle of the gap and the pill crosses it unbroken
-                        // instead of being cut in two on the way over.
+                        // This chip's slice of the pill: a Flow lays out
+                        // anything added to it. The clip reaches 2px past the
+                        // chip, half the row's gap, so the slices meet.
                         Item {
                             anchors.fill: parent
                             anchors.margins: -2
@@ -334,64 +260,27 @@ Rectangle {
                                 return qsTr("%1 (%2)").arg(modelData)
                                                       .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                             }
-                            // The ink the resting surface takes, always. The
-                            // accent's ink is the copy below, and which of the
-                            // two is on screen at a given pixel is decided by
-                            // where the pill is rather than by a clock.
+                            // Always the ink of the resting surface. The
+                            // accent's ink is the copy below.
                             color: Theme.textSec
-                            // Not drawn at all where the copy covers every
-                            // pixel of it, which is the resting state of the
-                            // current chip. Two Texts in the same place blend
-                            // at the glyphs' antialiased edge - the ink
-                            // underneath is the resting ink on the accent fill,
-                            // which is the ~2:1 pairing the comment below calls
-                            // invisible, but it is only *nearly* invisible and
-                            // the settled chip is where the eye lives. Measured
-                            // against the fading chip's pixels: identical with
-                            // this, up to 40/255 on the glyph edges without it.
+                            // Hidden where the copy covers every pixel of it:
+                            // two Texts in one place blend at the glyphs'
+                            // antialiased edge.
                             visible: !collectionTab.labelFullyInked
-                            // Not animatable - a font weight is not a number Qt
-                            // interpolates - so it lands in the frame of the
-                            // click.
+                            // A font weight does not interpolate, so it lands
+                            // in the frame of the click.
                             font.pixelSize: 14; font.bold: root.activeTab === index
                         }
 
-                        // The same label again in the ink the accent needs,
-                        // clipped to exactly the part of the pill that is over
-                        // this chip.
-                        //
-                        // This is what lets the fill travel at all. The two inks
-                        // are luminance-inverted against the two fills on the
-                        // three light palettes - dark ink on a light chip
-                        // becomes white ink on a dark one - so a label cannot
-                        // cross-fade between them (measured in 172cb4f: under
-                        // 2:1 for 57ms of a 140ms fade, bottoming out at
-                        // 1.01:1), and it cannot be stepped either when a hard
-                        // fill edge is sweeping across it: whichever ink it
-                        // steps to, half the glyphs are on the wrong fill for as
-                        // long as the edge takes to cross them. Two copies, each
-                        // clipped to its own fill, means every glyph pixel is on
-                        // the fill its ink was chosen for in every frame of the
-                        // travel - which is better than the single stepped frame
-                        // the fade settled for, rather than a trade against it.
-                        //
-                        // The copy underneath shows through at the glyphs'
-                        // antialiased edge, and that is the one thing that is
-                        // free here: the ink showing through is the resting ink
-                        // on the accent fill, i.e. exactly the pairing the
-                        // measurement above calls invisible.
+                        // The label again in the accent's ink, clipped to the
+                        // pill, so every glyph pixel is on the fill its ink was
+                        // chosen for. The two inks cannot cross-fade legibly.
                         Item {
                             id: inkWindow
                             objectName: "collectionTabInk"
-                            // The pill, in this chip's coordinates, clamped to
-                            // the chip. Vertical as well as horizontal: the row
-                            // wraps at narrow widths, and a pill travelling
-                            // between two lines passes over the chips in
-                            // between, where it covers a band and not a column.
-                            //
-                            // Not `top`/`bottom`: an Item has those as final
-                            // members, and a property that shadows one takes
-                            // the whole type out of the build with it.
+                            // The pill in this chip's coordinates, clamped on
+                            // both axes since the row wraps. Not
+                            // `top`/`bottom`: Item has those as final members.
                             readonly property real coveredLeft:   Math.max(0, tabsRow.markX - collectionTab.x)
                             readonly property real coveredRight:  Math.min(collectionTab.width, tabsRow.markX + tabsRow.markW - collectionTab.x)
                             readonly property real coveredTop:    Math.max(0, tabsRow.markY - collectionTab.y)
@@ -450,17 +339,9 @@ Rectangle {
 
         Item { Layout.preferredHeight: 10 }
 
-        // The field gets its own row. On one row with the tabs and the sort
-        // pills the header needed ~1083px against a 740px pane, so it
-        // overflowed at every width the app actually runs at.
-        //
-        // "New playlist" shares that row rather than joining the tabs above
-        // it, for the same reason. The tab row is already a Flow that has to
-        // wrap at 640 to fit five labelled chips and three sort pills, so a
-        // third group on it is a third thing competing for a width that has
-        // already run out; this row holds one field that gives width back on
-        // demand. It also puts the button directly over the grid it adds to,
-        // and only on the tab where making one means anything.
+        // The field gets its own row: with the tabs and the sort pills the
+        // header overflows the pane. "New playlist" shares this row, directly
+        // over the grid it adds to.
         RowLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 24
@@ -512,10 +393,8 @@ Rectangle {
             model: root.activeTab === 0 ? sortedTracks : []
             boundsBehavior: Flickable.StopAtBounds
 
-            // The fields are handed over as they came off the API. TrackRow
-            // takes them as `var` and decides what a missing or wrongly typed
-            // one shows, so a truncated response costs a fallback here and not
-            // a warning per field per row.
+            // The fields are passed as they came off the API. TrackRow takes
+            // them as `var` and decides what a missing or mistyped one shows.
             delegate: TrackRow {
                 width: tracksList.width - 32
                 x: 16
@@ -526,15 +405,14 @@ Rectangle {
                 durationStr: modelData.durationStr
                 coverUrl:    modelData.coverUrl80
                 // Both ids are undefined on a partial payload, and undefined
-                // matches undefined, which lit every row up as playing.
+                // equals undefined, which would mark every row as playing.
                 isPlaying:   Number(modelData.id) > 0
                              && player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
                 onPlayRequested: {
                     player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
-                    // S4: "Liked Songs" is not one of the four kinds the
-                    // sidebar orders, and markPlayed() drops it, so the
-                    // track's own album stands in as the thing that played.
+                    // "Liked Songs" is not a kind the sidebar orders and
+                    // markPlayed() drops it, so the track's album stands in.
                     // Recorded after the source so it is the newer of the two.
                     if (Number(modelData.albumId) > 0)
                         library.markPlayed("album", "" + modelData.albumId)
@@ -565,12 +443,9 @@ Rectangle {
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
             topMargin: 16
-            // Flickable parks its content at contentX = -leftMargin, but it
-            // only moves there of its own accord when the view can flick that
-            // way, and a vertical grid cannot. The inset here follows the pane
-            // width, so without this a grid that has been resized keeps the
-            // offset it was built with and the whole thing sits a few pixels
-            // off: left gutter short by the remainder, right gutter long by it.
+            // Flickable only moves to contentX = -leftMargin by itself when the
+            // view can flick that way, and a vertical grid cannot. The inset
+            // follows the pane width, so it is re-applied here.
             onLeftMarginChanged: contentX = -leftMargin
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
@@ -590,12 +465,7 @@ Rectangle {
                     coverUrl: modelData.coverUrl
                     mediaType: "album"
                     itemId: "" + modelData.id
-                    // The tile's own menu does the whole job now: Pin, the
-                    // two queue actions and this. There used to be a Menu
-                    // declared under this card that covered the card's, which
-                    // is why an album could not be pinned from Collection at
-                    // all. "Go to album" went with it: that is what clicking
-                    // the tile does.
+                    // The tile's own menu has Pin, the queue actions and this.
                     removeLabel: qsTr("Remove from library")
                     // The tile is the anchor, not the grid: it is what was
                     // right-clicked. It survives a refusal, because the grid is
@@ -606,8 +476,8 @@ Rectangle {
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return
-                            // Declaring the source both fills "Playing from"
-                            // and is what records the album as played (S4).
+                            // Declaring the source fills "Playing from" and
+                            // records the album as played.
                             player.setPlaybackSource("album", "" + modelData.id,
                                                      modelData.title || "")
                             player.playTracks(tracks, 0)
@@ -639,12 +509,9 @@ Rectangle {
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
             topMargin: 16
-            // Flickable parks its content at contentX = -leftMargin, but it
-            // only moves there of its own accord when the view can flick that
-            // way, and a vertical grid cannot. The inset here follows the pane
-            // width, so without this a grid that has been resized keeps the
-            // offset it was built with and the whole thing sits a few pixels
-            // off: left gutter short by the remainder, right gutter long by it.
+            // Flickable only moves to contentX = -leftMargin by itself when the
+            // view can flick that way, and a vertical grid cannot. The inset
+            // follows the pane width, so it is re-applied here.
             onLeftMarginChanged: contentX = -leftMargin
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
@@ -664,9 +531,8 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "artist"
                     itemId: "" + modelData.id
-                    // As on the album grid: one menu, the tile's own, so Pin
-                    // is reachable here too. An artist is not a tracklist, so
-                    // this one offers Pin and nothing else above the rule.
+                    // As on the album grid. An artist is not a tracklist, so
+                    // the menu offers Pin and nothing else above the rule.
                     removeLabel: qsTr("Unfollow artist")
                     // As on the album grid above.
                     onRemoveRequested: root.favoriteAction.toggleArtist(artistDelegate.modelData.id, true,
@@ -696,12 +562,9 @@ Rectangle {
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
             topMargin: 16
-            // Flickable parks its content at contentX = -leftMargin, but it
-            // only moves there of its own accord when the view can flick that
-            // way, and a vertical grid cannot. The inset here follows the pane
-            // width, so without this a grid that has been resized keeps the
-            // offset it was built with and the whole thing sits a few pixels
-            // off: left gutter short by the remainder, right gutter long by it.
+            // Flickable only moves to contentX = -leftMargin by itself when the
+            // view can flick that way, and a vertical grid cannot. The inset
+            // follows the pane width, so it is re-applied here.
             onLeftMarginChanged: contentX = -leftMargin
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
@@ -710,9 +573,6 @@ Rectangle {
                 width: playlistsGrid.cellWidth
                 height: playlistsGrid.cellHeight
                 MediaCard {
-                    // The second of the three places a cached playlist count is
-                    // drawn, and so one of the three the reported bug reached.
-                    // Named so a test can read the tile rather than the model.
                     objectName: "collectionPlaylistCard"
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(playlistsGrid.cellWidth)
@@ -759,10 +619,7 @@ Rectangle {
                 VectorIcon { objectName: "collectionEmptyPlaylistsIcon"; Layout.alignment: Qt.AlignHCenter; name: "playlist"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("No playlists yet"); color: Theme.textPrimary; font.pixelSize: 18; font.bold: true }
                 Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Your saved playlists will appear here"); color: Theme.textSec; font.pixelSize: 13 }
-                // An empty state that only describes the emptiness is a dead
-                // end: an account with no playlists is exactly the account
-                // that needs to make one, and until this there was nowhere in
-                // the app to do it.
+                // An account with no playlists is the one that needs one.
                 PillButton {
                     objectName: "collectionEmptyNewPlaylistButton"
                     Layout.alignment: Qt.AlignHCenter
@@ -790,12 +647,9 @@ Rectangle {
             leftMargin: root.gridLeft(width)
             rightMargin: root.gridRight(width)
             topMargin: 16
-            // Flickable parks its content at contentX = -leftMargin, but it
-            // only moves there of its own accord when the view can flick that
-            // way, and a vertical grid cannot. The inset here follows the pane
-            // width, so without this a grid that has been resized keeps the
-            // offset it was built with and the whole thing sits a few pixels
-            // off: left gutter short by the remainder, right gutter long by it.
+            // Flickable only moves to contentX = -leftMargin by itself when the
+            // view can flick that way, and a vertical grid cannot. The inset
+            // follows the pane width, so it is re-applied here.
             onLeftMarginChanged: contentX = -leftMargin
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
@@ -891,20 +745,9 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    // Both "New playlist" buttons on this page open the one dialog; see
-    // NewPlaylistDialog.qml.
-    //
-    // Nothing is reloaded on a success and the page does not navigate away.
-    // TidalBridge appends the new playlist to the favourites cache the four
-    // searchFavorite* calls read and emits favoritePlaylistsChanged, which the
-    // Connections block at the top of this file already answers by rebuilding
-    // the filtered lists - so the card appears in the grid the user is looking
-    // at, and the Playlists tab's count goes up with it. Being thrown onto an
-    // empty playlist page instead would take them off the list they were
-    // curating.
-    //
-    // A Popup is not a visual child of the page once it reparents itself to
-    // the window overlay, so the alias is a test's only handle on it.
+    // Both "New playlist" buttons open the one dialog. Nothing is reloaded on
+    // success: the bridge emits favoritePlaylistsChanged and the lists rebuild.
+    // The alias is a test's handle on a Popup, which reparents to the overlay.
     readonly property alias playlistDialog: newPlaylistDialog
 
     NewPlaylistDialog { id: newPlaylistDialog }

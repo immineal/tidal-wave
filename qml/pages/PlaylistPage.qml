@@ -8,16 +8,9 @@ Rectangle {
     id: root
     color: Theme.bg
 
-    // How much of this pane's width is only on loan. Below Prefs::railBreakpoint
-    // the sidebar collapses to its 68px rail and hands the page back the ~150px
-    // it had been using, so the pane gets *wider* as the window gets narrower:
-    // the pane's width does not fall with the window's, it has a step in it.
-    // Any column that switches on the pane therefore un-hides itself halfway
-    // down a drag. The track rows' album column dropped out at an 892px window,
-    // came back at 819 when the rail took over, and went again at 740, which is
-    // the flicker the user saw. Subtracting the loan measures the breakpoint
-    // against a width that only ever shrinks with the window, and across the
-    // step it is the same number on both sides, so nothing jumps there either.
+    // The width the collapsed sidebar hands back. Below the rail breakpoint the
+    // pane gets wider as the window narrows, so a breakpoint subtracts this to
+    // measure against a width that only shrinks with the window.
     readonly property int sidebarReclaim: {
         var w = Window.window ? Window.window.width : 0
         return (w > 0 && w < prefs.railBreak())
@@ -35,25 +28,16 @@ Rectangle {
 
     readonly property bool isUserPlaylist: playlistType === "USER"
 
-    // What the last load was told, "" when it was served. Both of loadPlaylist's
-    // callbacks dropped it - the tracks half as `if (!err)`, the header half
-    // folded into `if (err || !p || requested !== root.playlistUuid)` - which is
-    // AlbumPage's bug from 0361ac1: a playlist that has been deleted or made
-    // private by its owner is still in the favourites list and answers 404 for
-    // both `playlists/<uuid>` and `playlists/<uuid>/tracks`, and the page kept
-    // the title the caller handed it over an empty list, saying nothing.
+    // What the last load was told, "" when it was served.
     property string loadError: ""
 
-    // Nothing came back at all. Milder than AlbumPage's and ArtistPage's case,
-    // for MixPage's reason: the title and the artwork the caller passed are
-    // still correct and still on screen, so the hero stays and only the empty
-    // half says why. Gated on what the server said and not on the list being
-    // empty - a playlist with no songs in it is an ordinary thing to own, and
-    // calling it unavailable would be a new lie in place of the old silence.
+    // Nothing came back at all. The hero stays, since the caller's title and
+    // artwork are still correct. Gated on what the server said: a playlist with
+    // no songs in it is ordinary.
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
-    // The first reason and not the last; see ArtistPage.noteLoadError().
+    // The first reason is kept; see ArtistPage.noteLoadError().
     function noteLoadError(err) {
         if (root.loadError.length === 0) root.loadError = err
     }
@@ -78,32 +62,9 @@ Rectangle {
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
     // ── the one number on this page with no live source ──────────────────
-    //
-    // The hero's track count is live: it reads `tracks.length`, and the removal
-    // handler below splices the array. The *length* beside it is not - it arrives
-    // once, from fetchPlaylist() when the page loads, so taking a song off left
-    // the line reading "4 tracks • 25 min" where 25 minutes was the five-track
-    // figure. The same family of staleness as the cached counts, on the one page
-    // that otherwise counts for itself.
-    //
-    // Taken from the bridge's cache rather than by asking again. The bridge
-    // re-reads this playlist's header after every accepted add or removal and has
-    // merged the answer into that cache before it says so, so the fresh figure is
-    // already in memory by the time this runs; a second request for the same URL
-    // would be the round trip the picker had removed, reintroduced one page over.
-    //
-    // The duration and nothing else. The title and the artwork have owners - the
-    // rename dialog writes the first on its own answer, and the caller that
-    // navigated here passed both - and a page that also pulled those from the
-    // cache would fight them.
-    //
-    // On playlistStatsRefreshed and deliberately not on favoritePlaylistsChanged.
-    // That one says only "the playlist list moved" and it also fires on every page
-    // of the sign-in paging and on every markPlaylistPlayed - so taking it as "my
-    // playlist changed" would mean that pressing Play on a playlist edited from
-    // another device overwrote the header this page had just fetched with the
-    // stale cached figure. It has to be this playlist, and because of a change to
-    // its contents.
+    // The length arrives once with the header, so it is refreshed from the
+    // bridge's cache when this playlist's contents change. Not on
+    // favoritePlaylistsChanged, which also fires for paging and for plays.
     Connections {
         target: bridge
         function onPlaylistStatsRefreshed(uuid) {
@@ -111,36 +72,16 @@ Rectangle {
             var cached = bridge.getUserPlaylists()
             for (var i = 0; i < cached.length; i++) {
                 if (cached[i].uuid !== root.playlistUuid) continue
-                // Either the cache has a real length, or it says the playlist is
-                // empty - and then zero is the truth rather than a gap in the
-                // cache. A row that reports no length and some tracks is a row
-                // the sign-in paging has not filled in, and that is not grounds
-                // for blanking a figure the page was handed.
+                // Either the cache has a real length, or the playlist is empty
+                // and zero is true. A row with tracks and no length has not
+                // been filled in by the sign-in paging yet.
                 if (cached[i].duration > 0 || cached[i].numTracks === 0)
                     root.playlistDuration = cached[i].duration
 
                 // ── and the one case where the tracklist itself is behind ──
-                //
-                // Every row on this page carries the shared "Add to playlist"
-                // picker, so the playlist a song can be added to includes the one
-                // being looked at. That path updates no tracklist - only the
-                // removal handler splices - so the song went in and the page did
-                // not show it, with the count beside the title one short.
-                //
-                // Asked for only when the two genuinely disagree, which is why
-                // this hangs off playlistStatsRefreshed rather than
-                // favoritePlaylistsChanged: that signal would also arrive on the
-                // sign-in paging, when the cache is behind the page for perfectly
-                // ordinary reasons, and every playlist opened in the first second
-                // of a session would re-fetch its own tracks. A removal leaves the
-                // two in agreement already - the splice has run by the time this
-                // does - so the ordinary case asks for nothing.
-                //
-                // Bounded, not a loop: the reload raises none of these signals. A
-                // playlist whose declared count the tracks endpoint cannot match -
-                // one holding a track unavailable in this region, say - therefore
-                // costs one extra request per change to it and never settles into
-                // more than that.
+                // A song added to this playlist from a row on this page updates
+                // no tracklist, so reload when the count and the list disagree.
+                // The reload raises no signal, so this cannot loop.
                 if (cached[i].numTracks !== root.tracks.length)
                     root.reloadTracks()
                 return
@@ -159,30 +100,17 @@ Rectangle {
         })
     }
 
-    // The tracklist again, without the header request or the loading overlay.
-    //
-    // For the one case the page cannot work out for itself: a song added to this
-    // playlist from a row on this very page. The header the bridge has just read
-    // says the playlist is one longer than the list being drawn, and only the
-    // tracks endpoint can say which song it is.
-    //
-    // No `loading = true`: the page is already full and correct apart from one row,
-    // and throwing the overlay over it would make an addition look like a reload.
+    // The tracklist again, without the header request or the loading overlay:
+    // the page is already correct apart from one row.
     function reloadTracks() {
         if (root.playlistUuid.length === 0) return
         var requested = root.playlistUuid
         bridge.fetchPlaylistTracks(requested, function (t, err) {
-            // Two conditions, written as two, and they used to be one `||`.
-            // A reply for the playlist the user has already left says nothing
-            // about the one on screen; a reply that failed does.
+            // A reply for a playlist the user has already left says nothing
+            // about the one on screen.
             if (requested !== root.playlistUuid) return
-            // And here the reason is deliberately *not* kept. This is the
-            // top-up for a song added from a row on this very page: the list
-            // being drawn is already right apart from one row, so a failed
-            // top-up leaves a correct page, and the panel below is for a page
-            // with nothing on it. Recording it here would put "this playlist is
-            // unavailable" over a playlist the user can see - and over an empty
-            // one they had just added their first song to.
+            // The reason is not kept: a failed top-up leaves a correct page,
+            // and the error panel is for a page with nothing on it.
             if (err) return
             root.tracks = t
         })
@@ -202,37 +130,17 @@ Rectangle {
         loadPlaylistHeader(requested)
     }
 
-    // The hero's own request, for the same reason MixPage makes one: this page
-    // can be opened with nothing but a uuid, and the "Playing from" link in Now
-    // Playing opens it with a uuid and an explicit empty cover.
-    //
-    // It is a second request where the mix's header came free, because
-    // `playlists/<uuid>/tracks` answers tracks and nothing else - there is no
-    // module beside them to read. And `type` is the field that makes it worth
-    // a request of its own: it is not decoration, it is what decides whether
-    // the user may edit a playlist they own. Opened from Now Playing it
-    // arrived as "", which reads as EDITORIAL, so their own playlist opened
-    // read-only.
-    //
-    // Nothing the reply leaves out overwrites what the caller passed, and a
-    // reply that never comes overwrites nothing at all.
+    // The hero's own request: the page can be opened with nothing but a uuid,
+    // and the tracks endpoint answers tracks only. `type` decides whether the
+    // user may edit. Nothing the reply leaves out overwrites the caller's.
     function loadPlaylistHeader(requested) {
         bridge.fetchPlaylist(requested, function (p, err) {
-            // Three conditions that used to be one `||`, and only one of them
-            // is a failure.
-            //
-            // Superseded first, and on its own: a reply about the playlist the
-            // user has already left must change nothing on the one now open,
-            // *including* whether it is reported as refused. Folded in with the
-            // error, the page would draw "not available" over whatever happened
-            // to be on screen when a slow 404 landed, which turns fast
-            // navigation into spurious error panels.
+            // Superseded first, and on its own: a reply about a playlist
+            // already left must change nothing on the one now open, including
+            // whether it is reported as refused.
             if (requested !== root.playlistUuid) return
-            // Then the refusal, which is the one worth keeping.
             if (err) { root.noteLoadError(err); return }
-            // And an answer with no body is neither: nothing to apply, nothing
-            // to complain about. Same rule as MixPage's headerless reply -
-            // what the caller passed stays standing.
+            // An answer with no body leaves what the caller passed.
             if (!p) return
             if (p.title)       root.playlistTitle       = p.title
             if (p.coverUrl)    root.coverUrl            = p.coverUrl
@@ -251,9 +159,8 @@ Rectangle {
 
         header: Rectangle {
             width: tracksList.width
-            // Grows with its content rather than sitting at a fixed 240: a
-            // wrapped title, a three line description or a wrapped pill row
-            // used to be cut off at the bottom edge.
+            // Grows with its content, so a wrapped title, description or pill
+            // row is not cut off.
             implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
             color: "transparent"
 
@@ -314,8 +221,6 @@ Rectangle {
                     VectorIcon {
                         visible: !playlistCover.visible && !collageGrid.visible
                         anchors.centerIn: parent
-                        // As on MixPage: the type's own glyph where there is
-                        // neither a cover nor four tracks to collage.
                         name: "playlist"
                         color: Theme.accent
                         width: 64
@@ -373,19 +278,14 @@ Rectangle {
                         elide: Text.ElideRight
                     }
 
-                    // A Flow, so the pills wrap onto a second line instead of
-                    // pushing the column past the hero's right edge. Three
-                    // pills are 384px at the old fixed width, more than the
-                    // 328px the column gets in a 640px pane.
+                    // A Flow, so the pills wrap in a narrow pane.
                     Flow {
                         id: heroActions
                         Layout.fillWidth: true
                         spacing: 12
-                        // The queue confirmation is drawn just above the row
-                        // of actions it confirms. Assigned rather than bound:
-                        // the hero lives in the list's header, and an id
-                        // inside that component is out of reach from the page
-                        // root, where the menu is.
+                        // The queue confirmation is drawn just above this row.
+                        // Assigned, not bound: an id inside the list's header
+                        // component is out of reach from the page root.
                         Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
 
                         PillButton {
@@ -431,7 +331,7 @@ Rectangle {
                 }
             }
 
-            // P2: a right-click on the hero pins what the page is showing.
+            // A right-click on the hero pins what the page is showing.
             MouseArea {
                 objectName: "heroPinArea"
                 anchors.fill: parent
@@ -465,29 +365,13 @@ Rectangle {
                 bridge.markPlaylistPlayed(root.playlistUuid)
                 root.playFrom(root.tracks, index)
             }
-            // The row leaves the page only on the server's word, and a refusal
-            // now says so. It used to do neither half of that out loud: the
-            // `if (ok)` was already right, so a refused removal left the song in
-            // the list - correctly - and left no word either, which is
-            // indistinguishable from a click that missed.
-            //
-            // The count beside the title needs no help here. It reads
-            // root.tracks.length, so splicing the array is what redraws it; the
-            // cached counts the sidebar, the Home row, the Collection grid and
-            // the picker draw are repaired by the bridge, which re-reads the
-            // playlist header on a successful removal.
+            // The row leaves the page only on the server's word. The count
+            // beside the title reads root.tracks.length, and the bridge repairs
+            // the cached counts drawn elsewhere.
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
-                    // Asked before the list is touched, deliberately: a successful
-                    // removal takes this delegate's row out of the model, and a
-                    // method called on a delegate that has gone is a TypeError
-                    // thrown inside the one callback that must not throw.
-                    //
-                    // Recorded honestly, because a mutation that reversed the two
-                    // lines passed: ListView destroys a delegate lazily rather than
-                    // inside the model assignment, so today the call still lands.
-                    // The order stays because it does not rely on that timing, and
-                    // the function says nothing on a success, so it costs nothing.
+                    // Called before the list is touched: a successful removal
+                    // takes this delegate's row out of the model.
                     playlistTrackRow.confirmRemovedFromPlaylist(ok === true)
                     if (ok) {
                         var arr = root.tracks.slice()
@@ -498,10 +382,8 @@ Rectangle {
             }
         }
 
-        // The footer, not an overlay anchored under the hero; see MixPage's
-        // twin for why. The hero itself is left alone: its title is the
-        // caller's and still true, and Play, Shuffle and Edit already do
-        // nothing on an empty list.
+        // The footer, so the message sits directly beneath the header and
+        // scrolls with it, as on MixPage.
         footer: Item {
             width: tracksList.width
             height: root.loadFailed ? 200 : 32
@@ -515,10 +397,8 @@ Rectangle {
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
-                    // Layout.preferredWidth/Height and not width/height: a
-                    // Layout owns the size of its direct children, and a plain
-                    // width is overwritten - unlike the hero's own glyph above,
-                    // which is anchored and so may use width.
+                    // A Layout owns the size of its direct children, so a plain
+                    // width would be overwritten.
                     Layout.preferredWidth: 40
                     Layout.preferredHeight: 40
                     name: "playlist"
@@ -538,8 +418,7 @@ Rectangle {
                 }
 
                 // Not the server's own string; see AlbumPage's panel for why.
-                // One long literal and not a concatenation, so lupdate can read
-                // it.
+                // One long literal, since lupdate cannot read a concatenation.
                 Text {
                     objectName: "playlistLoadErrorDetail"
                     Layout.fillWidth: true
@@ -567,8 +446,8 @@ Rectangle {
 
     LoadingOverlay { loading: root.loading }
 
-    // P2. The pin carries the labels and the artwork the page is showing, so
-    // the sidebar row reads the same as the page it came from.
+    // The pin carries the labels and the artwork the page is showing, so the
+    // sidebar row reads the same as the page it came from.
     readonly property alias pinMenu: heroPinMenu
 
     function showHeroPinMenu(x, y) {
@@ -583,30 +462,19 @@ Rectangle {
     }
 
     // ── Edit playlist ────────────────────────────────────────────────────
-    //
-    // A test's handle on the dialog; a Popup reparents itself to the window
+    // A test's handle on the dialog: a Popup reparents itself to the window
     // overlay, so it is not reachable by walking this page's children.
     readonly property alias editPopup: editPlaylistPopup
 
-    // What the dialog does with what was typed.
-    //
-    // It used to write the two fields straight into root.playlistTitle and
-    // root.playlistDescription and stop - no call, no error, no sign that
-    // anything was missing. Navigating away threw the rename away, and from
-    // the user's seat that is data loss with a confirmation attached: the
-    // dialog had accepted the edit and reported nothing wrong.
-    //
-    // So the page's own two properties are written on the *answer* and only
-    // on a success. A page that renamed itself optimistically would be the
-    // same lie one frame later.
+    // What the dialog does with what was typed. The page's own two properties
+    // are written on the answer, and only on a success.
     function saveEdits() {
         if (editPlaylistPopup.busy) return
 
         var newTitle = editTitleField.text.trim()
         var newDesc  = editDescField.text.trim()
-        // Reachable: the Save button is dark for an empty name, but Return in
-        // the field is not, and a key that silently does nothing reads as a
-        // broken dialog. Same wording as NewPlaylistDialog's.
+        // Reachable: the Save button is disabled for an empty name, but Return
+        // in the field is not. Same wording as NewPlaylistDialog's.
         if (newTitle.length === 0) {
             editPlaylistPopup.errorText = qsTr("Enter a name for the playlist.")
             return
@@ -616,10 +484,8 @@ Rectangle {
             return
         }
 
-        // Which playlist this reply is about; see loadPlaylist(). The dialog
-        // can be left open across a navigation, and writing a name onto
-        // whatever page is showing when the answer lands would rename the
-        // wrong playlist in the interface.
+        // Which playlist this reply is about. The dialog can stay open across a
+        // navigation, and the answer must not rename whatever page is showing.
         var requested = root.playlistUuid
         editPlaylistPopup.busy      = true
         editPlaylistPopup.errorText = ""
@@ -644,10 +510,8 @@ Rectangle {
         width: 400
         modal: true
         focus: true
-        // A request is out: no way out of the dialog until it answers. Leaving
-        // under a call that is still going to reply means the user cannot tell
-        // whether the rename took, which is the state this whole dialog was in
-        // before it had a call at all.
+        // No way out of the dialog while a request is out, so the user can
+        // always tell whether the rename took.
         closePolicy: editPlaylistPopup.busy
                      ? Popup.NoAutoClose
                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
@@ -655,10 +519,9 @@ Rectangle {
         background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
 
         // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
-        // go quiet while the POST is out...
+        // go quiet while the request is out.
         property bool busy: false
-        // ...and a failure keeps the dialog up with the text still in it, so
-        // the answer to a failed save is one click rather than retyping.
+        // A failure keeps the dialog up with the text still in it.
         property string errorText: ""
 
         onOpened: editTitleField.forceActiveFocus()
@@ -674,10 +537,8 @@ Rectangle {
             Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
             Rectangle {
                 width: parent.width; height: 36; radius: Theme.radiusField
-                // The field's own activeFocus, not a FocusScope parked inside
-                // it. A FocusScope that is a *child* of the TextInput never
-                // gains activeFocus when the TextInput does, so this border
-                // never lit: the ring was unreachable rather than subtle.
+                // The field's own activeFocus: a FocusScope that is a child of
+                // the TextInput never gains activeFocus with it.
                 color: Theme.surface
                 border.color: editTitleField.activeFocus ? Theme.accent : Theme.border
                 TextInput {
@@ -719,17 +580,14 @@ Rectangle {
                 }
             }
 
-            // Only ever drawn when something went wrong, and it keeps the
-            // dialog up: a toast would lose the text that is still in the two
-            // fields. Deliberately not a line that is always present - the
-            // dialog is tall enough already.
+            // Drawn only when something went wrong, and inside the dialog, so
+            // the text in the two fields is kept.
             Text {
                 objectName: "editPlaylistError"
                 width: parent.width
-                // No explicit height. A Column skips an invisible child
-                // entirely, and `height: visible ? implicitHeight : 0` on a
-                // wrapping Text is a binding loop - which tst_firstrun turns
-                // into a failure, because it fails on any QML warning.
+                // No explicit height. A Column skips an invisible child, and
+                // `height: visible ? implicitHeight : 0` on a wrapping Text is
+                // a binding loop.
                 visible: editPlaylistPopup.errorText.length > 0
                 text: editPlaylistPopup.errorText
                 color: Theme.red

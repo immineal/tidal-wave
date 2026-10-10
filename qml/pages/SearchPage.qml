@@ -28,28 +28,16 @@ Rectangle {
     readonly property int kPlaylists: 4
     readonly property int kMixes:     5
 
-    // The query the five arrays and `errorText` below describe, and the reason
-    // the last reply failed (empty when it did not).
-    //
-    // A search has three outcomes and the page only had two of them. "I have
-    // results" and "I have none" leaves no way to say *not yet*, so the
-    // no-results strip - which asked nothing more than whether the arrays
-    // were empty - was up for the whole 400ms the debounce was still waiting,
-    // on every keystroke, naming a query nothing had been asked about. Empty
-    // arrays are the state the page starts in, not an answer.
-    //
-    // Nothing may be said about a query until a reply for *that* query has
-    // landed, which is what `replied` below is.
+    // The query the five arrays and `errorText` describe, and the reason the
+    // last reply failed (empty when it did not). Nothing may be said about a
+    // query until a reply for that query has landed: see `replied`.
     property string repliedFor: ""
     property string errorText:  ""
 
     readonly property bool replied: query.length >= 2 && repliedFor === query
 
-    // Hits of the kind the active tab shows. The strip used to ask whether all
-    // the arrays were empty while each section showed itself only when its own
-    // array was not, so the Albums tab for a query that matched only tracks hid
-    // every section *and* suppressed the strip: a pane with nothing in it at
-    // all and no way to tell that from a page still loading.
+    // Hits of the kind the active tab shows, so the no-results strip speaks
+    // about that tab and not about all five arrays.
     readonly property int tabHits:
         activeTab === 0 ? totalHits : rowsOf(activeTab).length
 
@@ -58,36 +46,14 @@ Rectangle {
         + playlists.length + mixes.length
 
     // ── paging ──────────────────────────────────────────────────────────
-    //
-    // The search endpoint takes an offset and this page never sent one, so a
-    // search was twenty of each kind and that was the whole catalogue as far
-    // as the user was concerned. It pages now: the bottom of a type tab asks
-    // for the next twenty of that kind and appends them.
-    //
-    // Three pieces of state per kind, and they are three because the obvious
-    // single counter is wrong in a different way for each:
-    //
-    //   _sent   how many rows the *server* has handed over for this kind. The
-    //           offset of the next request, and not the same as the length of
-    //           the array below it, because duplicates are dropped on arrival
-    //           (see _fresh) - counting the array would re-ask for the rows
-    //           that were dropped and get them again, forever.
-    //   _total  what the reply said the kind holds. The bridge used to throw
-    //           these away; without them a last page that happens to be full
-    //           is indistinguishable from one with more behind it.
-    //   _more   whether to ask again. Both of the above can lie - a server
-    //           that omits totalNumberOfItems reports 0 - so this is set from
-    //           whichever of the two said "that is all": a short page, or a
-    //           total that has been reached.
-    //
-    // Index 0 (the All tab) is never used: see _maybeLoadMore.
+    // Per kind: _sent counts rows the server handed over and is the next offset
+    // (duplicates are dropped on arrival), _total is what the reply said the
+    // kind holds, _more is whether to ask again. Index 0 is unused.
     property var _sent:  [0, 0, 0, 0, 0, 0]
     property var _total: [0, 0, 0, 0, 0, 0]
     property var _more:  [false, false, false, false, false, false]
     // "kind:id" for every row already on screen, so a row the server repeats
-    // across two pages - which it does whenever the result set shifts under a
-    // query between requests - is dropped rather than drawn twice. A plain
-    // object and not a property anything binds to: nothing watches it.
+    // across two pages is dropped. A plain object: nothing binds to it.
     property var _seen: ({})
     property bool loadingMore: false
 
@@ -97,40 +63,22 @@ Rectangle {
     readonly property int loadMoreMargin: 240
 
     // ── which section leads ─────────────────────────────────────────────
-    //
-    // The All tab was always Tracks -> Albums -> Artists -> Playlists, so
-    // searching for an artist put the artist third and, in a small window,
-    // below the fold. The order follows the query now: the kind whose best hit
-    // the query matches most strongly leads, and the rest keep their default
-    // order behind it.
-    //
-    // Recomputed once per *search*, from the reply, and never on an append or
-    // a keystroke - the page jumping around under a half-typed word is the one
-    // thing this must not do.
+    // The kind whose best hit matches the query most strongly leads the All
+    // tab, and the rest keep their default order. Recomputed once per search,
+    // from the reply, never on an append or a keystroke.
     property var sectionOrder: [1, 2, 3, 4, 5]
 
     readonly property int defaultTracksCap: 5
-    // The leading section earns a few more rows than it would in third place.
-    // Tracks is the only section with a cap at all - the other four are tile
-    // rows that show what they were given - so this is the whole of it.
+    // The leading section earns a few more rows. Only Tracks has a cap.
     readonly property int leadingTracksCap: 8
     readonly property int allTabTracksCap:
         sectionOrder.length > 0 && sectionOrder[0] === kTracks
             ? leadingTracksCap : defaultTracksCap
 
     // ── the scoring vocabulary ──────────────────────────────────────────
-    //
-    // The same four tiers, the same coverage ceiling and the same folding as
-    // LibraryIndex (src/api/LibraryIndex.cpp, `fold`, `matchScore`,
-    // `coverageBonus` and the long note above them), so the catalogue search
-    // and the sidebar finder agree about what a strong match is. Restated here
-    // rather than shared: the rows being scored are a remote reply that never
-    // enters LibraryIndex, and reaching back into C++ to rank five JS arrays
-    // would be a round trip through QVariant for no gain. If the tiers ever
-    // move, they move in both places.
-    //
-    // The tiers are 100 apart and the two adjustments below can never reach
-    // that, which is what keeps a tier sealed.
+    // The same tiers, coverage ceiling and folding as src/api/LibraryIndex.cpp,
+    // restated because these rows never enter it: change both together. Tiers
+    // are 100 apart and the adjustments below cannot reach that.
     readonly property int tierExact:     400   // the name *is* the query
     readonly property int tierPrefix:    300   // the name starts with it
     readonly property int tierWordStart: 200   // a later word starts with it
@@ -140,35 +88,23 @@ Rectangle {
     // score at index 0 beats it at index 7, capped well under the 60 that
     // would let a deep hit fall out of its tier.
     readonly property int indexPenaltyMax: 20
-    // And the threshold the user chose: the leader has to be a full tier clear
-    // of the runner-up or nothing moves. That is the point of it - it keeps the
-    // page steady for half-typed and ambiguous queries, which is the cost that
-    // came with reordering instead of a "Top result" card.
+    // The leader has to be a full tier clear of the runner-up or nothing moves,
+    // which keeps the page steady for half-typed and ambiguous queries.
     readonly property int leadMargin: 100
 
     function releaseFocus() {
         searchBar.releaseFocus()
     }
 
-    // Arriving at the page. The router gives the Loader active focus, which is
-    // not the same as giving it to the field: the Loader, this page's root and
-    // the bar's input all sit in one focus scope, so whichever of them asked
-    // last owns it and the field was never the one asking. Nothing typed
-    // reached it, and leaving the page (releaseFocus above) left the scope with
-    // no focus item at all, so a second visit had nothing to hand focus back
-    // to either.
+    // Arriving at the page. The router gives the Loader active focus, but the
+    // Loader, this page's root and the bar's input share one focus scope, so
+    // the field has to be asked separately.
     function takeFocus() {
         searchBar.takeFocus()
     }
 
-    // The results change shape on a tab switch: "All" shows every section and
-    // every other tab shows one, so the whole column below is replaced between
-    // two frames. It fades in instead.
-    //
-    // A fade and not a reorder: the sections are Repeaters over JS arrays, so
-    // nothing here is a view with a change set to animate, and the content
-    // after a switch is different content rather than the same content
-    // rearranged.
+    // A tab switch replaces the whole column below, so it fades in. The
+    // sections are Repeaters over JS arrays, with no change set to animate.
     property real resultsIn: 1
     NumberAnimation {
         id: resultsEntry
@@ -180,19 +116,14 @@ Rectangle {
     }
     onActiveTabChanged: {
         resultsEntry.restart()
-        // The tab just switched to may already be showing its last row - but
-        // the column is the *previous* tab's height until it has been laid
-        // out again, which is shorter than the viewport often enough to have
-        // asked for a second page the user never scrolled to.
+        // The column still has the previous tab's height until it is laid out
+        // again, so the bottom check waits for it to settle.
         bottomSettle.restart()
     }
 
     // ── recent searches ─────────────────────────────────────────────────
-    //
     // The queries this account has run, newest first, kept by TidalBridge in
-    // QSettings beside the recents LibraryIndex already keeps (see the note on
-    // TidalBridge::recentSearchesKey for why there and not in a file). Nothing
-    // leaves the machine and nothing is logged.
+    // QSettings. Nothing leaves the machine and nothing is logged.
     property var recents: []
 
     function reloadRecents() { root.recents = bridge.recentSearches() }
@@ -213,18 +144,9 @@ Rectangle {
     }
 
     // ── a query handed over by another page ──────────────────────────────
-    //
-    // AlbumPage's failure panel sends the title of a delisted album here so the
-    // live edition can be found, since it is listed under a different id. The
-    // router hands a page its parameters by *assigning* them (Main.applyParams
-    // walks the object and sets each name it finds), so arriving with a search
-    // to run means arriving with a property set - there is no way to ask the
-    // page to call something.
-    //
-    // Which is why this is not `query`: that property is the field's echo and
-    // nothing watches it, so writing it would put the term on screen and ask
-    // the server for nothing. Cleared as it is taken, so arriving twice with
-    // the same term runs it twice - the change signal is the whole trigger.
+    // The router hands parameters over by assigning them, so a search to run
+    // arrives as a property. `query` will not do: it is the field's echo and
+    // nothing watches it. Cleared as taken, so the same term can run twice.
     property string requestedQuery: ""
     onRequestedQueryChanged: {
         if (requestedQuery.length === 0) return
@@ -233,9 +155,8 @@ Rectangle {
         searchFor(q)
     }
 
-    // runRecent() without the bookkeeping: the user did not type this one, so it
-    // is not one of their recent searches. The field is filled first because
-    // that is what sets `query` - the bar's onTextEdited is the only writer.
+    // runRecent() without the bookkeeping: the user did not type this one. The
+    // field is filled first: the bar's onTextEdited is what writes `query`.
     function searchFor(q) {
         searchBar.text = q
         searchDebounce.stop()       // a query that was handed over needs no settling
@@ -263,9 +184,8 @@ Rectangle {
                 if (text.length < 2) { clearResults(); return }
                 searchDebounce.restart()
             }
-            // Enter means "this is the query", so it is remembered whatever the
-            // reply turns out to be - including nothing, which is still a thing
-            // the user looked for and may want to pick off the list again.
+            // Enter means this is the query, so it is remembered whatever the
+            // reply turns out to be.
             onSubmitted: (text) => {
                 if (text.length < 2) return
                 bridge.addRecentSearch(text)
@@ -277,22 +197,8 @@ Rectangle {
         Item { height: 12 }
 
         // ── the tab bar, and its highlight as one pill that travels ──────
-        //
-        // The accent fill used to belong to the chip: the one being left faded
-        // back to nothing while the one arriving faded up to the accent, so the
-        // highlight was briefly nowhere and nothing ever crossed the gap
-        // between the two (QA: "the highlighting bar can move up and not just
-        // fade out in one place and then fade in in the other place"). There is
-        // one pill now and it moves, the same way the sidebar's bar moves
-        // between its three rows and Collection's pill between its chips, and
-        // on the same 140ms, so the three read as one idea.
-        //
-        // A host Item around the row rather than Collection's per-chip slices:
-        // a Row lays out every visible child it has, so the pill cannot be one
-        // of them, but it can be the row's sibling - and then it is one whole
-        // pill that crosses the 4px gaps because it is never cut up in the
-        // first place. Collection's chips are in a Flow, which left nowhere to
-        // put a sibling, which is the only reason it is sliced there.
+        // One pill that moves between the chips. A Row lays out every visible
+        // child, so the pill is the row's sibling inside this host Item.
         Item {
             id: tabsHost
             objectName: "searchTabsHost"
@@ -305,10 +211,7 @@ Rectangle {
 
             // Which chip the pill is leaving, which it is arriving at, and how
             // far along it is. Only `markT` is animated: the geometry is a lerp
-            // between the two chips' *live* boxes, so a layout change - the
-            // language changing under the row, a chip's label being retranslated
-            // - arrives in the frame it happens instead of being chased for
-            // 140ms by a pill that was told where the chip used to be.
+            // between the two chips' live boxes, so a layout change is instant.
             property Item markFrom: null
             property Item markTo:   null
             property real markT:    1
@@ -326,10 +229,9 @@ Rectangle {
                 NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
             }
 
-            // The end it set off from - the destination itself when there is
-            // nothing to set off from, which makes the lerp degenerate and
-            // markT unobservable. That is the first placement, and it is also a
-            // model rebuild.
+            // The end it set off from, or the destination itself when there is
+            // none, which makes the lerp degenerate. That covers the first
+            // placement and a model rebuild.
             readonly property Item markA: markFrom ? markFrom : markTo
             readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
             readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
@@ -347,14 +249,9 @@ Rectangle {
                 tabsHost.markT = 1
             }
 
-            // `visible` in the condition as well as the gate. The row is only
-            // there with a query on it, and the page itself is hidden outright
-            // whenever the shell is on another one (Main.qml's searchLoader
-            // keeps it alive behind `visible`), so a tab changed while the row
-            // is off screen has to be where it belongs the moment the row comes
-            // back rather than crossing it on the way in - a travel started
-            // behind a hidden row has its whole 140ms still to run. Same guard
-            // the sidebar's bar has for fullscreen.
+            // `visible` in the condition as well as the gate: a tab changed
+            // while the row is off screen must not start a travel that plays
+            // when the row comes back.
             Connections {
                 target: root
                 function onActiveTabChanged() {
@@ -367,10 +264,9 @@ Rectangle {
                 Qt.callLater(function () { tabsHost.markSettled = true })
             }
 
-            // Behind the chips, which rest on nothing at all, so the pill is
-            // what the eye reads as the fill. Behind and not in front because a
-            // chip's hover tint is opaque and would sit on top of it; see the
-            // chip's colour below for the other half of that.
+            // Behind the chips, which rest on nothing, so the pill reads as the
+            // fill. Behind because a chip's hover tint is opaque; see the
+            // chip's colour below.
             Rectangle {
                 objectName: "searchTabPill"
                 x: tabsHost.markX
@@ -391,42 +287,24 @@ Rectangle {
                     model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
                             qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
                     // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive as well as when
-                    // the tab changes - a language change rebuilds all six.
+                    // pill is aimed again as the chips arrive. A language
+                    // change rebuilds all six.
                     onItemAdded: function (index, item) { tabsHost.retarget(false) }
                     Rectangle {
                         id: searchTab
                         required property string modelData
                         required property int    index
                         height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusChip
-                        // Every chip rests on nothing now, including the current
-                        // one: what marks it is the pill behind the row.
-                        //
-                        // The hover tint drops out on any chip the pill is over,
-                        // which is what the old `activeTab === index ? accent :
-                        // hover` said - the highlight beat the hover - now that
-                        // where the highlight is is a box and not an index.
-                        // surfaceHov is opaque and the pill is behind the row, so
-                        // without this the tint would paint the highlight out from
-                        // under the pointer, and the pointer is on the chip that
-                        // was just clicked.
-                        //
-                        // The whole chip and not only the covered part of it: for
-                        // the 140ms a travel passes over a chip the pointer happens
-                        // to be on, the tint fades out and back rather than being
-                        // cut in two by a moving edge. Two rounded slivers chasing
-                        // the pill is a worse answer than none.
+                        // The pill behind the row marks the current chip. The
+                        // hover tint drops out on any chip the pill is over:
+                        // surfaceHov is opaque and would paint over it.
                         color: tabMA.containsMouse && !searchTab.pillOverlaps
                                ? Theme.surfaceHov : "transparent"
-                        // Same as Collection's row, and for the same reason: the
-                        // chip is what was clicked, so it must not be the one thing
-                        // that snaps while the results below it fade. The hover gets
-                        // the fade too, which is what the rest of the app does.
+                        // The chip must not snap while the results fade.
                         Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
 
-                        // Is any part of the pill over this chip? Horizontal only:
-                        // the row does not wrap, so every chip is on the one line
-                        // the pill travels along.
+                        // Whether any part of the pill is over this chip.
+                        // Horizontal only: the row does not wrap.
                         readonly property bool pillOverlaps:
                                tabsHost.markW > 0
                             && tabsHost.markX < searchTab.x + searchTab.width
@@ -449,52 +327,25 @@ Rectangle {
                         Text {
                             id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
                             text: modelData
-                            // The ink the bare row takes, always. The accent's ink
-                            // is the copy below, and which of the two is on screen
-                            // at a given pixel is decided by where the pill is
-                            // rather than by a clock.
+                            // Always the ink of the bare row. The accent's ink
+                            // is the copy below.
                             color: Theme.textSec
-                            // Not drawn at all where the copy covers every pixel of
-                            // it, which is the resting state of the current chip.
-                            // Two Texts in the same place blend at the glyphs'
-                            // antialiased edge, and the ink underneath is the
-                            // resting ink on the accent fill - the ~2:1 pairing the
-                            // note below calls invisible, which is only *nearly*
-                            // invisible, and the settled chip is where the eye lives.
+                            // Hidden where the copy covers every pixel of it:
+                            // two Texts in one place blend at the glyphs'
+                            // antialiased edge.
                             visible: !searchTab.labelFullyInked
                             font.pixelSize: 13
                         }
 
-                        // The same label again in the ink the accent needs, clipped
-                        // to exactly the part of the pill that is over this chip.
-                        //
-                        // This is what lets the fill travel at all. The two inks are
-                        // luminance-inverted against the two fills on the three
-                        // light palettes - dark ink on a bare row becomes white ink
-                        // on an accent chip - so a label cannot cross-fade between
-                        // them (measured in 172cb4f: under 2:1 for 57ms of a 140ms
-                        // fade, bottoming out at 1.01:1), and it cannot be stepped
-                        // either when a hard fill edge is sweeping across it:
-                        // whichever ink it steps to, half the glyphs are on the
-                        // wrong fill for as long as the edge takes to cross them.
-                        // Two copies, each clipped to its own fill, means every
-                        // glyph pixel is on the fill its ink was chosen for in every
-                        // frame of the travel - better than the single stepped frame
-                        // the fade settled for, rather than a trade against it.
-                        //
-                        // This row needs it harder than Collection's: its resting
-                        // fill is the page itself, so the pair inverts further.
+                        // The label again in the accent's ink, clipped to the
+                        // pill, so every glyph pixel is on the fill its ink was
+                        // chosen for. The two inks cannot cross-fade legibly.
                         Item {
                             id: inkWindow
                             objectName: "searchTabInk"
-                            // The pill, in this chip's coordinates, clamped to the
-                            // chip. Vertically as well, though the row cannot wrap:
-                            // the clamp is what makes the window empty rather than
-                            // negative when the pill is elsewhere.
-                            //
-                            // Not `top`/`bottom`: an Item has those as final
-                            // members, and a property that shadows one takes the
-                            // whole type out of the build with it.
+                            // The pill in this chip's coordinates, clamped so
+                            // it is empty when the pill is elsewhere. Not
+                            // `top`/`bottom`: Item has those as final members.
                             readonly property real coveredLeft:   Math.max(0, tabsHost.markX - searchTab.x)
                             readonly property real coveredRight:  Math.min(searchTab.width, tabsHost.markX + tabsHost.markW - searchTab.x)
                             readonly property real coveredTop:    Math.max(0, tabsHost.markY - searchTab.y)
@@ -529,13 +380,8 @@ Rectangle {
 
         Item { height: 8 }
 
-        // Empty state — shown outside ScrollView so it centers in the page.
-        //
-        // The last few queries, when there are any. An illustration saying
-        // "Search Tidal" over a field the user is already looking at told them
-        // nothing; the one thing worth putting here is what they searched for
-        // last, because a search is the kind of thing people repeat. The
-        // illustration stays for the case where there is nothing to show yet.
+        // Empty state, outside the ScrollView so it centres in the page: the
+        // last few queries when there are any, the illustration otherwise.
         Item {
             objectName: "searchEmptyState"
             Layout.fillWidth: true
@@ -698,13 +544,8 @@ Rectangle {
                 width: parent.width
                 spacing: 0
 
-                // A failed search used to look exactly like a successful one:
-                // the spinner went away, the previous query's results stayed on
-                // screen under the new text, and nothing said the request had
-                // failed. There is no banner, toast or retry anywhere in this
-                // app - LoginPage reports a failed sign-in as one line of
-                // Theme.red text and that is the whole precedent - so this is
-                // that line.
+                // A failed search says so in one line of Theme.red text, as
+                // LoginPage does for a failed sign-in.
                 Item {
                     objectName: "searchErrorStrip"
                     Layout.fillWidth: true
@@ -722,9 +563,9 @@ Rectangle {
                     }
                 }
 
-                // No results indicator — only ever about a query that has an
-                // answer of its own (see `replied`), and only about the kind of
-                // thing the tab in front of the user is showing.
+                // No results indicator: only about a query that has an answer
+                // of its own (see `replied`), and only about the kind the
+                // active tab shows.
                 Item {
                     objectName: "searchEmptyStrip"
                     Layout.fillWidth: true
@@ -734,15 +575,9 @@ Rectangle {
                     Text {
                         objectName: "searchEmptyLabel"
                         anchors.centerIn: parent
-                        // Two different facts, and the strip used to have only
-                        // the first: the search found nothing, or it found
-                        // nothing *of this kind*. On a type tab whose own kind
-                        // came back empty while another did not, "No results"
-                        // is simply false - the tab row above is offering those
-                        // other kinds one click away - so the line names the
-                        // kind it is actually talking about. When nothing
-                        // matched anywhere it is about the search again,
-                        // whichever tab the user happens to be standing on.
+                        // On a type tab whose kind came back empty while
+                        // another did not, the line names the kind. When
+                        // nothing matched anywhere it is about the search.
                         text: root.totalHits > 0
                             ? (root.activeTab === root.kTracks    ? qsTr("No tracks for \"%1\"").arg(root.query)
                              : root.activeTab === root.kAlbums    ? qsTr("No albums for \"%1\"").arg(root.query)
@@ -756,19 +591,9 @@ Rectangle {
                     }
                 }
 
-                // The five sections, in whatever order the query put them.
-                //
-                // A Repeater over five slots rather than five sections written
-                // out in order, because a ColumnLayout lays its children out in
-                // declaration order and there is no way to permute that from a
-                // binding. The Loaders stay put; what they load changes.
-                //
-                // Each section component is an Item that publishes an
-                // `implicitHeight` and nothing else: a Loader inside a layout
-                // is given an explicit size, which overwrites any `height`
-                // binding on the item it holds - and HorizontalSection binds
-                // exactly that - so the height has to reach the layout as an
-                // implicit one or every tile row collapses to nothing.
+                // The five sections in the query's order: the Loaders stay put,
+                // what they load changes. A Loader in a layout overwrites its
+                // item's height, so each section publishes an implicitHeight.
                 Repeater {
                     model: 5
                     Loader {
@@ -788,8 +613,7 @@ Rectangle {
                     Layout.fillWidth: true
                     height: visible ? 56 : 0
                     // "End of results" under three albums would be noise, so
-                    // the end is only announced for a kind that actually
-                    // paged - one full page or more.
+                    // the end is only announced for a kind that paged.
                     visible: root.activeTab !== 0
                              && (root.loadingMore
                                  || (!root._more[root.activeTab]
@@ -809,19 +633,9 @@ Rectangle {
         }
     }
 
-    // The bottom of the results, watched. Outside the ScrollView on purpose:
-    // a Control puts everything declared inside it into its content, and this
-    // one is allowed exactly one content item.
-    //
-    // The two signals are not treated alike, and the difference matters more
-    // than it looks. A scroll is the user, and the column is holding still
-    // while it happens, so "am I near the bottom" can be answered on the spot.
-    // A *height* change is the column growing, and it does not grow in one
-    // step: twenty appended rows arrive as twenty delegates over several
-    // passes, and for the first few of them the bottom is still a few pixels
-    // away - so a page absorbed on the spot would ask for the next one, and
-    // the one after that, straight to the end of the result set. It is asked
-    // again only once the growing has stopped.
+    // The bottom of the results, watched. Outside the ScrollView, which takes
+    // exactly one content item. A scroll is checked on the spot. A height
+    // change waits for bottomSettle: appended rows arrive over several passes.
     Connections {
         target: resultsScroll.contentItem
         function onContentYChanged()      { root._maybeLoadMore() }
@@ -878,16 +692,9 @@ Rectangle {
                         isPlaying:      player.currentTrack.id === root.tracks[index].id && player.playing
                         trackData:      root.tracks[index]
                         showPopularity: true
-                        // The one play site in the app that declared no
-                        // source. Nothing was recorded as played here,
-                        // which is right - a song is not one of the four
-                        // kinds the sidebar lists, and markPlayed() drops
-                        // it - but the *previous* source was left standing,
-                        // so the player bar went on naming the album or
-                        // playlist the user had been in before searching.
-                        // "search" is dropped by markPlayed for the same
-                        // reason "radio" and "collection" are, so this
-                        // corrects the label and records nothing.
+                        // Declares "search" as the source so the player bar
+                        // stops naming the previous one. markPlayed() drops it,
+                        // so nothing is recorded as played.
                         onPlayRequested: {
                             player.setPlaybackSource("search", root.query, root.query)
                             player.playTracks(root.tracks, index)
@@ -899,16 +706,9 @@ Rectangle {
         }
     }
 
-    // Albums, artists, playlists and mixes: the same tile section four times
-    // over, told which kind it is by the Loader holding it.
-    //
-    // Two presentations, and the difference is what makes paging mean
-    // anything. On the All tab a kind is one horizontal row - a summary, which
-    // is what the All tab is for. On the kind's own tab it is a grid that grows
-    // downwards, because "load more as you scroll" needs somewhere to scroll:
-    // a horizontal row has no bottom, and a page of twenty appended to it would
-    // have scrolled the page not at all and asked for the next twenty straight
-    // away, all the way to the end of the result set.
+    // Albums, artists, playlists and mixes: one tile section, told its kind by
+    // the Loader holding it. A horizontal row on the All tab, and on the kind's
+    // own tab a grid that grows downwards, since paging needs a bottom.
     Component {
         id: tileSectionC
         Item {
@@ -1038,10 +838,7 @@ Rectangle {
     }
 
     // The name a hit of this kind is scored on. Titles and names only, never a
-    // track's artist - that is what makes the ordering rule general rather than
-    // an artist special case, and it is the same choice LibraryIndex made
-    // deliberately (see docs/SPEC-0.4.0.md on S7, and the comment on
-    // LibraryIndex::search).
+    // track's artist, the same choice LibraryIndex::search makes.
     function nameOf(kind, row) {
         if (!row) return ""
         return kind === kArtists ? (row.name || "") : (row.title || "")
@@ -1110,12 +907,9 @@ Rectangle {
                                 mixType: item.mixType || "" })
     }
 
-    // Declaring the source is what records the play; see the same shape on
-    // HomePage. Inside the callback and after the guard, so a fetch that fails
-    // or comes back empty cannot record a play that never happened.
-    //
-    // An artist tile has no entry here on purpose: "play this artist" has no
-    // honest meaning and no page in the app offers it.
+    // Declaring the source is what records the play. Inside the callback and
+    // after the guard, so a failed or empty fetch records nothing. An artist
+    // tile has no entry: no page in the app offers playing an artist.
     function playTile(kind, item) {
         if (!item) return
         if (kind === kAlbums) {
@@ -1146,13 +940,9 @@ Rectangle {
 
     // ── folding and scoring ─────────────────────────────────────────────
 
-    // Case- and accent-insensitive, the way LibraryIndex's fold() is:
-    // decompose, drop the combining marks, lower-case, and spell the sharp s
-    // out so a search for "strasse" finds "Straße".
-    //
-    // String.prototype.normalize is guarded because Qt 6.4 is this project's
-    // floor; without it the accents simply survive, which costs an accented
-    // name its match rather than breaking the page.
+    // Case- and accent-insensitive, as LibraryIndex's fold() is: decompose,
+    // drop combining marks, lower-case, spell the sharp s out. normalize() is
+    // guarded for Qt 6.4, where without it the accents survive.
     function fold(s) {
         if (typeof s !== "string" || s.length === 0) return ""
         var d = (typeof s.normalize === "function") ? s.normalize("NFD") : s
@@ -1160,8 +950,7 @@ Rectangle {
         for (var i = 0; i < d.length; ++i) {
             var c = d.charCodeAt(i)
             // The combining blocks NFD produces for Latin, Greek and Cyrillic.
-            // LibraryIndex drops the three Mark_* categories by name, which QML
-            // has no access to; these are the ranges that matters here.
+            // LibraryIndex drops the Mark_* categories by name; QML cannot.
             if ((c >= 0x0300 && c <= 0x036f) || (c >= 0x1ab0 && c <= 0x1aff)
                 || (c >= 0x1dc0 && c <= 0x1dff) || (c >= 0x20d0 && c <= 0x20f0)
                 || (c >= 0xfe20 && c <= 0xfe2f)) continue
@@ -1171,9 +960,8 @@ Rectangle {
     }
 
     // QChar::isLetterOrNumber, as far as JS can tell: a digit, or a character
-    // that has two cases. A caseless script reads as a word boundary, which is
-    // the conservative way round - it can promote a mid-word hit to a
-    // word-start one, never demote a real one.
+    // that has two cases. A caseless script reads as a word boundary, which can
+    // promote a mid-word hit and never demotes a real one.
     function _isWordChar(c) {
         if (!c || c.length === 0) return false
         if (c >= "0" && c <= "9") return true
@@ -1214,12 +1002,9 @@ Rectangle {
         return best
     }
 
-    // The order the five sections go in for this query and this reply.
-    //
-    // The best-scoring kind leads, but only if it is a full tier clear of the
-    // runner-up; otherwise the default order stands. Two kinds that score the
-    // same are therefore a tie that changes nothing - the gap is zero - and so
-    // is a query no kind matches at all, where every score is 0.
+    // The order the five sections go in for this query and this reply. The
+    // best-scoring kind leads only if it is a full tier clear of the runner-up;
+    // otherwise the default order stands.
     function orderFor(q, results) {
         var def = [kTracks, kAlbums, kArtists, kPlaylists, kMixes]
         var needle = fold(("" + q).trim())
@@ -1247,23 +1032,17 @@ Rectangle {
         loadingMore = false
         var gen = ++root._searchGen
         bridge.search(q, function (results, err) {
-            // Network replies can arrive out of order — a slow response for
-            // an earlier keystroke could otherwise overwrite the results of
-            // a more recent search (often with an empty result set, making
-            // it look like "search finds nothing"). Only the most recently
-            // dispatched request may update the UI. The page fetches below
-            // read the same counter without bumping it: a page of a search
-            // that has since been superseded is dropped by the same test.
+            // Replies can arrive out of order, so only the most recently
+            // dispatched request may update the UI. The page fetches below read
+            // the same counter without bumping it.
             if (gen !== root._searchGen) return
             loading = false
-            // Whatever came back came back for *this* query. Recording it is
-            // what lets the two strips above speak at all.
+            // Recording the replied query is what lets the two strips speak.
             root.repliedFor = q
             if (err.length > 0) {
                 root.errorText = err
-                // The arrays still hold the hits of whatever query last
-                // succeeded. Leaving them under the text the user is looking at
-                // is the page claiming a result it does not have, so they go.
+                // The arrays still hold the last successful query's hits, which
+                // this query cannot claim.
                 root._resetResults()
                 return
             }
@@ -1284,12 +1063,8 @@ Rectangle {
             // an append or a keystroke.
             root.sectionOrder = root.orderFor(q, results)
 
-            // Remembered only once it has found something. The page searches
-            // as the user types, so every pause mid-word dispatches a request:
-            // recording every one of them would fill the list with prefixes of
-            // one search, and recording the ones that matched nothing would
-            // fill it with typing mistakes. withRecentSearch() then collapses
-            // what is left - "kendri" followed by "kendrick" is one entry.
+            // Remembered only once it has found something: the page searches as
+            // the user types, and prefixes and typos do not belong here.
             if (root.totalHits > 0) bridge.addRecentSearch(q)
 
             // A first page that does not fill the window is already showing
@@ -1299,11 +1074,8 @@ Rectangle {
     }
 
     // Whether a kind that has handed over `sent` of `total` rows, the last page
-    // of them `pageLen` long, has anything left.
-    //
-    // A short page is the end whatever the total says - that is the signal that
-    // survives a server which omits totalNumberOfItems, where `total` is 0 and
-    // would otherwise end every run after one page even when it was full.
+    // `pageLen` long, has anything left. A short page is the end whatever the
+    // total says: a server that omits totalNumberOfItems reports 0.
     function _hasMore(pageLen, sent, total) {
         if (pageLen < pageSize) return false
         if (total > 0 && sent >= total) return false
@@ -1333,16 +1105,9 @@ Rectangle {
         loadingMore = true
         var gen = root._searchGen
         var q = root.query
-        // Where the page sits now. Appending below the viewport does not move a
-        // Flickable, but the frame in which the column's implicit height has
-        // not caught up with its new children does: contentY is clamped to the
-        // old maximum and the view jumps back up. Put back once the layout has
-        // settled, never past the new end.
-        //
-        // A safeguard rather than a fix for something seen: with the settle
-        // above in place, tst_search's scroll-position case passes whether or
-        // not this runs, so no test tells the two apart. It stays because the
-        // clamp is a real property of Flickable and costs one comparison.
+        // Where the page sits now. While the column's implicit height lags
+        // behind its new children, contentY is clamped to the old maximum and
+        // the view jumps up. Put back once the layout has settled.
         var flick = resultsScroll.contentItem
         var keepY = flick ? flick.contentY : 0
 

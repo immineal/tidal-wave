@@ -8,16 +8,9 @@ Rectangle {
     id: root
     color: Theme.bg
 
-    // How much of this pane's width is only on loan. Below Prefs::railBreakpoint
-    // the sidebar collapses to its 68px rail and hands the page back the ~150px
-    // it had been using, so the pane gets *wider* as the window gets narrower:
-    // the pane's width does not fall with the window's, it has a step in it.
-    // Any column that switches on the pane therefore un-hides itself halfway
-    // down a drag. The track rows' album column dropped out at an 892px window,
-    // came back at 819 when the rail took over, and went again at 740, which is
-    // the flicker the user saw. Subtracting the loan measures the breakpoint
-    // against a width that only ever shrinks with the window, and across the
-    // step it is the same number on both sides, so nothing jumps there either.
+    // The width the collapsed sidebar hands back. Below the rail breakpoint the
+    // pane gets wider as the window narrows, so a breakpoint subtracts this to
+    // measure against a width that only shrinks with the window.
     readonly property int sidebarReclaim: {
         var w = Window.window ? Window.window.width : 0
         return (w > 0 && w < prefs.railBreak())
@@ -31,34 +24,18 @@ Rectangle {
     property var    tracks: []
     property bool   loading: false
 
-    // Which kind of mix, as Tidal names it: "DISCOVERY_MIX", "TRACK_MIX", and so
-    // on. The only handle on that question code may branch on - the title
-    // arrives in the account's language, so matching one breaks in German (see
-    // MixTypes in src/api/Models.h).
-    //
-    // Here for one reason: a TRACK_MIX is a track's radio, and this page is now
-    // the one and only viewer for one. Calling it a "Mix" on the heading is what
-    // the owner noticed first ("it looks like an album except it says mix at the
-    // top"), so the heading says what they asked for instead.
+    // Which kind of mix, as Tidal names it: "DISCOVERY_MIX", "TRACK_MIX" and so
+    // on. Code branches on this and never on the title, which arrives in the
+    // account's language. A TRACK_MIX is a track's radio.
     property string mixType: ""
 
-    // Whether this mix is in the account's saved mixes - Tidal's
-    // v2/favorites/mixes, which is what put a radio saved on another device into
-    // the sidebar in the first place.
-    //
-    // Read back out of the bridge and never written here, so a refused save has
-    // nothing to undo, only something to say. See ContextMenu.FavoriteAction.
-    //
-    // NOT the same thing as a pin, and the hero keeps the two apart on purpose:
-    // the pill is this, the account's own list, shared with every other Tidal
-    // client; the right-click menu is PinStore, which is local to this machine
-    // and this account and never leaves it. Conflating them is how this page
-    // came to look as though it offered a way to unsave when it did not.
+    // Whether this mix is in the account's saved mixes. Read back from the
+    // bridge and never written here. Separate from a pin, which is local to
+    // this machine: the pill is this, the right-click menu is PinStore.
     property bool isSaved: false
 
-    // The heading over the title. "Radio" for a track's radio station, because
-    // that is the word every other surface in the app uses for one and the word
-    // the user pressed to get here; "Mix" for everything else.
+    // The heading over the title: "Radio" for a track's radio station, "Mix"
+    // for everything else.
     readonly property bool isTrackRadio: root.mixType === "TRACK_MIX"
 
     function updateSavedState() {
@@ -74,21 +51,12 @@ Rectangle {
         function onFavoriteMixesChanged() { root.updateSavedState() }
     }
 
-    // What the last load was told, "" when it was served. The one callback used
-    // to read `if (err) return` and drop it, which is AlbumPage's bug from
-    // 0361ac1: a mix that has rotated out of the user's set, or one pinned to
-    // the sidebar months ago, answers nothing for `pages/mix` - and the page
-    // kept the title the caller handed it over an empty list, saying nothing
-    // about why the list was empty.
+    // What the last load was told, "" when it was served.
     property string loadError: ""
 
-    // Nothing came back at all. Milder than AlbumPage's and ArtistPage's case
-    // on purpose: this page is *not* blank when it fails, because the title, the
-    // subtitle and the artwork the caller passed are still correct and still on
-    // screen. So the hero stays and only the empty half of the page says why.
-    // Gated on what the server said and not on the list being empty, because a
-    // mix still in flight, and a video mix whose track module this app cannot
-    // read, both legitimately have nothing in them.
+    // Nothing came back at all. The hero stays, since the caller's title and
+    // artwork are still correct. Gated on what the server said: a mix in flight
+    // and a video mix both legitimately have no tracks.
     readonly property bool loadFailed:
         loadError.length > 0 && !loading && tracks.length === 0
 
@@ -111,17 +79,9 @@ Rectangle {
         })
     }
 
-    // The page labels itself. It can be opened with nothing but an id - the
-    // "Playing from" link in Now Playing navigates with exactly that, which is
-    // how a mix came up with its tracks loaded and a blank hero - so the title,
-    // the subtitle and the artwork come out of the response, not out of
-    // whoever happened to navigate here.
-    //
-    // A caller that already has them still passes them, and should: that is
-    // what keeps the hero from flashing empty for the length of a request. But
-    // the page no longer depends on it, and nothing the response leaves out
-    // overwrites what the caller gave - a header with no title, or no header
-    // at all, leaves the caller's standing rather than blanking it.
+    // The page labels itself from the response, since it can be opened with
+    // nothing but an id. A caller's labels keep the hero from flashing empty,
+    // and a response that leaves one out never blanks the caller's.
     function loadMix() {
         loading = true
         loadError = ""
@@ -130,12 +90,8 @@ Rectangle {
         // otherwise retitle the one now on screen.
         var requested = mixId
         bridge.fetchMixPage(requested, function (header, t, err) {
-            // Two checks that must never become one. This one says the reply is
-            // about a mix the user has already left, which is not a failure and
-            // must draw nothing; the one below says the mix on screen was
-            // refused, which must. Folded together - as PlaylistPage's two
-            // callbacks had them - fast navigation would draw error panels over
-            // pages that are loading perfectly well.
+            // Kept apart from the error check below: a reply for a mix already
+            // left is not a failure and must draw nothing.
             if (requested !== root.mixId) return
             loading = false
             if (err) { root.loadError = err; return }
@@ -143,10 +99,8 @@ Rectangle {
                 if (header.title)    root.title    = header.title
                 if (header.subtitle) root.subtitle = header.subtitle
                 if (header.coverUrl) root.coverUrl = header.coverUrl
-                // Same rule as the three above, and it matters more here: a
-                // header that names no mixType must not turn a caller's
-                // "TRACK_MIX" back into "", which would relabel the heading
-                // "Mix" the moment the response landed.
+                // Same rule: a header that names no mixType must not turn a
+                // caller's "TRACK_MIX" back into "".
                 if (header.mixType)  root.mixType  = header.mixType
             }
             tracks = t
@@ -162,9 +116,7 @@ Rectangle {
 
         header: Rectangle {
             width: tracksList.width
-            // Grows with its content rather than sitting at a fixed 240: a
-            // wrapped title or a wrapped pill row used to be cut off at the
-            // bottom edge.
+            // Grows with its content, so a wrapped title or pill row fits.
             implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
             color: "transparent"
 
@@ -206,8 +158,6 @@ Rectangle {
                     VectorIcon {
                         visible: mixCover.status !== Image.Ready
                         anchors.centerIn: parent
-                        // The hero knows what page it is; a mix with no
-                        // artwork shows the mix glyph, not a note.
                         name: "mix"
                         color: Theme.accent
                         width: 64
@@ -251,18 +201,14 @@ Rectangle {
                         wrapMode: Text.WordWrap
                     }
 
-                    // A Flow, so the pills wrap instead of pushing the
-                    // column past the hero's right edge once a German label
-                    // makes them wider.
+                    // A Flow, so the pills wrap when a translation widens them.
                     Flow {
                         id: heroActions
                         Layout.fillWidth: true
                         spacing: 12
-                        // The queue confirmation is drawn just above the row
-                        // of actions it confirms. Assigned rather than bound:
-                        // the hero lives in the list's header, and an id
-                        // inside that component is out of reach from the page
-                        // root, where the menu is.
+                        // The queue confirmation is drawn just above this row.
+                        // Assigned, not bound: an id inside the list's header
+                        // component is out of reach from the page root.
                         Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
 
                         PillButton {
@@ -284,13 +230,9 @@ Rectangle {
                             }
                         }
 
-                        // The half of the complaint that was simply missing:
-                        // nowhere in the app could a mix be saved or unsaved.
-                        // A heart and the words, exactly as AlbumPage's pill
-                        // reads, so the account-wide favourite is plainly a
-                        // different affordance from the local pin on the
-                        // right-click menu - which is a pin glyph and the words
-                        // "Pin"/"Unpin" and writes nothing to Tidal.
+                        // The account-wide favourite, a heart and the words as
+                        // on AlbumPage. The local pin is on the right-click
+                        // menu and writes nothing to Tidal.
                         PillButton {
                             objectName: "mixSavePill"
                             // Dead until the page knows which mix it is: a
@@ -300,10 +242,7 @@ Rectangle {
                                                : qsTr("Save", "verb, add mix to the library")
                             icon: root.isSaved ? "heart-filled" : "heart"
                             accent: root.isSaved
-                            // Anchored on the action row rather than the pill,
-                            // the way the hero's pin menu anchors its
-                            // confirmation: the pill sits low in the hero and
-                            // the row is what has clear space above it.
+                            // On the action row, which has clear space above.
                             onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
                                                                     heroActions)
                         }
@@ -311,7 +250,7 @@ Rectangle {
                 }
             }
 
-            // P2: a right-click on the hero pins what the page is showing.
+            // A right-click on the hero pins what the page is showing.
             MouseArea {
                 objectName: "heroPinArea"
                 anchors.fill: parent
@@ -341,12 +280,8 @@ Rectangle {
             onPlayRequested: root.playFrom(root.tracks, index)
         }
 
-        // The footer, not an overlay anchored under the hero. On a mix with no
-        // tracks the footer sits directly beneath the header, which is exactly
-        // where the missing list is, and it scrolls with the hero instead of
-        // floating over it. The hero itself is left alone: its title is the
-        // caller's and still true, and its Play and Shuffle pills already do
-        // nothing on an empty list.
+        // The footer, so on a mix with no tracks the message sits directly
+        // beneath the header and scrolls with it.
         footer: Item {
             width: tracksList.width
             height: root.loadFailed ? 200 : 32
@@ -360,10 +295,8 @@ Rectangle {
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
-                    // Layout.preferredWidth/Height and not width/height: a
-                    // Layout owns the size of its direct children, and a plain
-                    // width is overwritten - see the hero's own glyph above,
-                    // which is anchored and so may use width.
+                    // A Layout owns the size of its direct children, so a plain
+                    // width would be overwritten.
                     Layout.preferredWidth: 40
                     Layout.preferredHeight: 40
                     name: "mix"
@@ -383,8 +316,7 @@ Rectangle {
                 }
 
                 // Not the server's own string; see AlbumPage's panel for why.
-                // One long literal and not a concatenation, so lupdate can read
-                // it.
+                // One long literal, since lupdate cannot read a concatenation.
                 Text {
                     objectName: "mixLoadErrorDetail"
                     Layout.fillWidth: true
@@ -407,8 +339,8 @@ Rectangle {
 
     LoadingOverlay { loading: root.loading }
 
-    // P2. The pin carries the labels and the artwork the page is showing, so
-    // the sidebar row reads the same as the page it came from.
+    // The pin carries the labels and the artwork the page is showing, so the
+    // sidebar row reads the same as the page it came from.
     readonly property alias pinMenu: heroPinMenu
 
     function showHeroPinMenu(x, y) {
