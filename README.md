@@ -173,9 +173,9 @@ often easier on these distros.
 <details>
 <summary><b>macOS (Apple Silicon)</b></summary>
 
-Download `tidal-wave-macos-x64.tar.gz` and unpack it. The `x64` in that filename
-is a leftover; the release is built on GitHub's `macos-latest` runner, which is
-Apple Silicon. On an Intel Mac, build from source.
+Download `tidal-wave-macos-arm64.tar.gz` and unpack it. The release is built on
+GitHub's `macos-latest` runner, which is Apple Silicon. On an Intel Mac, build
+from source.
 
 The app is unsigned, so macOS quarantines it. Clear that once:
 

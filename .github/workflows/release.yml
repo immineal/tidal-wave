@@ -28,7 +28,7 @@ jobs:
             asset_name: tidal-wave-windows-x64.zip
             qt: '6.10.3'
           - os: macos-latest
-            asset_name: tidal-wave-macos-x64.tar.gz
+            asset_name: tidal-wave-macos-arm64.tar.gz
             qt: '6.12.0'
 
     steps:
@@ -176,7 +176,7 @@ jobs:
             'tidal-wave-linux-x86_64.deb' \
             'tidal-wave-x86_64.AppImage' \
             'tidal-wave-linux-x86_64.tar.gz' \
-            'tidal-wave-macos-x64.tar.gz' \
+            'tidal-wave-macos-arm64.tar.gz' \
             'tidal-wave-windows-x64.zip'
           do
             if ! compgen -G "$file" > /dev/null; then
