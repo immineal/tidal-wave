@@ -29,7 +29,7 @@ some of this is by design:
 ## 1. Does it build
 
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-    cmake --build build -j
+    cmake --build build -j 4
 
 You need Qt 6. CI builds against 6.12 and that is the only version anyone has
 used; `find_package(Qt6 6.4)` is the declared floor and has never been *run*.

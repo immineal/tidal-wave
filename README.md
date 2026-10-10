@@ -218,7 +218,7 @@ with no German in it, which looks like a translation bug.
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release   # macOS: add -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
-cmake --build build --config Release --parallel
+cmake --build build --config Release --parallel 4
 ./build/tidal-wave                                # Windows: build\Release\tidal-wave.exe ; macOS: open build/tidal-wave.app
 ```
 

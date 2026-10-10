@@ -14,7 +14,7 @@ downloads and cast transcoding.
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
+cmake --build build --parallel 4
 ```
 
 Qt from the Qt installer is not on CMake's search path, so point at the kit you
@@ -25,7 +25,7 @@ have: `-DCMAKE_PREFIX_PATH="$HOME/Qt/6.12.0/gcc_64"`. On macOS,
 
 ```bash
 cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON
-cmake --build build-tests --parallel
+cmake --build build-tests --parallel 4
 QT_QPA_PLATFORM=offscreen ctest --test-dir build-tests --output-on-failure
 ```
 
@@ -80,7 +80,7 @@ is what the "Software rendering" setting selects and what the offscreen tests
 run on. Build the `Shape` in a `Loader` that is active while the item has a
 window, the way `VectorIcon.qml` and `AppMark.qml` do.
 
-## Two other quiet failures
+## Three other quiet failures
 
 A new file under `qml/` must be listed in `QML_FILES` in `CMakeLists.txt`.
 Otherwise it never reaches the module's resources and the import resolves to
@@ -93,6 +93,11 @@ rounds of fixes. The suite stayed green because `tests/TestStubs.h` had
 declared its own `indexOf` as `Q_INVOKABLE`.
 `tests/tst_qml_cpp_calls.cpp` now checks every `obj.method(` call in `qml/`
 against the real meta-objects.
+
+A translation call written inside a QML comment counts as a call site.
+`tests/tst_shortcuts.cpp` reads the `.qml` files as text and does not strip
+comments, so a `qsTr` call with a quoted string in a comment is checked against
+the catalogue like real code. Describe the call in words.
 
 ## CI
 
