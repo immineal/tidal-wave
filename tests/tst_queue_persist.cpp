@@ -11,11 +11,14 @@
 #include <QTest>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QMediaPlayer>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <memory>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -73,6 +76,64 @@ struct Launch {
     ~Launch() { delete player; }
     Player &p() { return *player; }
 };
+
+// Answers every stream fetch as the test says, a turn of the event loop later
+// like a reply, and records what was asked for. Nothing reaches the network.
+class ScriptedClient : public TidalClient {
+public:
+    enum Answer { Silent, Unreachable, Unavailable };
+    using TidalClient::TidalClient;
+
+    Answer                   answer = Silent;   // for any track not named below
+    QHash<qlonglong, Answer> answerFor;
+    QList<qlonglong>         asked;
+    int                      undelivered = 0;   // replies scheduled, not yet handled
+
+    void fetchStreamManifest(qint64 trackId, StreamCb cb) override {
+        asked.append(trackId);
+        const Answer a = answerFor.value(trackId, answer);
+        if (a == Silent) return;
+        ++undelivered;
+        QTimer::singleShot(0, this, [this, cb = std::move(cb), a] {
+            StreamManifest m;
+            m.unavailable = (a == Unavailable);
+            cb(m, a == Unavailable ? QStringLiteral("only a preview")
+                                   : QStringLiteral("Host not found"));
+            --undelivered;
+        });
+    }
+};
+
+// One launch against a ScriptedClient. The Player goes first on the way out.
+struct ScriptedLaunch {
+    TidalApi                api;
+    ScriptedClient          client{&api};
+    std::unique_ptr<Player> player;
+
+    explicit ScriptedLaunch(ScriptedClient::Answer answer) {
+        client.answer = answer;
+        client.setUserId(kUser);
+        player = std::make_unique<Player>(&client);
+    }
+    Player &p() { return *player; }
+    // Returns once the audio is up and every reply has been handled, along
+    // with whatever fetch it set off in turn. No fixed wait is involved.
+    bool settle() {
+        return QTest::qWaitFor([this] {
+            return player->findChild<QMediaPlayer *>() && client.undelivered == 0;
+        }, 10000);
+    }
+};
+
+// Five rows left on the third, twelve seconds in, with no network involved.
+bool saveFiveRowSession() {
+    ScriptedLaunch a(ScriptedClient::Silent);
+    if (!a.settle()) return false;
+    a.p().playTracks(contextOf(1000, 5), 2);
+    a.p().seek(12000);
+    a.p().savePlaybackState();
+    return true;
+}
 
 } // namespace
 
@@ -276,6 +337,93 @@ private slots:
         QCOMPARE(p.queueCount(), 0);
         QCOMPARE(p.queueIndex(), -1);
         QCOMPARE(errorSpy.count(), 0);
+    }
+
+    // ── a launch that cannot ask ────────────────────────────────────────────
+
+    // A request that fails says nothing about the track, so no row is dropped
+    // for it. With no network that is every row's request.
+    void aRestoreThatCannotReachTidalKeepsTheWholeQueue() {
+        QVERIFY(saveFiveRowSession());
+        {
+            ScriptedLaunch b(ScriptedClient::Unreachable);
+            QSignalSpy errorSpy(&b.p(), &Player::error);
+            QVERIFY(b.settle());
+
+            QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+            QCOMPARE(ids(b.p().queueTracks()),
+                     (QList<qlonglong>{1000, 1001, 1002, 1003, 1004}));
+            QCOMPARE(currentId(b.p()), 1002);
+            QCOMPARE(b.p().position(), qint64(12000));
+            QVERIFY(!b.p().loading());
+            QVERIFY(!b.p().playing());
+            QCOMPARE(errorSpy.count(), 0);
+        }
+
+        // The Player saves on its way out, so the next launch shows what it kept.
+        ScriptedLaunch c(ScriptedClient::Silent);
+        QVERIFY(c.settle());
+        QCOMPARE(c.p().queueCount(), 5);
+        QCOMPARE(currentId(c.p()), 1002);
+        QCOMPARE(c.p().position(), qint64(12000));
+    }
+
+    // The other answer: Tidal replied with something other than a whole track.
+    // That row is dropped and the one after it is asked for.
+    void aTrackTidalRulesOutIsSteppedOverOnRestore() {
+        QVERIFY(saveFiveRowSession());
+
+        ScriptedLaunch b(ScriptedClient::Silent);
+        b.client.answerFor[1002] = ScriptedClient::Unavailable;
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.settle());
+
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
+        QCOMPARE(ids(b.p().queueTracks()), (QList<qlonglong>{1000, 1001, 1003, 1004}));
+        QCOMPARE(currentId(b.p()), 1003);
+        QCOMPARE(b.p().position(), qint64(0));
+        QVERIFY(!b.p().playing());
+        QCOMPARE(errorSpy.count(), 0);
+    }
+
+    // A track left unloaded is asked for again each time play is pressed, and
+    // a failure then is reported like any other.
+    void pressingPlayLoadsTheTrackAFailedRestoreLeftUnloaded() {
+        QVERIFY(saveFiveRowSession());
+
+        ScriptedLaunch b(ScriptedClient::Unreachable);
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.settle());
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+        QCOMPARE(errorSpy.count(), 0);
+
+        b.p().playPause();
+        QVERIFY(b.settle());
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1002}));
+        QCOMPARE(errorSpy.count(), 1);
+
+        b.p().playPause();
+        QVERIFY(b.settle());
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1002, 1002}));
+        QCOMPARE(errorSpy.count(), 2);
+
+        QCOMPARE(b.p().queueCount(), 5);
+        QCOMPARE(currentId(b.p()), 1002);
+        QCOMPARE(b.p().position(), qint64(12000));
+    }
+
+    // The saved position belongs to the saved track. Another track chosen
+    // before that one ever loaded starts from its own beginning.
+    void aPositionHeldForAnUnloadedTrackDoesNotCarryToAnother() {
+        QVERIFY(saveFiveRowSession());
+
+        ScriptedLaunch b(ScriptedClient::Unreachable);
+        QVERIFY(b.settle());
+        QCOMPARE(b.p().position(), qint64(12000));
+
+        b.p().playTracks(contextOf(2000, 3), 0);
+        QCOMPARE(currentId(b.p()), 2000);
+        QCOMPARE(b.p().position(), qint64(0));
     }
 
     // ── it comes back paused ────────────────────────────────────────────────

@@ -691,6 +691,9 @@ void Player::playPause() {
     }
 #endif
     if (!m_player) return;
+    // Nothing is loaded behind the current track, so there is no media for
+    // play() to start.
+    if (m_loadOwed) { loadAndPlay(m_index); return; }
     if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
     else
@@ -920,6 +923,10 @@ void Player::loadAndPlay(int index) {
     }
 
     m_streamedQuality.clear();
+    m_loadOwed = false;
+    // A position held for a track that never loaded does not carry to another.
+    if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
+        m_pendingSeek = 0;
     m_currentTrack = trackFromMap(m_queue[index].track);
     emit currentTrackChanged();
 
@@ -996,7 +1003,16 @@ void Player::loadAndPlay(int index) {
                 // (pulled from the catalogue, region-locked since). Step over
                 // it rather than greeting the user with an error dialog the
                 // moment the app opens.
-                if (m_restoreSkips) { skipUnplayableTrack(); return; }
+                if (m_restoreSkips && manifest.unavailable) { skipUnplayableTrack(); return; }
+                // Nothing is loaded behind this track, so the next play asks again.
+                m_loadOwed = true;
+                if (m_restoreSkips) {
+                    // The request failed, as it does with no network. That is no
+                    // verdict on the track, so the restore ends with the queue whole.
+                    m_restorePaused = false;
+                    m_restoreSkips  = false;
+                    return;
+                }
                 emit error(tr("Could not load this track for playback. %1").arg(err));
                 return;
             }

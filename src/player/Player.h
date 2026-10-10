@@ -386,9 +386,12 @@ private:
     bool                 m_restorePending = false;
     // The next successful load belongs to a restored session: hold it paused.
     bool                 m_restorePaused  = false;
-    // Until a restored track resolves, a stream that will not load is a stale
-    // queue entry rather than something to put in front of the user.
+    // Until a restored track resolves, a failed load stays quiet: the row is
+    // dropped if Tidal ruled the track out, and left to load on play otherwise.
     bool                 m_restoreSkips   = false;
+    // The current track's stream could not be fetched, so the next play asks
+    // for it again.
+    bool                 m_loadOwed       = false;
     // Where the restored track was left, applied once the media is ready.
     qint64               m_pendingSeek    = 0;
 
