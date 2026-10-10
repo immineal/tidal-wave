@@ -596,12 +596,6 @@ by or affiliated with Tidal.")
     # running translated. Degrading silently is the outcome the version
     # floors above exist to prevent, so this is a Depends.
     list(APPEND TW_DEB_DEPENDS qt6-wayland)
-    # Qt below 6.5 plays through GStreamer, and no Qt package pulls in its
-    # plugins. -good decodes FLAC in MP4 and carries the sinks, -libav decodes
-    # AAC. Without them playback segfaults or reports an unsupported format.
-    if(Qt6_VERSION VERSION_LESS 6.5)
-        list(APPEND TW_DEB_DEPENDS gstreamer1.0-plugins-good gstreamer1.0-libav)
-    endif()
     list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg")
     # Left on so it can still add anything it *can* resolve on a machine where

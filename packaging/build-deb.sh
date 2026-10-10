@@ -61,8 +61,9 @@ if [ "${TW_TESTS:-OFF}" = "ON" ]; then
         exit 1
     fi
     rc=0
-    "$CTEST" --test-dir "$BUILD" --output-on-failure || rc=$?
+    /src/tests/with-null-sink.sh "$CTEST" --test-dir "$BUILD" --output-on-failure || rc=$?
     echo "ctest exit: $rc"
+    /src/tests/list-skipped.sh "$BUILD"
     if [ "$rc" -ne 0 ]; then
         echo "ERROR: the test suite failed, so no package is built" >&2
         exit "$rc"
@@ -100,10 +101,19 @@ fi
 
 mkdir -p "$REPO/dist"
 
+# The invoking user has no name inside the image, and dbus-daemon will not
+# start for a uid without one. The session bus test needs it.
+PASSWD=$(mktemp)
+trap 'rm -f "$PASSWD"' EXIT
+docker run --rm "$IMAGE" cat /etc/passwd > "$PASSWD"
+echo "builder:x:$(id -u):$(id -g):builder:/tmp:/bin/sh" >> "$PASSWD"
+chmod 644 "$PASSWD"
+
 # As the invoking user, so the package in dist/ is not owned by root.
 echo "==> building the package in $IMAGE"
 docker run --rm \
     --user "$(id -u):$(id -g)" \
+    -v "$PASSWD:/etc/passwd:ro" \
     -e HOME=/tmp \
     -e XDG_RUNTIME_DIR=/tmp \
     -e QT_QPA_PLATFORM=offscreen \

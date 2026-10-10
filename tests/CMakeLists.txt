@@ -74,8 +74,14 @@ add_test(NAME tst_qml COMMAND tst_qml)
 
 # QML tests need a QPA plugin. Forcing offscreen keeps `ctest` working on a
 # headless box (and in CI) and stops test windows flashing on a desktop.
+set(TW_TEST_ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# Below Qt 6.5 the program names the FFmpeg media backend (src/main.cpp) where
+# Qt would pick GStreamer. The tests play through the one users get.
+if(Qt6_VERSION VERSION_LESS 6.5)
+    list(APPEND TW_TEST_ENVIRONMENT "QT_MEDIA_BACKEND=ffmpeg")
+endif()
 set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT "${TW_TEST_ENVIRONMENT}"
 )
 
 # ctest's default of 1500 seconds is too close to what tst_qml takes on a slow

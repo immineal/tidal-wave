@@ -37,7 +37,7 @@ class TestSessionBus : public QObject {
 private slots:
     void initTestCase() {
         if (g_busAddress.isEmpty())
-            QSKIP("dbus-daemon is not installed, so there is no private bus to test on");
+            QSKIP("no private dbus-daemon could be started, so there is no bus to test on");
     }
 
     void aCallToTheAppIsAnsweredAfterTheScaleProbe() {

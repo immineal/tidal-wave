@@ -63,14 +63,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qml6-module-qtquick-window \
         qml6-module-qtqml-workerscript \
         libasound2 \
-        gstreamer1.0-plugins-good \
-        gstreamer1.0-libav \
+        pulseaudio \
+        dbus-daemon \
         ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# The last three are what the tests need at run time. Qt 6.4 plays through
-# GStreamer: -good for FLAC in MP4 and the sinks, -libav for AAC, as the
-# package's Depends has them. ffmpeg is what cast preparation shells out to.
+# The last three are what the tests need at run time. Qt 6.4's FFmpeg backend
+# crashes without an audio device, so tests/with-null-sink.sh gives it a silent
+# one. dbus-daemon serves the session bus test, ffmpeg the cast preparation.
 
 # Every Qt GUI binary in here runs headless - no X, no Wayland. Setting it in
 # the image means a forgotten environment variable cannot open a window.

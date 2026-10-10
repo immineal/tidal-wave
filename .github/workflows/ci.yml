@@ -104,6 +104,13 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build-tests --output-on-failure
 
+      - name: List skipped test cases
+        if: always()
+        run: |
+          tests/list-skipped.sh build-tests | tee skipped.txt
+          # The session bus test guards the media keys. It must not be among them.
+          ! grep -q TestSessionBus skipped.txt
+
   # The declared Qt floor, which no other job here builds: every job above pins
   # 6.12, so a construct that needs a newer Qt than find_package(Qt6 6.4) asks
   # for compiles green all the way to the .deb and then fails on the machine of
@@ -128,10 +135,8 @@ jobs:
     steps:
       # Before the checkout: the container is bare, and actions/checkout needs
       # git or it silently falls back to a tarball download with no .git.
-      # The package set is packaging/Dockerfile's, which documents why each
-      # entry is there - in particular gstreamer1.0-plugins-good, without which
-      # Qt 6.4's GStreamer media backend builds a null pipeline and segfaults
-      # the moment a test touches QMediaPlayer.
+      # The package set is packaging/Dockerfile's, which says why each entry
+      # is there.
       - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -146,7 +151,7 @@ jobs:
             qml6-module-qtquick-layouts qml6-module-qtquick-shapes \
             qml6-module-qtquick-templates qml6-module-qtquick-window \
             qml6-module-qtqml-workerscript \
-            libasound2 gstreamer1.0-plugins-good gstreamer1.0-libav ffmpeg
+            libasound2 pulseaudio dbus-daemon ffmpeg
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -168,7 +173,14 @@ jobs:
           n=$(ctest --test-dir build-deb12 -N | sed -n 's/^Total Tests: //p')
           echo "ctest sees ${n:-0} tests"
           test "${n:-0}" -ge 1
-          ctest --test-dir build-deb12 --output-on-failure
+          tests/with-null-sink.sh ctest --test-dir build-deb12 --output-on-failure
+
+      - name: List skipped test cases
+        if: always()
+        run: |
+          tests/list-skipped.sh build-deb12 | tee skipped.txt
+          # The session bus test guards the media keys. It must not be among them.
+          ! grep -q TestSessionBus skipped.txt
 
   # Ten seconds, no Qt, no build: catches a private address being committed
   # before anything slow runs. An allowlist and not a blocklist on purpose -
