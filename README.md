@@ -17,10 +17,13 @@ you happen to use.
 
 ![Tidal Wave home screen](assets/screenshot_home.png)
 
-Your collection, an album, the now playing view and search:
+<details>
+<summary>More screenshots: collection, album, now playing, search</summary>
 
 <img src="assets/screenshot_collection.png" width="49%"> <img src="assets/screenshot_album.png" width="49%">
 <img src="assets/screenshot_nowplaying.png" width="49%"> <img src="assets/screenshot_search.png" width="49%">
+
+</details>
 
 ## Features
 
