@@ -136,11 +136,15 @@ jobs:
             packaging/verify-appimage.sh "$image"
           done
 
+      # One name across releases, so a link to the latest download keeps working.
+      - name: Give the AppImage its release name
+        run: mv dist/tidal-wave-*-x86_64.AppImage tidal-wave-x86_64.AppImage
+
       - name: Keep the AppImage for the publish job
         uses: actions/upload-artifact@v7
         with:
           name: tidal-wave-x86_64.AppImage
-          path: dist/tidal-wave-*-x86_64.AppImage
+          path: tidal-wave-x86_64.AppImage
           if-no-files-found: error
           compression-level: 0
 
@@ -170,7 +174,7 @@ jobs:
           missing=0
           for file in \
             'tidal-wave-linux-x86_64.deb' \
-            'tidal-wave-*-x86_64.AppImage' \
+            'tidal-wave-x86_64.AppImage' \
             'tidal-wave-linux-x86_64.tar.gz' \
             'tidal-wave-macos-x64.tar.gz' \
             'tidal-wave-windows-x64.zip'

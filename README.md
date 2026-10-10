@@ -128,11 +128,11 @@ install and names what is missing. Use the AppImage there.
 <details>
 <summary><b>Linux, any distribution (AppImage)</b></summary>
 
-Download `tidal-wave-<version>-x86_64.AppImage`, then:
+Download `tidal-wave-x86_64.AppImage`, then:
 
 ```bash
-chmod +x tidal-wave-*-x86_64.AppImage
-./tidal-wave-*-x86_64.AppImage
+chmod +x tidal-wave-x86_64.AppImage
+./tidal-wave-x86_64.AppImage
 ```
 
 Qt 6.12 and FFmpeg are inside, so no Qt has to be installed. The host supplies
