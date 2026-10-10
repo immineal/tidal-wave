@@ -3,20 +3,16 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import TidalWave
 
-// "There is a newer release", said once at launch and then not again.
-//
-// The decision of whether there is anything to say belongs to UpdateCheck
-// (src/ui/UpdateCheck.h), which caches it so most launches cost nothing. This
-// file is only the asking. Deliberately not wired to `updateChanged`: a check
-// that finishes mid-session must not throw a modal over whatever is playing,
-// so the answer is read once, by showIfAvailable(), and the next launch gets
-// the new one.
+// Says there is a newer release, once at launch and then not again.
+// UpdateCheck (src/ui/UpdateCheck.h) decides whether there is anything to
+// say. Not wired to `updateChanged`: a check that finishes mid-session must
+// not throw a modal over whatever is playing, so showIfAvailable() reads the
+// answer once and the next launch gets the new one.
 Popup {
     id: root
 
-    // The UpdateCheck instance - the `updateCheck` context property in the
-    // app. Passed in rather than read off the context so a test can hand it a
-    // double; nothing else ever swaps it.
+    // The UpdateCheck instance, the `updateCheck` context property in the
+    // app. Passed in so a test can hand it a double; nothing else swaps it.
     property var check: null
 
     // Exposed so tests can click them. Nothing else reads them.
@@ -27,9 +23,8 @@ Popup {
     // One ask per launch, whatever happens afterwards.
     property bool _asked: false
     // Set by the three buttons, so the close that follows is not also read as
-    // a dismissal. Everything else that closes the dialog - Escape above all -
-    // means "Later", never "Skip": letting a stray keypress throw a release
-    // away for good would be the one unrecoverable outcome here.
+    // a dismissal. Every other close, Escape above all, means Later and never
+    // Skip: a stray keypress must not throw a release away for good.
     property bool _handled: false
 
     // Called once, from Main.qml, after the window is up. Returns whether it
@@ -67,10 +62,9 @@ Popup {
     }
 
     anchors.centerIn: Overlay.overlay
-    // Clamped to the overlay with 32px on every side, as the Settings popup is
-    // (SPEC L10): the window minimum is 640x600, and a dialog that does not fit
-    // the smallest window it can appear in is a dialog with buttons off-screen.
-    // `parent` here is Overlay.overlay, courtesy of anchors.centerIn.
+    // Clamped to the overlay with 32px on every side, as the Settings popup
+    // is, so the dialog fits the 640x600 minimum window. `parent` here is
+    // Overlay.overlay, courtesy of anchors.centerIn.
     width:  Math.min(440, (parent ? parent.width  : 440) - 64)
     height: Math.min(implicitHeight, (parent ? parent.height : 600) - 64)
     modal: true

@@ -19,82 +19,18 @@ Rectangle {
     property bool isLiked: false
 
     // ─── The volume cluster ────────────────────────────
-    //
-    // The bar used to keep a 90px horizontal slider inline and shed it below
-    // 720px, where hovering the speaker brought it back. It does not keep one
-    // at any width now. The volume is three things at rest - the mute/level
-    // speaker, the percentage, the output picker - and the slider comes up on
-    // hover, upright, over the bar: "it can also go into its hover to show bar
-    // state, no? also I want that hovered bar to be vertical not horizontal".
-    //
-    // Now Playing builds the same three parts out of the same pieces and
-    // reveals the same VolumeFlyout, so there is one volume control in this
-    // app with one behaviour, rather than a short one here and a long one
-    // there. The widths are the page's to declare because its transport row
-    // has to be laid out around them; here they are just the two numbers the
-    // readout needs.
-    //
-    // What the inline slider leaving takes with it is the whole slot-and-lerp
-    // apparatus that used to animate it out: there is no longer anything in
-    // the right-hand group whose width depends on the bar's. The group is one
-    // width at every width the bar is drawn at - against the 258 the wide bar
-    // used to need, so the 720px breakpoint that existed to buy back 98 of
-    // those pixels has nothing left to buy.
-    //
-    // And the speaker now sits *over* the readout rather than beside it:
-    // "it makes more sense to put the speaker at the top and the percentage at
-    // the bottom [...] so that when you hover it, the bar is over both of them
-    // and not just over one of them. Over the middle would also look weird,
-    // and there is enough vertical space".
-    //
-    // The flyout is parented to the stack: 40px of upright slider centred on a
-    // 36px stack stands over both rows of it, where centred on the speaker of a
-    // horizontal row it stood over the glyph and left the number out in the
-    // cold. With the speaker on top the two parents happen to give the same
-    // geometry - the speaker is centred in the stack and is its first row, so
-    // "centred above the speaker" and "centred above the stack" are the same
-    // rectangle - and that is an argument for this order rather than the other
-    // one: whichever of the two a later reader parents it to, the popup still
-    // clears both rows. Put the readout on top instead and parenting to the
-    // speaker would open the slider on top of the number.
-    //
-    // The group measures 164px now - the 36px stack, the 32px picker, the two
-    // 32px view buttons and the four 8px gaps - where it measured 204 with the
-    // speaker and the readout side by side. Both numbers are measured in
-    // tests/qml/tst_layout_player.qml rather than trusted from here.
+    // At rest the volume is the speaker over the percentage, plus the output
+    // picker. The slider comes up on hover in a VolumeFlyout parented to the
+    // stack, so it stands over both rows. Now Playing builds the same parts.
     readonly property int volumePercentWidth: 36
-    // The vertical gap between the speaker and the readout under it, spent
-    // inside the readout as top padding rather than as the column's spacing.
-    // The two are one hover target and a dead strip between them is where a
-    // pointer travelling down from the glyph to the number would drop the
-    // flyout; paying it as padding means the target is continuous. It was the
-    // same 8px trick when the gap was horizontal, at half the length: 4px
-    // reads as a caption under a glyph where 8 reads as two separate things.
+    // The gap between the speaker and the readout under it, spent inside the
+    // readout as top padding and not as column spacing: the two are one hover
+    // target, and a dead strip between them would drop the flyout.
     readonly property int volumeStackGap: 4
 
-    // The bar's speaker is an IconButton, and IconButton's box is
-    // `Math.max(size + 12, 32)`: a 32px tap target around an 18px glyph, so
-    // 7px of that box below the glyph is empty. Now Playing's speaker is a bare
-    // 18px Item and has no such strip - so the *same* volumeStackGap drew 7px
-    // more air between the glyph and the digits here than it did there, at every
-    // level and in every one of the four speaker glyphs: 18px against 11 with
-    // the high glyph, 19 against 12 with the mid one. The user asked for the two
-    // to be "the same distance in the bar and now playing", and that distance is
-    // between the ink, not between the boxes.
-    //
-    // So the readout is lifted back over the empty strip, and given it back as
-    // bottom padding: the lift and the padding cancel, so the stack is the
-    // same 53px box it was, the flyout centred on it does not move, and neither
-    // does any control beside it. The only thing that moves is the number, 7px
-    // closer to the glyph it labels.
-    //
-    // Not a negative topPadding, and not column spacing: the readout's box
-    // still has to reach the speaker's, or there is a strip between them for a
-    // pointer to drop the flyout in. It now overlaps it by these 7px, which is
-    // that promise and then some, and it still reaches the bottom of the stack.
-    //
-    // Trusted from nowhere: tests/qml/tst_output_picker.qml measures the gap
-    // here and in Now Playing in painted pixels and requires the two to match.
+    // IconButton's box leaves 7px empty below an 18px glyph, which Now
+    // Playing's bare speaker does not have. The readout is lifted over it and
+    // padded back by the same, so the ink gap matches there and no box moves.
     readonly property int volumeSpeakerBoxSlack: 7
 
     // ─── Exposed for the suites ────────────────────────
@@ -104,10 +40,8 @@ Rectangle {
     readonly property alias queueButton:  queueBtn
     readonly property alias volumeButton:      volBtn
     readonly property alias volumePercentText: volPct
-    // The two of them as one object. The group's width is measured from here
-    // and not from the speaker's left edge: the speaker is 32 wide and centred
-    // in a 36px stack, so measuring from the glyph would under-report the group
-    // by the two pixels the readout is wider.
+    // The two of them as one object. The group's width is measured from here:
+    // the speaker is 32 wide and centred in a 36px stack.
     readonly property alias volumeStack:       volStack
     readonly property var   hoverVolumeSlider: volumeFlyout.slider
     readonly property alias hoverVolumePopup:  volumeFlyout
@@ -115,16 +49,14 @@ Rectangle {
     // its menu and its icon.
     readonly property alias outputButton: outputBtn
     // Exposed for tests/qml/tst_nowplaying_access.qml: the button has to be on
-    // screen at every supported width, and it sits with the queue button now,
-    // not with Like.
+    // screen at every supported width.
     readonly property alias nowPlayingButton: nowPlayingBtn
     readonly property alias trackInfoGroup:   leftGroup
 
-    // ─── Artist links (SPEC N2) ────────────────────────
+    // ─── Artist links ──────────────────────────────────
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}].
-    // Tracks whose map predates it — the recently-played entries saved to
-    // disk, anything a caller builds by hand — only have the joined `artists`
-    // string, which is what ArtistLinks falls back to.
+    // A map without it has only the joined `artists` string, which is what
+    // ArtistLinks falls back to.
     readonly property var artistList:
         (hasTrack && track.artistList && track.artistList.length > 0) ? track.artistList : []
 
@@ -143,25 +75,14 @@ Rectangle {
     }
 
     // The heart's one call, and what it says when the server refuses it. The
-    // state above is read back from the bridge and never written here, so there
-    // is nothing to undo on a refusal - only something to say. Published rather
-    // than hidden in the button, because `lastMessage` is a test's only way to
-    // see which of the two things it said.
+    // state above is read back from the bridge and never written here.
+    // Published because `lastMessage` is a test's only way to see what it said.
     readonly property alias favoriteAction: likeFav
     ContextMenu.FavoriteAction { id: likeFav }
 
-    // S4: recently-played is tracked locally, and it is what orders the
-    // sidebar. Every page declares where a play came from immediately before
-    // starting it, so one listener on the always-present player bar records
-    // all of them, rather than a markPlayed() call bolted onto each page's
-    // play action (and forgotten on the next one). markPlayed() drops anything
-    // that is not one of the four kinds the sidebar lists, so a "collection"
-    // or "radio" source needs no filtering here.
-    //
-    // sourceChanged rather than a signal of its own per play: the one case it
-    // misses is starting the same context twice in a row, and that cannot
-    // change the ordering, because nothing was played in between and the
-    // entry is already the most recent one.
+    // Recently-played is tracked locally and orders the sidebar. Every page
+    // declares where a play came from before starting it, so this one listener
+    // records them all. markPlayed() drops kinds the sidebar does not list.
     Connections {
         target: player
         function onSourceChanged() {
@@ -170,15 +91,8 @@ Rectangle {
     }
 
     // The song itself, which is a different list: the sidebar's Tracks pill is
-    // ordered by the most recent of played or liked, and markPlayed() above
-    // records the album or playlist the play came from, not what is playing.
-    // markTrackPlayed() drops a song that is not in the library, so a song
-    // started from a stranger's playlist needs no filtering here either.
-    //
-    // The same listener as updateLikedState() would do, but kept apart from it:
-    // one is about what the heart button draws and the other about what the
-    // sidebar remembers, and bundling them makes the next person think the
-    // heart has something to do with the ordering.
+    // ordered by the most recent of played or liked. markTrackPlayed() drops a
+    // song that is not in the library. Kept apart from the heart's listener.
     Connections {
         target: player
         function onCurrentTrackChanged() {
@@ -226,10 +140,8 @@ Rectangle {
                     color: Theme.textPrimary; font.pixelSize: 14; font.bold: true; elide: Text.ElideRight
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
                 }
-                // One hover target and one tab stop per artist, so a
-                // featured credit opens the guest rather than the lead. What is
-                // not a name — the separators, and the space after the last one
-                // — keeps the left group's own job of opening Now Playing.
+                // One hover target and one tab stop per artist. What is not a
+                // name keeps the left group's own job of opening Now Playing.
                 Item {
                     Layout.fillWidth: true
                     implicitHeight: artistLine.implicitHeight
@@ -275,11 +187,8 @@ Rectangle {
                 }
             }
 
-            // Like is the only thing in this group that acts on the track, so
-            // it is the only thing left in it. The up-arrow used to sit
-            // beside it and does not any more: it opens a view rather than
-            // doing anything to what is playing, so it belongs with the queue
-            // button at the other end of the bar.
+            // Like is the only thing in this group that acts on the track. The
+            // Now Playing arrow opens a view, so it sits with the queue button.
             IconButton {
                 id: likeBtn
                 objectName: "playerLikeButton"
@@ -291,16 +200,9 @@ Rectangle {
                 ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
                 ToolTip.delay: 600
                 HoverHandler { id: likeTipHov }
-                // Anchored on the bar, not on this button, although this button
-                // is what was pressed. The three ToolTip lines above are a
-                // declarative binding on the *shared* tool tip: anchoring here
-                // put the refusal and the hover hint on the same object, where
-                // the hint's `delay: 600` held the refusal back by six tenths of
-                // a second and `ToolTip.visible: likeTipHov.hovered` closed it
-                // again the moment the pointer left - and the hint's own text
-                // overwrote the refusal while it was still up. The bar drives no
-                // tool tip of its own, and above its centre is where the other
-                // transient messages in this app appear.
+                // Anchored on the bar, not on this button. The three ToolTip
+                // lines above bind the shared tool tip, so anchored here the
+                // hint's delay, visibility and text would apply to the refusal.
                 onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
             }
         }
@@ -308,9 +210,8 @@ Rectangle {
         // ── Central controls ───────────────────────────
         ColumnLayout {
             Layout.fillWidth: true; spacing: 4
-            // Never squeeze the transport: its five buttons measure 172px and
-            // its four gaps 32px, and none of that can shrink. Without this the
-            // row layout happily hands the column less than that and the
+            // Never squeeze the transport: its buttons and gaps cannot shrink,
+            // and without this the row layout hands the column less and the
             // buttons spill over each other.
             Layout.minimumWidth: implicitWidth
 
@@ -337,10 +238,8 @@ Rectangle {
                         strokeWidth: 1.5
                         visible: !player.loading
                     }
-                    // The "still loading" state of the play button. No label
-                    // can go in a 40px disc, so the mark is all there is; the
-                    // three dots are drawn now rather than being an ellipsis
-                    // borrowed from the font.
+                    // The still-loading state of the play button. No label
+                    // fits in a 40px disc, so the mark is all there is.
                     VectorIcon {
                         anchors.centerIn: parent
                         name: "more"
@@ -371,46 +270,26 @@ Rectangle {
         // ── Right controls ─────────────────────────────
         RowLayout {
             id: rightGroup
-            // It used to declare `minimumWidth: 160`, so the row layout
-            // squeezed it to 160 and the queue button clipped off the window
-            // below about 731px. Binding the minimum to the group's own
-            // implicit width keeps it honest as controls come and go, which
-            // they still do: the up-arrow joined this group, and the Now
-            // Playing arrow goes with the track.
+            // Bound to the group's own implicit width, so the row layout cannot
+            // squeeze it and clip the queue button off a narrow window.
             Layout.minimumWidth: implicitWidth
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            // The 8px gaps are a margin on each control rather than one
-            // `spacing: 8` on the group. It was the animated slot that needed
-            // that - a RowLayout keeps the full spacing on both sides of every
-            // visible item, so a slot closing to nothing still had 8px left to
-            // give back in the frame it went invisible and the speaker hopped
-            // that far sideways at the end of an animation whose whole point
-            // was that nothing hops. The slot is gone, but the margins stay:
-            // the speaker and the readout are one item in this row now - a
-            // two-row stack whose own gap is paid as the readout's top padding,
-            // so that the two are one unbroken hover target - and a group-wide
-            // spacing cannot express a gap spent inside a child.
+            // The 8px gaps are a margin on each control, not one `spacing: 8`.
+            // The speaker and the readout are one item whose own gap is the
+            // readout's top padding, which a group-wide spacing cannot express.
             spacing: 0
 
             Item { Layout.fillWidth: true }
 
-            // The speaker over the readout, as one object. Two rows and not one,
-            // so the flyout parented to this stands over both of them.
-            //
-            // The stack's width is the readout's 36 and not the speaker's 32,
-            // because the readout is the wider of the two; the speaker is
-            // centred in it. Nothing here is given a `width` or a `height`: a
-            // Layout owns its children's size, and IconButton's own
-            // `Math.max(size + 12, 32)` is what the column reads as its
-            // preferred size because a plain Item has no implicit one.
+            // The speaker over the readout as one object, so the flyout
+            // parented to it stands over both. Nothing here is given a `width`
+            // or a `height`: a Layout owns its children's size.
             ColumnLayout {
                 id: volStack
                 Layout.leftMargin: 8
                 Layout.alignment: Qt.AlignVCenter
-                // Zero, on purpose: the gap is the readout's own top padding
-                // (see volumeStackGap), so the speaker and the number are one
-                // unbroken hover target with no dead strip between them for a
-                // pointer to fall through.
+                // Zero on purpose: the gap is the readout's own top padding
+                // (see volumeStackGap), so there is no dead strip between them.
                 spacing: 0
 
                 IconButton {
@@ -422,19 +301,9 @@ Rectangle {
                     onClicked: player.setMuted(!player.muted)
                 }
 
-                // The level, in words, at rest. It is a second place the volume
-                // is drawn - the flyout draws it too - and the user chose that
-                // over the shorter speaker-and-picker cluster, knowing it.
-                //
-                // Layout.preferredWidth and not width: a Layout owns its
-                // children's size and reads a Text's implicit width over
-                // anything else it was given. The label runs "0%" to "100%",
-                // about twelve pixels apart, and the group is right-aligned, so
-                // a label that measured itself would walk every control left of
-                // it sideways as the volume moved - and, stacked, would walk the
-                // speaker above it sideways too, because the speaker is centred
-                // on this. That exact bug was fixed in Now Playing's copy of
-                // this once already.
+                // The level, in words, at rest. Layout.preferredWidth and not
+                // width: a Layout reads a Text's implicit width first, and a
+                // label that measured itself would shift its neighbours.
                 Text {
                     id: volPct
                     objectName: "playerBarVolumePercent"
@@ -455,10 +324,6 @@ Rectangle {
                 }
             }
 
-            // Where the sound is going: this computer's outputs and any
-            // Chromecast on the network, in one list. Replaces the cast
-            // button, which was the only control here that could say so and
-            // only knew about half of it.
             OutputPicker {
                 id: outputBtn
                 objectName: "playerBarOutputButton"
@@ -494,51 +359,29 @@ Rectangle {
     }
 
     // ── the volume on hover ──────────────────────────────────────────────
-    //
-    // At rest the bar says how loud it is and no more. Pointing at the
-    // speaker or at the readout brings the slider up over the bar, upright,
-    // so nothing in the row moves and no width has to be found for it.
-    //
-    // It shares the right-hand group with the output picker, and the two are
-    // kept apart three ways: the speaker and the output button are separate
-    // controls with different glyphs (a cone with waves against a cabinet);
-    // the triggers do not overlap, since this one is hover-only and never
-    // takes a click while the output menu only ever opens on one; and the
-    // output menu wins outright, because this reads its visibility and
-    // withdraws while it is open. Both draw upwards out of an 82px bar, so
-    // without that last rule they would be drawn over each other.
-    //
-    // The speaker and the readout are one target: they sit one above the other
-    // with the gap paid as the readout's own padding, and either one asking
-    // is the flyout open.
+    // Pointing at the speaker or the readout brings the slider up over the
+    // bar. Hover only, and it withdraws while the output menu is open: both
+    // draw upwards out of the bar and would otherwise overlap.
     readonly property bool wantVolumeFlyout:
         !outputBtn.menuVisible && (volBtn.hovered || volPctHov.hovered)
 
     VolumeFlyout {
         id: volumeFlyout
         objectName: "playerBarVolumeFlyout"
-        // The stack, not the speaker in it. The popup centres itself on its
-        // parent, so parented to the 32px speaker it stood over the glyph and
-        // beside the number; parented to the 36px stack it stands over both.
+        // The stack, not the speaker in it: the popup centres itself on its
+        // parent, and centred on the stack it stands over both rows.
         parent: volStack
         pointedAt: root.wantVolumeFlyout
     }
 
     // ── the flyout itself, built once for both places the volume lives ───
-    //
-    // Now Playing instantiates this too, the way it already instantiates
-    // OutputPicker: an inline component is how these two files share a
-    // control without a third file and an edit to CMakeLists.txt. What is
-    // shared is everything that decides whether the thing behaves - which way
-    // the slider runs, which way the popup opens, how long it waits before it
-    // goes away - so the two places cannot drift into two behaviours.
+    // Now Playing instantiates this too, as it does OutputPicker, so the two
+    // places share one behaviour.
     component VolumeFlyout : Popup {
         id: flyout
 
-        // What the host points at: its speaker, its readout, anything it
-        // decides counts. The flyout adds its own hover to that, because the
-        // pointer is over the popup and not over the speaker for the whole
-        // time it is being used.
+        // What the host points at. The flyout adds its own hover, because the
+        // pointer is over the popup for the whole time it is being used.
         property bool pointedAt: false
         readonly property bool wanted: flyout.pointedAt || flyoutHov.hovered
         readonly property alias slider: flyoutSlider
@@ -546,12 +389,9 @@ Rectangle {
         property int sliderLength:    110
         property int sliderThickness: 20
 
-        // Both of these come from the slider's own fixed numbers and not from
-        // the popup's realised geometry, for the reason written out over the
-        // output menu below: on Qt 6.4 `y: -height - n` feeds a reposition
-        // loop, because the positioner sets the height, the content reacts to
-        // the new geometry, and the implicit height moves again. Nothing here
-        // depends on anything the positioner touches.
+        // Both come from the slider's fixed numbers, not from the popup's
+        // realised geometry: on Qt 6.4 `y: -height - n` feeds a reposition
+        // loop (see the output menu below).
         readonly property real flyoutWidth:  sliderThickness + leftPadding + rightPadding
         readonly property real flyoutHeight: sliderLength + topPadding + bottomPadding
         width:  flyoutWidth
@@ -578,14 +418,8 @@ Rectangle {
         }
 
         // The pointer has to cross a few pixels between the speaker and the
-        // slider above it, and a pointer travelling diagonally into the
-        // slider's top corner is off both of them for a frame or two.
-        //
-        // A plain interval and not Theme.dur(): this is not motion, it is how
-        // long the control waits before believing it has been left, and
-        // reduced motion asking for it to be dropped would make the flyout
-        // impossible to reach rather than quicker to use. The two durations
-        // here that *are* motion go through Theme.dur below.
+        // slider. A plain interval, not Theme.dur(): it is a wait, and reduced
+        // motion zeroing it would make the flyout impossible to reach.
         Timer {
             id: flyoutCloser
             interval: 240
@@ -619,37 +453,21 @@ Rectangle {
     }
 
     // ── the output picker ────────────────────────────────────────────────
-    //
-    // One control for "where is this playing", in one list under two
-    // headings: this computer's own audio outputs, and any Chromecast or
-    // Google Home the scan has turned up. There used to be a cast button that
-    // knew only the second half, while the first half was buried in Settings.
-    //
-    // The icon is the speaker cabinet normally and the cast glyph while
-    // casting, so the bar says at a glance that the sound has left the
-    // machine. Now Playing instantiates this same component (it has the room
-    // for it), rather than keeping a second picker of its own that could
-    // drift.
-    //
-    // `cast` is null on every platform but Linux. That hides the cast
-    // heading, its rows and the "searching" line, and leaves a perfectly
-    // ordinary local picker behind: the local half is never guarded on it.
+    // One control for where the sound is playing: this computer's outputs and
+    // any Chromecast the scan has turned up, under two headings. The icon is
+    // the cast glyph while casting. `cast` is null on every platform but Linux.
     component OutputPicker : Item {
         id: picker
 
         property int size: 20
 
-        // Player::availableAudioDevices() hands back [{id, label, isDefault}]
-        // with "System default" first carrying an empty id. Held in a
-        // property rather than read off `player` inline so a test can supply
-        // its own: tests/TestStubs.h has no such invokable.
+        // Player::availableAudioDevices() hands back [{id, label, isDefault}],
+        // "System default" first with an empty id. Held in a property so a test
+        // can supply its own.
         property var deviceSource: (typeof player !== "undefined") ? player : null
 
-        // CastManager, which only exists on Linux: `cast` is null everywhere
-        // else and the menu is then a local-only picker. Held in a property
-        // for the same reason as deviceSource, and because null is the one
-        // state a test cannot otherwise reach - the stub context always
-        // installs a cast object.
+        // CastManager, which only exists on Linux; null makes the menu a
+        // local-only picker. A property so a test can reach the null state.
         property var castSource: (typeof cast !== "undefined") ? cast : null
 
         readonly property bool casting: !!castSource && castSource.connected
@@ -669,15 +487,9 @@ Rectangle {
                     ? deviceSource.availableAudioDevices() : []
         }
 
-        // ...and they are hot-pluggable *while this menu is up*, which is a
-        // second thing. Player raises audioDevicesChanged() from the deferred
-        // turn of its own backend callback; without this the list stays as it
-        // was when the menu opened, and closing and reopening was the only way
-        // to see a sink that had just appeared. Both call sites - the bar and
-        // Now Playing - get it, because it lives in the component.
-        //
-        // Only while the menu is showing: a refresh is not a reason to put a
-        // menu on screen, and openMenu() re-reads anyway.
+        // Outputs can also appear while the menu is up. Player raises
+        // audioDevicesChanged(), and the list is re-read only while the menu is
+        // showing: a refresh is no reason to put a menu on screen.
         Connections {
             target: picker.deviceSource
             // A host can hand in anything through deviceSource, and the stub
@@ -689,24 +501,9 @@ Rectangle {
         }
 
         // ── making four sinks on one card distinguishable ────────────────
-        //
         // ALSA and PipeWire name a sink after the card first and the socket
-        // last: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1". Every
-        // sink on one card therefore reads identically for the first thirty-odd
-        // characters and differs only at the very end - and elide-right threw
-        // away exactly the end. On the Debian box all four physical sinks drew
-        // as "Tiger Lake-H HD Audio Contr..." and the user could not pick.
-        //
-        // Two things fix it, in this order:
-        //   * the prefix a device shares with another device is folded to a
-        //     leading ellipsis, so the rows read "... Speaker" and "... HDMI /
-        //     DisplayPort 1" and fit whole. The row keeps the full name for its
-        //     tooltip. A device that shares nothing is untouched;
-        //   * whatever is still too long elides in the middle, not on the
-        //     right, so the socket at the end survives regardless.
-        // Neither needs a wider popup, which matters: at scale factor 3.0 the
-        // window is only 1280 logical px across and there is no room to widen
-        // into.
+        // last, so sinks on one card differ only at the end. A shared prefix
+        // folds to a leading ellipsis, and the rest elides in the middle.
 
         // The shortest shared prefix worth hiding. Below this the shared part
         // is not what is costing the row its name, and folding would read
@@ -717,10 +514,8 @@ Rectangle {
         // may have been folded and `fullLabel` is always what the backend said.
         readonly property var localRows: picker.foldSharedPrefixes(picker.localDevices)
 
-        // The longest prefix two labels share, cut back to the last whole word
-        // so a folded row never starts in the middle of one. Empty for two
-        // equal strings: there is nothing there to tell apart, and folding
-        // would leave two rows both reading "...".
+        // The longest prefix two labels share, cut back to the last whole word.
+        // Empty for two equal strings: there is nothing to tell apart.
         function sharedPrefix(a, b) {
             if (a === b) return ""
             var n = Math.min(a.length, b.length)
@@ -740,18 +535,12 @@ Rectangle {
                             isDefault: devices[i].isDefault === true })
 
             for (i = 0; i < rows.length; ++i) {
-                // "System default" is a sentinel carrying an empty id, not a
-                // piece of hardware. It shares no card name with anything, and
-                // pairing it in could only ever shorten what the real sinks
-                // have in common.
+                // "System default" is a sentinel with an empty id, not a piece
+                // of hardware, and shares no card name with anything.
                 if (!rows[i].id) continue
-                // The *shortest* prefix this device shares with a neighbour,
-                // not the longest. Three sinks on one card can share far more
-                // than the card name with each other - "HDMI / DisplayPort 1"
-                // and "... 2" agree right up to the digit - and folding to the
-                // longest match leaves a row reading "... 1". The shortest
-                // match that is still worth hiding is the card name, which is
-                // the part they all have in common and the part to lose.
+                // The shortest prefix this device shares with a neighbour, not
+                // the longest: sinks on one card can agree right up to a final
+                // digit, and the part to lose is the card name they all share.
                 var best = ""
                 for (j = 0; j < rows.length; ++j) {
                     if (j === i || !rows[j].id) continue
@@ -827,26 +616,9 @@ Rectangle {
             width: 260
             padding: 6
 
-            // Height and position both come from the CONTENT, not from the
-            // popup's own geometry.
-            //
-            // `y: -height - 10` is the ordinary idiom for "sit above the
-            // button", and on Qt 6.4 it feeds a loop: the positioner sets the
-            // popup's height during reposition, the Layout inside reacts to
-            // that geometry change by rearranging, which moves the implicit
-            // height, which repositions again. On a Debian box with Qt 6.4.2
-            // that printed 1992 "called polish() inside updatePolish()"
-            // warnings and eventually hung the test run outright.
-            //
-            // Note what it is NOT: the style. All 1992 warnings name
-            // Controls/Basic/Popup.qml and the log mentions Fusion zero times,
-            // so pinning Basic below 6.5 does not avoid this and never did -
-            // the loop is the Popup/Layout interaction, whichever style draws
-            // it.
-            //
-            // Binding both to the layout's own implicit height breaks the
-            // cycle: the width is fixed, so that number does not depend on
-            // anything the positioner touches.
+            // Height and position come from the content, not the popup's own
+            // geometry. On Qt 6.4 `y: -height - 10` loops in any style: the
+            // positioner sets the height and the Layout moves the implicit one.
             readonly property real menuHeight:
                 menuContent.implicitHeight + topPadding + bottomPadding
             height: menuHeight
@@ -858,9 +630,6 @@ Rectangle {
                 id: menuContent
                 spacing: 2
 
-                // Same string the old picker put on its "play here" row. It
-                // is the heading over the local outputs now, because picking
-                // any one of them is what "play here" means.
                 Text {
                     objectName: "outputLocalHeading"
                     visible: picker.localDevices.length > 0
@@ -915,16 +684,13 @@ Rectangle {
         }
     }
 
-    // A selectable row in the output picker. The tick is a state mark saying
-    // which row the sound is going to, not an action icon, which is why it is
-    // the one mark here that is not destructive.
+    // A selectable row in the output picker. The tick marks the row the sound
+    // is going to.
     component OutputRow : Rectangle {
         id: orow
         property string label
         // What the backend called this, before the picker folded away the part
-        // it shares with its neighbours. Same as `label` for a row that was
-        // left alone, which is why the tooltip below only appears when there
-        // is something more to read.
+        // it shares with its neighbours.
         property string fullLabel: orow.label
         property string glyph: "speaker"
         property bool   active: false
@@ -959,9 +725,7 @@ Rectangle {
         HoverHandler { id: orowHov; cursorShape: Qt.PointingHandCursor }
         TapHandler   { onTapped: orow.selected() }
 
-        // The whole name, for a row that is not showing all of it. Nothing
-        // folded and nothing elided means nothing to add, and a tooltip
-        // repeating the row underneath it would be noise.
+        // The whole name, only for a row that is not showing all of it.
         ToolTip.visible: orowHov.hovered
                          && (orow.label !== orow.fullLabel || orowLabel.truncated)
         ToolTip.text: orow.fullLabel

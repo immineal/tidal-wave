@@ -8,17 +8,12 @@ Item {
     id: root
 
     property string text: ""
-    // A VectorIcon name, never a character. This used to take a glyph and map
-    // it back onto an icon name here, which meant every caller wrote a
-    // character it did not render and this file kept the only copy of the
-    // translation. Callers name the icon now.
+    // A VectorIcon name, never a character.
     property string icon: ""
     property bool   accent: true
 
-    // Sized to its label instead of the old fixed 120. German runs long on
-    // exactly these words ("Shuffle" becomes "Zufallswiedergabe"), and at 120
-    // the label was simply cut. The minimum keeps a short label from
-    // collapsing to a stub, so a row of pills still reads as a row.
+    // Sized to its label, because German runs long on exactly these words.
+    // The minimum keeps a short label from collapsing to a stub.
     readonly property int hPadding: 18
     readonly property int minWidth: 96
 
@@ -31,10 +26,8 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusChip
-        // The hover was a cursor change and nothing else, so these read as
-        // labels rather than buttons. An accent pill lifts toward its own
-        // brighter shade; an outlined one fills, since darkening its border
-        // alone is too quiet to notice.
+        // An accent pill lifts toward its own brighter shade on hover; an
+        // outlined one fills, since darkening its border alone is too quiet.
         color: root.accent
                ? (hover.hovered ? Qt.lighter(Theme.accent, 1.18) : Theme.accent)
                : (hover.hovered ? Theme.surfaceHov : Theme.surfaceHigh)

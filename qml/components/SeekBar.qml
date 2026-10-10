@@ -13,24 +13,9 @@ Item {
     property bool _dragging: false
     property real _dragValue: 0
 
-    // Timestamps.
-    //
-    // Anchored, not a Row. The three of them sat in a `Row { spacing: 0 }` with
-    // the middle one `width: parent.width - 80`, which is a positioner placing
-    // children whose width is derived from the positioner's own width. The two
-    // do not update together: when the bar is resized, the Row runs its
-    // positioning pass against the width trackArea still has from the frame
-    // before, so the right-hand timestamp is placed off the old width while the
-    // Row already has the new one. Resting that is invisible, because nothing
-    // moves. Across the Now Playing breakpoint it is not: the bar loses 484px
-    // of width over 170ms and OutCubic spends a quarter of it on the first
-    // frame, so the duration label was drawn 116px outside the bar for that
-    // frame, well past the edge of the text column it sits in.
-    //
-    // Anchors have no such pass: the label hangs off the parent's right edge, so
-    // it arrives with the new width rather than one frame after it. The resting
-    // geometry is the one the Row gave - 0..36 for the elapsed time, 36..w-44
-    // for the track, w-44..w-8 for the duration.
+    // Timestamps. Anchored, not in a Row whose middle child derives its width
+    // from the Row: the positioning pass runs a frame behind a resize and puts
+    // the duration label outside the bar for that frame.
     Text {
         id: elapsedLabel
         width: 36

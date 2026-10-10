@@ -26,9 +26,7 @@ Rectangle {
             activeFocusOnTab: true
             Keys.onReturnPressed: root.backClicked()
             Keys.onSpacePressed:  root.backClicked()
-            // Drawn, not set in a font, for the reason BackButton gives: the
-            // arrow was a character that renders differently or not at all
-            // wherever the font behind it is missing.
+            // Drawn, so the arrow does not depend on a font that has the glyph.
             VectorIcon {
                 anchors.centerIn: parent
                 name: "chevron-left"

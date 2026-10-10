@@ -9,21 +9,13 @@ Item {
     id: root
     height: 52
     // What the row needs before anything in it has to give way: the fixed
-    // columns and gaps (12+24+12+36+12 ... +40+12+24+12+24+28) plus 120 for
-    // the title and artist line. It was 100, which is less than the fixed
-    // columns alone, so a host that sized a row by its implicit width got one
-    // whose contents overflowed it. Every list sets an explicit width, so
-    // this is the floor and not the usual case.
+    // columns and gaps plus 120 for the title and artist line. Every list sets
+    // an explicit width, so this is the floor.
     implicitWidth: 368
 
-    // The five text inputs are `var`, not `string`, on purpose. Every page
-    // feeds them straight off an API map (`title: modelData.title`), and a
-    // truncated or timed-out response simply has no such key: against a string
-    // property that is one "Unable to assign [undefined] to QString" per
-    // delegate per field, and a row of empty columns. A wrongly typed field
-    // (an object where a name was expected) warned the same way. Taking them
-    // as `var` and deciding what to draw here means one place does it for all
-    // seven pages, instead of a guard at every call site.
+    // The five text inputs are `var`, not `string`: pages feed them straight
+    // off an API map, and a missing or wrongly typed key against a string
+    // property warns once per delegate per field. What to draw is decided here.
     property int    trackNum: 1
     property var    title
     property var    artists
@@ -58,43 +50,15 @@ Item {
     readonly property string coverText:   textOf(root.coverUrl)
 
     // ── this track's radio, as a mix id ─────────────────────────────────
-    //
-    // "" when the payload did not carry one, which is a normal case and not a
-    // fault: it is NOT established that every listing endpoint includes the
-    // `mixes` object TidalBridge reads this out of, and a row built by hand
-    // (a recently-played entry restored from disk, anything a test assembles)
-    // has no such key either.
-    //
-    // Read off `trackData` rather than taken as its own property, which is why
-    // not one of the seven pages that build a row had to change: every one of
-    // them already passes the whole API map as `trackData`.
-    //
-    // 30 lowercase hex characters, so it is a string and is tested on length.
-    // textOf() does the typeof check, so a map holding an object or a number
-    // under that key degrades to "" instead of warning per row.
+    // "" when the payload carried none, which is normal: not every listing
+    // is known to include the `mixes` object, and a row built by hand has no
+    // such key. A string of hex characters, so textOf() guards it.
     readonly property string trackMixId:
         root.trackData ? textOf(root.trackData.trackMixId) : ""
 
-    // Open this track's radio, in the one viewer that can save it.
-    //
-    // MixPage whenever a mix id can be had: off the row's own payload when it
-    // carries one, otherwise from a single `tracks/<id>` lookup. RadioPage -
-    // the bare list, which has no mix identity on it and so can never be
-    // saved - only when there is no mix to open at all.
-    //
-    // The lookup is not belt and braces. Only `tracks/<id>` is known to carry
-    // the `mixes` object, from the reference client's recorded response rather
-    // than from any call made here; whether an album's, a playlist's or a
-    // search's items carry it was deliberately never established, because
-    // establishing it means reading the owner's account. Those lists are where
-    // "Start radio" is actually pressed from, so without the lookup this fix
-    // could be a no-op exactly where it is needed.
-    //
-    // Everything the reply needs - the window, the track id, the label - is
-    // captured *before* the request goes out, and nothing below touches `root`.
-    // The menu closes on the press and a list delegate can be recycled while
-    // the lookup is in flight; a callback that reached back into the row would
-    // then throw and lose the navigation with no sign of why.
+    // Opens this track's radio on MixPage when a mix id can be had, off the
+    // payload or from one `tracks/<id>` lookup, and on RadioPage otherwise.
+    // The reply touches nothing on `root`: the row may be recycled by then.
     function startRadio() {
         if (root.trackId <= 0) return
         var win = Window.window
@@ -102,11 +66,8 @@ Item {
 
         var id    = root.trackId
         var label = root.titleText
-        // The title is handed over so the hero is not blank for the length of
-        // the request; the response's own header overwrites it, and a
-        // TRACK_MIX's title is the track's title anyway. mixType goes with it
-        // so the heading reads "Radio" from the first frame rather than
-        // flipping from "Mix" when the header lands.
+        // The title and mixType are handed over so the hero is not blank and
+        // the heading reads "Radio" from the first frame.
         var toMix  = function (mixId) {
             win.navigate("mix", { mixId: mixId, title: label, mixType: "TRACK_MIX" })
         }
@@ -126,14 +87,9 @@ Item {
     }
 
     // ── who made it, name by name ───────────────────────────────────────
-    //
     // TidalBridge::trackToMap() carries the whole artist list as [{id, name}],
-    // which is what makes each name its own link (SPEC N2). textOf() above
-    // cannot carry it: it answers with a string or nothing, on purpose.
-    //
-    // A map without the field — a recently-played entry restored from disk,
-    // anything a caller builds by hand — leaves this empty and ArtistLinks
-    // falls back to the joined `artists` string and the lead id.
+    // which makes each name its own link. A map without the field leaves this
+    // empty and ArtistLinks falls back to the joined string and the lead id.
     readonly property var artistList:
         (root.trackData && root.trackData.artistList && root.trackData.artistList.length > 0)
             ? root.trackData.artistList : []
@@ -143,11 +99,8 @@ Item {
         return isFinite(n) ? n : 0
     }
 
-    // The credits the "Go to artist" menu entry can actually offer: every one
-    // with a usable id, in order. A credit with no id is dropped rather than
-    // becoming a row that does nothing, the same way the text links skip it
-    // for tab focus. When the map carries no list at all, the lead id is the
-    // one credit there is.
+    // The credits the artist menu entry can offer: every one with a usable
+    // id, in order. Without a list, the lead id is the one credit there is.
     readonly property var artistCredits: {
         var out = []
         var list = root.artistList
@@ -176,13 +129,9 @@ Item {
     property string dlState: "idle"
     property string dlError: ""
 
-    // Column breakpoints, measured against the row's own width rather than the
-    // window's: the row is handed the list width less an inset, and the sidebar
-    // has already taken its share. The fixed columns add up to 472px with every
-    // one of them on, so at a 640px row the title and artist line are down to
-    // ~168px: the 160px album column is the first thing not worth its space.
-    // Dropping it leaves 312px of fixed columns, and popularity goes at 560,
-    // which keeps the title above 250px all the way down.
+    // Column breakpoints, measured against the row's own width, not the
+    // window's. The fixed columns add up to 472px with all of them on, so the
+    // album column goes first at 640 and popularity at 560.
     readonly property int albumBreakpoint: 640
     readonly property int popularityBreakpoint: 560
 
@@ -198,14 +147,8 @@ Item {
     }
 
     // Like/Unlike in the row menu, and what it says when the server refuses.
-    // isLiked above is read back from the bridge on the signal and never
-    // written by the action, so a refusal has nothing to undo - only something
-    // to say. See ContextMenu.FavoriteAction.
-    //
-    // Not behind a Loader like the menu and the picker, for the opposite
-    // reason: this is a QtObject with three functions and two properties, not a
-    // popup with a list in it, and the thing a Loader would save is dwarfed by
-    // the two Connections this row already builds for every one of its 5000.
+    // isLiked is read back from the bridge on the signal and never written by
+    // the action. See ContextMenu.FavoriteAction.
     readonly property alias favoriteAction: trackFav
     ContextMenu.FavoriteAction { id: trackFav }
 
@@ -229,10 +172,9 @@ Item {
         root.dlError = ""
     }
 
-    // Routing for the menu's artist rows. Asked from the row and not from the
-    // menu entry: a submenu is a Popup, and until it is shown it is in no
-    // item's window, so `Window.window` inside one is null and the navigate
-    // call went nowhere.
+    // Routing for the menu's artist rows. Asked from the row: a submenu is a
+    // Popup, in no item's window until shown, so `Window.window` inside one
+    // is null.
     function goToArtist(artistId) {
         if (artistId > 0 && Window.window)
             Window.window.navigate("artist", { artistId: artistId })
@@ -262,12 +204,9 @@ Item {
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
 
-        // The row's hover, read by the play glyph, the background, the download
-        // button and the menu button. A handler and not the MouseArea's
-        // containsMouse: the artist names in the line below are hit targets of
-        // their own, and a child MouseArea takes the hover event off the item
-        // behind it, so the row dropped back to its resting look whenever the
-        // pointer was on a name. A HoverHandler is not blocked that way.
+        // The row's hover, as a handler and not the MouseArea's containsMouse:
+        // the artist names are hit targets of their own, and a child MouseArea
+        // takes the hover event off the item behind it.
         HoverHandler { id: rowHover }
 
         MouseArea {
@@ -301,11 +240,6 @@ Item {
                     color: Theme.textDim
                     font.pixelSize: 13
                 }
-                // The one row that is playing, in the album and playlist
-                // track lists as well as everywhere else TrackRow is used.
-                // It used to be a note, which said "this is a song" on a row
-                // that was already a song. Bars that move say the thing the
-                // row cannot: this is the one you are hearing.
                 VectorIcon.PlayingIndicator {
                     objectName: "trackRowPlayingIndicator"
                     anchors.centerIn: parent
@@ -314,10 +248,8 @@ Item {
                     width: 14
                     height: 14
                 }
-                // Bigger than the 13px it was. This glyph replaces the track
-                // number on hover and is the row's primary action, so it was
-                // reading as smaller than the number it covers; 18 fills the
-                // 24px slot without crowding it.
+                // Replaces the track number on hover and is the row's primary
+                // action. 18 fills the 24px slot without crowding it.
                 VectorIcon {
                     objectName: "trackRowHoverPlay"
                     anchors.centerIn: parent
@@ -329,7 +261,6 @@ Item {
                 }
             }
 
-            // Cover art
             Rectangle {
                 visible: showCover
                 width: 36; height: 36; radius: Theme.radiusArt
@@ -339,14 +270,9 @@ Item {
                     objectName: "trackRowCover"
                     anchors.fill: parent
                     source: root.coverText.length > 0 ? "image://tidal/" + root.coverText : ""
-                    // Decoded at twice the 36px box it is drawn in rather than
-                    // at the 320px the cover URL serves: a long list was
-                    // holding a full-size QImage per row for a thumbnail.
-                    // Both dimensions, never one - sourceSize.width alone
-                    // reaches the provider as 72x0, which QSize calls valid
-                    // and QImageReader scales away to nothing. Safe against
-                    // the crop because this art is square (tidal serves it
-                    // WxW), which is the condition MediaCard does not meet.
+                    // Decoded at twice the 36px box, not the 320px the URL
+                    // serves. Both dimensions: width alone reaches the provider
+                    // as 72x0. Safe on a crop only because this art is square.
                     sourceSize: Qt.size(72, 72)
                     fillMode: Image.PreserveAspectCrop
                     smooth: true
@@ -367,10 +293,8 @@ Item {
                     elide: Text.ElideRight
                 }
                 // One hover target and one tab stop per artist. The row's
-                // own MouseArea is declared before the RowLayout holding this,
-                // so a name takes the left click before the row does; a right
-                // click is not one of this item's buttons and still reaches the
-                // row menu.
+                // MouseArea is declared before the RowLayout holding this, so a
+                // name takes the left click and a right click reaches the menu.
                 ArtistLinks {
                     Layout.fillWidth: true
                     namePrefix: "trackRow"
@@ -393,7 +317,6 @@ Item {
                 elide: Text.ElideRight
             }
 
-            // Duration
             Text {
                 text: root.durationText
                 color: Theme.textDim
@@ -424,10 +347,9 @@ Item {
                 HoverHandler { id: popHov }
             }
 
-            // Download button, revealed on hover; stays shown while busy/done/error.
-            // The slot itself is always laid out: taking it out of the row when
-            // the pointer left re-flowed the row and made the title jump under
-            // the cursor, so only the glyphs fade.
+            // Download button, shown on hover and kept while busy, done or in
+            // error. The slot is always laid out and only the glyphs fade, so
+            // the title does not jump under the cursor.
             Item {
                 id: dlButton
                 readonly property bool shown: hov.hovered || root.dlState !== "idle"
@@ -436,7 +358,6 @@ Item {
                 Layout.fillHeight: true
                 Layout.alignment: Qt.AlignVCenter
 
-                // idle / error glyph (error tints red)
                 VectorIcon {
                     anchors.centerIn: parent
                     visible: root.dlState === "idle" || root.dlState === "error"
@@ -445,7 +366,6 @@ Item {
                     width: 16; height: 16
                     strokeWidth: 1.8
                 }
-                // done glyph
                 VectorIcon {
                     anchors.centerIn: parent
                     visible: root.dlState === "done"
@@ -454,7 +374,6 @@ Item {
                     width: 16; height: 16
                     strokeWidth: 2
                 }
-                // busy spinner (matches LoadingOverlay idiom)
                 Item {
                     id: dlSpinner
                     anchors.centerIn: parent
@@ -478,10 +397,9 @@ Item {
                     }
                 }
 
-                // Mirror the menu button exactly: a plain click MouseArea with NO
-                // hover detection. Anything that tracks hover on the button itself
-                // (hoverEnabled MouseArea or a HoverHandler) desyncs from the row's
-                // hover and makes the button flicker/shift as it toggles.
+                // Like the menu button: a plain click MouseArea with no hover
+                // detection. Anything tracking hover on the button itself
+                // desyncs from the row's hover and makes the button flicker.
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -4
@@ -523,11 +441,9 @@ Item {
         }
     }
 
-    // The row's menu and the playlist picker it opens are built the first
-    // time one of them is asked for. The track lists are stress-tested at
-    // 5000 rows (X4), and a Menu of a dozen items plus a Popup holding a
-    // ListView, on every one of them, is tens of thousands of objects built
-    // for two things almost no row is ever asked for.
+    // The row's menu and the playlist picker are built the first time one is
+    // asked for. A long track list would otherwise build a Menu and a Popup
+    // per row for two things almost no row is asked for.
     readonly property alias rowMenu: menuLoader.item
 
     function openMenu() {
@@ -541,31 +457,20 @@ Item {
         pickerLoader.item.openFor(root.trackId)
     }
 
-    // "New playlist…", from the picker's first row.
-    //
-    // Its own Loader rather than a child of the picker's Popup: a Popup
-    // declared inside another Popup's contentData has no reliable window to
-    // resolve `Overlay.overlay` against, and this one has to centre on the
-    // window like every other dialog in the app. A Loader holding a Popup is
-    // the shape the picker below already proves works.
-    //
-    // Lazy for the same reason as the menu and the picker: the track lists are
-    // stress-tested at 5000 rows, and a dialog on each of them is tens of
-    // thousands of objects built for something almost no row is asked for.
+    // The new-playlist dialog, from the picker's first row. Its own Loader:
+    // a Popup declared inside another Popup's contentData has no reliable
+    // window to resolve `Overlay.overlay` against. Lazy like the menu.
     function openNewPlaylist() {
         if (root.trackId <= 0) return
         newPlaylistLoader.active = true
         newPlaylistLoader.item.openEmpty()
     }
 
-    // A Popup is not a visual child of the row once it reparents itself to the
-    // window overlay, so this is a test's only handle on it - the same reason
-    // `rowMenu` above exists. Null until the row has been asked for one.
+    // A Popup reparents itself to the window overlay, so this is a test's only
+    // handle on it. Null until the row has been asked for one.
     readonly property alias newPlaylistPopup: newPlaylistLoader.item
 
-    // The picker itself, for the same reason and in the same shape: it
-    // reparents to the window overlay, so this is a test's only handle on it.
-    // Null until the row has been asked for one.
+    // The picker, likewise. Null until the row has been asked for one.
     readonly property alias playlistPicker: pickerLoader.item
 
     Loader {
@@ -576,9 +481,7 @@ Item {
             onPlaylistCreated: function (playlist) {
                 const uuid  = (playlist && playlist.uuid)  ? String(playlist.uuid) : ""
                 const title = (playlist && playlist.title) ? playlist.title : ""
-                // The whole point of making one from here: the song goes
-                // straight into it. A playlist the user then has to go and fill
-                // by hand would make this row a detour rather than a shortcut.
+                // A playlist made from here gets the song straight away.
                 if (uuid.length > 0 && root.trackId > 0) {
                     bridge.addTracksToPlaylist(uuid, root.trackId, function (ok) {
                         root.confirmAddedToPlaylist(ok === true, title)
@@ -589,16 +492,13 @@ Item {
         }
     }
 
-    // The same confirmation the shared ContextMenu gives, and for the same
-    // reason: queueing without a sign it worked is how a track ends up in
-    // the queue twice. Drawn over the row the user just acted on. The dwell
-    // is deliberately not Theme.dur() - see ContextMenu.confirmMs.
+    // The same confirmation the shared ContextMenu gives, drawn over the row
+    // the user just acted on. The dwell is not Theme.dur(); see
+    // ContextMenu.confirmMs.
     readonly property int confirmMs: 2000
 
-    // What the last confirmation said. ToolTip.show() writes to the shared
-    // tooltip instance, which nothing outside this item can read back, so the
-    // text is kept here too - it is the only way a test can check that a
-    // *failed* add is not reported to the user as a success.
+    // What the last confirmation said, kept because the shared tool tip cannot
+    // be read back. A test checks a failed add is not reported as a success.
     property string lastConfirmation: ""
 
     function confirm(text) {
@@ -611,17 +511,8 @@ Item {
                              : qsTr("%n track(s) added to queue", "queue confirmation", 1))
     }
 
-    // The same thing for the picker, which gave no sign at all: it closed, and
-    // whether the song had landed anywhere was a trip to the playlist to find
-    // out. Both ways through the picker say so now - an existing playlist and
-    // one made on the spot - because the second is the one where there is most
-    // to doubt.
-    //
-    // Reports what the server said rather than what was asked for. Every
-    // caller of addTracksToPlaylist in the app passes `function (ok) {}` and
-    // throws the answer away, so a failed add has always been silent; a
-    // confirmation that fired regardless would be worse than that - it would be
-    // wrong rather than absent.
+    // The same for the picker, for an existing playlist and for one made on
+    // the spot. Reports what the server said, not what was asked for.
     function confirmAddedToPlaylist(ok, title) {
         root.confirm(ok ? qsTr("Added to “%1”",
                                "confirmation after adding a track to a playlist").arg(title)
@@ -629,14 +520,8 @@ Item {
                                "shown when adding a track to a playlist failed").arg(title))
     }
 
-    // The removal side of the same thing, and the refusal only.
-    //
-    // "Remove from this playlist" discarded its answer: on a refusal the row
-    // stayed exactly where it was and nothing was said, which reads as a click
-    // that missed - the same defect the eleven favourite callbacks had. A
-    // success needs no words, because the row leaving the list *is* the
-    // confirmation; announcing it as well would put a tool tip over the gap the
-    // row used to occupy every time anyone tidied a playlist.
+    // The removal side, and the refusal only: on success the row leaving the
+    // list is the confirmation.
     function confirmRemovedFromPlaylist(ok) {
         if (ok === true) return
         root.confirm(qsTr("Could not remove the song from the playlist",
@@ -654,40 +539,10 @@ Item {
             // ContextMenu.qml for why it is opacity and nothing else.
             enter: ContextMenu.OpenFade { }
             exit:  ContextMenu.CloseFade { }
-            // Insets reset, not inherited. A Menu's insets exist for a style's drop
-            // shadow, and the native macOS style sets all four to -32; this menu
-            // replaces the background with its own Rectangle and never drew that
-            // shadow, so the panel was laid out 32px past the popup on every side and
-            // real entries were clipped at the window edge (a 207x56 popup drawing a
-            // 271x120 background). Pinning the Basic style fixes it today, because
-            // Basic's insets are 0; stating it here is what survives the next style
-            // change, and it is a no-op wherever they already are 0.
+            // Insets reset, not inherited; see ContextMenu.qml.
             leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
 
-            // Set here rather than declaratively, and only where it exists.
-            //
-            // `popupType` and `Popup.Item` are both Qt 6.8. A declarative
-            // `popupType: Popup.Item` is resolved when the file loads, so on
-            // older Qt it does not merely warn - it makes this whole type
-            // unavailable, and every type that uses it, all the way up. A real
-            // Debian 12 build failed exactly that way: "Cannot assign to
-            // non-existent property popupType", then "Type ContextMenu
-            // unavailable", then "Type SideBar unavailable", and the app exited
-            // with no window.
-            //
-            // Nothing is lost by leaving it unset on older Qt, because before
-            // 6.8 an in-scene item was a menu's only form - the property was
-            // added to allow native and separate-window popups, which arrived
-            // with it. So this asks whether the property exists and sets it when
-            // it does, which is the behaviour we want on both.
-            //
-            // `this.` is load-bearing. A *bare* identifier that names no property is
-            // not undefined in QML's JS scope, it is a ReferenceError - and the error
-            // aborts the whole handler rather than warning, at every instantiation,
-            // which for a per-row menu is a stream of them. Qualifying the access
-            // makes the miss a plain undefined. Worth knowing that this is invisible
-            // on a current Qt, where the property exists and the bare form resolves
-            // fine.
+            // Assigned where it exists (Qt 6.8); see ContextMenu.qml.
             Component.onCompleted: {
                 if (this.popupType !== undefined) this.popupType = Popup.Item
             }
@@ -700,11 +555,9 @@ Item {
             readonly property alias playNextItem:   playNextEntry
             readonly property alias addToQueueItem: addToQueueEntry
 
-            // The row that opens a submenu is never declared: a nested Menu's
-            // row in its parent is built from the parent's `delegate`, with the
-            // submenu's title as its text and its `subMenu` already set. So the
-            // "Go to artist ▸" row is described here, and the only submenu in
-            // this menu is the artists one.
+            // The row that opens a submenu is never declared. A nested Menu's
+            // row is built from the parent's `delegate`, with the submenu's
+            // title as its text, and the artists submenu is the only one here.
             delegate: ContextMenu.Entry {
                 id: artistSubRow
                 objectName: "goToArtistSubMenuRow"
@@ -785,17 +638,9 @@ Item {
                         root.removeFromPlaylistRequested(root.trackItemIndex)
                 }
             }
-            // The owner's longest-standing complaint, reported twice: a track
-            // radio had two viewers. Saved on another device it arrived in the
-            // sidebar as a mix and opened on MixPage - artwork, hero, pin, and
-            // no way to unsave it - while this entry opened RadioPage, a bare
-            // list built from `tracks/<id>/radio`, which answers no mix
-            // identity at all and so could never be saved.
-            //
-            // One viewer now: MixPage, by the mix id, where the hero's Save
-            // pill can put the station in the library and take it out again.
-            // See root.startRadio() for how the id is found and why RadioPage
-            // is still reachable.
+            // Opens MixPage by the mix id, where the hero's Save pill can put
+            // the station in the library and take it out again. See
+            // root.startRadio().
             ContextMenu.Entry {
                 objectName: "startRadioMenuItem"
                 text: qsTr("Start radio")
@@ -810,7 +655,7 @@ Item {
                 text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
                                    : qsTr("Like", "verb, add to favourites")
                 // Filled is the state it is in, so it is the row that undoes
-                // it -- the same pairing the pin row uses.
+                // it, the same pairing the pin row uses.
                 iconName: root.isLiked ? "heart-filled" : "heart"
                 enabled: root.trackId > 0
                 // Over the row, not the menu entry: the menu has closed by the
@@ -828,9 +673,8 @@ Item {
                         Window.window.navigate("album", { albumId: Number(root.trackData.albumId) })
                 }
             }
-            // One credited artist, one action — which is every single-artist
-            // track, and what this row has always been. Still shown but dead
-            // when the map carries no usable artist id at all, as before.
+            // One credited artist, one action. Still shown but disabled when
+            // the map carries no usable artist id at all.
             ContextMenu.Entry {
                 objectName: "goToArtistMenuItem"
                 text: qsTr("Go to artist")
@@ -854,13 +698,9 @@ Item {
                 objectName: "goToArtistSubMenu"
                 title: qsTr("Go to artist")
 
-                // Everything below is the same treatment the two menus above
-                // get, for the same reasons: insets reset rather than inherited
-                // (a style's drop-shadow insets laid the panel out past the
-                // popup), `popupType` set only where it exists and through
-                // `this.` so a miss is undefined rather than a ReferenceError,
-                // and opacity-only transitions because Qt 6.4 loops when a
-                // popup's own geometry feeds back into its contents.
+                // The same treatment as the menu above: insets reset,
+                // popupType assigned where it exists, opacity-only fades.
+                // See ContextMenu.qml.
                 leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                 Component.onCompleted: {
                     if (this.popupType !== undefined) this.popupType = Popup.Item
@@ -888,10 +728,8 @@ Item {
                 }
             }
             MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
-            // No "/browse/" in the link: tidal.com answers a 301 from
-            // /browse/track/<id> to /track/<id>, so the short form is the
-            // canonical one and the longer one only costs the recipient a
-            // redirect.
+            // No "/browse/" in the link: tidal.com redirects /browse/track/<id>
+            // to /track/<id>, so the short form is the canonical one.
             ContextMenu.Entry {
                 text: qsTr("Copy link")
                 iconName: "copy"
@@ -904,7 +742,6 @@ Item {
         }
     }
 
-    // Playlist picker popup (for "Add to playlist")
     Loader {
         id: pickerLoader
         active: false
@@ -924,21 +761,9 @@ Item {
                     plPickerModel.append(pls[i])
             }
 
-            // Opening this used to go back to the network every single time,
-            // and the list sat empty until the round trip answered. The bridge
-            // already holds the account's playlists - it pages them in at
-            // sign-in, keeps them current on every create, and sorts them the
-            // way every other list in the app is sorted - so the picker was
-            // asking the server for something it was standing next to. Worse,
-            // a playlist made a second ago in the sidebar was *missing* here
-            // until the fetch came back, which is the one list where it most
-            // needs to be.
-            //
-            // The fetch is kept for the empty case only. An empty cache cannot
-            // be told apart from a cache the login paging has not reached yet,
-            // which is exactly the state the first picker of a session opens
-            // in; a genuinely empty account then pays one round trip that
-            // answers nothing, and that is the cheap side of the trade.
+            // Filled from the bridge's cache, which is paged in at sign-in and
+            // kept current. The fetch covers the empty case only: an empty
+            // cache cannot be told from one the paging has not reached yet.
             function openFor(trackId) {
                 pendingTrackId = trackId
                 plPickerModel.clear()
@@ -967,16 +792,6 @@ Item {
                         color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
                     }
                     // ── the way out ──────────────────────────────────────
-                    //
-                    // Was a 12px glyph in Theme.textSec with a MouseArea grown
-                    // by anchors.margins: -6, which is the pattern SettingsPanel
-                    // was moved off: the area hangs outside its own parent, the
-                    // target is 24px, and the whole thing was unreachable from
-                    // the keyboard. This is the two idioms the tree already has,
-                    // joined rather than a third one invented - SettingsPanel's
-                    // 26px target around a 14px glyph that lights on hover, and
-                    // SearchBar's clear button for the Tab stop, the focus ring
-                    // and Return/Space.
                     Item {
                         id: pickerClose
                         objectName: "pickerCloseButton"
@@ -1011,17 +826,8 @@ Item {
                 Rectangle { width: parent.width; height: 1; color: Theme.border }
 
                 // ── "New playlist…", above the list it adds to ───────────
-                //
-                // The single most common moment anyone wants a new playlist is
-                // while they are putting a song somewhere, and this picker was
-                // the one place in the app that had an "Add to playlist" flow
-                // and no way to make one. Worse at the start: an account with
-                // no playlists opened this and got a title bar over an empty
-                // box, with no way forward at all.
-                //
-                // First in the popup rather than last. The list underneath can
-                // run to fifty rows and scrolls; a row at the bottom of a
-                // scrolling list is a row most people never see.
+                // First in the popup: the list underneath scrolls, and a
+                // row at the bottom of a scrolling list is rarely seen.
                 Item {
                     objectName: "pickerNewPlaylistRow"
                     width: parent.width
@@ -1044,10 +850,8 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 10
 
-                            // An outlined tile where the rows below carry
-                            // artwork: the same size, so the two labels line
-                            // up, and plainly not a cover, so this does not
-                            // read as a playlist whose picture failed to load.
+                            // An outlined tile the size of the artwork below,
+                            // so the labels line up, and plainly not a cover.
                             Rectangle {
                                 width: 28
                                 height: 28
@@ -1080,10 +884,6 @@ Item {
 
                 ListView {
                     id: plPickerList
-                    // A test's handle on the list itself. Until the stub's
-                    // fetchUserPlaylists stopped answering an empty array,
-                    // nothing in here could be driven at all and the only
-                    // reachable row was the declared "New playlist…" one above.
                     objectName: "pickerPlaylistList"
                     width: parent.width
                     height: Math.min(contentHeight, 300)
@@ -1131,11 +931,8 @@ Item {
                                         objectName: "pickerRowTitle"
                                         text: model.title; color: Theme.textPrimary; font.pixelSize: 13
                                     }
-                                    // The number the reported bug was about. Named
-                                    // so a test can read what the row actually
-                                    // draws rather than what the model holds: the
-                                    // two were the same for a cache nobody
-                                    // updated, which is how "0 tracks" survived.
+                                    // Named so a test can read what the row
+                                    // actually draws.
                                     Text {
                                         objectName: "pickerRowTrackCount"
                                         text: qsTr("%n track(s)", "", model.numTracks)

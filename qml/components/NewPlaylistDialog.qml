@@ -3,60 +3,35 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import TidalWave
 
-// "New playlist" — the one dialog behind every way of making one.
-//
-// Creating a playlist was the only thing in the account the app could not do:
-// TidalBridge::createPlaylist, the signal it raises and LibraryIndex::addPlaylist
-// on the far end have all been in place and tested for a while, with nothing in
-// qml/ ever calling them. This is the caller.
-//
-// Three places open it — the sidebar's library header, the Collection page's
-// Playlists tab, and the "New playlist…" row on a track's "Add to playlist"
-// picker — and they differ only in what they do with the answer. The field, the
-// three validations, the in-flight state and the error line are therefore here
-// once rather than three times; a caller handles `playlistCreated` and nothing
-// else.
-//
-// Shaped after the two dialogs already in the app, PlaylistPage's Edit-playlist
-// popup and SettingsPanel: centred on the window overlay, modal, Escape or a
-// click outside to leave, Theme tokens for every colour, radius and duration.
+// The one dialog behind every way of making a playlist. The sidebar's
+// library header, the Collection page's Playlists tab and the track
+// picker's new-playlist row open it and differ only in what they do with
+// the answer: a caller handles playlistCreated and nothing else.
 Popup {
     id: root
     objectName: "newPlaylistDialog"
 
     // ── what this talks to ───────────────────────────────────────────────
-    //
-    // The object carrying createPlaylist(title, cb). Held in a property and
-    // reached through `typeof` rather than used inline, the way PlayerBar's
-    // OutputPicker holds `deviceSource`: a host may install no bridge at all,
-    // an unqualified name that is not there is a ReferenceError rather than
-    // undefined (tests/tst_firstrun.cpp fails on any QML warning), and a test
-    // needs a way to hand in a bridge that fails on purpose.
+    // The object carrying createPlaylist(title, cb). Reached through `typeof`
+    // because a host may install no bridge, and an unqualified name that is
+    // not there is a ReferenceError. A test hands in one that fails on purpose.
     property var createSource: (typeof bridge !== "undefined") ? bridge : null
 
     // ── the three things that can be wrong with a name ───────────────────
-    //
-    // Empty and whitespace-only are the same case once the title is trimmed,
-    // and the Create button is dark for both. Over-long is stopped at the
-    // keyboard instead: `maximumLength` on the field below means there is no
-    // way to put a title in that the server would refuse, and the counter says
-    // why the typing stopped rather than leaving it a mystery.
+    // Empty and whitespace-only are one case once the title is trimmed.
+    // Over-long is stopped at the keyboard by maximumLength on the field.
     property int maxTitleLength: 100
     // How close to the cap the counter appears. Under this it would be noise
     // on a two-word name.
     readonly property int counterShowsFrom: Math.max(1, maxTitleLength - 20)
 
-    // A request is out. The field goes read-only, both buttons go quiet, and
-    // the close policy drops every way out of here: a dialog that can be
-    // dismissed under a call that is still going to answer leaves the callback
-    // writing to a dialog the user has already left, and - worse - leaves them
-    // unable to tell whether the playlist was made.
+    // A request is out. The field goes read-only, both buttons go quiet and
+    // the close policy drops every way out, so the callback never writes to a
+    // dialog the user has left.
     property bool busy: false
 
-    // Shown under the field in Theme.red. Empty is "nothing is wrong yet".
-    // Deliberately not a toast: the dialog stays open on a failure with the
-    // name still in the field, so the answer to a failed create is one click
-    // and not retyping it.
+    // Shown under the field in Theme.red. Not a toast: the dialog stays open
+    // on a failure with the name still in the field, ready to retry.
     property string errorText: ""
 
     readonly property string trimmedTitle: nameField.text.trim()
@@ -81,10 +56,8 @@ Popup {
         if (root.busy) return
 
         const title = root.trimmedTitle
-        // Reachable by pressing Return on an empty or all-spaces field; the
-        // button is already dark. Both ways in have to say the same thing,
-        // because a Return that silently does nothing reads as a broken
-        // dialog.
+        // Reachable by pressing Return on an empty field, where the button
+        // is already dark. Return must not silently do nothing.
         if (title.length === 0) {
             root.errorText = qsTr("Enter a name for the playlist.")
             return
@@ -99,11 +72,9 @@ Popup {
         root.createSource.createPlaylist(title, function (playlist, err) {
             root.busy = false
             const uuid = (playlist && playlist.uuid) ? String(playlist.uuid) : ""
-            // Two failures, not one. An error string is the ordinary case; a
-            // success carrying no uuid is the response that parsed to nothing,
-            // and treating it as a win would announce a playlist that is not
-            // there and hand the caller an id it cannot navigate to. The
-            // bridge guards its own list the same way.
+            // Two failures. An error string is the ordinary one; a success
+            // with no uuid parsed to nothing, and the caller could not
+            // navigate to it.
             if ((err && String(err).length > 0) || uuid.length === 0) {
                 root.errorText = (err && String(err).length > 0)
                     ? qsTr("Could not create the playlist: %1").arg(err)
@@ -116,12 +87,9 @@ Popup {
     }
 
     // ── the popup itself ─────────────────────────────────────────────────
-    //
-    // Reparented to the window overlay rather than left on whatever opened it.
-    // anchors.centerIn alone only *positions* against the overlay - `parent`
-    // would stay the sidebar, and the clamp below would then be reading a
-    // 220px sidebar. SettingsPanel carries the same two lines for the same
-    // reason.
+    // Reparented to the window overlay. anchors.centerIn alone only positions
+    // against it: `parent` would stay the opener, and the width clamp below
+    // would read the opener's width.
     parent: Overlay.overlay
     anchors.centerIn: parent
     // Clamped to the window, which at the 640px minimum is the binding that
@@ -148,13 +116,6 @@ Popup {
         spacing: 12
 
         // The heading and the way out, on one line.
-        //
-        // There was no visible way to leave this except the Cancel button and a
-        // click on the overlay, so a dialog that is plainly a dialog had no close
-        // affordance where every other panel in the app has one. The button is
-        // SettingsPanel's - a 26px target around a 14px glyph that lights on
-        // hover - with SearchBar's keyboard treatment on it: a Tab stop, a focus
-        // ring, Return and Space.
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
@@ -175,13 +136,9 @@ Popup {
                 Layout.preferredWidth: 26
                 Layout.preferredHeight: 26
                 Layout.alignment: Qt.AlignVCenter
-                // Disabled under a create that is still going to answer, for the
-                // same reason Cancel is and Escape is: a dialog dismissed
-                // mid-flight leaves the callback writing into a dialog the user
-                // has left, and leaves them unable to tell whether the playlist
-                // was made. `enabled: false` is what actually stops the handlers
-                // and takes the item out of the tab order; the opacity only says
-                // so, the same split PillButton documents.
+                // Disabled while a create is in flight, like Cancel and Escape.
+                // `enabled: false` stops the handlers and takes the item out of
+                // the tab order; the opacity only shows it.
                 enabled: !root.busy
                 opacity: enabled ? 1 : 0.45
                 Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
@@ -239,16 +196,13 @@ Popup {
                 selectedTextColor: Theme.accentInk
                 verticalAlignment: TextInput.AlignVCenter
                 // The over-long case, stopped before it can be submitted.
-                // Applies to a paste as well as to typing, which is the way a
-                // 4000-character title actually arrives.
+                // Applies to a paste as well as to typing.
                 maximumLength: root.maxTitleLength
                 // Nothing may be typed into a name that is already on its way
                 // to the server.
                 readOnly: root.busy
 
-                // Typing is the user answering the complaint, so the complaint
-                // goes away. Leaving it up while the field is being corrected
-                // is how an error line comes to be ignored.
+                // Typing answers the complaint, so the complaint goes away.
                 onTextChanged: if (root.errorText.length > 0) root.errorText = ""
 
                 Keys.onReturnPressed: root.submit()
@@ -268,7 +222,6 @@ Popup {
         }
 
         // ── the counter, and the error ───────────────────────────────────
-        //
         // One row, because they never want to be read at the same time and
         // two stacked lines would make the dialog jump twice.
         RowLayout {
@@ -313,10 +266,9 @@ Popup {
 
             Item { Layout.fillWidth: true }
 
-            // PillButton draws no disabled state of its own, so the dimming is
-            // here. `enabled: false` on an Item is what actually stops the tap
-            // handler and takes it out of the tab order; the opacity only says
-            // so.
+            // PillButton draws no disabled state, so the dimming is here.
+            // `enabled: false` stops the tap handler and takes the button out
+            // of the tab order; the opacity only shows it.
             PillButton {
                 objectName: "newPlaylistCancel"
                 text: qsTr("Cancel")
