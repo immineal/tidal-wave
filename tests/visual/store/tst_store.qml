@@ -4,6 +4,7 @@
 // bar are laid out by the app and reached through its own navigate().
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Window
 import QtTest
 import TidalWave
@@ -85,6 +86,17 @@ TestCase {
         return null
     }
 
+    function findNamed(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var hit = findNamed(kids[i], name)
+            if (hit) return hit
+        }
+        return null
+    }
+
     // Image and Loader share the value: 2 is Loading on both.
     function stillLoading(item) {
         if (!item) return false
@@ -105,10 +117,28 @@ TestCase {
         for (var i = 0; i < kids.length; ++i) dropBuffers(kids[i])
     }
 
-    function shoot(win, name) {
+    // These pages show their scrollbar on arrival, and Qt hides it for good
+    // the first time the view has moved and stopped. One wheel notch down and
+    // back is that state: the page as it rests once it has been used.
+    function scrollOnce(view) {
+        var bar = view.ScrollBar.vertical
+        var top = view.contentY
+        mouseWheel(view, view.width / 2, view.height / 2, 0, -120)
+        tryVerify(function () { return view.contentY > top }, 4000,
+                  "the wheel did not move the page")
+        mouseWheel(view, view.width / 2, view.height / 2, 0, 1200)
+        tryVerify(function () {
+            return !view.movingVertically && view.contentY === top
+                   && !bar.active && bar.contentItem.opacity === 0
+        }, 8000, "the page did not come back to rest at the top")
+    }
+
+    // `scrolled` is the view to put through scrollOnce(), where a page has one.
+    function shoot(win, name, scrolled) {
         verify(shotOutDir.length > 0, "TW_SHOT_OUT was not set")
         dropBuffers(win.contentItem)
         waitForRendering(win.contentItem, 4000)
+        if (scrolled) scrollOnce(scrolled)
         // After the first frame, so it follows any enter event the display
         // server sent: parks the pointer where nothing reacts to it.
         mouseMove(win.contentItem, 110, 8)
@@ -148,7 +178,9 @@ TestCase {
         verify(page, "no collection page in the window")
         page.mixes = D.mixes()
         compare(page.filteredAlbums.length, D.albums().length)
-        shoot(win, "store_collection")
+        var grid = findNamed(page, "collectionAlbumsGrid")
+        verify(grid, "no album grid on the collection page")
+        shoot(win, "store_collection", grid)
     }
 
     function test_album() {
@@ -160,7 +192,9 @@ TestCase {
         var page = findWith(win.contentItem, "albumData")
         verify(page, "no album page in the window")
         compare(page.tracks.length, D.albumTracks(D.heroAlbum).length)
-        shoot(win, "store_album")
+        var list = findNamed(page, "albumTracksList")
+        verify(list, "no track list on the album page")
+        shoot(win, "store_album", list)
     }
 
     function test_nowplaying() {

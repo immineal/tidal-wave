@@ -15,7 +15,6 @@
 #include <QList>
 #include <QPainter>
 #include <QPainterPath>
-#include <QRadialGradient>
 #include <QString>
 #include <QStringList>
 #include <QtEndian>
@@ -287,20 +286,54 @@ inline void moons(QPainter &p, Dice &d, const Inks &c) {
     p.fillPath(a.intersected(b), c.third);
 }
 
-// Soft lights on a ground, for the pictures an artist would have a photo in.
-inline void aura(QPainter &p, Dice &d, const Inks &c) {
+// Half discs stacked on one base line, largest first. Kept near the middle,
+// because an artist's picture is cropped to a disc.
+inline void arches(QPainter &p, Dice &d, const Inks &c) {
+    const QPointF foot(d.between(450, 550), d.between(680, 740));
+    const int n = 3 + d.below(2);
+    const double outer = d.between(400, 440);
+    const QColor fills[] = {c.ink, c.second, c.third, c.ground};
     p.fillRect(kCanvas, c.ground);
-    const QColor lights[] = {c.ink, c.second, c.third};
-    for (const QColor &light : lights) {
-        const QPointF o(d.between(150, 850), d.between(150, 850));
-        QRadialGradient g(o, d.between(420, 700));
-        QColor solid = light, clear = light;
-        solid.setAlpha(235);
-        clear.setAlpha(0);
-        g.setColorAt(0.0, solid);
-        g.setColorAt(1.0, clear);
-        p.fillRect(kCanvas, g);
+    p.setPen(Qt::NoPen);
+    for (int i = 0; i < n; ++i) {
+        const double r = outer * (n - i) / n;
+        p.setBrush(fills[i % 4]);
+        p.drawChord(QRectF(foot.x() - r, foot.y() - r, 2 * r, 2 * r), 0, 180 * 16);
     }
+}
+
+// Flat mountains under a sun, standing on a strip of ground.
+inline void peaks(QPainter &p, Dice &d, const Inks &c) {
+    p.fillRect(kCanvas, c.ground);
+    p.setPen(Qt::NoPen);
+    p.setBrush(c.second);
+    const double sun = d.between(90, 130);
+    p.drawEllipse(QPointF(d.between(320, 680), d.between(270, 350)), sun, sun);
+    const QColor fills[] = {c.third, mix(c.third, c.ink, 0.5), c.ink};
+    for (int i = 0; i < 3; ++i) {
+        const double x = d.between(220, 780);
+        const double y = 400 + 100 * i + d.between(-30, 30);
+        const double half = d.between(380, 520);
+        p.setBrush(fills[i]);
+        p.drawPolygon(QPolygonF({QPointF(x - half, kSide), QPointF(x, y), QPointF(x + half, kSide)}));
+    }
+    p.fillRect(QRectF(0, 840, kSide, 160), c.ink);
+}
+
+// A disc with a bite out of it, and a small disc where the bite was.
+inline void crescent(QPainter &p, Dice &d, const Inks &c) {
+    const double r = d.between(270, 320);
+    const double turn = d.between(0, 2 * M_PI);
+    const QPointF o(500, 500);
+    const QPointF bite(o.x() + r * 0.45 * std::cos(turn), o.y() + r * 0.45 * std::sin(turn));
+    QPainterPath whole, cut;
+    whole.addEllipse(o, r, r);
+    cut.addEllipse(bite, r * 0.82, r * 0.82);
+    p.fillRect(kCanvas, c.ground);
+    p.fillPath(whole.subtracted(cut), c.ink);
+    p.setPen(Qt::NoPen);
+    p.setBrush(c.second);
+    p.drawEllipse(bite, r * 0.2, r * 0.2);
 }
 
 // One motif for every mix, so a row of them reads as a set. The hue steps
@@ -360,7 +393,13 @@ inline void drawPortrait(QPainter &p, const QString &slug) {
     case 0: horizon(p, d, c); break;
     case 1: moons(p, d, c); break;
     case 2: split(p, d, c); break;
-    default: aura(p, d, c); break;
+    default:
+        switch (d.below(3)) {
+        case 0: arches(p, d, c); break;
+        case 1: peaks(p, d, c); break;
+        default: crescent(p, d, c); break;
+        }
+        break;
     }
 }
 
