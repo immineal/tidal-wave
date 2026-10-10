@@ -73,6 +73,21 @@ jobs:
         run: |
           windeployqt --qmldir qml build\Release\tidal-wave.exe
           Copy-Item -Path build\TidalWave -Destination build\Release\TidalWave -Recurse
+
+          # The C++ runtime that the binary and Qt link. A fresh Windows has
+          # none, and the program then exits before it draws anything.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $found = & $vswhere -latest -products * -find 'VC\Redist\MSVC\**\x64\Microsoft.VC*.CRT\vcruntime140.dll'
+          $newest = $found | Where-Object { ($_ -split '\\')[-4] -match '^\d+(\.\d+)+$' } |
+                    Sort-Object { [version]($_ -split '\\')[-4] } | Select-Object -Last 1
+          if (-not $newest) { throw 'No Visual C++ runtime was found on this runner.' }
+          Copy-Item -Path (Join-Path (Split-Path $newest) '*.dll') -Destination build\Release
+          foreach ($dll in 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            if (-not (Test-Path "build\Release\$dll")) { throw "$dll is missing from the archive." }
+          }
+
+          # Import libraries and the static QML library are linker by-products.
+          Get-ChildItem build\Release -Recurse -Include *.lib, *.exp, *.pdb, *.ilk | Remove-Item
           Compress-Archive -Path build\Release\* -DestinationPath ${{ matrix.asset_name }}
 
       # Handed to the publish job, which is the only one that uploads.
