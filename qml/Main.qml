@@ -9,10 +9,7 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 800
-    // 640 is the narrow end the layout is built for (SPEC L1): the user runs
-    // two 1920x1200 monitors, so half-screen is 960x1200, and 640 leaves room
-    // to go narrower still. The old 900 was not even wide enough for the Now
-    // Playing transport row.
+    // 640 is the narrow end the layout is built for.
     minimumWidth: 640
     minimumHeight: 600
     // Show the current track in the window/taskbar/dock title.
@@ -34,36 +31,13 @@ ApplicationWindow {
     property bool   queueOpen:   false
 
     // ─── Where back goes ───────────────────────────────────────────────────
-    // A stack, not a slot. This was one `previousPage` string that navigate()
-    // overwrote on every move, and goBack() was an ordinary navigate() - so
-    // going back recorded the page it was leaving, and the next back came
-    // straight forward again. Escape on Now Playing opened and closed it for as
-    // long as the user held the key, because "nowplaying" is in detailPages and
-    // the shortcut keeps firing there instead of falling through to doing
-    // nothing. Every pair of detail pages had it; album -> artist -> back ->
-    // back came back to the artist, which is the same defect without a slide to
-    // make it obvious.
-    //
-    // Each entry is a (page, params) pair. The params are what make an entry
-    // *that* album rather than an album page, so they travel with the page they
-    // belong to; beside the stack they were a second loose slot with the same
-    // bug in it.
-    //
-    // The top is where one back goes. The bottom is the last top-level
-    // destination the user was on, because arriving at one empties the stack
-    // (see navigate): the sidebar's destinations are where history starts, not
-    // somewhere to come back out of. So in normal use this is exactly as deep
-    // as the chain of links the user has followed since they last used the
-    // sidebar, and it is empty whenever they are standing on a destination.
+    // A stack of (page, params) pairs. The top is where one back goes. Arriving
+    // at a top-level destination empties it (see navigate), so it is as deep as
+    // the chain of links followed since the sidebar was last used.
     property var navHistory: []
 
-    // That chain is the only thing that grows it, and a chain of links can be
-    // followed forever: album -> artist -> album never touches a top-level
-    // page. An array that only ever grows is a leak however slowly it fills,
-    // and this process lives in the tray for days, so the oldest entry is
-    // dropped at the ceiling. 32 is far past any path a user walks back out of
-    // by hand - and past it, back still walks out, it just runs out of recorded
-    // pages one step sooner than a 33-press user would want.
+    // A chain of links can be followed forever and this process lives in the
+    // tray for days, so the oldest entry is dropped at the ceiling.
     readonly property int maxNavHistory: 32
 
     // The params `currentPage` was reached with, kept so that leaving it can
@@ -71,27 +45,9 @@ ApplicationWindow {
     property var _currentNavParams: ({})
 
     // ─── Now Playing's way in and out ──────────────────────────────────
-    // It rises out of the player bar and sinks back into it. The bar is the
-    // control that opens it and the direction is the one the bar's chevron
-    // already points, so the page comes from the edge it was asked for from -
-    // the same vocabulary as the queue panel, which slides from the edge it is
-    // anchored to.
-    //
-    // Hosted here rather than in the page, because what has to outlive
-    // `currentPage` is the Loader: the page is on screen for the length of the
-    // slide out, after the window has already moved on. That is also why this is
-    // a number and not a state on the page - nothing inside Now Playing can know
-    // it is leaving.
-    //
-    // 190ms, where the queue's slide is 150. Same easing, and longer because the
-    // travel is longer: the queue crosses its own 340px of width and this crosses
-    // the whole height of the content area, which is more than twice as far.
-    //
-    // The player bar itself still goes and comes between two frames - it is a
-    // row of the window's layout, and collapsing it would move the page's own
-    // bottom edge while the page was sliding against it. So on the way in the bar
-    // is gone before the page has risen over where it was; on the way out the bar
-    // is already back, and the page sinks into its top edge.
+    // It rises out of the player bar and sinks back into it. Hosted here
+    // because the Loader has to outlive `currentPage`: the page stays on screen
+    // for the slide out, after the window has moved on.
     property real nowPlayingness: currentPage === "nowplaying" ? 1 : 0
     // A Behavior does not run on a binding's first evaluation, so a window that
     // somehow starts on Now Playing starts with it up rather than sliding it in.
@@ -100,49 +56,23 @@ ApplicationWindow {
     }
 
     // ─── Fullscreen ────────────────────────────────────
-    // Now Playing can take the whole screen: the window drops its chrome and
-    // the sidebar steps aside. Only the window can do either, so the page asks
-    // for it through Window.window instead of owning any of it.
-    //
-    // What to come back to is remembered rather than assumed. Restoring to a
-    // hardcoded Windowed would quietly un-maximise a window that was maximised
-    // when the user went fullscreen.
+    // Now Playing can take the whole screen. Only the window can drop its
+    // chrome and hide the sidebar, so the page asks through Window.window.
+    // The state to come back to is remembered: it may have been Maximized.
     property int preFullScreenVisibility: Window.Windowed
 
-    // The view is remembered the same way, and for the same reason: going
-    // fullscreen also opens Now Playing (see toggleFullScreen), so coming back
-    // has to know whether the page was already open or whether fullscreen put
-    // it there. Defaults to "it was already open", which is the value that
-    // makes this window navigate nowhere on its own.
+    // Going fullscreen also opens Now Playing (see toggleFullScreen), so coming
+    // back has to know whether the page was already open.
     property bool preFullScreenNowPlaying: true
 
-    // Written where the state changes, not derived from `visibility`.
-    //
-    // This used to be `readonly property bool fullScreen: visibility ===
-    // Window.FullScreen`, which is a binding on visibilityChanged. On Qt 6.4
-    // that signal does not arrive in the turn the write happens. Measured on
-    // 6.4.2: assigning `visibility` updates the property, so a read straight
-    // afterwards already returns the new value, while a SignalSpy on
-    // visibilityChanged is still at zero and has counted one only a few hundred
-    // milliseconds later. So for the rest of the turn the app changed it in, the
-    // binding read the old value while `visibility` read the new one, and a
-    // tryVerify() on `visibility` passed without ever yielding.
-    //
-    // Both guards below are on this flag, and so is navigate()'s and Escape's,
-    // which means a second toggle in the same turn entered fullscreen twice and
-    // overwrote preFullScreenVisibility with Windowed - so a maximised window
-    // came back un-maximised. Qt 6.12 emits the signal in time and the whole
-    // thing is invisible there.
-    //
-    // The initial value is still the window's, so a window that somehow starts
-    // fullscreen is not mislabelled.
+    // Written where the state changes, not bound to `visibility`: on Qt 6.4
+    // visibilityChanged arrives after the turn the write happens in, and a
+    // binding would read the old value for the rest of that turn.
     property bool fullScreen: visibility === Window.FullScreen
 
-    // ...and still follow the window, for the times nothing here moved it: the
-    // window manager has its own ways out of fullscreen. Recomputed from
-    // `visibility` rather than taken from the signal's argument, because on 6.4
-    // the deferred signal can arrive after a later write has already moved the
-    // window on again, and then the argument is stale and the property is not.
+    // Still follows the window, since the window manager has its own ways out
+    // of fullscreen. Read from `visibility`, not the signal's argument, which
+    // can be stale on 6.4.
     onVisibilityChanged: (vis) => {
         root.fullScreen = (root.visibility === Window.FullScreen)
     }
@@ -164,16 +94,9 @@ ApplicationWindow {
         root.fullScreen = false
     }
 
-    // Also the F11 handler, which is why it navigates: F11 anywhere in the app
-    // means "give me the player, big", not "do nothing unless you are already
-    // looking at it".
-    //
-    // And why it navigates back. Pressed twice it has to leave the user where
-    // they started, so the second press undoes the first one's navigation as
-    // well as its window change - but only the navigation the first press
-    // actually made (F11 from inside Now Playing stays in Now Playing), and
-    // only while Now Playing is still what is on screen, because a page the
-    // user walked to in the meantime is not this toggle's to close.
+    // Also the F11 handler, so it navigates to Now Playing. The second press
+    // undoes that navigation only if the first press made it and Now Playing is
+    // still on screen.
     function toggleFullScreen() {
         if (root.fullScreen) {
             root.leaveFullScreen()
@@ -181,10 +104,7 @@ ApplicationWindow {
                 root.goBack()
             return
         }
-        // The window first: enterFullScreen() records the page fullscreen is
-        // covering, and after the navigation below that is always Now Playing.
-        // Navigating to Now Playing is the one navigation that keeps
-        // fullscreen, so the order makes no difference to the window.
+        // The window first: enterFullScreen() records the page being covered.
         root.enterFullScreen()
         if (root.currentPage !== "nowplaying") root.navigate("nowplaying")
     }
@@ -350,10 +270,9 @@ ApplicationWindow {
         return null
     }
 
-    // Pages a user can be "inside" of, where a single consistent back
-    // action (button, Escape, Alt+Left) makes sense. Top-level destinations
-    // (home/search/collection) are reached directly from the sidebar and
-    // don't need — or want — a back affordance.
+    // Pages a user can be inside of, where one consistent back action (button,
+    // Escape, Alt+Left) makes sense. Top-level destinations are reached from
+    // the sidebar and get no back affordance.
     readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
     // The other side of that line, and the bottom of the back history: these
@@ -361,48 +280,30 @@ ApplicationWindow {
     // so there is never a chain of them to walk back through.
     readonly property var topLevelPages: ["home", "search", "collection"]
 
-    // `fromHistory` is goBack()'s and nobody else's; every other caller passes
-    // two arguments. It is what stops a back step from recording the page it is
-    // leaving, which is the whole of the bug the stack replaces.
+    // `fromHistory` is goBack()'s alone: it stops a back step from recording
+    // the page it is leaving.
     function navigate(page, params, fromHistory) {
-        // Fullscreen belongs to Now Playing. Following a link out of it - an
-        // artist name, the album, the source it is playing from - brings the
-        // window back first, so the user never lands on another page with no
-        // chrome and no sidebar.
+        // Fullscreen belongs to Now Playing. A link out of it brings the window
+        // back first, so no other page is left without chrome and sidebar.
         if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
 
         var p = params || {}
         if (!fromHistory) {
             if (root.topLevelPages.indexOf(page) !== -1) {
-                // A sidebar destination is the bottom of history, not a step in
-                // it: back is not offered there, so anything underneath could
-                // never be walked to anyway. It is also what keeps a stack from
-                // outliving the session it belongs to, since signing in lands
-                // here (see the auth Connections below).
+                // A sidebar destination is the bottom of history, so arriving
+                // there empties the stack. Signing in lands here too.
                 root.navHistory = []
             } else if (root._isTopOfHistory(page, p)) {
-                // Going forward onto the page back would have returned to *is*
-                // going back - Now Playing's track title opens the album the
-                // page rose from, and that album is where back already pointed.
-                // Recording it would make the next back a step forward, which is
-                // this bug's own shape one bounce deep, so unwind instead.
-                //
-                // The top entry only. A match further down is a page the user
-                // has walked away from since, and truncating the stack there
-                // would skip everything they walked through in between.
+                // Navigating onto the page that back would return to is a back
+                // step, so unwind. The top entry only: a match further down is
+                // a page the user has since walked away from.
                 root.navHistory = root.navHistory.slice(0, -1)
             } else if (currentPage !== ""
                        && (page !== currentPage
                            || !root._sameNavParams(_currentNavParams, p))) {
-                // A different page, or the same page type with different params
-                // - another album is another page to come back to. Asking for
-                // the one already on screen with the same params is a reload
-                // (below) and not a step.
-                //
-                // `currentPage !== ""` because that reload blanks it for a turn.
-                // Nothing should navigate from inside that turn, but a binding on
-                // currentPage could, and an empty string is not a page to come
-                // back to.
+                // A different page, or the same page type with different
+                // params. Same page and params is a reload (below), which
+                // blanks currentPage for a turn, hence the `!== ""`.
                 root._pushHistory(currentPage, _currentNavParams)
             }
         }
@@ -417,13 +318,9 @@ ApplicationWindow {
                 currentPage = ""
                 currentPage = savedPage
             }
-            // home/search/collection each have a fixed `source`, so their
-            // loaded item always matches the target type — apply params to it
-            // directly. detailLoader swaps between page types based on
-            // currentPage, so its item only matches when we're already
-            // showing that same page type — otherwise it's still the
-            // outgoing page and has no matching properties (e.g. clicking
-            // an artist link while on Now Playing would silently no-op).
+            // home/search/collection have a fixed `source`, so their item
+            // always matches the target. detailLoader's item matches only when
+            // it already shows that page type; otherwise pageParams holds them.
             var loaderAlwaysMatchesTarget = targetLoader !== detailLoader
             if ((loaderAlwaysMatchesTarget || currentPage === page) && targetLoader.status === Loader.Ready) {
                 applyParams(targetLoader.item, p)
@@ -436,12 +333,9 @@ ApplicationWindow {
         currentPage = page
         if (page === "search") {
             searchLoader.forceActiveFocus()
-            // ...and then the field inside it, which is a second step and not
-            // the same one: the Loader, the page root and the bar's input share
-            // one focus scope, so the line above makes the *Loader* the focus
-            // item and typing went nowhere. Leaving the page releases the
-            // field's focus (see the Loader's onVisibleChanged below), which is
-            // why nothing inside is holding it on the way back in.
+            // Then the field inside it: the Loader, the page root and the bar's
+            // input share one focus scope, so the line above only makes the
+            // Loader the focus item.
             if (searchLoader.item && typeof searchLoader.item.takeFocus === "function") {
                 searchLoader.item.takeFocus()
             }
@@ -450,11 +344,8 @@ ApplicationWindow {
         }
     }
 
-    // A copy and an assignment rather than navHistory.push(), because mutating
-    // the array in place changes nothing the property's change signal can see,
-    // and anything reading the depth off a binding would never hear about it.
-    // The arrays are at most maxNavHistory long, so the copy costs nothing a
-    // navigation does not already cost many times over.
+    // A copy and an assignment: push() in place changes nothing the property's
+    // change signal can see.
     function _pushHistory(page, params) {
         var h = root.navHistory.slice()
         h.push({ page: page, params: params || {} })
@@ -469,11 +360,9 @@ ApplicationWindow {
         return top.page === page && root._sameNavParams(top.params, params)
     }
 
-    // Shallow, because every params object in the app is flat - ids, uuids and
-    // titles; see the navigate() calls in SideBar, TrackRow and NowPlayingPage.
-    // Strict about it on purpose: a playlist opened with a cover and the same
-    // playlist opened without one do not draw the same page, so they are not the
-    // same entry and the stack keeps both.
+    // Shallow, because every params object in the app is flat. Strict: a
+    // playlist opened with a cover and the same one without do not draw the
+    // same page, so both entries stay.
     function _sameNavParams(a, b) {
         var x = a || {}, y = b || {}
         for (var k in x) if (x[k] !== y[k]) return false
@@ -483,9 +372,7 @@ ApplicationWindow {
 
     function goBack() {
         if (root.navHistory.length === 0) {
-            // Nowhere recorded to go: a window that has only ever been where it
-            // is, or a history the ceiling has eaten. Back is an affordance the
-            // user can see - the button, the chevron - so it has to do
+            // Nothing recorded. Back is a visible affordance and has to do
             // something, and home is where the app starts.
             root.navigate("home")
             return
@@ -502,16 +389,10 @@ ApplicationWindow {
             if (state === 2) {
                 root.navigate("home")
             } else {
-                // Signing out drops the window on the login page, and every
-                // way back out of fullscreen - Escape, F11, the page's own
-                // toggle - is either gated on being signed in or on the page
-                // that just went away. Leaving it here is what keeps that from
-                // being a window only the window manager can rescue.
+                // Signing out lands on the login page, where every way out of
+                // fullscreen is gated on being signed in.
                 root.leaveFullScreen()
-                // The pages in the history belong to the session that just
-                // ended, ids and all. Signing in navigates to home and would
-                // empty the stack anyway; this is what makes that true whatever
-                // page the next sign-in happens to land on.
+                // The history belongs to the session that just ended.
                 root.navHistory = []
             }
         }
@@ -541,12 +422,9 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // Every sequence below comes out of the Shortcuts table in
-        // src/ui/Shortcuts.cpp rather than being written here, because the
-        // Settings panel prints the same list and the two used to be
-        // independent literals that could drift - and did, silently, off Linux.
-        // A new Shortcut belongs in that table first; tst_shortcuts.cpp fails on
-        // one bound to a literal, and on a table entry with no row in Settings.
+        // Every sequence below comes from the Shortcuts table in
+        // src/ui/Shortcuts.cpp, which the Settings panel prints too. A new
+        // Shortcut goes there first: tst_shortcuts.cpp fails on a literal.
 
         // Playback Shortcuts
         Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.playPause() }
@@ -583,23 +461,12 @@ ApplicationWindow {
             sequence: Shortcuts.sequence("escape")
             context: Qt.ApplicationShortcut
             // An application shortcut outranks the key handling of an open
-            // Popup, so while a modal is up this one has to stand down or
-            // Escape would navigate back instead of dismissing it.
-            //
-            // Settings was missing from this list, and the bug was invisible
-            // until someone signed in on the Debian box: the shortcut only
-            // exists when `auth.state === 2`, so the whole class was
-            // unreachable signed out. Escape over an open Settings panel
-            // navigated the page back instead of closing it, which made its
-            // own closePolicy's CloseOnEscape dead. Any Popup added here in
-            // future has to be named on this line too.
+            // Popup, so this one stands down while a modal is up. Any Popup
+            // added in future has to be named on this line too.
             enabled: auth.state === 2 && !updatePrompt.visible
                      && !sideBar.settingsPanel.visible
-            // Innermost first, so one Escape undoes one thing: the overlay on
-            // top of the page, then the window state, then the page itself.
-            // Leaving fullscreen before navigating matters because the two
-            // together would drop the user on the previous page with no
-            // chrome and no sidebar, which is not a state they asked for.
+            // Innermost first, so one Escape undoes one thing: the queue
+            // overlay, then fullscreen, then the page.
             onActivated: {
                 if (root.queueOpen) root.queueOpen = false
                 else if (root.fullScreen) root.leaveFullScreen()
@@ -623,12 +490,12 @@ ApplicationWindow {
                 // Fullscreen means the page and nothing else; a Layout skips
                 // an invisible item entirely, so the page gets the width back.
                 visible: auth.state === 2 && !root.fullScreen
-                // Above the content pane, so when the rail hover-expands it
-                // covers the page instead of sliding under it (SPEC L4).
+                // Above the content pane, so the hover-expanded rail covers the
+                // page instead of sliding under it.
                 z: 2
-                // Compact mode follows the *window* width, and the slot the
-                // layout reserves is the rail width while it is compact — the
-                // expanded panel overflows that slot on purpose.
+                // Compact mode follows the window width. The layout reserves
+                // only the rail width while compact, and the expanded panel
+                // overflows that slot on purpose.
                 hostWidth: root.width
                 Layout.preferredWidth: sideBar.reservedWidth
                 Layout.fillHeight: true
@@ -723,14 +590,9 @@ ApplicationWindow {
                         }
                     }
 
-                    // Now Playing, and only Now Playing, because it is the one
-                    // page that has to stay on screen after the window has
-                    // navigated away from it: `active` follows the slide rather
-                    // than `currentPage`, so the page is still there to sink
-                    // back into the bar, and is freed the moment it is gone.
-                    //
-                    // Declared last, so it rises over whichever page it was
-                    // opened from instead of under it.
+                    // `active` follows the slide and not `currentPage`, so the
+                    // page is still there to sink back into the bar. Declared
+                    // last, so it rises over the page it was opened from.
                     Loader {
                         id: nowPlayingLoader
                         anchors.fill: parent
@@ -739,11 +601,8 @@ ApplicationWindow {
                                 && (root.currentPage === "nowplaying"
                                     || root.nowPlayingness > 0.001)
                         visible: active
-                        // A transform and not a y offset, for the reason
-                        // QueuePanel's slide is one: the page's geometry - which
-                        // its own breakpoint reads, and which the layout guard
-                        // in tests/qml/tst_layout_player.qml measures - is the
-                        // same mid-slide as it is at rest.
+                        // A transform, not a y offset: the geometry the page's
+                        // breakpoint reads stays put mid-slide.
                         transform: Translate {
                             y: (1 - root.nowPlayingness) * nowPlayingLoader.height
                         }
@@ -791,15 +650,12 @@ ApplicationWindow {
     // bring it back; showIfAvailable() only ever answers yes once per launch.
     UpdatePrompt {
         id: updatePrompt
-        // `updateCheck`, not `update`: see the comment where Application.cpp
-        // installs it. Guarded because tests/tst_firstrun.cpp loads Main.qml
-        // against the stub context, which has no update check in it, and that
-        // test fails on any QML warning at all.
+        // `updateCheck`, not `update`. Guarded because a host without that
+        // context property would otherwise raise a QML warning.
         check: (typeof updateCheck !== "undefined") ? updateCheck : null
     }
 
-    // The cached answer is already in UpdateCheck by the time the engine runs,
-    // so this is the launch the user was promised the prompt on. Whatever the
-    // network says afterwards is for the next one.
+    // The cached answer is already in UpdateCheck when the engine runs.
+    // Whatever the network says afterwards is for the next launch.
     Component.onCompleted: updatePrompt.showIfAvailable()
 }
