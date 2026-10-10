@@ -728,9 +728,11 @@ TestCase {
         tryVerify(function () { return sb.rows[0].id === "b2" }, settleMs,
                   "the model never took the new order")
 
-        // One frame: long enough for the view to take the change and start the
-        // transition, far too short for a 170ms travel to finish.
-        oneFrame()
+        // The view takes the change on its next frame, which is 8 to 17ms away
+        // on Qt 6.4 and 1ms on 6.12. Stepped in 1ms turns, so the row is read
+        // as the transition starts and a 170ms travel has had no time to end.
+        for (var turn = 0; sb.libraryMoves === movesBefore && turn < settleMs; ++turn)
+            wait(1)
 
         if (row.reduced) {
             compare(Math.round(moved.y), 0,
