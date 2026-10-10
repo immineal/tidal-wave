@@ -68,6 +68,18 @@ The 6.4 QML parser also refuses a set of old reserved words as names, where
 there and the whole file fails to load. In a test file that is one `compile()`
 failure in place of every case in it.
 
+On 6.4 a Layout nested in another Layout can keep a stale arrangement. When its
+members change in the same step that resizes it, the next frame finds it at an
+unchanged size and does not arrange it again, and a member that has just become
+visible is painted at 0,0. A plain `Item` between the two makes the inner one a
+top-level layout, which always arranges itself.
+
+A `Shape` that leaves a scene and comes back crashes 6.4's software renderer,
+and every icon in a menu does that when the menu reopens. The software renderer
+is what the "Software rendering" setting selects and what the offscreen tests
+run on. Build the `Shape` in a `Loader` that is active while the item has a
+window, the way `VectorIcon.qml` and `AppMark.qml` do.
+
 ## Two other quiet failures
 
 A new file under `qml/` must be listed in `QML_FILES` in `CMakeLists.txt`.
