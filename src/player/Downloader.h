@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QHash>
@@ -10,15 +12,9 @@ class QProcess;
 class QTemporaryFile;
 class DashFetcher;
 
-// Downloads a single track at the highest available quality and converts it to
-// a user-chosen format (FLAC / MP3 / WAV) with ffmpeg, embedding tags and (for
-// FLAC/MP3) the album cover. Exposed to QML as the `downloader` context property.
-//
-// The whole flow runs on the GUI thread: the network fetches (TidalClient) and
-// the ffmpeg QProcess are asynchronous, and the native save dialog spins a
-// nested event loop, so nothing blocks. Each in-flight download is a DownloadJob
-// kept in m_jobs keyed by track id; every async callback re-looks-up its job by
-// id and bails if it has been cancelled (mirrors Player's loadingTrackId guard).
+// Downloads one track at the highest available quality and converts it with
+// ffmpeg to FLAC, MP3 or WAV. Runs on the GUI thread; every async callback
+// looks its DownloadJob up again by track id and bails if it was cancelled.
 class Downloader : public QObject {
     Q_OBJECT
 public:
@@ -30,13 +26,11 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_jobs.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id);
 
-    // Where ffmpeg is right now, or empty. See the definition for why this is
-    // asked each time rather than answered once at construction. Public
-    // because the lookup, not the download, is what tst_downloader measures.
+    // Where ffmpeg is right now, or empty. Looked up on every call.
+    // Public for the tests.
     QString ffmpegPath() const;
 
-    // The two halves of that lookup, pure and public for the same reason:
-    // `extraDirs` is searched after PATH, and the test supplies its own.
+    // The two halves of that lookup; `extraDirs` is searched after PATH.
     static QStringList ffmpegFallbackDirs();
     static QString     resolveFfmpeg(const QStringList &extraDirs);
 
@@ -64,9 +58,7 @@ private:
         int       bitDepth   = 16;
 
         // Always a plain .mp4 by the time ffmpeg sees it: BTS downloads one, and
-        // DASH is joined out of its segments by DashFetcher (see DashFetcher.h).
-        // It used to be able to be a .mpd manifest, which is what the
-        // -protocol_whitelist argument in ffmpegArgs() was for.
+        // DASH is joined out of its segments by DashFetcher.
         QString   audioTempPath;
         QString   coverTempPath;     // downloaded cover (.jpg), empty if none
 

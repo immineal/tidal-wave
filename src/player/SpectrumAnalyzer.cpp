@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "SpectrumAnalyzer.h"
 
 #include <QAudioBuffer>
@@ -10,13 +12,6 @@
 #include <cmath>
 #include <type_traits>
 
-// The hazard ThemePalette's create() comment describes, caught at compile time
-// instead of at runtime: Qt decides how to build a QML_SINGLETON by testing
-// std::is_default_constructible first, so the moment this type gains a default
-// constructor the engine builds its own instance, create() is never called,
-// and every PlayingIndicator in the app binds to an analyser that nothing ever
-// feeds. The failure is silent - the bars just never move - so it is pinned
-// here rather than left to be rediscovered.
 static_assert(!std::is_default_constructible_v<SpectrumAnalyzer>,
               "SpectrumAnalyzer must not be default-constructible, or Qt will "
               "build the QML singleton itself and never call create(). Keep "
@@ -25,44 +20,26 @@ static_assert(!std::is_default_constructible_v<SpectrumAnalyzer>,
 namespace {
 
 // ─── bands ──────────────────────────────────────────────────────────────────
-//
-// Six edges, five bands, geometrically spaced: each is a touch over three
-// times the width of the one below it, which is how a spectrum has to be split
-// for the result to look like an equaliser rather than like four empty bars
-// next to one busy one. Linear thirds of 0-22 kHz would put everything a human
-// hears about pitch into the first bar.
-//
-// The numbers are rounded off the 50 Hz -> 13 kHz ratio ladder rather than
-// taken from it exactly, because round edges make the band a frequency falls
-// into something a reader can work out. 1 kHz lands in the middle band with
-// better than a third of an octave of margin either side, which is what
-// tests/tst_spectrum.cpp leans on.
+// Six edges, five bands, geometrically spaced: linear bands would put nearly
+// all of the music into the first bar. tests/tst_spectrum.cpp relies on 1 kHz
+// landing well inside the middle band.
 constexpr double kEdges[SpectrumAnalyzer::kBands + 1] = {
     50.0, 150.0, 450.0, 1400.0, 4200.0, 13000.0
 };
 
-// The window. Blackman-Harris rather than Hann: its mainlobe is wider, which
-// costs a little resolution nobody can see at five bars, and its sidelobes are
-// 60 dB further down, which is the difference between a 1 kHz tone lighting
-// one bar and a 1 kHz tone lighting one bar brightly and the next two faintly.
-// Leakage into a neighbouring band is the only artefact of this whole pipeline
-// anyone would actually notice.
+// The window. Blackman-Harris has far lower sidelobes than Hann, so a tone
+// lights one bar without leaking into its neighbours.
 constexpr double kBh[4] = { 0.35875, 0.48829, 0.14128, 0.01168 };
 
-// How far below full scale a band has to be to read as nothing. 55 dB is about
-// where a quiet passage stops being distinguishable from the room, and it maps
-// the levels most music actually produces across the useful half of the bar.
+// How far below full scale a band has to be to read as nothing.
 constexpr double kFloorDb = 55.0;
 
-// Per analysis frame, which is every kHopSize samples - 23 ms at 44.1 kHz.
-// Fast up, slower down: the asymmetry is what makes a level meter read as one
-// rather than as a flicker. Tuned so a transient is on screen within about two
-// frames and takes about an eighth of a second to fall away.
+// Per analysis frame, every kHopSize samples. Fast up and slower down, which
+// is what makes the bars read as a level meter.
 constexpr double kAttack = 0.45;
 constexpr double kDecay  = 0.18;
 
-// Below this a level is zero. An exponential decay never arrives on its own,
-// and a bar held at 10^-9 of full scale is a bar that never parks.
+// Below this a level is zero: an exponential decay never arrives on its own.
 constexpr double kSilenceEpsilon = 1e-4;
 
 // Published levels closer together than this are the same picture.
@@ -104,9 +81,8 @@ void fft(std::vector<double> &re, std::vector<double> &im,
     }
 }
 
-// One frame of one channel, as a double in -1..1. Returns false for anything
-// this build cannot read, which is how an unexpected sample format becomes a
-// dropped buffer rather than a reinterpret_cast over the wrong type.
+// One frame of one channel, as a double in -1..1. Returns false for a sample
+// format this build cannot read.
 inline bool sampleAt(const char *base, QAudioFormat::SampleFormat fmt,
                      qsizetype index, double *out)
 {
@@ -152,14 +128,9 @@ SpectrumAnalyzer::SpectrumAnalyzer(QObject *parent)
     m_re.assign(size_t(kFftSize), 0.0);
     m_im.assign(size_t(kFftSize), 0.0);
 
-    // The window, and the one number derived from it that puts the band
-    // amplitudes on an absolute scale. By Parseval the squared bins of a
-    // windowed sine of amplitude A sum (over the half spectrum) to
-    // A^2 * mean(w^2) / coherentGain^2 once each bin is scaled by
-    // 2 / (N * coherentGain) - so folding both constants together leaves a
-    // single factor, and sqrt(sum) * that factor is A. Computed from the
-    // window array rather than written down, so changing the window above
-    // cannot silently change what "full scale" means.
+    // The window, and the factor that puts the band amplitudes on an absolute
+    // scale: sqrt(sum of squared bins) times it is the amplitude of a windowed
+    // sine. Computed from the window array, so it follows a change of window.
     m_window.resize(size_t(kFftSize));
     double sumSq = 0.0;
     for (int n = 0; n < kFftSize; ++n) {
@@ -239,8 +210,7 @@ void SpectrumAnalyzer::setPrefsSource(QObject *source)
     m_prefs = source;
 
     if (m_prefs) {
-        // By meta-object rather than against Prefs::spectrumBarsChanged, so a
-        // test double works here without this class knowing the concrete type.
+        // By meta-object, so a test double works without the concrete type.
         const QMetaObject *mo = m_prefs->metaObject();
         const int index = mo->indexOfProperty("spectrumBars");
         if (index < 0) {
@@ -258,10 +228,8 @@ void SpectrumAnalyzer::setPrefsSource(QObject *source)
 
 void SpectrumAnalyzer::refreshFromPrefs()
 {
-    // Where the Qt version actually bites. Below 6.8 there is no
-    // QAudioBufferOutput and so nothing that could ever hand this object a
-    // buffer; the preference is reported unavailable, and it is refused here
-    // rather than left to switch on a DSP that would only ever see silence.
+    // Below Qt 6.8 there is no QAudioBufferOutput and nothing could hand this
+    // object a buffer, so the preference is refused here.
     setEnabled(availableAtCompileTime()
                && m_prefs && m_prefs->property("spectrumBars").toBool());
 }
@@ -300,8 +268,8 @@ void SpectrumAnalyzer::setLevelsForTest(const QVariantList &levels)
         m_levels[b]    = std::clamp(v, 0.0, 1.0);
         m_published[b] = m_levels[b];
     }
-    // Keeps the idle sweep in publishTick() from pulling the rug out from
-    // under a test that is mid-assertion.
+    // Keeps the idle sweep in publishTick() from releasing the bars under a
+    // test that is mid-assertion.
     m_sinceBuffer.start();
     setActive(true);
     emit levelsChanged();
@@ -317,11 +285,9 @@ void SpectrumAnalyzer::processBuffer(const QAudioBuffer &buffer)
 {
     if (!m_enabled) return;
 
-    // Everything a malformed buffer could be. QAudioBufferOutput hands over a
-    // default-constructed one before the pipeline has a format, the end of a
-    // stream arrives as a valid container with no frames, and a backend that
-    // has gone wrong can produce a format whose bytesPerSample() is zero -
-    // which is a division, not a wrong colour.
+    // QAudioBufferOutput hands over a default-constructed buffer before the
+    // pipeline has a format, a stream ends with a valid container of no frames,
+    // and a broken backend can report a bytesPerSample() of zero, a divisor.
     if (!buffer.isValid()) return;
     const QAudioFormat fmt = buffer.format();
     if (!fmt.isValid()) return;
@@ -340,8 +306,7 @@ void SpectrumAnalyzer::processBuffer(const QAudioBuffer &buffer)
     const char *base = buffer.constData<char>();
     if (!base) return;
 
-    // One probe before committing: an unreadable sample format is dropped
-    // whole rather than half-converted.
+    // One probe first: an unreadable sample format is dropped whole.
     double probe = 0.0;
     if (!sampleAt(base, fmt.sampleFormat(), 0, &probe)) return;
 
@@ -361,8 +326,7 @@ void SpectrumAnalyzer::processBuffer(const QAudioBuffer &buffer)
         m_mono[size_t(m_fill++)] = sum * inv;
         if (m_fill == kFftSize) {
             analyseFrame();
-            // Slide by half a window, so consecutive frames overlap and a
-            // transient cannot fall between two of them.
+            // Slide by half a window, so consecutive frames overlap.
             std::copy(m_mono.begin() + kHopSize, m_mono.end(), m_mono.begin());
             m_fill = kFftSize - kHopSize;
         }
@@ -402,10 +366,8 @@ void SpectrumAnalyzer::analyseFrame()
                 energy += m_re[size_t(k)] * m_re[size_t(k)] + m_im[size_t(k)] * m_im[size_t(k)];
             const double amp = std::sqrt(energy) * m_magScale;
             if (amp > 0.0) {
-                // dBFS mapped onto the bar. Logarithmic, because every step of
-                // the chain in front of this one is: a bar that moved linearly
-                // in amplitude would sit on the floor for all but the loudest
-                // moments of a track.
+                // dBFS mapped onto the bar. A bar linear in amplitude would sit
+                // on the floor for all but the loudest moments of a track.
                 const double db = 20.0 * std::log10(amp);
                 target = std::clamp(1.0 + db / kFloorDb, 0.0, 1.0);
             }
@@ -420,8 +382,7 @@ void SpectrumAnalyzer::analyseFrame()
 
 void SpectrumAnalyzer::publishTick()
 {
-    // No audio for a while: a pause, a track change, or the end of the queue.
-    // Release the bars rather than leaving the last spectrum frozen on screen.
+    // No audio for a while: release the bars so no spectrum freezes on screen.
     if (m_sinceBuffer.isValid() && m_sinceBuffer.elapsed() > kIdleTimeoutMs) {
         m_fill = 0;
         std::fill(m_mono.begin(), m_mono.end(), 0.0);

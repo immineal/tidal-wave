@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QString>
@@ -20,8 +22,8 @@ public:
     void disconnectFromDevice();
     bool isConnected() const { return m_appConnected; }
 
-    // Load a media URL onto the receiver. Safe to call before `connected()` —
-    // it is deferred until the receiver app is up.
+    // Load a media URL onto the receiver. Before `connected()` the load is
+    // deferred until the receiver app is up.
     void loadMedia(const QString &url, const QString &contentType,
                    const QString &title, const QString &artist,
                    const QString &album, const QString &artUrl, double durationSec);

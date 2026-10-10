@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "CastMediaServer.h"
 
 #include <QTcpServer>
@@ -8,7 +10,7 @@
 
 namespace {
 
-// First non-loopback IPv4 address — the address the Chromecast must reach.
+// First non-loopback IPv4 address, which the Chromecast must reach.
 QString lanAddress() {
     const auto addrs = QNetworkInterface::allAddresses();
     for (const QHostAddress &a : addrs) {

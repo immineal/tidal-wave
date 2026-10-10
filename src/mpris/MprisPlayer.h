@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QCoreApplication>
@@ -23,10 +25,8 @@ public:
     bool        canRaise()            const { return true; }
     bool        hasTrackList()        const { return false; }
     QString     identity()            const { return "Tidal Wave"; }
-    // The installed entry is io.github.immineal.TidalWave.desktop, not
-    // tidal-wave.desktop: Flatpak exports only <app-id>.desktop, so the file
-    // was renamed and this was missed. A client that resolves DesktopEntry to
-    // find the icon and name found nothing.
+    // Must name the installed <app-id>.desktop, the only entry Flatpak exports:
+    // clients resolve DesktopEntry to find the icon and name.
     QString     desktopEntry()        const { return "io.github.immineal.TidalWave"; }
     QStringList supportedUriSchemes() const { return {}; }
     QStringList supportedMimeTypes()  const { return {}; }

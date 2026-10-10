@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QString>
@@ -31,7 +33,7 @@ public:
     Q_INVOKABLE void connectToDevice(const QString &id);
     Q_INVOKABLE void disconnect();
 
-    // (Re)cast the player's current track — on connect and on track change.
+    // (Re)cast the player's current track, on connect and on track change.
     void castCurrentTrack();
 
 signals:

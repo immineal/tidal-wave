@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "CastManager.h"
 #include "CastDiscovery.h"
 #include "CastSession.h"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "CastMediaPrep.h"
 #include "api/TidalClient.h"
 #include "api/Models.h"
@@ -21,11 +23,9 @@ CastMediaPrep::~CastMediaPrep() {
 void CastMediaPrep::cancel() {
     ++m_gen;
     if (m_reply) { m_reply->abort(); m_reply = nullptr; }
-    // Deleted in place rather than deferred: m_dash is only ever non-null while
-    // the fetcher has not reported yet, because the callback below clears it as
-    // its first act. So nothing reached from here is mid-callback, and the
-    // destructor - which also comes through here - must not leave the delete to
-    // an event loop turn that will never run for this object.
+    // Deleted in place: m_dash is only non-null while the fetcher has not
+    // reported, because its callback clears it first. The destructor comes
+    // through here too, and a deferred delete would never run for it.
     if (m_dash) { DashFetcher *d = m_dash; m_dash = nullptr; delete d; }
     if (m_ffmpeg) { m_ffmpeg->kill(); m_ffmpeg->deleteLater(); m_ffmpeg = nullptr; }
     cleanupInput();
@@ -90,15 +90,9 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
         return;
     }
 
-    // DASH (lossless). This used to write the manifest out to a .mpd and hand it
-    // to the CLI ffmpeg behind -protocol_whitelist, leaving ffmpeg to pull the
-    // segments itself. That needs ffmpeg's DASH demuxer, which is only built
-    // when libxml2 is present - see DashFetcher.h, and the same shape was the
-    // release blocker on the playback path. Joining the segments here hands
-    // ffmpeg an ordinary fragmented MP4 instead, which every build reads, and
-    // the bytes come down the app's own authenticated requests rather than a
-    // second HTTP client with its own ideas about headers, redirects, proxies
-    // and timeouts.
+    // DASH (lossless): joined here into an ordinary fragmented MP4, which every
+    // ffmpeg reads. Handing ffmpeg the manifest needs its DASH demuxer, which
+    // is only built with libxml2.
     auto *fetcher = new DashFetcher(m_client, manifest.url);
     if (!fetcher->isValid() || !fetcher->openedTempFile()) {
         const bool manifestWasReadable = fetcher->isValid();
@@ -111,8 +105,7 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
     }
     m_dash = fetcher;
     fetcher->start([this, gen, fetcher, sr](QTemporaryFile *file, const QString &dashErr) {
-        // The fetcher is reporting from inside its own callback, so it cannot be
-        // deleted here; one event loop turn later it has nothing in flight left.
+        // The fetcher reports from inside its own callback: delete it a turn later.
         // Clearing the member first is what lets cancel() delete in place.
         if (m_dash == fetcher) m_dash = nullptr;
         QTimer::singleShot(0, this, [fetcher] { delete fetcher; });
@@ -152,9 +145,8 @@ void CastMediaPrep::remuxFlac(int sampleRate) {
 
     QStringList a;
     a << QStringLiteral("-y") << QStringLiteral("-nostdin");
-    // No -protocol_whitelist any more: the input is always a local file whose
-    // bytes are already here, DASH included, so ffmpeg has nothing remote to
-    // fetch and no manifest to demux.
+    // The input is always a local file, DASH included, so no
+    // -protocol_whitelist is needed.
     a << QStringLiteral("-i") << m_inputPath << QStringLiteral("-map") << QStringLiteral("0:a");
     // Chromecast's default receiver caps FLAC at 96 kHz; downsample if higher,
     // otherwise stream-copy the FLAC bitstream unchanged.

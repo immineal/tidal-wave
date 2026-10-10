@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "CastSession.h"
 #include "CastMessage.h"
 
@@ -32,7 +34,7 @@ void CastSession::connectToDevice(const QString &host, int port) {
     disconnectFromDevice();
 
     m_socket = new QSslSocket(this);
-    // Chromecast devices present a self-signed certificate — expected for CASTV2.
+    // Chromecast devices present a self-signed certificate, as CASTV2 expects.
     m_socket->setPeerVerifyMode(QSslSocket::VerifyNone);
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
@@ -55,10 +57,8 @@ void CastSession::connectToDevice(const QString &host, int port) {
 
 void CastSession::disconnectFromDevice() {
     if (m_timer) m_timer->stop();
-    // The Default Media Receiver keeps playing after the sender simply drops the
-    // socket, so explicitly stop playback and quit the receiver app first —
-    // otherwise "disconnect" in the UI leaves the device playing (the user then
-    // has to stop it from the Google Home app).
+    // The Default Media Receiver keeps playing after the sender drops the
+    // socket, so stop playback and quit the receiver app first.
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
         stopMedia();
         if (!m_sessionId.isEmpty())

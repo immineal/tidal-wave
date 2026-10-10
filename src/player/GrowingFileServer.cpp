@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "GrowingFileServer.h"
 
 #include <QHostAddress>
@@ -7,9 +9,8 @@
 
 namespace {
 
-// How much is allowed to sit in one socket's write queue before the pump stops
-// filling it. Writing the whole of what is ready in one go would copy the track
-// into memory, which is the thing joining it on disk avoids.
+// How much may sit in one socket's write queue before the pump stops filling
+// it, so the track is never copied into memory whole.
 constexpr qint64 kSocketHighWater = 256 * 1024;
 
 // One read from the growing file per turn of the loop below.
@@ -40,9 +41,8 @@ GrowingFileServer::~GrowingFileServer()
 
 QString GrowingFileServer::serve(const QString &path, const QString &mime, qint64 bytesReady)
 {
-    // Whatever was being served is not this track. Dropping the connections is
-    // what stops a QMediaPlayer that has not noticed the change from carrying on
-    // reading the previous file through a handle this one is about to retarget.
+    // Drop the previous track's connections, so a QMediaPlayer that has not
+    // noticed the change cannot read on through the retargeted handle.
     const auto previous = m_conns.keys();
     for (QTcpSocket *s : previous)
         s->abort();
@@ -163,9 +163,7 @@ void GrowingFileServer::handleRequest(QTcpSocket *sock, const QByteArray &reques
     const int query = target.indexOf('?');
     if (query >= 0) target.truncate(query);
 
-    // The token is the only thing that makes this URL the track's, so a mismatch
-    // is a 404 and not a hint. Nothing here is secret enough to need a timing-safe
-    // compare, but nothing here tells a caller how close it got either.
+    // A token mismatch is a plain 404.
     const bool wanted = !m_target.isEmpty() && target == m_target && m_file.isOpen();
     if (!wanted || (method != "GET" && method != "HEAD")) {
         sock->write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n"
@@ -174,9 +172,8 @@ void GrowingFileServer::handleRequest(QTcpSocket *sock, const QByteArray &reques
         return;
     }
 
-    // No Content-Length, no Accept-Ranges, and any Range header in the request is
-    // ignored: see GrowingFileServer.h for the four responses this was measured
-    // against and what each one cost.
+    // No Content-Length, no Accept-Ranges, and any Range header in the request
+    // is ignored: a client that believes it can seek will try to.
     QByteArray headers;
     headers += "HTTP/1.1 200 OK\r\n";
     headers += "Content-Type: " + m_mime.toUtf8() + "\r\n";
@@ -219,10 +216,9 @@ void GrowingFileServer::pump()
             c.sent += data.size();
         }
 
-        // Only once everything the writer will ever produce has gone out. A close
-        // at the write cursor would be an early end of track. No terminating
-        // 0-length chunk: ffmpeg 9 turns that into an EIO storm instead of an end
-        // of stream, and GrowingFileServer.h has the measurement.
+        // Only once everything the writer will produce has gone out: a close at
+        // the write cursor would be an early end of track. No terminating
+        // 0-length chunk, which FFmpeg 9 does not read as an end of stream.
         if (m_complete && c.sent >= m_bytesReady) {
             c.finished = true;
             sock->disconnectFromHost();

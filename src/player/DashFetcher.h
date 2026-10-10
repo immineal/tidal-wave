@@ -1,37 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
-//
-// Turning Tidal's DASH manifest into something QMediaPlayer can actually open.
-//
-// LOSSLESS and HI_RES_LOSSLESS arrive as MPEG-DASH: a manifest plus one URL per
-// segment. The old code wrote that manifest to a .mpd and handed the file to
-// QMediaPlayer, expecting the backend to fetch the segments itself. That only
-// works where libavformat was built with libxml2, because libxml2 is what its
-// DASH demuxer is gated on:
-//
-//     ldd <qt-prefix>/lib/libavformat.so.61 | grep -c xml2  -> 0
-//     ldd /usr/lib/libavformat.so.61                         | grep -c xml2  -> 1
-//
-// The Qt installer's bundled ffmpeg has no libxml2, and the ffmpeg media plugin
-// resolves libavformat through its own $ORIGIN/../../lib, so on any build made
-// against the Qt installer the bundled copy always wins and every DASH track is
-// rejected as InvalidMedia with "Invalid data found when processing input" —
-// silently, in under a millisecond, with nothing audible to show for it. Whether
-// lossless played came down to which Qt the packager happened to have.
-//
-// A DASH segment is a plain fragmented-MP4 piece, so the initialization segment
-// followed by every media segment in order *is* an ordinary fragmented MP4. Any
-// ffmpeg build reads that, libxml2 or not, which is the whole point: joining the
-// segments here needs no demuxer that might be missing. It also lands the result
-// in exactly the shape the BTS (AAC) path already produces — one local temp file
-// — so playback stays a single code path.
-//
-// Header-only and deliberately not a QObject: no Q_OBJECT means no moc, and no
-// moc means the class needs no entry in CMakeLists.txt's SOURCES/HEADERS to be
-// compiled into the static library. The cost is that it reports through a
-// std::function rather than a signal, which is also what TidalClient::fetchRaw
-// takes, so nothing is lost. There is no tr() here either: the user-visible
-// wording stays with the callers, which already have translation contexts.
-//
+// Joins the segments of a Tidal DASH manifest (LOSSLESS, HI_RES_LOSSLESS) into
+// one fragmented MP4, which any ffmpeg build reads. libavformat's own DASH
+// demuxer needs libxml2, and the ffmpeg bundled with the Qt installer has none.
+// Header-only and no QObject, so no moc. It reports through a std::function
+// and has no tr(): user-visible wording stays with the callers.
 #include <QByteArray>
 #include <QDebug>
 #include <QDir>
@@ -54,28 +28,19 @@
 
 class DashFetcher {
 public:
-    // file is null exactly when the join failed; errorDetail is then whatever
-    // the network said, which may be empty. Ownership of the file passes to the
-    // receiver, it is closed, and its autoRemove is off: take fileName() and
-    // delete it, or keep it and let its destructor leave the bytes behind.
+    // file is null exactly when the join failed; errorDetail may be empty.
+    // Ownership of the file passes to the receiver. It is closed and its
+    // autoRemove is off.
     using Done = std::function<void(QTemporaryFile *file, const QString &errorDetail)>;
 
-    // Reported each time the front of the file grows, from the event loop.
-    // bytesReady is how many bytes from the start of tempFilePath() are on disk
-    // and visible to a *second* reader of that path; segmentsReady is how many
-    // segments that is, counting the initialization segment, so 2 means "the
-    // init segment and one media segment", which is the least that plays.
-    //
-    // This is what makes a progressive start possible: the segments are already
-    // written in play order (see fetchAt()), so the front of the file is a
-    // shorter fragmented MP4 of the same track, playable on its own.
+    // Reported from the event loop each time the front of the file grows.
+    // bytesReady is what a second reader of tempFilePath() can see. segmentsReady
+    // counts the initialization segment, so 2 is the least that plays.
     using Progress = std::function<void(qint64 bytesReady, int segmentsReady)>;
 
     // Expands a DASH manifest into the URLs to fetch: [0] is the initialization
     // segment, the rest are the media segments in play order. Empty when the
-    // manifest carries no SegmentTemplate this can expand — see expandTemplate()
-    // below for why an identifier it does not know refuses the whole manifest
-    // rather than leaving itself in a URL.
+    // manifest carries no SegmentTemplate this can expand.
     static QStringList parseSegmentUrls(const QString &mpdXml);
 
     DashFetcher(TidalClient *client, const QString &mpdXml)
@@ -83,11 +48,8 @@ public:
     {
         m_parts.resize(m_urls.size());
         if (m_urls.isEmpty()) return;
-        // Opened here rather than in start() so that every synchronous failure
-        // is visible to the caller *before* it commits to this object. start()
-        // then only ever reports through the event loop, which means a caller
-        // can store the fetcher first and clear it from inside the callback
-        // without destroying an object that is still running.
+        // Opened here so every synchronous failure is visible before the caller
+        // commits. start() then only reports through the event loop.
         m_file = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
         m_file->setAutoRemove(false);
         if (!m_file->open()) {
@@ -98,10 +60,9 @@ public:
 
     ~DashFetcher()
     {
-        // First statement, not last. Each abort() below runs the reply's
-        // finished handler synchronously, which calls straight back into the
-        // lambda in fetchAt(); expiring the guard here is what turns that into
-        // a no-op instead of a use of a half-destroyed object.
+        // First statement: each abort() below runs the reply's finished handler
+        // synchronously, which calls back into the lambda in fetchAt().
+        // Expiring the guard first makes that a no-op.
         m_alive.reset();
         for (const QPointer<QNetworkReply> &r : std::as_const(m_inFlight))
             if (!r.isNull()) r->abort();
@@ -115,22 +76,18 @@ public:
     bool isValid() const { return !m_urls.isEmpty(); }
     // The temp file the segments are joined into could be created.
     bool openedTempFile() const { return m_file != nullptr; }
-    // Where the join is going, while it is still going there; empty once the
-    // file has been handed over or given up on.
+    // Where the join is going; empty once the file is handed over or given up.
     QString tempFilePath() const { return m_file ? m_file->fileName() : QString(); }
-    // Segments including the initialization segment, so one more than the
-    // manifest's media-segment count.
+    // Segments including the initialization segment.
     int partCount() const { return int(m_urls.size()); }
 
-    // How much of the front of the file is on disk. Zero until the first
-    // contiguous write, and it only ever grows.
+    // Bytes of the front of the file on disk. It only ever grows.
     qint64 bytesReady() const { return m_bytesReady; }
     // Segments on disk, counting the initialization segment.
     int segmentsReady() const { return m_writeCursor; }
 
-    // Optional, and set before start(). Called from the event loop, so the
-    // receiver may delete this fetcher from inside it; nothing is touched
-    // afterwards that would notice.
+    // Optional, set before start(). Called from the event loop, and the
+    // receiver may delete this fetcher from inside it.
     void setProgress(Progress p) { m_progress = std::move(p); }
 
     // Call once, only when isValid() && openedTempFile(). done runs exactly
@@ -184,16 +141,9 @@ private:
                                        zeroPad ? QLatin1Char('0') : QLatin1Char(' '));
     }
 
-    // Substitutes one DASH URL template. $$ is a literal '$'. $Number$ (with an
-    // optional printf width), $RepresentationID$ and $Bandwidth$ are what Tidal
-    // and the usual packagers emit.
-    //
-    // Anything else sets *ok to false and yields nothing, rather than leaving
-    // the identifier in the URL. A URL with a live $Time$ in it would fetch, 404
-    // and surface as "the audio would not download", sending whoever reads that
-    // after the network. Refusing the manifest outright makes the one thing that
-    // is actually wrong — a manifest shape this does not expand — the thing the
-    // user is told about.
+    // Substitutes one DASH URL template. $$ is a literal '$'; $Number$ (with an
+    // optional printf width), $RepresentationID$ and $Bandwidth$ are expanded.
+    // Any other identifier sets *ok to false, so the whole manifest is refused.
     static QString expandTemplate(const QString &tpl, long long number,
                                   const QString &repId, const QString &bandwidth,
                                   bool *ok)
@@ -257,8 +207,6 @@ private:
 
                 // Written in play order as soon as the gap in front of a segment
                 // closes, so at most kMaxParallel segments are ever in memory.
-                // Holding the whole track would be tens of megabytes for CD
-                // audio and a few hundred for a long hi-res one.
                 const int cursorBefore = m_writeCursor;
                 while (m_writeCursor < m_parts.size() && !m_parts[m_writeCursor].isEmpty()) {
                     if (m_file->write(m_parts[m_writeCursor]) != m_parts[m_writeCursor].size()) {
@@ -270,12 +218,9 @@ private:
                 }
 
                 if (m_writeCursor != cursorBefore) {
-                    // flush(), not just write(): QFile keeps a write buffer, so
-                    // until this runs the bytes exist only inside this process
-                    // and anything that opens tempFilePath() to read the front
-                    // of the track — which is the whole point of reporting it —
-                    // sees a short file. A failure here is the disk filling up,
-                    // which used to surface only at the end of the join.
+                    // flush() as well as write(): QFile buffers, so until this
+                    // runs a second reader of tempFilePath() sees a short file.
+                    // A failure here is the disk filling up.
                     if (!m_file->flush()) {
                         settle(nullptr, m_file->errorString());
                         return;
@@ -283,9 +228,8 @@ private:
                     m_bytesReady = m_file->pos();
                     if (m_progress) {
                         m_progress(m_bytesReady, m_writeCursor);
-                        // A track change is exactly a receiver that drops this
-                        // fetcher from inside the report, so from here on this
-                        // object may already be gone.
+                        // The receiver may drop this fetcher from inside the
+                        // report, so from here on this object may be gone.
                         if (alive.expired() || m_settled) return;
                     }
                 }
@@ -295,8 +239,6 @@ private:
 
                 if (m_completed == m_urls.size()) {
                     m_file->flush();
-                    // One line per lossless track, because the thing this class
-                    // exists to fix used to fail with nothing in the log at all.
                     qInfo() << "[dash] joined" << m_urls.size() << "segments into"
                             << m_file->fileName() << m_file->size() << "bytes";
                     m_file->close();
@@ -307,11 +249,8 @@ private:
             });
 
         // QNetworkAccessManager never emits finished() synchronously, so the
-        // callback above has not run yet and this reply is still in flight; the
-        // m_settled check is only insurance against a fetchRaw that one day does
-        // answer from cache. QPointer rather than a raw pointer because every
-        // reply is deleteLater()d as it finishes, so a plain list would fill with
-        // dangling entries for the destructor to walk.
+        // reply is still in flight here. QPointer: every reply is deleteLater()d
+        // as it finishes, and a raw pointer would dangle for the destructor.
         if (reply && !m_settled) {
             m_inFlight.removeIf([](const QPointer<QNetworkReply> &r) { return r.isNull(); });
             m_inFlight.append(reply);
@@ -324,11 +263,8 @@ private:
         m_settled = true;
         m_parts.clear();
         if (!file && m_file) { m_file->remove(); delete m_file; m_file = nullptr; }
-        // Peers are still downloading segments nobody wants any more. Abort
-        // before reporting, because the callback is where the owner drops this
-        // object, and a reply that finishes after that is a reply whose handler
-        // finds an expired guard — correct, but it has already spent the
-        // bandwidth.
+        // Abort the remaining replies before reporting: the callback is where
+        // the owner drops this object.
         const auto replies = m_inFlight;
         m_inFlight.clear();
         for (const QPointer<QNetworkReply> &r : replies)
@@ -354,16 +290,12 @@ private:
     std::shared_ptr<char> m_alive = std::make_shared<char>();
 
     // Segments are small and independent, so a few run at once. One at a time
-    // would add a round trip per segment — around fifty on a normal track —
-    // before the first note.
+    // would add a round trip per segment before the first note.
     static constexpr int kMaxParallel = 6;
 
-    // A count no real track comes near: ten hours of two-second segments is
-    // 18000. It stops two things, both driven by a number that arrives over the
-    // network. A manifest whose r= attributes add up past what an int holds is
-    // signed overflow, which is not a thing to find out about later; and a
-    // duration fallback whose arithmetic comes out absurd would otherwise have
-    // this reserve and fill a list of millions of URLs before failing.
+    // A count no real track comes near. It bounds numbers that arrive over the
+    // network: r= attributes that would overflow an int, and a duration
+    // fallback that would reserve a list of millions of URLs.
     static constexpr int kMaxSegments = 20000;
 };
 
@@ -420,8 +352,7 @@ inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
     if (!haveTemplate || initTpl.isEmpty() || mediaTpl.isEmpty()) return {};
 
     if (!haveTimeline) {
-        // The other half of SegmentTemplate: a fixed segment duration, with the
-        // count implied by how long the whole thing is.
+        // No timeline: a fixed segment duration, the count implied by the total.
         if (segDuration <= 0 || totalMs <= 0) return {};
         const double segMs = (double(segDuration) * 1000.0) / double(timescale);
         if (segMs <= 0.0) return {};

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Downloader.h"
 
 #include <QNetworkReply>
@@ -21,11 +23,9 @@ Downloader::Downloader(TidalClient *client, QObject *parent)
 {
 }
 
-// Where to look once PATH has come up empty. A process started from a .desktop
-// entry inherits the session's PATH, which on a stock desktop is
-// /usr/bin:/bin:/usr/sbin:/sbin - the user's shell profile never runs - so an
-// ffmpeg anywhere else is invisible to the app while working perfectly from
-// the terminal the user tested it in. These are the three places it then is.
+// Searched once PATH has come up empty. A process started from a .desktop
+// entry inherits the session's PATH, which the user's shell profile never
+// extends, so an ffmpeg installed elsewhere is invisible to the app.
 QStringList Downloader::ffmpegFallbackDirs() {
     return {
         QStringLiteral("/usr/local/bin"),                  // built and installed by hand
@@ -38,15 +38,13 @@ QStringList Downloader::ffmpegFallbackDirs() {
 QString Downloader::resolveFfmpeg(const QStringList &extraDirs) {
     const QString onPath = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     if (!onPath.isEmpty()) return onPath;
-    // findExecutable() with an explicit list searches *only* that list, which
-    // is why this is a second call and not a wider first one.
+    // findExecutable() with an explicit list searches only that list, hence
+    // the second call.
     return QStandardPaths::findExecutable(QStringLiteral("ffmpeg"), extraDirs);
 }
 
-// Asked per download rather than answered once in the constructor: "install
-// ffmpeg and downloads will work" should not quietly mean "and then restart
-// the app". Three or four stat() calls against a user pressing a download
-// button is not a cost worth caching.
+// Asked per download, so an ffmpeg installed while the app runs is found
+// without a restart.
 QString Downloader::ffmpegPath() const {
     return resolveFfmpeg(ffmpegFallbackDirs());
 }
@@ -66,7 +64,6 @@ Downloader::~Downloader() {
 
 QString Downloader::sanitizeFilename(QString name) {
     name.replace(QRegularExpression(QStringLiteral("[/\\\\:*?\"<>|]")), QStringLiteral("_"));
-    // Strip control chars and collapse runs of whitespace.
     name.replace(QRegularExpression(QStringLiteral("[\\x00-\\x1f]")), QStringLiteral(" "));
     name.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral(" "));
     name = name.trimmed();
@@ -188,12 +185,9 @@ void Downloader::handleBts(DownloadJob *job, const QString &url) {
 }
 
 void Downloader::handleMpd(DownloadJob *job, const QString &mpdXml) {
-    // Writing the manifest out and letting ffmpeg pull the segments needs
-    // ffmpeg's DASH demuxer, which is only built when libxml2 is present. Where
-    // it is not — Homebrew's ffmpeg, and anything linking the libavformat the Qt
-    // installer bundles — every lossless download died on "Invalid data found
-    // when processing input". Joining the segments here hands ffmpeg an ordinary
-    // fragmented MP4 instead, which every build reads. See DashFetcher.h.
+    // Joined here into an ordinary fragmented MP4, which every ffmpeg reads.
+    // Handing ffmpeg the manifest needs its DASH demuxer, which is only built
+    // with libxml2 and is missing from several builds.
     const qlonglong id = job->id;
 
     auto *fetcher = new DashFetcher(m_client, mpdXml);
@@ -208,8 +202,7 @@ void Downloader::handleMpd(DownloadJob *job, const QString &mpdXml) {
     }
     job->dash = fetcher;
     fetcher->start([this, id, fetcher](QTemporaryFile *file, const QString &dashErr) {
-        // The fetcher is reporting from inside its own callback, so it cannot be
-        // deleted here; one event loop turn later it has nothing in flight left.
+        // The fetcher reports from inside its own callback: delete it a turn later.
         QTimer::singleShot(0, this, [fetcher] { delete fetcher; });
         DownloadJob *job = m_jobs.value(id, nullptr);
         if (job && job->dash == fetcher) job->dash = nullptr;
@@ -262,9 +255,8 @@ QStringList Downloader::ffmpegArgs(const DownloadJob *job, bool flacForceEncode)
 
     QStringList a;
     a << QStringLiteral("-y") << QStringLiteral("-nostdin");
-    // No -protocol_whitelist any more: the input is always a local file whose
-    // bytes are already here, DASH included, so ffmpeg has nothing remote to
-    // fetch and no manifest to demux.
+    // The input is always a local file, DASH included, so no
+    // -protocol_whitelist is needed.
     a << QStringLiteral("-i") << job->audioTempPath;
     if (haveCover)
         a << QStringLiteral("-i") << job->coverTempPath;
@@ -343,7 +335,6 @@ void Downloader::runFfmpeg(DownloadJob *job, bool flacForceEncode) {
             proc->deleteLater();
 
             if (wasCopy) {
-                // stream-copy failed → retry as a real FLAC encode
                 runFfmpeg(job, /*flacForceEncode=*/true);
             } else {
                 QFile::remove(job->targetPath);  // drop partial/empty output

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #pragma once
 #include <QObject>
 #include <QMediaPlayer>
@@ -33,30 +35,24 @@ class Player : public QObject {
     Q_PROPERTY(int        repeatMode   READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString    audioQuality READ audioQuality NOTIFY currentTrackChanged)
     Q_PROPERTY(int        queueCount      READ queueCount      NOTIFY queueChanged)
-    // Notified separately from queueChanged: moving the current track is not a
-    // change to the queue, and a 5000-row queue cannot afford to be republished
-    // on every advance. See the signals below.
+    // Its own notifier: an advance must not republish the whole queue.
     Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariantList queueTracks   READ queueTracks     NOTIFY queueChanged)
     Q_PROPERTY(QVariantList recentlyPlayed READ recentlyPlayed NOTIFY recentlyPlayedChanged)
-    // "Playing from" context — where the current queue was started from.
+    // Where the current queue was started from.
     Q_PROPERTY(QString sourceType READ sourceType NOTIFY sourceChanged)
     Q_PROPERTY(QString sourceId   READ sourceId   NOTIFY sourceChanged)
     Q_PROPERTY(QString sourceName READ sourceName NOTIFY sourceChanged)
 
     // ── The two sections the Queue panel shows ──────────────────────────
-    // One playback order, read as three slices: what has gone past, the rows
-    // the user queued by hand, and the rest of whatever they started from.
-    // See "The queue" in Player.cpp for why this is one list and not three.
+    // One playback order, read as slices: played, queued by hand, the context.
     Q_PROPERTY(QVariantList queuePlayed  READ queuePlayed  NOTIFY queueChanged)
     Q_PROPERTY(QVariantList queueManual  READ queueManual  NOTIFY queueChanged)
     Q_PROPERTY(QVariantList queueContext READ queueContext NOTIFY queueChanged)
     Q_PROPERTY(QString contextName READ contextName NOTIFY queueChanged)
     Q_PROPERTY(QString contextType READ contextType NOTIFY queueChanged)
-    // Where the manual section ends, for a view that renders the single
-    // queueTracks list and only needs to know where to draw the headings.
-    // Its own notifier, for the same reason queueIndex has one: a row being
-    // consumed must not cost a republish of the whole queue.
+    // Where the manual section ends. Its own notifier, so a consumed row
+    // does not republish the whole queue.
     Q_PROPERTY(int manualCount READ manualCount NOTIFY manualCountChanged)
 
 public:
@@ -73,8 +69,7 @@ public:
     bool        shuffle()     const { return m_shuffle; }
     int         repeatMode()  const { return m_repeatMode; }
     QString     audioQuality()const;
-    // Maps a raw Tidal quality code (LOW/HIGH/LOSSLESS/HI_RES_LOSSLESS) to the
-    // user-facing label. Single source of truth so every badge stays consistent.
+    // Maps a Tidal quality code such as HI_RES_LOSSLESS to its label.
     Q_INVOKABLE QString qualityLabel(const QString &code) const;
     int          queueCount()    const { return m_queue.count(); }
     int          queueIndex()    const { return m_index; }
@@ -84,56 +79,32 @@ public:
     QString      sourceId()   const { return m_sourceId; }
     QString      sourceName() const { return m_sourceName; }
 
-    // Records where playback was started from (e.g. "playlist"/"album"/"mix"/
-    // "collection"/"radio"/"artist"). Call immediately before playTracks() from
-    // the originating page so Now Playing can link back to it.
+    // Where playback was started from (playlist, album, mix, collection, radio,
+    // artist). Call immediately before playTracks().
     Q_INVOKABLE void setPlaybackSource(const QString &type, const QString &id, const QString &name);
 
-    // For MPRIS (internal use)
+    // For MPRIS.
     Track currentTrack() const { return m_currentTrack; }
     qlonglong currentTrackId() const { return m_currentTrack.id; }
 
     // ── Audio output routing ────────────────────────────────────────────
-    // The output device is rebound live: on a system-default change, on
-    // hot-plug, and when the user picks a device in Settings. Everything
-    // below exists so that swap is invisible to whoever is listening.
-
-    // Watches prefs->audioDevice(). Empty means "follow the system default".
+    // Watches prefs->audioDevice(). Empty means follow the system default.
     void setPrefs(Prefs *prefs);
 
-    // For the Settings picker: [{id, label, isDefault}], "System default"
-    // first with an empty id. isDefault marks the device the OS currently
-    // treats as the default, so the picker can say what "System default"
-    // resolves to; the sentinel row itself is never marked.
+    // For the Settings picker: [{id, label, isDefault}], the system default
+    // row first with an empty id and never marked isDefault.
     Q_INVOKABLE QVariantList availableAudioDevices() const;
-    // Id of the device the output is bound to right now; empty before the
-    // output exists, or on a box with no audio devices.
+    // Id of the device the output is bound to; empty before the output exists.
     Q_INVOKABLE QString activeAudioDeviceId() const;
-    // Re-resolves the preference against the current device list and rebinds
-    // if the answer changed. Cheap and idempotent.
+    // Re-resolves the preference and rebinds if the answer changed. Idempotent.
     Q_INVOKABLE void refreshAudioDevice();
 
     // ── The spectrum tap ────────────────────────────────────────────────
-    // Off by default and free when off. Only with the preference on does a
-    // QAudioBufferOutput get attached to the QMediaPlayer at all, so with the
-    // switch untouched the audio path is byte for byte what it always was.
-    //
-    // The analyser is the process-wide QML singleton the now-playing bars
-    // bind to, and it is reached from here rather than wired in by
-    // Application for one reason: the Player is the only thing in the app
-    // that has decoded audio, so there is exactly one place this can come
-    // from and nothing is gained by routing it through a third party.
-    //
-    // Needs Qt 6.8 for QAudioBufferOutput. Below that the analyser reports
-    // itself unavailable, the preference cannot switch it on, and everything
-    // here compiles down to nothing.
+    // A QAudioBufferOutput is attached only while the preference is on.
+    // Needs Qt 6.8; below that the analyser reports itself unavailable.
     void setSpectrumAnalyzer(SpectrumAnalyzer *analyzer);
 
-    // Whether a QAudioBufferOutput is hooked into the QMediaPlayer right now.
-    // Public because the claim this feature rests on - that with the
-    // preference off nothing at all is attached, so the audio path is the one
-    // the app has always had - is otherwise invisible from outside, and an
-    // invisible claim is one that quietly stops being true.
+    // Whether a QAudioBufferOutput is attached right now. Public for the tests.
     bool spectrumTapAttached() const;
 
     // What has to come through a device swap untouched.
@@ -143,8 +114,7 @@ public:
         double volume   = 0.0;
         bool   muted    = false;
     };
-    // Public so a test can exercise the swap even where a device list of one
-    // makes every rebind a no-op, and the snapshot even where nothing plays.
+    // Public so a test can exercise the swap where every rebind is a no-op.
     AudioState captureAudioState() const;
     void       restoreAudioState(const AudioState &state);
     void       rebindAudioOutput(const QAudioDevice &device);
@@ -162,8 +132,7 @@ public:
     // ── Playing ─────────────────────────────────────────────────────────
     // Tracks are QVariantMaps from TidalBridge.
 
-    // Replaces the context, and only the context: whatever the user queued by
-    // hand survives this and still plays before the new context does.
+    // Replaces the context only: the manual queue survives and plays first.
     Q_INVOKABLE void playTracks      (const QVariantList &tracks, int startIndex = 0);
 
     Q_INVOKABLE void playPause ();
@@ -176,17 +145,15 @@ public:
     Q_INVOKABLE void setRepeatMode (int  m);
 
     // ── The manual queue ────────────────────────────────────────────────
-    // What the user deliberately lined up. It outlives the context it was
-    // built next to, it keeps the order they put it in even under shuffle,
-    // and a row leaves it for good the moment it starts playing.
+    // What the user lined up. It outlives its context, keeps its order under
+    // shuffle, and a row leaves it for good when it starts playing.
     Q_INVOKABLE void playNext    (const QVariantList &tracks);  // front
     Q_INVOKABLE void addToQueue  (const QVariantList &tracks);  // back
     Q_INVOKABLE void removeManual(int index);
     Q_INVOKABLE void moveManual  (int from, int to);
     Q_INVOKABLE void clearManual ();
-    // Play a row now. jumpToManual drops the rows it skipped past, because
-    // they were explicitly passed over; jumpToContext and jumpToPlayed only
-    // move the cursor, so the rest of the context is still there afterwards.
+    // Play a row now. jumpToManual drops the rows it skipped past;
+    // jumpToContext and jumpToPlayed only move the cursor.
     Q_INVOKABLE void jumpToManual (int index);
     Q_INVOKABLE void jumpToContext(int index);
     Q_INVOKABLE void jumpToPlayed (int index);
@@ -194,16 +161,15 @@ public:
     QVariantList queuePlayed()  const;
     QVariantList queueManual()  const;
     QVariantList queueContext() const;
-    // The context is the "playing from" source under another name; the pages
-    // still set it through setPlaybackSource() before calling playTracks().
+    // The context is the playback source; pages set it through
+    // setPlaybackSource() before calling playTracks().
     QString contextName() const { return m_sourceName; }
     QString contextType() const { return m_sourceType; }
     int     manualCount() const { return m_manualCount; }
 
     // ── Flat view over the same queue (deprecated) ──────────────────────
     // NowPlayingPage, PlayerBar and TrackRow index the queue as one list.
-    // Every one of these is a slice or a translation of the sections above,
-    // so the two can never disagree; prefer the section API in new code.
+    // Each of these is a slice of the sections above; prefer those in new code.
     Q_INVOKABLE void appendQueue     (const QVariantList &tracks);  // == addToQueue
     Q_INVOKABLE void jumpToQueue     (int index);
     Q_INVOKABLE void clearQueue      ();
@@ -211,25 +177,19 @@ public:
     Q_INVOKABLE void moveQueueItem   (int from, int to);
 
     Q_INVOKABLE QVariantMap queueTrackAt(int index) const;
-    // Tracks that will play after the current one, in true playback order.
-    // max < 0 means "all". Single source of truth for every "up next" view so
-    // they stay consistent with what actually plays.
+    // Tracks that will play after the current one, in playback order.
+    // max < 0 means all.
     Q_INVOKABLE QVariantList upcomingTracks(int max = -1) const;
-    // Deprecated. The queue is held in playback order now, so this is the
-    // queue rotated to start at what is playing, each row carrying the
-    // "_queueIndex" it came from. The old Queue panel reads it while shuffled.
+    // Deprecated. The queue rotated to start at what is playing, each row
+    // carrying the _queueIndex it came from.
     Q_INVOKABLE QVariantList playbackOrderTracks() const;
 
     // ── Session persistence ─────────────────────────────────────────────
-    // Volume, mute, shuffle, repeat, the queue and the position come back on
-    // the next launch of the same Tidal account. Public so the tests can
-    // round-trip them without a second process; the app drives both ends by
-    // itself (a debounced save, and a restore on userIdChanged).
+    // Public so the tests can round-trip them.
     void savePlaybackState();
     void restorePlaybackState();
-    // Public for the same reason: the real caller is the restore path's
-    // stream-fetch error handler, and a test cannot make the network fail.
     // Drops the row that will not resolve and comes back on the next one.
+    // Public because a test cannot make the network fail.
     void skipUnplayableTrack();
 
 signals:
@@ -242,30 +202,19 @@ signals:
     void currentTrackChanged();
     void shuffleChanged      (bool s);
     void repeatModeChanged   (int  m);
-    // The queue itself: tracks added, removed, reordered, shuffled, cleared, or
-    // replaced by a new context. Anything bound to it copies the whole queue
-    // into QML, so this must not stand in for "the current track moved".
+    // The queue's rows changed. Anything bound to it copies the whole queue
+    // into QML, so it must not stand in for a plain advance.
     void queueChanged        ();
-    // Only the current position moved. Highlighting and "up next" bind to this.
+    // Only the current position moved.
     void currentIndexChanged (int index);
-    // Only the manual section's length changed. Consuming a row on an advance
-    // raises this; the rows themselves have not moved, so a view that renders
-    // queueTracks needs nothing more than the new boundary.
+    // Only the manual section's length changed; the rows have not moved.
     void manualCountChanged  (int count);
     void recentlyPlayedChanged();
     void sourceChanged       ();
     void castTrackChanged    ();   // current track changed while casting
-    // The set of output devices changed - one appeared, one went away, or the
-    // system default moved. Anything showing a device list binds to this and
-    // re-reads availableAudioDevices(); without it an open picker shows the
-    // list as it was when it opened, which is what a hot-plug test on the
-    // Debian box caught: a sink added while the menu was up never appeared,
-    // and closing and reopening was the only way to see it.
-    //
-    // Raised from the deferred turn in onAudioOutputsChanged(), never straight
-    // from the backend callback, for exactly the reason written out there: a
-    // handler that re-reads the device list would do so while PipeWire still
-    // holds its thread loop lock.
+    // The set of output devices or the system default changed; device lists
+    // re-read availableAudioDevices(). Raised from the deferred turn in
+    // onAudioOutputsChanged(), never straight from the backend callback.
     void audioDevicesChanged ();
     void error               (const QString &msg);
 
@@ -277,12 +226,10 @@ private slots:
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
 
 private:
-    // One row of the single playback order.
     struct Entry {
         QVariantMap track;
-        // The user put this row here. Shuffle leaves it alone, playTracks()
-        // does not throw it away, and once it is behind the cursor it has
-        // been consumed and must never be walked into again.
+        // The user put this row here. Shuffle and playTracks() leave it alone,
+        // and once behind the cursor it must never be walked into again.
         bool        manual  = false;
         // Position in the context's own order, so unshuffling can restore it.
         // -1 on a manual row, which has no natural position.
@@ -290,8 +237,7 @@ private:
     };
 
     void handleUserIdChanged(qint64 uid);
-    // Single door onto m_index, so no path can move the current track without
-    // saying so.
+    // The only way to change m_index, so every move is announced.
     void setIndex(int i);
     void setManualCount(int n);
     void loadAndPlay(int index);
@@ -299,42 +245,34 @@ private:
     Track trackFromMap(const QVariantMap &m) const;
     int  nextIndex() const;
     int  previousIndex() const;
-    // First row belonging to the context, for a repeat-all wrap: repeat
-    // applies to the context, and a consumed manual row does not come back.
+    // First row belonging to the context, for a repeat-all wrap.
     int  firstContextRow() const;
     void preloadNext();
     void cancelPreload();
-    // One preload attempt for the row at `next` has given up. Clears the
-    // in-progress index so nothing claims there is a file waiting, and records
-    // the row so the trigger does not start the same doomed attempt again on
-    // every position update for the rest of the track.
+    // A preload attempt for the row at `next` gave up. Clears the in-progress
+    // index and records the row so the trigger does not retry it.
     void preloadGaveUp(int next);
-    // Puts the manual queue back in the order the user gave it, directly after
-    // whatever is playing. Returns true if the list itself changed, which is
-    // the only case a queue view has to hear about.
+    // Moves the cursor to target and puts the manual queue directly after it.
+    // Returns true if the list itself changed.
     bool relocateTo(int target);
     void insertManual(const QVariantList &tracks, int at);
-    // Re-derives the manual run from the rows themselves. The flat mutators
-    // can tear it, and a stray user-queued row outside the run would be an
-    // invisible second manual queue.
+    // Re-derives the manual run from the rows themselves; the flat mutators
+    // can tear it.
     void normalizeManualSpan();
     void reorderContext();
     // Starts the track that was just loaded, unless this is the first load of
     // a restored session, which comes back paused where it was left.
     void beginPlayback();
-    // The device the current preference resolves to: the chosen one if it is
-    // still present, the system default otherwise (never silence).
+    // The chosen device if it is still present, else the system default.
     QAudioDevice resolveAudioDevice() const;
     // Rebinds only when the resolved device differs from the bound one.
     void applyAudioDevice();
 
     // Attaches or drops the QAudioBufferOutput to match the analyser's
-    // enabled state. Idempotent, and a no-op before initAudio() has made a
-    // QMediaPlayer to attach it to - initAudio() calls it again on the way up.
+    // enabled state. Idempotent, and a no-op before initAudio().
     void applySpectrumTap();
 
-    // Coalesces the writes: the state changes far more often than it is worth
-    // writing, and the whole queue goes out in one value.
+    // Debounces the writes.
     void schedulePersist();
     QByteArray serializeQueue() const;
     QString    settingsPrefix() const;
@@ -344,23 +282,20 @@ private:
     QAudioOutput        *m_audioOut  = nullptr;
     QMediaDevices       *m_devices   = nullptr;
     QPointer<Prefs>      m_prefs;
-    // Set while an output swap is in flight, so the transport churn the swap
-    // causes stays inside the Player instead of reaching the UI.
+    // Set during an output swap, so its transport churn does not reach the UI.
     bool                 m_rebinding     = false;
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
 
-    // The spectrum tap. m_bufferOut exists only while the preference is on.
-    // A QPointer because the analyser is a singleton that outlives any one
-    // Player, and more than one Player exists across a test run.
+    // A QPointer: the analyser is a singleton that outlives any one Player.
+    // m_bufferOut exists only while the preference is on.
     QPointer<SpectrumAnalyzer> m_spectrum;
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
     QAudioBufferOutput  *m_bufferOut = nullptr;
 #endif
 
-    // The queue, in playback order. m_index is what plays; the m_manualCount
-    // rows straight after it are the manual queue; everything past those is
-    // the rest of the context; everything before it has gone by.
+    // The queue, in playback order: m_index plays, the next m_manualCount
+    // rows are the manual queue, the rest is the context.
     QList<Entry>         m_queue;
     int                  m_index         = -1;
     int                  m_manualCount   = 0;
@@ -379,8 +314,7 @@ private:
 
     // ── Restore ─────────────────────────────────────────────────────────
     QTimer              *m_persistTimer  = nullptr;
-    // Set while restorePlaybackState() is writing into the Player, so the
-    // restore does not immediately save what it has just read.
+    // Set while restorePlaybackState() runs, so it does not save what it read.
     bool                 m_suspendPersist = false;
     // The restore ran before initAudio(), so the load is owed.
     bool                 m_restorePending = false;
@@ -389,8 +323,7 @@ private:
     // Until a restored track resolves, a failed load stays quiet: the row is
     // dropped if Tidal ruled the track out, and left to load on play otherwise.
     bool                 m_restoreSkips   = false;
-    // The current track's stream could not be fetched, so the next play asks
-    // for it again.
+    // The current track's stream could not be fetched; the next play asks again.
     bool                 m_loadOwed       = false;
     // Where the restored track was left, applied once the media is ready.
     qint64               m_pendingSeek    = 0;
@@ -400,44 +333,25 @@ private:
     qint64               m_castPosition  = 0;   // ms
     qint64               m_castDuration  = 0;   // ms
     bool                 m_castPlaying   = false;
-    // The audio for the current track, always a plain .mp4 whichever manifest
-    // it came from: BTS hands over one URL, DASH is joined out of its segments
-    // by DashFetcher. It has not been a .mpd since the Qt installer's ffmpeg
-    // turned out to have no DASH demuxer; the name stayed.
+    // The audio for the current track, always a plain .mp4 despite the name:
+    // BTS hands over one URL, DASH is joined from its segments by DashFetcher.
     QTemporaryFile      *m_mpdTempFile    = nullptr;
     QNetworkReply       *m_activeDownload = nullptr;
     // Joining the current track's DASH segments (lossless); see DashFetcher.h.
     DashFetcher         *m_dash           = nullptr;
 
-    // How far into a track the preload of the next one starts. It used to be
-    // ten seconds before the *end*, which the measurement of the DASH join
-    // showed cannot work: a whole track is downloaded before the first note, and
-    // on this link (6.1-6.4 MB/s, the link and not the code) a join runs a median
-    // 7.6 s for 24/44.1, 15.2 s for 24/96 and 30.4 s for 24/192, worst case
-    // 69.7 s. So outside 24/44.1 the preload never finished, loadAndPlay() took
-    // its "still in progress" path, cancelPreload() threw away up to ~64 MB of
-    // segments, and the gap between tracks was the full join time - fifteen to
-    // seventy seconds of silence - rather than the 29.5 ms tst_gapless reports
-    // from a file already on disk.
-    //
-    // Five seconds in rather than zero: a track the user skips past while
-    // auditioning the queue never spends a byte on a preload, and five seconds
-    // is longer than anyone spends deciding. Everything after that is headroom -
-    // even a short hi-res track leaves minutes for a worst-case join.
+    // How far into a track the preload of the next one starts. A whole track
+    // is downloaded before it can play, so the preload gets the rest of the
+    // current one; a track skipped inside this window costs no preload.
     static constexpr qint64 kPreloadAfterMs = 5000;
 
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;
-    // Which track the bytes on disk are *for*. m_preloadIndex is a position in
-    // the queue, and every one of playNext(), addToQueue(), moveQueueItem(),
-    // removeManual(), setShuffle() and setRepeatMode() can change which track
-    // sits at a given position without cancelling anything. Matching on the id
-    // is what stops the file preloaded for one track being played as another -
-    // a window the earlier trigger widens from ten seconds to a whole track -
-    // and it also lets a preload survive a reorder instead of being wasted.
+    // Which track the bytes on disk are for. Queue edits can change which
+    // track sits at m_preloadIndex without cancelling the preload, so the
+    // file is matched on the id.
     qlonglong            m_preloadTrackId  = 0;
-    // The row whose preload has already been attempted and given up on, so it
-    // is not retried on every position update. Cleared on each track change.
+    // The row whose preload gave up; not retried until the track changes.
     int                  m_preloadFailedIndex = -1;
     bool                 m_preloadReady    = false;
     QString              m_preloadQuality;

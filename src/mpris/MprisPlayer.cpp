@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "MprisPlayer.h"
 #include <QDBusConnection>
 #include <QDBusMessage>

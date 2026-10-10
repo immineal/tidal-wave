@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "Queue.h"
 #include <QRandomGenerator>
 #include <algorithm>
