@@ -1,13 +1,7 @@
 // Audio output routing: following the system default live, choosing a specific
-// device, and surviving hot-plug. Written before the Player changes it covers,
-// per the project's tests-first rule.
-//
-// Two kinds of test live here. The ones that only need QMediaDevices' view of
-// the world, plus Player's own bookkeeping, always run - including on a
-// headless box with no sound server, where the device list is empty and the
-// player must still come up. The ones that need audio to actually flow skip
-// with a reason when nothing plays, because a test that quietly asserts
-// nothing would hide exactly the regression this section exists to prevent.
+// device, and surviving hot-plug. Tests that need only QMediaDevices and
+// Player's bookkeeping always run, also on a headless box with no sound server.
+// Tests that need audio to flow skip with a reason when nothing plays.
 
 #include <QTest>
 #include <QTimer>
@@ -218,8 +212,8 @@ private slots:
     }
 
     // The snapshot/restore pair is tested directly as well as through a real
-    // swap, because it is the part that has to hold on a box with no sink at
-    // all - where the playback test below can only skip.
+    // swap, because it has to hold on a box with no sink at all, where the
+    // playback test below can only skip.
     void stateSnapshotRoundTrips() {
         Rig rig;
         rig.player.setVolume(0.33);
@@ -260,10 +254,9 @@ private slots:
         QCOMPARE(rig.player.queueIndex(), index);
     }
 
-    // Regression: an output destroyed while the player still holds it calls
-    // back and detaches whatever is attached by then. Get the order wrong and
-    // the swap "succeeds" into a player with no sink - silence that nothing
-    // else here would notice, because Player's own device id still looks right.
+    // An output destroyed while the player still holds it calls back and
+    // detaches whatever is attached by then. With the order wrong the swap ends
+    // in a player with no sink while Player's own device id still looks right.
     void rebindLeavesAnOutputAttached() {
         Rig rig;
         auto *qmp = rig.player.findChild<QMediaPlayer *>();
@@ -293,7 +286,7 @@ private slots:
         f.close();
 
         // Straight onto the QMediaPlayer: Player's own load path goes through
-        // the Tidal API, which a unit test has no business calling.
+        // the Tidal API.
         qmp->setSource(QUrl::fromLocalFile(path));
         qmp->play();
 
@@ -315,7 +308,7 @@ private slots:
         QVERIFY2(rig.player.position() <= before + 2000,
                  "the track jumped forwards across the device swap");
 
-        // ...and it is still really running, not just reporting a stale number.
+        // ...and it is still running.
         const qint64 mark = rig.player.position();
         t.restart();
         while (t.elapsed() < 2000 && rig.player.position() <= mark) QTest::qWait(50);
@@ -339,8 +332,8 @@ private slots:
     void survivesWithoutAnyDevice() {
         Rig rig;
         if (!QMediaDevices::audioOutputs().isEmpty()) {
-            // Not the real thing, but the same code path: a null device is
-            // exactly what resolving a preference on a deviceless box yields.
+            // The same code path: a null device is what resolving a preference
+            // on a deviceless box yields.
             rig.player.rebindAudioOutput(QAudioDevice());
         }
         rig.player.setVolume(0.5);
@@ -383,17 +376,9 @@ private slots:
         QCOMPARE(rig.player.activeAudioDeviceId(), defaultDeviceId());
     }
 
-    // The device-changed handler must NOT rebind synchronously.
-    //
-    // QMediaDevices::audioOutputsChanged arrives while PipeWire still holds
-    // its thread loop lock, and tearing down a QAudioOutput takes that same
-    // lock, so rebinding inside the callback deadlocks: the app goes
-    // unresponsive with the main thread in futex_do_wait. It happened in real
-    // use after about ninety minutes and no headless test can reproduce it,
-    // because it needs a device to actually change under a live PipeWire.
-    //
-    // What IS testable is the structural property that prevents it: the slot
-    // must defer. Invoked directly here, so no audio server is needed.
+    // The device-changed slot must defer its rebind. audioOutputsChanged arrives
+    // while PipeWire holds its thread loop lock, and tearing down a QAudioOutput
+    // takes the same lock. Invoked directly, so no audio server is needed.
     void deviceChangeIsDeferredNotSynchronous() {
         Rig rig;   // Player needs a client, and its audio init is deferred
 
@@ -405,8 +390,8 @@ private slots:
                                                        Qt::DirectConnection);
         QVERIFY2(invoked, "onAudioOutputsChanged is gone or is no longer a slot");
 
-        // Nothing queued by the handler can have run yet, which is the whole
-        // point: the callback has to unwind before the rebind happens.
+        // Nothing queued by the handler can have run yet: the callback has to
+        // unwind before the rebind happens.
         QVERIFY2(!ran, "the event loop ran inside the handler, so it did not defer");
 
         // ...and the deferred work does arrive once the loop turns.

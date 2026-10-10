@@ -1,56 +1,9 @@
 // What the app asks Tidal for when the user asks for FLAC, and what it makes of
-// the answer.
-//
-// ── why this test exists ─────────────────────────────────────────────────────
-//
-// Until 2026-10-04 every tier went to `tracks/<id>/playbackinfopostpaywall` with
-// `audioquality=` the user's preference. Measured that day against the live API
-// from a probe linking this repo's own TidalApi/TidalClient, on the shipping
-// client id and a current session, that request answers a `LOSSLESS` ask with
-// `audioQuality: HIGH`, `manifestMimeType: application/vnd.tidal.bts`,
-// `codecs: mp4a.40.2` - 320 kbps AAC - on **27 of 27** catalogue tracks. It does
-// so including on tracks whose `mediaMetadata.tags` say `LOSSLESS`, and the
-// `HI_RES_LOSSLESS` ask falls back to the same AAC on every track with no hi-res
-// master. The `LOSSLESS` and `HIGH` responses even carry the *same*
-// `manifestHash`, so the two settings were delivering one identical file.
-//
-// It is not the account (the same token is served FLAC_HIRES at 24/192), not the
-// region, not the tracks, and not a missing request parameter: `prefetch`,
-// `immersiveaudio`, the `X-Tidal-Token` header, the User-Agent, a
-// `playbackinfo`/`playbackinfopostpaywall` swap and a minimal three-parameter
-// request all answer identically, while a misspelt `audioquality` 404s - so the
-// server parses the value and downgrades it on purpose. That endpoint simply no
-// longer serves the FLAC tiers.
-//
-// `openapi.tidal.com/v2/trackManifests/<id>` does, on the same token: 27 of 27
-// of the same tracks come back as `FLAC,44100,16`, and the three that are
-// Dolby-Atmos-only - which the old endpoint refused FLAC for outright - among
-// them. So the FLAC tiers move there and the lossy tiers stay where they are,
-// because the old endpoint still serves those correctly *and* serves them as a
-// single BTS file rather than DASH segments that have to be joined before the
-// first note.
-//
-// ── where the fixtures come from ─────────────────────────────────────────────
-//
-// Constructed from responses captured on 2026-10-04, not verbatim:
-//
-//   * kept exactly as captured: the JSON:API envelope (`data.attributes`), every
-//     attribute name, `trackPresentation`, the one-entry `formats` array, both
-//     `*AudioNormalizationData` objects, the `data:` URI's prefix, and the whole
-//     MPD down to the attribute order - the parts the code under test reads.
-//   * replaced: the track ids (invented, of the right shape - nothing reads
-//     them), the `hash` (a content hash of a real catalogue asset, and nothing
-//     reads that either), and every signed CDN URL under
-//     `initialization=`/`media=`, whose tokens are not committed and would
-//     expire anyway. Nothing here fetches a segment, so a placeholder URL is all
-//     the parse needs.
-//   * invented outright: the PREVIEW presentation and the HLS media type that
-//     refusesAPreview() and refusesANonDashManifest() feed in. No live response
-//     was provoked into either shape - they stand for the two answers that must
-//     not reach the player as if they were the whole track.
-//
-// The bare `AACLC` Representation id is the one that pins the fallbacks: it
-// carries no sample rate or bit depth after it, where the FLAC ids carry both.
+// the answer. `tracks/<id>/playbackinfopostpaywall` answers the FLAC tiers
+// with AAC, so they go to `openapi.tidal.com/v2/trackManifests/<id>`, and the
+// lossy tiers stay on the first endpoint, which serves them as one BTS file.
+// The fixtures are built from captured responses: structure as captured, ids,
+// hash and CDN URLs replaced. The PREVIEW and HLS shapes are invented.
 
 #include <QTest>
 #include <QJsonArray>
@@ -121,8 +74,7 @@ class TestStreamManifest : public QObject
 private slots:
     // ── the request ──────────────────────────────────────────────────────────
 
-    // The whole defect in one assertion: a Lossless ask must not go to the
-    // endpoint that answers it with AAC.
+    // A Lossless ask must not go to the endpoint that answers it with AAC.
     void flacTiersLeaveTheOldEndpoint_data()
     {
         QTest::addColumn<int>("quality");
@@ -140,13 +92,9 @@ private slots:
         QCOMPARE(TidalClient::usesTrackManifests(AudioQuality(quality)), viaTrackManifests);
     }
 
-    // "Lossless (16-bit)" has to ask for FLAC *only*. Asking for FLAC_HIRES too
-    // would hand a 24-bit stream to a setting whose label promises 16, and the
-    // live API does pick FLAC_HIRES whenever it is offered one.
-    //
-    // "Hi-Res (24-bit)" has to ask for both. FLAC_HIRES alone falls back to AAC
-    // on a track with no hi-res master - which is most of them - and that is the
-    // tier Downloader and CastMediaPrep ask for unconditionally.
+    // "Lossless (16-bit)" asks for FLAC only: the API picks FLAC_HIRES whenever
+    // it is offered. "Hi-Res (24-bit)" asks for both, because FLAC_HIRES alone
+    // falls back to AAC on a track with no hi-res master.
     void formatsAskedFor_data()
     {
         QTest::addColumn<int>("quality");
@@ -186,7 +134,7 @@ private slots:
         QCOMPARE(m.bitDepth, 16);
         QCOMPARE(m.replayGainTrack, 10.29);
         QCOMPARE(m.replayGainAlbum, -5.3);
-        // The manifest itself, not a URL to it: this is what DashFetcher parses.
+        // The manifest text itself, which is what DashFetcher parses.
         QVERIFY(m.url.startsWith(QStringLiteral("<?xml")));
         QVERIFY(m.url.contains(QStringLiteral("<Representation id=\"FLAC,44100,16\"")));
     }
@@ -203,9 +151,8 @@ private slots:
         QCOMPARE(m.bitDepth, 24);
     }
 
-    // The bare `AACLC` id carries neither rate nor depth, so both have to stay
-    // at the CD defaults rather than becoming 0 - Downloader picks pcm_s16le vs
-    // pcm_s24le off bitDepth, and 0 would read as 16 only by accident.
+    // The bare `AACLC` id carries neither rate nor depth, so both stay at the CD
+    // defaults. Downloader picks pcm_s16le or pcm_s24le off bitDepth.
     void parsesAacWithoutRateOrDepth()
     {
         QString err;
@@ -218,10 +165,8 @@ private slots:
         QCOMPARE(m.bitDepth, 16);
     }
 
-    // The old endpoint took assetpresentation=FULL and errored rather than hand
-    // back a clip. This one has no such parameter and says what it gave in the
-    // body, so the check moves here: a 30-second preview must not play as if it
-    // were the track.
+    // This endpoint has no assetpresentation parameter and says what it gave in
+    // the body, so a 30-second preview is refused here.
     void refusesAPreview()
     {
         QString err;

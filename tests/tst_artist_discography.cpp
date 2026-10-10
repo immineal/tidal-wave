@@ -1,36 +1,9 @@
 // An artist's discography: the three requests it takes, and what happens when
-// one of them does not come back.
-//
-// ── the bug this file exists for ─────────────────────────────────────────────
-//
-// artists/<id>/albums does not answer a discography. With no `filter` it
-// answers the *albums* and nothing else; the EPs and singles are a second
-// request (filter=EPSANDSINGLES) and the compilations a third
-// (filter=COMPILATIONS). TidalClient::fetchArtistAlbums sent one unfiltered
-// request with limit=50 and no offset, so:
-//
-//   * ArtistPage's "Singles & EPs" section - which was written, and is correct -
-//     filtered a list that could never contain a single, found nothing, and
-//     hid itself. The owner reported it as "the discography of an artist is not
-//     showing singles".
-//   * a prolific artist's discography was silently cut at fifty.
-//
-// The three filters are not guessed. python-tidal's Artist.get_albums,
-// get_ep_singles and get_other are three calls to this one path differing in
-// nothing but `filter`, and its own test suite asserts three disjoint sets of
-// album ids across them - which is also what establishes that the unfiltered
-// request is not a superset of the other two.
-//
-// ── the seam ────────────────────────────────────────────────────────────────
-//
-// FakeApi overrides TidalApi::get (virtual for this, and nothing in the app
-// overrides it) so these cases drive the *real* TidalClient. That is deliberate
-// and it is the point: a fake one level up - a TidalClient subclass answering
-// fetchArtistAlbums itself - could not see which filters went out, could not
-// see the offsets, and could not fail one request out of three. It would be
-// another stub that cannot express the bug.
-//
-// Every id, title and cover below is invented.
+// one of them does not come back. artists/<id>/albums with no `filter` answers
+// the albums only. EPs and singles need filter=EPSANDSINGLES, compilations
+// filter=COMPILATIONS, and each run is paged to its end.
+// FakeApi overrides TidalApi::get, so the cases drive the real TidalClient and
+// can see filters and offsets. Every id, title and cover below is invented.
 
 #include <QTest>
 #include <QHash>
@@ -73,13 +46,9 @@ QJsonObject release(qint64 id, const QString &title, const QString &type,
     return o;
 }
 
-// A TidalApi whose GETs are answered out of a per-filter catalogue, paged the
-// way the server pages: `limit` items from `offset`, with the whole size
-// reported as totalNumberOfItems.
-//
-// Synchronous by default, which is enough for everything but arrival order;
-// setDeferred(true) parks the replies so a test can land them in whichever
-// order it likes.
+// A TidalApi whose GETs are answered out of a per-filter catalogue, paged as
+// the server pages. Synchronous by default. setDeferred(true) parks the replies
+// so a test can land them in any order.
 class FakeApi : public TidalApi {
 public:
     struct Request {
@@ -109,8 +78,7 @@ public:
         pending.swap(m_parked);
         for (auto &p : pending) p();
     }
-    // Last asked, first answered - the order the real network has no reason to
-    // avoid and this app must not depend on.
+    // Last asked, first answered.
     void flushReversed() {
         QList<std::function<void()>> pending;
         pending.swap(m_parked);
@@ -213,8 +181,7 @@ private slots:
 
     // ── the three requests ───────────────────────────────────────────────────
 
-    // The regression in its plainest form. Deleting the EPSANDSINGLES fetch
-    // from fetchArtistAlbums() fails here first.
+    // All three filters go out against the one path.
     void threeFiltersAgainstTheOnePath() {
         FakeApi api;
         seedOneOfEach(api);
@@ -237,9 +204,8 @@ private slots:
             QCOMPARE(r.endpoint, QStringLiteral("artists/900000001/albums"));
     }
 
-    // What the owner saw. The single and the EP have to be in the list the page
-    // is handed, or its Singles & EPs section has nothing to filter for and
-    // hides itself - which is indistinguishable from an artist who has none.
+    // The single and the EP have to be in the list the page is handed, or its
+    // Singles & EPs section has nothing to show and hides itself.
     void singlesAndEpsReachTheCaller() {
         FakeApi api;
         seedOneOfEach(api);
@@ -255,10 +221,9 @@ private slots:
         QVERIFY2(run.has(900001001), "the album is missing from the discography");
     }
 
-    // ArtistPage splits the list on `type` and only falls back to the track
-    // count when there is none, so a type dropped anywhere between the JSON and
-    // the callback would quietly re-file a 4-track EP as an album. Album::type
-    // is what carries it.
+    // ArtistPage splits the list on `type` and falls back to the track count
+    // only when there is none. Album::type has to survive the parse, or a
+    // 4-track EP is filed as an album.
     void theReleaseTypeSurvivesTheParse() {
         FakeApi api;
         seedOneOfEach(api);
@@ -280,10 +245,9 @@ private slots:
         QCOMPARE(ep->numTracks, 4);
     }
 
-    // The last hop before the page. ArtistPage reads `type` off the map
-    // TidalBridge::albumToMap builds, so this and theReleaseTypeSurvivesTheParse
-    // between them cover the whole way from the JSON to the section split - the
-    // QML tests are driven from a stub bridge and cannot see either end of it.
+    // The last hop before the page: ArtistPage reads `type` off the map
+    // TidalBridge::albumToMap builds. The QML tests run on a stub bridge and
+    // cannot see it.
     void theReleaseTypeSurvivesTheHopToQml() {
         Album a;
         a.id        = 900008001;
@@ -299,9 +263,8 @@ private slots:
     // ── one of three failing ─────────────────────────────────────────────────
 
     // An artist with albums and a failed compilations request still has a
-    // discography. ArtistPage reports a failure only when nothing at all
-    // arrived, so handing it an error here would put the "this artist could not
-    // be loaded" panel over a page that loaded.
+    // discography. ArtistPage shows its failure panel only when nothing arrived,
+    // so no error is handed over here.
     void oneFilterFailingKeepsTheOtherTwo() {
         FakeApi api;
         seedOneOfEach(api);
@@ -317,9 +280,7 @@ private slots:
         QVERIFY2(run.has(900001002), "a failed compilations request took the singles with it");
     }
 
-    // The other way round, and the one that matters most: the singles request
-    // is the new one, so it is the one that must not be able to blank a page
-    // that was working before this change.
+    // The other way round: a failed singles request must not blank the albums.
     void aFailedSinglesRequestKeepsTheAlbums() {
         FakeApi api;
         seedOneOfEach(api);
@@ -351,8 +312,8 @@ private slots:
         QCOMPARE(run.err, QStringLiteral("404 Not Found"));
     }
 
-    // An artist Tidal really has nothing filed under is not a failure, and must
-    // not be reported as one - the page draws a different thing for each.
+    // An artist Tidal has nothing filed under is not a failure: the page draws
+    // a different thing for each.
     void anArtistWithNothingIsNotAFailure() {
         FakeApi api;
         TidalClient client{&api};
@@ -401,9 +362,8 @@ private slots:
         QCOMPARE(run.ids(), (QList<qint64>{900001001, 900001002, 900001003, 900001004}));
     }
 
-    // limit=50 and no offset truncated a prolific artist at fifty, and with
-    // three requests that would have been three truncations. Each filter pages
-    // to its own end.
+    // Each filter pages to its own end, so a prolific artist is not cut at the
+    // first fifty.
     void aProlificArtistIsPagedToTheEnd() {
         FakeApi api;
         QList<QJsonObject> many;
@@ -429,9 +389,7 @@ private slots:
         QVERIFY2(run.has(900004001), "paging the albums lost the single");
     }
 
-    // A filter that fails on its second page keeps its first. Losing page one
-    // because page two timed out is the same bug as losing the whole list
-    // because one filter did, one level down.
+    // A filter that fails on its second page keeps its first.
     void aFilterThatFailsHalfwayKeepsWhatItHad() {
         FakeApi api;
         QList<QJsonObject> many;
@@ -475,8 +433,7 @@ private slots:
 
         QCOMPARE(run.replies, 1);
         QCOMPARE(run.albums.size(), 4);
-        // Still albums first: the order is the order the lists are merged in,
-        // not the order the server happened to answer in.
+        // Still albums first: the order is the order the lists are merged in.
         QCOMPARE(run.ids(), (QList<qint64>{900001001, 900001002, 900001003, 900001004}));
     }
 

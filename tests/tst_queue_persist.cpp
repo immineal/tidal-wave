@@ -1,12 +1,8 @@
 // What survives quitting the app, and what must not happen on the way back.
-//
 // The session is stored per Tidal account in the Player's own QSettings:
 // volume, mute, shuffle, repeat, both queue sections, the current track and
-// the position inside it. Two rules carry the whole feature. It comes back
-// paused, because an app that starts making noise the moment it opens is a
-// bug nobody forgives. And a saved track that no longer resolves is stepped
-// over, because the stream has to be fetched again at launch and the
-// catalogue does not stand still.
+// the position inside it. It comes back paused, and a saved track that no
+// longer resolves is stepped over.
 
 #include <QTest>
 #include <QTemporaryDir>
@@ -144,9 +140,8 @@ private slots:
     void initTestCase() {
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_queue_persist"));
-        // Redirect the settings file into a scratch directory as well as
-        // renaming it. Renaming alone keeps the user's own config safe but
-        // still leaves a stray directory in their home after every run.
+        // The settings file is redirected into a scratch directory, so no run
+        // touches or leaves anything in the user's home.
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QVERIFY(m_settingsDir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDir.path());
@@ -176,7 +171,7 @@ private slots:
         QCOMPARE(b.p().repeatMode(), 1);
     }
 
-    // A fresh install restores nothing and must not pretend otherwise.
+    // A fresh install restores nothing.
     void nothingSavedMeansNothingRestored() {
         Launch a;
         QCOMPARE(a.p().queueCount(), 0);
@@ -226,8 +221,8 @@ private slots:
         QCOMPARE(p.contextName(), QStringLiteral("Life 1"));
         QCOMPARE(p.contextType(), QStringLiteral("album"));
 
-        // And it is a working queue, not a snapshot: the manual rows still
-        // drain before the album resumes.
+        // And it is a working queue: the manual rows still drain before the
+        // album resumes.
         QList<qlonglong> order{ currentId(p) };
         for (int i = 0; i < 3; ++i) { p.next(); order.append(currentId(p)); }
         QCOMPARE(order, (QList<qlonglong>{1002, 9001, 9002, 1003}));
@@ -295,10 +290,9 @@ private slots:
         QCOMPARE(b.p().position(), qint64(0));
     }
 
-    // The other half: the row looks fine, and the stream fetch fails anyway
-    // (pulled from the catalogue, region-locked since). That path cannot be
-    // reached from a test without a network, so the handler it ends in is
-    // called directly.
+    // The row looks fine and the stream fetch fails anyway, for a track pulled
+    // from the catalogue or region-locked. That path needs a network, so the
+    // handler it ends in is called directly.
     void aStreamThatWillNotResolveIsSteppedOverNotReported() {
         {
             Launch a;
@@ -462,12 +456,9 @@ private slots:
 
     // ── a stale or enormous queue must not slow the launch ──────────────────
 
-    // Both halves of the bill: what quitting costs, and what the next launch
-    // costs. The window around the cursor is capped, so a 5000-row playlist
-    // cannot turn either into something the user notices. Measured at ~15ms to
-    // save and ~5ms to come back here; the ceiling sits far enough above that
-    // a loaded machine will not trip it and far enough below the uncapped cost
-    // (hundreds of ms, and a settings file megabytes wide) to still catch it.
+    // What quitting costs and what the next launch costs. The window around the
+    // cursor is capped, so a 5000-row playlist stays cheap at both ends. The
+    // ceiling is far above the capped cost and far below the uncapped one.
     void anEnormousQueueCostsNeitherEndAnythingNoticeable() {
         constexpr int kHuge = 5000;
         constexpr qint64 kCeilingMs = 250;

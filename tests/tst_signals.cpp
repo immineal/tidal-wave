@@ -1,58 +1,9 @@
-// A logout must not cost the user their session, or leave a track in /tmp.
-//
-// The app installed no signal handler at all, so SIGTERM - what a KDE logout,
-// a `systemctl reboot` and a `kill` all send - killed the process where it
-// stood. Nothing unwound. ~Player never ran, so the session was never saved,
-// and the temp file holding the track being played was left behind, because
-// autoRemove is off on it (it has to outlive the QTemporaryFile while
-// QMediaPlayer holds it open; see the note in ~Player). On the machine this
-// was found on, 33 of those had piled up over four days.
-//
-// ── What this file refuses to test ──────────────────────────────────────
-//
-// That a handler is installed. That assertion would pass against a handler
-// that calls qApp->quit() from inside the signal - the obvious wrong
-// implementation, since a handler may only call async-signal-safe functions -
-// and against one that never reaches the event loop at all.
-//
-// So the test starts a real process, signals that exact pid, and then looks
-// at what the process left on disk: the temp media file must be gone and the
-// session must be in the settings. Both are things only ~Player does, and
-// ~Player only runs if the signal became an ordinary quit.
-//
-// ── How the child is real ───────────────────────────────────────────────
-//
-// The child is this same binary re-executed with --child. It builds the
-// production wiring and reimplements none of it:
-//
-//   * a real Application, and its real installSignalHandlers(), which is the
-//     same call run() makes and which connects the real SignalWatcher to the
-//     real Application::quit();
-//   * a real Player, parented to that Application exactly as run() parents
-//     it, so the destructor the test is about is reached the same way;
-//   * a real temp media file, made by the shipped code at Player.cpp's BTS
-//     branch - not planted by the test. The only thing stubbed is where the
-//     stream manifest comes from: TidalClient::fetchStreamManifest is
-//     overridden to name a localhost URL, and everything downstream of it -
-//     fetchRaw, the QTemporaryFile, setAutoRemove(false) - is the shipped
-//     path. Nothing here touches an account or the network.
-//
-// NOTHING HERE MAKES A SOUND. The bytes served are not audio, so QMediaPlayer
-// reaches InvalidMedia and never decodes, and the player is muted besides.
-// The temp file is created before the media is handed over, which is why an
-// unplayable body still exercises the leak.
-//
-// ── Why the saved-session half cannot pass by accident ──────────────────
-//
-// Player also saves on a 1.5 s debounce, which would write the session with
-// or without a signal handler. So the child waits well past that, then clears
-// the settings and goes quiet, and the parent checks the settings really are
-// empty before it signals. After that only ~Player can put anything there.
-//
-// ── Killing ─────────────────────────────────────────────────────────────
-//
-// Only ever ::kill(child.processId(), ...), the pid this test itself started.
-// Never by name: a pkill in a test here once killed another agent's run.
+// A SIGTERM, SIGINT or SIGHUP must become an ordinary quit: the session is
+// saved and the temp media file is removed, both of which only ~Player does.
+// The child is this binary re-executed with --child. It runs the real
+// Application, signal handlers and Player; only the stream manifest is stubbed
+// to a localhost URL. The bytes served are not audio and the player is muted.
+// Signals go only to the pid this test started, never by name.
 
 #include <QTest>
 #include <QApplication>
@@ -86,7 +37,7 @@
 
 namespace {
 
-// Invented, of the right shape, and nothing of the owner's in here.
+// Invented values.
 constexpr qint64   kUser       = 7731;
 constexpr qlonglong kTrackBase = 55500001;
 constexpr double   kVolume     = 0.37;
@@ -104,9 +55,7 @@ constexpr int kChildSetupTimeoutMs = 25000;
 constexpr int kChildWatchdogMs     = 120000;
 
 // ── a localhost origin for the media bytes ───────────────────────────────
-// The same shape as tst_stream_timeout.cpp's server, trimmed to one body for
-// every path, because here the point is only that a real fetch lands a real
-// file on disk.
+// One body for every path: a real fetch only has to land a real file on disk.
 class MediaServer : public QTcpServer {
 public:
     explicit MediaServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -184,9 +133,8 @@ QVariantList inventedQueue(int n)
     return out;
 }
 
-// The one tidal-wave temp file in this child's private temp directory, or an
-// empty string. The directory is the child's own (TMPDIR is set for it), so
-// nothing of the owner's is ever in here.
+// The one tidal-wave temp file in this child's private temp directory (its
+// TMPDIR), or an empty string.
 QString soleTempMediaFile()
 {
     const QStringList hits =
@@ -245,13 +193,9 @@ int runChild(int argc, char **argv)
     // so the destructor under test is reached by the production route.
     auto *player = new Player(&client, &appObj);
 
-    // Driven from a timer and not from here. Player defers its audio init by
-    // one turn of the event loop, and loadAndPlay() is `if (!m_player) return`
-    // until the QMediaPlayer that init makes exists - so a playTracks() called
-    // straight after the constructor is silently dropped, no stream is ever
-    // fetched, and no temp file is ever made. That is exactly the fixture that
-    // cannot express the bug, and it is what the child's own check for a temp
-    // file caught the first time this test was run.
+    // Driven from a timer: Player defers its audio init by one turn of the
+    // event loop, and a playTracks() called before that is silently dropped,
+    // so no temp file would ever be made.
     QTimer::singleShot(150, player, [player] {
         player->setMuted(true);
         player->setVolume(kVolume);
@@ -261,9 +205,8 @@ int runChild(int argc, char **argv)
         player->playTracks(inventedQueue(5), 0);
     });
 
-    // Take itself out if nobody ever signals it, rather than being left
-    // behind. _exit() and not quit(): an orphan must not tidy up after
-    // itself, or a test that failed to signal would look like one that did.
+    // Take itself out through _exit() if nobody ever signals it: an orphan
+    // that tidied up with quit() would look like a child that was signalled.
     QTimer::singleShot(kChildWatchdogMs, qApp, [] { ::_exit(97); });
 
     // Wait for the shipped code to put a temp file on disk, then go quiet
@@ -308,17 +251,15 @@ class TestSignals : public QObject {
 private slots:
     void cleanup() { stopChild(); }
 
-    // The whole point of the exercise, in one run: a SIGTERM to a live
-    // process leaves no temp file behind and the session on disk.
+    // A SIGTERM to a live process leaves no temp file behind and the session
+    // on disk.
     void sigtermLeavesNoTempFileAndSavesTheSession()
     {
         QString why;
         QVERIFY2(startChildAndWaitForReady(&why), qPrintable(why));
 
-        // Pre-conditions, so a green here cannot be a fixture that never
-        // reached the bug: there is a real temp file, and there is no saved
-        // session to be confused with the one the destructor is about to
-        // write.
+        // Pre-conditions: there is a real temp file, and there is no saved
+        // session that could be mistaken for the one the destructor writes.
         QVERIFY2(QFile::exists(m_mediaPath),
                  qPrintable(QStringLiteral("the child reported %1 but it is not there")
                                 .arg(m_mediaPath)));
@@ -332,8 +273,7 @@ private slots:
         QVERIFY2(m_child->waitForFinished(15000),
                  "the process did not finish after SIGTERM - a shutdown that "
                  "hangs hangs the user's logout");
-        // The two effects first, so a failure names what the user lost rather
-        // than how the process happened to die.
+        // The two effects first, so a failure names what the user lost.
         QVERIFY2(!QFile::exists(m_mediaPath),
                  qPrintable(QStringLiteral("the temp media file survived SIGTERM: %1")
                                 .arg(m_mediaPath)));
@@ -346,14 +286,13 @@ private slots:
         QCOMPARE(savedValue(prefix + QStringLiteral("sourceName")).toString(),
                  QStringLiteral("Album"));
 
-        // And it got there by quitting, not by being killed.
+        // And the process exited normally.
         QCOMPARE(m_child->exitStatus(), QProcess::NormalExit);
         QCOMPARE(m_child->exitCode(), 0);
     }
 
-    // Ctrl-C in a terminal, and the hang-up a session or a terminal going away
-    // sends, are the same request and have to take the same path. Both default
-    // to terminating the process, so each one leaked a temp file of its own.
+    // Ctrl-C in a terminal and the hang-up of a session going away are the
+    // same request and take the same path.
     void aTerminalSignalTakesTheSameCleanPath_data()
     {
         QTest::addColumn<int>("sig");
@@ -377,13 +316,9 @@ private slots:
         QCOMPARE(m_child->exitCode(), 0);
     }
 
-    // A handler that swallowed every SIGTERM would be worse than no handler:
-    // the logout manager sends one, waits, sends another, and a process that
-    // ignores both holds the whole logout up. The handlers are installed with
-    // SA_RESETHAND, so the second one gets the default disposition. What is
-    // asserted here is only that the process goes away promptly - whether it
-    // got there by finishing the clean quit first or by being killed by the
-    // second signal is a race, and either outcome is correct.
+    // A logout manager sends SIGTERM, waits and sends another. The handlers are
+    // installed with SA_RESETHAND, so the second gets the default disposition.
+    // Asserted: the process goes away promptly, by either route.
     void aSecondSignalCannotWedgeTheShutdown()
     {
         QString why;
@@ -419,10 +354,10 @@ private:
         const QString readyPath = m_tmpDir->filePath(QStringLiteral("ready"));
 
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        // So QDir::tempPath() in the child is a directory of its own and the
-        // temp media file can never be anywhere near the owner's /tmp.
+        // QDir::tempPath() in the child is a directory of its own, far from
+        // the real /tmp.
         env.insert(QStringLiteral("TMPDIR"), m_tmpDir->path());
-        // Never a window on the owner's screen, whatever ctest was given.
+        // Never a window on the real screen, whatever ctest was given.
         env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
 
         m_child = std::make_unique<QProcess>();
@@ -465,8 +400,7 @@ private:
             return false;
         }
         if (lines.first().contains(QStringLiteral("not-installed"))) {
-            // Said plainly rather than left to show up as a leak: on a
-            // platform with no POSIX signals there is nothing to assert.
+            // On a platform with no POSIX signals there is nothing to assert.
             *why = QStringLiteral("Application::installSignalHandlers() returned false");
             return false;
         }

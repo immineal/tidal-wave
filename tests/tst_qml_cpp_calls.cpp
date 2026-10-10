@@ -1,30 +1,8 @@
-// Every C++ method qml/ calls has to be callable from QML.
-//
-// Written after the third report of "the pins still don't move". The cause was
-// one missing Q_INVOKABLE: SideBar.qml's endPinDrag() calls
-// pins.indexOf(kind, id) to turn the row indices the gesture was made in into
-// PinStore indices, and PinStore::indexOf was a plain public C++ method. QML
-// cannot see those, so both lookups came back `undefined`, the
-// `fromPin === toPin` guard passed on `undefined === undefined`, and the
-// function returned before pins.move(). The drop indicator was always correct,
-// which is why two rounds of fixing the *geometry* found real bugs and changed
-// nothing the user could see.
-//
-// It survived two fixes and a full QML suite because tests/TestStubs.h declares
-// its own indexOf as Q_INVOKABLE. Every QML test therefore drove a stub that
-// was strictly more capable than the shipping class: the call worked in the
-// tests and only in the tests. No fixture in the repo could express the bug,
-// which is the same shape as the three other fixture defects found this week.
-//
-// So this test deliberately does not use the stubs. It reads qml/ and asks the
-// *real* meta-objects, which is the only place the two can be compared.
-//
-// It is a name check, not a signature check: moc records a method's name and
-// its parameter types, and a QML call site gives neither reliably (a count at
-// best, since arguments can be any expression). A name that exists at all is
-// what separates "QML can reach this" from "QML gets undefined", and that is
-// the failure this is here to stop. An arity or type mismatch is a different
-// bug with a loud runtime error; this one is silent.
+// Every C++ method qml/ calls has to be callable from QML. A plain public
+// method is invisible there: the call yields `undefined` and silently does
+// nothing. This test does not use the stubs. It reads qml/ and asks the real
+// meta-objects. It checks names only: a call site gives no reliable signature,
+// and an arity or type mismatch already fails loudly at runtime.
 
 #include <QTest>
 #include <QMetaObject>
@@ -47,10 +25,9 @@
 
 namespace {
 
-// Everything reachable on an instance from QML: invokables and slots (both are
-// in the method table), signals, and property accessors - a QML call like
-// prefs.something() can also be a property holding a function, and a property's
-// own name is reachable, so they count as present rather than missing.
+// Everything reachable on an instance from QML: invokables, slots, signals and
+// properties. A call like prefs.something() can be a property holding a
+// function, so property names count as present.
 QSet<QString> qmlReachableNames(const QMetaObject *mo)
 {
     QSet<QString> names;
@@ -78,11 +55,9 @@ class TestQmlCppCalls : public QObject
     Q_OBJECT
 
 private slots:
-    // The names qml/ uses for our C++ objects, paired with the types actually
-    // registered under them. Adding a context property or singleton without
-    // adding it here means its calls go unchecked, so the list is asserted to
-    // be non-empty and every entry is required to be found in at least one
-    // file - a typo here would otherwise quietly check nothing.
+    // The names qml/ uses for the C++ objects, paired with the types registered
+    // under them. A context property or singleton missing here goes unchecked.
+    // Every row must match at least one call, so a typo cannot check nothing.
     void everyCallFromQmlIsReachable_data()
     {
         QTest::addColumn<QString>("objectName");
@@ -94,9 +69,8 @@ private slots:
         QTest::newRow("bridge")    << "bridge"    << qmlReachableNames(&TidalBridge::staticMetaObject);
         QTest::newRow("prefs")     << "prefs"     << qmlReachableNames(&Prefs::staticMetaObject);
         QTest::newRow("auth")      << "auth"      << qmlReachableNames(&Auth::staticMetaObject);
-        // The C++ QML_SINGLETONs, which qml/ reaches by their type name rather
-        // than by a context-property name. `Theme` is deliberately absent: it
-        // is qml/Theme.qml, not a C++ type, so there is no meta-object to ask.
+        // The C++ QML_SINGLETONs, which qml/ reaches by type name. `Theme` is
+        // absent on purpose: it is qml/Theme.qml and has no C++ meta-object.
         QTest::newRow("Shortcuts")    << "Shortcuts"    << qmlReachableNames(&Shortcuts::staticMetaObject);
         QTest::newRow("ThemePalette") << "ThemePalette" << qmlReachableNames(&ThemePalette::staticMetaObject);
         QTest::newRow("Feedback")     << "Feedback"     << qmlReachableNames(&Feedback::staticMetaObject);
@@ -112,9 +86,8 @@ private slots:
                                            "row cannot fail and is not a test")
                                 .arg(objectName)));
 
-        // `obj.name(` - deliberately not `obj.name` without the paren, because a
-        // property read is legal against anything the meta-object exposes and a
-        // call is not.
+        // Matches `obj.name(`, a call. A plain `obj.name` is not collected: a
+        // property read is legal against anything the meta-object exposes.
         const QRegularExpression call(
             QStringLiteral("\\b%1\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\(").arg(objectName));
 
@@ -141,12 +114,8 @@ private slots:
         }
 
         QVERIFY2(filesScanned > 0, "no .qml files were scanned");
-        // A row that checks nothing is exactly the defect this file exists to
-        // catch, so it fails rather than passing quietly. The first version of
-        // this test had a `shortcuts` row spelled in lower case while qml/ says
-        // `Shortcuts`, so it matched nothing and passed - a vacuous green in the
-        // test written to stop vacuous greens. If a type here genuinely stops
-        // being called from qml/, delete its row deliberately.
+        // A row that matches no call checks nothing, so it fails. If a type
+        // really stops being called from qml/, delete its row.
         QVERIFY2(callsSeen > 0,
                  qPrintable(QStringLiteral(
                      "qml/ makes no %1.*() calls, so this row asserts nothing. "
@@ -163,8 +132,7 @@ private slots:
                                 .arg(objectName, missing.join(QStringLiteral("\n  ")))));
     }
 
-    // The specific one that cost three rounds, pinned by name so the general
-    // check above cannot be weakened without this also going red.
+    // Pinned by name, so the general check above cannot be weakened unnoticed.
     void pinStoreIndexOfIsInvokableFromQml()
     {
         const QSet<QString> names = qmlReachableNames(&PinStore::staticMetaObject);
@@ -178,16 +146,14 @@ private slots:
                  "commit a pin reorder");
     }
 
-    // The stub must not be more capable than the real thing. That asymmetry is
-    // what hid the bug: a QML test proves nothing about a call the shipping
-    // class cannot answer. Checked in the direction that matters - extra
-    // helpers on the real class are harmless, extra ones on the stub are not.
+    // The stub must not be more capable than the real class: a QML test proves
+    // nothing about a call the shipping class cannot answer. Extra helpers on
+    // the real class are harmless.
     void theStubIsNotMoreCapableThanTheRealPinStore()
     {
         const QSet<QString> real = qmlReachableNames(&PinStore::staticMetaObject);
-        // The stub lives in a header the QML tests compile; naming its methods
-        // here rather than including it keeps this binary independent of the
-        // test-stub translation unit. These are the ones SideBar.qml relies on.
+        // Listed by name to keep this binary independent of the stub header.
+        // These are the ones SideBar.qml relies on.
         const QStringList stubExposes{
             QStringLiteral("isPinned"), QStringLiteral("pin"),
             QStringLiteral("unpin"),    QStringLiteral("toggle"),

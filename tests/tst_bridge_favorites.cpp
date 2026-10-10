@@ -1,37 +1,9 @@
 // TidalBridge's own in-memory caches: the lists the interface reads instead of
-// the server.
-//
-// ── why this file was rewritten ──────────────────────────────────────────────
-//
-// It used to hold three cases that could not fail. None of them instantiated a
-// TidalBridge; each built a local QList<Album>, performed by hand what the bridge
-// was supposed to perform, and then asserted that its own two lines had done what
-// its own two lines do. `addMustInsertNotJustSignal` appended an album if its own
-// data column said to and then checked whether the album it had just appended was
-// there. Every one of them stayed green for any possible change to
-// TidalBridge.cpp, including deleting the method under test.
-//
-// The cost of that came due: a playlist the user had just put two songs into went
-// on reporting "0 tracks" everywhere the number is cached, because
-// addTracksToPlaylist told the server and updated nothing, and no test in the tree
-// instantiated the class that was supposed to do the updating.
-//
-// So these cases drive a real TidalBridge. The seam is four `virtual`s on
-// TidalClient - createPlaylist, fetchPlaylist, addTrackToPlaylist and
-// removeTrackFromPlaylist - which is the same arrangement LibraryIndex has had all
-// along behind its six protected virtuals, and FakeClient below answers them from
-// lists this file owns. Nothing here touches the network and nothing here needs a
-// Tidal session.
-//
-// ── what is still not covered, and why ───────────────────────────────────────
-//
-// The album, artist and track favourites the old file was named for. Those paths
-// run through client calls that are not virtual, so there is no way to answer one,
-// and `isAlbumFavorite` cannot be reached after a `addAlbumFavorite` that never
-// comes back. Widening the seam to the whole of TidalClient to cover them is a
-// bigger change than this fix, and it is recorded rather than half-done: the three
-// cases that claimed to cover them are gone, because a green that cannot fail is
-// worse than an absence anybody can see.
+// the server. These cases drive a real TidalBridge. The seam is the virtuals
+// on TidalClient that FakeClient below answers from lists this file owns, so
+// nothing here touches the network or needs a Tidal session.
+// Not covered: the album, artist and track favourites, whose client calls are
+// not virtual and so cannot be answered.
 
 #include <QTest>
 #include <QSignalSpy>
@@ -46,9 +18,8 @@
 
 using namespace Tidal;
 
-// Every fixture is invented. `addedAt` is passed explicitly wherever a case is
-// about the ordering key, because 0 - "the response carried no date" - is exactly
-// the value that would hide a bug that overwrote it.
+// Every fixture is invented. `addedAt` is passed explicitly: 0, no date on the
+// response, is the value that would hide a bug that overwrote it.
 Playlist mkPlaylist(const QString &uuid, const QString &title, int numTracks,
                     int duration, const QString &image, qint64 addedAt) {
     Playlist p;
@@ -70,10 +41,8 @@ class FakeClient : public TidalClient {
 public:
     FakeClient() : TidalClient(nullptr) {}
 
-    // Readable from JS, so a callback handed to the bridge can record what the
-    // client had been asked for at the moment it was answered. That is the only
-    // way to pin the *order* of the two from out here: the callback is a
-    // QJSValue, so the observation has to be made in script.
+    // Readable from JS, so a callback handed to the bridge can record how many
+    // header reads the client had seen when it was answered.
     Q_INVOKABLE int headerReadsSoFar() const { return headerReads; }
 
     // What the next createPlaylist answers.
@@ -91,8 +60,7 @@ public:
     int createCalls = 0;
     int addCalls    = 0;
     int removeCalls = 0;
-    // The count that matters for the round-trip argument: one per accepted
-    // mutation and none per refused one.
+    // One per accepted mutation and none per refused one.
     int headerReads = 0;
     QStringList headerReadUuids;
 
@@ -140,24 +108,18 @@ public:
     }
 
     // ── the favourite-mix seam ───────────────────────────────────────────
-    //
-    // Three more virtuals, answered from here. The real ones are a v2 PUT and a
-    // `pages/mix` GET; without the seam nothing could reach isMixFavorite()
-    // after an addMixFavorite() that never comes back - which is exactly the
-    // hole this file's header paragraph records for albums and artists.
+    // Three more virtuals, answered from here. The real ones are a v2 PUT and
+    // a `pages/mix` GET.
 
     bool addMixOk    = true;
     bool removeMixOk = true;
     QStringList mixCalls;          // "add:<id>" / "remove:<id>", in order
     // What `pages/mix` answers for the row the bridge re-reads on an accepted
-    // save, per id. An id with no entry answers an error, which is the "the
-    // re-read failed" case - the sidebar gets nothing and the cache still moves.
+    // save, per id. An id with no entry answers an error.
     QHash<QString, Mix> mixHeaders;
     int  mixHeaderReads = 0;
-    // The whole saved list, for the sign-in load. Never reached in this file:
-    // calling setUserId() on a client with a null api would send the four v1
-    // favourites pagers at a null pointer. Overridden anyway, so that a future
-    // case which does seed this way cannot reach the network by accident.
+    // The whole saved list, for the sign-in load. Not reached in this file, and
+    // overridden so that no case can reach the network through it.
     QList<Mix> savedMixes;
 
     void fetchFavoriteMixes(MixesCallback cb) override { cb(savedMixes, QString()); }
@@ -223,9 +185,8 @@ class TestBridgeFavorites : public QObject {
 
 private slots:
     void initTestCase() {
-        // Never the owner's real configuration. The bridge's constructor reads
-        // audio/preferredQuality, and sortPlaylists() would read the stored play
-        // times for a signed-in account.
+        // Never the real configuration: the bridge's constructor reads
+        // audio/preferredQuality, and sortPlaylists() reads stored play times.
         QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_bridge_favorites"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -234,15 +195,10 @@ private slots:
         QStandardPaths::setTestModeEnabled(true);
     }
 
-    // ── the reported bug ────────────────────────────────────────────────────
-    //
-    // "If I create a new playlist and then add two songs to it, the two songs are
-    // in the playlist, but in the add-to-playlist menu it still says the playlist
-    // has zero tracks."
-    //
-    // Driven exactly that way round: create, then add, then read the list the
-    // picker reads. getUserPlaylists() is what TrackRow's picker fills its rows
-    // from, and numTracks is the field it draws.
+    // ── a playlist's cached count ───────────────────────────────────────────
+    // Create, then add, then read the list the picker reads. getUserPlaylists()
+    // is what TrackRow's picker fills its rows from, and numTracks is the field
+    // it draws.
     void addingTracksMovesTheCountThePickerReads() {
         Harness h;
         h.client.created = mkPlaylist(kUuid, QStringLiteral("Tape"), 0, 0, QString(), kJan2026);
@@ -251,9 +207,8 @@ private slots:
         QCOMPARE(rowFor(h.bridge.getUserPlaylists(), kUuid)
                      .value(QStringLiteral("numTracks")).toInt(), 0);
 
-        // Two songs on, and the server's header now says so. 418 seconds is the
-        // pair's combined length; it has to differ from 0 for the duration half
-        // of the assertion to mean anything.
+        // Two songs on, and the server's header now says so. The duration has to
+        // differ from 0 for that half of the assertion to mean anything.
         h.client.headers[kUuid] =
             mkPlaylist(kUuid, QStringLiteral("Tape"), 2, 418,
                        QStringLiteral("mosaic-after-two"), kJan2026);
@@ -271,9 +226,8 @@ private slots:
                     .contains(QStringLiteral("mosaic/after/two")));
     }
 
-    // One accepted mutation, one header read. This is the whole cost of the
-    // chosen fix, and it is asserted rather than described: a version that read
-    // the header on every picker open, or twice per add, would fail here.
+    // One accepted mutation costs one header read. A version that read the
+    // header on every picker open, or twice per add, would fail here.
     void anAcceptedAddCostsExactlyOneHeaderRead() {
         Harness h;
         h.fillOne(0, 0);
@@ -293,7 +247,7 @@ private slots:
         Harness h;
         h.fillOne(5, 900);
         // Set, so that a version which re-read the header anyway would visibly
-        // overwrite the row rather than quietly cost a request.
+        // overwrite the row.
         h.client.headers[kUuid] = mkPlaylist(kUuid, QStringLiteral("Tape"), 6, 1100,
                                              QStringLiteral("img-6"), kJan2026);
         h.client.addOk = false;
@@ -310,8 +264,7 @@ private slots:
                      .value(QStringLiteral("numTracks")).toInt(), 5);
     }
 
-    // The mirror of the add, which had the same bug the other way up: taking a
-    // song off left every cached count one too high.
+    // The mirror of the add: taking a song off moves the cached count down.
     void removingATrackMovesTheCountBackDown() {
         Harness h;
         h.fillOne(3, 700);
@@ -347,17 +300,9 @@ private slots:
     }
 
     // ── the trap ────────────────────────────────────────────────────────────
-    //
-    // `playlists/<uuid>` carries no favourites wrapper, so Playlist::fromJson
-    // falls back to the playlist's own `created` - the original author's date,
-    // which on a followed playlist can be years old. Half the ordering key every
-    // reader of this list uses is max(last played, addedAt), so a merge that
-    // copied it would sink a playlist to the bottom of the library for the crime
-    // of having a song dropped on it. A fork patch did exactly that.
-    //
-    // The fixture is three playlists with distinct dates and the one being added
-    // to in the *middle*, so the assertion can see a row move in either
-    // direction. The header answers an addedAt from 2019, well before all three.
+    // `playlists/<uuid>` has no favourites wrapper, so the header's date is the
+    // author's `created`, which can be years old. Copying it into `addedAt`
+    // would sink the row. The playlist added to sits in the middle of three.
     void aHeaderReadNeverOverwritesTheDateTheRowIsOrderedBy() {
         Harness h;
         h.fill({ mkPlaylist(QStringLiteral("p-new"),  QStringLiteral("Newest"), 4, 800,
@@ -381,9 +326,8 @@ private slots:
                  (QStringList{QStringLiteral("p-new"), kUuid, QStringLiteral("p-old")}));
     }
 
-    // A header the server confirmed unchanged is not a redraw. Four readers
-    // rebuild a grid or a row off this signal, and rebuild() in the sidebar's
-    // copy collates every row in the library.
+    // A header the server confirmed unchanged raises no redraw: several readers
+    // rebuild a grid or a row off this signal.
     void aHeaderThatSaysNothingNewRaisesNoRedraw() {
         Harness h;
         h.fillOne(2, 418);
@@ -395,22 +339,14 @@ private slots:
         h.bridge.addTracksToPlaylist(kUuid, 101, QJSValue());
 
         QCOMPARE(changed.count(), 0);
-        // The hand-across to the sidebar's separate list goes out regardless,
-        // because whether this list holds the row says nothing about whether
-        // that one does - and that one may well be behind.
+        // The hand-across to the sidebar's separate list goes out regardless:
+        // that list may be behind this one.
         QCOMPARE(stats.count(), 1);
     }
 
-    // A re-read that failed is not news about the playlist, and must not write
-    // the parse of an error body into the row.
-    //
-    // Honest about which guard earns this: the uuid check, not the error check.
-    // TidalClient::fetchPlaylist answers an error with a default-constructed
-    // Playlist, so the reply that arrives here has an empty uuid and would be
-    // refused with the `err` test deleted - a mutation that removed it passed, and
-    // no fixture can make it fail without inventing a reply the real client cannot
-    // produce. The case is kept because the behaviour it describes is the one that
-    // matters; the note is here so nobody reads it as cover for the other half.
+    // A re-read that failed must not write the parse of an error body into the
+    // row. The uuid check is the guard that earns this: an error reply arrives
+    // as a default-constructed Playlist with an empty uuid.
     void aFailedHeaderReadLeavesTheRowAlone() {
         Harness h;
         h.fillOne(2, 418);
@@ -428,9 +364,8 @@ private slots:
         QCOMPARE(row.value(QStringLiteral("title")).toString(), QStringLiteral("Tape"));
     }
 
-    // A reply about a different playlist, which is what a mismatched or
-    // truncated response parses to. The row it was asked about must not take the
-    // other playlist's numbers, and neither must anything else.
+    // A reply about a different playlist, as a mismatched response would parse.
+    // The row asked about must not take the other playlist's numbers.
     void aHeaderAboutAnotherPlaylistIsIgnored() {
         Harness h;
         h.fill({ mkPlaylist(kUuid, QStringLiteral("Tape"), 2, 418,
@@ -452,12 +387,8 @@ private slots:
                      .value(QStringLiteral("title")).toString(), QStringLiteral("Tape"));
     }
 
-    // The caller hears the server's answer before the second request even goes
-    // out, so the "Added to …" in the picker is never waiting on the repair.
-    //
-    // Observed from inside a real JS callback, because that is the only place the
-    // order of the two is visible: by the time the test regains control both have
-    // happened.
+    // The caller hears the server's answer before the header request goes out.
+    // Observed from inside a JS callback, the only place the order is visible.
     void theCallerIsAnsweredBeforeTheHeaderIsAskedFor() {
         Harness h;
         h.fillOne(0, 0);
@@ -467,10 +398,8 @@ private slots:
         QJSEngine::setObjectOwnership(&h.client, QJSEngine::CppOwnership);
         h.engine.globalObject().setProperty(QStringLiteral("fakeClient"),
                                             h.engine.newQObject(&h.client));
-        // A plain object held on the global, not `globalThis`: Qt's engine does
-        // not define that name, so assigning through it throws inside the
-        // callback and the probe records nothing - which is how this case first
-        // went red while the code under test was correct.
+        // A plain object held on the global. Qt's engine does not define
+        // `globalThis`, so assigning through it would throw inside the callback.
         QJSValue probe = h.engine.newObject();
         h.engine.globalObject().setProperty(QStringLiteral("probe"), probe);
         QJSValue cb = h.engine.evaluate(
@@ -482,8 +411,7 @@ private slots:
 
         h.bridge.addTracksToPlaylist(kUuid, 101, cb);
 
-        // The probe really ran, so the two assertions under it are about the
-        // bridge and not about an exception nobody saw.
+        // The probe really ran, so the assertions under it are about the bridge.
         QVERIFY(probe.property(QStringLiteral("ok")).isBool());
         QCOMPARE(probe.property(QStringLiteral("ok")).toBool(), true);
         // Nothing had been asked for yet when the picker was told it worked.
@@ -492,11 +420,8 @@ private slots:
         QCOMPARE(h.client.headerReads, 1);
     }
 
-    // The count is never written on the strength of the post alone. A version
-    // that added one to what it already held - which is wrong anyway, because the
-    // post sends onDuplicateFound=SKIP and a song already on the playlist is
-    // accepted without being added - would move the row here, with the header
-    // request still unanswered.
+    // The count is not written on the strength of the post alone: the post
+    // sends onDuplicateFound=SKIP, so an accepted add may have added nothing.
     void theCacheIsNotWrittenUntilTheHeaderAnswers() {
         Harness h;
         h.fillOne(0, 0);
@@ -515,10 +440,8 @@ private slots:
     }
 
     // ── the merge rule on its own ───────────────────────────────────────────
-    //
-    // mergePlaylistMeta is the one function both caches run, so the field list
-    // and the exclusions are pinned here field by field rather than inferred from
-    // the two call sites.
+    // mergePlaylistMeta is the one function both caches run, so its field list
+    // and exclusions are pinned here.
     void theMergeWritesFourFieldsAndRefusesTheRest() {
         Playlist dst = mkPlaylist(kUuid, QStringLiteral("Old name"), 2, 418,
                                   QStringLiteral("img-old"), daysAfterJan(20));
@@ -552,10 +475,8 @@ private slots:
         QCOMPARE(dst.addedAt, daysAfterJan(20));
     }
 
-    // Emptying a playlist really does take it back to no tracks, no length and
-    // no mosaic, so those three are written even when the new value is the empty
-    // one. A merge that skipped empties would leave the last cover on a playlist
-    // with nothing in it.
+    // Emptying a playlist takes it back to no tracks, no length and no mosaic,
+    // so those three are written even when the new value is the empty one.
     void theMergeWritesTheEmptyCaseForTheThreeFieldsItDescribes() {
         Playlist dst = mkPlaylist(kUuid, QStringLiteral("Tape"), 1, 200,
                                   QStringLiteral("img"), daysAfterJan(20));
@@ -567,10 +488,8 @@ private slots:
         QVERIFY(dst.image.isEmpty());
     }
 
-    // The title is the exception, and for a reason that is not symmetry: Tidal
-    // will not hold a nameless playlist, so "" is never a fact about one - it is
-    // a reply that did not parse. Blanking the label would leave a row nobody
-    // can identify.
+    // The title is the exception: Tidal will not hold a nameless playlist, so
+    // "" is a reply that did not parse, and the label is kept.
     void theMergeRefusesToBlankTheTitle() {
         Playlist dst = mkPlaylist(kUuid, QStringLiteral("Tape"), 2, 418,
                                   QStringLiteral("img"), daysAfterJan(20));
@@ -582,19 +501,9 @@ private slots:
     }
 
     // ── saving and unsaving a mix ───────────────────────────────────────
-    //
-    // The owner's longest-standing complaint, at the layer that answers "is this
-    // saved": a track radio arrived in the sidebar from another device, opened on
-    // MixPage, and had no way to be unsaved - and no way to be saved either,
-    // because "Start radio" opened a different page with no mix id on it.
-    //
-    // The pill reads its state back out of isMixFavorite(), so if the cache does
-    // not move on an accepted save the pill goes on saying "Save" over a mix that
-    // is now in the library. That is the gap addAlbumFavorite was fixed for, and
-    // these cases are here so the mix never has it.
-    //
-    // Every id is invented, at the shape a real one has: 30 lowercase hex
-    // characters. None of the owner's is in this file.
+    // The pill reads its state back out of isMixFavorite(), so the cache has to
+    // move on an accepted save and stay put on a refused one. Every id is
+    // invented, at the shape of a real one: 30 lowercase hex characters.
 
     void aMixIsNotSavedUntilItIsSaved() {
         Harness h;
@@ -642,8 +551,7 @@ private slots:
                  "the server accepted the removal and the pill still reads Saved");
         QCOMPARE(h.client.mixCalls.last(), QStringLiteral("remove:") + kMixId);
         // The sidebar keeps its own copy of the library and hears nothing from
-        // favoriteMixesChanged, so this is the signal that takes the row out of
-        // it. Before the pill existed, a mix could only ever arrive there.
+        // favoriteMixesChanged, so this signal is what takes the row out of it.
         QCOMPARE(gone.count(), 1);
         QCOMPARE(gone.first().at(0).toString(), QStringLiteral("mix"));
         QCOMPARE(gone.first().at(1).toString(), kMixId);
@@ -665,9 +573,9 @@ private slots:
         QCOMPARE(gone.count(), 0);
     }
 
-    // The sidebar's half. It holds a separate list from the bridge's set, so the
-    // row has to be handed across - and the bridge is given an id and nothing
-    // else, so it re-reads the mix to have a titled row to send.
+    // The sidebar's half. It holds a separate list, so the row is handed across.
+    // The bridge is given only an id, so it re-reads the mix to have a titled
+    // row to send.
     void anAcceptedSaveHandsTheRowToTheSidebar() {
         Harness h;
         Mix radio;
@@ -689,8 +597,8 @@ private slots:
         QCOMPARE(handed.first().mixType, QStringLiteral("TRACK_MIX"));
     }
 
-    // A re-read that fails must not cost the save. The cache has already moved -
-    // the server said yes - and the sidebar catches up at the next sign-in.
+    // A re-read that fails must not cost the save: the server said yes, and the
+    // sidebar catches up at the next sign-in.
     void aFailedRereadStillLeavesTheMixSaved() {
         Harness h;                       // no entry in mixHeaders: 404
         int handed = 0;
@@ -713,8 +621,8 @@ private slots:
         QCOMPARE(h.client.mixHeaderReads, 0);
     }
 
-    // An empty id never reaches the network, and still answers its callback -
-    // dropping it would leave the pill waiting forever.
+    // An empty id never reaches the network and still answers its callback, or
+    // the pill would wait forever.
     void anEmptyMixIdIsRefusedWithoutACall() {
         Harness h;
         const auto add = h.answerSlot();
@@ -731,17 +639,9 @@ private slots:
     }
 
     // ── the map QML reads a track out of ────────────────────────────────
-    //
-    // The link nothing else can see. TrackRow decides between the two viewers on
-    // `trackData.trackMixId`, and `trackData` is the map TidalBridge::trackToMap
-    // builds - but every QML test drives the stub bridge, which assembles its own
-    // maps from fixtures. So a trackToMap that stopped carrying the field would
-    // leave the whole of "Start radio opens the mix" green and dead: proved by
-    // blanking it, which fails nothing in tests/qml.
-    //
-    // Read back through fetchMixPage, which is the one bridge call this file's
-    // FakeClient can answer with tracks, and out of script, because the map only
-    // exists as a QJSValue.
+    // TrackRow chooses its viewer on `trackData.trackMixId`, a field of the map
+    // TidalBridge::trackToMap builds. The QML tests drive the stub bridge, so
+    // this is the only test of the real map. Read back through fetchMixPage.
     void theTrackMapCarriesTheRadiosMixId() {
         Harness h;
         Mix header;
@@ -769,19 +669,14 @@ private slots:
         h.bridge.fetchMixPage(kMixId, cb);
 
         QCOMPARE(seen.property(QStringLiteral("first")).toString(), kMixId);
-        // And a track whose payload said nothing hands QML an empty string, not
-        // "undefined" or a 0 - that is the value TrackRow's fallback turns on.
+        // A track whose payload said nothing hands QML an empty string, the
+        // value TrackRow's fallback turns on.
         QCOMPARE(seen.property(QStringLiteral("second")).toString(), QString());
     }
 
     // ── which mix a track's radio is ────────────────────────────────────
-    //
-    // The lookup TrackRow falls back on when the row's own payload did not name
-    // the mix - which is every row whose endpoint turns out not to carry
-    // `mixes`, and that was deliberately not established. The two answers go
-    // back in a fixed order, (mixId, error); swapped, every lookup would read
-    // as a refusal with the mix id as its reason and the fix would silently
-    // stop working.
+    // The lookup TrackRow falls back on when the row's payload did not name the
+    // mix. The two answers go back in a fixed order, (mixId, error).
     void theLookupAnswersTheMixIdThenTheError() {
         Harness h;
         Track t;
@@ -804,8 +699,8 @@ private slots:
         QCOMPARE(seen.property(QStringLiteral("err")).toString(), QString());
     }
 
-    // A track Tidal serves and builds no station for: "" and no error. Both of
-    // the caller's fallbacks hang off telling this apart from a failure.
+    // A track Tidal serves and builds no station for: "" and no error, which
+    // the caller must tell apart from a failure.
     void aTrackWithNoRadioAnswersAnEmptyIdAndNoError() {
         Harness h;
         Track t;
@@ -839,8 +734,7 @@ private slots:
     }
 
     // A row with no usable track id must not reach the network, and must still
-    // answer - a dropped callback would leave the menu press doing nothing at
-    // all, which is the failure mode this whole fix is about.
+    // answer its callback.
     void anImpossibleTrackIdIsAnsweredWithoutACall() {
         Harness h;
         QJSValue seen = h.engine.newObject();
@@ -859,16 +753,13 @@ private slots:
 private:
     static constexpr qint64 kDay      = 24LL * 60 * 60 * 1000;
     static constexpr qint64 kJan2026  = 1767225600000LL;   // 2026-01-01T00:00:00Z
-    // The "original author created this years ago" date the header really does
-    // carry for a followed playlist.
+    // An author's creation date, as the header carries for a followed playlist.
     static constexpr qint64 kAuthored2019 = 1546300800000LL; // 2019-01-01T00:00:00Z
     static qint64 daysAfterJan(int days) { return kJan2026 + days * kDay; }
 
-    // A bridge whose cache can be filled, which needs a JS engine: the only way
-    // a row enters m_favoritePlaylists without a Tidal session is createPlaylist,
-    // and that one hands the row back through qjsEngine(this). The engine is not
-    // otherwise used - every callback below is a default QJSValue, which
-    // TidalBridge::call() skips as not callable.
+    // A bridge whose cache can be filled. That needs a JS engine: without a
+    // Tidal session a row only enters m_favoritePlaylists through
+    // createPlaylist, which hands it back through qjsEngine(this).
     struct Harness {
         QJSEngine   engine;
         FakeClient  client;
@@ -887,13 +778,9 @@ private:
                               kJan2026) });
         }
 
-        // What QML was told, recorded in script.
-        //
-        // The callbacks these methods take are QJSValues, so the only place the
-        // answer can be observed is inside the engine. `seen` is separate from
-        // `ok` on purpose: "the callback was never called" and "the callback was
-        // called with false" are different bugs, and a single bool could not tell
-        // a dropped reply from a refusal.
+        // What QML was told, recorded in script, the only place a QJSValue
+        // callback can be observed. `seen` is separate from `ok`: a dropped
+        // reply and a refusal are different bugs.
         struct Answer {
             QJSValue fn;
             QJSValue holder;

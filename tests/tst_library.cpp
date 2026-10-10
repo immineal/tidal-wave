@@ -1,25 +1,9 @@
-// LibraryIndex: the flat sidebar library and the search over it
-// (spec S1 to S6, plus P5 for the pinned entries). S7, result expansion, was
-// withdrawn by the user; the case below named for it is the one that keeps it
-// from coming back.
-//
-// The ordering S2 described - pinned, then recently played, then A-Z - is gone
-// too. The A-Z tier put an album the user had just saved at alphabetical
-// position 589 of 971, which they could not tell from its not being saved, so
-// there is now one list under the pinned block, ordered by the most recent of
-// (last played, date added). The cases under "one list, newest first" below are
-// that rule; the fixtures that carry no dates at all still come out A-Z, because
-// collation is the tie-break.
-//
-// Written before LibraryIndex.cpp. The interesting cases are the ones the live
-// API made expensive to reach: paging that has to terminate even when the
-// server keeps handing back the same page, and a background tracklist index
-// that has to answer searches correctly while it is still half built.
-//
-// Nothing here touches the network. LibraryIndex keeps every request behind a
-// protected virtual, and TestLibrary below overrides all six of them with
-// lists the test owns, so a run needs no Tidal session and no event loop
-// beyond the zero-timer the indexer yields on.
+// LibraryIndex: the flat sidebar library and the search over it. Under the
+// pinned block there is one list, ordered by the most recent of last played
+// and date added, with collation as the tie-break.
+// Nothing here touches the network: TestLibrary overrides the six protected
+// request virtuals with lists the test owns, so a run needs only the zero
+// timer the indexer yields on.
 
 #include <QTest>
 #include <QDir>
@@ -39,10 +23,8 @@ using namespace Tidal;
 
 namespace {
 
-// `addedAt` defaults to 0 - "no date on the response" - which is what most of
-// these fixtures want: with no dates anywhere, the ordering falls through to the
-// collation tie-break and the expectations stay readable. The cases that are
-// about the date pass one in.
+// `addedAt` defaults to 0, no date on the response. With no dates anywhere the
+// order falls through to the collation tie-break.
 Artist mkArtist(qint64 id, const QString &name, qint64 addedAt = 0) {
     Artist a; a.id = id; a.name = name; a.picture = QStringLiteral("pic-%1").arg(id);
     a.addedAt = addedAt;
@@ -101,8 +83,7 @@ int indexOfKey(const QVariantList &rows, const QString &key) {
     return keysOf(rows).indexOf(key);
 }
 
-// What LibraryIndex has actually written down for this account, so a test can
-// say "and nothing was stored" as well as "and the order changed".
+// What LibraryIndex has written to QSettings for this account.
 QVariantMap storedRecents(qint64 uid) {
     QSettings settings;
     const QJsonDocument doc = QJsonDocument::fromJson(
@@ -208,25 +189,9 @@ private slots:
         QVERIFY(m_dir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
 
-        // LibraryIndex also caches album tracklists under AppDataLocation, so
-        // that has to move somewhere disposable: a test run must not read or
-        // overwrite the real install's cache.
-        //
-        // This was done by pointing HOME, XDG_DATA_HOME, XDG_CACHE_HOME and the
-        // two Windows variables at the temporary directory, which only ever
-        // worked on Linux. On the first macOS run it aborted this whole binary in
-        // initTestCase: QStandardPaths there does not read XDG_DATA_HOME at all,
-        // AppDataLocation stayed in the real ~/Library/Application Support, and
-        // the assertion below failed before a single test ran.
-        //
-        // setTestModeEnabled() is the mechanism Qt provides for exactly this and
-        // it is honoured on every platform. It roots the standard locations at
-        // QDir::homePath() + "/.qttest", which is why HOME is still set: on both
-        // Linux and macOS that is what QDir::homePath() reads, so it is what
-        // keeps the cache inside the temporary directory instead of in the
-        // developer's home. The XDG_* and Windows variables are gone rather than
-        // kept alongside, because test mode ignores them and leaving them here
-        // would go on suggesting they were the thing doing the isolating.
+        // LibraryIndex caches album tracklists under AppDataLocation, and a run
+        // must not touch the real cache. Test mode works on every platform and
+        // roots the paths at QDir::homePath() + "/.qttest", so HOME moves too.
         QStandardPaths::setTestModeEnabled(true);
         qputenv("HOME", m_dir.path().toUtf8());
         const QString appData =
@@ -256,9 +221,8 @@ private slots:
 
     // ── one list, newest first, under the pinned block ───────────────────
 
-    // With no dates on the fixture at all, the list is the play times and then
-    // the collation tie-break - which is the old three-tier output, and is here
-    // to show that taking the A-Z tier out did not disturb it.
+    // With no dates on the fixture, the list is the play times and then the
+    // collation tie-break.
     void pinnedThenPlayedThenTheRest() {
         PinStore pins;
         pins.setUserId(kUser);
@@ -292,8 +256,7 @@ private slots:
         QCOMPARE(rowFor(lib.entries(), QStringLiteral("artist:21")).value(QStringLiteral("lastPlayed")).toLongLong(), 0LL);
     }
 
-    // "Ärzte" belongs with the As, not after Z, and case must not matter.
-    // That is QCollator's job, not QString::compare's.
+    // "Ärzte" sorts with the As and case does not matter, which takes QCollator.
     void alphabeticalOrderIsCollatedNotByteWise() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -309,7 +272,7 @@ private slots:
             QStringLiteral("Örsted"), QStringLiteral("Zero 7")}));
     }
 
-    // P5: a pinned entry lives in the pinned block and nowhere else.
+    // A pinned entry lives in the pinned block and nowhere else.
     void aPinnedEntryAppearsExactlyOnce() {
         PinStore pins;
         pins.setUserId(kUser);
@@ -340,7 +303,7 @@ private slots:
         QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("playlist:p-morning"));
     }
 
-    // ── paging (S3): the reported "new playlists never show up" bug ──────
+    // ── paging ───────────────────────────────────────────────────────────
 
     void pagingAssemblesEveryPage() {
         PinStore pins; pins.setUserId(kUser);
@@ -388,7 +351,7 @@ private slots:
         QVERIFY(lib.playlistRequests < LibraryIndex::maxPages);
     }
 
-    // ── recently played is local (S4) ────────────────────────────────────
+    // ── recently played is local ─────────────────────────────────────────
 
     void markPlayedReordersAndPersists() {
         PinStore pins; pins.setUserId(kUser);
@@ -403,7 +366,7 @@ private slots:
             QVERIFY(spy.count() >= 1);
             QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("mix:m1"));
 
-            // All four kinds get a local timestamp, not just playlists.
+            // All four kinds get a local timestamp.
             lib.markPlayed(QStringLiteral("artist"), QStringLiteral("21"));
             QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("artist:21"));
             QCOMPARE(keysOf(lib.entries()).at(1), QStringLiteral("mix:m1"));
@@ -455,7 +418,7 @@ private slots:
         QVERIFY(keysOf(second.entries()).first() != QStringLiteral("mix:m1"));
     }
 
-    // ── search (S5, S6) ────────────────────────────────────────────────
+    // ── search ─────────────────────────────────────────────────────────
 
     void searchIgnoresCaseAndAccents() {
         PinStore pins; pins.setUserId(kUser);
@@ -541,9 +504,7 @@ private slots:
         QVERIFY(lib.search(QStringLiteral("love"), {QStringLiteral("podcast")}).isEmpty());
     }
 
-    // S7 is withdrawn. The user saw the greyed, indented rows it produced,
-    // asked what they were, and said to drop the whole idea: a result is now
-    // only ever something whose own title was typed.
+    // A result is only ever something whose own title was typed.
     void searchingAnArtistNoLongerDragsInTheirAlbumsAndSongs() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -558,11 +519,11 @@ private slots:
         const QStringList artistHit = keysOf(lib.search(QStringLiteral("portishead"), {}));
         QCOMPARE(artistHit, QStringList{QStringLiteral("artist:21")});
 
-        // And the other direction: a song no longer brings its album along.
+        // And the other direction: a song does not bring its album along.
         const QStringList songHit = keysOf(lib.search(QStringLiteral("bachelorette"), {}));
         QCOMPARE(songHit, QStringList{QStringLiteral("track:503")});
 
-        // No row carries the flags the expansion used to set.
+        // No row carries an expansion flag.
         for (const QVariant &v : lib.search(QStringLiteral("glory"), {})) {
             const QVariantMap row = v.toMap();
             QVERIFY(!row.contains(QStringLiteral("expanded")));
@@ -570,7 +531,7 @@ private slots:
         }
     }
 
-    // ── what "most relevant" means (S5) ──────────────────────────────────
+    // ── what "most relevant" means ───────────────────────────────────────
 
     // Type a name that is an artist, one of their albums, a playlist about
     // them and a song on that album, and the artist is what was meant.
@@ -608,9 +569,8 @@ private slots:
     }
 
     // Three albums whose titles are the same length and begin with the same
-    // word, so nothing but the user's own history can separate them. The
-    // sidebar list is ordered pinned, then recently played, then the rest
-    // (S2); the search agrees with it.
+    // word, so only the user's own history can separate them. The search
+    // orders them as the sidebar does: pinned, then recently played.
     void amongEquallyGoodMatchesThePinnedAndRecentlyPlayedComeFirst() {
         PinStore pins; pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"), QStringLiteral("310"),
@@ -630,9 +590,8 @@ private slots:
                                               QStringLiteral("Blue Train"),
                                               QStringLiteral("Blue Horse")}));
 
-        // ...but only among equals. "Deep Blue" is pinned too and still comes
-        // last, because the query is not where its title starts. Pinning
-        // breaks ties; it does not override what was typed.
+        // Only among equals: "Deep Blue" is pinned too and still comes last,
+        // because the query is not where its title starts.
         QCOMPARE(hits.last(), QStringLiteral("Deep Blue"));
     }
 
@@ -652,7 +611,7 @@ private slots:
                                     QStringLiteral("Ocean Drive")})); // only indexed
     }
 
-    // ── the lazy album tracklist index (S6) ──────────────────────────────
+    // ── the lazy album tracklist index ───────────────────────────────────
 
     void searchingDuringIncompleteIndexingWorks() {
         PinStore pins; pins.setUserId(kUser);
@@ -791,9 +750,8 @@ private slots:
         QVERIFY(lib.entries().isEmpty());
     }
 
-    // PlaylistPage decides whether a playlist is editable from its Tidal
-    // type, and the sidebar row is where it reads that: without it the page
-    // had to guess from the bridge's cache and fell back to read-only.
+    // PlaylistPage decides whether a playlist is editable from its Tidal type,
+    // and the sidebar row is where it reads that.
     void playlistRowsCarryTheirType() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -828,14 +786,8 @@ private slots:
     }
 
     // ── liking something has to reach the sidebar at once ────────────────
-    //
-    // The 0.4.0 bug, in the user's words: "if I go in and like a previously
-    // unliked album, it should also appear in my left sidebar, right? because
-    // it just didn't for me". TidalBridge and LibraryIndex page the same
-    // favourites endpoints into two separate copies, and only the bridge's was
-    // being updated on a like - so the album page's Save button flipped to
-    // "Saved" while the sidebar went on showing the library it had fetched at
-    // sign-in. These pin the sidebar's half of it.
+    // TidalBridge and LibraryIndex page the same favourites endpoints into two
+    // separate copies, so a like has to be handed to the sidebar's copy too.
 
     void savingAnAlbumPutsItInTheSidebarWithoutARefetch() {
         PinStore pins; pins.setUserId(kUser);
@@ -886,17 +838,8 @@ private slots:
     }
 
     // ── a saved mix, which is how a track radio reaches the sidebar ─────
-    //
-    // The owner's complaint, at the sidebar: "I liked the hell of a time track
-    // radio and it is displayed in my sidebar as a mix ... but it doesn't have a
-    // way to unsave it". The row could arrive - fetchHomeMixes merges
-    // v2/favorites/mixes in - and nothing in the app could ever take it back out
-    // again, because removeEntry had no mix branch at all.
-    //
-    // The id is a string and not a number, which is the trap this case exists
-    // for: the album and artist branches call toLongLong(), and a mix id put
-    // through that is 0 for every mix, so one copy of that branch would delete
-    // the wrong row or none.
+    // A mix id is a string. The album and artist branches call toLongLong(),
+    // which gives 0 for every mix id and would remove the wrong row or none.
     void savingAndUnsavingAMixMoveTheSidebar() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -946,7 +889,7 @@ private slots:
                  QStringList{QStringLiteral("mix:0a1b2c3d4e5f60718293a4b5c6d7e8")});
     }
 
-    // A mix already in the list is not added twice - the user may save one that
+    // A mix already in the list is not added twice: the user may save one that
     // the merged list already carried.
     void savingAMixAlreadyListedAddsNoSecondRow() {
         PinStore pins; pins.setUserId(kUser);
@@ -963,8 +906,7 @@ private slots:
     }
 
     // The sidebar row carries the mix's type, so MixPage can head a saved track
-    // radio "Radio" from the first frame instead of flipping from "Mix" when its
-    // own request lands. This is the exact route the complaint came in on.
+    // radio "Radio" from the first frame.
     void aSidebarMixRowSaysWhichKindOfMixItIs() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -981,8 +923,8 @@ private slots:
                  QStringLiteral("TRACK_MIX"));
     }
 
-    // Following an artist is the same gap wearing a different hat, and so is
-    // unfollowing: a stale row left behind is as wrong as a missing one.
+    // The same for following and unfollowing an artist: a stale row left behind
+    // is as wrong as a missing one.
     void followingAndUnfollowingAnArtistMoveTheSidebar() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1004,10 +946,9 @@ private slots:
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
-    // A liked song is generally not a row of the library list, but the finder's
-    // Tracks chip and every search read it, so it has to arrive there just the
-    // same. The one exception - a song whose album is not saved - is the
-    // subject of theSidebarKeepsOnlyTheLikedSongsNothingElseLeadsTo() below.
+    // A liked song is usually left out of the library list. The finder's Tracks
+    // chip and every search read it all the same. The exception is a song whose
+    // album is not saved: theSidebarKeepsOnlyTheLikedSongsNothingElseLeadsTo().
     void likingASongReachesTheTracksChipAndSearch() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1047,8 +988,7 @@ private slots:
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
     }
 
-    // Re-liking something already saved must not double the row, and the
-    // sidebar must not be told that nothing happened.
+    // Re-liking something already saved adds no second row and emits nothing.
     void savingSomethingAlreadySavedChangesNothing() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1071,13 +1011,9 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // The bug that produced this whole ordering: the user saved an album and it
-    // did not appear. It was saved, and it filed at alphabetical position 589 of
-    // 971. A just-saved album is now the first row under the pinned block.
-    //
-    // "Avalon" is deliberately a title that collates into the middle - between
-    // "Ärzte Live" and "Beatles" in German - so an alphabetical placement and a
-    // newest-first one cannot agree.
+    // A just-saved album is the first row under the pinned block. "Avalon"
+    // collates into the middle, between "Ärzte Live" and "Beatles" in German, so
+    // an alphabetical placement and a newest-first one cannot agree.
     void aJustSavedAlbumIsTheFirstRowUnderThePins() {
         PinStore pins; pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
@@ -1134,8 +1070,7 @@ private slots:
                      .value(QStringLiteral("recency")).toLongLong(), daysAfterJan(9));
     }
 
-    // "playing from something and (re)saving it should both just put it at the
-    // top with the same priority": one timestamp, and the later of the two wins.
+    // Playing and saving share one timestamp, and the later of the two wins.
     void playingAndSavingAreOneSignalOnOneTimestamp() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1159,21 +1094,15 @@ private slots:
         QVERIFY2(keysOf(lib.entries()).first() == QStringLiteral("album:2"),
                  qPrintable(QStringLiteral("re-saving did not lift the album: %1")
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
-        // It was lifted by being re-saved *now*, not by the January date the
-        // response still carried.
+        // The lift comes from the re-save's own stamp: the response still
+        // carries the January date.
         QVERIFY(rowFor(lib.entries(), QStringLiteral("album:2"))
                     .value(QStringLiteral("recency")).toLongLong() > daysAfterJan(9));
     }
 
-    // The stamp a play or a save gets is strictly later than every play and save
-    // already recorded, rather than whatever the clock says. Two actions inside
-    // one millisecond would otherwise tie, and the tie-break below a pin is the
-    // title, so the thing the user had just done could come out second.
-    //
-    // Driven with a date the clock cannot beat, so the collision is certain
-    // rather than a race against the millisecond boundary - which is the same
-    // collision, and is also a real shape: a server `created` can be ahead of a
-    // local clock that is behind or in the wrong zone.
+    // The stamp a play or a save gets is strictly later than every one already
+    // recorded, whatever the clock says. Driven with a date ahead of the clock,
+    // which a server `created` can be when the local clock is behind.
     void aPlayOrSaveIsNeverBehindWhatIsAlreadyRecorded() {
         const qint64 ahead = QDateTime::currentMSecsSinceEpoch() + 60 * 60 * 1000;
 
@@ -1230,9 +1159,9 @@ private slots:
         QCOMPARE(keysOf(again.entries()), first);
     }
 
-    // A mix Tidal merely generated - "My Mix 1".."My Mix 8" - is not something
-    // the user added, and Tidal regenerates the set, so it carries no date and
-    // files below everything that does. Until it is played.
+    // A mix Tidal generated ("My Mix 1" to "My Mix 8") is not something the user
+    // added, so it carries no date and files below everything that does, until
+    // it is played.
     void aGeneratedMixHasNoDateAndFilesBelowWhatDoes() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1250,9 +1179,8 @@ private slots:
         QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("mix:m1"));
     }
 
-    // A mix the user *saved* does carry one - v2/favorites/mixes reports
-    // `dateAdded` per item - and ranks against the saved albums and artists on it,
-    // not in a block of its own at the end.
+    // A mix the user saved does carry a date: v2/favorites/mixes reports
+    // `dateAdded` per item. It ranks among the saved albums and artists on it.
     void aSavedMixRanksOnItsDateLikeEverythingElse() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1277,9 +1205,8 @@ private slots:
                      .value(QStringLiteral("addedAt")).toLongLong(), daysAfterJan(5));
     }
 
-    // The size the bug was reported at: an album saved into a library of 971.
-    // The point is that the ordering holds at that size and that one save still
-    // only re-sorts what is already in hand - nothing is re-paged for it.
+    // The ordering holds at a thousand rows, and one save re-sorts what is in
+    // hand without paging anything again.
     void aThousandRowsStillOrderByRecency() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1297,7 +1224,7 @@ private slots:
         QCOMPARE(keysOf(lib.entries()).first(), QStringLiteral("album:1000"));
         QCOMPARE(keysOf(lib.entries()).last(),  QStringLiteral("album:1970"));
 
-        // The reported case, at the reported size: save one more and it is first.
+        // Save one more and it is first.
         const int pagedBefore = lib.albumRequests;
         lib.addAlbum(mkAlbum(50, QStringLiteral("Album 9999"), {various}));
         QCOMPARE(lib.entries().size(), 972);
@@ -1330,12 +1257,8 @@ private slots:
     }
 
     // ── and its songs have to reach the search index with it ─────────────
-    //
-    // The sidebar row was only half of it. A saved album's tracklist is what
-    // makes its songs findable, and startTrackIndex() ran from one place only,
-    // the end of a refresh - so the album the user had just saved showed up in
-    // the sidebar while every song on it stayed unsearchable until the next
-    // launch.
+    // A saved album's tracklist is what makes its songs findable, so a save
+    // has to index it without waiting for the next refresh.
 
     void savingAnAlbumIndexesItsTracksForSearch() {
         PinStore pins; pins.setUserId(kUser);
@@ -1362,15 +1285,13 @@ private slots:
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
         QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:601")) >= 0);
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() + 1);
-        // One tracklist, the one just saved - not the library over again.
+        // One tracklist request, for the album just saved.
         QCOMPARE(lib.tracklistRequests, before + 1);
     }
 
-    // The naive way to do the above is to call startTrackIndex() again, which
-    // bumps the index generation and rebuilds the whole queue: every reply the
-    // run already had in flight is dropped on the floor and its album asked for
-    // a second time. Saving an album has to join the run in progress, not
-    // restart it.
+    // Saving an album joins the index run in progress. Calling startTrackIndex()
+    // again would bump the generation, drop every reply in flight and ask for
+    // those albums a second time.
     void savingAnAlbumDuringAnIndexRunDoesNotRestartIt() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1406,11 +1327,8 @@ private slots:
     }
 
     // ── and unsaving one has to take them out again ───────────────────────
-    //
-    // rebuildTrackEntries() walked every album in the tracklist cache without
-    // asking whether that album was still saved, and the cache itself was only
-    // pruned when a whole index run finished. So the songs of an album the user
-    // had just removed went on answering searches for the rest of the session.
+    // The songs of an album the user just removed must stop answering searches
+    // at once, without waiting for an index run to prune the cache.
     void unsavingAnAlbumTakesItsTracksOutOfTheSearchIndex() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1445,11 +1363,9 @@ private slots:
         QCOMPARE(spy.count(), 1);
     }
 
-    // The pruning above is guarded, and this is the guard: the tracklist cache
-    // is read off disk at sign-in, before the album list has been paged in, and
-    // with no album list yet nothing counts as "no longer saved". Without that,
-    // the index would start out empty on every launch and the disk cache would
-    // buy nothing. saveTrackCache() has the same guard for the same reason.
+    // The pruning is guarded: the tracklist cache is read off disk at sign-in,
+    // before the album list has been paged in, and with no album list nothing
+    // counts as unsaved. saveTrackCache() has the same guard.
     void theDiskCacheAnswersBeforeTheAlbumListArrives() {
         PinStore pins; pins.setUserId(kUser);
         {
@@ -1470,16 +1386,9 @@ private slots:
     }
 
     // ── the one liked song that does earn a sidebar row ──────────────────
-    //
-    // Liked songs stay out of the library list on purpose: liking an album and
-    // then five songs off it would bury everything else. The exception the user
-    // asked for is the song nothing else leads to - one whose album they have
-    // not saved - because without a row of its own it cannot be reached from
-    // the sidebar at all.
-    //
-    // Both directions are live, and the second is the interesting one: saving
-    // the album takes the song's row away again, and unsaving it gives the row
-    // back.
+    // Liked songs stay out of the library list, except a song whose album is
+    // not saved: nothing else in the sidebar leads to it. Saving the album
+    // takes the song's row away again, and unsaving it gives the row back.
     void theSidebarKeepsOnlyTheLikedSongsNothingElseLeadsTo() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1522,8 +1431,8 @@ private slots:
         QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) < 0,
                  qPrintable(QStringLiteral("unliking left the row in place: %1")
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
-        // The song is still never a row twice, and the Tracks chip is a
-        // different list that was never filtered this way.
+        // The song is never a row twice, and the Tracks chip is a separate list
+        // with no such filter.
         lib.addTrack(mkTrack(777, QStringLiteral("Deepfake"), orphan, {brakence}));
         QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("track:777")), 1);
         QVERIFY(indexOfKey(lib.entriesForKinds({QStringLiteral("track")}),
@@ -1531,12 +1440,8 @@ private slots:
     }
 
     // ── the Tracks chip is ordered by when a song was liked ──────────────
-    //
-    // It used to be A-Z, which made the chip useless for the thing it is for:
-    // finding the song just liked. The order comes from the favourites endpoint
-    // itself (order=DATE, oldest first), so it covers likes made on the phone
-    // too - Tidal exposes no cross-device play history, so a local play time
-    // never could.
+    // The order comes from the favourites endpoint (order=DATE, oldest first),
+    // so it covers likes made on another device too.
     void theTracksChipIsOrderedByWhenASongWasLiked() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1555,8 +1460,7 @@ private slots:
         QCOMPARE(titlesOf(lib.entriesForKinds(chip)), QStringList({
             QStringLiteral("Charlie"), QStringLiteral("Bravo"), QStringLiteral("Alpha")}));
 
-        // The case the user actually hits: like a song, and it is the first one
-        // under the chip.
+        // Like a song, and it is the first one under the chip.
         lib.addTrack(mkTrack(804, QStringLiteral("Zulu"), host, {various}));
         const QStringList after = titlesOf(lib.entriesForKinds(chip));
         QVERIFY2(!after.isEmpty() && after.first() == QStringLiteral("Zulu"),
@@ -1567,13 +1471,8 @@ private slots:
     }
 
     // ── ...and by when it was played, which is the same rule ────────────
-    //
-    // "isn't the sidebar with song filter pill selected supposed to show all
-    // the latest played songs?" It was not: liking was the only thing the chip
-    // ordered by. It is the same list of songs as before - liked songs, plus
-    // the saved albums' tracklists - and the same tier under the library kinds;
-    // only the order changed, to the most recent of played or liked, which is
-    // the rule the rest of the sidebar already follows.
+    // The chip orders by the most recent of played or liked, the rule the rest
+    // of the sidebar follows.
 
     void theTracksChipPutsTheSongJustPlayedFirst() {
         PinStore pins; pins.setUserId(kUser);
@@ -1602,10 +1501,9 @@ private slots:
             QStringLiteral("Charlie"), QStringLiteral("Alpha"), QStringLiteral("Bravo")}));
     }
 
-    // Playing and liking are one axis, as they are for the four library kinds:
-    // a song liked now sits above one played an hour ago. Liking is the half of
-    // it that has no date from Tidal, so the like has to be stamped where it
-    // happens - the favourites endpoint only gives an order, not an instant.
+    // Playing and liking are one axis, as for the four library kinds: a song
+    // liked now sits above one played an hour ago. The favourites endpoint
+    // gives an order and no instant, so the like is stamped where it happens.
     void aSongJustLikedOutranksOneAlreadyPlayed() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1625,11 +1523,9 @@ private slots:
             QStringLiteral("Zulu"), QStringLiteral("Alpha"), QStringLiteral("Bravo")}));
     }
 
-    // The separation that makes the whole thing affordable: a song play feeds
-    // the chip and nothing else. The library list must not reorder because a
-    // song played - rebuild() sorts a thousand rows and runs on every pin, play
-    // and like - and a liked song whose album is not saved does have a row down
-    // there, so there is something to get wrong.
+    // A song play feeds the chip and nothing else. The library list must not
+    // reorder or rebuild for it, although a liked song whose album is not
+    // saved does have a row there.
     void aSongPlayDoesNotReorderTheLibraryList() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1689,11 +1585,9 @@ private slots:
             QStringLiteral("Alpha"), QStringLiteral("Charlie"), QStringLiteral("Bravo")}));
     }
 
-    // The chip is the library's songs, not a play history. A song played once
-    // from somebody else's playlist is not in the library and must not turn up
-    // in it - the user asked for exactly that - so its play is not recorded at
-    // all, which is also what keeps the stored play times bounded by the
-    // library rather than by how much the user listens to.
+    // The chip lists the library's songs. A play of a song from outside the
+    // library is not recorded, which also keeps the stored play times bounded
+    // by the library.
     void aSongPlayedFromOutsideTheLibraryIsNotRemembered() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1714,10 +1608,9 @@ private slots:
                                          .join(QLatin1String(", ")))));
     }
 
-    // The bound on what is stored: a play time is worth keeping only while the
-    // song is still in the library, because the chip is the only thing that
-    // reads it. Unliking a song, and unsaving the album a song came in on, both
-    // drop it.
+    // A play time is kept only while the song is in the library, because the
+    // chip is the only thing that reads it. Unliking a song and unsaving the
+    // album it came in on both drop it.
     void playTimesAreForgottenWhenTheSongLeavesTheLibrary() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1731,8 +1624,8 @@ private slots:
         QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:500")));
         QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:504")));
 
-        // Unliking song 500 does not take it out of the index - album 100 is
-        // saved and its tracklist holds it - so its play time stays.
+        // Unliking song 500 does not take it out of the index: album 100 is
+        // saved and its tracklist holds it, so its play time stays.
         lib.removeEntry(QStringLiteral("track"), QStringLiteral("500"));
         QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:500")));
 
@@ -1744,17 +1637,14 @@ private slots:
                                          .join(QLatin1String(", ")))));
         QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:504")));
 
-        // And the four library kinds are not pruned with them: they are the
-        // list this file is mostly about, and an album keeps its play time
-        // whether or not it is still saved.
+        // The four library kinds are not pruned with them: an album keeps its
+        // play time whether or not it is still saved.
         lib.markPlayed(QStringLiteral("album"), QStringLiteral("101"));
         QVERIFY(storedRecents(kUser).contains(QStringLiteral("album:101")));
     }
 
-    // Signing in is the other place the bound is applied: a stored play time
-    // for a song that is no longer anywhere in the library - unliked on the
-    // phone, say - is dropped once the library has finished loading and it is
-    // clear what "in the library" means.
+    // Signing in applies the same bound: a stored play time for a song that is
+    // nowhere in the library is dropped once the library has finished loading.
     void staleSongPlayTimesAreDroppedOnSignIn() {
         {
             QSettings s;
@@ -1769,26 +1659,22 @@ private slots:
         lib.favoriteTracks = {mkTrack(801, QStringLiteral("Alpha"), host, {various})};
         lib.setUserId(kUser);
         lib.refresh();
-        // A play of a song that *is* in the library, to show that the prune is
-        // a different question from the write and does not take this one with
-        // it.
+        // A play of a song that is in the library, which the prune must leave.
         lib.markTrackPlayed(QStringLiteral("801"));
 
         const QVariantMap stored = storedRecents(kUser);
         QVERIFY2(!stored.contains(QStringLiteral("track:777")),
                  qPrintable(QStringLiteral("a song that left the library kept its play time: %1")
                                 .arg(QStringList(stored.keys()).join(QLatin1String(", ")))));
-        // The library kinds are left alone: an album the user unsaved on the
-        // phone is still something they may re-save, and the list of four kinds
-        // is small enough that it has never needed a bound.
+        // The library kinds are left alone: an album unsaved on another device
+        // may be re-saved, and that list is small.
         QVERIFY(stored.contains(QStringLiteral("album:10")));
         QVERIFY(stored.contains(QStringLiteral("track:801")));
     }
 
-    // A song the background indexer merely found on a saved album has no liking
-    // date, so it goes after every liked one, by title - which is where it was
-    // before. And the four library kinds keep their own tiers above the songs:
-    // thousands of tracks must not push an album out of sight.
+    // A song the indexer found on a saved album has no liking date, so it goes
+    // after every liked one, by title. The four library kinds keep their tiers
+    // above the songs, so thousands of tracks cannot push an album out of sight.
     void songsWithNoLikingDateFollowTheLikedOnes() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1834,19 +1720,9 @@ private slots:
     }
 
     // ── a playlist the user creates ───────────────────────────────────────
-    //
-    // createPlaylist() updated neither TidalBridge's playlist list nor this
-    // one, so a new playlist would have been missing from the sidebar until the
-    // next launch - the same gap as liking an album, and with no favourite
-    // action for playlists anywhere in the interface, creating one is the only
-    // way a playlist row can appear at all.
-    //
-    // This was written as the sidebar half of the wiring waiting for a button
-    // that did not exist. The button exists now - the "New playlist" row above
-    // the library list, the Collection page's Playlists tab and the track
-    // menu's picker all reach TidalBridge::createPlaylist, and
-    // tests/qml/tst_new_playlist.qml drives them - so the two halves below are
-    // a live path, not plumbing.
+    // Creating one is the only way a playlist row can appear, and it has to
+    // reach the sidebar without a re-page. tests/qml/tst_new_playlist.qml drives
+    // the interface side.
     void creatingAPlaylistPutsItInTheSidebar() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1869,31 +1745,15 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QCOMPARE(lib.playlistRequests, before);
 
-        // Creating is not liking: there is no second time, but a repeat must
-        // not double the row either.
+        // A repeat must not double the row.
         lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
         QCOMPARE(keysOf(lib.entries()).count(key), 1);
         QCOMPARE(spy.count(), 1);
     }
 
-    // ...and it has to land where the user will look for it, which is the head
-    // of the unpinned block.
-    //
-    // addPlaylist() stamps `addedAt = stampNow()` before appending, and that
-    // stamp is the only thing that puts the row there: rebuild() orders the
-    // unpinned tier by max(last played, addedAt) and falls through to collation
-    // for rows with no date. Drop the stamp and a playlist created in a library
-    // of a thousand rows lands wherever its title happens to sort, which is the
-    // same class of bug as the A-Z tier that sent a just-saved album to
-    // alphabetical position 589 of 971.
-    //
-    // The fixture is built here rather than from fillMixedLibrary() because
-    // that one carries no dates at all - every row's recency is 0, so the whole
-    // list is in collation order and "Avalon Mix" would reach the front of it
-    // alphabetically whether it had been stamped or not. The test above passes
-    // either way. So: the other rows carry real dates, there is a pinned row to
-    // make "top of the unpinned block" different from "top of the list", and
-    // the new playlist is named so that it sorts *last* of the three.
+    // The new row leads the unpinned block, which only addPlaylist()'s stamp
+    // achieves. The fixture carries real dates and a pin, and the new title
+    // sorts last, so collation cannot put the row there.
     void aCreatedPlaylistLeadsTheUnpinnedBlock() {
         PinStore pins; pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
@@ -1923,16 +1783,13 @@ private slots:
                               QStringLiteral("playlist:p-new"),
                               QStringLiteral("playlist:p-feb"),
                               QStringLiteral("playlist:p-jan")}));
-        // Second, not first: the pinned album keeps the head of the list.
+        // Second: the pinned album keeps the head of the list.
         QCOMPARE(indexOfKey(lib.entries(), QStringLiteral("playlist:p-new")), 1);
     }
 
-    // The same thing when the response carries a date of its own, which is the
-    // case the bridge's own comment flags: a POST reply may or may not include
-    // `created`, and a playlist made now that arrives carrying January must
-    // still read as made now. The stamp is unconditional for that reason, and
-    // this is the case that says so - the one above would pass with
-    // `if (p.addedAt == 0) created.addedAt = stampNow();`.
+    // A POST reply may carry `created`, and a playlist made now that arrives
+    // with an older date must still read as made now. The stamp is therefore
+    // unconditional.
     void aCreatedPlaylistIsStampedNowWhateverDateItArrivesWith() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1954,12 +1811,8 @@ private slots:
     }
 
     // ── a playlist the user renames ───────────────────────────────────────
-    //
-    // The sidebar keeps its own copy of the library, so a rename made on a
-    // playlist's own page reached TidalBridge and stopped there: the page
-    // relabelled itself and the sidebar went on showing the old name until the
-    // next launch. This is the hand-across, and it is deliberately *not*
-    // addPlaylist: the uuid is already here, so addPlaylist would be a no-op.
+    // The sidebar keeps its own copy of the library, so a rename is handed
+    // across. addPlaylist would be a no-op here: the uuid is already listed.
     void renamingAPlaylistRelabelsTheSidebarRow() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -1981,31 +1834,15 @@ private slots:
         QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
                  QStringLiteral("Früh am Tag"));
         QCOMPARE(spy.count(), 1);
-        // Handed across, not re-paged. A rename that went back to the account
-        // would show the right thing for the wrong reason.
+        // Handed across without a re-page.
         QCOMPARE(lib.playlistRequests, before);
-        // One row, not two: a rename must not leave the old name behind, and
-        // it must certainly not add a second row for the same uuid.
+        // Still one row for the uuid.
         QCOMPARE(keysOf(lib.entries()).count(key), 1);
     }
 
-    // ...and the row must not move.
-    //
-    // This is the whole reason updatePlaylist exists beside addPlaylist rather
-    // than reusing it. addPlaylist() stamps `addedAt = stampNow()`, and
-    // rebuild() orders the unpinned tier by max(last played, addedAt) and
-    // falls through to collation for rows with no date - so a rename that
-    // re-stamped would send the playlist to the top of the sidebar for having
-    // been given a new name.
-    //
-    // The fixture is built here rather than from fillMixedLibrary() for the
-    // reason that one is called out above: its rows all carry addedAt == 0, so
-    // the list is in pure collation order and a re-stamp would be invisible.
-    // Here the rows carry real dates, a pinned album makes "top of the
-    // unpinned block" different from "top of the list", and the *new* title
-    // sorts first alphabetically - so a re-collation would move the row too,
-    // and renaming the older of the two playlists is the only case where a
-    // re-stamp shows.
+    // ...and the row must not move: a rename that re-stamped `addedAt` would
+    // send the playlist to the top. The fixture carries real dates and a pin,
+    // and the new title sorts first, so a re-stamp or a re-collation shows.
     void renamingAPlaylistDoesNotMoveIt() {
         PinStore pins; pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
@@ -2042,10 +1879,8 @@ private slots:
                                      keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
-    // A uuid the sidebar has never listed is ignored rather than added. The
-    // signal that carries a rename has no artwork and no track count on it -
-    // an edit answers with no body - so there is nothing here to build a row
-    // out of, and a row built anyway would be a blank tile with a name.
+    // A uuid the sidebar has never listed is ignored. The rename signal has no
+    // artwork and no track count, so there is nothing to build a row from.
     void renamingAPlaylistTheSidebarDoesNotHaveAddsNothing() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2065,10 +1900,8 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // Saving the dialog without having changed anything is a rename the server
-    // accepts and the sidebar has nothing to do about. Rebuilding anyway is
-    // not wrong, but it is an entriesChanged every list in the app reacts to,
-    // for nothing.
+    // Saving the dialog with nothing changed is a rename the server accepts.
+    // The sidebar must not emit entriesChanged for it.
     void renamingToTheNameItAlreadyHasRebuildsNothing() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2086,17 +1919,9 @@ private slots:
     }
 
     // ── a playlist the user puts a track on ───────────────────────────────
-    //
-    // The fourth hand-across this split between two caches has needed, and the
-    // one a user reported: a playlist they had just put two songs into still
-    // called itself empty. The bridge re-reads the playlist's header after an
-    // accepted add and this is the far end of it.
-    //
-    // Deliberately not routed through updatePlaylist. That one returns early when
-    // the title and description already match, which after a track add they
-    // always do, so the count would never be written - see
-    // theCountSurvivesAnOtherwiseIdenticalHeader below, which is that mutation as
-    // a test.
+    // The bridge re-reads the playlist's header after an accepted add and this
+    // is the far end of it. It is not routed through updatePlaylist, which
+    // returns early when title and description match and would drop the count.
     void aTrackAddedMovesTheSidebarRowsCount() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2122,34 +1947,19 @@ private slots:
 
         QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("trackCount")).toInt(), 2);
         QCOMPARE(spy.count(), 1);
-        // The two neighbours are untouched: this writes one row, not the list.
+        // The two neighbours are untouched.
         QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-zebra"))
                      .value(QStringLiteral("trackCount")).toInt(), 41);
         QCOMPARE(rowFor(lib.entries(), QStringLiteral("playlist:p-dusk"))
                      .value(QStringLiteral("trackCount")).toInt(), 7);
-        // Handed across, not re-paged. The whole argument for the header read is
-        // that it is one request on a mutation; a sidebar that re-paged the
-        // account on top of it would give the right answer at the wrong price.
+        // Handed across without a re-page: the header read is one request.
         QCOMPARE(lib.playlistRequests, before);
         QCOMPARE(keysOf(lib.entries()).count(key), 1);
     }
 
-    // ...and the row must not move. This is the trap, and it has a rejected fork
-    // patch behind it.
-    //
-    // `playlists/<uuid>` carries no favourites wrapper, so Playlist::fromJson
-    // falls back to the playlist's own `created` - the *original author's* date,
-    // which on a playlist the user merely follows can be years old. Half of
-    // rebuild()'s ordering key is max(last played, addedAt), so a merge that
-    // copied it would sink a playlist to the bottom of the library for the crime
-    // of having a song dropped on it.
-    //
-    // The fixture is shaped the way renamingAPlaylistDoesNotMoveIt is, and for
-    // the same reason: real dates, so a re-stamp is visible at all, and a pinned
-    // album above so "top of the unpinned block" is not "top of the list". The
-    // row refreshed is the *newer* of the two playlists and the payload carries a
-    // 2019 date, so copying it would push that row below the other one - the only
-    // direction the mistake actually goes.
+    // ...and the row must not move. `playlists/<uuid>` has no favourites
+    // wrapper, so the payload's date is the author's `created`, which can be
+    // years old. Copying it into `addedAt` would sink the row.
     void aTrackAddedDoesNotMoveTheSidebarRow() {
         PinStore pins; pins.setUserId(kUser);
         pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
@@ -2188,10 +1998,8 @@ private slots:
                                      keysOf(lib.entries()).join(QLatin1String(", ")))));
     }
 
-    // The count moves even though the title and description are exactly what the
-    // row already carries, which is the whole reason this is not updatePlaylist:
-    // that one reads those two fields, finds them unchanged and returns before
-    // writing anything.
+    // The count moves although title and description are what the row already
+    // carries. updatePlaylist would find those unchanged and write nothing.
     void theCountSurvivesAnOtherwiseIdenticalHeader() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2234,10 +2042,9 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // A uuid this list has never carried is ignored rather than added, the same
-    // answer the rename path gives: a header carries no pin state and no
-    // acquisition date, so a row built out of one would be a guess, and the next
-    // full page brings the real row in.
+    // A uuid this list has never carried is ignored, as on the rename path: a
+    // header carries no pin state and no acquisition date, and the next full
+    // page brings the real row in.
     void aHeaderForAPlaylistTheSidebarDoesNotHaveAddsNothing() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2258,9 +2065,7 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // Emptying a playlist takes the row back to no tracks. The add direction is
-    // the reported bug, but the remove direction left every cached count one too
-    // high and is the same single line of code.
+    // Emptying a playlist takes the row back to no tracks.
     void aTrackRemovedMovesTheSidebarRowsCountDown() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
@@ -2276,7 +2081,7 @@ private slots:
         fresh.title     = QStringLiteral("Morning");
         fresh.numTracks = 0;
         // Tidal takes the mosaic away with the last track, so the empty string
-        // here is a fact about the playlist and not a failed parse.
+        // is what the header really carries.
         fresh.image     = QString();
         lib.refreshPlaylistMeta(fresh);
 
@@ -2288,8 +2093,7 @@ private:
     static constexpr qint64 kUser      = 1001;
     static constexpr qint64 kOtherUser = 2002;
 
-    // Playlists, albums, artists and mixes together, which is the whole point
-    // of S1: one flat list with a type icon per row.
+    // Playlists, albums, artists and mixes together: one flat list.
     static void fillMixedLibrary(TestLibrary &lib) {
         lib.playlists = {mkPlaylist(QStringLiteral("p-zebra"),   QStringLiteral("Zebra Nights")),
                          mkPlaylist(QStringLiteral("p-morning"), QStringLiteral("Morning"))};
@@ -2333,10 +2137,9 @@ private:
         lib.albumTracks[103] = {mkTrack(506, QStringLiteral("Clover Song"),  clover, {various})};
     }
 
-    // A library built for the ranking cases. One name is shared by four kinds;
-    // one family of titles differs only in length; one differs only in how
-    // familiar it is, down to the character count, so coverage ties exactly
-    // and nothing but pinning and play history can decide the order.
+    // A library for the ranking cases. One name is shared by four kinds, one
+    // family of titles differs only in length, and one ties exactly on
+    // coverage, so only pinning and play history can decide its order.
     static void fillRankingLibrary(TestLibrary &lib) {
         const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
         const Artist various = mkArtist(41, QStringLiteral("Various"));

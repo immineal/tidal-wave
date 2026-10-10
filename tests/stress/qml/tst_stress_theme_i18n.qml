@@ -1,14 +1,9 @@
-// X4: theme switching under load, and language switching under load.
-//
-// Both are whole-tree events. A theme change swaps ThemePalette.current, and
-// every colour in the app is a binding onto it; a language change calls
-// QQmlEngine::retranslate(), which re-evaluates every qsTr() binding in the
-// live tree. Doing either once on an empty window proves nothing. These run
-// them hundreds of times with every page mounted and a long list in view.
-//
-// Needs the real Prefs and I18n, which tests/stress/tst_stress_main.cpp
-// installs. Run through tests/tst_qml instead and both tests skip rather than
-// fail, because there is no `prefs` there.
+// Theme switching and language switching under load. Both are whole-tree
+// events: a theme change swaps ThemePalette.current, which every colour binds
+// to, and a language change calls QQmlEngine::retranslate(). They run hundreds
+// of times with every page mounted and a long list in view. Needs the real
+// Prefs and I18n from tests/stress/tst_stress_main.cpp. Under tests/tst_qml
+// both tests skip.
 
 import QtQuick
 import QtTest
@@ -135,9 +130,8 @@ TestCase {
                + "), so Prefs::theme is not reaching the QML tree. The usual cause is the"
                + " ThemePalette singleton QML built for itself not being the one"
                + " Application wired Prefs into.")
-        // A theme switch is a user-visible action; a third of a second is the
-        // point where it stops feeling like a switch and starts feeling like a
-        // reload.
+        // A theme switch is a user-visible action and has to stay well short of
+        // feeling like a reload.
         verify(slowest < 1500,
                "the slowest theme switch took " + slowest + " ms (" + slowestName + ")")
     }

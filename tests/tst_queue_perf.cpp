@@ -1,19 +1,8 @@
-// What a track change costs on a long queue, and what it is allowed to tell
-// the UI about.
-//
-// A stress run on a 5000-track queue measured ~815ms per track change (40 jumps
-// in 32.6s), identically on offscreen, xcb and Wayland — so it was marshalling,
-// not rendering. The cause: next()/previous()/jumpToQueue() emitted
-// queueChanged(), and every open view of the queue answers that by pulling
-// player.queueTracks(), which copies all 5000 QVariantMaps into a fresh
-// QVariantList and hands it to JS. Moving the current index is not a change to
-// the queue, so it must not say that it is.
-//
-// These tests assert the behaviour rather than only the clock: an advance emits
-// queueChanged *zero* times while still moving the index, every real mutation
-// still emits it, and the queue's contents survive all of it. The one timing
-// test keeps a model-rebuilding listener attached, which is what made the cost
-// visible in the first place.
+// What a track change costs on a long queue, and what it may tell the UI.
+// Every open view of the queue answers queueChanged() by pulling
+// player.queueTracks(), a copy of every row handed to JS. Moving the current
+// index is not a change to the queue, so an advance must not emit it. Every
+// real mutation still does, and the contents survive all of it.
 
 #include <QTest>
 #include <QTemporaryDir>
@@ -31,11 +20,9 @@
 
 namespace {
 
-// The size the stress harness used. Big enough that a per-advance full copy
-// shows up as seconds rather than as noise.
+// Big enough that a per-advance full copy shows up as seconds.
 constexpr int kQueueSize = 5000;
 
-// 40 advances across that queue is the stress run's own figure (32.6s before).
 constexpr int kAdvances = 40;
 
 // Wall-clock ceiling for those 40 advances with a listener that rebuilds its
@@ -79,15 +66,14 @@ private slots:
     void initTestCase() {
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_queue_perf"));
-        // Redirect the settings file into a scratch directory as well as
-        // renaming it. Renaming alone keeps the user's own config safe but
-        // still leaves a stray directory in their home after every run.
+        // The settings file is redirected into a scratch directory, so no run
+        // touches or leaves anything in the user's home.
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QVERIFY(m_settingsDir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDir.path());
     }
 
-    // ── the regression itself ───────────────────────────────────────────────
+    // ── an advance is not a queue change ────────────────────────────────────
 
     void advancingDoesNotRebuildTheQueue() {
         Rig rig;
@@ -177,9 +163,8 @@ private slots:
         QCOMPARE(rig.player.queueCount(), 30);
     }
 
-    // queueIndex is read off a different notifier now, so every mutation that
-    // shifts the current track has to raise that one too or a highlight sticks
-    // to the wrong row.
+    // queueIndex has its own notifier, so every mutation that shifts the current
+    // track has to raise it too, or a highlight sticks to the wrong row.
     void mutationsThatMoveTheCurrentTrackReportTheNewIndex() {
         Rig rig;
         rig.player.playTracks(queueOf(50), 20);
@@ -262,22 +247,16 @@ private slots:
 
     // ── the clock ───────────────────────────────────────────────────────────
 
-    // rebuilds == 0 is the real guard; the clock is a second net for anything
-    // else that turns an advance expensive. 40 advances measure ~1ms here now,
-    // and 326ms with the per-advance republish still in (the full app paid far
-    // more than that again in delegate churn: 32.6s for these 40 jumps). 150ms
-    // sits 150x above the measured cost, which no loaded machine will reach,
-    // and still less than half of what the regression costs.
+    // rebuilds == 0 is the real guard. The clock is a second net for anything
+    // else that makes an advance expensive, with a ceiling far above the cost of
+    // an index move and well below the cost of republishing the queue.
     void fortyAdvancesStayCheapWithTheQueuePanelOpen() {
         Rig rig;
         rig.player.playTracks(queueOf(kQueueSize), 0);
 
-        // Stands in for the Queue panel and the Up Next list: any open view of
-        // the queue answers queueChanged by pulling the whole thing across and
-        // handing it to JS. Without a listener this test would pass even if the
-        // signal still fired, because nothing would be paying for it; and
-        // without the JS conversion it would understate the bill by more than
-        // an order of magnitude, because the QVariantList copy is the cheap half.
+        // Stands in for the Queue panel and the Up Next list: an open view
+        // answers queueChanged by pulling the whole queue across to JS. The JS
+        // conversion is the expensive half, so it is part of the listener.
         QJSEngine js;
         int rebuilds = 0;
         QJSValue sink;

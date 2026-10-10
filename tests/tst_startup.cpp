@@ -1,26 +1,9 @@
-// Startup: the single-instance lock, the no-tray decision and the audio-server
-// log filter (HANDOFF, "First-run findings").
-//
-// Application::run() builds the whole app, binds the real socket and never
-// returns until the app exits, so it cannot be called from a test at all. The
-// three decisions inside it that have a right and a wrong answer were split
-// out as statics for that reason, and this file holds them to those answers.
-// Nothing here needs a QApplication, hence QTEST_GUILESS_MAIN.
-//
-// What is deliberately not covered, and why:
-//
-//   * That the app really quits when the last window closes with no tray.
-//     That needs an exec() loop, a QQuickWindow and two sessions, one with a
-//     StatusNotifier host and one without. Offscreen reports no tray either
-//     way, so the test would be asserting the platform plugin, not the code.
-//     tests/firstrun/run.sh drives the real binary and is the place for it.
-//   * That a second launch hands over to the first. Two processes, so it
-//     belongs to the firstrun harness too.
-//   * That the PipeWire and PulseAudio lines are actually gone from a run.
-//     They come out of libQt6Multimedia and only when no audio server is up,
-//     which cannot be reproduced on a box that has one. The matcher is tested
-//     against the exact strings instead, and the gate around it (no server
-//     present at all) is read off the environment in Application.cpp.
+// Startup: the single-instance lock, the no-tray decision, the audio-server
+// log filter and the high-DPI scale rule. Application::run() never returns
+// until the app exits, so the decisions inside it are statics and are tested
+// here. Nothing needs a QApplication. Behaviour that needs a real session,
+// such as quitting with no tray or a second launch handing over, is driven by
+// tests/firstrun/run.sh.
 
 #include <QTest>
 #include <QDir>
@@ -72,9 +55,8 @@ private slots:
 #endif
     }
 
-    // The original bug: the address was $TMPDIR plus a fixed name, so a long
-    // $TMPDIR pushed it past sun_path, bind() failed, and every later launch
-    // started a second full instance.
+    // The address must fit sun_path however long $TMPDIR is, or bind() fails
+    // and every later launch starts a second full instance.
     void socketNameFitsSunPathWithALongTmpdir() {
 #if defined(Q_OS_UNIX)
         // A real directory, so length is the only thing wrong with it.
@@ -92,15 +74,12 @@ private slots:
         qputenv("XDG_RUNTIME_DIR", longDir.toLocal8Bit());
 
         const QString name = Application::singleInstanceSocketName();
-        // The limit is asked for rather than written down, because it is not the
-        // same number everywhere: sizeof(sun_path) is 108 on Linux and 104 on
-        // Apple's platforms. A literal 107 here agreed with the literal 107 the
-        // code used to carry, so the pair of them would have been wrong together
-        // on macOS and this test would have said nothing.
+        // The limit is asked for: sizeof(sun_path) is 108 on Linux and 104 on
+        // Apple's platforms.
         QVERIFY2(QFile::encodeName(name).size() <= Application::unixSocketPathMax(),
                  qPrintable(name));
         QVERIFY2(name.contains(QString::number(static_cast<uint>(::getuid()))), qPrintable(name));
-        // Still long enough to be a usable address, not an empty string.
+        // Still a usable absolute address.
         QVERIFY(name.startsWith(QLatin1Char('/')));
 
         // And the address it picked is one a server can actually bind.
@@ -115,7 +94,7 @@ private slots:
 #endif
     }
 
-    // A short $TMPDIR is still honoured; the fallback is not a hard-coded /tmp.
+    // A runtime directory that fits is used.
     void socketNameUsesTheRuntimeDirWhenItFits() {
 #if defined(Q_OS_UNIX)
         QTemporaryDir runtime;
@@ -128,19 +107,9 @@ private slots:
 #endif
     }
 
-    // The exact edge of sun_path, from both sides.
-    //
-    // socketDirFits() is the only thing standing between a too-long address and
-    // a bind() that fails with nothing said, and the number it compares against
-    // used to be a hard-coded 107 - Linux's limit - on every platform. Apple's
-    // sun_path is 104 bytes, so an address of 104 to 107 bytes passed the check
-    // and then failed to bind, silently, which is the precise failure the check
-    // exists to prevent. Nothing on the Mac happened to produce a path that
-    // long, so the bug was unreachable rather than absent.
-    //
-    // Asserted here by building a directory that puts the finished address
-    // exactly on the limit, and then one byte over it, rather than by trusting
-    // either number.
+    // The exact edge of sun_path, from both sides. A directory is built that
+    // puts the finished address exactly on the limit, and then one byte over
+    // it. Apple's limit differs from Linux's, so neither number is assumed.
     void socketDirIsAcceptedUpToTheLimitAndNotPastIt() {
 #if defined(Q_OS_UNIX)
         const int limit = Application::unixSocketPathMax();
@@ -175,8 +144,7 @@ private slots:
         QCOMPARE(fits, exact + leaf);
         QCOMPARE(QFile::encodeName(fits).size(), limit);
 
-        // And it is an address a server can really bind, which is the claim the
-        // limit is making.
+        // And it is an address a server can really bind.
         QLocalServer server;
         QLocalServer::removeServer(fits);
         QVERIFY2(Application::claimSingleInstanceSocket(&server, fits),
@@ -261,8 +229,8 @@ private slots:
         // and the preference has nothing left to decide.
         QTest::newRow("no tray, default")        << false << false << true;
         QTest::newRow("no tray, asked to quit")  << false << true  << true;
-        // Tray: closing hides, because the tray brings it back - unless the
-        // user asked for the close button to mean quit.
+        // Tray: closing hides, because the tray brings it back, unless the
+        // preference makes the close button quit.
         QTest::newRow("tray, default")           << true  << false << false;
         QTest::newRow("tray, asked to quit")     << true  << true  << true;
     }
@@ -289,17 +257,14 @@ private slots:
             QStringLiteral("Could not open audio device for playback")));
         QVERIFY(!Application::isAudioServerStartupNoise(
             QStringLiteral("QMediaPlayer::setSource: resource error")));
-        // Close to the pipewire line but about a stream, not the connection.
+        // Close to the pipewire line, but about a stream.
         QVERIFY(!Application::isAudioServerStartupNoise(
             QStringLiteral("pipewire: failed to create stream")));
     }
 
     // ── high-DPI scale factor ────────────────────────────────────────────
-    //
-    // The rule is a pure function of four numbers, so it is checked here against
-    // real panels rather than by looking at a screen. The reported case is the
-    // 3840x2400 / 344x215 mm laptop panel: 283.5 ppi, which the desktop advertises
-    // nothing about, so Qt sees logical 96 and draws 1:1.
+    // The rule is a pure function of the screen's numbers. The dense case below
+    // is a 3840x2400 panel at 283.5 ppi whose desktop reports logical 96.
 
     void mediaBackendNoiseIsTheOneLineAndNotTheRest() {
         QVERIFY(Application::isMediaBackendStartupNoise(
@@ -323,9 +288,8 @@ private slots:
     }
 
     void theWindowHasToFitTheScreen() {
-        // 3840 px wide, default window 1280 logical: 3.0 would ask for exactly the
-        // screen width, which is what the window manager had to clamp. 2400/800
-        // is the tighter axis here and gives the same answer.
+        // 3840 px wide with a default window of 1280 logical: 3.0 would ask for
+        // exactly the screen width. 2400/800 is the tighter axis, same answer.
         const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
         QCOMPARE(Application::scaleFactorCeilingFor(panel), 2.5);
         // A 1920x1080 screen cannot take any scaling at all with this default
@@ -339,10 +303,8 @@ private slots:
     void autoScaleFactorDerivesFromTheReportedPanel() {
         const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
         // physicalDpi / kAutoTargetDpi, snapped, then held under the fit ceiling.
-        // 2.0 is the user's own choice on this exact panel, made by looking at
-        // 2.0, 2.5 and 3.0 rendered side by side at native pixels. It is pinned
-        // here rather than recomputed from the constant on purpose: if someone
-        // moves kAutoTargetDpi, this should fail and make them say why.
+        // 2.0 is pinned as a design decision: moving kAutoTargetDpi should fail
+        // here.
         QCOMPARE(Application::autoScaleFactor(panel), 2.0);
     }
 
@@ -358,8 +320,7 @@ private slots:
 
     void autoScaleFactorRefusesANonsensePhysicalSize() {
         // Qt synthesises a physical size from the logical DPI when the platform
-        // reports none, which arrives here as the two being equal. Measured on
-        // Xvfb, where the RandR output reports 0 mm.
+        // reports none, which arrives here as the two being equal (Xvfb does).
         QCOMPARE(Application::autoScaleFactor(Screen{ 96.0, 96.0, 1.0, 3840, 2400 }),
                  Application::kMinScaleFactor);
         // A projector or KVM claiming a postage-stamp screen.
@@ -371,12 +332,10 @@ private slots:
 
     void anExplicitSettingOutranksTheAutomaticRule() {
         const Screen panel{ 283.5, 96.0, 1.0, 3840, 2400 };
-        // 1.5, not 2.0: the automatic answer for this panel is now 2.0 itself,
-        // so asking for 2.0 would pass whether or not the setting was consulted.
-        // The value has to be one the rule cannot produce for the assertion to
-        // mean anything.
+        // 1.5, because the automatic answer for this panel is 2.0: only a value
+        // the rule cannot produce shows that the setting was consulted.
         QCOMPARE(Application::resolveScaleFactor(panel, 1.5), 1.5);
-        // 0 is Auto, and Auto is a value rather than the absence of one.
+        // 0 is Auto.
         QCOMPARE(Application::resolveScaleFactor(panel, 0.0), 2.0);
         // ...but not even an explicit setting may put the window out of reach.
         QCOMPARE(Application::resolveScaleFactor(panel, 3.0), 2.5);
@@ -404,9 +363,8 @@ private slots:
         }
     }
 
-    // The decision must not ask what desktop or windowing system this is, so
-    // there is nothing to test per platform - only the one question that stands
-    // in for all of them: has the platform told us a ratio of its own?
+    // The decision does not ask what desktop or windowing system this is. The
+    // one question is whether the platform reported a ratio of its own.
     void aPlatformThatReportsARatioIsTrusted() {
         // The dense panel, but with a compositor that already scales it. Whatever
         // that compositor decided, it is better informed than this rule.
@@ -414,15 +372,15 @@ private slots:
         scaled.platformDpr = 2.0;
         QCOMPARE(Application::autoScaleFactor(scaled), Application::kMinScaleFactor);
         QCOMPARE(Application::resolveScaleFactor(scaled, 0.0), 0.0);
-        // The same panel with the platform reporting nothing is the case we fix.
+        // The same panel with the platform reporting nothing gets the rule.
         Screen unscaled{ 283.5, 96.0, 1.0, 3840, 2400 };
         unscaled.platformDpr = 1.0;
         QCOMPARE(Application::autoScaleFactor(unscaled), 2.0);
     }
 
     void theUsersSettingAppliesEvenWhenThePlatformScales() {
-        // The point of the slider: the user's eye wins everywhere, because no
-        // platform can be trusted about the panel's true physical size.
+        // The slider wins everywhere: no platform can be trusted about the
+        // panel's true physical size.
         Screen scaled{ 283.5, 96.0, 1.0, 3840, 2400 };
         scaled.platformDpr = 2.0;
         QCOMPARE(Application::resolveScaleFactor(scaled, 1.5), 1.5);
@@ -434,9 +392,9 @@ private slots:
         QCOMPARE(Application::resolveScaleFactor(projector, 3.0), 0.0);
     }
 
-    // The automatic rule has to be chosen before any QML is loaded, so the
-    // default window size it reasons about is written down in C++ as well as in
-    // Main.qml. This is the guard that the two cannot drift apart.
+    // The automatic rule is chosen before any QML is loaded, so the default
+    // window size is written down in C++ as well as in Main.qml. This keeps
+    // the two in step.
     void theDefaultWindowSizeMatchesMainQml() {
         QFile main(QStringLiteral(TIDALWAVE_QML_DIR "/Main.qml"));
         QVERIFY2(main.open(QIODevice::ReadOnly), qPrintable(main.fileName()));

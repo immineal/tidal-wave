@@ -1,27 +1,9 @@
-// Giving up on a stream request that never answers - without giving up on one
-// that is merely slow.
-//
-// Nothing on the playback path had a timeout. A manifest or segment request that
-// connected and then went quiet never finished, so the callback that clears
-// Player::loading() was never called and the app reported a load for the life of
-// the process. TidalApi now sets an idle transfer timeout on its
-// QNetworkAccessManager, which reaches every request the app makes.
-//
-// The whole difficulty is that the DASH path downloads an entire track before
-// the first note. Measured on this machine and link, a join runs a median 7.6 s
-// for 24/44.1, 15.2 s for 24/96 and 30.4 s for 24/192, worst case 69.7 s - all
-// of it legitimate. A deadline short enough to be useful against a dead socket
-// would kill those. An *idle* timeout does not, because it measures silence and
-// not duration, and that is the property these tests exist to hold down: the
-// slow case here deliberately runs longer end to end than the timeout itself and
-// must still deliver every byte.
-//
-// Both halves are driven through the real DashFetcher and the real
-// TidalClient::fetchRaw against real localhost sockets, so the timeout under
-// test is the one the app ships rather than one the test set. NOTHING HERE MAKES
-// A SOUND: no QMediaPlayer and no QAudioOutput, and the segment bodies are
-// arbitrary bytes, because what is measured is which requests finish and when,
-// not what they decode to.
+// Giving up on a stream request that never answers, without giving up on one
+// that is merely slow. TidalApi sets an idle transfer timeout on its
+// QNetworkAccessManager. It measures silence, so a DASH join that
+// legitimately takes longer than the timeout must still deliver every byte.
+// Driven through the real DashFetcher and TidalClient::fetchRaw against
+// localhost sockets. Nothing here makes a sound.
 
 #include <QTest>
 #include <QByteArray>
@@ -39,10 +21,8 @@
 #include "api/TidalClient.h"
 #include "player/DashFetcher.h"
 
-// @BASE@ rather than the host written out: moc honours a // comment inside a raw
-// string literal, so a "http://host/" in here makes it lose track of where
-// strings end and fail the build pointing at an unrelated line. The house rule
-// is in tst_dash.cpp, from the same bruise.
+// @BASE@ stands in for the host: moc can take the "//" of a URL inside a raw
+// string literal for a comment and lose track of where strings end.
 namespace {
 
 // One manifest, `count` media segments, every URL under the given base.
@@ -64,12 +44,8 @@ QString manifestOf(const QString &base, int count)
 }
 
 // A localhost segment server that can take its time, or take forever.
-//
-// `thinkMs` is how long it waits before answering a path; a path listed in
-// `neverAnswer` is accepted, read, and then left in silence with the connection
-// held open. That last part is the fixture this file would be worthless without:
-// a 404, a refused connection or a closed socket all *answer*, and the bug was
-// specifically a request that does not.
+// `thinkMs` is how long it waits before answering a path. A path listed in
+// `neverAnswer` is accepted, read and then held open in silence.
 class SegmentServer : public QTcpServer {
 public:
     explicit SegmentServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -138,14 +114,12 @@ class TestStreamTimeout : public QObject {
     Q_OBJECT
 
 private slots:
-    // The two halves share one wait on purpose. Both are governed by the same
-    // number, each takes the better part of twenty seconds to say anything, and
-    // running them side by side is what keeps that cost paid once. They are
-    // independent objects with independent servers; only the clock is shared.
+    // The two halves share one wait: both are governed by the same number and
+    // each takes most of twenty seconds. They are independent objects with
+    // independent servers.
     void aSegmentThatNeverAnswersEndsTheJoinAndASlowOneDoesNot()
     {
-        // Sanity on the instrument before trusting either result: a number this
-        // short would make the slow half below meaningless.
+        // A timeout this short would make the slow half below meaningless.
         QVERIFY2(TidalApi::kTransferTimeoutMs >= 5000,
                  "the shipped transfer timeout is too short for this test to say "
                  "anything about a slow-but-working load");
@@ -153,13 +127,9 @@ private slots:
         const QByteArray segment(4096, 'x');
 
         // ── the slow but working one ────────────────────────────────────────
-        // 90 segments, each answered after 1200 ms of server silence, six in
-        // flight at a time: about nineteen seconds end to end, comfortably past
-        // the timeout, with no single request anywhere near it. It stands in for
-        // the measured 24/192 case - 69.7 s of join made of fast segments. One
-        // segment waits 12000 ms, four fifths of the whole budget, to prove the
-        // edge is where it is claimed to be and not merely somewhere beyond
-        // 1200 ms.
+        // 90 segments, each answered after 1200 ms, six in flight at a time:
+        // longer end to end than the timeout, with no single request near it.
+        // One waits 12000 ms, four fifths of the budget, to place the edge.
         SegmentServer slowSrv;
         QVERIFY(slowSrv.listen(QHostAddress::LocalHost));
         slowSrv.body = segment;
@@ -201,9 +171,8 @@ private slots:
         slow.start(record(&slowOut));
         dead.start(record(&deadOut));
 
-        // Neither may be finished before the timeout could possibly have fired:
-        // if the slow one is already done here it is not testing anything, and
-        // if the dead one is, something other than the timeout killed it.
+        // Neither may be finished before the timeout could have fired: a dead
+        // one settled this early was ended by something else.
         QTest::qWait(3000);
         QVERIFY2(!deadOut.settled,
                  "the dead segment was given up on within three seconds, so the "

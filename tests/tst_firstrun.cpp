@@ -1,35 +1,9 @@
-// First run, at the QML layer (HANDOFF section M).
-//
-// tests/firstrun/run.sh starts the real binary in a throwaway HOME for each
-// environment the app supports, but headless it can only say "the process
-// stayed up and printed nothing alarming". Whether the window that came up is
-// the login page is something it can only answer from an X11 screenshot, by
-// eye. This file makes that a real assertion, so CI catches it.
-//
-// What is covered here and nowhere else:
-//   * Main.qml loads at all, against an empty settings file.
-//   * A fresh install lands on the login page, not on a blank shell.
-//   * That load produces no QML warnings, so an error in a binding cannot hide
-//     behind a window that happens to appear anyway.
-//   * A settings file that is corrupt, or written by a later version, still
-//     gets a window. Prefs clamping itself is tst_prefs.cpp's job; what this
-//     adds is that the QML on top of it survives the same input.
-//
-// Prefs, ThemePalette and the QSettings scope are the real ones, because they
-// are the first-run behaviour under test. Everything that would need a network,
-// a Tidal session, an audio device or D-Bus comes from TestStubs.h.
-//
-// Two fixture details worth knowing before editing this file:
-//
-//   * StubAuth defaults to a signed-in session (State::LoggedIn, saved
-//     credentials, a username), which is what page tests want and the exact
-//     opposite of a first run. Every test here drives it back to LoggedOut
-//     first, or it would assert against the wrong screen.
-//   * ThemePalette is a process-wide singleton holding a bare Prefs*, and
-//     setPrefs() disconnects from the old one without checking that it is still
-//     alive. A stack-allocated Prefs going out of scope between tests therefore
-//     crashes the next setPrefs() call. Prefs is parented to the test object
-//     here so it outlives the singleton's pointer.
+// First run, at the QML layer: Main.qml loads against an empty or corrupt
+// settings file, lands on the login page and logs no QML warnings.
+// Prefs, ThemePalette and the QSettings scope are the real ones. Everything
+// that needs a network, a Tidal session, an audio device or D-Bus comes from
+// TestStubs.h. StubAuth defaults to signed in, so every test signs it out, and
+// Prefs is parented to the test object so it outlives ThemePalette's pointer.
 
 #include <QTest>
 #include <QQmlApplicationEngine>
@@ -50,9 +24,8 @@
 
 namespace {
 
-// Depth-first search for the Loader that pulls in a given page. Matching on the
-// source url rather than on an object name keeps this working while qml/ is
-// being reorganised.
+// Depth-first search for the Loader that pulls in a given page, matched on the
+// source url.
 QObject *loaderForPage(QObject *root, const QString &fileName) {
     if (!root) return nullptr;
     if (QString::fromLatin1(root->metaObject()->className()).startsWith(QLatin1String("QQuickLoader"))) {
@@ -71,12 +44,9 @@ QString describe(const QList<QQmlError> &errors) {
     return lines.join(QLatin1Char('\n'));
 }
 
-// The same version guard Application::run() carries, in one place so the two
-// cannot drift: QQmlApplicationEngine::loadFromModule() arrived in Qt 6.5, and
-// without this a tests build on Debian bookworm's Qt 6.4.2 fails here even
-// though the app itself now builds there. The URL is the module's root
-// component reached the long way round; the reasoning for the prefix and the
-// "qml/" segment is written out at the call site in Application.cpp.
+// The version guard Application::run() carries:
+// QQmlApplicationEngine::loadFromModule() arrived in Qt 6.5, so Qt 6.4 loads
+// the module's root component by URL.
 void loadMain(QQmlApplicationEngine &engine) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     engine.loadFromModule("TidalWave", "Main");
@@ -92,7 +62,7 @@ class TestFirstRun : public QObject {
 
 private slots:
     void initTestCase() {
-        // Never the developer's real ~/.config/TidalWave, under any circumstance.
+        // Never the real ~/.config/TidalWave.
         QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_firstrun"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -168,8 +138,8 @@ private slots:
         }
 
         auto *prefs = new Prefs(this);
-        // What tst_prefs.cpp proves about the numbers, restated here only as the
-        // precondition for the QML assertions below.
+        // The precondition for the QML assertions below. tst_prefs.cpp covers
+        // the clamping itself.
         QVERIFY(prefs->sidebarWidth() >= Prefs::minSidebarWidth);
         QVERIFY(prefs->sidebarWidth() <= Prefs::maxSidebarWidth);
 
@@ -215,13 +185,9 @@ private:
 
     QTemporaryDir m_dir;
 
-    // Every family the UI font stack names is one this machine actually has.
-    //
-    // Naming a missing family is not a cosmetic mistake: Qt answers the first
-    // one it cannot resolve by populating its font-family alias table, which
-    // the Mac measured at 37 ms on every launch - roughly 8% of the time to
-    // first frame. This test needs a real font database, which is why it lives
-    // in a GUI test rather than next to the other startup decisions.
+    // Every family the UI font stack names is installed on this machine. Qt
+    // answers the first missing family by populating its font-family alias
+    // table on every launch. Needs a real font database, hence a GUI test.
     void uiFontFamiliesAreAllInstalled() {
         const QStringList families = Application::uiFontFamilies();
         QVERIFY2(!families.isEmpty(),
@@ -237,9 +203,7 @@ private:
     }
 
     // The key badges ask for a fixed-pitch family by name, and the name has to
-    // be real. Empty is allowed - it means "use the default font", which is a
-    // deliberate answer for a machine with nothing fixed-pitch - but a name
-    // that is not installed is the exact bug this replaced.
+    // be real. Empty is allowed and means the default font.
     void monospaceFamilyIsRealOrDeliberatelyEmpty() {
         const QString fixed = Shortcuts().monospaceFamily();
         if (fixed.isEmpty())

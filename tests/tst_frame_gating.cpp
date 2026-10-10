@@ -1,56 +1,9 @@
 // An unfocused window still draws, and the clock still ticks behind it.
-//
-// Why this file exists
-// ────────────────────
-// A Qt Quick window renders frames only while something animates, so the app's
-// indefinite "still working" animations are the render loop's only reason to run
-// at rest. That makes them an obvious place to save power, and the obvious way
-// to do it - the one a fork of this app shipped, and the one any reader of
-// Qt's docs reaches for first - is to stop them while the application is not
-// frontmost:
-//
-//     running: busy && Qt.application.state === Qt.ApplicationActive
-//
-// That gate is wrong here, and it was measured wrong rather than argued wrong.
-// On this desktop, with a real window on a real compositor:
-//
-//   * a window the user is looking at side by side with another app reports
-//     Qt::ApplicationInactive and QWindow::isActive() == false, while still
-//     drawing 60 frames a second - so the gate freezes a window the user can
-//     see, and a frozen spinner reads as an application that has hung;
-//   * a window that is genuinely not on screen - minimised, or hidden to the
-//     tray - already costs nothing, because the compositor stops delivering
-//     frame callbacks and Qt Quick stops the render loop by itself. Measured on
-//     this machine: 60 fps and ~7% of a core while visible, 0.4 fps and ~0.6%
-//     while minimised, with no gate anywhere.
-//
-// So the gate buys the app nothing it does not already have, and costs it the
-// one failure mode it cannot afford. The numbers live in the handoff notes; what
-// lives here is the decision, as something that fails if it is undone.
-//
-// The offscreen platform the suite runs under reports Qt::ApplicationActive for
-// the life of the process, whatever the windows do. That is why the whole rest
-// of this suite stayed green with the gate applied - it cannot see it at all -
-// and why the first case below reads the shipping QML instead of driving it.
-//
-// What each case covers, and what it cannot
-// ─────────────────────────────────────────
-//   * no_animation_is_gated_on_activation reads every .qml the module ships
-//     and refuses the two activation signals outright. It is text, so it
-//     catches the mistake before it can run; it carries its own positive
-//     controls below, because a scanner that silently reads nothing is the
-//     failure this repo keeps finding.
-//   * the_spinner_keeps_turning_on_an_unfocused_window and
-//     the_playing_bars_keep_moving_on_an_unfocused_window drive the real
-//     components and the real window. They need a platform that can move
-//     keyboard focus between two windows; where it cannot, they skip rather
-//     than pass, because a window that was never deactivated proves nothing.
-//   * the_sleep_timer_counts_down_behind_a_hidden_window is the other half of
-//     the rule. Gating what *looks* like an animation is one risk; the other is
-//     gating something that only looks like one. The sleep timer's countdown
-//     and its 30-second fade are a QML Timer writing the volume once a second,
-//     not an animation, and they have to keep running with the window hidden to
-//     the tray - that is the whole point of a sleep timer.
+// No animation may be gated on Qt.application.state or Window.active: both are
+// false for a visible, unfocused window, and a hidden window already costs
+// nothing because Qt Quick stops its render loop. The offscreen platform always
+// reports ApplicationActive, so the first cases read the shipping QML as text.
+// The driven cases skip where the platform cannot move keyboard focus.
 
 #include <QTest>
 #include <QDirIterator>
@@ -70,17 +23,13 @@
 
 namespace {
 
-// The module's QML, as it ships, rather than as it sits in the source tree.
-// qt_add_qml_module puts it here, which is also where Application::run() loads
-// Main.qml from, so this is the text that actually runs. Reaching it this way
-// needs no TIDALWAVE_QML_DIR and therefore no entry in tests/CMakeLists.txt.
+// The module's QML as it ships, in the resources Application::run() loads
+// Main.qml from. Needs no TIDALWAVE_QML_DIR.
 const char *kModuleRoot = ":/qt/qml/TidalWave";
 
-// Comments are prose and are allowed to name the thing they warn about - this
-// file's own header would otherwise be unquotable in QML. Only `//` to end of
-// line: the app's QML has no /* */ blocks, and a `//` inside a string literal
-// can at worst hide a forbidden token from the scanner on that one line, which
-// no real binding looks like.
+// Comments may name what they warn about, so they are stripped first. Only `//`
+// to end of line: the app's QML has no /* */ blocks, and a `//` inside a string
+// literal can at worst hide a token on that one line.
 QString codeOnly(const QString &source) {
     QStringList kept;
     const QStringList lines = source.split(QLatin1Char('\n'));
@@ -92,10 +41,8 @@ QString codeOnly(const QString &source) {
     return kept.join(QLatin1Char('\n'));
 }
 
-// The two ways to ask "is the user looking at us", and the reason each is
-// refused. Both are real Qt API and both answer the wrong question: they are
-// true of a focused window and false of a visible unfocused one, which is the
-// case that must keep drawing.
+// The two ways to ask whether the app is frontmost. Both are true of a focused
+// window and false of a visible unfocused one, which must keep drawing.
 struct Forbidden {
     const char *needle;
     const char *why;
@@ -134,9 +81,8 @@ private slots:
     }
 
     void initTestCase() {
-        // Never the developer's real ~/.config/TidalWave, under any
-        // circumstance - loading Main.qml below brings up the real settings
-        // machinery behind the stubs.
+        // Never the real ~/.config/TidalWave: loading Main.qml below brings up
+        // the real settings machinery behind the stubs.
         QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_frame_gating"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -145,17 +91,13 @@ private slots:
     }
 
     // ── the scanner's own fixtures, before anything is concluded from it ──
-    //
-    // Five guards in this repo turned out unable to fail. A text scan is the
-    // easiest of all to write that way: point it at a prefix that does not
-    // exist, or at a directory with no .qml in it, and it reports a clean bill
-    // of health forever. So the scan's inputs are asserted first, and the
-    // matcher is run against text that is known to contain what it looks for.
+    // A text scan pointed at a wrong prefix or an empty directory passes
+    // forever, so its inputs are asserted first and the matcher is run against
+    // text known to contain what it looks for.
     void the_scanner_can_see_the_shipping_qml() {
         const QStringList files = moduleQmlFiles();
-        // The module ships Main.qml, Theme.qml, and everything under
-        // components/ and pages/. Well over thirty today; thirty is a floor
-        // that says "a tree, not a stray file".
+        // The module ships well over thirty files. Thirty is a floor that tells
+        // a tree from a stray file.
         QVERIFY2(files.size() >= 30,
                  qPrintable(QStringLiteral("only %1 .qml files found under %2 - the "
                                            "resource prefix is wrong and this scan "
@@ -182,18 +124,16 @@ private slots:
         QVERIFY2(codeOnly(bad).contains(QLatin1String(kForbidden[0].needle)),
                  "the matcher cannot see the gate it exists to refuse");
 
-        // ...and the negative half: a comment naming it is not a hit, which is
-        // what lets this file's own header exist.
+        // ...and the negative half: a comment naming it is not a hit.
         const QString commented = QStringLiteral(
             "// never write Qt.application.state here\n"
             "running: dial.visible\n");
         QVERIFY2(!codeOnly(commented).contains(QLatin1String(kForbidden[0].needle)),
                  "the matcher cannot tell a warning from the thing warned about");
 
-        // And a real file from the module goes through the same function with
-        // its real content intact, so the strip is not quietly emptying it.
-        // Reached through kModuleRoot, so a wrong prefix fails here too rather
-        // than leaving this case passing over a file the scan never sees.
+        // A real file from the module goes through the same function with its
+        // content intact, reached through kModuleRoot so a wrong prefix fails
+        // here too.
         QFile real(QString::fromLatin1(kModuleRoot)
                    + QStringLiteral("/qml/components/LoadingOverlay.qml"));
         QVERIFY(real.open(QIODevice::ReadOnly));
@@ -206,10 +146,8 @@ private slots:
 
     void no_animation_is_gated_on_activation() {
         const QStringList files = moduleQmlFiles();
-        // Repeated from the fixture case above on purpose. An empty file list
-        // makes this case pass without reading anything, and a guard that
-        // depends on a *different* case failing to announce its own blindness
-        // is one test run away from being green and worthless.
+        // Repeated from the fixture case on purpose: an empty file list would
+        // make this case pass without reading anything.
         QVERIFY2(files.size() >= 30,
                  "the scan found no QML to read, so it refuses nothing");
         QStringList hits;
@@ -339,8 +277,7 @@ private slots:
         auto *win = qobject_cast<QQuickWindow *>(root);
         QVERIFY(win);
 
-        // The countdown only runs while something is playing, which is the
-        // app's rule and not this test's.
+        // The app's rule: the countdown only runs while something is playing.
         stubs.player->setPlayingForTest(true);
         QVERIFY(stubs.player->property("playing").toBool());
 
@@ -351,8 +288,7 @@ private slots:
         const int started = root->property("sleepTimeLeft").toInt();
         QCOMPARE(started, 45 * 60);
 
-        // Away it goes: closed to the tray, which is where this app spends most
-        // of its life and exactly when a sleep timer matters.
+        // Closed to the tray, which is when a sleep timer matters.
         win->hide();
         QVERIFY(!win->isVisible());
 
@@ -363,8 +299,7 @@ private slots:
                      "window may reach them.");
         QCOMPARE(root->property("sleepTimerActive").toBool(), true);
 
-        // And it is still a countdown, not a reset: cancelling leaves no fade
-        // behind on the volume.
+        // Cancelling still works with the window hidden.
         QVERIFY(QMetaObject::invokeMethod(root, "cancelSleepTimer"));
         QCOMPARE(root->property("sleepTimerActive").toBool(), false);
     }
@@ -394,8 +329,7 @@ private:
     }
 
     // Moves keyboard focus off `win` onto a second window. False means the
-    // platform would not do it, which the callers turn into a skip - a window
-    // that never went inactive cannot say anything about one that did.
+    // platform would not do it, which the callers turn into a skip.
     bool deactivate(QQuickWindow *win) {
         if (!win->isActive() && !QTest::qWaitFor([win] { return win->isActive(); }, 1000))
             return false;   // never got focus in the first place
@@ -407,12 +341,8 @@ private:
         m_thieves.append(other);
         other->show();
         other->requestActivate();
-        // Cast away rather than checked, and marked [[nodiscard]] by Qt for the
-        // usual good reason: the thief being exposed is not the signal this
-        // function reports on. What matters is whether `win` actually lost
-        // focus, which the wait below asks directly - and a thief that never
-        // appeared simply fails to steal it, so the caller QSKIPs on a platform
-        // that will not deactivate a window instead of asserting against it.
+        // The result is discarded on purpose: what matters is whether `win` lost
+        // focus, which the wait below asks directly.
         (void)QTest::qWaitForWindowExposed(other, 2000);
 
         const bool went = QTest::qWaitFor([win] { return !win->isActive(); }, 2000);

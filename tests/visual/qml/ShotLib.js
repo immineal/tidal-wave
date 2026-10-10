@@ -1,15 +1,10 @@
-// Shared fixtures and helpers for the screenshot scenes.
-//
-// Not a .pragma library, for the same reason tests/stress/qml/StressLib.js is
-// not: each scene file gets its own copy, so one scene's scribbles cannot
-// reach the next.
+// Shared fixtures and helpers for the screenshot scenes. Not a .pragma
+// library: each scene file gets its own copy, so one scene cannot reach the
+// next through it.
 
 // ── the themes a scene is shot in ───────────────────────────────────────────
 
-// All six, and the three the brief cares most about. The light pair is the
-// risk, so they are in both lists. The full list used to carry "deep", which
-// stopped being a palette when the pure-black switch replaced it, and was
-// missing the light amber one; both are fixed here.
+// All six, and the three core ones. The light pair is in both lists.
 var allThemes   = ["sea", "pine", "rust", "sky", "sand", "clay"]
 var coreThemes  = ["sea", "sky", "sand"]
 

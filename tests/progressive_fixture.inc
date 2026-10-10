@@ -1,22 +1,13 @@
 // Embedded DASH fixture for tst_progressive.cpp: four seconds of a 440 Hz tone
-// as 16-bit mono FLAC at 16 kHz in fragmented MP4, segmented by ffmpeg's own dash
-// muxer into an initialization segment and eight half-second media segments.
-// Base64 so the test needs no data file on disk and no ffmpeg at test time.
+// as 16-bit mono FLAC at 16 kHz in fragmented MP4, one initialization segment
+// and eight half-second media segments, in Base64. dash_fixture.inc is too short
+// here: with one second in three segments the first sample never arrives before
+// the last segment. 64000 sample frames; the peak sample is 4095/32768.
 //
 // Regenerate with (ffmpeg 4.4 or newer):
 //     ffmpeg -f lavfi -i "sine=f=440:r=16000:d=4" -ac 1 -c:a flac -strict -2 \
 //            -f dash -seg_duration 0.5 -use_timeline 1 -use_template 1 out.mpd
 //     for f in init-stream0.m4s chunk-stream0-*.m4s; do base64 -w96 $f; done
-//
-// WHY NOT dash_fixture.inc: that one is a single second in one 44.1 kHz stream of
-// three segments, and a second is less than ffmpeg needs to settle the stream
-// before it will play anything, so with it the first sample never arrives before
-// the last segment and a progressive start measures the same as a complete one.
-// It cannot express the defect. This fixture has enough segments that one of them
-// is a small fraction of the whole, which is the shape a real track has.
-//
-// 4 s x 16000 Hz = 64000 sample frames. The sine's peak sample is 4095/32768,
-// which is where kProgPeak comes from.
 
 static const char *const kProgSegmentsB64[] = {
     // init, 761 bytes

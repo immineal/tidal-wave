@@ -1,16 +1,8 @@
-// X4: a 5000-track list.
-//
-// The number is not arbitrary: a Tidal favourites list of that size is
-// ordinary, and CollectionPage, PlaylistPage and AlbumPage all take the whole
-// array as a plain JS list rather than a model, so every one of them is a
-// candidate for building 5000 delegates at once.
-//
-// Three things are measured per page:
-//   * how long the list takes to mount and settle,
-//   * how many delegates actually exist once it has (virtualisation: if this
-//     is near 5000 the page is building the whole list and the window will
-//     freeze on a real account),
-//   * how long a full scroll from top to bottom takes.
+// A 5000-track list. A Tidal favourites list of that size is ordinary, and
+// CollectionPage, PlaylistPage and AlbumPage all take the whole array as a
+// plain JS list, so each could build 5000 delegates at once. Measured per page:
+// how long the list takes to mount and settle, how many delegates exist once
+// it has (near 5000 means no virtualisation), and how long a full scroll takes.
 
 import QtQuick
 import QtTest
@@ -99,7 +91,7 @@ TestCase {
         var steps = 0
         var maxY = Math.max(0, view.contentHeight - view.height)
         // One jump per viewport, but capped: a full 5000 track sweep is 300+
-        // jumps and the point is the per-jump cost, not the total.
+        // jumps, and the per-jump cost is what is measured.
         var maxSteps = Math.min(400, Math.max(20, Math.round(120 * scale)))
         var jump = Math.max(view.height, maxY / maxSteps)
         for (var y = 0; y <= maxY; y += jump) {

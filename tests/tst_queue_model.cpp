@@ -1,14 +1,7 @@
-// What the queue is supposed to do, in the terms the user put it in.
-//
-// The old queue was one flat list that playTracks() replaced wholesale, so
-// anything deliberately queued was destroyed the moment an album was played,
-// and nothing told "the rest of this album" apart from "things I chose".
-//
-// The model here is two sections behind one playback order: the current
-// track, then the manual queue in the order the user built it, then the
-// remainder of the context. These tests are written against that sentence
-// rather than against the data structure, so they stay true if the structure
-// changes again.
+// What the queue is supposed to do. Two sections sit behind one playback
+// order: the current track, then the manual queue in the order the user built
+// it, then the rest of the context. Playing an album replaces the context and
+// leaves the manual queue standing.
 
 #include <QTest>
 #include <QTemporaryDir>
@@ -78,9 +71,8 @@ private slots:
     void initTestCase() {
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
         QCoreApplication::setApplicationName(QStringLiteral("tst_queue_model"));
-        // Redirect the settings file into a scratch directory as well as
-        // renaming it. Renaming alone keeps the user's own config safe but
-        // still leaves a stray directory in their home after every run.
+        // The settings file is redirected into a scratch directory, so no run
+        // touches or leaves anything in the user's home.
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QVERIFY(m_settingsDir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDir.path());
@@ -89,9 +81,8 @@ private slots:
     // ── the invariant every other test leans on ─────────────────────────────
 
     // The flat view is the sections laid end to end. NowPlayingPage, PlayerBar
-    // and TrackRow still index the queue as one list, so the two descriptions
-    // of it must never be able to disagree; of everything here this is the one
-    // most likely to rot, so almost every test below ends up back in it.
+    // and TrackRow index the queue as one list, so the two descriptions must
+    // never disagree. Most tests below end in this check.
     void verify(Player &p) {
         QVariantList rebuilt = p.queuePlayed();
         if (p.queueIndex() >= 0) rebuilt.append(p.currentTrackMap());
@@ -261,7 +252,7 @@ private slots:
                  QSet<qlonglong>(natural.begin(), natural.end()));
         QVERIFY2(shuffled != natural, "shuffle left the context in its original order");
 
-        // Shuffling something the user ordered on purpose is never wanted.
+        // The manual queue keeps the order the user gave it.
         QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001, 9002, 9003}));
         QCOMPARE(currentId(p), 1000);
         verify(p);
@@ -309,9 +300,8 @@ private slots:
         p.previous();
         QCOMPARE(currentId(p), 1000);
         QVERIFY(p.queuePlayed().isEmpty());
-        // Stepping back past a queue entry that has already played is the end
-        // of it. It was consumed when it played, so the album carries on from
-        // here without it rather than offering it a second time.
+        // A queue entry that has already played was consumed, so stepping back
+        // past it does not offer it again.
         QVERIFY2(!ids(p.queueTracks()).contains(9001),
                  "a queue entry that had already played came back");
         verify(p);
@@ -436,8 +426,8 @@ private slots:
         QCOMPARE(played, (QList<qlonglong>{1000, 9001, 1001, 1002}));
     }
 
-    // The in-session history is not the persisted recently-played list; they
-    // are different features and must not be mistaken for one another.
+    // The in-session history is a different feature from the persisted
+    // recently-played list.
     void theHistorySectionIsNotTheRecentlyPlayedList() {
         Rig rig;
         auto &p = rig.player;
@@ -460,7 +450,7 @@ private slots:
         p.addToQueue(one(9002));
         p.addToQueue(one(9003));
 
-        p.next();                       // 9001 is now playing, not queued
+        p.next();                       // 9001 is now playing and out of the queue
         QCOMPARE(currentId(p), 9001);
         QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9002, 9003}));
 
@@ -477,7 +467,7 @@ private slots:
         QCOMPARE(currentId(p), 9001);
         verify(p);
 
-        // Out of range is a no-op, not a crash or a silently wrong row.
+        // Out of range is a no-op.
         p.removeManual(9);
         p.removeManual(-1);
         p.moveManual(0, 9);
@@ -504,7 +494,7 @@ private slots:
         QVERIFY(p.queueContext().isEmpty());
         verify(p);
 
-        // Nothing to do, and nothing said about it.
+        // Nothing to do, and no signal.
         QSignalSpy queueSpy(&p, &Player::queueChanged);
         p.clearManual();
         p.removeManual(0);
@@ -606,8 +596,7 @@ private slots:
         QCOMPARE(p.manualCount(), 0);
     }
 
-    // appendQueue is addToQueue under its old name; everything that still
-    // calls it has to keep behaving.
+    // appendQueue is another name for addToQueue and has to behave the same.
     void appendQueueIsAddToQueue() {
         Rig rig;
         auto &p = rig.player;

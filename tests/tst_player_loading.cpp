@@ -1,28 +1,9 @@
-// The busy flag around a track change.
-//
-// `loading` is what the now-playing spinner and the player bar read, and it is
-// the one piece of player state that is set and cleared from two directions at
-// once: loadAndPlay() raises it, and QMediaPlayer's own media-status changes
-// lower it. The order of those two is the whole of this file - raising it
-// before stop() means stop() reports LoadedMedia and lowers it again, leaving
-// the app "not loading" for the entire fetch of the next track.
-//
-// The QMediaPlayer under test is the real one the Player owns, reached as its
-// child, and it is fed a locally generated silent WAV. No network and no
-// fixture out of the user's library.
-//
-// The three tests after the first one need a Tidal that has stopped answering,
-// which is reached by pointing the *application* HTTP proxy at a localhost
-// server of the test's own. Every QNetworkAccessManager in the process then
-// opens its connections there and sends CONNECT api.tidal.com:443, and the
-// server either says nothing at all or closes at once. That needs no TLS, no
-// DNS, no internet and no seam in the app: the request path under test is
-// exactly the one the app uses, and what it talks to is the only thing that
-// changed. Counting connections at that server is also how the trigger for the
-// next track's preload is observed, since the Player exposes nothing about it.
-//
-// Only the first test ever calls play(). The rest load media but never start it,
-// so no audio device is opened.
+// The busy flag around a track change. `loading` is raised by loadAndPlay()
+// and lowered by QMediaPlayer's media-status changes, and the order matters.
+// The Player's real QMediaPlayer is fed a locally generated silent WAV.
+// A Tidal that has stopped answering is modelled by pointing the application
+// HTTP proxy at a localhost server, which also counts requests.
+// Only the first test calls play(). The rest never open an audio device.
 
 #include <QTest>
 #include <QDataStream>
@@ -57,9 +38,8 @@ QVariantMap trackOf(qlonglong id) {
     return t;
 }
 
-// Half a minute of silence: valid and decodable by any backend, and long
-// enough that nothing here races its end of media (which would advance the
-// queue underneath the measurement).
+// Half a minute of silence: decodable by any backend, and long enough that no
+// test reaches its end of media, which would advance the queue.
 bool writeSilentWav(const QString &path) {
     const quint32 rate = 8000, channels = 1, bits = 16;
     const quint32 bytes = rate * 30 * channels * bits / 8;
@@ -85,12 +65,7 @@ bool writeSilentWav(const QString &path) {
 
 // A stand-in for a Tidal that has stopped answering, or for one that refuses
 // every connection. As the application HTTP proxy it sees one connection per
-// request the app makes, which is both the hang and the counter.
-//
-// Silent is the case this file exists for and the one a fixture usually cannot
-// express: a 404, a refused connection and a closed socket all *answer*, and
-// every one of them already worked. What never worked was a request that
-// connects and then goes quiet, so the socket is accepted, read, and held.
+// request. Silent accepts, reads and holds the socket without answering.
 class DeadProxy : public QTcpServer {
 public:
     enum Behaviour { Silent, CloseAtOnce };
@@ -166,8 +141,7 @@ private slots:
         auto *mp = player.findChild<QMediaPlayer *>();
         QVERIFY2(mp, "the Player has no QMediaPlayer");
 
-        // Get the player into the state a user is actually in when they pick
-        // the next track: something is loaded and playing.
+        // Something is loaded and playing, as when a user picks the next track.
         mp->setSource(QUrl::fromLocalFile(m_wav));
         QTRY_VERIFY_WITH_TIMEOUT(mp->mediaStatus() == QMediaPlayer::LoadedMedia
                                  || mp->mediaStatus() == QMediaPlayer::BufferedMedia, 5000);
@@ -175,9 +149,8 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(mp->mediaStatus() == QMediaPlayer::BufferedMedia, 5000);
         QVERIFY2(!player.loading(), "the player is still busy with the file it has loaded");
 
-        // Picking a track. The manifest fetch behind it is a network call that
-        // cannot complete here, which is exactly the window being measured:
-        // for as long as it is out, the app has to say it is loading.
+        // Picking a track. The manifest fetch behind it cannot complete here,
+        // and for as long as it is out the app has to say it is loading.
         player.playTracks(QVariantList{ trackOf(4242) }, 0);
 
         QVERIFY2(player.loading(),
@@ -185,10 +158,8 @@ private slots:
                  "stop()/setSource() reported LoadedMedia and cleared the flag");
     }
 
-    // The regression. Before TidalApi set a transfer timeout, this flag stayed
-    // true for the life of the process, and TrackRow's spinner is an indefinite
-    // animation, so one stuck row held the render loop at 60 fps for as long as
-    // the window was up.
+    // Without a transfer timeout in TidalApi this flag would stay true for the
+    // life of the process, and TrackRow's spinner would animate for as long.
     void aStreamRequestThatNeverAnswersGivesUpAndSaysSo()
     {
         DeadProxy proxy{DeadProxy::Silent};
@@ -207,8 +178,8 @@ private slots:
         player.playTracks(QVariantList{ trackOf(4242) }, 0);
         QVERIFY2(player.loading(), "the load was never reported as started");
 
-        // Three seconds in, a request that has not answered yet is a request
-        // that is merely slow. Giving up here would be the wrong fix passing.
+        // Three seconds in, a request that has not answered is merely slow and
+        // must not be abandoned.
         QTest::qWait(3000);
         QCOMPARE(proxy.connections(), 1);    // out, and sitting at the proxy
         QVERIFY2(player.loading(),
@@ -224,23 +195,16 @@ private slots:
                  qPrintable(QStringLiteral("gave up after %1 ms, sooner than the "
                                            "%2 ms timeout")
                             .arg(gaveUpAfter).arg(TidalApi::kTransferTimeoutMs)));
-        // Clearing the flag is not enough on its own: a spinner that stops with
-        // nothing playing and nothing said is the same dead end, quieter.
+        // Clearing the flag is not enough: the user has to be told.
         QCOMPARE(errors.count(), 1);
         const QString msg = errors.takeFirst().at(0).toString();
         QVERIFY2(msg.startsWith(QStringLiteral("Could not load this track for playback.")),
                  qPrintable(QStringLiteral("the user was told: %1").arg(msg)));
     }
 
-    // The preload used to start ten seconds before the end of the track. A DASH
-    // join of a hi-res track was measured at a median 15.2 s (24/96) and 30.4 s
-    // (24/192) on this link, worst case 69.7 s, so it could not finish; the
-    // segments were thrown away and the gap between tracks was the whole join.
-    //
-    // There is nothing public to watch, so the proxy counts the preload's
-    // manifest request. The player is positioned six seconds into a thirty
-    // second track: far too early for the old trigger, which wanted
-    // (duration - position) <= 10000.
+    // The preload starts early in the track, because a DASH join of a hi-res
+    // track can take longer than the last ten seconds. The proxy counts the
+    // preload's manifest request, with the player six seconds into thirty.
     void theNextTrackIsPreloadedEarlyInThisTrackAndNotAtItsEnd()
     {
         DeadProxy proxy{DeadProxy::CloseAtOnce};
@@ -270,12 +234,8 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(proxy.connections() > before, 5000);
     }
 
-    // Repeat-one's "next track" is the row already playing, whose bytes are
-    // already on disk. With the trigger early in the track the preload would now
-    // *succeed* at fetching a second copy of the track being listened to - the
-    // whole of it, every loop, up to a few hundred megabytes on hi-res. The gap
-    // that leaves on a repeat-one loop is what was already there; paying for the
-    // track twice to close it would be new.
+    // Repeat-one's next track is the row already playing, whose bytes are on
+    // disk. The preload must not fetch a second copy of it on every loop.
     void repeatOneDoesNotFetchASecondCopyOfTheTrackItIsAlreadyPlaying()
     {
         DeadProxy proxy{DeadProxy::CloseAtOnce};
@@ -305,10 +265,8 @@ private slots:
         QCOMPARE(proxy.connections(), before);
     }
 
-    // With the trigger six seconds in rather than ten seconds from the end, a
-    // preload that cannot succeed would otherwise be started again on every
-    // position update for the rest of the track - one manifest request and one
-    // abandoned join per tick, for minutes.
+    // A preload that cannot succeed must not be started again on every position
+    // update for the rest of the track.
     void aPreloadThatHasGivenUpIsNotStartedAgainOnEveryTick()
     {
         DeadProxy proxy{DeadProxy::CloseAtOnce};

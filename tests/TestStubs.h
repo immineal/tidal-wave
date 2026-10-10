@@ -1,30 +1,11 @@
 #pragma once
 //
-// Test doubles for the QML context properties the app installs at runtime
-// (see Application::run(): prefs, auth, bridge, player, downloader, cast, app,
-// pins, library).
-//
-// Why: every page under qml/pages/ reaches straight into those globals in
-// bindings and in Component.onCompleted, so instantiating a page against a bare
-// QQmlEngine dies on "auth is not defined" / "TypeError: Cannot call method of
-// undefined" long before the test gets to assert anything. These stubs expose
-// the same property/invokable/signal surface as the real objects, with no
-// network, no Tidal session, no QMediaPlayer and no D-Bus.
-//
-// Shapes matter, not values: the QML callback convention is
-// function(data, errorString), and call sites do things like
-// `if (err.length > 0) return` and `tracks.length > 0`. So callbacks fire
-// synchronously with an *empty array* (or an empty object where the real bridge
-// returns a map) plus an *empty string* error — never undefined, which would
-// throw inside the page's own handler.
-//
-// Everything is header-only and listed in tests/CMakeLists.txt so AUTOMOC picks
-// it up; both tst_core and tst_qml use it.
-//
-// Beyond the mirrored API, members marked "test hook" are extras that exist only
-// here, so a test can drive state the real objects only reach via the network
-// (e.g. player.setCurrentTrackForTest(...), auth.setStateForTest(...)).
-//
+// Test doubles for the QML context properties the app installs in
+// Application::run(). Same property, invokable and signal surface as the real
+// objects, with no network, no Tidal session, no QMediaPlayer and no D-Bus.
+// Callbacks fire synchronously with an empty array or object and an empty
+// error string, never undefined: pages read .length on both.
+// Members named ...ForTest are test hooks the real objects do not have.
 
 #include <QHash>
 #include <QImage>
@@ -68,14 +49,14 @@ protected:
     }
     QJSValue noError() const { return QJSValue(QString()); }
 
-    // function(data, errorString) — the bridge's universal callback shape.
+    // function(data, errorString): the bridge's callback shape.
     void resolve(QJSValue &cb, const QJSValue &data) const {
         if (!cb.isCallable()) return;
         QJSValueList args;
         args << data << noError();
         cb.call(args);
     }
-    // function(success) — used by the favourite/playlist mutators.
+    // function(success): the favourite and playlist mutators.
     void resolveOk(QJSValue &cb, bool ok = true) const {
         if (!cb.isCallable()) return;
         QJSValueList args;
@@ -184,13 +165,8 @@ public:
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
 
-    // function(mix, tracks, error) — the one `pages/mix` reply, both halves of
-    // it. Empty until setMixPageForTest() says otherwise, like every other
-    // fetch here, so a page that opens with nothing still finishes loading.
-    //
-    // The id is recorded rather than ignored: a page opened by id alone has to
-    // ask for *that* mix, and nothing else in the stub would notice if it
-    // asked for the wrong one.
+    // function(mix, tracks, error). Empty until setMixPageForTest(). The id is
+    // recorded so a test can check that a page opened by id asked for that mix.
     Q_INVOKABLE void fetchMixPage(const QString &mixId, QJSValue cb) {
         m_lastMixPageId = mixId;
         m_mixPageFetches++;
@@ -213,38 +189,15 @@ public:
     Q_INVOKABLE void fetchFavoriteArtists(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
-    // Answers the page of m_userPlaylists that was asked for, and not an
-    // empty array.
-    //
-    // It used to answer empty for every input, even after
-    // setUserPlaylistsForTest() had filled the list that getUserPlaylists()
-    // and searchFavoritePlaylists() both read. That is the shape of stub the
-    // Tracks-filter comment further down warns about: TrackRow's "Add to
-    // playlist" picker fills its ListView from this call, so the *list* in
-    // that picker could not be driven from a test at all - only its first row,
-    // the one that is declared rather than modelled. A picker that showed
-    // nothing and a picker that showed everything were the same green.
-    //
-    // Backed by the same list as the two local filters by default,
-    // deliberately: two lists that always disagreed would let a page that read
-    // both see a library that cannot exist.
-    //
-    // setFetchedUserPlaylistsForTest() is the one exception, and it is not a
-    // second opinion about the same thing - it is the one state the app really
-    // does have two answers in. Between sign-in and the end of the favourites
-    // paging the bridge's in-memory cache is empty while the account is not,
-    // and that gap is exactly when the first "Add to playlist" picker of a
-    // session opens. A single list cannot express it.
+    // Answers the requested page of m_userPlaylists, the list the two local
+    // filters read. setFetchedUserPlaylistsForTest() gives the server a different
+    // answer, for the time when the bridge's cache is still empty after sign-in.
     Q_INVOKABLE void fetchUserPlaylists(QJSValue cb, int limit = 50, int offset = 0) {
-        // Counted: the sidebar used to call this with limit 30, which is the
-        // reported "new playlists don't show up" bug (SPEC S3). It reads
-        // library.entries now, so tst_sidebar asserts the count stays at zero.
+        // Counted: the sidebar must read library.entries and never call this.
         m_userPlaylistFetches++;
         m_lastUserPlaylistLimit  = limit;
         m_lastUserPlaylistOffset = offset;
-        // The slice the caller asked for, as the real endpoint pages. A stub
-        // that ignored `limit` would let a caller that asks for 30 of 50 pass
-        // - which is the bug above, in the one call it was reported against.
+        // Sliced by offset and limit, as the real endpoint pages.
         const QVariantList &source = m_fetchedSet ? m_fetchedPlaylists : m_userPlaylists;
         QVariantList page;
         for (int i = qMax(0, offset);
@@ -255,16 +208,8 @@ public:
         resolve(cb, data);
     }
 
-    // Detail pages — these return maps, not lists.
-    //
-    // The two album fetches answer what setAlbumForTest() put there and report
-    // m_headerError alongside it, exactly as the mix and playlist headers above
-    // already do. They used to answer an empty album and `no error`, for every
-    // input and with no way to say otherwise - so "the server refused to serve
-    // this album" was a state no fixture in this repo could reach, and
-    // AlbumPage's two `if (!err)` callbacks could drop the reason for ever
-    // without a single test going red. Same shape as the six mutators in
-    // 72e5896.
+    // Detail pages return maps. The album fetches answer what setAlbumForTest()
+    // stored and report m_headerError with it.
     Q_INVOKABLE void fetchAlbumTracks(qlonglong albumId, QJSValue cb) {
         m_lastAlbumTracksFetched = albumId;
         m_albumTracksFetches++;
@@ -275,28 +220,9 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
-    // Answers the tracks the test put there, and not an empty array.
-    //
-    // It used to answer empty for every input, which meant PlaylistPage could be
-    // shown but its track *rows* could never be built - so "Remove from playlist",
-    // the one caller of removeTrackFromPlaylist in the app, was unreachable from a
-    // QML test. That path had been discarding the server's answer since it was
-    // written: a refused removal left the song in the list and said nothing, and
-    // no test could have seen it.
-    //
-    // It reports m_headerError too, and used to report `no error` for every
-    // input. `playlists/<uuid>/tracks` answers 404 alongside
-    // `playlists/<uuid>` for a playlist its owner has deleted or made private,
-    // and PlaylistPage's `if (!err) tracks = t` could therefore drop that
-    // reason for ever with no fixture in the repo able to notice - the same
-    // blind spot as the two album fetches below.
-    //
-    // Held by its *own* switch rather than the header one. The two races are
-    // different requests - PlaylistPage.reloadTracks() asks only for tracks,
-    // with no header request beside it - and the header hold is counted by
-    // pendingHeaderRepliesForTest(), which two tests in tst_hero_from_id assert
-    // is exactly one per page opened. Folding this into that queue would change
-    // what those count rather than what they mean.
+    // Answers the tracks the test stored, with m_headerError. Held by its own
+    // switch: PlaylistPage.reloadTracks() asks for tracks alone, and the header
+    // queue is asserted to hold exactly one reply per page opened.
     Q_INVOKABLE void fetchPlaylistTracks(const QString &uuid, QJSValue cb) {
         m_lastPlaylistTracksFetched = uuid;
         ++m_playlistTracksFetches;
@@ -309,8 +235,7 @@ public:
         cb.call(args);
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
-    // coverUrl, type}. PlaylistPage's hero reads it, and `type` is the one
-    // field that is not cosmetic — it decides whether the playlist is editable.
+    // coverUrl, type}. `type` decides whether the playlist is editable.
     Q_INVOKABLE void fetchPlaylist(const QString &uuid, QJSValue cb) {
         m_lastPlaylistFetched = uuid;
         m_playlistFetches++;
@@ -331,21 +256,9 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
-    // The three artist fetches, which ArtistPage opens together.
-    //
-    // They answer what setArtistForTest() put there plus m_headerError, and
-    // record which artist was asked for. All three used to answer an empty
-    // payload and `no error` for every input, with no way to say otherwise - so
-    // an artist whose page the API refuses, which is what a followed artist
-    // withdrawn from the catalogue looks like, was a state no fixture in this
-    // repo could reach. ArtistPage's three `if (!err)` callbacks could drop the
-    // reason for ever without a single test going red, and the page they left
-    // behind is blank from edge to edge: the hero is artistData and every
-    // section below hides itself on an empty list.
-    //
-    // Through deliver(), like the album, mix and playlist headers: three held
-    // replies per artist page, so a reply for the artist the user has already
-    // left can be made to land after the next one.
+    // The three artist fetches, which ArtistPage opens together. They answer
+    // what setArtistForTest() stored plus m_headerError, through deliver(), so a
+    // reply for an artist the user already left can land after the next one.
     Q_INVOKABLE void fetchArtistDetail(qlonglong artistId, QJSValue cb) {
         m_lastArtistFetched = artistId;
         m_artistFetches++;
@@ -377,52 +290,28 @@ public:
         deliver(cb, args);
     }
 
-    // Search answers with the real result shape: {tracks, albums, artists, playlists}.
-    //
-    // The four lists are whatever setSearchResultsForTest() put there, empty
-    // until a test says otherwise. They used to be the only answer this could
-    // ever give: the query and the limit went straight to Q_UNUSED and all four
-    // lists were built empty, so no test had ever seen a non-empty remote
-    // search result. That blinded the whole results page at once - "no
-    // results", a type tab with no hits of its own kind, a failed request - and
-    // every assertion about any of it would have passed against nothing.
-    //
-    // The query is still ignored. What is under test is what the page does with
-    // a reply; how Tidal matches text is not this stub's business, and a stub
-    // that guessed at it would be asserting its own guess.
-    //
-    // The *offset* is not ignored, and this is the one place the stub models
-    // the server rather than just answering: each canned list is sliced
-    // [offset, offset+limit) and the five totals report the whole list. Without
-    // that a paging test could only ever see page one again, and "append as the
-    // bottom is reached" would go green against a page that never moved.
+    // Search answers the real shape, {tracks, albums, artists, playlists}, from
+    // setSearchResultsForTest(). The query is ignored. Offset and limit slice
+    // each list and the totals report the whole list, so paging can be tested.
     Q_INVOKABLE void search(const QString &q, QJSValue cb, int limit = 20, int offset = 0) {
         m_lastSearchQuery  = q;
         m_lastSearchLimit  = limit;
         m_lastSearchOffset = offset;
         m_searchCount++;
         if (!cb.isCallable()) return;
-        // The real bridge builds the map from a default-constructed
-        // SearchResults on the error path, so the shape is there either way and
-        // the lists are empty - mirrored here, because a page that reads
-        // results.tracks before checking err must fail the same way in a test
-        // as it would in the app.
+        // The real bridge sends the same map with empty lists on an error, so a
+        // page that reads results.tracks before checking err behaves the same.
         QJSValueList args;
         args << searchPayload(m_searchError.isEmpty(), limit, offset)
              << QJSValue(m_searchError);
-        // Held back when a test wants two requests in flight at once. Every
-        // other reply in this file is synchronous, which is enough for a page
-        // that only ever has one request out - but the search page now has a
-        // generation guard and a paging cursor, and neither can be looked at
-        // unless a reply can be made to arrive after the query it was for has
-        // been replaced.
+        // Held back when a test wants a reply to arrive after its query was
+        // replaced.
         if (m_deferSearch) { m_pendingSearches.append({cb, args}); return; }
         cb.call(args);
     }
 
-    // Hold search replies until flushSearchRepliesForTest(). The canned payload
-    // is built at call time, so what was in the stub when the request went out
-    // is what comes back - exactly like a server that already answered.
+    // Hold search replies until flushSearchRepliesForTest(). The payload is
+    // built at call time, as a server that already answered would have it.
     Q_INVOKABLE void setDeferSearchForTest(bool on) { m_deferSearch = on; }
     Q_INVOKABLE int  pendingSearchCountForTest() const { return int(m_pendingSearches.size()); }
     Q_INVOKABLE void flushSearchRepliesForTest() {
@@ -432,12 +321,8 @@ public:
     }
 
     // ── recent searches ─────────────────────────────────────────────────
-    //
-    // In memory, never on disk: these are the queries a person typed, and a
-    // test run must not append to - or read - the real account's list. The
-    // ordering rule itself is the app's own withRecentSearch() out of
-    // TidalBridge.h and not a second copy, so a test that asserts on it is
-    // asserting the shipping rule.
+    // In memory only: a test run must not read or write the real account's
+    // list. The ordering rule is the app's own withRecentSearch().
     Q_INVOKABLE QStringList recentSearches() const { return m_recentSearches; }
     Q_INVOKABLE void addRecentSearch(const QString &q) {
         const QStringList after = withRecentSearch(m_recentSearches, q);
@@ -463,29 +348,13 @@ public:
 
     Q_INVOKABLE void copyToClipboard(const QString &text) { m_lastClipboardText = text; }
 
-    // Favourite state — nothing is favourited unless a test says so.
-    //
-    // All six mutators answer setFavoriteOkForTest(), and a refusal is modelled
-    // the way TidalBridge models one: the cache is left alone, no
-    // favorite*Changed goes out, and the callback is handed false. That matters
-    // more than it looks. Until this switch existed every one of the six always
-    // succeeded *and* always wrote the cache, so "the server refused the like"
-    // was a state no fixture could put the app in - which is exactly how eleven
-    // call sites came to drop the bool and nothing went red.
-    //
-    // It also means a QML test asserting "the heart stays empty after a
-    // refusal" is asserting something about this stub and not about the heart.
-    // That assertion belongs in tst_bridge_favorites.cpp, against the real
-    // bridge; what a QML test can falsify is whether the refusal is *reported*.
+    // Favourite state. Nothing is favourited unless a test says so. A refusal
+    // set with setFavoriteOkForTest() leaves the cache alone, emits nothing and
+    // hands the callback false, as TidalBridge does.
     Q_INVOKABLE void setFavoriteOkForTest(bool ok) { m_favoriteOk = ok; }
 
-    // Seeding, without going through a mutator. A "remove is refused" case has
-    // to start from an album that is already saved, and reaching that state by
-    // calling addAlbumFavorite() would mean the pre-state depended on the very
-    // switch under test - a fixture that silently stops setting itself up the
-    // moment the switch is flipped. Tracks already had their own seeder
-    // (setTrackFavoriteForTest, further down); albums and artists did not, which
-    // is why only two of the three show up here.
+    // Seeding without a mutator, so a "remove is refused" case does not depend
+    // on the switch under test for its starting state.
     Q_INVOKABLE void setAlbumFavoriteForTest(qlonglong albumId, bool on) {
         m_favoriteAlbums[albumId] = on;
         emit favoriteAlbumsChanged();
@@ -495,11 +364,8 @@ public:
         emit favoriteArtistsChanged();
     }
 
-    // Which call went out last, as "<verb><Kind>:<id>" — "removeAlbum:77". The
-    // shared helper picks add or remove from the state the host hands it, and an
-    // inverted branch there would send an add where a remove was asked for and
-    // still come back true, so every caller's test checks the call and not only
-    // the answer.
+    // The last call as "<verb><Kind>:<id>", for example "removeAlbum:77". Tests
+    // check the call as well as the answer, to catch an add sent for a remove.
     Q_INVOKABLE QString lastFavoriteCallForTest() const { return m_lastFavoriteCall; }
     Q_INVOKABLE int     favoriteCallsForTest() const { return m_favoriteCalls; }
     Q_INVOKABLE void    resetFavoriteCallsForTest() {
@@ -508,28 +374,9 @@ public:
     }
 
     // ── a mutation whose reply has not come back yet ──────────────────────
-    //
-    // Held replies, the same shape as setDeferSearchForTest() above and the two
-    // playlist-dialog deferrals further down: the call goes out and is counted,
-    // and nothing else happens until flushFavoriteRepliesForTest().
-    //
-    // Until this existed the callback ran before mouseClick() had returned, so
-    // "the call is still out" was a state no fixture could put a page in - and
-    // the three things that exist only for that state (a line saying it is
-    // working, a button that greys out, and the guard that stops a second press
-    // sending a second DELETE) were all green against a stub that never let any
-    // of them happen. Over a real network that state lasts a second or two,
-    // which is the whole window the user presses twice in.
-    //
-    // The cache write is held *with* the callback rather than done on the way
-    // out, because the real bridge writes it inside the reply: isAlbumFavorite()
-    // goes on answering true while the DELETE is in flight, so a page looked at
-    // mid-call has to see the album still saved. Whether the held reply is an
-    // acceptance or a refusal is read off setFavoriteOkForTest() when it is
-    // released, not when it was made.
-    //
-    // All six mutators, not just the albums: a knob that held some of them and
-    // not others is the kind of asymmetry a fixture gets believed about.
+    // The call is counted and nothing else happens until
+    // flushFavoriteRepliesForTest(). The cache write is held with the callback,
+    // as the real bridge does it, and setFavoriteOkForTest() is read on release.
     Q_INVOKABLE void setDeferFavoriteRepliesForTest(bool on) { m_deferFavorites = on; }
     Q_INVOKABLE int  pendingFavoriteRepliesForTest() const { return int(m_pendingFavorites.size()); }
     Q_INVOKABLE void flushFavoriteRepliesForTest() {
@@ -556,12 +403,8 @@ public:
     }
 
     Q_INVOKABLE bool isAlbumFavorite(qlonglong albumId) const { return m_favoriteAlbums.value(albumId, false); }
-    // The saved row itself and not the flag, answered out of the list
-    // setFavoriteAlbumsForTest() fills - which removeAlbumFavorite below drops
-    // from on a removal the server accepted, exactly as the real bridge drops
-    // the album out of m_favoriteAlbums. So a page that reads an album's title
-    // out of here and then unsaves it has nothing to read afterwards, which is
-    // the state tests/qml/tst_album_load_error.qml is about.
+    // The saved row, from the list setFavoriteAlbumsForTest() fills. An accepted
+    // removal drops the row, as the real bridge does.
     Q_INVOKABLE QVariantMap favoriteAlbumById(qlonglong albumId) const {
         for (const QVariant &v : m_favoriteAlbumList) {
             const QVariantMap m = v.toMap();
@@ -603,18 +446,8 @@ public:
     }
 
     // ── a saved mix, which is how a track radio is saved ─────────────────
-    //
-    // Keyed by string, not by number: a mix id is 30 hex characters, and a stub
-    // that stored them as qlonglong would map every real id to 0 and so could
-    // not tell two mixes apart - a fixture unable to express the bug, which is
-    // this repo's recurring defect.
-    //
-    // Answers setFavoriteOkForTest() like the other six, and records the call as
-    // "addMix:<id>" / "removeMix:<id>" so a test can prove the *remove* went out
-    // where a remove was asked for. Both are needed for the refusal case: the
-    // real question is not whether the pill flips but whether a refusal is said
-    // out loud, and until this stub could refuse, that was a state no fixture in
-    // the tree could reach.
+    // Keyed by string: a mix id is 30 hex characters and does not fit a number.
+    // Answers setFavoriteOkForTest() and records "addMix:<id>" / "removeMix:<id>".
     Q_INVOKABLE bool isMixFavorite(const QString &mixId) const {
         return !mixId.isEmpty() && m_favoriteMixes.value(mixId, false);
     }
@@ -635,11 +468,7 @@ public:
         resolveOk(cb, m_favoriteOk);
     }
 
-    // Seeding, without going through a mutator - for the reason
-    // setAlbumFavoriteForTest() gives: a "remove is refused" case has to start
-    // from a mix that is already saved, and getting there through
-    // addMixFavorite() would make the pre-state depend on the very switch under
-    // test.
+    // Seeding without a mutator, for the reason setAlbumFavoriteForTest() gives.
     Q_INVOKABLE void setMixFavoriteForTest(const QString &mixId, bool on) {
         m_favoriteMixes[mixId] = on;
         emit favoriteMixesChanged();
@@ -648,52 +477,26 @@ public:
     // Playlist management
 
     // ── createPlaylist, as TidalBridge::createPlaylist behaves ───────────
-    //
-    // This used to answer `{}` with no error for every input, which is the
-    // shape of stub the Tracks filter comment above warns about: a dialog that
-    // called it went green whatever it did with the answer, and the half of
-    // the feature that matters - the new playlist reaching the sidebar and the
-    // Collection grid without a refresh - could not be tested at all, because
-    // nothing here moved when a playlist was made.
-    //
-    // So it mirrors the real one, including the order of the two effects and
-    // the guard around them. On a success the playlist joins the favourites
-    // cache that getUserPlaylists() and searchFavoritePlaylists() answer from
-    // and favoritePlaylistsChanged goes out (which is what CollectionPage
-    // listens to), and *separately* playlistCreated carries the row itself to
-    // LibraryIndex - the sidebar keeps its own second copy of the library, and
-    // installTestStubs() connects the two exactly as Application::run() does.
-    // Both are inside the guard in the real bridge: a POST that failed, or one
-    // that answered with no uuid, must not leave a phantom row behind.
+    // On a success the playlist joins the favourites cache and
+    // favoritePlaylistsChanged goes out, then playlistCreated carries the row to
+    // LibraryIndex. A failed POST or a reply with no uuid does neither.
     Q_INVOKABLE void createPlaylist(const QString &title, QJSValue cb) {
         m_createCalls++;
         m_lastCreatedTitle = title;
         if (m_deferCreates) { m_pendingCreates.append({cb, title}); return; }
         deliverCreate(cb, title);
     }
-    // Recorded, not ignored: "make a playlist from the picker and the song
-    // goes into it" is the whole point of that row, and a stub that threw the
-    // arguments away would let a version that created an empty playlist and
-    // dropped the track pass.
-    //
-    // It also repairs the cached counts on a success, as the real bridge does.
-    // That is not decoration: this used to record the call and stop, so a
-    // playlist the test had just filled still answered 0 from getUserPlaylists()
-    // - and the picker that draws that number stayed green while the shipping
-    // app showed the user "0 tracks" after they had put two songs in. The stub
-    // was the only thing being tested.
+    // Records the playlist and the track, and on a success refreshes the cached
+    // track count as the real bridge does.
     Q_INVOKABLE void addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJSValue cb) {
         m_lastAddedPlaylist = uuid;
         m_lastAddedTrackId  = trackId;
         m_addToPlaylistCalls++;
         resolveOk(cb, m_addToPlaylistOk);
-        // After the callback, and only on a success, exactly as the real one
-        // orders it: the caller is told before the second request goes out.
+        // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
-    // The mirror, with a settable answer it did not have: `resolveOk(cb)` took
-    // the default `true`, so there was no way to express a removal the server
-    // refuses - which is the case PlaylistPage used to drop on the floor.
+    // The answer is settable, so a removal the server refuses can be tested.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         m_lastRemovedPlaylist = uuid;
         m_lastRemovedIndex    = itemIndex;
@@ -703,18 +506,9 @@ public:
     }
 
     // ── editPlaylist, as TidalBridge::editPlaylist behaves ───────────────
-    //
-    // Mirrors the real one down to the two effects and the guard around them,
-    // for the same reason createPlaylist above does: the half of a rename
-    // that matters is the new name reaching the sidebar and the Collection
-    // grid without a refresh, and a stub that only answered `true` would let
-    // a version that updated neither of them pass.
-    //
-    // On a success the row in the favourites cache is *edited in place* -
-    // not removed and re-appended - because the real list must not reorder on
-    // a rename, and playlistUpdated separately carries uuid/title/description
-    // to the sidebar's own copy. On a failure neither happens, because a POST
-    // the server refused must not leave a renamed row behind.
+    // On a success the row in the favourites cache is edited in place, so the
+    // list keeps its order, and playlistUpdated carries uuid, title and
+    // description to the sidebar's copy. On a failure neither happens.
     Q_INVOKABLE void editPlaylist(const QString &uuid, const QString &title,
                                   const QString &description, QJSValue cb) {
         m_editCalls++;
@@ -729,17 +523,7 @@ public:
 
     // Track features
     // The one fetch RadioPage makes. Answers setTrackRadioForTest()'s tracks
-    // plus m_headerError, and records which track the station was asked for.
-    //
-    // It used to answer an empty array and `no error` for every input - so
-    // "Tidal would not build a station from this track", which is what
-    // `tracks/<id>/radio` says for a track that has been delisted, was a state
-    // no fixture in this repo could reach, and RadioPage's `if (!err)` could
-    // drop the reason for ever. The page it left behind is a correct heading
-    // over an empty rectangle: the list is the whole of that page.
-    //
-    // Through deliver(), so a reply for the station just left can be made to
-    // land after the next one.
+    // plus m_headerError through deliver(), and records the track asked for.
     Q_INVOKABLE void fetchTrackRadio(qlonglong trackId, QJSValue cb) {
         m_lastTrackRadioFetched = trackId;
         m_trackRadioFetches++;
@@ -751,15 +535,9 @@ public:
         deliver(cb, args);
     }
     // ── which mix a track's radio is ────────────────────────────────────
-    //
-    // The lookup TrackRow makes when the row's own payload did not name the
-    // mix. Three answers have to be reachable from a fixture or the fallback
-    // chain cannot be tested: an id, "" (Tidal served the track and gave it no
-    // radio), and an error.
-    //
-    // The call is counted as well as answered, because "the row already knew
-    // the id and so asked nothing" is an assertion about cost that a boolean
-    // answer alone could not make.
+    // The lookup TrackRow makes when its payload did not name the mix. It can
+    // answer an id, "" (the track has no radio) or an error, and it is counted
+    // so a test can see that a row which already knew the id asked nothing.
     Q_INVOKABLE void fetchTrackMix(qlonglong trackId, QJSValue cb) {
         m_lastTrackMixFetched = trackId;
         m_trackMixFetches++;
@@ -792,12 +570,8 @@ public:
         resolve(cb, res);
     }
     // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
-    // off the result. Answered empty, like fetchLyrics above, so the credits
-    // panel lands on its "unavailable" state without a network: the page's own
-    // credits state is writable, which is how a test gets a filled panel.
-    //
-    // Counted, because the page caches per track id and "flipping between the
-    // panels does not refetch" is only a claim if something is counting.
+    // off the result. Answered empty, so the credits panel shows "unavailable".
+    // Counted, because the page caches per track id.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb) {
         Q_UNUSED(trackId);
         m_trackCreditsFetches++;
@@ -813,36 +587,19 @@ public:
     }
     Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb) { resolve(cb, emptyArray()); }
 
-    // Local (already-loaded) filters used by CollectionPage's search field and by
-    // HomePage's refresh, which reads this in-memory copy rather than going back
-    // to the network. All four answer from lists a test can fill (see the hooks
-    // below); the query itself is ignored, because the real filter is a
-    // substring match and every caller under test passes "", which there means
-    // "the whole cache".
-    //
-    // Tracks used to be the exception: this returned {} for every input, with
-    // no backing list and no setter, while the comment above claimed all of
-    // them were fillable. A stub that answers emptily for every input makes
-    // every assertion about it pass without testing anything, which is how the
-    // empty quality badge survived a full visual suite. Any test of the Tracks
-    // filter went green against nothing.
+    // Local filters over the already-loaded favourites, used by CollectionPage's
+    // search field and HomePage's refresh. All four answer from lists a test can
+    // fill. The query is ignored: every caller under test passes "".
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return m_favoriteTrackList; }
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
-    // The real bridge filters the same playlist cache getUserPlaylists() answers
-    // from, so this one does too: a second list here could disagree with that
-    // one, and a page that reads both would then see a library that cannot
-    // exist. setUserPlaylistsForTest() therefore fills both.
+    // The same list getUserPlaylists() answers from, as in the real bridge.
     Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
 
     // ── what the next createPlaylist() answers ──────────────────────────
-    //
-    // Three outcomes, because the dialog has three paths through its callback
-    // and only one of them is a success:
-    //   * nothing set: the server makes it and hands back a uuid;
-    //   * an error string: the POST failed and the dialog must say so;
-    //   * an empty uuid with no error: the reply parsed to nothing, which the
-    //     real bridge refuses to treat as a win.
+    // Nothing set: the server makes it and hands back a uuid. An error string:
+    // the POST failed. An empty uuid with no error: the reply parsed to nothing,
+    // which the real bridge does not treat as a success.
     Q_INVOKABLE void setCreatePlaylistErrorForTest(const QString &err) {
         m_createError = err;
     }
@@ -852,17 +609,11 @@ public:
         m_createUuid    = uuid;
         m_createUuidSet = true;
     }
-    // Hold the reply so a test can look at the dialog while the call is still
-    // out — the in-flight state has no other way in, and it is the one state
-    // a synchronous stub would otherwise make unreachable.
+    // Hold the reply, so a test can look at the dialog while the call is out.
     Q_INVOKABLE void setDeferCreatePlaylistForTest(bool on) { m_deferCreates = on; }
 
     // ── what the next editPlaylist() answers ────────────────────────────
-    //
-    // Two outcomes only, because the call answers a bool: the server took the
-    // rename, or it refused it. The refusal is the case the dialog used to be
-    // unable to have - it never made a call - and it is the one where writing
-    // the new name onto the page would be a lie.
+    // The call answers a bool: the server took the rename or refused it.
     Q_INVOKABLE void setEditPlaylistOkForTest(bool ok) { m_editOk = ok; }
     // Hold the reply, so a test can look at the dialog while the POST is out.
     Q_INVOKABLE void setDeferEditPlaylistForTest(bool on) { m_deferEdits = on; }
@@ -891,21 +642,10 @@ public:
     // was trimmed and capped before it left.
     Q_INVOKABLE QString lastCreatedTitleForTest() const { return m_lastCreatedTitle; }
     Q_INVOKABLE int     createPlaylistCallsForTest() const { return m_createCalls; }
-    // Whether the add succeeds. The real call answers a plain bool and every
-    // caller in the app used to throw it away, so the failing branch has to be
-    // reachable or "it says so when it worked" is a claim about one case only.
     // ── what the header re-read answers, per playlist ───────────────────────
-    //
-    // The real bridge does not compute the new count: it re-reads
-    // `playlists/<uuid>` after an accepted add or removal and merges what came
-    // back, because the post sends onDuplicateFound=SKIP and so a success does
-    // not mean the playlist grew. This is that reply, and a uuid with nothing set
-    // answers nothing - which models the server confirming the row unchanged and
-    // keeps every test written before this one behaving exactly as it did.
-    //
-    // Only the four fields mergePlaylistMeta() copies are read off the map, and
-    // `addedAt` is deliberately not among them: see that function for the
-    // ordering key a header read must never overwrite.
+    // The real bridge re-reads `playlists/<uuid>` after an accepted add or
+    // removal, because a success does not mean the playlist grew. A uuid with
+    // nothing set answers the cached row unchanged. `addedAt` is never copied.
     Q_INVOKABLE void setPlaylistHeaderForTest(const QString &uuid, const QVariantMap &header) {
         m_playlistHeaders.insert(uuid, header);
     }
@@ -956,30 +696,27 @@ public:
         m_userPlaylists = playlists;
         emit favoritePlaylistsChanged();
     }
-    // What the *account* answers, when that has to differ from what the
-    // in-memory cache holds - see fetchUserPlaylists above. Unset by default,
-    // and then the fetch answers the same list as getUserPlaylists().
+    // What the account answers when that must differ from the in-memory cache.
+    // Unset by default, and then the fetch answers the getUserPlaylists() list.
     Q_INVOKABLE void setFetchedUserPlaylistsForTest(const QVariantList &playlists) {
         m_fetchedPlaylists = playlists;
         m_fetchedSet       = true;
     }
     // What fetchMixPage() answers: the MIX_HEADER half and the TRACK_LIST half,
-    // settable apart, because the response that started all of this had one and
-    // not the other.
+    // settable apart, because a real response can carry one without the other.
     Q_INVOKABLE void setMixPageForTest(const QVariantMap &header,
                                        const QVariantList &tracks) {
         m_mixHeader = header;
         m_mixTracks = tracks;
     }
-    // What fetchPlaylist() answers.
-    // The tracks `playlists/<uuid>/tracks` answers. Empty by default, which is
-    // exactly what this stub used to answer unconditionally.
+    // The tracks `playlists/<uuid>/tracks` answers. Empty by default.
     Q_INVOKABLE void setPlaylistTracksForTest(const QVariantList &tracks) {
         m_playlistTracks = tracks;
     }
     Q_INVOKABLE int     playlistTracksFetchesForTest() const { return m_playlistTracksFetches; }
     Q_INVOKABLE QString lastPlaylistTracksFetchedForTest() const { return m_lastPlaylistTracksFetched; }
 
+    // What fetchPlaylist() answers.
     Q_INVOKABLE void setPlaylistForTest(const QVariantMap &playlist) {
         m_playlist = playlist;
     }
@@ -989,17 +726,13 @@ public:
         m_albumHeader = album;
         m_albumTracks = tracks;
     }
-    // Mirrors the playlist pair above: how many times each half was asked, and
-    // for which album, so a page opened by id alone can be held to asking for
-    // *that* one.
+    // How many times each half was asked, and for which album.
     Q_INVOKABLE int       albumFetchesForTest() const { return m_albumFetches; }
     Q_INVOKABLE qlonglong lastAlbumFetchedForTest() const { return m_lastAlbumFetched; }
     Q_INVOKABLE int       albumTracksFetchesForTest() const { return m_albumTracksFetches; }
     Q_INVOKABLE qlonglong lastAlbumTracksFetchedForTest() const { return m_lastAlbumTracksFetched; }
     // What the three artist fetches answer: `artists/<id>`,
-    // `artists/<id>/toptracks` and `artists/<id>/albums`. One call for all
-    // three, because ArtistPage opens all three at once and the failure that
-    // matters takes all three down together.
+    // `artists/<id>/toptracks` and `artists/<id>/albums`.
     Q_INVOKABLE void setArtistForTest(const QVariantMap &detail,
                                       const QVariantList &topTracks,
                                       const QVariantList &albums) {
@@ -1017,28 +750,15 @@ public:
     }
     Q_INVOKABLE qlonglong lastTrackRadioFetchedForTest() const { return m_lastTrackRadioFetched; }
     Q_INVOKABLE int       trackRadioFetchesForTest() const { return m_trackRadioFetches; }
-    // Non-empty makes every header fetch fail with this reason - mix, playlist
-    // and album. A page that was handed a title by its caller has to keep it
-    // when the fetch that would have confirmed it never answers; a page that
-    // was handed nothing but an id has to say that nothing came back.
-    // ...and, since this change, the artist trio, the track radio and the
-    // playlist *tracks* half as well - every fetch the five detail pages make to
-    // find out what they are showing. A delisted record answers 404 for all of
-    // its endpoints at once, so one knob is what that looks like.
+    // Non-empty makes every fetch the five detail pages make fail with this
+    // reason: mix, playlist and its tracks, album, the artist trio and the track
+    // radio. A delisted record answers 404 on all of its endpoints at once.
     Q_INVOKABLE void setHeaderErrorForTest(const QString &err) { m_headerError = err; }
-    // Holds the two header replies instead of answering them, so a test can
-    // let a second page open before the first one's reply lands. Everything
-    // else here answers synchronously, which makes the one race these pages
-    // actually have - a reply arriving for the mix the user has already
-    // navigated away from, into the same reused page item - impossible to
-    // reach. The payload is frozen when the call is made, so each held reply
-    // carries what the fetch would really have answered.
+    // Holds the header replies so a test can let a second page open before the
+    // first one's reply lands. The payload is frozen when the call is made.
     Q_INVOKABLE void setDeferHeaderRepliesForTest(bool on) { m_deferHeaders = on; }
-    // The same for the playlist *tracks* reply, on its own queue; see
-    // fetchPlaylistTracks(). Without it reloadTracks()'s staleness guard was
-    // unreachable from a test: that function captures the uuid and then gets a
-    // synchronous answer, so `requested` could never differ from the uuid on
-    // screen and the guard it has could not be probed either way.
+    // The same for the playlist tracks reply, on its own queue. See
+    // fetchPlaylistTracks().
     Q_INVOKABLE void setDeferTrackRepliesForTest(bool on) { m_deferTracks = on; }
     Q_INVOKABLE int  pendingTrackRepliesForTest() const { return int(m_pendingTracks.size()); }
     Q_INVOKABLE void flushTrackRepliesForTest() {
@@ -1101,13 +821,8 @@ public:
         emit favoriteTracksChanged();
     }
 
-    // The canned remote search reply. Four lists because the page reads four
-    // and reacts differently to each: a result set with tracks and no albums is
-    // exactly what makes the Albums tab say something rather than nothing.
-    //
-    // Mixes are the sixth kind and come through their own hook below rather
-    // than a fifth argument here, so the twenty-odd existing call sites keep
-    // meaning "these four and no mixes".
+    // The canned remote search reply. The page reads the four lists and reacts
+    // to each differently. Mixes come through their own hook below.
     Q_INVOKABLE void setSearchResultsForTest(const QVariantList &tracks,
                                             const QVariantList &albums,
                                             const QVariantList &artists,
@@ -1118,11 +833,9 @@ public:
         m_searchPlaylists = playlists;
         m_searchError.clear();   // a filled reply is a successful one
     }
-    // The mixes the catalogue answers with. The *video* filter is not modelled
-    // here and must not be: TidalClient::parseSearchMixes drops a video mix
-    // before the bridge ever sees one, so by the time a reply reaches QML the
-    // list is already clean. tests/tst_mixes.cpp is where that filter is
-    // proved, against the captured mixType values.
+    // The mixes the catalogue answers with. Video mixes are not filtered here:
+    // TidalClient::parseSearchMixes drops them before the bridge sees one, and
+    // tests/tst_mixes.cpp covers that filter.
     Q_INVOKABLE void setSearchMixesForTest(const QVariantList &mixes) {
         m_searchMixes = mixes;
         m_searchError.clear();
@@ -1153,9 +866,7 @@ public:
     Q_INVOKABLE QString lastClipboardTextForTest() const { return m_lastClipboardText; }
     Q_INVOKABLE QString lastPlaylistPlayedForTest() const { return m_lastPlaylistPlayed; }
     Q_INVOKABLE int  userPlaylistFetchCountForTest() const { return m_userPlaylistFetches; }
-    // What the last fetchUserPlaylists() was asked for. The sidebar's old
-    // 30-item cap is the reported bug behind the count above; these two say
-    // *what* was asked when something does ask.
+    // What the last fetchUserPlaylists() was asked for.
     Q_INVOKABLE int  lastUserPlaylistLimitForTest() const { return m_lastUserPlaylistLimit; }
     Q_INVOKABLE int  lastUserPlaylistOffsetForTest() const { return m_lastUserPlaylistOffset; }
     Q_INVOKABLE int  trackCreditsFetchCountForTest() const { return m_trackCreditsFetches; }
@@ -1163,9 +874,7 @@ public:
     Q_INVOKABLE void resetForTest() {
         m_userPlaylistFetches = 0;
         m_trackCreditsFetches = 0;
-        // The three maps too, not only the switch: they used to survive
-        // resetForTest(), so a test that liked something left the next test's
-        // heart filled and the next test's "it starts empty" was luck.
+        // The favourite maps too, so one test's likes do not reach the next.
         m_favoriteTracks.clear();
         m_favoriteAlbums.clear();
         m_favoriteArtists.clear();
@@ -1188,11 +897,8 @@ public:
     }
 
     // The favourites cache the three searches above read. Setting it emits the
-    // same signal the real bridge emits when a save or a removal lands, so one
-    // call is a whole "the user just saved an album" event: that is what drives
-    // HomePage's refresh in tst_home_rows.qml, where the row used to keep what
-    // it was built with until the app was restarted. Playlists already have
-    // setUserPlaylistsForTest() above, which emits favoritePlaylistsChanged.
+    // signal the real bridge emits when a save or a removal lands, which is what
+    // drives HomePage's refresh.
     Q_INVOKABLE void setFavoriteAlbumsForTest(const QVariantList &albums) {
         m_favoriteAlbumList = albums;
         emit favoriteAlbumsChanged();
@@ -1214,49 +920,35 @@ signals:
     void favoriteArtistsChanged();
     void favoritePlaylistsChanged();
     void recentSearchesChanged();
-    // The one row the user just made, carried to the sidebar's own copy of the
-    // library. Mirrors TidalBridge::playlistCreated; installTestStubs() hands
-    // it to StubLibrary::addPlaylist the way Application::run() hands the real
-    // one to LibraryIndex::addPlaylist. A QVariantMap and not a Tidal::Playlist
-    // because that is what the stub library deals in.
+    // The row the user just made, mirroring TidalBridge::playlistCreated.
+    // installTestStubs() hands it to StubLibrary::addPlaylist.
     void playlistCreated(const QVariantMap &playlist);
-    // The rename's hand-across, mirroring TidalBridge::playlistUpdated;
-    // installTestStubs() wires it to StubLibrary::updatePlaylist the way
-    // Application::run() must wire the real pair.
+    // Mirrors TidalBridge::playlistUpdated. installTestStubs() wires it to
+    // StubLibrary::updatePlaylist.
     void playlistUpdated(const QVariantMap &playlist);
     // A playlist whose contents just changed, mirroring
     // TidalBridge::playlistStatsChanged, wired to StubLibrary::refreshPlaylistMeta.
-    // The third of these and not a reuse of playlistUpdated for the same reason
-    // the real pair are separate: updatePlaylist writes the title and returns
-    // early when it already matches, which after a track add it does.
+    // Separate from playlistUpdated, which returns early when the title matches.
     void playlistStatsChanged(const QVariantMap &playlist);
     // The QML-facing half, mirroring TidalBridge::playlistStatsRefreshed: which
-    // playlist's numbers moved. PlaylistPage reads its own length off this rather
-    // than off favoritePlaylistsChanged, which also fires on the sign-in paging
-    // and on every playlist play.
+    // playlist's numbers moved. PlaylistPage listens to this one because
+    // favoritePlaylistsChanged also fires on sign-in paging and on every play.
     void playlistStatsRefreshed(const QString &uuid);
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
-    // how many times it was asked. The count is what pins the cost of the fix:
-    // one read per accepted mutation and none per refused one.
+    // how many times it was asked: once per accepted mutation, never otherwise.
     QHash<QString, QVariantMap> m_playlistHeaders;
     int     m_playlistHeaderReads     = 0;
     QString m_lastRemovedPlaylist;
     int     m_lastRemovedIndex        = -1;
     int     m_removeFromPlaylistCalls = 0;
     bool    m_removeFromPlaylistOk    = true;
-    // The removals take the row out of the *list* too, the way TidalBridge does:
-    // the three searchFavorite* lists are what Collection's grids draw from, so
-    // a stub that only flipped the id -> bool map above left the tile on screen
-    // after a removal the server had accepted - and "the tile goes when it
-    // worked, stays when it was refused" would have been the same green either
-    // way. The add side cannot be mirrored here: the real bridge fetches the
-    // album or artist to get an object to insert, and this stub has no payload
-    // for an arbitrary id. Tests that need a row present seed it with
-    // setFavoriteAlbumsForTest() and friends.
+    // Removals take the row out of the list too, as TidalBridge does, because
+    // Collection's grids draw from the lists. Adds cannot be mirrored: the stub
+    // has no payload for an arbitrary id, so tests seed rows with the setters.
     static void dropById(QVariantList &list, qlonglong id) {
         for (int i = 0; i < list.size(); ++i) {
             if (list.at(i).toMap().value(QStringLiteral("id")).toLongLong() == id) {
@@ -1266,10 +958,8 @@ private:
         }
     }
 
-    // What a favourite mutator does once it has been counted: either the
-    // accepted effect and the answer now, or both parked for
-    // flushFavoriteRepliesForTest(). The effect is a lambda and not a flag
-    // because each of the six writes a different cache.
+    // What a favourite mutator does once counted: the accepted effect and the
+    // answer now, or both parked for flushFavoriteRepliesForTest().
     void answerFavorite(QJSValue &cb, std::function<void()> accepted) {
         if (m_deferFavorites) {
             m_pendingFavorites.append({ cb, std::move(accepted) });
@@ -1286,8 +976,7 @@ private:
         noteFavoriteCall(verb, QString::number(id));
     }
 
-    // The same log, for the one kind whose id is not a number. Routed through
-    // one function rather than two so "<verb>:<id>" cannot drift between them.
+    // The same log for mixes, whose id is not a number.
     void noteFavoriteCall(const QString &verb, const QString &id) {
         m_lastFavoriteCall = verb + QLatin1Char(':') + id;
         ++m_favoriteCalls;
@@ -1302,9 +991,7 @@ private:
     QString   m_trackMixError;
     int       m_trackMixFetches     = 0;
     qlonglong m_lastTrackMixFetched = 0;
-    // Whether the next favourite call is accepted. True, because almost every
-    // test wants the ordinary path; the refusal is the case that has to be asked
-    // for.
+    // Whether the next favourite call is accepted.
     bool    m_favoriteOk = true;
     QString m_lastFavoriteCall;
     int     m_favoriteCalls = 0;
@@ -1358,33 +1045,16 @@ private:
         cb.call(args);
     }
 
-    // The body of a createPlaylist reply, run either inline or when a held one
-    // is released. Built here rather than at call time because the two effects
-    // below are what the *server answering* does, and a test that holds a
-    // reply is asking for exactly that gap.
     // ── the header re-read, as TidalBridge::refreshPlaylistMeta behaves ──────
-    //
-    // Mirrors the real one down to the field list, the two signals and the guard
-    // between them. On a header that says something new the row in the favourites
-    // cache is edited in place and favoritePlaylistsChanged goes out; on one that
-    // confirms what is already there, neither. playlistStatsChanged goes out
-    // either way, outside that guard, because the sidebar keeps a different list
-    // and may well be behind this one.
-    //
-    // `addedAt` is not in the field list, and that is the point of writing it out
-    // here rather than letting the stub replace the row: the real payload carries
-    // the playlist author's creation date, and copying it would re-order the
-    // library. A stub that swapped the whole row would hide that.
+    // A header that says something new edits the row in place and emits
+    // favoritePlaylistsChanged. playlistStatsChanged goes out either way, for
+    // the sidebar's list. `addedAt` is never copied: it would re-order rows.
     void refreshPlaylistMeta(const QString &uuid) {
         if (uuid.isEmpty()) return;
         ++m_playlistHeaderReads;
 
-        // No fixture means "the header answered with exactly what is cached", not
-        // "no reply came". The real bridge raises both hand-across signals on every
-        // successful read and only gates favoritePlaylistsChanged on something
-        // having moved, so a stub that stayed silent here would be *less* capable
-        // than the shipping class - and a page relying on the confirmation would be
-        // untestable rather than broken, which is the harder failure to notice.
+        // No fixture means the header answered with what is cached. The signals
+        // still go out, as the real bridge raises them on every successful read.
         QVariantMap fresh = m_playlistHeaders.value(uuid);
         if (!m_playlistHeaders.contains(uuid)) {
             for (const QVariant &v : std::as_const(m_userPlaylists)) {
@@ -1422,14 +1092,14 @@ private:
         emit playlistStatsRefreshed(uuid);
     }
 
+    // The body of a createPlaylist reply, inline or when a held one is released.
     void deliverCreate(QJSValue &cb, const QString &title) {
         QVariantMap p;
         const QString uuid = m_createUuidSet
                                  ? m_createUuid
                                  : QStringLiteral("uuid-created-%1").arg(m_createCalls);
-        // The same guard the real bridge applies, and for the same reason: a
-        // failed POST, or one whose reply parsed to nothing, must not leave a
-        // row in either list.
+        // The real bridge's guard: a failed POST, or a reply that parsed to
+        // nothing, must not leave a row in either list.
         if (m_createError.isEmpty() && !uuid.isEmpty()) {
             p.insert(QStringLiteral("uuid"), uuid);
             p.insert(QStringLiteral("title"), title);
@@ -1462,9 +1132,7 @@ private:
                      const QString &description) {
         const bool ok = m_editOk;
         if (ok) {
-            // In place: a rename must not move the row. A stub that removed
-            // and re-appended would hide a bridge that did the same, and the
-            // Collection grid would then shuffle every time a name changed.
+            // In place: a rename must not move the row.
             for (int i = 0; i < m_userPlaylists.size(); ++i) {
                 QVariantMap m = m_userPlaylists.at(i).toMap();
                 if (m.value(QStringLiteral("uuid")).toString() != uuid) continue;
@@ -1529,13 +1197,9 @@ private:
     bool         m_deferSearch = false;
     QList<std::pair<QJSValue, QJSValueList>> m_pendingSearches;
 
-    // {tracks, albums, artists, playlists, mixes} plus the five totals;
-    // `filled` false gives the same map with five empty lists and five zeroes,
-    // which is what the real bridge sends on an error.
-    //
-    // Each list is the slice the caller asked for. The total is the length of
-    // the whole canned list, which is what lets the page see that there is
-    // more behind a full page and nothing behind a short one.
+    // {tracks, albums, artists, playlists, mixes} plus the five totals. `filled`
+    // false gives empty lists and zeroes, as the real bridge sends on an error.
+    // Each list is the requested slice and each total the whole list's length.
     QJSValue searchPayload(bool filled, int limit, int offset) const {
         QJSEngine *e = jsEngine();
         QJSValue res = e ? e->newObject() : QJSValue();
@@ -1588,18 +1252,9 @@ class StubPlayer : public QObject {
     Q_PROPERTY(QString sourceName READ sourceName NOTIFY sourceChanged)
 
     // ── the reworked queue (0.4.0) ──────────────────────────────────────
-    //
-    // One list in play order, exactly as Player holds it: what has played, the
-    // track playing, the `m_manualCount` rows the user queued by hand, then
-    // the rest of the context. The three slices are views onto that list, not
-    // lists of their own.
-    //
-    // The signalling matters as much as the shape. An *advance* moves the
-    // index and shortens the manual run; it does not say the queue changed,
-    // because it did not, and because republishing 5000 rows per track is the
-    // regression tests/tst_queue_perf.cpp exists to keep out. advanceForTest()
-    // below reproduces exactly that, so a view bound to the slices instead of
-    // to queueTracks + queueIndex + manualCount is caught here.
+    // One list in play order, as Player holds it: what has played, the current
+    // track, the m_manualCount rows queued by hand, then the rest of the context.
+    // An advance moves the index and the manual count without queueChanged.
     Q_PROPERTY(QVariantList queuePlayed  READ queuePlayed  NOTIFY queueChanged)
     Q_PROPERTY(QVariantList queueManual  READ queueManual  NOTIFY queueChanged)
     Q_PROPERTY(QVariantList queueContext READ queueContext NOTIFY queueChanged)
@@ -1630,14 +1285,7 @@ public:
     QString      sourceId() const { return m_sourceId; }
     QString      sourceName() const { return m_sourceName; }
 
-    // Mirrors Player::qualityLabel exactly, rather than returning nothing.
-    //
-    // It used to return {} for every input, and that quietly blinded everything
-    // that looks at the quality badge: both badges are gated on
-    // `player.audioQuality.length > 0`, so with a quality set they were visible
-    // and *empty*, and every visual shot and every QML assertion about them was
-    // looking at a coloured box with no word in it. A stub that answers nothing
-    // is worse than no stub, because the test still passes.
+    // Mirrors Player::qualityLabel, because the quality badges show this text.
     Q_INVOKABLE QString qualityLabel(const QString &code) const {
         if (code == QStringLiteral("HI_RES_LOSSLESS")) return QStringLiteral("Max");
         if (code == QStringLiteral("LOSSLESS"))        return QStringLiteral("Lossless");
@@ -1832,9 +1480,8 @@ public:
         setManualCount(int(tracks.size()));
         emit queueChanged();
     }
-    // A track ending, reported the way the real Player reports it: the index
-    // moves, the manual run shortens, and *nothing* says the queue changed,
-    // because nothing about the queue did.
+    // A track ending, as the real Player reports it: the index moves, the manual
+    // run shortens, and queueChanged is not emitted.
     Q_INVOKABLE void advanceForTest() {
         if (m_index + 1 >= m_queue.size()) return;
         if (m_manualCount > 0) setManualCount(m_manualCount - 1);
@@ -1936,7 +1583,7 @@ private:
                                 int(m_queue.size()));
         for (int i = 0; i < tracks.size(); ++i) {
             QVariantMap t = tracks.at(i).toMap();
-            // Legacy marker, kept because the old panel styled rows by it.
+            // The marker the real Player puts on rows queued by hand.
             t[QStringLiteral("_userQueued")] = true;
             m_queue.insert(base + i, t);
         }
@@ -1952,9 +1599,9 @@ private:
 
 // ─── cast ───────────────────────────────────────────────────────────────────
 
-// Mirrors CastManager (src/cast/CastManager.h). Note: the real class also names
-// an invokable `disconnect()`, which hides QObject::disconnect — kept identical
-// so QML calling cast.disconnect() behaves the same.
+// Mirrors CastManager (src/cast/CastManager.h). The real class also names an
+// invokable `disconnect()`, which hides QObject::disconnect. Kept identical so
+// QML calling cast.disconnect() behaves the same.
 class StubCast : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
@@ -2004,10 +1651,9 @@ private:
 
 // ─── app ────────────────────────────────────────────────────────────────────
 
-// Mirrors the QML-visible part of Application (src/ui/Application.h): the
-// reallyQuit property plus quit()/openUrl(). No tray icon, no QML engine, and
-// quit() does not touch QCoreApplication — a test quitting the app would kill
-// the test run.
+// Mirrors the QML-visible part of Application (src/ui/Application.h). No tray
+// icon and no QML engine, and quit() does not touch QCoreApplication: a test
+// quitting the app would kill the test run.
 class StubApp : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool reallyQuit READ reallyQuit NOTIFY reallyQuitChanged)
@@ -2018,19 +1664,15 @@ public:
     bool reallyQuit() const { return m_reallyQuit; }
     bool reducedMotion() const { return m_reducedMotion; }
 
-    // The Settings "Interface size" slider takes its range from the real
-    // Application, which clamps the top end by what the screen can hold. The
-    // stub answers with the same constants and a fixed ceiling: a test has no
-    // screen, and a ceiling that moved with the test machine's monitor would
-    // make the slider's range untestable.
+    // The real Application clamps the top of the "Interface size" range by the
+    // screen. The stub answers a fixed ceiling, so the range does not depend on
+    // the test machine's monitor.
     Q_INVOKABLE double minScaleFactor() const     { return 1.0; }
     Q_INVOKABLE double maxUsableScaleFactor() const { return 3.0; }
     Q_INVOKABLE double scaleFactorStep() const    { return 0.25; }
 
-    // The three scale facts the Settings panel asks about. Settable, because
-    // what the panel does with them is the thing under test: an environment
-    // override has to disable the slider, and an automatically derived factor
-    // has to explain itself.
+    // The three scale facts the Settings panel asks about, settable because the
+    // panel's reaction to them is under test.
     bool   m_scaleEnvOverride = false;
     bool   m_scaleWasAutomatic = false;
     double m_activeScale = 1.0;
@@ -2105,7 +1747,7 @@ public:
     Q_INVOKABLE bool isDownloading(qlonglong id) const { return m_active.contains(id); }
     Q_INVOKABLE void cancelDownload(qlonglong id) { m_active.remove(id); }
 
-    // test hooks — QML cannot emit C++ signals, so tests drive the download
+    // test hooks: QML cannot emit C++ signals, so tests drive the download
     // lifecycle (TrackRow/NowPlayingPage listen for all three) from here.
     Q_INVOKABLE void emitDownloadStartedForTest(qlonglong id) {
         m_active.insert(id);
@@ -2153,45 +1795,33 @@ public:
 
 // ─── prefs ──────────────────────────────────────────────────────────────────
 
-// Mirrors Prefs (src/ui/Prefs.h) in memory. Without this the sidebar logged
-// "ReferenceError: prefs is not defined" in every QML test and then laid itself
-// out against undefined widths.
-//
-// In memory on purpose: the real Prefs writes through QSettings, which in a test
-// binary means a file under the user's own config directory, and a persistence
-// test that depends on one is a test that fails differently on every machine.
-// Prefs' own round-tripping is covered by tst_prefs; what the QML has to get
-// right is that it writes the dragged width here at all, and reads it back when
-// a fresh sidebar is built.
+// Mirrors Prefs (src/ui/Prefs.h) in memory. The real Prefs writes through
+// QSettings, which in a test binary means a file under the user's own config
+// directory. Prefs' own round-tripping is covered by tst_prefs.
 class StubPrefs : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool oledBlack READ oledBlack WRITE setOledBlack NOTIFY oledBlackChanged)
     Q_PROPERTY(bool tintedGreys READ tintedGreys WRITE setTintedGreys NOTIFY tintedGreysChanged)
-    // 0 is Auto, exactly as in the real Prefs - not "unset".
+    // 0 is Auto, as in the real Prefs.
     Q_PROPERTY(double uiScale READ uiScale WRITE setUiScale NOTIFY uiScaleChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
-    // The fullscreen Now Playing background pulled out of the cover art.
-    // Defaulted on here, as in the real Prefs: a QML test that says nothing
-    // about it measures the state a fresh install is in.
+    // The fullscreen Now Playing background pulled out of the cover art. On by
+    // default, as in the real Prefs.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
-    // The now-playing bars show a spectrum of what is playing instead of
-    // their own animation. Off, like the real preference, and like it the
-    // property is read by name rather than by type - SpectrumAnalyzer
-    // connects to whatever notifying "spectrumBars" its source carries, so
-    // this stub is a complete substitute for Prefs as far as it is
-    // concerned.
+    // The now-playing bars show a spectrum of what is playing. Off, as in the
+    // real Prefs. SpectrumAnalyzer reads the property by name, so this stub is a
+    // complete substitute for Prefs there.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
-    // Same numbers as Prefs::minSidebarWidth and friends. Kept as literals
-    // rather than pulled from Prefs so a change there shows up as a failing
-    // assertion here instead of quietly agreeing with itself.
+    // Same numbers as Prefs::minSidebarWidth and friends, as literals so that a
+    // change in Prefs shows up as a failing assertion.
     static constexpr int kMinSidebar    = 190;
     static constexpr int kMaxSidebar    = 420;
     static constexpr int kRailBreak     = 820;
@@ -2293,12 +1923,10 @@ signals:
 private:
     QString m_theme    = QStringLiteral("sea");
     // Off, unlike the real Prefs, so a QML test that says nothing about it
-    // measures the palette as written in the table rather than the pulled
-    // down one. The tests that care about the transform set it themselves.
+    // measures the palette as written in the table.
     bool    m_oledBlack = false;
-    // Off, as in the real Prefs: the six palettes share one grey ramp per mode
-    // until a test asks for the tinted grounds. A QML test that says nothing
-    // about it therefore measures the state a fresh install is in.
+    // Off, as in the real Prefs: the palettes share one grey ramp per mode until
+    // a test asks for the tinted grounds.
     bool    m_tintedGreys = false;
     double  m_uiScale = 0.0;
     QString m_language = QStringLiteral("system");
@@ -2379,14 +2007,9 @@ private:
 
 // ─── library ────────────────────────────────────────────────────────────────
 
-// Mirrors LibraryIndex (src/api/LibraryIndex.h). The real one pages the whole
-// account in over the network and then indexes saved tracklists in the
-// background; here the rows are set by hand.
-//
-// search() is a plain case-insensitive substring match over the entries plus the
-// song index, filtered by `kinds`. It is not the real scoring (tst_library owns
-// that) — it only has to answer the way the real one does so the QML above it
-// can be tested: entries for the library list, songs for the search only.
+// Mirrors LibraryIndex (src/api/LibraryIndex.h), with rows set by hand. search()
+// is a case-insensitive substring match over the entries plus the song index,
+// filtered by `kinds`. The real scoring is tst_library's subject.
 class StubLibrary : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
@@ -2403,9 +2026,8 @@ public:
     Q_INVOKABLE void markPlayed(const QString &kind, const QString &id) {
         m_lastPlayed = kind + QLatin1Char(':') + id;
     }
-    // The song half of the same thing - see LibraryIndex::markTrackPlayed. It
-    // has to exist here or PlayerBar throws a TypeError on every track change
-    // in a QML test.
+    // The song half, see LibraryIndex::markTrackPlayed. PlayerBar calls it on
+    // every track change.
     Q_INVOKABLE void markTrackPlayed(const QString &id) {
         m_lastTrackPlayed = id;
     }
@@ -2436,13 +2058,9 @@ public:
         return out;
     }
 
-    // The browse-by-kind path, mirroring LibraryIndex::entriesForKinds: the
-    // `entries` property holds the browsable kinds and leaves songs out, so a
-    // caller that filters `entries` in QML can never find a track. That was a
-    // real bug - the finder's Tracks chip said "Nothing saved yet" with nothing
-    // typed, while the same chip worked as soon as anything was - so the stub
-    // has to have the same two sources as the real thing or a test could not
-    // tell the difference.
+    // The browse-by-kind path, mirroring LibraryIndex::entriesForKinds. The
+    // `entries` property leaves songs out, so a caller that wants tracks must
+    // come through here, and the stub keeps the same two sources.
     Q_INVOKABLE QVariantList entriesForKinds(const QStringList &kinds) const {
         if (kinds.isEmpty()) return m_entries;
         QVariantList out;
@@ -2458,20 +2076,9 @@ public:
         return out;
     }
 
-    // The one row the user just made, mirroring LibraryIndex::addPlaylist.
-    //
-    // installTestStubs() connects StubBridge::playlistCreated to this, the way
-    // Application::run() connects the real pair. The sidebar is a *second*
-    // copy of the account's library - TidalBridge keeps the first - so without
-    // the hand-across a created playlist would reach the Collection page and
-    // not the sidebar, which is half of what the New-playlist dialog has to
-    // be shown to do.
-    //
-    // Inserted at the head of the unpinned block rather than appended,
-    // because that is where the real index puts it: addPlaylist() stamps the
-    // row as of now and rebuild() orders the unpinned tier newest first.
-    // Appending here would let a sidebar that quietly dropped the stamp still
-    // look right in a test.
+    // The row the user just made, mirroring LibraryIndex::addPlaylist. Inserted
+    // at the head of the unpinned block, where the real index puts a row
+    // stamped as of now.
     void addPlaylist(const QVariantMap &p) {
         const QString uuid = p.value(QStringLiteral("uuid")).toString();
         if (uuid.isEmpty()) return;
@@ -2498,17 +2105,9 @@ public:
         emit entriesChanged();
     }
 
-    // The one row the user just renamed, mirroring LibraryIndex::updatePlaylist.
-    //
-    // Edits the label on the row that is already there and moves nothing
-    // else. In particular the row keeps its position: the real index leaves
-    // `addedAt` alone and rebuild() orders on it, so a rename cannot send a
-    // playlist to the top of the sidebar. A stub that re-inserted at the head
-    // of the unpinned block - which is what addPlaylist above does - would
-    // hide exactly that.
-    //
-    // A uuid the list has never held is ignored rather than added: the signal
-    // carries no artwork and no track count, so there is no row to build.
+    // The row the user just renamed, mirroring LibraryIndex::updatePlaylist.
+    // Only the label changes and the row keeps its position. A uuid the list
+    // does not hold is ignored: the signal carries too little to build a row.
     void updatePlaylist(const QVariantMap &p) {
         const QString uuid = p.value(QStringLiteral("uuid")).toString();
         if (uuid.isEmpty()) return;
@@ -2524,17 +2123,9 @@ public:
         }
     }
 
-    // The one row whose contents just changed, mirroring
-    // LibraryIndex::refreshPlaylistMeta.
-    //
-    // Edits the row in place and, critically, does not move it: the real index
-    // orders on `addedAt` and the merge refuses to touch it, because the payload
-    // carries the playlist author's creation date rather than the day the user
-    // acquired it. A stub that re-inserted at the head of the unpinned block -
-    // which addPlaylist above deliberately does - would hide exactly that.
-    //
-    // A uuid this list has never held is ignored rather than added, the same
-    // answer updatePlaylist gives and for the same reason.
+    // The row whose contents just changed, mirroring
+    // LibraryIndex::refreshPlaylistMeta. Edited in place and never moved, as
+    // the real index orders on `addedAt`. An unknown uuid is ignored.
     void refreshPlaylistMeta(const QVariantMap &p) {
         const QString uuid = p.value(QStringLiteral("uuid")).toString();
         if (uuid.isEmpty()) return;
@@ -2601,17 +2192,11 @@ private:
     int          m_searches  = 0;
 };
 
-// ─── installation ───────────────────────────────────────────────────────────
-
-// Handles to the installed stubs, so a C++ test can poke state directly.
 // ─── update check ───────────────────────────────────────────────────────────
 
 // Mirrors UpdateCheck (src/ui/UpdateCheck.h) with no network. Registered as
-// "updateCheck", not "update": QQuickItem and QQuickWindow both already have
-// an update() slot, so the shorter name is shadowed inside any Item.
-//
-// Defaults to "enabled, nothing available", which is what a launch with no
-// newer release looks like, so no test sees a prompt it did not ask for.
+// "updateCheck": QQuickItem and QQuickWindow already have an update() slot,
+// which would shadow the shorter name. Defaults to enabled, nothing available.
 class StubUpdateCheck : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateChanged)
@@ -2666,6 +2251,9 @@ private:
     bool    m_enabled = true;
 };
 
+// ─── installation ───────────────────────────────────────────────────────────
+
+// Handles to the installed stubs, so a C++ test can poke state directly.
 struct TestStubs {
     StubAuth       *auth = nullptr;
     StubBridge     *bridge = nullptr;
@@ -2685,16 +2273,11 @@ struct TestStubs {
 inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) {
     QObject *parent = owner ? owner : static_cast<QObject *>(engine);
 
-    // The same call Application::run() makes on its own engine, and for the same
-    // reason: on Qt 6.4 "qrc:/qt/qml" is not a default import path, so without it
-    // `import TidalWave` resolves only the C++ types and every .qml file in the
-    // module - Theme included - is undefined. A test engine is not given one for
-    // free the way the app's is by sitting next to its build tree, so every
-    // engine a test builds goes through here. See Application.cpp for the whole
-    // story.
+    // The call Application::run() makes on its own engine: on Qt 6.4
+    // "qrc:/qt/qml" is not a default import path, and without it `import
+    // TidalWave` resolves only the C++ types.
     Application::addEmbeddedQmlImportPath(engine);
-    // ...and the same style the app pins, for the same anti-drift reason. On a
-    // platform where the app pins nothing this is a no-op.
+    // The same style the app pins. A no-op where the app pins nothing.
     Application::applyQuickControlsStyle();
 
     TestStubs s;
@@ -2728,23 +2311,13 @@ inline TestStubs installTestStubs(QQmlEngine *engine, QObject *owner = nullptr) 
     ctx->setContextProperty(QStringLiteral("pins"), s.pins);
     ctx->setContextProperty(QStringLiteral("library"), s.library);
 
-    // The sidebar keeps its own copy of the library, so the one row the user
-    // just made has to be handed across. Application::run() makes exactly this
-    // connection between the real TidalBridge and LibraryIndex; without it a
-    // QML test of the New-playlist dialog would be driving a sidebar wired up
-    // differently from the shipping one, and the half of the feature that is
-    // "it appears without a refresh" would be untestable.
+    // The sidebar keeps its own copy of the library. These are the three
+    // connections Application::run() makes between TidalBridge and LibraryIndex:
+    // a playlist created, renamed, and one that gained or lost a track.
     QObject::connect(s.bridge, &StubBridge::playlistCreated,
                      s.library, &StubLibrary::addPlaylist);
-    // And the same for a rename, which has the same two-copies problem:
-    // without this the sidebar would go on showing the old name until the
-    // next launch. Application::run() needs the matching line between the
-    // real TidalBridge::playlistUpdated and LibraryIndex::updatePlaylist.
     QObject::connect(s.bridge, &StubBridge::playlistUpdated,
                      s.library, &StubLibrary::updatePlaylist);
-    // And a third time, for a playlist that gained or lost a track. This is the
-    // connection the reported bug was missing from Application::run(): the count
-    // is cached in both lists and the add path wrote to neither.
     QObject::connect(s.bridge, &StubBridge::playlistStatsChanged,
                      s.library, &StubLibrary::refreshPlaylistMeta);
 

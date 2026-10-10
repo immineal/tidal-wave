@@ -1,13 +1,7 @@
-# Standalone CMake project for the stress runner (HANDOFF section I, SPEC X4).
-#
-# Deliberately NOT part of the main build. tests/CMakeLists.txt globs
-# tests/tst_*.cpp and tests/qml/tst_*.qml; this directory is outside both
-# globs, so ctest never picks the stress suite up and a long, deliberately
-# brutal run cannot slow the normal test cycle down.
-#
-# It pulls the app in with add_subdirectory() rather than linking the binaries
-# in build-t/, so the runner is always built against the current source and the
-# repository's own CMakeLists.txt needs no edit.
+# Standalone CMake project for the stress runner. It is not part of the main
+# build, so ctest never picks the stress suite up and a long run cannot slow
+# the normal test cycle. The app comes in through add_subdirectory(), so the
+# runner is always built against the current source.
 #
 # Configure and build (tests/stress/run.sh does this for you):
 #   cmake -B /tmp/tw-stress-build -S tests/stress
@@ -30,8 +24,8 @@ add_subdirectory("${TIDALWAVE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/app" EXCLUDE_F
 
 find_package(Qt6 REQUIRED COMPONENTS Test QuickTest Qml Quick)
 
-# Same dance as tests/CMakeLists.txt: linking the module's static QML plugin is
-# what makes `import TidalWave` resolve inside a test binary.
+# Linking the module's static QML plugin is what makes `import TidalWave`
+# resolve inside a test binary.
 get_target_property(tidalwave_qml_plugin tidalwave_qml QT_QML_MODULE_PLUGIN_TARGET)
 if(NOT tidalwave_qml_plugin OR NOT TARGET ${tidalwave_qml_plugin})
     message(FATAL_ERROR "tidalwave_qml has no QML plugin target; the stress runner cannot import TidalWave.")

@@ -1,13 +1,8 @@
-// PinStore: the pinned block above the sidebar library (spec P1 to P6).
-//
-// Written before PinStore.cpp. Two things here are easy to get wrong and
-// expensive to notice later: the order is the user's, so it has to come back
-// byte for byte after a restart, and the list is per Tidal account, so one
-// account must never see another's pins.
-//
-// Nothing in this file touches the network. PinStore only talks to QSettings,
-// and initTestCase() points QSettings at a QTemporaryDir so a test run cannot
-// read or scribble on the real install.
+// PinStore: the pinned block above the sidebar library. The order is the
+// user's, so it has to come back byte for byte after a restart, and the list
+// is per Tidal account, so one account must never see another's pins.
+// Nothing here touches the network: PinStore only talks to QSettings, which
+// initTestCase() points at a QTemporaryDir.
 
 #include <QTest>
 #include <QSignalSpy>
@@ -120,7 +115,7 @@ private slots:
         QVERIFY(!p.isPinned(QStringLiteral("album"), QStringLiteral("42")));
         QCOMPARE(spy.count(), 2);
 
-        // Unpinning something that is not pinned is a no-op, not a signal.
+        // Unpinning something that is not pinned emits nothing.
         p.unpin(QStringLiteral("album"), QStringLiteral("42"));
         QCOMPARE(spy.count(), 2);
 
@@ -179,7 +174,7 @@ private slots:
         PinStore reopened;
         reopened.setUserId(1001);
         QCOMPARE(idsOf(reopened.items()), QStringList({"d", "b", "a", "c"}));
-        // ...and the payload, not only the order.
+        // ...and the payload with it.
         QCOMPARE(reopened.items().first().toMap().value(QStringLiteral("title")).toString(),
                  QStringLiteral("Mix D"));
         QCOMPARE(reopened.items().first().toMap().value(QStringLiteral("kind")).toString(),
@@ -219,7 +214,7 @@ private slots:
         QCOMPARE(spy.count(), 2);
     }
 
-    // ── one list per account (P6) ────────────────────────────────────────
+    // ── one list per account ─────────────────────────────────────────────
 
     void accountsDoNotSeeEachOther() {
         PinStore p;
@@ -266,7 +261,7 @@ private slots:
         QVERIFY(p.items().isEmpty());
         QVERIFY(!p.isPinned(QStringLiteral("podcast"), QStringLiteral("1")));
 
-        // An empty id is not a thing either.
+        // An empty id is rejected too.
         p.pin(QStringLiteral("album"), QString(), QStringLiteral("Nameless"), QString(), QString());
         QVERIFY(p.items().isEmpty());
 
@@ -299,7 +294,7 @@ private slots:
         p.setUserId(1001);
         QVERIFY(p.items().isEmpty());
 
-        // ...and the store still works afterwards, rather than staying wedged.
+        // ...and the store still works afterwards.
         p.pin(QStringLiteral("album"), QStringLiteral("7"), QStringLiteral("Seven"), QString(), QString());
         QCOMPARE(idsOf(p.items()), QStringList({"7"}));
 
@@ -323,49 +318,36 @@ private slots:
     }
 
     // ── a pin stores facts, never rendered text ──────────────────────────
-    //
-    // A pin's subtitle is a datum Tidal sent - an album's artists, a mix's own
-    // subtitle - and never a string this app rendered. A row in QSettings
-    // outlives the locale it was written in and outlives whatever a number in
-    // it counted, and there is no pass over storage that could refresh either.
-    //
-    // A playlist is the one kind with no such datum: every tile that draws one
-    // puts qsTr("%n track(s)") over a cached count under the title, and that
-    // string used to be handed to pin() and written down. So the rule is
-    // enforced here rather than trusted to five call sites, on the way in and
-    // on the way back out.
+    // A pin's subtitle is a datum Tidal sent, such as an album's artists. A row
+    // in QSettings outlives the locale it was written in. A playlist has no such
+    // datum, so a rendered "%n track(s)" handed to pin() is dropped.
 
     void aPlaylistPinKeepsNoRenderedSubtitle() {
         PinStore p;
         p.setUserId(1001);
 
-        // What MediaCard used to hand over for a playlist tile: the rendered,
-        // translated, count-bearing text that was on screen.
+        // A rendered, translated, count-bearing subtitle, as a tile shows it.
         p.pin(QStringLiteral("playlist"), QStringLiteral("uuid-evening"),
               QStringLiteral("Evening Drive"), QStringLiteral("31 Titel"),
               QStringLiteral("http://art/evening.jpg"));
 
         const QVariantMap m = p.items().first().toMap();
         QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QString());
-        // Everything else about the row is untouched: this drops one field, it
-        // does not refuse the pin.
+        // Everything else about the row is kept.
         QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Evening Drive"));
         QCOMPARE(m.value(QStringLiteral("id")).toString(), QStringLiteral("uuid-evening"));
         QCOMPARE(m.value(QStringLiteral("imageUrl")).toString(),
                  QStringLiteral("http://art/evening.jpg"));
 
-        // ...and it is gone on disk too, not merely out of the live list.
+        // ...and it is gone on disk too.
         PinStore reopened;
         reopened.setUserId(1001);
         QCOMPARE(reopened.items().first().toMap().value(QStringLiteral("subtitle")).toString(),
                  QString());
     }
 
-    // The other three keep theirs, because theirs are facts: an album's
-    // artists and a mix's own subtitle came from Tidal in the account's
-    // language and mean the same thing next year. An artist pin is handed ""
-    // by every call site already - the word "Artist" is a type label, not data
-    // - so there is nothing to drop.
+    // The other three kinds keep their subtitle: an album's artists and a mix's
+    // own subtitle came from Tidal. Every call site hands an artist pin "".
     void theOtherKindsKeepTheirSubtitle_data() {
         QTest::addColumn<QString>("kind");
         QTest::addColumn<QString>("subtitle");
@@ -389,10 +371,9 @@ private slots:
                  subtitle);
     }
 
-    // The migration, and the whole of it: a row written by a build that did
-    // store the count keeps its kind, id, title, artwork and place, and loses
-    // the one field that was never a fact. Nothing is rewritten on disk until
-    // the next edit, so a downgrade finds its own data where it left it.
+    // A stored playlist row that carries a rendered count keeps its kind, id,
+    // title, artwork and place, and loses only the subtitle. Nothing is
+    // rewritten on disk until the next edit.
     void aRowWrittenBeforeThisRuleLosesOnlyItsFrozenCount() {
         { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
             QStringLiteral("[{\"kind\":\"playlist\",\"id\":\"uuid-evening\","
@@ -405,8 +386,7 @@ private slots:
         PinStore p;
         p.setUserId(1001);
 
-        // Both rows, in the order they were written: a migration that reordered
-        // the block would be a worse bug than the one it fixed.
+        // Both rows, in the order they were written.
         QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("playlist:uuid-evening"),
                                                  QStringLiteral("album:42")}));
 
@@ -422,15 +402,9 @@ private slots:
         QCOMPARE(album.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
     }
 
-    // What load() does with a row it does not fully recognise, written down
-    // because the answer is a constraint on anything that ever changes the
-    // shape of these rows: the row itself survives, and the fields it carries
-    // beyond the five do not. So the next save() - any pin, unpin or drag -
-    // writes the unknown field away, which is why a new field cannot simply be
-    // added here and expected to survive an older build.
-    //
-    // This states existing behaviour rather than fixing it; it is here so the
-    // trade is visible to whoever is tempted to add a key.
+    // load() keeps a row that carries fields beyond the five it knows and drops
+    // those fields, so the next save() writes them away. A new field added here
+    // would not survive a run of an older build.
     void anUnknownFieldDoesNotCostTheRow() {
         { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
             QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\","
@@ -449,7 +423,7 @@ private slots:
     }
 
     // LibraryIndex asks for this to keep a pinned entry out of the list below
-    // the pinned block (P5), so it has to agree with items().
+    // the pinned block, so it has to agree with items().
     void indexOfMatchesTheVisibleOrder() {
         PinStore p;
         p.setUserId(1001);
@@ -480,13 +454,9 @@ private slots:
     }
 
     // ── the one-shot default pins ────────────────────────────────────────
-    //
-    // Pinning has nothing on screen that announces it: a library row's context
-    // menu is the only door, and there is no way to guess it is there. So an
-    // account that has never had a pin is handed the two personalised mixes,
-    // Daily Discovery and New Arrivals. The rules below are all about not being
-    // rude about it - once, to an account that has not curated anything, and
-    // never again afterwards.
+    // An account that has never had a pin is handed the two personalised
+    // mixes, Daily Discovery and New Arrivals, so the pinned block is visible.
+    // This happens once per account and never again.
 
     void aFreshAccountIsGivenBothPersonalisedMixes() {
         PinStore p;
@@ -513,7 +483,7 @@ private slots:
         // restart.
         QVERIFY(spy.count() >= 1);
 
-        // And it is on disk, not just in memory.
+        // And it is on disk.
         PinStore reopened;
         reopened.setMixSource(answering(cannedMixes()));
         reopened.setUserId(1001);
@@ -522,10 +492,7 @@ private slots:
     }
 
     // Daily Discovery first, then New Arrivals, whatever order the mix list
-    // happens to arrive in - the seeding walks the two types it wants rather
-    // than the list it was handed, because `pages/my_collection_my_mixes` makes
-    // no promise about the order and the pinned block is the first thing on
-    // screen.
+    // arrives in: `pages/my_collection_my_mixes` makes no promise about order.
     void theSeededPairIsAlwaysDiscoveryThenArrivals() {
         QList<Tidal::Mix> reversed = {
             mkMix(QStringLiteral("002one"),   QStringLiteral("My Mix 1"),        QStringLiteral("DAILY_MIX")),
@@ -539,9 +506,8 @@ private slots:
                                                  QStringLiteral("mix:011new")}));
     }
 
-    // The mixes are picked by mixType. Every one of these titles arrives in the
-    // account's own language, so a title match would seed nothing at all for
-    // most users - or, worse, the wrong mix.
+    // The mixes are picked by mixType. The titles arrive in the account's own
+    // language, so a title match would seed nothing for most users.
     void theSeedIsPickedByTypeNotByTitle() {
         QList<Tidal::Mix> german = {
             mkMix(QStringLiteral("016disco"), QStringLiteral("Meine taegliche Entdeckung"),
@@ -563,9 +529,8 @@ private slots:
                  QStringLiteral("Meine Neuheiten"));
     }
 
-    // Someone who has pinned anything at all has found the feature. Nothing is
-    // added among the rows they chose - and the network is not asked, because no
-    // answer could change that.
+    // An account that has pinned anything is left alone, and the network is not
+    // asked.
     void anAccountThatAlreadyHasPinsIsLeftAlone() {
         { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
             QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\"}]")); }
@@ -580,17 +545,16 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // Unpinning them is an answer, and it is final. The list is empty again at
-    // that point, so without the marker the next sign-in would put them straight
-    // back.
+    // Unpinning the seeded rows is final. The list is empty again at that
+    // point, so only the marker stops the next sign-in from seeding again.
     void unpinningTheSeededRowsIsFinal() {
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
         p.setUserId(1001);
         QCOMPARE(p.items().size(), 2);
 
-        // Throwing one of the pair away must not bring it back either: the
-        // marker is one per account, not one per seeded row.
+        // Unpinning one of the pair must not bring it back either: the marker
+        // is one per account.
         p.unpin(QStringLiteral("mix"), QStringLiteral("016disco"));
         PinStore halfWay;
         halfWay.setMixSource(answering(cannedMixes()));
@@ -611,9 +575,8 @@ private slots:
         QVERIFY(relaunched.items().isEmpty());
     }
 
-    // Tidal builds these mixes out of listening history, so an account that has
-    // only just been made has none. That is not an answer about the account, so
-    // the one shot is not spent on it.
+    // Tidal builds these mixes out of listening history, so a new account has
+    // none yet. The one shot is not spent on an empty answer.
     void anAccountWithNoMixesYetIsAskedAgainLater() {
         PinStore first;
         first.setMixSource(answering({}));
@@ -643,9 +606,8 @@ private slots:
                                                      QStringLiteral("mix:011new")}));
     }
 
-    // An account with mixes but neither personalised one gets nothing rather
-    // than whatever happened to be first - but the shot is spent, because the
-    // list came back and that is the real answer.
+    // An account with mixes but neither personalised one gets nothing, and the
+    // shot is spent, because the list came back.
     void anAccountWithNeitherPersonalisedMixIsGivenNothing() {
         PinStore p;
         p.setMixSource(answering({
@@ -658,12 +620,7 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // An account with one of the two and not the other gets the one it has.
-    // Half a pair is still the thing the seeding is for - a destination worth
-    // having pinned, which announces that the block exists - and waiting for
-    // the other half would mean an account that never generates a Daily
-    // Discovery is never told about pinning at all. The shot is spent either
-    // way, for the same reason as above: the list came back.
+    // An account with only one of the two gets that one, and the shot is spent.
     void anAccountWithOnlyOneOfThePairGetsThatOne_data() {
         QTest::addColumn<QString>("type");
         QTest::addColumn<QString>("id");
@@ -686,8 +643,7 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // The two personalised mixes and nothing else, though four mixes come back:
-    // the block is seeded, not filled.
+    // The two personalised mixes and nothing else, though four mixes come back.
     void onlyThePersonalisedMixesAreSeeded() {
         PinStore p;
         p.setMixSource(answering(cannedMixes()));
@@ -700,9 +656,8 @@ private slots:
                                 .arg(keys.join(QLatin1String(", ")))));
     }
 
-    // The request is out while the user carries on, so its answer has to be
-    // checked against the account that is signed in when it lands - not the one
-    // that asked.
+    // The request is out while the user carries on, so its answer is checked
+    // against the account that is signed in when it lands.
     void anAnswerForAnAccountThatSignedOutIsDropped() {
         DeferredMixes net;
         PinStore p;
@@ -714,8 +669,7 @@ private slots:
         p.setUserId(2002);                              // a second account signs in
         answerFor1001(cannedMixes(), QString());        // 1001's answer lands now
 
-        // Nothing was written for either account: not for 2002, whose list this
-        // is, and not for 1001, which is no longer the signed-in account.
+        // Nothing was written for either account.
         QVERIFY(p.items().isEmpty());
         QVERIFY(!p.wasSeeded());                        // 2002's own request is still out
         PinStore first;
@@ -740,8 +694,8 @@ private slots:
         QVERIFY(p.wasSeeded());
     }
 
-    // No source means no seeding, and in particular no marker: a build that has
-    // not been wired up must not quietly spend every account's one shot.
+    // No source means no seeding and no marker, so an unwired build does not
+    // spend every account's one shot.
     void withoutAMixSourceNothingHappens() {
         PinStore p;
         p.setUserId(1001);

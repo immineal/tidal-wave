@@ -4,8 +4,8 @@
 #include <QTimeZone>
 #include "api/Auth.h"
 
-// Tidal's users/{id} response puts the account's *email address* in "username"
-// on most accounts, so the sidebar was showing an address where a name belongs.
+// Tidal's users/{id} response carries the account's email address in
+// "username" on most accounts. A display name must never be that address.
 class TestAuth : public QObject {
     Q_OBJECT
 
@@ -26,7 +26,6 @@ private slots:
                            {"username", "someone@example.com"}}
             << QStringLiteral("Robin Ashby");
 
-        // A first name, no last name, no profile name, an address in "username".
         QTest::newRow("first name only")
             << QJsonObject{{"firstName", "Robin"},
                            {"lastName", ""},
@@ -57,14 +56,8 @@ private slots:
     }
 
     // ── the token expiry in credentials.json ─────────────────────────────
-    //
-    // The expiry is the one persisted value whose meaning must not depend on
-    // where the machine was when it was written. Stored as a bare wall clock
-    // it does: read back one timezone to the east a live token looks expired,
-    // one to the west a dead one looks current. Both land in
-    // refreshAccessToken() and recover while the refresh token holds, so the
-    // cost is a wasted round trip rather than a sign-out - but the stored
-    // instant should still be an instant.
+    // The stored expiry must mean the same instant in every timezone. A bare
+    // wall clock read back in another zone names a different instant.
 
     // What a reader whose system timezone is `zoneId` makes of `stored`. A
     // string that names no offset is a wall clock, and this is exactly what
@@ -82,8 +75,7 @@ private slots:
             QDateTime::fromSecsSinceEpoch(QDateTime::currentSecsSinceEpoch() + 3600);
         const QString stored = Auth::expiryToString(when);
 
-        // January, so the two offsets are +01:00 and -05:00 and no DST rule
-        // can make them agree by accident.
+        // Two zones whose offsets never agree.
         const QDateTime east = readIn(stored, "Europe/Berlin");
         const QDateTime west = readIn(stored, "America/New_York");
 
@@ -103,9 +95,8 @@ private slots:
         QCOMPARE(Auth::expiryFromString(Auth::expiryToString(when)), when);
     }
 
-    // Every credentials.json written before the change above holds a bare wall
-    // clock. It is still read as the local time it was written as, so an
-    // upgraded install sits exactly where it sat; the next save rewrites it.
+    // A credentials.json from an older version holds a bare wall clock. It is
+    // read as local time, and the next save rewrites it.
     void aStoredWallClockExpiryIsStillRead() {
         const QDateTime legacy = Auth::expiryFromString(QStringLiteral("2027-01-15T12:00:00"));
         QVERIFY(legacy.isValid());

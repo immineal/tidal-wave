@@ -1,15 +1,9 @@
-// X4: rapid page flipping, watching RSS for a leak.
-//
-// Main.qml keeps one Loader per top-level destination and swaps the source,
-// so a real session creates and destroys pages over and over. This builds and
-// tears down every page several hundred times and samples VmRSS as it goes.
-//
-// A leak verdict from resident set size alone is never exact: the JS heap
-// grows in steps, glyph and image caches fill once and stay, and the allocator
-// does not hand pages back. So the test warms up first, takes the baseline
-// after the warm-up, and only fails on growth that is large in both relative
-// and absolute terms. The full series is printed either way, which is the part
-// worth reading.
+// Rapid page flipping, watching RSS for a leak. Main.qml keeps one Loader per
+// destination and swaps the source, so a session creates and destroys pages
+// over and over. A leak verdict from resident set size is never exact, so the
+// test warms up first, takes the baseline after the warm-up and only fails on
+// growth that is large in both relative and absolute terms. The full series is
+// printed either way.
 
 import QtQuick
 import QtTest
@@ -105,8 +99,8 @@ TestCase {
                 verify(page, "page " + i + " failed to build on cycle " + c)
                 furnish(page, i)
                 ++built
-                // One frame every third page: enough that the scene graph
-                // really builds nodes, not so much that the run takes an hour.
+                // One frame every third page, so the scene graph really builds
+                // nodes and the run stays short.
                 if (built % 3 === 0) wait(0)
                 page.destroy()
             }
@@ -142,16 +136,12 @@ TestCase {
                     + " KiB (" + pct.toFixed(1) + "%)")
 
         // Both bars have to be cleared before this is called a leak: a cache
-        // that fills once is neither large nor unbounded, and a few MiB of
-        // allocator slack on a 300 MiB process is not a finding.
+        // that fills once is neither large nor unbounded.
         verify(growth < 120 * 1024 || pct < 40,
                "resident set grew " + growth + " KiB (" + pct.toFixed(1)
                + "%) over " + built + " page builds, which looks like a leak")
     }
 
-    // NowPlayingPage is a whole window's worth of bindings onto the player,
-    // and the one page a user leaves open for hours. Fewer rounds than the
-    // others because each one builds and tears down a real window.
     // Cycle `rounds` windows out of `comp` and return the resident set growth
     // in KiB, or -1 where procfs is unreadable.
     function cycleWindows(comp, rounds, each) {
@@ -169,22 +159,22 @@ TestCase {
         return (before > 0 && after > 0) ? (after - before) : -1
     }
 
+    // NowPlayingPage is a whole window's worth of bindings onto the player,
+    // and the one page a user leaves open for hours. Fewer rounds than the
+    // others because each one builds and tears down a real window.
     function test_flip_now_playing() {
         var rounds = Math.max(5, Math.round(40 * scale))
         player.setCurrentTrackForTest(S.track(1))
         player.setQueueForTest(S.tracks(30), 0)
         player.setDurationForTest(240000)
 
-        // Warm the platform up before measuring anything: the first window of
-        // a run pulls in the whole render path and costs far more than the
-        // hundredth, and that one-off would otherwise land on whichever of the
-        // two measurements happens to run first.
+        // Warm the platform up before measuring: the first window of a run
+        // pulls in the whole render path and costs far more than the hundredth.
         cycleWindows(emptyHostC, Math.max(2, Math.round(rounds / 5)), null)
 
         // The control. Creating and destroying a top level window costs memory
-        // the page knows nothing about: on X11 through llvmpipe it was about
-        // 4.8 MiB per window, enough to read as a leak in the page and not be
-        // one. Only the difference is charged to NowPlayingPage.
+        // the page knows nothing about, so only the difference is charged to
+        // NowPlayingPage.
         var baseline = cycleWindows(emptyHostC, rounds, null)
 
         var withPage = cycleWindows(npHostC, rounds, function (host, i) {

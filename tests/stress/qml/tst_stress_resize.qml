@@ -1,14 +1,9 @@
-// X4: continuous resize while navigating between pages.
-//
-// The window is swept across the whole supported width range in small steps,
-// twice over: once hammered (many width changes between two frames, which is
-// what dragging a window edge on a loaded machine actually produces) and once
-// frame synced. Pages are swapped underneath the sweep so a resize lands on a
-// page that is still being built.
-//
-// What it can catch: geometry that goes negative or NaN, a page that stops
-// following its parent's width, a child that escapes its parent, and anything
-// that throws or loops in a binding (the harness greps stderr for those).
+// Continuous resize while navigating between pages. The window is swept across
+// the supported width range in small steps, once hammered (many width changes
+// between two frames) and once frame synced, and pages are swapped underneath.
+// Catches geometry that goes negative or NaN, a page that stops following its
+// parent's width, a child that escapes its parent, and anything that throws or
+// loops in a binding (the harness greps stderr for those).
 
 import QtQuick
 import QtTest
@@ -92,18 +87,12 @@ TestCase {
         return page
     }
 
-    // `skip` is an item to ignore anywhere in the subtree. It carries the
-    // enclosing view's highlightItem down: ListView creates a default, empty
-    // highlight item and animates its geometry towards the current delegate,
-    // so for about half a second after a resize it is still the old width.
-    // It draws nothing, the list clips it, and the user never sees it, but a
-    // naive bounds check calls it an overflow every time. Found the hard way:
-    // it was the only thing this test reported on PlaylistPage.
-    // What a failure has to say to be worth anything. "a child" names nothing a
-    // reader can go and look at, so every message carries the objectName where
-    // there is one and the QML type where there is not, and the x and width
-    // separately: an item that is too wide and one that is pushed too far right
-    // are different bugs with the same end coordinate.
+    // `skip`, in audit() below, is an item to ignore anywhere in the subtree:
+    // ListView animates its default highlightItem towards the current delegate,
+    // so for a moment after a resize it still has the previous width.
+
+    // Names an item for a failure message: objectName where there is one, the
+    // QML type where there is not.
     function describe(item) {
         if (!item) return "(null)"
         var name = item.objectName !== undefined && item.objectName.length > 0
@@ -119,15 +108,8 @@ TestCase {
         if (item.highlightItem !== undefined && item.highlightItem)
             skip = item.highlightItem
         // A Flickable's own contentItem is exempt from the bounds check, though
-        // still walked into. It is positioned at -contentX, and a row that
-        // starts its content inset - HorizontalSection sets `contentX =
-        // -leftMargin` so the first card lines up with the page's 24px gutter -
-        // therefore has its contentItem's right edge exactly leftMargin past
-        // the view. The Flickable clips it and the user never sees it. The
-        // guard above only catches the case where the content is *wider* than
-        // the view, so a row whose cards happen to fit was still audited and
-        // reported this every time. Same class of false positive as the
-        // highlightItem above, found the same way.
+        // still walked into. It sits at -contentX, so a row with a left margin
+        // has it ending past the view, where the Flickable clips it.
         var flickContent = (item.contentX !== undefined && item.contentY !== undefined
                             && item.contentItem !== undefined) ? item.contentItem : null
 

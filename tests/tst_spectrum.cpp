@@ -1,31 +1,9 @@
-// The five now-playing bars, driven by the audio instead of by a dice roll.
-// Written before src/player/SpectrumAnalyzer.cpp per the project's tests-first
-// rule.
-//
-// What is actually hard here is not the FFT. It is that the buffers arriving
-// from QAudioBufferOutput are whatever the decoder felt like producing: FLAC
-// comes out 16-bit, the ffmpeg backend hands back float, a Tidal hi-res stream
-// is 96 kHz, a mono file is one channel, and a broken or still-warming-up
-// pipeline hands over a default-constructed QAudioBuffer with no format at all.
-// Every one of those has to land on five numbers in 0..1 or be dropped on the
-// floor, and none of them may take the process down - a visualiser is the least
-// important thing in the app and must never be the thing that crashes it.
-//
-// So the cases below are mostly about formats and about refusal:
-//
-//   * a pure tone lights the band it belongs in and leaves the other four
-//     alone, in every sample format and channel count the decoder can produce;
-//   * silence is five zeros, not five small numbers;
-//   * a format nothing supports is ignored rather than guessed at;
-//   * with the preference off, nothing is computed and nothing is emitted;
-//   * the change signal is rated at ~25 Hz and is not one per buffer, which is
-//     the whole reason the analyser exists rather than the QML polling.
-//
-// The analyser is deliberately testable without a QMediaPlayer: processBuffer()
-// is synchronous and does the whole envelope, so everything except the emission
-// rate is asserted with no event loop at all. That also keeps this file running
-// on Qt 6.4, where QAudioBufferOutput does not exist and the feature is inert -
-// see theFeatureIsInertWithoutQt68() for the one place that difference shows.
+// The five now-playing bars, driven by the audio. Buffers from
+// QAudioBufferOutput arrive in whatever format the decoder produced, or with no
+// format at all, and each must land on five numbers in 0..1 or be dropped
+// without a crash. processBuffer() is synchronous, so only the emission rate
+// needs an event loop, and the file also runs on Qt 6.4, where
+// QAudioBufferOutput does not exist and the feature is inert.
 
 #include <QTest>
 #include <QAudioBuffer>
@@ -53,8 +31,7 @@
 namespace {
 
 // A stand-in for Prefs carrying just the one property the analyser reads, so
-// the pref wiring can be exercised without the real settings file. Same trick
-// ThemePalette's theme source uses.
+// the pref wiring can be exercised without the real settings file.
 class StubSpectrumPref : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
@@ -72,8 +49,7 @@ private:
     bool m_on = false;
 };
 
-// A source that does not carry the property at all - a Prefs from a build that
-// predates the switch, or a test double someone forgot to extend.
+// A source that does not carry the property at all.
 class StubEmptyPref : public QObject {
     Q_OBJECT
 public:
@@ -82,10 +58,8 @@ public:
 
 // ─── buffer building ────────────────────────────────────────────────────────
 
-// Interleaves `frames` frames of a sine at `hz` into whatever sample format is
-// asked for. Amplitude is in 0..1 of full scale; every format is written at the
-// same acoustic level so the assertions below do not have to know which one
-// they are looking at.
+// Interleaves `frames` frames of a sine at `hz` into the sample format asked
+// for. Amplitude is in 0..1 of full scale, the same level in every format.
 QAudioBuffer toneBuffer(double hz, double amplitude, int frames, int rate,
                         int channels, QAudioFormat::SampleFormat sampleFormat,
                         qint64 startFrame = 0)
@@ -138,8 +112,7 @@ QAudioBuffer silenceBuffer(int frames, int rate, int channels,
 }
 
 // Feeds `seconds` worth of a tone in decoder-sized chunks, so the analyser sees
-// the same stream of partial frames it will see in the app rather than one
-// giant buffer aligned to its own FFT size.
+// partial frames as it does in the app.
 void feedTone(SpectrumAnalyzer &a, double hz, double amplitude, double seconds,
               int rate, int channels, QAudioFormat::SampleFormat sampleFormat,
               int chunkFrames = 940)
@@ -262,10 +235,8 @@ void TestSpectrum::cleanup()
 
 // ─── the resting state ──────────────────────────────────────────────────────
 
-// Off is the shipped state, and off has to mean five hard zeros. The QML reads
-// `active` to decide whether to take its heights from here at all, so a fresh
-// analyser claiming to be active would put every now-playing indicator in the
-// app on a flat line instead of its animation.
+// Off is the shipped state, and off means five hard zeros and `active` false.
+// The QML reads `active` to decide whether to take its heights from here.
 void TestSpectrum::anAnalyserStartsSilentAndIdle()
 {
     SpectrumAnalyzer a(nullptr);
@@ -288,9 +259,8 @@ void TestSpectrum::silenceStaysSilent_data()
     QTest::newRow("uint8 mono 22050")   << 22050 << 1 << QAudioFormat::UInt8;
 }
 
-// Digital silence is not "very quiet": every format has to come out as exact
-// zeros, including UInt8, where silence is the byte 128 and a missing bias
-// correction would read as a loud DC thump in the bottom band.
+// Digital silence comes out as exact zeros in every format, including UInt8,
+// where silence is the byte 128 and a missing bias correction reads as DC.
 void TestSpectrum::silenceStaysSilent()
 {
     QFETCH(int, rate);
@@ -330,15 +300,9 @@ void TestSpectrum::aToneLightsItsOwnBandOnly_data()
     QTest::newRow("uint8 mono 22050")    << 22050 << 1 << QAudioFormat::UInt8;
 }
 
-// The headline case: 1 kHz in, one bar up. The band edges are logarithmic and
-// 1 kHz sits inside the middle one (450-1400 Hz) with better than a third of an
-// octave of margin either side, so this is a statement about the analyser and
-// not about where a boundary happens to fall.
-//
-// Run across every sample format because the conversion is where this goes
-// wrong in practice: an Int16 read as unsigned, or a UInt8 read without its
-// 128 bias removed, still produces a plausible-looking spectrum - just not of
-// the sound that was playing.
+// 1 kHz in, one bar up. 1 kHz sits inside the middle band (450-1400 Hz) with
+// better than a third of an octave of margin either side. Run across every
+// sample format, because a wrong conversion still yields a plausible spectrum.
 void TestSpectrum::aToneLightsItsOwnBandOnly()
 {
     QFETCH(int, rate);
@@ -375,9 +339,8 @@ void TestSpectrum::everyBandCanBeLit_data()
     QTest::newRow("7 kHz")    << 7000.0;
 }
 
-// One tone per band, each near the geometric centre of its own. Five bars that
-// all respond to the same part of the spectrum would still pass the case above
-// as long as the leakage happened to stay low, so this pins the mapping.
+// One tone per band, each near the geometric centre of its own, which pins the
+// mapping of frequencies to bars.
 void TestSpectrum::everyBandCanBeLit()
 {
     QFETCH(double, hz);
@@ -399,8 +362,7 @@ void TestSpectrum::everyBandCanBeLit()
                             .arg(expected).arg(levels[expected]).arg(hz)));
 }
 
-// Monotonic in amplitude, which is the only thing that makes the bars read as a
-// level meter rather than as an on/off light.
+// Monotonic in amplitude, so the bars read as a level meter.
 void TestSpectrum::louderReadsHigher()
 {
     const auto measure = [](double amplitude) {
@@ -418,9 +380,8 @@ void TestSpectrum::louderReadsHigher()
     QVERIFY2(mid < loud,  qPrintable(QStringLiteral("%1 !< %2").arg(mid).arg(loud)));
 }
 
-// A bar is drawn as a fraction of its box, so anything outside 0..1 is a bar
-// drawn outside the glyph - or, at the other end, a negative height, which Qt
-// renders as nothing at all.
+// A bar is drawn as a fraction of its box, so a level outside 0..1 is a bar
+// drawn outside the glyph or with a negative height.
 void TestSpectrum::levelsNeverLeaveTheUnitRange()
 {
     SpectrumAnalyzer a(nullptr);
@@ -464,9 +425,8 @@ void TestSpectrum::aBrokenBufferIsDroppedNotGuessedAt_data()
     empty.setSampleFormat(QAudioFormat::Float);
     QTest::newRow("no frames") << QAudioBuffer(QByteArray(), empty, 0);
 
-    // A format with no sample format at all. QAudioFormat::isValid() is false
-    // here, and bytesPerSample() is 0, so anything that divides by it is a
-    // crash rather than a wrong answer.
+    // A format with no sample format at all: isValid() is false and
+    // bytesPerSample() is 0, so anything that divides by it crashes.
     QAudioFormat unknown;
     unknown.setSampleRate(44100);
     unknown.setChannelCount(2);
@@ -491,9 +451,7 @@ void TestSpectrum::aBrokenBufferIsDroppedNotGuessedAt_data()
         << QAudioBuffer(QByteArray(4096, '\0'), noRate, 0);
 }
 
-// None of these may crash, and none of them may move the bars. The second half
-// matters as much as the first: a malformed buffer that nudges a level leaves
-// the indicator twitching at whatever rate the broken buffers arrive.
+// None of these may crash, and none of them may move the bars.
 void TestSpectrum::aBrokenBufferIsDroppedNotGuessedAt()
 {
     QFETCH(QAudioBuffer, buffer);
@@ -510,9 +468,8 @@ void TestSpectrum::aBrokenBufferIsDroppedNotGuessedAt()
 
 // ─── the switch ─────────────────────────────────────────────────────────────
 
-// Off means the DSP does not run, not that its answer is hidden. There is no
-// way to assert "no cycles were spent" directly, so this asserts the observable
-// half: a stream loud enough to peg a bar leaves every level at zero.
+// Off means the DSP does not run. The observable half is asserted: a stream
+// loud enough to peg a bar leaves every level at zero and emits nothing.
 void TestSpectrum::nothingIsComputedWhileDisabled()
 {
     SpectrumAnalyzer a(nullptr);
@@ -527,9 +484,8 @@ void TestSpectrum::nothingIsComputedWhileDisabled()
     QVERIFY(!a.active());
 }
 
-// Turning the preference off mid-track has to put the bars back where the
-// random animation expects to find them - at zero, with `active` false - rather
-// than freezing them at the last spectrum they happened to be showing.
+// Turning the preference off mid-track puts the bars back at zero with
+// `active` false, where the QML's own animation takes over.
 void TestSpectrum::disablingClearsWhatWasThere()
 {
     SpectrumAnalyzer a(nullptr);
@@ -543,8 +499,7 @@ void TestSpectrum::disablingClearsWhatWasThere()
         QCOMPARE(level, 0.0);
 }
 
-// The decay half of the envelope. Without it a track that stops mid-phrase
-// leaves five bars frozen at whatever the last frame held.
+// The decay half of the envelope: the levels fall after the audio stops.
 void TestSpectrum::theLevelsDecayWhenTheMusicStops()
 {
     SpectrumAnalyzer a(nullptr);
@@ -553,8 +508,7 @@ void TestSpectrum::theLevelsDecayWhenTheMusicStops()
     const double peak = a.bandLevels()[2];
     QVERIFY(peak > 0.3);
 
-    // Two frames of silence: enough to fall, not enough to have fallen all the
-    // way, which is what makes this a decay rather than a reset.
+    // Two frames of silence: enough to fall, not enough to reach zero.
     for (int i = 0; i < 2; ++i)
         a.processBuffer(silenceBuffer(512, 44100, 2, QAudioFormat::Float));
     const double after = a.bandLevels()[2];
@@ -567,9 +521,8 @@ void TestSpectrum::theLevelsDecayWhenTheMusicStops()
     QCOMPARE(a.bandLevels()[2], 0.0);
 }
 
-// The preference reaches the analyser through the same by-name connection
-// ThemePalette uses for its theme source, so a stub stands in for Prefs and
-// neither class has to know the other's concrete type.
+// The preference reaches the analyser through a by-name connection, as
+// ThemePalette's theme source does, so a stub can stand in for Prefs.
 void TestSpectrum::thePrefDrivesTheSwitch()
 {
     StubSpectrumPref pref;
@@ -587,9 +540,8 @@ void TestSpectrum::thePrefDrivesTheSwitch()
     QVERIFY(!a.enabled());
 }
 
-// A preferences object from before the switch existed. It must leave the
-// feature off and say so, rather than reading a missing property as false and
-// looking like a working wire.
+// A preferences object without the property leaves the feature off and logs
+// a warning.
 void TestSpectrum::aPrefSourceWithoutThePropertyIsOff()
 {
     StubEmptyPref pref;
@@ -601,20 +553,13 @@ void TestSpectrum::aPrefSourceWithoutThePropertyIsOff()
     QVERIFY(!a.active());
 }
 
-// Below Qt 6.8 there is no QAudioBufferOutput, so there is no audio to analyse
-// and the preference must not pretend otherwise: it is reported unavailable and
-// turning it on changes nothing. Above it, the same pref switches the feature
-// on. One assertion, both sides, so the Debian 6.4.2 box and the 6.12 desktop
-// are held to the same written-down rule.
+// Below Qt 6.8 there is no QAudioBufferOutput: the feature is reported
+// unavailable and turning the preference on changes nothing. From 6.8 the same
+// pref switches it on.
 void TestSpectrum::theFeatureIsInertWithoutQt68()
 {
-    // Against TIDALWAVE_HAS_BUFFER_OUTPUT rather than against QT_VERSION
-    // directly. The guard defaults to the version check - that much is one
-    // #if in SpectrumAnalyzer.h and reads plainly - but it can be forced to
-    // 0, which is the only way the pre-6.8 path gets compiled and run on a
-    // machine whose oldest Qt is 6.12. Keying the assertion to the guard is
-    // what makes that forced build a real run of the Debian code path rather
-    // than a run of this one with a different number in it.
+    // Keyed to TIDALWAVE_HAS_BUFFER_OUTPUT, because the guard can be forced to
+    // 0, which is how the pre-6.8 path is compiled and run against a newer Qt.
     QCOMPARE(SpectrumAnalyzer::availableAtCompileTime(),
              TIDALWAVE_HAS_BUFFER_OUTPUT != 0);
 
@@ -627,19 +572,16 @@ void TestSpectrum::theFeatureIsInertWithoutQt68()
 
 // ─── rate ───────────────────────────────────────────────────────────────────
 
-// The point of the analyser rather than a QML Timer polling the player: the
-// decoder hands over a buffer every few milliseconds, and a repaint of every
-// now-playing indicator in a 5000-row queue at that rate is not affordable. The
-// levels are computed per frame and *published* on a ~25 Hz tick.
+// The decoder hands over a buffer every few milliseconds. The levels are
+// computed per frame and published on a tick of about 25 Hz.
 void TestSpectrum::theChangeSignalIsRatedNotPerBuffer()
 {
     SpectrumAnalyzer a(nullptr);
     a.setEnabled(true);
     QSignalSpy spy(&a, &SpectrumAnalyzer::levelsChanged);
 
-    // ~2.7 s of audio in 128-frame chunks: 930 buffers, and about 230 analysis
-    // frames. Fed synchronously, so the publishing timer gets no chance to run
-    // until the qWait below.
+    // About 2.7 s of audio in 128-frame chunks, fed synchronously, so the
+    // publishing timer cannot run until the qWait below.
     feedTone(a, 1000.0, 0.8, 2.7, 44100, 2, QAudioFormat::Float, 128);
     QCOMPARE(spy.count(), 0);
 
@@ -650,9 +592,8 @@ void TestSpectrum::theChangeSignalIsRatedNotPerBuffer()
                             .arg(spy.count())));
 }
 
-// `active` is what the QML switches on, and it has to go false on its own when
-// the audio stops - a paused track emits no buffers at all, and the bars have
-// to fall back to their own animation rather than sit at the last frame.
+// `active` is what the QML switches on. It has to go false on its own when the
+// audio stops: a paused track emits no buffers at all.
 void TestSpectrum::activeFollowsTheAudio()
 {
     SpectrumAnalyzer a(nullptr);
@@ -669,11 +610,8 @@ void TestSpectrum::activeFollowsTheAudio()
         QCOMPARE(level, 0.0);
 }
 
-// The QML reads one global `Spectrum`, the way it reads one global
-// `ThemePalette`, and Application wires the player into that same object. If
-// instance() ever handed back a second one the bars would bind to an analyser
-// nobody feeds - which is the exact failure ThemePalette's create() comment
-// describes, one layer up.
+// The QML reads one global `Spectrum`, and Application wires the player into
+// that same object. instance() and create() must hand back the same analyser.
 void TestSpectrum::theSingletonIsTheOneQmlSees()
 {
     SpectrumAnalyzer *first = SpectrumAnalyzer::instance();
@@ -685,15 +623,9 @@ void TestSpectrum::theSingletonIsTheOneQmlSees()
     QVERIFY(!first->active());
 }
 
-// The claim the whole feature's cost rests on, and the only one that needs a
-// real Player to make: with the switch off there is no QAudioBufferOutput
-// attached to the QMediaPlayer at all, so QMediaPlayer never decodes a buffer
-// for us and "off" is not a cheap path - it is no path.
-//
-// This is also the one place the Qt 6.8 split is visible end to end. Below
-// 6.8 there is nothing to attach and the answer is false whatever the switch
-// says, which is asserted rather than compiled around so the Debian build
-// runs this case too.
+// With the switch off there is no QAudioBufferOutput attached to the
+// QMediaPlayer at all, so nothing is decoded for the analyser. Below Qt 6.8
+// there is nothing to attach and the answer is false whatever the switch says.
 void TestSpectrum::theTapIsOnlyAttachedWhileTheSwitchIsOn()
 {
     TidalApi api;
@@ -714,20 +646,9 @@ void TestSpectrum::theTapIsOnlyAttachedWhileTheSwitchIsOn()
     QVERIFY(!player.spectrumTapAttached());
 }
 
-// The one case that puts a real QMediaPlayer in the middle. Everything above
-// hands the analyser buffers by hand, which proves the DSP and proves nothing
-// about the join - whether QAudioBufferOutput delivers at all, what the
-// backend decodes a file into, and whether the queued connection survives the
-// trip off the decoder thread.
-//
-// A 1 kHz WAV rather than a Tidal stream, so it needs no account, no network
-// and no audio output device; the decoder produces buffers whether or not
-// anything is listening to them.
-//
-// Skips rather than fails where the platform cannot do it: below Qt 6.8 there
-// is no QAudioBufferOutput, and a multimedia backend that will not decode a
-// PCM WAV is a broken install, not a broken analyser. It only asserts once
-// buffers have actually arrived.
+// The one case with a real QMediaPlayer in the middle, to cover the join:
+// whether QAudioBufferOutput delivers, and into what format. A 1 kHz WAV, so it
+// needs no account, network or audio device. Skips where no buffers arrive.
 void TestSpectrum::aRealDecodedStreamLightsTheRightBand()
 {
 #if !TIDALWAVE_HAS_BUFFER_OUTPUT
@@ -773,21 +694,9 @@ void TestSpectrum::aRealDecodedStreamLightsTheRightBand()
 #endif
 }
 
-// A backend quirk with a user-visible consequence, pinned here so the Settings
-// note that admits to it cannot be "tidied away" by someone who assumed it was
-// out of date.
-//
-// Attaching a QAudioBufferOutput to a QMediaPlayer that is already playing has
-// no effect on the track that is playing: no buffers are delivered, though
-// playback itself is undisturbed. Measured against the ffmpeg backend on Qt
-// 6.12, and seeking, pausing and playing again all fail to shake it loose -
-// only re-setting the source does, which for a Tidal stream means re-fetching
-// it and a gap in the audio. That is a bad trade for a visualiser, so the
-// feature starts at the next track and the Settings row says so.
-//
-// Detaching, in contrast, is immediate and inaudible: switching the
-// preference off puts the bars back on their own animation straight away,
-// which is the half that matters more.
+// Attaching a QAudioBufferOutput to a QMediaPlayer that is already playing
+// delivers no buffers for that track (ffmpeg backend, Qt 6.12). Only re-setting
+// the source helps, so the feature starts at the next track.
 void TestSpectrum::switchingOnMidTrackTakesEffectOnTheNextOne()
 {
 #if !TIDALWAVE_HAS_BUFFER_OUTPUT

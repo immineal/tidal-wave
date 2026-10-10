@@ -1,12 +1,7 @@
-# Standalone CMake project for the screenshot harness.
-#
-# Deliberately NOT part of the main build, for the same reason tests/stress is
-# not: tests/CMakeLists.txt globs tests/tst_*.cpp and tests/qml/tst_*.qml, and
-# this directory sits outside both globs, so `ctest` never picks a run that
-# wants a display and writes PNGs.
-#
-# It pulls the app in with add_subdirectory() rather than linking the binaries
-# already in build-t/, so the shots are always of the current source.
+# Standalone CMake project for the screenshot harness. It is not part of the
+# main build, so `ctest` never picks a run that wants a display and writes
+# PNGs. The app comes in through add_subdirectory(), so the shots are always
+# of the current source.
 #
 # Configure and build (tests/visual/run.sh does this for you):
 #   cmake -B /tmp/tw-vis-build -S tests/visual
@@ -22,17 +17,15 @@ set(CMAKE_AUTOMOC ON)
 get_filename_component(TIDALWAVE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 # The app as a library plus its QML module. EXCLUDE_FROM_ALL keeps the
-# tidal-wave executable itself out of the default target: the shot runner only
-# needs the library, and building the executable here would also build a second
-# copy of something the developer already has in build-t/.
+# tidal-wave executable out of the default target: the runner only needs the
+# library.
 set(TIDALWAVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${TIDALWAVE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/app" EXCLUDE_FROM_ALL)
 
 find_package(Qt6 REQUIRED COMPONENTS Test QuickTest Qml Quick Gui)
 
-# Same dance as tests/CMakeLists.txt and tests/stress/CMakeLists.txt: linking
-# the module's static QML plugin is what makes `import TidalWave` resolve
-# inside a binary that is not the app.
+# Linking the module's static QML plugin is what makes `import TidalWave`
+# resolve inside a binary that is not the app.
 get_target_property(tidalwave_qml_plugin tidalwave_qml QT_QML_MODULE_PLUGIN_TARGET)
 if(NOT tidalwave_qml_plugin OR NOT TARGET ${tidalwave_qml_plugin})
     message(FATAL_ERROR "tidalwave_qml has no QML plugin target; the shot runner cannot import TidalWave.")

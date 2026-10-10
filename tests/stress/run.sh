@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Stress and environment harness (HANDOFF section I, SPEC X4 / X5 / X6).
+# Stress and environment harness.
 #
 # Runs the QtQuickTest stress suite in tests/stress/qml once per graphics
 # environment this box can offer, samples resident set size while it runs, and
@@ -15,30 +15,30 @@
 #   STRESS_SCALE=0.25 tests/stress/run.sh   quarter length, for a quick check
 #   STRESS_SCALE=4 tests/stress/run.sh      four times as long, to reproduce
 #   STRESS_BUILD=/path tests/stress/run.sh  where to build the runner
+#   STRESS_QT_PREFIX=/path tests/stress/run.sh   Qt prefix for that build
+#   STRESS_TIMEOUT=900 tests/stress/run.sh  per-scenario ceiling in seconds
+#   STRESS_IDLE_SECONDS=60 tests/stress/run.sh   how long the idle scenario runs
 #   TIDALWAVE_BIN=/path/to/tidal-wave    the app binary, for the idle scenario
 #
+# Scenarios: offscreen software xcb wayland idle-rss
+#
 # Exit status is 0 only if every scenario that ran passed. A scenario that was
-# skipped says why and does not fail the run.
+# skipped says why and does not fail the run. Each scenario's logs land in
+# <scratch>/<scenario>/logs/, which --keep leaves in place.
 #
-# Safety, because a real instance of this app is usually running on the dev box.
-# Same rules as tests/firstrun/run.sh, for the same reasons:
-#
-#   * Nothing here pkills, killalls or matches a process name. The only
-#     processes signalled are ones this script started, by recorded pid.
+# Safety, because a real instance of the app may be running on the same machine.
+# Same rules as tests/firstrun/run.sh:
+#   * No process is ever killed by name. The only processes signalled are ones
+#     this script started, by recorded pid.
 #   * Every run gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME under
 #     a private scratch directory, through `env -i`, so nothing from the
 #     caller's session leaks in.
 #   * The single-instance lock is a QLocalServer at an absolute path the app
 #     builds itself: $XDG_RUNTIME_DIR, else $TMPDIR, else /tmp, plus
-#     TidalWave-<uid>. XDG_RUNTIME_DIR is therefore what isolates a run, with
-#     TMPDIR behind it, and the sandbox sets both. tests/lib/socket-name.sh
-#     derives the address the way Application.cpp does rather than guessing at
-#     it. A unix socket path caps a couple of bytes under sun_path, so the
-#     scratch root is deliberately short and the script refuses to run if it is
-#     not: a path too long makes listen() fail and the isolation would be a
-#     false pass.
-#   * The developer's real ~/.config/TidalWave is fingerprinted up front and
-#     re-checked after every scenario.
+#     TidalWave-<uid>. The sandbox sets both, and the scratch root is kept short
+#     enough for a unix socket path. See tests/lib/socket-name.sh.
+#   * The real ~/.config/TidalWave is fingerprinted up front and re-checked
+#     after every scenario.
 #   * No synthetic input. Nothing drives the app from outside: the stress cases
 #     are a QtQuickTest driver inside the process, which is also the only way
 #     to resize and navigate deterministically.
@@ -48,8 +48,8 @@ set -u
 
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
-# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
-# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+# tw_socket_path/tw_socket_live: where the single-instance lock lives, kept in
+# step with src/ui/Application.cpp.
 . "$REPO_ROOT/tests/lib/socket-name.sh"
 
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
@@ -105,10 +105,9 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 SCRATCH=$(mktemp -d /tmp/twst.XXXXXX) || die "cannot create a scratch directory"
 
-# The longest address a run of ours can bind is $SCRATCH/<scenario>/run/<leaf>;
-# 24 bytes is ample for the scenario directory and 5 covers "/run/". A lock that
-# cannot bind does not fail the run, it silently stops isolating it, so this is
-# checked up front rather than discovered later.
+# The longest address a run can bind is $SCRATCH/<scenario>/run/<leaf>: 24 bytes
+# cover the scenario directory and 5 cover "/run/". A lock that cannot bind
+# silently stops isolating the run, so this is checked up front.
 probe_len=$(( ${#SCRATCH} + 24 + 5 + ${#TW_SOCKET_LEAF} ))
 [ "$probe_len" -le "$TW_SOCKET_PATH_MAX" ] \
     || die "scratch path $SCRATCH is too long for a unix socket"
@@ -145,16 +144,12 @@ trap cleanup EXIT INT TERM
 
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
 REAL_CREDS=$HOME/.config/tidal-wave
-# The developer's own lock, worked out the way the app works it out. On a normal
-# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
-# not the temp dir this script used to fingerprint instead.
+# The real lock, worked out the way the app works it out: normally
+# $XDG_RUNTIME_DIR/TidalWave-<uid>.
 REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
-# Passive liveness probe. This grepped for "TidalWaveSingleInstanceSocket", a
-# name nothing has bound since the uid went into the leaf, so it never once
-# matched: the harness believed nothing was running while the developer's window
-# was open, and the tolerance below was never granted. Anything under $SCRATCH is
-# excluded so a run never mistakes its own sandbox for the real instance.
+# Passive liveness probe. Anything under $SCRATCH is excluded, so a run never
+# mistakes its own sandbox for the real instance.
 LIVE_INSTANCE=0
 tw_socket_live "$SCRATCH" && LIVE_INSTANCE=1
 
@@ -335,7 +330,7 @@ run_suite() {
         *)   fail "$id" "$label: exited $status"; ok=0 ;;
     esac
 
-    # Everything QTest reported, not just the tail.
+    # Everything QTest reported.
     local failures
     failures=$(grep -aE '^(FAIL!|XPASS|QFATAL)' "$out")
     if [ -n "$failures" ]; then
@@ -483,11 +478,8 @@ if wanted wayland; then
 fi
 
 # ── scenario: the real binary, idle, watched ────────────────────────────────
-#
-# The stress suite is the QML tree without the app around it. This is the app
-# itself, in every theme, doing nothing. It catches the opposite problem: a
-# timer, an animation or a poll that burns memory or CPU while the window just
-# sits there. Observation only, no input, no network expected to answer.
+# The app itself, in two themes, doing nothing. It catches a timer, an
+# animation or a poll that burns memory or CPU while the window just sits there.
 
 if wanted idle-rss; then
     head2 "the real binary, idle"

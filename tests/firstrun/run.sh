@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# First-run simulation harness (HANDOFF section M).
+# First-run simulation harness.
 #
-# Starts the built binary the way a brand new install would see it - empty HOME,
-# no settings file, no saved Tidal session, no cache, no window geometry - once
+# Starts the built binary the way a brand new install would see it (empty HOME,
+# no settings file, no saved Tidal session, no cache, no window geometry), once
 # per environment the app claims to support, and reports what each one printed.
 #
 # Usage
@@ -11,39 +11,39 @@
 #   tests/firstrun/run.sh --list          list scenario ids and exit
 #   tests/firstrun/run.sh offscreen xcb   run only the named scenarios
 #   tests/firstrun/run.sh --keep          leave the sandbox behind for poking at
+#   tests/firstrun/run.sh --help          print this text and exit
 #   DWELL=15 tests/firstrun/run.sh        seconds to let each run live (default 8)
 #   TIDALWAVE_BIN=/path/to/tidal-wave tests/firstrun/run.sh
 #
+# Scenarios: offscreen software xcb wayland offline no-tray bad-settings
+#            missing-qml single-instance desktop-file deps
+#
 # Exit status is 0 only if every scenario that ran passed. Skipped scenarios say
-# why they were skipped and do not fail the run.
+# why they were skipped and do not fail the run. Each scenario's logs land in
+# <scratch>/<scenario>/logs/, which --keep leaves in place.
 #
-# Safety, because a real instance of this app is usually running on the dev box:
+# The binary defaults to build-t/tidal-wave. Xvfb, kwin_wayland, dbus-daemon,
+# unshare and ImageMagick are optional: a scenario that lacks its tool is skipped.
 #
-#   * Nothing here ever pkills, killalls or pattern-matches a process name. The
-#     only processes killed are helpers this script started, by recorded pid.
+# Safety, because a real instance of the app may be running on the same machine:
+#   * No process is ever killed by name. The only processes killed are helpers
+#     this script started, by recorded pid.
 #   * Every run gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME under a
 #     private scratch directory, and is launched through `env -i` so no variable
 #     from the caller's session leaks in.
 #   * The single-instance lock is a QLocalServer bound to an absolute path:
 #     $XDG_RUNTIME_DIR/TidalWave-<uid>, falling back to $TMPDIR and then /tmp.
-#     XDG_RUNTIME_DIR is what isolates a run, with TMPDIR behind it, and the
-#     sandbox sets both. tests/lib/socket-name.sh derives the address the way
-#     Application::singleInstanceSocketName() does instead of this script
-#     naming it a second time: the name it used to hardcode stopped matching
-#     anything when the uid went into it, and nothing failed, it just stopped
-#     seeing locks. Without the isolation a second launch connects to the
-#     developer's own instance, tells it to show itself and exits 0, which
-#     proves nothing and pops their window.
+#     The sandbox sets both, or a second launch would connect to the running
+#     instance, tell it to show itself and exit 0. tests/lib/socket-name.sh
+#     derives the address the way the app does.
 #   * A unix socket path is capped at 107 bytes, so the scratch root has to be
 #     short or listen() fails and the lock silently never exists. The script
-#     checks this and refuses to run rather than report a false pass.
-#   * The developer's real ~/.config/TidalWave and their real lock are
-#     fingerprinted up front and re-checked after every scenario. Any change
-#     aborts the whole run.
+#     checks this and refuses to run.
+#   * The real ~/.config/TidalWave and the real lock are fingerprinted up front
+#     and re-checked after every scenario. Any change aborts the whole run.
 #   * No synthetic input. Observation only: exit codes, stdout, stderr, window
 #     properties and screenshots.
 #   * Every launch runs under `timeout`, so nothing started here outlives the run.
-#
 set -u
 
 # ── locations ───────────────────────────────────────────────────────────────
@@ -51,13 +51,12 @@ set -u
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
-# The desktop entry, named once. Its basename is the app id rather than the
-# binary name, because Flatpak exports only <app-id>.desktop; the binary and the
-# icon are still tidal-wave. Every check below derives what it needs from this
-# single path, so the next rename is one line here and not six.
+# The desktop entry, named once. Its basename is the app id, because Flatpak
+# exports only <app-id>.desktop, while the binary and the icon stay tidal-wave.
+# Every check below derives what it needs from this path.
 DESKTOP_FILE=$REPO_ROOT/packaging/io.github.immineal.TidalWave.desktop
-# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
-# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+# tw_socket_path/tw_socket_live: where the single-instance lock lives, kept in
+# step with src/ui/Application.cpp.
 . "$REPO_ROOT/tests/lib/socket-name.sh"
 DWELL=${DWELL:-8}
 KEEP=0
@@ -107,14 +106,12 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 [ -x "$APP" ] || die "no binary at $APP (build with: cmake --build build-t --parallel 8)"
 
-# Deliberately short: see the sun_path note at the top.
+# Deliberately short: see the socket path note at the top.
 SCRATCH=$(mktemp -d /tmp/twfr.XXXXXX) || die "cannot create a scratch directory"
 
-# The longest address a run of ours can bind is $SCRATCH/<scenario>/run/<leaf>.
-# 24 bytes is ample for the longest scenario name ("single-instance"), 5 covers
-# "/run/". The limit stays short of sun_path's 107 rather than sitting on it,
-# because a lock that never binds does not fail a run, it silently stops
-# isolating it.
+# The longest address a run can bind is $SCRATCH/<scenario>/run/<leaf>: 24 bytes
+# cover the longest scenario name and 5 cover "/run/". Kept short of sun_path's
+# limit, because a lock that never binds silently stops isolating the run.
 probe_len=${#SCRATCH}
 probe_len=$(( probe_len + 24 + 5 + ${#TW_SOCKET_LEAF} ))
 [ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
@@ -151,29 +148,20 @@ trap cleanup EXIT INT TERM
 # ── guard: the developer's own config and lock must not move ────────────────
 
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
-# The developer's own lock, worked out the way the app works it out. On a normal
-# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
-# not the temp dir this script used to fingerprint instead.
+# The real lock, worked out the way the app works it out: normally
+# $XDG_RUNTIME_DIR/TidalWave-<uid>.
 REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
-# Passive liveness probe. A bound unix socket shows up in /proc/net/unix, so this
-# never signals, connects to, or even names a process. A developer's own running
-# instance rewrites its settings file whenever the volume or the last page
-# changes, so its contents drifting is expected and is not our doing.
-#
-# This used to grep for the old flat socket name, which nothing has bound since
-# the uid went into it: it matched nothing, so the run believed no instance was
-# live even with the developer's window open, and the tolerance below was never
-# granted. Matching on the leaf also catches an instance that landed in $TMPDIR
-# rather than $XDG_RUNTIME_DIR, and $SCRATCH is excluded so our own sandboxes
-# can never be mistaken for it.
+# Passive liveness probe: a bound unix socket shows up in /proc/net/unix, so
+# nothing is signalled or connected to. A running instance rewrites its own
+# settings, so their contents may drift. $SCRATCH is excluded from the match.
 LIVE_INSTANCE=0
 if tw_socket_live "$SCRATCH"; then
     LIVE_INSTANCE=1
 fi
 
-# Structure, not contents: the lock's identity, and the set of files that exist.
-# A leak out of the sandbox would either replace the lock or create a file.
+# Structure only: the lock's identity, and the set of files that exist. A leak
+# out of the sandbox would either replace the lock or create a file.
 guard_structure() {
     { [ -e "$REAL_LOCK" ] && stat -c 'lock %i %Y %a' "$REAL_LOCK"; } 2>/dev/null
     { [ -d "$REAL_CONF_DIR" ] && find "$REAL_CONF_DIR" -type f -printf 'file %p\n' | sort; } 2>/dev/null
@@ -211,9 +199,7 @@ guard_check() {
 head2 "sandbox"
 info "binary:  $APP"
 # A binary older than the sources makes every dynamic check below measure the
-# previous build while saying nothing about this one. Not hypothetical: the
-# Wayland app-id check was first run against a binary from before the entry was
-# renamed, and it faithfully reported the old id.
+# previous build.
 STALE_SRC=$(find "$REPO_ROOT/src" "$REPO_ROOT/qml" -type f -newer "$APP" -print -quit 2>/dev/null)
 if [ -n "$STALE_SRC" ]; then
     note "the binary predates ${STALE_SRC#"$REPO_ROOT/"}; rebuild, or every dynamic check measures the previous build"
@@ -291,8 +277,9 @@ run_app() {
     return 0
 }
 
-# Noise that says something about the box, not about the app, and that a real
-# first-run user on a normal desktop would not see. Reported, never failed on.
+# Noise that says something about the machine and nothing about the app, and
+# that a first-run user on a normal desktop would not see. Reported, never
+# failed on.
 BENIGN='pipewire|PulseAudioService|pa_context|ALSA|snd_pcm|snd_lib|Detected locale|[Ff]ontconfig|libEGL|libGL|MESA|swrast|DRI[0-9]|Could not connect to any X display|session bus|D-Bus|dbus|Failed to create wl_display|XDG_RUNTIME_DIR|Icon theme|QStandardPaths|xkbcommon|Wayland does not support'
 
 # Anything here means the app is broken for a first-run user.
@@ -340,22 +327,9 @@ verdict() {
 }
 
 # ── the .deb depends list, read once ────────────────────────────────────────
-#
-# Read the assembled list, not the code that assembles it.
-#
-# The deps scenario used to grep CMakeLists.txt for
-# `set(CPACK_DEBIAN_PACKAGE_DEPENDS`, a string CMakeLists.txt does not contain
-# and never did: the list is built up a package at a time into TW_DEB_DEPENDS,
-# with a version floor appended to each, and only then
-#     list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
-# So the pattern could not match, the list was always empty, and that scenario
-# took its skip branch on every run it has ever had - green by vacuity for its
-# whole life, while reporting itself as merely unavailable.
-#
-# The generated CPackConfig.cmake beside the binary is the assembled value: it is
-# what CPack writes into the control file, version constraints and all. Reading
-# it keeps the package list in one place instead of making this file a second
-# copy that drifts.
+# Read from the generated CPackConfig.cmake beside the binary, which holds the
+# assembled value CPack writes into the control file. CMakeLists.txt builds
+# the list a package at a time and never contains it whole.
 CPACK_CFG=$(dirname "$APP")/CPackConfig.cmake
 cpack_var() {
     sed -n "s/^set(${1} \"\(.*\)\")[[:space:]]*\$/\1/p" "$CPACK_CFG" | head -1
@@ -457,15 +431,9 @@ if wanted xcb; then
                 else
                     note "xcb: no _NET_WM_ICON on the window"
                 fi
-                # The two X11 ways a window is tied back to its launcher entry,
-                # which use two different names and are both easy to get wrong.
-                #
-                # 1. StartupWMClass has to appear in WM_CLASS. WM_CLASS here is
-                #    "tidal-wave", "Tidal Wave": Qt's xcb plugin builds the
-                #    instance half from the argv[0] basename (or $RESOURCE_NAME)
-                #    and the class half from applicationName(). It never reads
-                #    desktopFileName() for this, so StartupWMClass tracks the
-                #    *binary* name and must not be moved to the app id.
+                # StartupWMClass has to appear in WM_CLASS. Qt's xcb plugin builds
+                # WM_CLASS from the argv[0] basename and applicationName(), never
+                # from desktopFileName(), so it tracks the binary name.
                 DESK_WMCLASS=$(grep -m1 '^StartupWMClass=' \
                                "$DESKTOP_FILE" 2>/dev/null | cut -d= -f2-)
                 if [ -z "$DESK_WMCLASS" ]; then
@@ -475,13 +443,9 @@ if wanted xcb; then
                 else
                     note "xcb: StartupWMClass=$DESK_WMCLASS does not appear in $CLASS"
                 fi
-                # 2. _KDE_NET_WM_DESKTOP_FILE is where desktopFileName() lands on
-                #    X11, and it is how Plasma matches a window to its entry
-                #    without going through WM_CLASS at all. This one *does* carry
-                #    the app id, so it is the property the rename moved and the
-                #    one that catches setDesktopFileName() drifting from the
-                #    entry's basename on X11 the way the wayland-appid check does
-                #    on Wayland.
+                # _KDE_NET_WM_DESKTOP_FILE is where desktopFileName() lands on X11.
+                # Plasma matches a window to its entry by it, and it carries the
+                # app id.
                 DESK_BASE=$(basename "$DESKTOP_FILE" .desktop)
                 KDEPROP=$(DISPLAY="$DISP" xprop -id "$WID" _KDE_NET_WM_DESKTOP_FILE 2>/dev/null)
                 if echo "$KDEPROP" | grep -q "\"$DESK_BASE\""; then
@@ -524,71 +488,25 @@ if wanted xcb; then
 fi
 
 # ── scenario 4: Wayland, nested in a headless compositor ────────────────────
-#
-# Why both of these used to fail, because the cause is nowhere near the symptom
-# and it leaves no log line to find.
-#
-#   kwin_wayland is installed with the file capability cap_sys_nice=ep, and
-#   KWin::gainRealTime() moves its main thread onto SCHED_RR the moment it has
-#   it. A real-time thread is then subject to RLIMIT_RTTIME, and the kernel's
-#   remedy for exceeding that is SIGXCPU at the soft limit and SIGKILL at the
-#   hard one. Software-rendering the virtual backend's first frames spends a
-#   200ms budget in one uninterrupted go, so the compositor was SIGKILLed about
-#   a second after binding its socket, having written nothing at all - SIGKILL
-#   leaves no opportunity to write. The app then connected to a socket with
-#   nobody behind it, found no xdg-shell global and aborted with 134. That was
-#   the pair of FAILs, and neither of them was about the app.
-#
-#   Whose limit it is matters, because it decides who sees the failure. Plasma
-#   starts its own compositor with RLIMIT_RTTIME=infinity and so does a plain
-#   terminal, so running this by hand on the developer's box never hit it. A
-#   harness that lowers RLIMIT_RTTIME for itself hands the lowered value to
-#   every child, and this script was failing under exactly that: measured at
-#   200000us inherited, with the terminal above it still at infinity. A
-#   container or service manager with a finite DefaultLimitRTTIME does the same.
-#   The run prints the value it inherited so the next reader does not have to
-#   work it out again.
-#
-#   setpriv --no-new-privs is the whole fix. PR_SET_NO_NEW_PRIVS makes the exec
-#   refuse to pick the capability up, so sched_setscheduler() is denied by
-#   RLIMIT_RTPRIO, KWin stays on SCHED_OTHER, and RLIMIT_RTTIME never applies to
-#   it at all - no matter what was inherited. What that gives up is real-time
-#   scheduling for the compositor, which a test reading protocol traffic rather
-#   than frame timing does not need. It is otherwise the KWin the owner runs:
-#   same xdg-shell implementation, same app-id matching, so this is not a
-#   weaker stand-in for the real compositor.
-#
-#   The readiness check used to wait for the socket file and nothing else. The
-#   socket is bound about a second before any global is advertised, and it stays
-#   on disk after the compositor is killed, so that check could be satisfied
-#   with nothing on the other end - which is how a dead compositor came out as a
-#   broken app. It now waits until xdg_wm_base is really advertised, and the
-#   compositor's life is re-checked at every verdict.
-#
-# Nothing here goes near the developer's session: the compositor renders to an
-# offscreen framebuffer, binds its own socket inside the sandbox's own
-# XDG_RUNTIME_DIR, and talks to the sandbox's own session bus. That is also why
-# the old "this box is not running a Wayland session" precondition is gone:
-# --virtual needs no parent display of any kind, so requiring one only made the
-# scenario skip on the X11 and headless boxes where it would have run fine.
+# kwin_wayland carries cap_sys_nice and takes SCHED_RR, which subjects it to
+# RLIMIT_RTTIME: under a finite inherited limit the kernel SIGKILLs it.
+# `setpriv --no-new-privs` keeps it on SCHED_OTHER, where the limit does not apply.
 
 if wanted wayland; then
     head2 "Wayland"
     sandbox wayland
     WANT=$(basename "$DESKTOP_FILE" .desktop)
 
-    # Report the compositor-dependent checks as skipped by name rather than
-    # letting them disappear from the tally, which is how a check stops being
-    # noticed at all.
+    # Report the compositor-dependent checks as skipped by name, so they stay
+    # in the tally.
     wl_skip_dynamic() {
         skip wayland "$1"; skip wayland-surface "$1"; skip wayland-appid "$1"
     }
 
-    # ── wayland-entry: the id on the wire has to name the entry that is really
-    # installed, so run the install rules into a throwaway DESTDIR and resolve
-    # the id against that tree the way a compositor resolves it - not against
-    # packaging/, which is not what reaches a user's disk. Static, so it runs
-    # even where there is no compositor to nest.
+    # ── wayland-entry ───────────────────────────────────────────────────────
+    # The id on the wire has to name the entry that is really installed, so the
+    # install rules run into a throwaway DESTDIR and the id is resolved against
+    # that tree. Static, so it runs even where no compositor can be nested.
     BUILD_DIR=$(dirname "$APP")
     STAGE=$BOX/stage
     if ! command -v cmake >/dev/null 2>&1; then
@@ -597,10 +515,8 @@ if wanted wayland; then
         skip wayland-entry "$BUILD_DIR is not a configured CMake build directory"
     elif ! DESTDIR=$STAGE cmake --install "$BUILD_DIR" --prefix /usr \
               >"$BOX/logs/stage-install.log" 2>&1; then
-        # Worth failing rather than skipping: a build directory whose install
-        # rules predate a rename still names the file that used to exist, and
-        # `cpack` out of that directory would package the old layout or nothing.
-        # Re-configuring it is the fix.
+        # Reported as a failure: a build directory whose install rules predate a
+        # rename would package the previous layout. Re-configuring it is the fix.
         fail wayland-entry "cmake --install into a staging tree failed; ${BUILD_DIR#"$REPO_ROOT/"}'s install rules may predate the sources, so re-configure it"
         tail -6 "$BOX/logs/stage-install.log" 2>/dev/null | sed 's/^/         /'
     else
@@ -617,8 +533,7 @@ if wanted wayland; then
         else
             info "app id $WANT resolves to ${ENTRY#"$STAGE"}"
             # One entry only. Two would put the app in the launcher twice and
-            # leave which one the compositor matches to chance; the legacy sweep
-            # in CMakeLists.txt exists for exactly that.
+            # leave which one the compositor matches to chance.
             NENTRY=$(find "$APPDIR" -maxdepth 1 -name '*.desktop' | wc -l)
             if [ "$NENTRY" -ne 1 ]; then
                 fail wayland-entry "$NENTRY desktop entries are installed; the app id may resolve to either"
@@ -698,8 +613,8 @@ if wanted wayland; then
                 >"$BOX/logs/kwin.log" 2>&1 &
             KWIN_PID=$!; track "$KWIN_PID"
 
-            # Readiness is "the shell global the app will ask for is advertised",
-            # not "the socket file exists".
+            # Ready means the shell global the app asks for is advertised. The
+            # socket file alone exists earlier and outlives a dead compositor.
             HAVE_WL_INFO=0; READY_BY='the socket plus a settle, unverified'
             command -v wayland-info >/dev/null 2>&1 && \
                 { HAVE_WL_INFO=1; READY_BY='xdg_wm_base, asked for with wayland-info'; }
@@ -746,10 +661,9 @@ if wanted wayland; then
                     fail wayland "the nested compositor died mid-run, so nothing was measured about the app"
                 fi
 
-                # A second launch, this time with the protocol traffic printed,
-                # so what the app told the compositor can be read instead of
-                # assumed. WAYLAND_DEBUG goes to stderr and would drown the
-                # verdict's own greps, hence the separate run.
+                # A second launch with the protocol traffic printed, so what the
+                # app told the compositor can be read. WAYLAND_DEBUG goes to stderr
+                # and would drown the verdict's greps, hence the separate run.
                 env -i "${BOX_ENV[@]}" WAYLAND_DISPLAY="$WD" QT_QPA_PLATFORM=wayland \
                     DBUS_SESSION_BUS_ADDRESS="$PRIVATE_BUS" XDG_CURRENT_DESKTOP=KDE \
                     WAYLAND_DEBUG=1 \
@@ -757,12 +671,9 @@ if wanted wayland; then
                     >"$BOX/logs/wl-debug.out" 2>"$BOX/logs/wl-debug.err"
                 WLOG=$BOX/logs/wl-debug.err
 
-                # Did a window actually reach the screen? Three things have to be
-                # true, and only the middle one needs the compositor to answer:
-                # the app asked for a toplevel, the compositor configured it with
-                # a real size (an event, so it has no "->" prefix: proof there is
-                # a compositor and not just a socket), and the app then attached
-                # a buffer and committed it, which is a drawn frame.
+                # A window reached the screen when the app asked for a toplevel,
+                # the compositor configured it with a real size (an event, so no
+                # "->" prefix) and the app attached a buffer and committed it.
                 TOPLEVEL=$(grep -aoE 'xdg_surface#[0-9]+\.get_toplevel' "$WLOG" | head -1)
                 CONFSZ=$(grep -a 'xdg_toplevel#' "$WLOG" | grep -av -- '->' \
                          | grep -aoE '\.configure\([1-9][0-9]*, [1-9][0-9]*,' | head -1)
@@ -784,10 +695,9 @@ if wanted wayland; then
                     pass wayland-surface "a toplevel was mapped at $SZ and a buffer was attached and committed"
                 fi
 
-                # On Wayland the taskbar entry and the icon come from the
-                # .desktop file matched against xdg_toplevel.set_app_id, never
-                # from setWindowIcon. This is the id on the wire; wayland-entry
-                # above is the other end of the same chain.
+                # On Wayland the taskbar entry and the icon come from the .desktop
+                # file matched against xdg_toplevel.set_app_id, never from
+                # setWindowIcon. wayland-entry above is the other end of the chain.
                 APPID=$(grep -aoE 'xdg_toplevel#[0-9]+\.set_app_id\("[^"]*"\)' \
                         "$WLOG" | head -1 | sed 's/.*("\(.*\)").*/\1/')
                 if [ -z "$APPID" ]; then
@@ -872,9 +782,7 @@ fi
 
 if wanted missing-qml; then
     head2 "missing QML module (QtQuick.Shapes)"
-    # Located from the linked Qt, never by running the binary: an unsandboxed
-    # launch would find the developer's instance through the lock in /tmp and
-    # pop their window.
+    # Located from the linked Qt, never by running the binary outside a sandbox.
     QT_LIBDIR=$(dirname "$(ldd "$APP" | awk '/libQt6Quick\.so/ {print $3}')")
     SHAPES_DIR=$(cd "$QT_LIBDIR/../qml/QtQuick/Shapes" 2>/dev/null && pwd)
     if [ -z "$SHAPES_DIR" ]; then
@@ -897,10 +805,7 @@ if wanted missing-qml; then
         if grep -aqE 'QtQuick.Shapes.*is not installed|failed to load component' "$RUN_ERR"; then
             pass missing-qml "reproduced the packaging failure a missing QtQuick.Shapes causes (exit $RUN_STATUS)"
             head -6 "$RUN_ERR" | sed 's/^/         /'
-            # This note used to be an unconditional sentence claiming the
-            # package was missing from the depends list. It was not missing, so
-            # the claim was false on every run that ever printed it; the list is
-            # right there to ask.
+            # The depends list says whether a .deb install can land here.
             if listed qml6-module-qtquick-shapes; then
                 info "qml6-module-qtquick-shapes is in the depends list, so a .deb install does not land here"
             else
@@ -921,11 +826,8 @@ fi
 if wanted single-instance; then
     head2 "single-instance lock"
     sandbox single-instance
-    # Where this launch will bind, given the sandbox's own environment. The
-    # sandbox sets XDG_RUNTIME_DIR as well as TMPDIR, and XDG_RUNTIME_DIR is the
-    # app's first choice, so the lock appears in $BOX/run. $BOX/tmp is where this
-    # check used to look, which no build has used since the directory became
-    # explicit, and a missing lock here reads as a hard failure.
+    # Where this launch will bind, given the sandbox's environment. XDG_RUNTIME_DIR
+    # is the app's first choice, so the lock appears in $BOX/run.
     BOX_LOCK=$(tw_socket_path "$BOX/run" "$BOX/tmp")
     RUN_WRAPPER=()
     ( env -i "${BOX_ENV[@]}" QT_QPA_PLATFORM=offscreen \
@@ -1007,8 +909,7 @@ fi
 
 if wanted deps; then
     head2 "runtime dependencies vs the .deb depends list"
-    # The list itself is read once, near the top of this file; see the comment
-    # there for why it is read out of CPackConfig.cmake and not CMakeLists.txt.
+    # The list is read once, near the top of this file, out of CPackConfig.cmake.
     if [ ! -f "$CPACK_CFG" ]; then
         skip deps "no CPackConfig.cmake beside the binary; configure $(dirname "$APP") to generate one"
     elif [ -z "$DEB_DEPENDS" ]; then
@@ -1022,8 +923,7 @@ if wanted deps; then
         info "$(dep_names "$DEB_DEPENDS" | grep -c .) depends, $(dep_names "$DEB_RECOMMENDS" | grep -c .) recommends, read from ${CPACK_CFG#"$REPO_ROOT/"}"
         missing=0
         # Qt libraries the binary really needs, mapped to their Debian package.
-        # dpkg-shlibdeps would catch these too, but only if it runs; the explicit
-        # list is what a reader trusts.
+        # dpkg-shlibdeps would catch these too, but only if it runs.
         while read -r soname pkg; do
             [ -n "$soname" ] || continue
             ldd "$APP" 2>/dev/null | grep -q "$soname" || continue
@@ -1063,10 +963,8 @@ MAP
         if listed qt6-wayland; then
             info "qt6-wayland is listed"
         elif recommended qt6-wayland; then
-            # Deliberate: apt installs Recommends by default and an X11-only box
-            # does not need it. Worth stating rather than passing silently,
-            # because --no-install-recommends then leaves a Wayland-only desktop
-            # with no wayland platform plugin at all.
+            # Deliberate: apt installs Recommends by default and an X11-only
+            # machine does not need it.
             info "qt6-wayland is a Recommends, not a Depends; --no-install-recommends leaves a Wayland-only desktop without the platform plugin"
         else
             note "deps: qt6-wayland is in neither Depends nor Recommends; on a Wayland-only desktop the app falls back to XWayland or fails to start"
@@ -1074,11 +972,8 @@ MAP
         fi
 
         # Every Qt entry has to carry a version floor. Without one the package
-        # installs happily on a box whose Qt is older than the one it was built
-        # against and then dies at load with "version Qt_6.12 not found", which
-        # is the failure CMakeLists.txt records measuring on bookworm. An
-        # install that succeeds and then crashes is the worst outcome of the
-        # three, so the floors are the point of the list and not a detail of it.
+        # installs on a machine with an older Qt and then dies at load with
+        # "version Qt_6.12 not found".
         unversioned=$(printf '%s' "$DEB_DEPENDS" | tr ',' '\n' | sed 's/^[[:blank:]]*//' \
                       | grep -E '^(libqt6|qml6-module-)' | grep -v '(>=')
         if [ -n "$unversioned" ]; then

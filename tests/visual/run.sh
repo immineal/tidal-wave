@@ -1,23 +1,13 @@
 #!/usr/bin/env bash
 #
-# Screenshot harness: what 0.4.0 actually looks like.
+# Screenshot harness. Three parts:
 #
-# Three parts, because no single one of them can reach everything:
-#
-#   login   The real build-t/tidal-wave binary, launched the way a brand new
-#           install sees it - empty HOME, no saved Tidal session - on a private
-#           Xvfb sized 960x1200, once per theme. An unauthenticated launch shows
-#           the login page and nothing else, so that is what this half captures,
-#           and it is the only half where the picture comes out of the shipping
-#           executable.
-#
-#   shots   Everything behind the login wall: the sidebar, the player bar, the
-#           Settings panel, a track row, the album page and Now Playing. There
-#           is no Tidal session on a developer box, so these are instantiated
-#           against tests/TestStubs.h by the tst_shots runner built out of
-#           tests/visual/CMakeLists.txt, and grabbed with QQuickItem::grabToImage
-#           (via QtQuickTest's grabImage).
-#
+#   login   The real tidal-wave binary as a new install sees it (empty HOME, no
+#           Tidal session) on a private Xvfb at 960x1200, once per theme. An
+#           unauthenticated launch shows only the login page.
+#   shots   Everything behind the login wall, instantiated against
+#           tests/TestStubs.h by the tst_shots runner built from
+#           tests/visual/CMakeLists.txt and grabbed with grabToImage.
 #   store   The five store screenshots: Main.qml whole, 1280x800, on the
 #           invented library in tests/visual/store/. Same runner as shots.
 #
@@ -30,41 +20,23 @@
 #   tests/visual/run.sh --keep           leave the sandbox behind for poking at
 #   DWELL=12 tests/visual/run.sh         seconds to let each app launch live
 #   TIDALWAVE_BIN=/path/to/tidal-wave tests/visual/run.sh
+#   TW_VISUAL_BUILD=/path tests/visual/run.sh   where the shot runner is built
 #
 # PNGs land in tests/visual/out/, which carries a .gitignore so they are never
-# committed. Exit status is 0 only if every half that ran succeeded; a half that
-# cannot run on this box says why and does not fail the run.
+# committed. Exit status is 0 only if every part that ran succeeded. A part
+# that cannot run on this machine says why and does not fail the run.
 #
-# Safety, because a real instance of this app is usually running on the dev box.
-# The rules and most of the machinery are lifted from tests/firstrun/run.sh:
-#
-#   * Nothing here ever pkills, killalls or pattern-matches a process name. The
-#     only processes killed are helpers this script started, by recorded pid.
-#   * Every launch gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME
-#     under a private scratch directory, and goes through `env -i` so no
-#     variable from the caller's session leaks in.
-#   * The single-instance lock is a QLocalServer bound to an absolute path,
-#     $XDG_RUNTIME_DIR/TidalWave-<uid>, falling back to $TMPDIR and then to
-#     /tmp. XDG_RUNTIME_DIR is therefore what isolates a launch, with TMPDIR
-#     behind it, and the sandbox sets both. tests/lib/socket-name.sh works the
-#     address out the same way Application::singleInstanceSocketName() does,
-#     rather than this script guessing a name again - the guess it used to make
-#     stopped matching anything the day the uid went into the name, and a lock
-#     path nobody can match is a probe that always says "all clear". Without
-#     the isolation a second launch connects to the developer's own instance,
-#     tells it to show itself and exits 0 - which proves nothing and pops their
-#     window.
-#   * A unix socket path caps at 107 bytes, so the scratch root has to be short
-#     or listen() fails and the lock silently never exists. Checked up front,
-#     because a disabled lock is a false pass.
-#   * The developer's real ~/.config/TidalWave is fingerprinted before the run
-#     and re-checked after each launch. Any change aborts.
-#   * No synthetic input reaches the X server. Nothing is clicked or typed:
-#     state is seeded into the settings file before launch. The component half
-#     does post Qt mouse-move events, but in its own process, to its own
-#     window; nothing goes near the developer's session or this terminal.
-#   * Every launch runs under `timeout`, so nothing started here outlives the
-#     run.
+# Safety, because a real instance of the app may be running on the same machine:
+#   * No process is ever killed by name. Only helpers this script started are
+#     killed, by recorded pid, and every launch runs under `timeout`.
+#   * Every launch gets its own HOME, TMPDIR, XDG_RUNTIME_DIR and XDG_*_HOME in
+#     a private scratch directory and goes through `env -i`. XDG_RUNTIME_DIR is
+#     what isolates the single-instance lock (see tests/lib/socket-name.sh).
+#   * The scratch root is short, because a unix socket path caps at 107 bytes.
+#   * The real ~/.config/TidalWave is fingerprinted before the run and
+#     re-checked after each launch. Any change aborts.
+#   * No synthetic input reaches an X server outside this script's own. Nothing
+#     is clicked or typed: state is seeded into the settings file.
 #
 set -u
 
@@ -73,13 +45,12 @@ set -u
 SELF_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(cd -- "$SELF_DIR/../.." && pwd)
 APP=${TIDALWAVE_BIN:-$REPO_ROOT/build-t/tidal-wave}
-# TW_SOCKET_LEAF and tw_socket_path/tw_socket_live: the one place that knows
-# where the single-instance lock lives, kept in step with src/ui/Application.cpp.
+# tw_socket_path/tw_socket_live: where the single-instance lock lives, kept in
+# step with src/ui/Application.cpp.
 . "$REPO_ROOT/tests/lib/socket-name.sh"
 OUT=$SELF_DIR/out
-# Short on purpose, and outside the repo: see the sun_path note above. Kept
-# between runs so a re-run is an incremental build rather than a four minute
-# one; --clean throws it away.
+# Short on purpose and outside the repo: see the socket path note above. Kept
+# between runs so a re-run is an incremental build. --clean throws it away.
 HARNESS_BUILD=${TW_VISUAL_BUILD:-/tmp/tw-vis-build}
 
 DWELL=${DWELL:-10}
@@ -87,12 +58,10 @@ KEEP=0
 CLEAN=0
 WANTED=()
 
-# The six palette names in src/ui/ThemePalette.cpp, in the order Settings lists
-# them: three dark, then the three light ones this run exists to look at.
+# The six palette names in src/ui/ThemePalette.cpp: three dark, then three light.
 THEMES=(sea pine rust clay sky sand)
 
-# Half the user's 1920x1200 monitor, and the width the layout was designed
-# against (SPEC L1, tests/qml/tst_layout_player.qml).
+# The width the layout was designed against (tests/qml/tst_layout_player.qml).
 SHOT_W=960
 SHOT_H=1200
 
@@ -135,10 +104,9 @@ die() { printf '%sabort:%s %s\n' "$C_RED" "$C_OFF" "$1" >&2; exit 2; }
 
 SCRATCH=$(mktemp -d /tmp/twvis.XXXXXX) || die "cannot create a scratch directory"
 
-# The longest address a launch of ours can bind is $SCRATCH/<sandbox>/run/<leaf>
-# - 24 bytes is ample for "/login-sea" and friends, 5 covers "/run/". The limit
-# is kept short of sun_path's 107 rather than at it, because a lock that never
-# binds does not fail the run, it silently stops isolating it.
+# The longest address a launch can bind is $SCRATCH/<sandbox>/run/<leaf>: 24
+# bytes cover the sandbox name and 5 cover "/run/". Kept short of sun_path's
+# limit, because a lock that never binds silently stops isolating the run.
 probe_len=$(( ${#SCRATCH} + 24 + 5 + ${#TW_SOCKET_LEAF} ))
 [ "$probe_len" -lt 100 ] || die "scratch path $SCRATCH is too long for a unix socket"
 
@@ -174,22 +142,13 @@ trap cleanup EXIT INT TERM
 # ── guard: the developer's own config must not move ─────────────────────────
 
 REAL_CONF_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/TidalWave
-# The developer's own lock, worked out the way the app works it out. On a normal
-# session that is $XDG_RUNTIME_DIR/TidalWave-<uid>, i.e. /run/user/<uid>/..., and
-# not the temp dir this script used to fingerprint instead.
+# The real lock, worked out the way the app works it out: normally
+# $XDG_RUNTIME_DIR/TidalWave-<uid>.
 REAL_LOCK=$(tw_socket_path "${XDG_RUNTIME_DIR:-}" "${TMPDIR:-}")
 
-# Passive liveness probe: a bound unix socket shows up in /proc/net/unix, so this
-# never signals, connects to, or even names a process. A running instance
-# rewrites its own settings whenever the volume or the last page changes, so
-# contents drifting under us is expected and is not our doing.
-#
-# This used to grep for the old flat socket name, which nothing has bound since
-# the uid went into it: it matched nothing, so the harness believed no instance
-# was running even while the developer's window was open, and the tolerance
-# below was never granted. Matching on the leaf also catches an instance that
-# landed in $TMPDIR rather than $XDG_RUNTIME_DIR, and $SCRATCH is excluded so
-# our own sandboxes can never be mistaken for it.
+# Passive liveness probe: a bound unix socket shows up in /proc/net/unix, so
+# nothing is signalled or connected to. A running instance rewrites its own
+# settings, so their contents may drift. $SCRATCH is excluded from the match.
 LIVE_INSTANCE=0
 tw_socket_live "$SCRATCH" && LIVE_INSTANCE=1
 
@@ -308,7 +267,7 @@ sandbox() {
 
 # The app's settings file. QSettings on Linux writes
 # $XDG_CONFIG_HOME/<org>/<app>.conf, and Application::run() sets those to
-# "TidalWave" and "Tidal Wave" - hence the space in the filename.
+# "TidalWave" and "Tidal Wave", hence the space in the filename.
 seed_theme() {
     printf '[ui]\ntheme=%s\n' "$1" > "$BOX/home/.config/TidalWave/Tidal Wave.conf"
 }
@@ -333,11 +292,9 @@ if wanted login; then
             sandbox "login-$theme"
             seed_theme "$theme"
 
-            # -qwindowgeometry is QGuiApplication's own option, applied to the
-            # first top-level window. Without it the window comes up at the
-            # 1280x800 Main.qml asks for and the 960-wide screen crops it; with
-            # it the window is exactly the size under review and no window
-            # manager has to be run to force it.
+            # -qwindowgeometry is QGuiApplication's own option for the first
+            # top-level window. Without it the window comes up at Main.qml's
+            # 1280x800 and the 960-wide screen crops it.
             ( env -i "${BOX_ENV[@]}" DISPLAY="$DISP" QT_QPA_PLATFORM=xcb \
                 timeout -s TERM "$DWELL" "$APP" \
                 -qwindowgeometry "${SHOT_W}x${SHOT_H}+0+0" \
@@ -401,8 +358,8 @@ build_runner() {
         return 1
     fi
 
-    # Qt is not on the default search path on this box; take the prefix the
-    # developer's own build was configured with rather than guessing.
+    # Qt may be off the default search path, so take the prefix build-t was
+    # configured with.
     prefix=$(grep -m1 '^CMAKE_PREFIX_PATH:' "$REPO_ROOT/build-t/CMakeCache.txt" 2>/dev/null \
              | cut -d= -f2-)
     cfg_args=(-B "$HARNESS_BUILD" -S "$SELF_DIR" -DCMAKE_BUILD_TYPE=Debug)

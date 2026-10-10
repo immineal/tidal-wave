@@ -1,27 +1,9 @@
-// Library rows are ordered by how recently the user last had anything to do with
-// them, which is more than "last played".
-//
-// This file covers the date half of that: Playlist::addedAt and the home row's
-// sortPlaylistsByRecency(), which came first, and the same `created` now being
-// carried for albums and artists, which is what the sidebar's one list is sorted
-// on (LibraryIndex::rebuild(); the ordering itself is in tst_library).
-//
-// The old key was the locally stored play time alone, sorted descending and
-// stable, so every playlist the user had never played kept whatever order the
-// API happened to return. A playlist created a minute ago therefore sat behind
-// every playlist the user had ever played — the reported bug. The key is now
-// max(local last-played time, Playlist::addedAt), where addedAt is when this
-// user acquired the playlist, so creating one, saving someone else's and playing
-// an old one all move it to the front.
-//
-// Two halves to pin: the ordering itself, and the parsing that feeds it addedAt.
-// The ordering lives in sortPlaylistsByRecency() rather than in
-// TidalBridge::sortPlaylists() precisely so it can be exercised here without a
-// Tidal session or QSettings. For the parsing, a playlist the user merely saved
-// arrives inside a favourites row whose "created" is when they saved it, while
-// the playlist's own "created" is the original author's and may be years old;
-// taking the wrong one of those two would sort a just-saved playlist as though
-// it were ancient.
+// Library rows are ordered by how recently the user last had anything to do
+// with them: the key is max(local last-played time, addedAt), where addedAt is
+// when this user acquired the item. This file covers sortPlaylistsByRecency()
+// and the parsing that feeds addedAt for playlists, albums and artists. A saved
+// item arrives inside a favourites row whose "created" is the save date, while
+// the item's own "created" is the author's. The sidebar order is in tst_library.
 
 #include <QTest>
 #include <QJsonDocument>
@@ -80,7 +62,6 @@ private slots:
 
     // ── the ordering ─────────────────────────────────────────────────────
 
-    // The behaviour that already worked, and still has to.
     void playedBeatsUnplayed() {
         QList<Playlist> playlists { made("never"), made("played") };
         QVariantMap playtimes;
@@ -90,8 +71,7 @@ private slots:
         QCOMPARE(uuidsOf(playlists), QStringList({ "played", "never" }));
     }
 
-    // The reported bug. A playlist created today has never been played, so under
-    // the old play-time-only key it lost to anything ever played; under
+    // A playlist created today has never been played. Under
     // max(lastPlayed, addedAt) its addedAt is today and it wins.
     void addedTodayBeatsPlayedLastWeek() {
         QList<Playlist> playlists { made("playedLastWeek"), made("createdToday", m_now) };
@@ -102,9 +82,8 @@ private slots:
         QCOMPARE(uuidsOf(playlists), QStringList({ "createdToday", "playedLastWeek" }));
     }
 
-    // The other direction: the newest playlist is not stuck at the front. Play an
-    // old one and it comes back, because the play time is the larger half of its
-    // key.
+    // The newest playlist is not stuck at the front: playing an old one brings
+    // it back, because the play time is the larger half of its key.
     void playingAnOldPlaylistMovesItToTheFront() {
         QList<Playlist> playlists { made("createdToday", m_now),
                                     made("ancient", m_now - 900 * oneDay) };
@@ -123,7 +102,7 @@ private slots:
         QList<Playlist> playlists { made("first", same), made("second", same),
                                     made("third", same) };
         QVariantMap playtimes;
-        // Reached by the other half of the key too, not just by addedAt.
+        // Reached by the other half of the key too.
         playtimes[QStringLiteral("third")] = same;
 
         sortPlaylistsByRecency(playlists, playtimes);
@@ -149,9 +128,8 @@ private slots:
 
     // ── parsing addedAt ──────────────────────────────────────────────────
 
-    // A playlist handed over on its own — the create-playlist response, or a
-    // row from users/{id}/playlists — carries its own creation date, and that is
-    // the date the user made it.
+    // A playlist handed over on its own, as in the create-playlist response or
+    // a row from users/{id}/playlists, carries its own creation date.
     void plainPlaylistUsesItsOwnCreated() {
         const Playlist p = Playlist::fromJson(json(R"({
             "uuid": "own-date",
@@ -162,8 +140,7 @@ private slots:
 
         QCOMPARE(p.uuid, QStringLiteral("own-date"));
         QCOMPARE(p.addedAt, instant("2024-05-01T10:00:00.000+0000"));
-        // Not lastUpdated: adding a track to a playlist must not reorder the
-        // home row.
+        // lastUpdated is not read: adding a track must not reorder the home row.
         QVERIFY(p.addedAt != instant("2026-09-30T23:59:59.000+0000"));
     }
 
@@ -183,8 +160,8 @@ private slots:
         QCOMPARE(p.addedAt, instant("2026-09-28T08:30:00.000+0000"));
     }
 
-    // The wrapper only wins where it has a date; a row without one must still
-    // fall back to the playlist's own rather than reporting 0.
+    // The wrapper only wins where it has a date. A row without one falls back
+    // to the playlist's own.
     void wrapperWithoutCreatedFallsBackToTheItem() {
         const QJsonObject row = json(R"({
             "type": "USER_CREATED",
@@ -195,9 +172,8 @@ private slots:
         QCOMPARE(p.addedAt, instant("2020-01-02T03:04:05.000+0000"));
     }
 
-    // An unparseable or missing date has to land on 0 — an invalid QDateTime's
-    // toMSecsSinceEpoch() is undefined, and letting it through would sort the
-    // playlist on garbage.
+    // An unparseable or missing date has to land on 0: an invalid QDateTime's
+    // toMSecsSinceEpoch() is undefined.
     void unparseableOrMissingCreatedIsZero() {
         QCOMPARE(Playlist::fromJson(json(R"({"uuid":"x","created":"last Tuesday"})")).addedAt, 0LL);
         QCOMPARE(Playlist::fromJson(json(R"({"uuid":"x"})")).addedAt, 0LL);
@@ -205,13 +181,9 @@ private slots:
     }
 
     // ── the same date, for albums and artists ────────────────────────────
-    //
     // users/<id>/favorites/albums and .../artists answer rows of
-    // {"created": …, "item": {…}}, where "created" is this user's save date.
-    // Checked against a live response: the album and artist objects inside carry
-    // no "created" of their own, so unwrapping without keeping the row leaves
-    // nothing to sort on - which is why a saved album had no date at all and the
-    // sidebar fell back to A-Z for it.
+    // {"created": ..., "item": {...}}, where "created" is the user's save date.
+    // The objects inside carry no "created", so the row has to be kept.
     void parseAlbumsKeepsTheFavouritesRowDate() {
         const QList<Album> parsed = TidalClient::parseAlbums(json(R"({
             "limit": 50, "offset": 0, "totalNumberOfItems": 2,
@@ -227,8 +199,8 @@ private slots:
         QCOMPARE(parsed.size(), 2);
         QCOMPARE(parsed[0].addedAt, instant("2026-10-03T10:03:52.196+0000"));
         QCOMPARE(parsed[1].addedAt, instant("2026-10-01T14:41:54.492+0000"));
-        // Not the release date. An album from 1998 saved this morning has to rank
-        // as saved this morning, which is the whole point of the key.
+        // The release date is a different fact: an album from 1998 saved this
+        // morning ranks as saved this morning.
         QVERIFY(parsed[0].addedAt > parsed[1].addedAt);
         QCOMPARE(parsed[0].releaseDate, QStringLiteral("1998-04-21"));
     }
@@ -248,22 +220,18 @@ private slots:
         QCOMPARE(parsed[1].addedAt, instant("2026-08-24T11:24:38.119+0000"));
     }
 
-    // Everywhere else an album or artist is parsed - albums/<id>, a search hit,
-    // the album inside a track - there is no favourites row and so no date. 0,
-    // not a guess: the alternative was releaseDate, which is a different fact.
+    // Everywhere else an album or artist is parsed there is no favourites row
+    // and so no date: albums/<id>, a search hit, the album inside a track.
     void anItemWithNoFavouritesRowHasNoDate() {
         QCOMPARE(Album::fromJson(json(R"({"id":1,"title":"x","releaseDate":"1998-04-21"})")).addedAt,
                  0LL);
         QCOMPARE(Artist::fromJson(json(R"({"id":1,"name":"x"})")).addedAt, 0LL);
-        // An unparseable row date is 0 too, for the reason given above
-        // unparseableOrMissingCreatedIsZero.
+        // An unparseable row date is 0 too.
         const QJsonObject row = json(R"({"created":"last Tuesday","item":{"id":1,"title":"x"}})");
         QCOMPARE(Album::fromJson(row["item"].toObject(), row).addedAt, 0LL);
     }
 
-    // The plumbing, not just the semantics: the wrapper has to survive
-    // TidalClient's unwrapping and reach fromJson. It used to be unwrapped and
-    // thrown away, which is how a saved playlist got the author's date.
+    // The wrapper has to survive TidalClient's unwrapping and reach fromJson.
     void parsePlaylistsKeepsTheWrapperDate() {
         const QList<Playlist> parsed = TidalClient::parsePlaylists(json(R"({
             "items": [

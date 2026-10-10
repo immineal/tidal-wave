@@ -1,10 +1,7 @@
-// QtQuickTest runner for the tst_qml target: it discovers tests/qml/tst_*.qml
-// (QUICK_TEST_SOURCE_DIR, set in tests/CMakeLists.txt) and runs each TestCase.
-//
-// The setup object below installs the same context properties the app installs
-// in Application::run() — auth, bridge, player, downloader, cast, app — as the
-// stubs from TestStubs.h, so pages out of the TidalWave module instantiate
-// without a live Tidal session, network access, or an audio backend.
+// QtQuickTest runner: discovers tests/qml/tst_*.qml and runs each TestCase.
+// The setup object installs the stubs from TestStubs.h as the context
+// properties the app installs, so pages load without a Tidal session, the
+// network or an audio backend.
 
 #include <QtQuickTest/quicktest.h>
 

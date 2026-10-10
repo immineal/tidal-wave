@@ -1,15 +1,8 @@
-// X6: animations stay smooth, and a reduced-motion preference is respected
-// where the platform exposes one.
-//
-// Read the numbers this prints with the caveat attached. Frame timing measured
-// here is the throughput of whatever backend the run was given: offscreen
-// renders with no presentation at all, Xvfb rasterises on the CPU through
-// llvmpipe, and a nested compositor adds a copy. None of that predicts frame
-// pacing on the developer's GPU. What it does catch is the thing worth
-// catching in a test: an animation that produces no frames, one that produces
-// far fewer than its neighbours, and a frame rate that collapses when the
-// scene gets big. Anything beyond that needs a real display and a real
-// present loop, and this file says so rather than asserting it is fine.
+// Animations keep producing frames, and a reduced-motion preference is
+// respected. Frame timing measured here is the throughput of the backend the
+// run was given (offscreen, llvmpipe under Xvfb, a nested compositor) and says
+// nothing about pacing on a real display. It does catch an animation that
+// produces no frames and a frame rate that collapses when the scene gets big.
 
 import QtQuick
 import QtQuick.Window
@@ -67,11 +60,8 @@ TestCase {
         }
         return null
     }
-    // A real animated component for the reduced-motion probe. The login
-    // card's height is the one animation in the app that can be driven
-    // without a pointer: the auth state alone decides it. The sidebar's
-    // slide would do as well, but it carries an asynchronous Loader that is
-    // still incubating when the engine tears down.
+    // The reduced-motion probe uses the login card's height: the one animation
+    // in the app that the auth state alone drives, with no pointer needed.
 
     function window() {
         return testCase.Window.window
@@ -133,7 +123,7 @@ TestCase {
                     + "\", scene graph frames are what this counts; the number is"
                     + " backend throughput, not pacing on a real display")
 
-        // The only honest hard assertion: the animation produced frames.
+        // The one hard assertion: the animation produced frames.
         verify(r.hi > 0,
                "no frame was ever swapped while an infinite animation ran, "
                + "so either the animation is not running or nothing is rendering")
@@ -199,14 +189,9 @@ TestCase {
         page.destroy()
     }
 
-    // X6's second half, measured rather than guessed at.
-    //
-    // This used to read `prefs.reduceMotion`, which has never existed on
-    // Prefs, so the probe reported "the app has no reduced-motion control"
-    // whatever the app actually did — it could not have told the two apart.
-    // The real property is Application::reducedMotion, reaching QML as
-    // `app.reducedMotion`, and Theme.reduceMotion is where the QML side asks.
-    // So the probe now drives the preference and watches a real animation.
+    // The reduced-motion half. The property is Application::reducedMotion,
+    // reaching QML as `app.reducedMotion`, and Theme.reduceMotion is where the
+    // QML side asks. The probe drives the preference and watches an animation.
 
     // Move the login card between its two heights and report how it got
     // there: instantly, or over the usual 200ms.
@@ -289,9 +274,7 @@ TestCase {
                 "reduced motion is set and the login card still animated its height")
 
         // Not a hard failure: on a software rasteriser under load one turn of
-        // the event loop can outlast a 170ms slide, which would make this
-        // look instant when it is not. Worth saying out loud, not worth
-        // failing a stress run over.
+        // the event loop can outlast the animation, which makes it look instant.
         if (!animatedTravelled)
             console.log("[stress] motion: NOTE - the resize looked instant even with "
                         + "motion allowed, so this box cannot tell the two apart; "

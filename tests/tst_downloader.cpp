@@ -1,15 +1,7 @@
-// Finding ffmpeg.
-//
-// Downloads shell out to ffmpeg, and the app has to find it in the environment
-// it was *launched* in. A desktop launcher hands a process
-// PATH=/usr/bin:/bin:/usr/sbin:/sbin and nothing else - not the user's shell
-// PATH - so an ffmpeg in /usr/local/bin or ~/.local/bin is invisible to an app
-// started from the menu while working fine from a terminal. And a path
-// resolved once at construction means installing ffmpeg does not take effect
-// until the app is restarted, which is not what "install ffmpeg" sounds like.
-//
-// Nothing here runs ffmpeg; the scratch executables below are empty files with
-// the execute bit set, because the question is only where the lookup looks.
+// Finding ffmpeg. A desktop launcher gives the app a minimal PATH, so the
+// lookup also searches fallback directories, and it runs on every call so an
+// ffmpeg installed while the app is open is found.
+// Nothing here runs ffmpeg: the scratch executables only need the execute bit.
 
 #include <QTest>
 #include <QDir>
@@ -45,7 +37,6 @@ private slots:
 
     void cleanup() { qputenv("PATH", m_savedPath); }
 
-    // The regression: ffmpeg installed while the app is open.
     void ffmpegInstalledAfterStartupIsFound() {
         const QString binDir = m_dir.filePath(QStringLiteral("bin"));
         QDir().mkpath(binDir);
@@ -62,8 +53,7 @@ private slots:
         QCOMPARE(dl.ffmpegPath(), binDir + QStringLiteral("/ffmpeg"));
     }
 
-    // The launcher's PATH, reproduced exactly, with ffmpeg somewhere a
-    // package manager did not put it.
+    // ffmpeg off PATH, in a directory only the fallback list names.
     void ffmpegOffTheLauncherPathIsStillFound() {
         const QString elsewhere = m_dir.filePath(QStringLiteral("usr-local-bin"));
         QVERIFY(placeExecutable(elsewhere, QStringLiteral("ffmpeg")));
@@ -76,8 +66,7 @@ private slots:
                  elsewhere + QStringLiteral("/ffmpeg"));
     }
 
-    // PATH still wins: a user who put a particular ffmpeg on their PATH gets
-    // that one and not whatever is in /usr/local/bin.
+    // PATH wins: an ffmpeg the user put on PATH is used before any fallback.
     void pathBeatsTheFallbacks() {
         const QString onPath = m_dir.filePath(QStringLiteral("on-path"));
         const QString fallback = m_dir.filePath(QStringLiteral("fallback"));
@@ -89,8 +78,7 @@ private slots:
                  onPath + QStringLiteral("/ffmpeg"));
     }
 
-    // The list itself, so that dropping an entry is a failure here rather than
-    // a bug report from whoever installs ffmpeg that way.
+    // Pins the list, so dropping an entry fails here.
     void theFallbackListCoversTheUsualPlaces() {
         const QStringList dirs = Downloader::ffmpegFallbackDirs();
         QVERIFY2(dirs.contains(QStringLiteral("/usr/local/bin")),

@@ -1,7 +1,5 @@
-// Shared data builders and helpers for the stress cases.
-//
-// Not a .pragma library: each test file gets its own copy, which keeps one
-// test's scribbles out of the next one.
+// Shared data builders and helpers for the stress cases. Not a .pragma
+// library: each test file gets its own copy.
 
 // A track map shaped like the one TidalBridge hands QML. `i` varies every
 // string so nothing can be deduplicated behind our back.
@@ -64,19 +62,14 @@ function mixes(n) {
     return out
 }
 
-// Assign only properties the object actually declares.
-//
-// Three of the files these tests instantiate are being rebuilt by other work
-// in this release. A renamed property should leave a page empty, not abort the
-// whole stress run on "Cannot assign to non-existent property".
+// Assign only properties the object actually declares, so a renamed property
+// leaves a page empty and does not abort the whole run.
 function fill(obj, props) {
     var missed = []
     for (var k in props) {
         if (obj[k] === undefined) { missed.push(k); continue }
-        // Assigning undefined to a typed property throws rather than warning,
-        // which would abort the test function. A binding that evaluates to
-        // undefined only warns, and that is the path the pages really take, so
-        // the undefined cases are fed through trackData and the lists instead.
+        // Assigning undefined to a typed property throws, which would abort the
+        // test function. The undefined cases go through trackData and the lists.
         if (props[k] === undefined) continue
         obj[k] = props[k]
     }

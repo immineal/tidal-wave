@@ -1,50 +1,9 @@
-// Mixes: what the Collection's Mixes tab holds, and in what order.
-//
-// Two sources, merged on the mix id:
-//
-//   * `pages/my_collection_my_mixes` - the mixes Tidal *generates* for the
-//     account. "My Daily Discovery" and "My Mix 1".."My Mix 8".
-//   * `v2/favorites/mixes` - the mixes the user *saved*. A different API
-//     altogether: flat items rather than a page of rows and modules, a
-//     `dateAdded` per item, a cursor instead of an offset, and no total.
-//
-// ── where the fixtures come from ─────────────────────────────────────────────
-//
-// kGeneratedPage and kSavedMixes are *constructed* from responses captured from a
-// live account on 2026-10-03. Constructed, not verbatim:
-//
-//   * kept exactly as captured: the nesting (or flatness), every mix id, every
-//     `mixType`, every `dateAdded`, the item counts, and the order the items
-//     arrived in - the parts the code under test reads.
-//   * replaced: every `subTitle`, because the real ones are lists of the artists
-//     this account listens to and this is a public repository. A TRACK_MIX's
-//     *title* is the title of the track whose radio it is, so that is a
-//     placeholder too ("Saved Radio"); its id and mixType are the captured ones.
-//   * dropped or shortened: the fields nothing reads (`graphic`, `description`,
-//     `titleTextInfo`, `subTitleTextInfo`, the SMALL/MEDIUM image sizes), and the
-//     image URLs, whose signing tokens are not committed.
-//
-// An earlier version of this file claimed its fixture was a real response "as
-// Tidal sent it". It was not: ten items where the live generated page has
-// seventeen, invented ids, and "My Daily Discovery" ninth where the live response
-// has it first - so the reordering that fixture was written to justify is a no-op
-// on the real page. Hence the paragraph above: if a fixture is built rather than
-// captured, it has to say so and say from what.
-//
-// ── what the captures establish ──────────────────────────────────────────────
-//
-//   * the generated page carries Daily Discovery (already first) and all eight
-//     "My Mix N", and does *not* carry "My New Arrivals" at all.
-//   * eight of its seventeen items are VIDEO_DAILY_MIX, two of them sharing the
-//     title "My Video Mix 7".
-//   * the saved list carries "My New Arrivals", a saved TRACK_MIX radio station,
-//     and three mixes the generated page also has - so dedup on the id is what
-//     keeps the tab at eleven tiles rather than fourteen.
-//   * the saved list's items are flat: the mix *is* the item, with no
-//     {"item": {…}} wrapper, unlike the v1 favourites endpoints.
-//
-// Nothing here touches the network: the parses and the merge are statics over
-// already-parsed JSON, and nextCursor() is a static over one page of it.
+// Mixes: what the Collection's Mixes tab holds, and in what order. Two sources
+// are merged on the mix id: `pages/my_collection_my_mixes`, the mixes Tidal
+// generates, and `v2/favorites/mixes`, the ones the user saved.
+// The fixtures are built from captured responses: structure, ids, mixTypes,
+// dates and order are as captured, texts and image URLs are placeholders.
+// Nothing here touches the network.
 
 #include <QTest>
 #include <QJsonArray>
@@ -102,16 +61,9 @@ constexpr auto kSavedMixes = R"json({
   ]
 })json";
 
-// pages/mix - the response behind *one* open mix, which is a different shape
-// again: a MIX_HEADER module naming the mix, and a TRACK_LIST module holding
-// its tracks.
-//
-// Invented, not captured, and it says so: every id, title and track name below
-// is made up. What is taken from the live API, and was probed against it, is
-// the shape - that this page carries a MIX_HEADER whose `mix` object has id,
-// title, subTitle, mixType and an `images` block with LARGE/MEDIUM/SMALL - and
-// the rows-of-modules nesting, which the two captured fixtures above already
-// establish. Nothing of the account's own content is in here.
+// pages/mix, the response behind one open mix: a MIX_HEADER module naming the
+// mix and a TRACK_LIST module holding its tracks. The shape follows the live
+// API, and every id, title and track name is invented.
 constexpr auto kMixPage = R"json({
   "id": "mix",
   "title": "Mix",
@@ -133,26 +85,9 @@ constexpr auto kMixPage = R"json({
   ]
 })json";
 
-// The `mixes` node of a /v1/search response - the sixth kind the search page
-// asks for. Invented, and it says so: every id and every title below is made
-// up, and none of it is anyone's library.
-//
-// What is *not* invented is the shape and the vocabulary. A per-kind node of
-// {items, totalNumberOfItems} is what the four kinds search already parses
-// come in (see TidalClient::search), and a mix object carrying
-// id/title/subTitle/mixType/images is what the two captured fixtures above
-// establish. The mixType strings are the captured ones.
-//
-// Built to put the filter under pressure rather than to be typical:
-//
-//   * one VIDEO_DAILY_MIX, which must not survive;
-//   * one DAILY_MIX whose *title* says "Video Mix", which must survive - the
-//     identification is the type and never the title, which arrives in the
-//     account's language;
-//   * one item wrapped in {"item": {...}}, the favourites shape;
-//   * one item with no id at all;
-//   * a DISCOVERY_MIX late in the list, which parseMixPage's ordering would
-//     pull to the front and this must leave where the server put it.
+// The `mixes` node of a /v1/search response, with invented ids and titles.
+// It holds a video mix, a DAILY_MIX titled "Video Mix", an {"item": {...}}
+// wrapper, an item with no id and a DISCOVERY_MIX late in the list.
 constexpr auto kSearchMixes = R"json({
   "limit": 20, "offset": 0, "totalNumberOfItems": 6,
   "items": [
@@ -165,11 +100,8 @@ constexpr auto kSearchMixes = R"json({
   ]
 })json";
 
-// The fixtures write "https://host/path" where the response has
-// "https://host/path", and this puts the scheme back. moc strips // comments
-// line by line and does it inside a multi-line raw string too, so a URL written
-// out in full truncates the literal it sits in - and then swallows the Q_OBJECT
-// below it, leaving the test binary to fail at link time with a missing vtable.
+// Fixtures may write "@http@" for "http://", and this puts the scheme back.
+// It keeps `//` out of multi-line raw strings, which moc can read as a comment.
 QJsonObject pageOf(const char *json) {
     QByteArray raw(json);
     raw.replace("https://", "https://");
@@ -224,14 +156,12 @@ QStringList idsOf(const QList<Mix> &mixes) {
     return out;
 }
 
-// The titles the walk produced, as one string, for a failure message that says
-// what actually came back rather than only that a count was wrong.
+// The titles the walk produced, as one string, for failure messages.
 QString listing(const QList<Mix> &mixes) {
     return titlesOf(mixes).join(QLatin1String(", "));
 }
 
-// The raw items of one MIX_LIST row of a fixture, so a test can state what the
-// page itself holds rather than what the walk made of it.
+// The raw items of one MIX_LIST row of a fixture, before any parsing.
 QJsonArray rawItems(const QJsonObject &page, int row) {
     return page["rows"].toArray().at(row).toObject()["modules"].toArray().at(0)
                .toObject()["pagedList"].toObject()["items"].toArray();
@@ -251,9 +181,7 @@ private slots:
 
     // ── what each captured page does and does not hold ───────────────────
 
-    // The claim the previous version of this file was built on - that Tidal
-    // sends the two personalised mixes last, so they had to be moved to the
-    // front - is false for Daily Discovery: the page already leads with it.
+    // The generated page already leads with Daily Discovery.
     void theCollectionPageAlreadyLeadsWithDiscovery() {
         const QJsonArray raw = rawItems(generatedPage(), 0);
         QCOMPARE(raw.size(), 17);
@@ -261,8 +189,8 @@ private slots:
         QCOMPARE(raw.at(0).toObject()["title"].toString(), QStringLiteral("My Daily Discovery"));
     }
 
-    // And it is false for New Arrivals in a worse way: that mix is not on this
-    // page at all, so no amount of sorting this response could ever surface it.
+    // New Arrivals is not on the generated page at all, so sorting that page
+    // cannot surface it.
     void theCollectionPageHasNoNewArrivalsToSort() {
         for (const QJsonValue &v : rawItems(generatedPage(), 0))
             QVERIFY2(v.toObject()["mixType"].toString() != QStringLiteral("NEW_RELEASE_MIX"),
@@ -275,8 +203,7 @@ private slots:
     }
 
     // The saved list has New Arrivals, which no `pages/*` feed the app reads
-    // carries, and is still not the whole tab on its own: the user has saved one
-    // of the eight "My Mix N", not all eight.
+    // carries. It is not the whole tab either: only one "My Mix N" is saved.
     void theSavedListHasNewArrivalsAndIsAlsoIncomplete() {
         const QList<Mix> mixes = TidalClient::parseSavedMixes(savedPage());
         QCOMPARE(mixes.size(), 4);
@@ -299,10 +226,9 @@ private slots:
         QCOMPARE(TidalClient::parseSavedMixes(savedPage()).size(), 4);
     }
 
-    // Every saved mix carries the date the user saved it, which is what the
-    // sidebar's ordering is built on. `updated` sits beside it and is not read:
-    // Tidal regenerates these daily, and reading it would reshuffle the sidebar
-    // every morning.
+    // Every saved mix carries the date the user saved it, which the sidebar
+    // orders by. `updated` is not read: Tidal regenerates these daily, and it
+    // would reshuffle the sidebar every morning.
     void everySavedMixCarriesTheDateItWasSaved() {
         const QList<Mix> mixes = TidalClient::parseSavedMixes(savedPage());
         for (const Mix &m : mixes)
@@ -310,21 +236,19 @@ private slots:
         // Six fractional digits, which Qt::ISODate rounds to the millisecond.
         QCOMPARE(mixes.at(0).addedAt, instant("2026-06-08T19:33:03.142667Z"));
         QCOMPARE(mixes.at(3).addedAt, instant("2026-10-03T11:09:34.058841Z"));
-        // Oldest save first, as captured, and not the `updated` stamps - which run
-        // in a different order from the save dates.
+        // Oldest save first, as captured. The `updated` stamps run in another
+        // order.
         for (int i = 1; i < mixes.size(); ++i)
             QVERIFY2(mixes.at(i - 1).addedAt < mixes.at(i).addedAt, qPrintable(listing(mixes)));
     }
 
-    // A mix from a page feed has no date at all. 0, not a guess.
+    // A mix from a page feed has no date, so addedAt is 0.
     void aGeneratedMixHasNoDate() {
         for (const Mix &m : TidalClient::parseMixPage(generatedPage()))
             QCOMPARE(m.addedAt, 0LL);
     }
 
-    // A saved radio station is a saved mix. TRACK_MIX and ARTIST_MIX are kept
-    // here - the user saved them deliberately, and a missing saved radio is the
-    // thing that was noticed.
+    // A saved radio station is a saved mix: TRACK_MIX and ARTIST_MIX are kept.
     void aSavedRadioStationIsKept() {
         const QList<Mix> mixes = TidalClient::parseSavedMixes(savedPage());
         QVERIFY2(typesOf(mixes).contains(QStringLiteral("TRACK_MIX")),
@@ -333,9 +257,8 @@ private slots:
                  qPrintable(listing(merged())));
     }
 
-    // And so is a video mix, if one ever turns up in the saved list. The filter
-    // is on the generated feed only: dropping something the user deliberately
-    // saved is the worse failure, even when the app cannot play it.
+    // A video mix in the saved list is kept too. The filter is on the generated
+    // feed only: dropping something the user saved is the worse failure.
     void aSavedVideoMixIsKeptAlthoughTheGeneratedOnesAreNot() {
         const QList<Mix> saved = TidalClient::parseSavedMixes(pageOf(R"json({
             "cursor": null,
@@ -355,18 +278,14 @@ private slots:
     }
 
     // ── paging the saved list ────────────────────────────────────────────
-    //
-    // The endpoint reports no totalNumberOfItems, so nothing can compute "done";
-    // nextCursor() is the whole of the termination rule. These are the three
-    // shapes that end a run and the one that continues it.
+    // The endpoint reports no totalNumberOfItems, so nextCursor() is the whole
+    // termination rule.
 
-    // The last page answers "cursor": null. Asking again with the cursor the page
-    // was fetched with - the natural-looking reading of "no new cursor" - would
-    // fetch the same page for ever, so an absent cursor has to come back absent.
+    // The last page answers "cursor": null. An absent cursor has to come back
+    // absent: reusing the previous one would fetch the same page for ever.
     void aNullCursorEndsTheRun() {
         QCOMPARE(TidalClient::nextCursor(savedPage(), QString()), QString());
-        // And from a *later* page, where there is a previous cursor to fall back
-        // on and nothing must.
+        // The same from a later page, where a previous cursor exists.
         QCOMPARE(TidalClient::nextCursor(savedPage(), QStringLiteral("eyJtaXhJZCI6IngifQ==")),
                  QString());
         QCOMPARE(TidalClient::nextCursor(pageOf(R"json({"items":[{"id":"a"}]})json"),
@@ -413,7 +332,7 @@ private slots:
                                     .arg(mix, listing(mixes))));
 
         // Eleven tiles: Daily Discovery, New Arrivals, My Mix 1-8 and the saved
-        // radio - from 17 generated items and 4 saved ones.
+        // radio, from 17 generated items and 4 saved ones.
         QCOMPARE(typesOf(mixes).count(QStringLiteral("DISCOVERY_MIX")), 1);
         QCOMPARE(typesOf(mixes).count(QStringLiteral("NEW_RELEASE_MIX")), 1);
         QCOMPARE(typesOf(mixes).count(QStringLiteral("DAILY_MIX")), 8);
@@ -429,9 +348,7 @@ private slots:
     }
 
     // Daily Discovery, then New Arrivals, then the order the lists were walked.
-    // The generated feed goes first so its run of "My Mix N" survives: taking the
-    // saved list first would put "My Mix 1" and the saved radio in front of
-    // "My Mix 2".
+    // The generated feed goes first so its run of "My Mix N" stays together.
     void theTwoPersonalisedMixesLeadTheMergedList() {
         const QList<Mix> mixes = merged();
         QCOMPARE(mixes.at(0).mixType, QStringLiteral("DISCOVERY_MIX"));
@@ -441,10 +358,8 @@ private slots:
         QCOMPARE(mixes.size(), 11);
     }
 
-    // Two of the four saved mixes are on the generated page too - Daily Discovery
-    // and "My Mix 1". "My New Arrivals" is not, which is the whole reason the
-    // saved list has to be fetched, and the saved radio is not either. Each mix is
-    // one row, placed where the generated feed put it. 9 + 4 - 2 = 11.
+    // Daily Discovery and "My Mix 1" are in both lists. Each mix is one row,
+    // placed where the generated feed put it. 9 + 4 - 2 = 11.
     void mergingDeduplicatesOnTheMixId() {
         const QList<Mix> mixes = merged();
         const QStringList ids = idsOf(mixes);
@@ -463,9 +378,8 @@ private slots:
             QCOMPARE(ids.count(id), 1);
     }
 
-    // Where a mix is in both lists, the one record that has a `dateAdded` is the
-    // saved one, and that is the half the sidebar's ordering needs - so it has to
-    // survive the dedup although the generated record is the one kept.
+    // Where a mix is in both lists, only the saved record has a `dateAdded`.
+    // It has to survive the dedup although the generated record is kept.
     void aDateFromTheSavedListSurvivesTheDedup() {
         const QList<Mix> mixes = merged();
 
@@ -491,9 +405,8 @@ private slots:
         QCOMPARE(otherDiscovery.addedAt, discovery.addedAt);
     }
 
-    // A source that failed is an absent source, not an empty list: fetchHomeMixes
-    // hands the merge whatever came back, and one source answering must still
-    // produce the mixes it holds.
+    // A source that failed is absent: one source answering must still produce
+    // the mixes it holds.
     void oneMissingSourceStillYieldsTheOther() {
         const QList<Mix> generated = TidalClient::parseMixPage(generatedPage());
         const QList<Mix> saved     = TidalClient::parseSavedMixes(savedPage());
@@ -506,10 +419,8 @@ private slots:
 
     // ── video mixes ──────────────────────────────────────────────────────
 
-    // The app has no video playback anywhere, and `pages/mix` answers one of
-    // these with a VIDEO_LIST of "Music Video" items rather than a TRACK_LIST,
-    // so fetchMixTracks finds nothing in it. Eight of the seventeen tiles on
-    // the Collection page were that.
+    // The app has no video playback, and `pages/mix` answers a video mix with
+    // a VIDEO_LIST, so fetchMixTracks finds nothing in it.
     void videoMixesAreDropped() {
         QCOMPARE(rawItems(generatedPage(), 0).size(), 17);
         int rawVideo = 0;
@@ -541,11 +452,8 @@ private slots:
                                     .arg(t, titles.join(QLatin1String(", ")))));
     }
 
-    // `pages/for_you` has a third MIX_LIST row, "Radio stations for you", holding
-    // fifteen ARTIST_MIX entries. They are *suggestions* - the user never saved
-    // them - so nothing fetches that page, and a saved radio reaches the tab
-    // through v2/favorites/mixes instead. The guard is that the only two sources
-    // are the ones below.
+    // `pages/for_you` has a row of ARTIST_MIX suggestions the user never saved,
+    // so nothing fetches that page. The only two sources are the ones below.
     void nothingComesFromTheSuggestedRadioRow() {
         const QStringList ids = idsOf(merged());
         const QStringList fromSources =
@@ -559,10 +467,8 @@ private slots:
 
     // ── mixType is the only handle ───────────────────────────────────────
 
-    // mixType is a *string* on these endpoints. Read as an object - which is
-    // what Mix::fromJson used to do, to look for artwork in it - every mix
-    // comes out with an empty one and there is no locale-safe way to tell them
-    // apart, nor any way to filter the video ones.
+    // mixType is a string on these endpoints. Read as anything else, every mix
+    // comes out untyped and the video ones cannot be filtered.
     void mixTypeIsParsedAsAnIdentifier() {
         const QList<Mix> mixes = merged();
 
@@ -583,9 +489,8 @@ private slots:
         }
     }
 
-    // The ordering is on mixType, never on the title. A German account gets the
-    // same mixes in the same places; matching the English title would leave the
-    // two at the end for every user outside one locale.
+    // The ordering is on mixType, never on the title, which arrives in the
+    // account's language.
     void orderingDoesNotReadTheTitle() {
         const auto germanise = [](const char *json) {
             QByteArray g(json);
@@ -605,8 +510,8 @@ private slots:
         QCOMPARE(mixes.at(1).title, QStringLiteral("Meine Neuheiten"));
         QCOMPARE(mixes.at(2).title, QStringLiteral("Mein Mix 1"));
         QCOMPARE(mixes.at(9).title, QStringLiteral("Mein Mix 8"));
-        // And the dedup is on the id, so the renamed German mixes still collapse
-        // to one row each rather than doubling.
+        // The dedup is on the id, so the renamed mixes still collapse to one
+        // row each.
         const QStringList ids = idsOf(mixes);
         QCOMPARE(QSet<QString>(ids.cbegin(), ids.cend()).size(), 11);
     }
@@ -614,9 +519,8 @@ private slots:
     // ── shapes that are not those responses ──────────────────────────────
 
     void unlabelledMixesAreKeptInPlace() {
-        // An endpoint that does not label its mixes (an older page) still has to
-        // come back whole and in order. Nothing is promoted and nothing is
-        // dropped: the video filter matches a mixType, so an absent one is kept.
+        // An endpoint that does not label its mixes still comes back whole and
+        // in order: the video filter matches a mixType, so an absent one is kept.
         const QJsonObject page = pageOf(R"json({"rows":[{"modules":[
             {"type":"MIX_LIST","pagedList":{"items":[
               {"id":"a","title":"First"},
@@ -638,8 +542,7 @@ private slots:
         const QList<Mix> mixes = TidalClient::parseMixPage(page);
         QCOMPARE(titlesOf(mixes), QStringList({QStringLiteral("a mix")}));
 
-        // A page feed mixes module types freely - the captured for_you page has an
-        // ALBUM_LIST beside its MIX_LISTs - and only MIX_LIST is read.
+        // A page feed mixes module types freely, and only MIX_LIST is read.
         const QJsonObject mixed = pageOf(R"json({"rows":[
             {"modules":[{"type":"ALBUM_LIST","pagedList":{"items":[
               {"id":1,"title":"an album"}]}}]},
@@ -651,7 +554,7 @@ private slots:
     }
 
     void severalRowsAndModulesAreAllWalked() {
-        // The walk reads every module of every row, not the first of each.
+        // The walk reads every module of every row.
         const QJsonObject page = pageOf(R"json({"rows":[
             {"modules":[
               {"type":"MIX_LIST","pagedList":{"items":[{"id":"a","title":"A","mixType":"DAILY_MIX"}]}},
@@ -676,10 +579,8 @@ private slots:
 
     // ── one open mix: pages/mix, header and tracks ───────────────────────
 
-    // The bug this section was written for: "Playing from: <a mix>" in Now
-    // Playing navigates with `{ mixId: … }` and nothing else, and the page it
-    // opened had no title and no cover. The title and the cover were in the
-    // response all along, in the module beside the tracks, and nothing read it.
+    // A page opened with only `{ mixId }` gets its title and cover from the
+    // MIX_HEADER module beside the tracks.
     void theMixHeaderNamesThePageItOpened() {
         const Mix m = TidalClient::parseMixHeader(mixPage());
         QCOMPARE(m.id, QStringLiteral("mx000000000000000000000000001"));
@@ -689,8 +590,7 @@ private slots:
     }
 
     void theMixHeaderCarriesTheHeroArtwork() {
-        // LARGE first, the same preference order Mix::fromJson applies
-        // everywhere else; the hero is the one place that wants the big one.
+        // LARGE first, the preference order Mix::fromJson applies everywhere.
         QCOMPARE(TidalClient::parseMixHeader(mixPage()).coverUrl(),
                  QStringLiteral("http://art/large.jpg"));
     }
@@ -719,10 +619,8 @@ private slots:
 
     // ── one module missing may not cost the caller the other ─────────────
 
-    // A video mix answers VIDEO_LIST where this one answers TRACK_LIST - that
-    // is how eight tiles once opened empty - so its tracks read as none. The
-    // header is still there, and a titled page over an empty list is a better
-    // answer than the blank hero the complaint was about.
+    // A video mix answers VIDEO_LIST where this one answers TRACK_LIST, so its
+    // tracks read as none. The header still names the page.
     void aHeaderWithoutAReadableTrackListStillNamesThePage() {
         const QJsonObject page = pageOf(R"json({"rows":[
             {"modules":[{"type":"MIX_HEADER","mix":{"id":"v","title":"My Video Mix 1",
@@ -737,8 +635,8 @@ private slots:
         QCOMPARE(m.mixType, QStringLiteral("VIDEO_DAILY_MIX"));
     }
 
-    // And the reverse: a response with tracks and no header hands the tracks
-    // over all the same, rather than the two walks failing together.
+    // And the reverse: a response with tracks and no header still hands the
+    // tracks over.
     void aTrackListWithoutAHeaderStillYieldsItsTracks() {
         const QJsonObject page = pageOf(R"json({"rows":[{"modules":[
             {"type":"TRACK_LIST","pagedList":{"items":[
@@ -769,8 +667,8 @@ private slots:
         QVERIFY(TidalClient::parseMixTracks({}).isEmpty());
         QVERIFY(TidalClient::parseMixHeader(
             pageOf(R"json({"rows":[]})json")).id.isEmpty());
-        // A MIX_HEADER with no `mix` under it is not a header; the walk keeps
-        // looking rather than answering an empty mix it mistook for one.
+        // A MIX_HEADER with no `mix` under it is skipped and the walk keeps
+        // looking.
         const QJsonObject hollow = pageOf(R"json({"rows":[
             {"modules":[{"type":"MIX_HEADER"}]},
             {"modules":[{"type":"MIX_HEADER","mix":{"id":"real","title":"Real"}}]}
@@ -780,9 +678,8 @@ private slots:
 
     // ── the header is not a tile list ────────────────────────────────────
 
-    // The one way reading headers could do harm is by putting a video mix back
-    // into a list of things to open. It cannot: the Collection's tiles come
-    // from MIX_LIST modules, and a MIX_HEADER is not one.
+    // Reading headers must not put a video mix back into a list of tiles. The
+    // Collection's tiles come from MIX_LIST modules only.
     void aMixHeaderNeverBecomesACollectionTile() {
         QVERIFY2(TidalClient::parseMixPage(mixPage()).isEmpty(),
                  "the page's own header was counted as a tile");
@@ -791,8 +688,7 @@ private slots:
             {"type":"MIX_HEADER","mix":{"id":"v","title":"My Video Mix 1",
                                         "mixType":"VIDEO_DAILY_MIX"}}]}]})json");
         QVERIFY(TidalClient::parseMixPage(videoPage).isEmpty());
-        // ...while the generated feed still drops its video mixes, untouched by
-        // any of this: seventeen items in, nine tiles out.
+        // The generated feed still drops its video mixes: seventeen in, nine out.
         QCOMPARE(TidalClient::parseMixPage(generatedPage()).size(), 9);
     }
 
@@ -822,12 +718,8 @@ private slots:
         QVERIFY(mixes.at(3).coverUrl().isEmpty());
     }
     // ── mixes in search (the sixth kind the search page asks for) ───────
-    //
-    // The same video filter as the generated Home/Collection list, for the
-    // same reason: the app cannot play a video mix, so a tile for one opens an
-    // empty page. parseSearchMixes() is where that happens for search, which
-    // means a video mix never reaches TidalBridge, never reaches QML and so
-    // cannot be let through by anything downstream.
+    // The same video filter as the generated list, applied in
+    // parseSearchMixes(), so a video mix never reaches TidalBridge or QML.
 
     void searchDropsVideoMixes() {
         const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
@@ -835,9 +727,8 @@ private slots:
                  qPrintable("a video mix survived the search filter: " + listing(mixes)));
     }
 
-    // The one that would break the day someone matched on the title instead:
-    // a DAILY_MIX called "Mein Video Mix 9" is a perfectly playable mix whose
-    // name happens to say video, and in German at that.
+    // A DAILY_MIX called "Mein Video Mix 9" is a playable mix whose name
+    // happens to say video. The filter reads the type.
     void searchIdentifiesAVideoMixByItsTypeAndNotItsTitle() {
         const QStringList titles = titlesOf(TidalClient::parseSearchMixes(searchMixes()));
         QVERIFY2(titles.contains(QStringLiteral("Mein Video Mix 9")),
@@ -853,8 +744,8 @@ private slots:
                               QStringLiteral("Erfundener Mix C")}));
     }
 
-    // The favourites endpoints wrap each item in a row; search does not, but
-    // one costs a branch and the alternative is a list of blank mixes.
+    // The favourites endpoints wrap each item in {"item": ...}. Search does not,
+    // and a wrapped item is unwrapped all the same.
     void searchUnwrapsAWrappedItem() {
         const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
         QVERIFY(!mixes.isEmpty());
@@ -869,10 +760,9 @@ private slots:
                  "a mix with no id became a tile that opens nothing");
     }
 
-    // Unlike parseMixPage(), which pulls the two personalised mixes to the
-    // front of a list the user is browsing. A search result is in the server's
-    // relevance order and moving anything inside it answers a different
-    // question - so the DISCOVERY_MIX stays where it was sent, last.
+    // parseMixPage() pulls the two personalised mixes to the front. A search
+    // result stays in the server's relevance order, so the DISCOVERY_MIX stays
+    // last.
     void searchKeepsTheServersOrder() {
         const QList<Mix> mixes = TidalClient::parseSearchMixes(searchMixes());
         QVERIFY(!mixes.isEmpty());
@@ -886,18 +776,9 @@ private slots:
     }
 
     // ── a track carries the id of its own radio ──────────────────────────
-    //
-    // The fact the two-viewer fix rests on. A track's payload holds a `mixes`
-    // object keyed by mix type, and its TRACK_MIX entry is the mix id of the
-    // station "Start radio" means - so a track's radio *is* a mix, and can be
-    // opened on MixPage, where it can be saved and unsaved.
-    //
-    // The shape is taken from the reference client, which reads
-    // `json_obj.get("mixes", {})` (tidalapi/media.py) and whose recorded
-    // response fixture asserts
-    // `track.mixes == {"TRACK_MIX": "<30 hex chars>"}` (tidalapi
-    // tests/test_media.py). The id below is invented, at that shape; no id of
-    // the owner's is in this file.
+    // A track's payload holds a `mixes` object keyed by mix type. Its TRACK_MIX
+    // entry is the mix id of the station "Start radio" means, so a track's radio
+    // can be opened on MixPage. The ids below are invented.
 
     void aTrackCarriesTheMixIdOfItsRadio() {
         const QJsonObject j{
@@ -908,16 +789,12 @@ private slots:
                 {QStringLiteral("ARTIST_MIX"), QStringLiteral("ffeeddccbbaa99887766554433221100")}}}};
         const Track t = Track::fromJson(j);
         QCOMPARE(t.trackMixId, QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"));
-        // The artist's station is a different mix and must not be mistaken for
-        // this track's - the only thing distinguishing them is the key.
+        // The artist's station is a different mix, told apart only by the key.
         QCOMPARE(t.trackMixId.length(), 30);
     }
 
-    // The case the fallback exists for, and it must stay a quiet "" rather than
-    // becoming a 0 or a warning. Whether every listing endpoint carries `mixes`
-    // is deliberately NOT established here - finding out would mean calling the
-    // owner's account - so this is a supported state and TrackRow keeps its
-    // RadioPage route for it.
+    // A track with no `mixes` object has an empty id, with no warning. Listing
+    // endpoints may omit `mixes`, and TrackRow keeps its RadioPage route for it.
     void aTrackWithNoMixesObjectHasNoRadio() {
         const Track t = Track::fromJson(QJsonObject{
             {QStringLiteral("id"),    900000002},
@@ -926,9 +803,8 @@ private slots:
                  "a track whose payload has no mixes object invented a mix id");
     }
 
-    // A `mixes` object that carries only the artist's station. The key is the
-    // whole of the discrimination, so reading "the first value in there" would
-    // open the artist's radio from a track's row.
+    // A `mixes` object that carries only the artist's station: the key decides,
+    // so the track has no radio of its own.
     void aTrackWithOnlyAnArtistMixHasNoTrackRadio() {
         const Track t = Track::fromJson(QJsonObject{
             {QStringLiteral("id"),    900000003},
@@ -938,8 +814,8 @@ private slots:
                  "an artist radio was handed over as the track's own");
     }
 
-    // `mixes` arriving as something other than an object - a null, a string, an
-    // array - degrades to "" rather than warning per track.
+    // `mixes` arriving as a null, a string, an array or a number degrades to ""
+    // without warning per track.
     void aMalformedMixesFieldHasNoRadio() {
         for (const QJsonValue v : {QJsonValue(QJsonValue::Null),
                                    QJsonValue(QStringLiteral("TRACK_MIX")),
@@ -951,9 +827,8 @@ private slots:
         }
     }
 
-    // A saved radio station is identified by its type and not by its title, for
-    // the reason every other mixType check in this file gives: the title arrives
-    // in the account's language.
+    // A saved radio station is identified by its type: the title arrives in the
+    // account's language.
     void aTrackRadioIsIdentifiedByItsType() {
         Mix radio;
         radio.mixType = QStringLiteral("TRACK_MIX");
@@ -967,10 +842,8 @@ private slots:
     }
 
     // ── saving and unsaving a mix: the two v2 writes ─────────────────────
-    //
-    // Shape taken from the reference client (tidalapi/user.py::add_mixes and
-    // remove_mixes): PUT against the v2 base, arguments in the query string,
-    // `onArtifactNotFound=FAIL`, and a reply carrying `addedItems` /
+    // PUT against the v2 base with the arguments in the query string,
+    // `onArtifactNotFound=FAIL`, and a reply carrying `addedItems` or
     // `deletedItems`. Nothing here touches the network.
 
     void theTwoWritesAreDifferentEndpoints() {
@@ -985,9 +858,8 @@ private slots:
             {QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8")});
         QCOMPARE(q.queryItemValue(QStringLiteral("mixIds")),
                  QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8"));
-        // FAIL and not the permissive setting: a mix that has rotated out must
-        // come back as an error the user is told about, rather than as a 200
-        // that changed nothing.
+        // FAIL makes a mix that has rotated out come back as an error. The
+        // permissive setting would answer a 200 that changed nothing.
         QCOMPARE(q.queryItemValue(QStringLiteral("onArtifactNotFound")),
                  QStringLiteral("FAIL"));
     }
@@ -998,9 +870,8 @@ private slots:
                  QStringLiteral("aaaa,bbbb"));
     }
 
-    // The point of the whole pair: a 200 is not a success. The reply says what
-    // it did, so that is what is read - this app already shipped one favourite
-    // that looked accepted when it was refused.
+    // A 200 is not a success by itself: the reply says what it did, and that
+    // is what is read.
     void anAddIsAcceptedOnlyWhenTheReplyNamesTheMix() {
         const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
         QVERIFY(TidalClient::mixFavoriteAccepted(
@@ -1032,10 +903,8 @@ private slots:
                  "a reply with no deletedItems was taken as a removal");
     }
 
-    // The two arrays must not be read interchangeably. A server that answered
-    // an *add* to a *remove* request - or a crossed branch here - would
-    // otherwise report the mix as unsaved while it is still saved, which is the
-    // same class of lie as the bare 200 above.
+    // The two arrays must not be read interchangeably, or a crossed reply would
+    // report the mix as unsaved while it is still saved.
     void theTwoArraysAreNotInterchangeable() {
         const QString id = QStringLiteral("0a1b2c3d4e5f60718293a4b5c6d7e8");
         QVERIFY2(!TidalClient::mixFavoriteAccepted(

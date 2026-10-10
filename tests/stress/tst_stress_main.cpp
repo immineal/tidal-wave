@@ -1,23 +1,9 @@
-// QtQuickTest runner for the stress suite (HANDOFF section I, SPEC X4/X5/X6).
-//
-// Same idea as tests/tst_qml.cpp, with two additions that the stress cases
-// need and the layout tests do not:
-//
-//   * the real Prefs and the real I18n are installed as the `prefs` and `i18n`
-//     context properties, and Prefs is wired into the ThemePalette singleton,
-//     exactly as Application::run() does it. Theme switching and language
-//     switching cannot be exercised without them: ThemePalette::current only
-//     moves when Prefs::theme moves, and qsTr() only re-evaluates when
-//     I18n::apply() calls QQmlEngine::retranslate().
-//
-//   * the QSettings identity is deliberately *not* the app's. A stress run
-//     writes a theme and a language several hundred times; if the sandbox the
-//     script builds ever failed to isolate HOME, writing under the app's own
-//     organisation and application name would overwrite the developer's live
-//     settings. A different pair cannot, whatever happens to the sandbox.
-//
-// Everything else (auth, bridge, player, downloader, cast, app and the offline
-// "tidal" image provider) comes from tests/TestStubs.h unchanged.
+// QtQuickTest runner for the stress suite. Like tests/tst_qml.cpp, plus the
+// real Prefs and I18n as context properties, with Prefs wired into
+// ThemePalette as Application::run() does: theme and language switching need
+// them. The QSettings identity is deliberately not the app's, so a failed
+// sandbox cannot overwrite live settings. Everything else comes from
+// tests/TestStubs.h unchanged.
 
 #include <QtQuickTest/quicktest.h>
 
@@ -37,7 +23,7 @@ class StressSetup : public QObject {
 
 public:
     StressSetup() {
-        // Before any QSettings is constructed. See the note above.
+        // Before any QSettings is constructed: see the file header.
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveStress"));
         QCoreApplication::setApplicationName(QStringLiteral("Tidal Wave Stress"));
     }

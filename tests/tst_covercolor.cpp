@@ -1,37 +1,9 @@
-// The cover-derived background gradient, written before src/ui/CoverColor.cpp
-// per the project's tests-first rule (SPEC G4).
-//
-// Two halves, and the second is the one that matters.
-//
-//   dominant()  pulls one colour out of an album cover. The bar is not "some
-//               plausible average" - a mean gives mud, and a 50/50 red-and-blue
-//               sleeve must not come back purple - so the assertions below are
-//               about hue and saturation, not about an exact byte triple.
-//
-//   clamp       is what keeps the page readable. A cover can be pure white,
-//               pure black or fully saturated neon, and whatever comes out of
-//               it is painted behind textPrimary, textSec, textDim and the
-//               accent. The rule is written down once, here:
-//
-//                   the tint's CIE L* is clamped into the closed band spanned
-//                   by the palette's own `bg` and `surfaceHigh`.
-//
-//               That is not an arbitrary pair of numbers. L* is a monotone
-//               function of WCAG relative luminance, so clamping L* clamps Y
-//               exactly; and tests/tst_theme.cpp already holds every text token
-//               to its threshold against bg, surface *and* surfaceHigh. A tint
-//               whose luminance lies between two grounds that both clear 7.0 /
-//               4.5 / 3.0 therefore clears them too, for every one of the
-//               sixteen palette configurations, with no second table of numbers
-//               to keep in step.
-//
-//               It is also where the gradient already sits. The top stop is
-//               Theme.accentSoft, a 10-12% accent wash over bg, and composited
-//               that lands at L* 3.4-9.2 on the dark themes against a band of
-//               0-13.1, and at L* 91.2-94.5 on the light ones against a band of
-//               88.0-100. So the cover tint is no heavier than the accent
-//               gradient it replaces - checked below, because that is the
-//               reason the band is this band and not a invented one.
+// The cover-derived background gradient. dominant() pulls one colour out of an
+// album cover, judged on hue and saturation because a plain mean gives mud.
+// The clamp keeps the page readable: the tint's CIE L* is clamped into the band
+// spanned by the palette's own `bg` and `surfaceHigh`. tests/tst_theme.cpp
+// holds every text token to its threshold against both grounds, so a tint
+// between them clears the same thresholds.
 
 #include <QTest>
 #include <QColor>
@@ -44,9 +16,8 @@
 
 namespace {
 
-// WCAG 2.1 relative luminance and contrast, and CIE L*a*b* with dE76 - the
-// same four helpers tests/tst_theme.cpp uses, so a threshold quoted here means
-// what it means over there.
+// WCAG 2.1 relative luminance and contrast, and CIE L*a*b* with dE76: the same
+// helpers tests/tst_theme.cpp uses.
 double luminance(const QColor &c) {
     auto channel = [](double v) {
         return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
@@ -103,10 +74,8 @@ double hueGap(double a, double b) {
 double sat(const QColor &c) { return c.toHsv().hsvSaturationF(); }
 
 // ── synthetic covers ────────────────────────────────────────────────────
-//
-// 256px square, which is the shape a real sleeve arrives in and eight times
-// the sample grid, so the downscale inside dominant() is doing real work
-// rather than copying pixels.
+// 256px square, eight times the sample grid, so the downscale inside
+// dominant() does real work.
 constexpr int kCover = 256;
 
 QImage solid(const QColor &c) {
@@ -177,9 +146,8 @@ private slots:
         QFETCH(QColor, in);
         const QColor out = coverart::dominant(solid(in));
         QVERIFY2(out.isValid(), "a solid sleeve produced no colour at all");
-        // Hue, not bytes: the downscale and the linear-light average are
-        // allowed to move a channel, they are not allowed to change the
-        // colour's name.
+        // Compared by hue: the downscale and the linear-light average may move
+        // a channel but must keep the hue.
         QVERIFY2(hueGap(hueDeg(out), hueDeg(in)) <= 6.0,
                  qPrintable(QStringLiteral("hue moved from %1 to %2")
                                 .arg(hueDeg(in), 0, 'f', 1).arg(hueDeg(out), 0, 'f', 1)));
@@ -188,14 +156,13 @@ private slots:
                                 .arg(sat(in), 0, 'f', 3).arg(sat(out), 0, 'f', 3)));
     }
 
-    // The three sleeves that break a naive mean, and the reason this is not
-    // just QImage::scaled(1, 1).
+    // A half-and-half sleeve breaks a naive mean such as QImage::scaled(1, 1).
     void aHalfAndHalfSleeveIsNotMud() {
         const QColor red(255, 0, 0), blue(0, 0, 255);
         const QColor out = coverart::dominant(split(red, blue, 0.5));
         QVERIFY(out.isValid());
-        // The mean of the two is #7F007F - a purple that is in neither half of
-        // the sleeve. Either answer is defensible; the blend is not.
+        // The mean of the two is #7F007F, a purple that is in neither half.
+        // Either half is an acceptable answer.
         const bool isOne = hueGap(hueDeg(out), hueDeg(red)) <= 14.0
                         || hueGap(hueDeg(out), hueDeg(blue)) <= 14.0;
         QVERIFY2(isOne, qPrintable(QStringLiteral("hue %1 is neither half (0 or 240)")
@@ -230,10 +197,8 @@ private slots:
                  qPrintable(QStringLiteral("saturation %1").arg(sat(out), 0, 'f', 3)));
     }
 
-    // Pure white, pure black and a greyscale photograph have no dominant hue
-    // at all. They must still produce something - the gradient has to paint -
-    // and that something must not be a hue the extractor invented out of
-    // rounding noise.
+    // Pure white, pure black and a greyscale photograph have no dominant hue.
+    // They must still produce a colour, and it must have no invented hue.
     void anAchromaticSleeveStaysAchromatic_data() {
         QTest::addColumn<QImage>("cover");
         QTest::addColumn<int>("roughly");   // expected 0-255 grey level
@@ -263,9 +228,8 @@ private slots:
 
     // ── the clamp ───────────────────────────────────────────────────────
 
-    // The whole point. Every palette configuration, against the sleeves most
-    // likely to break one: the four corners of the colour cube, a neon, and
-    // the two achromatic extremes.
+    // Every palette configuration, against the sleeves most likely to break
+    // one: corners of the colour cube, a neon, and the two achromatic extremes.
     void theClampKeepsEveryTextTokenLegible_data() { coverRows(); }
     void theClampKeepsEveryTextTokenLegible() {
         QFETCH(QString, theme);
@@ -282,9 +246,8 @@ private slots:
 
         const QString where = theme + (oled ? " black" : "") + (tinted ? " tinted" : "");
 
-        // The band, stated in L*. Nothing in here is allowed to be outside it,
-        // not by a quantisation step: clampLightness() rounds towards the band
-        // rather than to nearest for exactly this assertion.
+        // The band, stated in L*. Nothing may be outside it, even by a
+        // quantisation step: clampLightness() rounds towards the band.
         const double lo = std::min(toLab(bg).l, toLab(limit).l);
         const double hi = std::max(toLab(bg).l, toLab(limit).l);
         QVERIFY2(toLab(t).l >= lo - 1e-6 && toLab(t).l <= hi + 1e-6,
@@ -292,8 +255,8 @@ private slots:
                                 .arg(where).arg(toLab(t).l, 0, 'f', 2)
                                 .arg(lo, 0, 'f', 2).arg(hi, 0, 'f', 2)));
 
-        // ...and the consequence, measured rather than argued. These are the
-        // same four thresholds tst_theme.cpp holds the grounds to.
+        // ...and the consequence: the same four thresholds tst_theme.cpp holds
+        // the grounds to.
         auto check = [&](const char *token, double floorRatio) {
             const double c = contrast(col(token), t);
             QVERIFY2(c >= floorRatio,
@@ -307,10 +270,8 @@ private slots:
         check("accent",      3.0);
     }
 
-    // The band is the band because it is where the gradient already sits. If
-    // the accent wash it replaces ever moves outside it, the cover tint would
-    // be visibly lighter or heavier than today's page and this test is the
-    // warning.
+    // The band contains the accent wash the cover tint replaces, so the tint is
+    // no lighter or heavier than the page without it.
     void theBandContainsTheAccentGradientItReplaces_data() { themeRows(); }
     void theBandContainsTheAccentGradientItReplaces() {
         QFETCH(QString, theme);
@@ -329,9 +290,8 @@ private slots:
                                 .arg(lo, 0, 'f', 2).arg(hi, 0, 'f', 2)));
     }
 
-    // Clamping moves lightness and nothing else. A red sleeve on a dark theme
-    // has to come back a deep red, not a grey and not an orange - otherwise
-    // the feature is just a second way of drawing the page background.
+    // Clamping moves lightness and nothing else: a red sleeve on a dark theme
+    // comes back a deep red.
     void theClampMovesLightnessAndNotHue_data() {
         QTest::addColumn<QColor>("in");
         QTest::newRow("red")   << QColor(255,   0,   0);
@@ -347,19 +307,14 @@ private slots:
         const QColor limit = p.value("surfaceHigh").value<QColor>();
 
         const QColor out = coverart::clampToBand(in, bg, limit);
-        // 12 degrees, not 3. Darkening in linear light is hue-exact in
-        // arithmetic; the error is the 8-bit grid it has to land on. At the
-        // bottom of that band a channel is a single-digit byte, one step of it
-        // is several degrees of hue, and the clamp rounds down rather than to
-        // nearest because the band has to be respected exactly. 12 degrees is
-        // comfortably inside one colour name - red stays red, green green -
-        // which is what the page needs; measured worst case here is 7.2.
+        // 12 degrees: darkening in linear light keeps the hue exactly, and the
+        // error is the 8-bit grid. At the bottom of the band one step of a
+        // channel is several degrees, and the clamp rounds towards the band.
         QVERIFY2(hueGap(hueDeg(out), hueDeg(in)) <= 12.0,
                  qPrintable(QStringLiteral("hue %1 became %2")
                                 .arg(hueDeg(in), 0, 'f', 1).arg(hueDeg(out), 0, 'f', 1)));
-        // ...and it is still a colour, not a grey that happens to be one byte
-        // off on each channel. Chroma in Lab, where ~2.3 is the smallest
-        // difference an eye can see at all.
+        // ...and it is still a colour. Chroma in Lab, where about 2.3 is the
+        // smallest difference an eye can see.
         const Lab lab = toLab(out);
         const double chroma = std::sqrt(lab.a * lab.a + lab.b * lab.b);
         QVERIFY2(chroma >= 8.0,
@@ -373,8 +328,7 @@ private slots:
                  "a neon was not darkened at all");
     }
 
-    // A colour already inside the band is returned untouched - the clamp is
-    // not allowed to drift a tint that was already fine.
+    // A colour already inside the band is returned untouched.
     void theClampLeavesAnInBandColourAlone() {
         const QVariantMap p = theme::palette(QStringLiteral("sea"), false, false);
         const QColor bg = p.value("bg").value<QColor>();
@@ -383,8 +337,7 @@ private slots:
         QCOMPARE(coverart::clampToBand(inside, bg, limit).rgb(), inside.rgb());
     }
 
-    // Both directions, and both themes. A black sleeve on a light theme has to
-    // be pulled *up*, which is the half that is easy to forget.
+    // Both directions: a black sleeve on a light theme has to be pulled up.
     void theClampWorksInBothDirections() {
         const QVariantMap dark  = theme::palette(QStringLiteral("sea"), false, false);
         const QVariantMap light = theme::palette(QStringLiteral("sky"), false, false);
@@ -412,8 +365,8 @@ private slots:
 
     // ── the cache ───────────────────────────────────────────────────────
 
-    // Once per cover, not once per repaint. The store is what the image
-    // provider writes into from its own thread and what the QML side reads.
+    // Once per cover. The store is what the image provider writes into from
+    // its own thread and what the QML side reads.
     void theStoreComputesOnceAndRemembers() {
         CoverColorStore *store = CoverColorStore::instance();
         store->clear();
@@ -428,9 +381,8 @@ private slots:
         const QColor first = store->lookup(id);
         QVERIFY(first.isValid());
 
-        // A second cover under the same id is ignored: the colour is a
-        // property of the cover, and recomputing it on every reload of the
-        // same artwork is the cost this cache exists to avoid.
+        // A second cover under the same id is ignored: the colour is a property
+        // of the cover and is computed once.
         store->record(id, solid(QColor(40, 40, 200)));
         QCOMPARE(spy.count(), 1);
         QCOMPARE(store->lookup(id).rgb(), first.rgb());
@@ -452,9 +404,8 @@ private slots:
     // ── the QML-facing object ───────────────────────────────────────────
 
     // CoverTint is what qml/pages/NowPlayingPage.qml binds the gradient's top
-    // stop to. Inactive it must report nothing at all, so the page falls back
-    // to Theme.accentSoft and the docked page paints exactly what it painted
-    // before this feature existed.
+    // stop to. Inactive it reports nothing, so the page falls back to
+    // Theme.accentSoft.
     void anInactiveTintReportsNothing() {
         const QVariantMap p = theme::palette(QStringLiteral("sea"), false, false);
         CoverColorStore::instance()->clear();
@@ -502,8 +453,7 @@ private slots:
         CoverColorStore::instance()->clear();
     }
 
-    // Switching theme re-clamps what is already cached, rather than leaving a
-    // tint that was legal on the old palette painted over the new one.
+    // Switching theme re-clamps what is already cached.
     void aThemeChangeReclampsTheSameCover() {
         CoverColorStore::instance()->clear();
         const QString id = QStringLiteral("resources.example/theme/640.jpg");
@@ -544,7 +494,7 @@ private slots:
     }
 
 private:
-    // Every palette, both switches - the same sixteen rows tst_theme.cpp runs.
+    // Every palette, both switches: the rows tst_theme.cpp runs.
     static void themeRows() {
         QTest::addColumn<QString>("theme");
         QTest::addColumn<bool>("oled");
@@ -561,9 +511,8 @@ private:
         }
     }
 
-    // ...crossed with the sleeves. Sixteen configurations times seven covers
-    // is 112 rows, which is the whole point: the clamp has to hold for any
-    // artwork on any palette, and a sampled pair proves nothing.
+    // ...crossed with the sleeves: the clamp has to hold for any artwork on
+    // any palette.
     static void coverRows() {
         QTest::addColumn<QString>("theme");
         QTest::addColumn<bool>("oled");

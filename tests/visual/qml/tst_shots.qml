@@ -1,23 +1,9 @@
-// The screenshot scenes.
-//
-// This is not a test: nothing here asserts anything. It instantiates the real
-// components against tests/TestStubs.h, in a window the right size, in one
-// theme after another, and writes a PNG per combination so a human (or a model
-// with eyes) can look at what 0.4.0 actually renders. The only reason it is a
-// TestCase at all is that QtQuickTest already solves the two hard parts:
-// standing a QML engine up with the app's context properties in it, and
-// grabbing a live item to an image (grabImage, which is QQuickItem::grabToImage
-// with the waiting done for you).
-//
-// There is no Tidal session on a developer box, so the library, the player bar
-// and Now Playing cannot be reached by launching the app. They are reached
-// here instead. The login page is the one thing a real unauthenticated launch
-// does show, and run.sh shoots that from the real binary.
-//
-// No synthetic input reaches the X server: TestCase.mouseMove posts a Qt event
-// straight to the scene's own window, in this process. That is the only way to
-// get a genuine hover state out of a MouseArea or a HoverHandler, both of which
-// expose it read-only.
+// The screenshot scenes. Nothing here asserts on the app: the real components
+// are instantiated against tests/TestStubs.h, one theme after another, and a
+// PNG is written per combination. It is a TestCase because QtQuickTest sets up
+// the engine with the app's context properties and can grab a live item.
+// TestCase.mouseMove posts a Qt event to the scene's own window in this
+// process, which is the only way to get a real hover state.
 
 import QtQuick
 import QtQuick.Controls
@@ -41,7 +27,7 @@ TestCase {
     readonly property int sidebarWidth: 220
     readonly property int pageWidth:    740
 
-    // The user's half-screen size, which everything was designed against.
+    // The window size the layout was designed against.
     readonly property int shellWidth:  960
     readonly property int shellHeight: 1200
 
@@ -86,10 +72,9 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
-    // Give the scene graph time to finish. Three steps rather than one sleep:
-    // a frame to apply the bindings, a real render, then slack for the
-    // Behaviors (the sidebar slide is 170ms) and for any image that is still
-    // decoding.
+    // Give the scene graph time to finish: a frame to apply the bindings, a
+    // real render, then slack for the Behaviors (the sidebar slide is 170ms)
+    // and for any image still decoding.
     function settle(item, extra) {
         wait(1)
         waitForRendering(item, 4000)
@@ -97,8 +82,7 @@ TestCase {
     }
 
     function shot(item, name) {
-        // Loud rather than a fallback: a missing output directory used to mean
-        // forty PNGs quietly written to /tmp.
+        // Fails loudly when the output directory is missing.
         verify(shotOutDir.length > 0, "TW_SHOT_OUT was not set")
         var img = grabImage(item)
         img.save(shotOutDir + "/" + name + ".png")
@@ -118,10 +102,8 @@ TestCase {
 
     // ── scenes ───────────────────────────────────────────────────────────
 
-    // The whole app at the size the user runs it: sidebar, a page, player bar.
-    // Album rather than Home because it is the page with a hero, a cover, a
-    // quality badge and a track list on it, so most of the tokens appear at
-    // once.
+    // The whole app: sidebar, a page, player bar. The album page has a hero, a
+    // cover, a quality badge and a track list, so most tokens appear at once.
     Component {
         id: shellC
         ShotWindow {
@@ -341,8 +323,7 @@ TestCase {
 
 
     // The two chip rows: the filter tabs and the sort toggle. Both put a label
-    // on a solid accent fill when selected, which is the pairing the brief
-    // asks after.
+    // on a solid accent fill when selected.
     Component {
         id: collectionC
         ShotWindow {
@@ -356,10 +337,8 @@ TestCase {
     }
 
 
-    // Playlist and Mix are the two heroes whose gradient is accentTint rather
-    // than the album page's black scrim, so the floating back button sits on a
-    // pale ground there. That pairing is theme-dependent and the album page
-    // cannot show it.
+    // Playlist and Mix are the two heroes whose gradient is accentTint, so the
+    // floating back button sits on a pale ground there.
     Component {
         id: playlistC
         ShotWindow {
@@ -411,8 +390,8 @@ TestCase {
 
     // ── the shots ────────────────────────────────────────────────────────
 
-    // The whole app, every theme. This is the one that has to be looked at
-    // first, because a token only fails next to the others it ships with.
+    // The whole app, every theme: a token only fails next to the others it
+    // ships with.
     function test_01_shell_data() {
         var rows = []
         for (var i = 0; i < S.allThemes.length; ++i)
@@ -572,9 +551,8 @@ TestCase {
         win.destroy()
     }
 
-    // The rail, and the rail with the pointer on it. The light themes first,
-    // because that is where a 68px strip of surface against a white page is
-    // most likely to disappear.
+    // The rail, and the rail with the pointer on it. A 68px strip of surface
+    // against a white page is easiest to lose on the light themes.
     function test_11_rail_data() {
         return [{ tag: "sky",  theme: "sky" },
                 { tag: "sand", theme: "sand" },

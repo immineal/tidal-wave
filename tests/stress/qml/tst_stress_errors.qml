@@ -1,20 +1,9 @@
-// X4: simulated API errors and timeouts.
-//
-// There is no network in this binary: the bridge, the player, the cast manager
-// and the downloader are the stubs from tests/TestStubs.h. So "an API error"
-// here means the two things the UI actually has to survive when the network
-// misbehaves:
-//
-//   1. the error and session signals arriving in a storm, out of order, and
-//      while pages are being built and destroyed, and
-//   2. the payload being wrong: fields missing, nulls where a string was
-//      expected, numbers as strings, negative durations, absurd lengths. That
-//      is what a timed-out or truncated response leaves behind, and it is the
-//      case that reaches a QML binding rather than an error handler.
-//
-// A "timeout" is modelled as its only observable consequence for the UI: the
-// loading flag goes up, no data ever arrives, and the error signal lands much
-// later or never. Pages have to stay interactive through it.
+// Simulated API errors and timeouts. There is no network in this binary: the
+// bridge, player, cast manager and downloader are the stubs from
+// tests/TestStubs.h. An API error here is a storm of error and session signals
+// while pages are built and destroyed, or a malformed payload reaching a
+// binding. A timeout is a loading flag that goes up with no data arriving and
+// the error landing much later or never.
 
 import QtQuick
 import QtTest
@@ -40,7 +29,7 @@ TestCase {
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
     Component { id: playlistC;   PlaylistPage   { anchors.fill: parent } }
     Component { id: trackRowC;   TrackRow       { } }
-    // A window, not a page: NowPlayingPage reads the sleep timer off
+    // A window, because NowPlayingPage reads the sleep timer off
     // Window.window. See NowPlayingHost.qml.
     Component { id: npHostC;     NowPlayingHost { } }
 

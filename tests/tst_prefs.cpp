@@ -1,8 +1,6 @@
 // Prefs: persistence, clamping and the defaults a brand new install gets.
-//
-// Written before Prefs::softwareRendering. The defaults matter more than they
-// look: they are what someone sees on first launch, before they have opened
-// Settings even once.
+// The defaults are what someone sees on first launch, before they have opened
+// Settings.
 
 #include <QTest>
 #include <QColor>
@@ -35,22 +33,16 @@ private slots:
 
     void freshInstallDefaults() {
         Prefs p;
-        // Sea with the pure-black switch on, which is what the retired
-        // "Deep" palette was. Both halves matter: the theme alone is a
-        // lighter app than the user signed off on.
+        // Sea with the pure-black switch on.
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
-        // On. The neutral ramp was built first and defaulted to, and the
-        // colour switch was the opt-in on top; after seeing both running the
-        // user inverted it - "have sea with color and pure black be the
-        // default" - so the strictly neutral six are now what you get by
-        // switching it off.
+        // Tinted greys are on by default. Switching them off gives the neutral
+        // six.
         QCOMPARE(p.tintedGreys(), true);
         QCOMPARE(p.language(), QStringLiteral("system"));
         QCOMPARE(p.audioDevice(), QString());          // follow the system
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
-        // Closing the window hides it in the tray, which is what the app has
-        // always done; the switch is there for the people who want otherwise.
+        // Closing the window hides it in the tray by default.
         QCOMPARE(p.quitOnClose(), false);
         // The default width has to be inside the range the drag handle allows,
         // or the sidebar jumps on the first drag.
@@ -76,11 +68,8 @@ private slots:
     }
 
     // The narrowest sidebar still has to hold the five filter chips at their
-    // fixed size, because nothing in LibraryFinder shrinks any more. SideBar
-    // gives the finder a 12px margin on each side, and inside it the strip
-    // keeps a 4px inset either end with 2px between chips, so five 30px chips
-    // want 4 + 5*30 + 4*2 + 4 = 166px of finder. Drop minSidebarWidth below
-    // what that needs and the fifth chip is sliced by the finder's clip.
+    // fixed size. The numbers below mirror SideBar's margin and the strip's
+    // inset and spacing, so five 30px chips want 166px of finder.
     void theNarrowestSidebarStillFitsTheFilterChips() {
         constexpr int finderMargin = 12;
         constexpr int chipInset    = 4;
@@ -110,12 +99,9 @@ private slots:
         }
         Prefs p2;
         QCOMPARE(p2.theme(), QStringLiteral("sand"));
-        // Off has to survive as well as on: this one defaults to true, so a
-        // setter that only ever wrote the non-default value would still pass
-        // a round trip in the other direction.
+        // This one defaults to true, so off is the direction that needs a write.
         QCOMPARE(p2.oledBlack(), false);
-        // This one defaults on, so off is the direction a setter that never
-        // wrote anything would get wrong - which is the direction written.
+        // The same for the tinted greys, which also default on.
         QCOMPARE(p2.tintedGreys(), false);
         QCOMPARE(p2.language(), QStringLiteral("de"));
         QCOMPARE(p2.sidebarWidth(), 310);
@@ -133,9 +119,8 @@ private slots:
         QVERIFY(p.softwareRendering());
     }
 
-    // The key is written out here rather than taken from Prefs.cpp, so renaming
-    // it shows up as a failing test instead of quietly putting everyone who had
-    // asked for a quitting close button back on minimise-to-tray.
+    // The key is written out here as a literal, so renaming it in Prefs.cpp
+    // fails this test. A rename would reset everyone's close-button choice.
     void quitOnCloseIsStoredUnderItsOwnKey() {
         { Prefs p; p.setQuitOnClose(true); }
         {
@@ -144,16 +129,14 @@ private slots:
         }
         Prefs p2;
         QVERIFY(p2.quitOnClose());
-        // ...and back off again, which a setter that only wrote the non-default
-        // value would get wrong in one direction only.
+        // ...and back off again.
         p2.setQuitOnClose(false);
         Prefs p3;
         QVERIFY(!p3.quitOnClose());
     }
 
-    // The key is written out rather than taken from Prefs.cpp, the same way
-    // quitOnClose' is: rename it and everyone who had asked for the tinted
-    // grounds silently goes back to the neutral ones.
+    // The key is written out for the same reason as quitOnClose's: a rename
+    // would silently put everyone back on the default.
     void tintedGreysIsStoredUnderItsOwnKey() {
         // Written away from the default first, so a setter that never wrote
         // anything cannot pass this by accident.
@@ -169,14 +152,9 @@ private slots:
         QVERIFY(p3.tintedGreys());
     }
 
-    // The migration story for the colour switch. A settings file written
-    // before it existed carries no key, so it takes the default - and the
-    // default is now colour on, which means such an install deliberately comes
-    // back tinted rather than neutral. That is the behaviour that was asked
-    // for ("a missing key is what takes the new default"), and it is worth a
-    // test precisely because it is a visible change to an existing install
-    // rather than a no-op. A file that HAS the key is the opposite case and is
-    // covered just below: it keeps what it says, including an explicit false.
+    // A settings file from before the colour switch carries no key for it, so
+    // it takes the default, which is colour on. A file that has the key keeps
+    // what it says, including an explicit false.
     void aSettingsFileFromBeforeTheColourSwitchTakesTheNewDefault() {
         {
             QSettings s;
@@ -195,8 +173,7 @@ private slots:
         QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys()),
                  theme::palette(QStringLiteral("rust"), true, true));
 
-        // ...and the other half: an explicit false in the file is the user's
-        // and survives, so the new default never overrides a stated choice.
+        // An explicit false in the file survives the default.
         {
             QSettings s;
             s.setValue(QStringLiteral("ui/tintedGreys"), false);
@@ -205,15 +182,9 @@ private slots:
         QCOMPARE(kept.tintedGreys(), false);
     }
 
-    // ...and a key holding something that is not a bool reads exactly the way
-    // the pure-black key does, because it is declared and stored the same way.
-    // The INI backend hands bools back as text, so "true" comes back true -
-    // and so does any other non-empty word, because that is
-    // QVariant::toBool()'s rule and not a decision made in Prefs. Pinned
-    // rather than papered over: a damaged file has to resolve both switches
-    // the same way, and either answer is a real palette rather than garbage.
-    // The case that actually happens to people - no key at all - is the one
-    // above, and that one lands on neutral.
+    // A key holding something that is not a bool reads the way the pure-black
+    // key does. The INI backend hands bools back as text, and QVariant::toBool()
+    // takes any non-empty word but "false" and "0" as true. Both switches agree.
     void aDamagedColourKeyReadsLikeTheBlackOne() {
         for (const char *stored : {"true", "false", "1", "0", "banana", ""}) {
             {
@@ -276,7 +247,7 @@ private slots:
         { QSettings s; s.setValue(QStringLiteral("ui/sidebarWidth"), stored); }
         Prefs p;
         QCOMPARE(p.sidebarWidth(), expected);
-        // ...and through the setter too, not only on load.
+        // ...and through the setter too.
         Prefs q;
         q.setSidebarWidth(stored);
         QCOMPARE(q.sidebarWidth(), expected);
@@ -292,43 +263,33 @@ private slots:
 
     // ── migrating off a palette that no longer exists ────────────────────
 
-    // "Deep" was a teal palette whose grounds were pure black; it is now the
-    // pure-black switch over whichever dark theme is picked. Someone who was
-    // on it has to come back to the same app, so the stored name is rewritten
-    // on load rather than falling through to the default palette, which would
-    // have put them on the blue dark theme with the switch off and no idea why
-    // the app got lighter.
+    // "Deep" was a palette whose grounds were pure black. It is now the
+    // pure-black switch over a dark theme, so a stored "deep" is rewritten on
+    // load to Sea with the switch on.
     void storedDeepBecomesSeaInBlack() {
         { QSettings s; s.setValue(QStringLiteral("ui/theme"), "deep"); }
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("sea"));
         QCOMPARE(p.oledBlack(), true);
-        // The colour switch follows the general rule rather than getting a
-        // special case: a file this old has no colour key, so it takes the
-        // default, which is now on. That does mean a Deep install comes back
-        // with tinted surfaces rather than the neutral ones it painted - the
-        // ground it cared about, pure black, is identical either way, and
-        // carving out an exception here would contradict the rule every other
-        // old file follows. It is written back below so it is pinned from now
-        // on and cannot move again.
+        // The colour switch follows the general rule: a file this old has no
+        // colour key, so it takes the default, which is on. Pure black is the
+        // same either way.
         QCOMPARE(p.tintedGreys(), true);
         QCOMPARE(theme::palette(p.theme(), p.oledBlack(), p.tintedGreys())
                      .value("bg").value<QColor>(),
                  QColor(Qt::black));
     }
 
-    // ...and the rewrite reaches the settings file, so it happens once rather
-    // than every launch. A user who migrates and then turns the switch off
-    // must not find it back on next time.
+    // ...and the rewrite reaches the settings file, so it happens once. A user
+    // who migrates and then turns the switch off must not find it back on.
     void theDeepMigrationIsWrittenBack() {
         { QSettings s; s.setValue(QStringLiteral("ui/theme"), "deep"); }
         { Prefs p; QCOMPARE(p.oledBlack(), true); p.setOledBlack(false); }
         {
             QSettings s;
             QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("sea"));
-            // The state the migration landed on is written down as well, so a
-            // later change to what a fresh install defaults to cannot move an
-            // old user's palette out from under them a second time.
+            // The state the migration landed on is written down too, so a later
+            // change of defaults cannot move this user's palette again.
             QCOMPARE(s.value(QStringLiteral("ui/tintedGreys")).toBool(), true);
         }
         Prefs p2;
@@ -336,10 +297,8 @@ private slots:
         QCOMPARE(p2.oledBlack(), false);
     }
 
-    // The six palettes were renamed, so the same write-back has to happen for
-    // a stored name that is only a word out of date. Without it the file keeps
-    // the old name and every launch migrates again, which is how the switch
-    // ends up back on after the user turns it off.
+    // A stored theme name from before the rename is written back as its new
+    // name, so the migration runs once.
     void aRenamedThemeIsWrittenBack() {
         { QSettings s; s.setValue(QStringLiteral("ui/theme"), "forest"); }
         { Prefs p; QCOMPARE(p.theme(), QStringLiteral("pine")); }
@@ -347,8 +306,7 @@ private slots:
         QCOMPARE(s.value(QStringLiteral("ui/theme")).toString(), QStringLiteral("pine"));
     }
 
-    // ...and the rename must not drag the pure-black switch with it: the
-    // palette is the one the user already had, so only the word changes.
+    // ...and the rename leaves the pure-black switch as stored.
     void aRenamedThemeLeavesTheBlackSwitchAlone() {
         {
             QSettings s;
@@ -359,14 +317,12 @@ private slots:
         Prefs p;
         QCOMPARE(p.theme(), QStringLiteral("rust"));
         QCOMPARE(p.oledBlack(), false);
-        // Nor the colour switch: a rename moves no pixels, so somebody who had
-        // asked for the tinted grounds keeps them.
+        // The colour switch is kept as stored too.
         QCOMPARE(p.tintedGreys(), true);
     }
 
-    // A theme name is free-form on the way in, because the palette table is
-    // the thing that decides what is real, but a stored theme that no longer
-    // exists still has to paint.
+    // A theme name is free-form on the way in, because the palette table decides
+    // what is real. A stored theme that does not exist still has to paint.
     void unknownStoredThemeStillPaints() {
         { QSettings s; s.setValue(QStringLiteral("ui/theme"), "graphite"); }
         Prefs p;
@@ -380,7 +336,7 @@ private slots:
         Prefs p;
         QCOMPARE(p.appVersion(), QStringLiteral(TIDALWAVE_VERSION));
         QVERIFY(!p.appVersion().isEmpty());
-        // The old hardcoded string, in case anything reintroduces it.
+        // Never the hardcoded placeholder string.
         QVERIFY(p.appVersion() != QLatin1String("v0.1-alpha"));
     }
 

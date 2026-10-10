@@ -1,23 +1,8 @@
-// The keyboard shortcut table, and the two places that have to agree with it.
-//
-// There used to be no table. qml/Main.qml bound each Shortcut to a literal, and
-// qml/components/SettingsPanel.qml printed a second, independent set of literals
-// beside them. Two things went wrong with that and neither was visible from
-// Linux:
-//
-//   * The printed half was simply false off Linux. Qt maps "Ctrl" in a portable
-//     sequence onto the Command key on macOS, so a panel row reading "Ctrl+Q"
-//     was telling a Mac user to press Command-Q, which is Quit.
-//   * The queue toggle *was* Ctrl+Q, so on macOS pressing what the panel said
-//     ended the process instead of opening the queue. Measured on the Mac: the
-//     queue never toggled.
-//
-// Both halves now read src/ui/Shortcuts.cpp. The first two tests here are about
-// the table itself; the last two are the ones that would have caught the drift,
-// and they work by reading the two QML files as text. That is deliberate: a QML
-// binding cannot be checked without instantiating the window it lives in, and
-// the thing under test is whether the *source* still routes through the table,
-// which reading it is the direct way to answer. TIDALWAVE_QML_DIR comes from
+// The keyboard shortcut table in src/ui/Shortcuts.cpp, and the two QML files
+// that must agree with it. Qt maps "Ctrl" onto Command on macOS, so a literal
+// sequence in QML or a literal key name in Settings is wrong there.
+// The last tests read the QML sources as text: the question is whether the
+// source still routes through the table. TIDALWAVE_QML_DIR comes from
 // tests/CMakeLists.txt.
 
 #include <QTest>
@@ -63,31 +48,15 @@ QString sorted(const QSet<QString> &s) {
 // ── The German catalogue, keyed the way Qt looks a translation up ────────────
 
 // qsTr("text", "comment") in QML compiles to
-// QCoreApplication::translate(context, text, comment), so a lookup is keyed on
-// all three parts and a key here has to be all three. Joined with the ASCII
-// unit separator, which none of the three can contain.
+// QCoreApplication::translate(context, text, comment), so a key is all three
+// parts, joined with the ASCII unit separator, which none of them can contain.
 QString trKey(const QString &context, const QString &source, const QString &comment) {
     return context + QChar(0x1f) + source + QChar(0x1f) + comment;
 }
 
-// The context Qt derives for a qsTr() in a .qml file: the file name with the
-// directory and the ".qml" taken off, and nothing else.
-//
-// This is not a guess. It is QQmlTranslation::contextFromQmlFilename() in
-// QtQml/private/qqmltranslation_p.h, which is literally
-// `mid(lastSlash + 1, size - lastSlash - 5)` over the file's URL.
-//
-// The consequence that matters here is that an inline `component Foo: Item { }`
-// does *not* get a context of its own - everything in a file shares the file's
-// one - and the catalogue lupdate writes agrees: PlayerBar.qml's
-// `component OutputRow` keeps its "This computer" under PlayerBar, and
-// QueuePanel.qml's `component QueueEntry` keeps "Remove from queue" under
-// QueuePanel. Checked both ways by the test below, which also requires that no
-// entry under a QML context goes unasked-for; a wrong derivation here cannot
-// pass that half quietly, it fails it about three hundred times.
-//
-// completeBaseName() and not baseName(), because baseName() cuts at the *first*
-// dot and Qt cuts at ".qml".
+// The context Qt derives for a qsTr() in a .qml file: the file name without
+// directory and ".qml" (QQmlTranslation::contextFromQmlFilename). An inline
+// `component` shares the file's context. baseName() would cut at the first dot.
 QString qmlTrContext(const QString &path) {
     return QFileInfo(path).completeBaseName();
 }
@@ -120,19 +89,13 @@ struct CatalogueEntry {
     // Nothing to show, so the UI falls back to English. This is the flag the
     // test below treats as a failure.
     bool blank = true;
-    // Parsed but deliberately not enforced - see theUnfinishedFlagIsNotLoadBearing()
-    // for why, and for the one condition under which it would have to be. It is
-    // parsed anyway so that tightening the rule is a one-line change rather than
-    // a reason to put it off.
+    // Parsed only, see theUnfinishedFlagIsNotLoadBearing().
     bool unfinished = false;
 };
 
-// Read a .ts catalogue into (context, source, comment) -> entry.
-//
-// Read as XML rather than scanned with a regex, because the sources in it are
-// XML-escaped - `No results for &quot;%1&quot;`, `Singles &amp; EPs` - and a
-// reader un-escapes them already. Doing it by hand is how a guard ends up
-// comparing `&quot;` against `"` and finding nothing.
+// Read a .ts catalogue into (context, source, comment) -> entry. Read as XML
+// because the sources are XML-escaped (`&quot;`, `&amp;`) and a reader
+// un-escapes them.
 bool parseCatalogue(const QString &path,
                     QHash<QString, CatalogueEntry> *entries,
                     QSet<QString> *contexts,
@@ -175,9 +138,8 @@ bool parseCatalogue(const QString &path,
             } else if (xml.name() == QLatin1String("translation")) {
                 type = xml.attributes().value(QLatin1String("type")).toString();
                 if (numerus) {
-                    // Every plural form has to carry text. Qt picks one of them
-                    // by the number at runtime, so one empty form is one count
-                    // that renders empty - not one that falls back to English.
+                    // Every plural form has to carry text. Qt picks one by the
+                    // number at runtime, and an empty form renders empty.
                     int forms = 0;
                     bool anyEmpty = false;
                     while (!xml.hasError()
@@ -215,17 +177,13 @@ bool parseCatalogue(const QString &path,
     return true;
 }
 
-// "1 call site" / "7 call sites". A guard whose failure message says "1 strings"
-// reads as sloppily built as the bug it just found, and nobody trusts it.
+// "1 call site" / "7 call sites".
 QString countOf(qsizetype n, const QString &singular, const QString &plural) {
     return QStringLiteral("%1 %2").arg(n).arg(n == 1 ? singular : plural);
 }
 
-// QTest truncates a failure message at about 4 KiB. Measured: a list of 312 call
-// sites printed 58 of them and then simply stopped, with nothing in the output to
-// say that it had. So every list below is capped here and its real length goes in
-// the prose - the count is the part you cannot afford to lose, because it is what
-// tells you whether one string broke or the whole check did.
+// QTest truncates a failure message at about 4 KiB without saying so, so every
+// list is capped here and its real length goes in the prose.
 QString firstFew(const QStringList &lines, int limit = 25) {
     QString out = QStringList(lines.mid(0, limit)).join(QStringLiteral("\n  "));
     if (lines.size() > limit)
@@ -248,10 +206,8 @@ class TestShortcuts : public QObject {
     Q_OBJECT
 
 private slots:
-    // A sequence that QKeySequence cannot parse back is not a compile error and
-    // not a runtime warning. It is a shortcut that silently never fires, which
-    // is the hardest kind of mistake to find in this table, so every entry is
-    // round-tripped through the parser it will go through at runtime.
+    // A sequence QKeySequence cannot parse is a shortcut that silently never
+    // fires, so every entry is round-tripped through the runtime parser.
     void everyEntryIsAParsableSequence() {
         const Shortcuts shortcuts;
         const QStringList ids = shortcuts.ids();
@@ -284,25 +240,16 @@ private slots:
             seen.insert(seq);
         }
 
-        // An id that is not in the table answers with nothing rather than
-        // guessing, because QML's Shortcut ignores an empty sequence and a typo
-        // should disable one shortcut, not bind an arbitrary key.
+        // An id that is not in the table answers with nothing. QML's Shortcut
+        // ignores an empty sequence, so a typo disables one shortcut and binds
+        // no arbitrary key.
         QVERIFY(shortcuts.sequence(QStringLiteral("noSuchShortcut")).isEmpty());
         QVERIFY(shortcuts.display(QStringLiteral("noSuchShortcut")).isEmpty());
     }
 
-    // The regression guard for the bug that started this: nothing in the table
-    // may use a sequence the system takes before the app ever sees it.
-    //
-    // Only the four that cost the user their session or their window are
-    // refused. On macOS, where Qt maps Ctrl onto Command, Ctrl+Q is Quit,
-    // Ctrl+W closes the window, Ctrl+H hides the app and Ctrl+Shift+Q logs out.
-    //
-    // Two collisions are known and deliberately allowed, so this test does not
-    // pretend the list is clean: Ctrl+M is Minimize on macOS and F11 is Mission
-    // Control's Show Desktop, so mute and fullscreen do not reach the app there.
-    // Both are right on Linux, which is where the app ships, and neither
-    // destroys anything - they cost a shortcut, not a session.
+    // Nothing in the table may use a sequence the system takes before the app
+    // sees it. Only the four that cost the user their session or window on
+    // macOS are refused. Ctrl+M and F11 also collide there and are allowed.
     void noEntryTakesASequenceTheSystemOwns() {
         const Shortcuts shortcuts;
         const QStringList reserved = {
@@ -321,7 +268,7 @@ private slots:
                                     .arg(id, seq)));
         }
 
-        // Specifically: the queue toggle, which is where this came from.
+        // The queue toggle in particular.
         QCOMPARE(shortcuts.sequence(QStringLiteral("queue")), QStringLiteral("Ctrl+J"));
     }
 
@@ -345,8 +292,7 @@ private slots:
                                 .arg(sorted(bound), sorted(table),
                                      sorted(bound - table), sorted(table - bound))));
 
-        // And no Shortcut has crept back to a literal, which is how the two
-        // lists drifted apart in the first place.
+        // And no Shortcut is bound to a literal.
         const QSet<QString> literals =
             captures(main, QStringLiteral("sequence:\\s*(\"[^\"]*\")"));
         QVERIFY2(literals.isEmpty(),
@@ -357,8 +303,7 @@ private slots:
     }
 
     // The Settings panel prints a row for every shortcut and names no id that
-    // does not exist. A shortcut the app has and the panel does not mention is
-    // undiscoverable; a row for a shortcut that was removed is a lie.
+    // does not exist.
     void settingsPanelPrintsARowForEveryEntry() {
         const QString panel = readQml(QStringLiteral("components/SettingsPanel.qml"));
         QVERIFY2(!panel.isEmpty(), "qml/components/SettingsPanel.qml could not be read");
@@ -384,28 +329,15 @@ private slots:
                                 .arg(sorted(printed), sorted(table),
                                      sorted(printed - table), sorted(table - printed))));
 
-        // The badge text is derived, never written out: a row that spelled its
-        // own key would be wrong on macOS again the moment it was added.
+        // The badge text is derived: a row that spelled its own key would be
+        // wrong on macOS.
         QVERIFY2(panel.contains(QStringLiteral("Shortcuts.display(")),
                  "the Settings rows no longer derive their key text from Shortcuts.display()");
     }
 
-    // No QML file asks for a font family that is a generic name rather than a
-    // real one.
-    //
-    // The key badges used to say font.family: "monospace". On Linux that
-    // resolves and nothing looks wrong, which is exactly why it survived. On
-    // macOS it does not resolve, and Qt answers a missing family by populating
-    // its font-family alias table - 37 ms, measured on the Mac, on every single
-    // launch, against about 470 ms to first frame.
-    //
-    // The same measurement killed the narrower fix. Removing "Inter" from the
-    // macOS branch changed nothing at all, because the 37 ms line simply came
-    // back naming "Monospace" instead: the cost is paid once by whichever
-    // missing family comes first, so removing one just promotes the next. The
-    // rule has to be that no missing family is named anywhere, which is a thing
-    // about the whole tree rather than about one line, so it is checked over
-    // the whole tree.
+    // No QML file asks for a generic font family such as "monospace". Where the
+    // name does not resolve, as on macOS, Qt populates its font-family alias
+    // table on every launch, whichever missing family comes first.
     void noQmlFileNamesAGenericFontFamily() {
         static const QStringList generics{
             QStringLiteral("monospace"), QStringLiteral("Monospace"),
@@ -448,48 +380,11 @@ private slots:
                                 .arg(offenders.join(QStringLiteral("\n  ")))));
     }
 
-    // Every string the UI asks to be translated is in the German catalogue
-    // *under the context Qt will look it up in*, with something to show.
-    //
-    // qsTr() only marks a string; it does not translate it. A string that was
-    // never added to i18n/tidal-wave_de.ts silently renders in English, and on
-    // a German desktop that is one English line in the middle of a German
-    // panel - which is exactly what a screenshot from the Mac showed for the
-    // new "Interface size" row.
-    //
-    // It also catches the other half, which is worse because it looks fine in
-    // the diff: changing the English wording of an already-translated string
-    // orphans its entry, so the translation stops being found and the string
-    // silently reverts to English. The login page had been reading "Native
-    // Desktop Tidal Client" in English on German systems ever since the
-    // tagline stopped saying Linux, and nobody noticed.
-    //
-    // This used to collect every <source> in the catalogue into one flat set
-    // and ask whether each qsTr() string was in it *somewhere*. That is not the
-    // question. Qt looks a translation up per context, so a string that exists
-    // under NewPlaylistDialog and not under PlaylistPage is translated in the
-    // first and English in the second, and the flat set could not tell the two
-    // apart - which is how `Enter a name for the playlist.` shipped half
-    // translated. The old check was blind to the empty translation too: lupdate
-    // writes `<translation type="unfinished"></translation>` for a string it has
-    // never seen, that counts as a <source>, and the flat set went green on a
-    // string with no German at all. Both holes are the same mistake, which is
-    // asking a weaker question than the one the runtime asks.
-    //
-    // So the key here is the whole triple Qt keys on - context, source text and
-    // the disambiguation comment - and the entry has to carry text.
-    //
-    // The gap this guards is narrow and worth naming, because it says what a
-    // failure means. lupdate propagates: given `Show less` under ArtistPage and
-    // a new qsTr("Show less") in RadioPage.qml, running update_translations
-    // copies the German across ("Same-text heuristic provided 1 translation",
-    // measured). So a tree whose catalogue is up to date cannot fail the first
-    // half of this test. What fails it is a qsTr() added without running
-    // update_translations - and, whether or not lupdate was run, a string whose
-    // German nobody has written yet, which is the second half.
+    // Every string the UI marks with qsTr() is in the German catalogue under
+    // the context Qt looks it up in, keyed on context, source and comment, and
+    // carries text. A missing or reworded string silently renders in English.
     void everyTranslatableStringIsInTheGermanCatalogue() {
-        // Derived from the QML dir rather than given its own define, so this
-        // needs no build-system change to stay true.
+        // Derived from the QML dir, so it needs no define of its own.
         const QString tsPath = QStringLiteral(TIDALWAVE_QML_DIR)
                                + QStringLiteral("/../i18n/tidal-wave_de.ts");
         QHash<QString, CatalogueEntry> entries;
@@ -498,38 +393,25 @@ private slots:
         QVERIFY2(parseCatalogue(tsPath, &entries, &catalogueContexts, &why), qPrintable(why));
         QVERIFY2(!entries.isEmpty(), "the German catalogue parsed as empty");
 
-        // `qsTr("text")`, `qsTr("text", "comment")` and
-        // `qsTr("%n thing(s)", "comment", n)`: the comment is the second
-        // argument when it is a literal, and it is often on the next line, which
-        // \s* covers. \bqsTr\s*\( cannot match qsTranslate( or qsTrId(.
-        // Written with escaped quotes rather than a raw string literal on
-        // purpose: moc does not lex R"delim( ... )delim" reliably, and a raw
-        // string here makes it emit an empty .moc and the link fail on a missing
-        // vtable, which says nothing about the cause.
+        // Matches qsTr("text"), qsTr("text", "comment") and the %n form, with the
+        // comment on the next line too. \bqsTr\s*\( cannot match qsTranslate( or
+        // qsTrId(. No raw string literal: moc does not lex R"( )" reliably.
         const QString quotedLiteral =
             QStringLiteral("\"((?:[^\"\\\\]|\\\\.)*)\"");
         const QRegularExpression callQsTr(
             QStringLiteral("\\bqsTr\\s*\\(\\s*") + quotedLiteral
             + QStringLiteral("\\s*(?:,\\s*") + quotedLiteral + QStringLiteral(")?"));
-        // qsTranslate("Context", "text") names its context outright. Three call
-        // sites borrow a string from another file that way - QueuePanel takes
-        // TrackRow's "Unknown track", SideBar takes SettingsPanel's "Settings" -
-        // and they break in exactly the same silent way when the context they
-        // name loses the entry, so they are checked against the context they
-        // name rather than against their own file.
+        // qsTranslate("Context", "text") names its context outright, so those
+        // call sites are checked against the context they name.
         const QRegularExpression callQsTranslate(
             QStringLiteral("\\bqsTranslate\\s*\\(\\s*") + quotedLiteral
             + QStringLiteral("\\s*,\\s*") + quotedLiteral
             + QStringLiteral("\\s*(?:,\\s*") + quotedLiteral + QStringLiteral(")?"));
 
         QList<CallSite> sites;
-        // The *raw* file names, straight off the directory iterator. Used below
-        // to decide which catalogue contexts belong to QML, and deliberately not
-        // derived through qmlTrContext(): a wrong derivation has to show up as a
-        // catalogue full of orphans, and it cannot do that if the same wrong
-        // derivation is what decides which contexts to look at. Probed - with
-        // qmlTrContext() lower-casing its answer and this set derived from it,
-        // the orphan half found nothing at all.
+        // The raw file names, used below to decide which catalogue contexts
+        // belong to QML. Not derived through qmlTrContext(), so that a wrong
+        // derivation there shows up as orphans.
         QSet<QString> qmlFileNames;
         int filesScanned = 0;
         QDirIterator it(QStringLiteral(TIDALWAVE_QML_DIR),
@@ -568,13 +450,9 @@ private slots:
         }
         QVERIFY2(filesScanned > 0, "no .qml files were scanned - TIDALWAVE_QML_DIR is wrong");
 
-        // Anti-vacuity, first half. A guard like this one does not fail when its
-        // extraction breaks - it passes, having examined nothing, and the last
-        // one in this repo did exactly that with a row spelled `shortcuts` where
-        // the tree says `Shortcuts`. The floors below are deliberately far under
-        // the real numbers; they are a tripwire for "the regex stopped matching",
-        // not a count anybody has to keep up to date. The real protection is the
-        // other direction, checked further down.
+        // Anti-vacuity, first half. A broken extraction examines nothing and
+        // passes. The floors are far under the real numbers and only catch a
+        // regex that stopped matching.
         int withComment = 0;
         QSet<QString> contextsCovered;
         for (const CallSite &s : sites) {
@@ -594,20 +472,16 @@ private slots:
         QVERIFY2(contextsCovered.size() >= 15,
                  qPrintable(QStringLiteral("call sites were found in only %1 contexts")
                                 .arg(contextsCovered.size())));
-        // If the comment were being dropped on both sides, every key would still
-        // match and the whole test would pass while being blind to a qsTr() whose
-        // comment disagrees with the catalogue's. So count the ones that carry
-        // one and insist they exist.
+        // If the comment were dropped on both sides every key would still match,
+        // so the call sites that carry one are counted.
         QVERIFY2(withComment >= 25,
                  qPrintable(QStringLiteral("only %1 call sites came back with a "
                                            "disambiguation comment; the comment is being "
                                            "dropped, which makes the key too weak")
                                 .arg(withComment)));
 
-        // A whole context missing from the catalogue means something different
-        // from one string missing: the .qml file is new and lupdate has never
-        // seen it. Said separately, because otherwise the list below is every
-        // string in that file and the one fact worth knowing is buried in it.
+        // A whole context missing from the catalogue means the .qml file is new
+        // and lupdate has never seen it. Reported separately from single strings.
         QStringList unknownContexts;
         for (const QString &c : contextsCovered)
             if (!catalogueContexts.contains(c))
@@ -672,21 +546,9 @@ private slots:
                                      firstFew(noGerman))));
 
         // ── Anti-vacuity, second half: nothing in the catalogue is orphaned ──
-        //
-        // The other direction, and the one that cannot pass quietly. For every
-        // context in the catalogue that is a .qml file's name, every entry under
-        // it has to be a string some call site in the tree actually asks for.
-        //
-        // That is a real guard - it is how a reworded string gets noticed, since
-        // the old entry is left behind keyed on the old English - and it is also
-        // what makes the derivation above impossible to get wrong silently. Spell
-        // the context differently from the tree, lower-case it, take baseName()
-        // instead of completeBaseName(), stop stripping ".qml", and every single
-        // entry under every QML context becomes an orphan at once.
-        //
-        // Contexts with no .qml of their own - Player, Downloader, Application,
-        // CastManager, Feedback, I18n and the rest come from src/ - are not this
-        // test's business and are skipped by name, not by a hand-kept list.
+        // Every entry under a context named after a .qml file must be asked for
+        // by some call site. This notices a reworded string, and a wrong context
+        // derivation orphans everything. Contexts from src/ have no .qml: skipped.
         QStringList orphans;
         for (auto e = entries.cbegin(); e != entries.cend(); ++e) {
             const QStringList parts = e.key().split(QChar(0x1f));
@@ -715,27 +577,9 @@ private slots:
                                      firstFew(orphans))));
     }
 
-    // The `type="unfinished"` flag is deliberately *not* part of the rule above,
-    // and this is the test that keeps that decision honest.
-    //
-    // lrelease ships an unfinished translation as long as it carries text.
-    // Measured on a compiled .qm: "Generated 332 translation(s) (331 finished
-    // and 1 unfinished)", and the unfinished one was in the file and came out of
-    // the lookup. So the flag is Linguist's bookkeeping about whether a human
-    // has signed a string off, not a runtime switch, and requiring it here would
-    // fail the build for a string whose German is correct and shipping. It would
-    // also fire on every propagated string the moment anyone ran
-    // update_translations: lupdate's same-text heuristic fills the German in and
-    // marks the result unfinished, so the only way to green would be hand-editing
-    // an attribute out of an XML file. A guard that cries wolf gets deleted.
-    //
-    // That reasoning depends entirely on lrelease being run without
-    // --no-unfinished. With that option the flag stops being bookkeeping and
-    // starts deciding what exists at runtime, an unfinished entry disappears from
-    // the .qm, and "the <translation> carries text" above stops meaning "the user
-    // sees German". The project passes no LRELEASE_OPTIONS at all, so the rest of
-    // this file is sound - and this test is here to say so the day someone adds
-    // them, rather than leaving the discovery to a German screenshot.
+    // The `type="unfinished"` flag is not part of the rule above: lrelease
+    // ships an unfinished translation as long as it carries text. That holds
+    // only while lrelease runs without --no-unfinished, which this checks.
     void theUnfinishedFlagIsNotLoadBearing() {
         const QString path = QStringLiteral(TIDALWAVE_QML_DIR)
                              + QStringLiteral("/../CMakeLists.txt");

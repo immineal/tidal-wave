@@ -1,34 +1,9 @@
 // Starting a lossless track before the whole of it has been fetched.
-//
-// LOSSLESS and HI_RES_LOSSLESS arrive as DASH. DashFetcher joins the segments
-// into one fragmented MP4 *in play order*, so the front of that file is already a
-// shorter fragmented MP4 of the same track. Playback nevertheless waited for the
-// last segment, which measured 15-70 s on a real track before the first note.
-//
-// Two things stood between the front of the file and the decoder, and this file
-// is the measurement of both:
-//
-//  1. The bytes were not on disk. QFile keeps a write buffer, so a second reader
-//     of tempFilePath() saw a short file, or none, however many segments had
-//     arrived. DashFetcher now flushes each contiguous write and reports how far
-//     the front has got.
-//  2. QMediaPlayer will not follow a local file that grows - it opens it, sees
-//     the size it has, and plays that much. GrowingFileServer holds an HTTP
-//     response open on the loopback interface instead and keeps appending.
-//
-// NOTHING HERE MAKES A SOUND. No QAudioOutput is ever constructed; the decoded
-// samples arrive through QAudioBufferOutput, which cannot reach the sound card.
-//
-// The headline test runs both paths against the same fixture over the same real
-// sockets and compares the two times to first sample, so the number in the commit
-// message is this test's output rather than a claim. The fixture is deliberately
-// not dash_fixture.inc; progressive_fixture.inc says why.
-//
-// WHAT THIS DOES NOT COVER, because it is not built yet: Player still waits for
-// the whole join. Nothing in the app calls GrowingFileServer. Wiring it up has to
-// answer what duration and seeking mean on a track that is not all there, and
-// those answers are state in Player. The two assertions at the bottom of this
-// file pin down what Player will have to cope with when it gets there.
+// DashFetcher joins DASH segments into one fragmented MP4 in play order and
+// flushes each contiguous write. QMediaPlayer will not follow a local file
+// that grows, so GrowingFileServer serves it over an open loopback response.
+// Nothing here makes a sound: no QAudioOutput is constructed. Player does not
+// use GrowingFileServer yet, and the last assertions pin what it must handle.
 
 #include <QTest>
 #include <QAudioBuffer>
@@ -61,10 +36,8 @@
 #endif
 
 // The packager manifest for the fixture, with the host going in through @BASE@.
-// No "//" appears inside this raw string: moc honours a // comment even inside
-// one, and a host with a slash-slash in it makes it lose track of where strings
-// end and fail the build somewhere unrelated. (tst_dash.cpp carries the same
-// note and the same bruise.)
+// No "//" appears inside this raw string: moc can take it for a comment and
+// lose track of where strings end.
 constexpr auto kProgManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
 <MPD profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static"
      mediaPresentationDuration="PT4.0S" minBufferTime="PT2.0S">
@@ -110,19 +83,9 @@ QString withBase(const char *xml, const QString &base)
 }
 
 // ── a localhost segment server ──────────────────────────────────────────────
-//
-// Real sockets and real QNetworkAccessManager requests, so the fetcher runs
-// through the same TidalClient::fetchRaw it uses against Tidal.
-//
-// Segment n is answered at (n+1) * perSegmentMs: a link that delivers the track
-// at a steady rate, in order. That is what the wait being removed is made of, and
-// it is the one part of this harness that had to be got right. A fixed delay on
-// every request instead would be a model of latency, and DashFetcher runs six
-// requests at once, so nine segments would arrive in two rounds and a progressive
-// start would measure barely better than waiting - which is the shape of a
-// fixture that cannot express the defect it is there for. A real lossless track
-// is fifty-odd segments of one to three megabytes, where the join is bounded by
-// the rate, not the round trips.
+// Real sockets and real requests through TidalClient::fetchRaw. Segment n is
+// answered at (n+1) * perSegmentMs, a link with a steady rate. With a fixed
+// delay per request, six parallel requests would deliver it in two rounds.
 class SegmentServer : public QTcpServer {
 public:
     explicit SegmentServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -279,10 +242,8 @@ class TestProgressive : public QObject {
 private slots:
     // ── 1. the bytes have to be on disk ─────────────────────────────────────
 
-    // Everything else here rests on this: a *second* reader of tempFilePath()
-    // sees the segments that have arrived. Before DashFetcher flushed, it did
-    // not - QFile's write buffer held them - and a server pointed at the file
-    // had nothing to send however many segments were in.
+    // A second reader of tempFilePath() sees the segments that have arrived,
+    // because DashFetcher flushes each contiguous write.
     void theFrontOfTheJoinIsReadableWhileItIsStillRunning()
     {
         SegmentServer srv;
@@ -307,15 +268,13 @@ private slots:
         QTemporaryFile *result = nullptr;
         fetcher.start([&](QTemporaryFile *f, const QString &) { done = true; result = f; });
 
-        // Two segments in - the initialization segment and one media segment -
-        // is the least that can play, and it is the moment this is about.
+        // Two segments in, the initialization segment and one media segment, is
+        // the least that can play.
         QTRY_VERIFY_WITH_TIMEOUT(fetcher.segmentsReady() >= 2, 20000);
         QVERIFY2(!done, "the join finished before there was a middle to look at");
 
-        // Whichever segment it got to, bytesReady() is those segments and nothing
-        // else, and what is on disk is exactly them. Not a fixed count: the
-        // fetcher runs six requests at once, so how far it is by the time this
-        // line runs is the machine's business.
+        // bytesReady() is exactly the segments that are in, and so is the file.
+        // The count is not fixed: the fetcher runs six requests at once.
         const int  segs  = fetcher.segmentsReady();
         const qint64 ready = fetcher.bytesReady();
         QVERIFY(segs >= 2 && segs < kProgSegmentCount);
@@ -379,16 +338,14 @@ private slots:
                                     .arg(p->toneHz).arg(kProgToneHz)));
         }
 
-        // The defect, stated as the thing that was impossible: a sample before
-        // the last segment landed.
+        // A sample comes out before the last segment has landed.
         QVERIFY2(progressive.firstSampleMs < progressive.joinDoneMs,
                  qPrintable(QStringLiteral("first sample at %1 ms, join finished at %2 ms: "
                                            "it still waited for the whole file")
                                 .arg(progressive.firstSampleMs).arg(progressive.joinDoneMs)));
 
-        // And by a margin, so that a regression fails here rather than a slow
-        // machine does: two of nine segments in, against all nine. The slack is
-        // in the numerator, which is where a loaded box adds its milliseconds.
+        // And by a margin: two of nine segments in, against all nine. The slack
+        // is in the numerator, where a loaded machine adds its milliseconds.
         QVERIFY2(progressive.firstSampleMs * 2 < progressive.joinDoneMs,
                  qPrintable(QStringLiteral("first sample at %1 ms of a join that took "
                                            "%2 ms: not the saving this is for")
@@ -398,9 +355,8 @@ private slots:
 
     // ── 3. what the caller will have to cope with ──────────────────────────
 
-    // Both of these are the reason Player is not wired up in this change. They
-    // are asserted rather than written down so that a later Qt quietly changing
-    // its mind shows up here.
+    // Both are why Player does not use this path yet. They are asserted so that
+    // a later Qt changing its behaviour shows up here.
     void aGrowingStreamMisreportsItsDurationAndItsSeekability()
     {
         if (!Tap::measuresSamples)
@@ -409,7 +365,7 @@ private slots:
         const Played p = playWhileTheJoinRuns();
         QCOMPARE(p.status, QMediaPlayer::EndOfMedia);
 
-        // Measured at the moment the first sample came out, not at the end.
+        // Measured at the moment the first sample came out.
         QVERIFY2(p.reportedDurationMs > 0 && p.reportedDurationMs < kProgDurationMs / 2,
                  qPrintable(QStringLiteral("QMediaPlayer reported %1 ms of a %2 ms track; "
                                            "if that is now the real duration, a caller no "
@@ -422,9 +378,8 @@ private slots:
 
     // ── 4. the server on its own ────────────────────────────────────────────
 
-    // A request that reaches the write cursor is parked: no bytes, and no end of
-    // body either. Answering it short is what made ffmpeg give up with nothing
-    // decoded at all.
+    // A request that reaches the write cursor is parked: no bytes, and no end
+    // of body either. A short answer makes ffmpeg give up with nothing decoded.
     void aRequestThatReachesTheWriteCursorWaitsForMore()
     {
         QTemporaryFile file;
@@ -455,11 +410,11 @@ private slots:
         const QByteArray head = got.left(got.indexOf("\r\n\r\n"));
         QVERIFY2(head.contains("Transfer-Encoding: chunked"),
                  qPrintable(QString::fromUtf8(head)));
-        // The two headers that cost the whole wait: with either of them the
-        // client believes the file is complete and seekable.
+        // With either of these headers the client believes the file is complete
+        // and seekable.
         QVERIFY2(!head.toLower().contains("content-length"), qPrintable(QString::fromUtf8(head)));
         QVERIFY2(!head.toLower().contains("accept-ranges"), qPrintable(QString::fromUtf8(head)));
-        // The Range the client asked for was ignored, not answered.
+        // The Range the client asked for is ignored.
         QVERIFY2(!head.toLower().contains("content-range"), qPrintable(QString::fromUtf8(head)));
         QVERIFY2(head.startsWith("HTTP/1.1 200"), qPrintable(QString::fromUtf8(head)));
 
@@ -468,7 +423,7 @@ private slots:
                                   dechunk(got.mid(head.size() + 4)).size() >= firstHalf), 5000);
         QCOMPARE(dechunk(got.mid(head.size() + 4)), all.left(firstHalf));
 
-        // ...and then nothing. Not an end of body, not a close: the socket goes
+        // ...and then nothing: no end of body and no close. The socket goes
         // quiet until the writer flushes again.
         const qint64 settled = got.size();
         QTest::qWait(600);
@@ -480,8 +435,7 @@ private slots:
 
         // The rest of the join, and then the close that ends the body. No
         // terminating 0-length chunk goes out: ffmpeg 9.0.1 answers every read
-        // after one with EIO, and the track then never ends. GrowingFileServer.h
-        // has the measurement.
+        // after one with EIO. See GrowingFileServer.h.
         QCOMPARE(file.write(all.mid(firstHalf)), qint64(all.size() - firstHalf));
         QVERIFY(file.flush());
         server.setBytesReady(all.size());
@@ -539,8 +493,7 @@ private:
     // ── helpers ─────────────────────────────────────────────────────────────
 
     // Chunked bodies, as far as they have arrived. A trailing partial chunk is
-    // simply not counted, which is what makes the "and then nothing" assertion
-    // above able to tell a stalled body from a finished one.
+    // not counted, which tells a stalled body from a finished one.
     static QByteArray dechunk(const QByteArray &body, bool *sawTerminator = nullptr)
     {
         QByteArray out;
@@ -567,7 +520,7 @@ private:
         return saw;
     }
 
-    // Today's path: join the whole thing, then open the finished file.
+    // Join the whole thing, then open the finished file.
     Played playWaitingForTheWholeJoin()
     {
         SegmentServer srv;
@@ -603,7 +556,7 @@ private:
         return out;
     }
 
-    // The new path: serve the file while the join is still filling it.
+    // Serve the file while the join is still filling it.
     Played playWhileTheJoinRuns()
     {
         SegmentServer srv;
@@ -659,9 +612,8 @@ private:
         return out;
     }
 
-    // Records the duration and seekability the player claims *while it is
-    // playing an incomplete file*, which is the thing a caller would otherwise
-    // believe, and ends the run at the end of the media.
+    // Records the duration and seekability the player claims while it is playing
+    // an incomplete file, and ends the run at the end of the media.
     static void watch(QMediaPlayer *player, Played *out, QElapsedTimer *clock,
                       QEventLoop *loop)
     {
@@ -687,8 +639,7 @@ private:
         player->setSource(QUrl());
     }
 
-    // One segment's worth of round trip. Nine segments of it is the wait a
-    // progressive start removes; on a real track it is fifty or more.
+    // One segment's worth of round trip.
     static constexpr int kSegmentDelayMs   = 250;
     static constexpr int kPlaybackTimeoutMs = 30000;
 };

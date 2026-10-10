@@ -1,16 +1,8 @@
-// A window to host NowPlayingPage in, outside Main.qml.
-//
-// NowPlayingPage delegates the whole sleep timer to `Window.window`, so it
-// reads five properties and calls three functions straight off the window
-// object. In the app that object is Main.qml's ApplicationWindow, which
-// declares them. In a test the window is the QtQuickTest view, which does not,
-// and the page fills the log with "Unable to assign [undefined]" and
-// "Property 'formatSleepTime' is not a function" on every single build.
-//
-// This stands in for the ApplicationWindow with the same surface and no
-// behaviour, so what the stress run logs is the page's own doing.
-//
-// Not named tst_*.qml, so QtQuickTest does not try to run it as a test case.
+// A window to host NowPlayingPage in, outside Main.qml. NowPlayingPage reads
+// the sleep timer off `Window.window`: five properties and three functions
+// that Main.qml's ApplicationWindow declares and the QtQuickTest view does
+// not. This stands in with the same surface and no behaviour.
+// Not named tst_*.qml, so QtQuickTest does not run it as a test case.
 
 import QtQuick
 import QtQuick.Window

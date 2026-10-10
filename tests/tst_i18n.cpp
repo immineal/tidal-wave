@@ -1,9 +1,6 @@
-// Language resolution and live switching. Written before src/ui/I18n.cpp.
-//
-// The interesting part is "system": the setting defaults to it, so whatever it
-// resolves to is what most people actually get. A locale the app has no
-// catalogue for has to land on English rather than on an empty translator,
-// and a regional variant (de_AT, de_CH) has to still find German.
+// Language resolution and live switching. "system" is the default, so what it
+// resolves to is what most people get. A locale with no catalogue has to land
+// on English, and a regional variant (de_AT, de_CH) still has to find German.
 
 #include <QTest>
 #include <QLocale>
@@ -55,8 +52,7 @@ private slots:
 
         QTest::newRow("system, german")
             << "system" << QLocale(QLocale::German, QLocale::Germany) << "de";
-        // The user's own machine is de_DE, but Austrian and Swiss German have
-        // to find the same catalogue.
+        // Austrian and Swiss German have to find the same catalogue.
         QTest::newRow("system, austrian german")
             << "system" << QLocale(QLocale::German, QLocale::Austria) << "de";
         QTest::newRow("system, swiss german")
@@ -117,17 +113,15 @@ private slots:
         prefs.setLanguage(QStringLiteral("de"));
         I18n i18n(&prefs);               // no setEngine() call
         QCOMPARE(i18n.effectiveLanguage(), QStringLiteral("de"));
-        // And the German catalogue really is installed, not just recorded.
+        // And the German catalogue really is installed.
         QVERIFY(i18n.isCatalogueLoaded());
     }
 
 
     // ── plurals ──────────────────────────────────────────────────────────
-    //
-    // Sources are written "%n track(s)", which is lupdate's shorthand and NOT
-    // something to show a person. With no English catalogue installed Qt falls
-    // back to the source verbatim and the queue reads "14 track(s)", so English
-    // needs a catalogue carrying just the numerus forms.
+    // Sources are written "%n track(s)", lupdate's shorthand. With no English
+    // catalogue Qt falls back to the source verbatim, so English ships a
+    // catalogue carrying just the numerus forms.
     void englishResolvesPlurals_data() {
         QTest::addColumn<QString>("context");
         QTest::addColumn<int>("n");
@@ -167,7 +161,7 @@ private slots:
         QVERIFY(!one.contains(QLatin1String("(s)")));
         QVERIFY(!many.contains(QLatin1String("(s)")));
         QVERIFY2(one != many, "German singular and plural are identical");
-        // Sanity: it really is German, not the untranslated source.
+        // And it is German: the source word "track" is gone.
         QVERIFY(!one.contains(QLatin1String("track")));
     }
 
@@ -190,9 +184,8 @@ private slots:
         QCOMPARE(codes, QStringList({"system", "en", "de"}));
     }
 
-    // German is shown as "Deutsch", not as "German": a language picker names
-    // each language in that language, so someone who cannot read the current
-    // one can still find theirs.
+    // A language picker names each language in that language, so someone who
+    // cannot read the current one can still find theirs.
     void languagesAreNamedInTheirOwnLanguage() {
         Prefs prefs;
         I18n i18n(&prefs);
@@ -212,7 +205,7 @@ private slots:
         I18n i18n(&prefs);
         const QString label = i18n.availableLanguages().first().toMap().value("label").toString();
         QVERIFY(!label.isEmpty());
-        // Whatever it says, it must not be all caps (project rule G1).
+        // Whatever it says, it must not be all caps.
         QVERIFY(label != label.toUpper() || label.size() == 1);
     }
 
