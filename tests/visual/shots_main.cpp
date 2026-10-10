@@ -55,6 +55,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickImageProvider>
+#include <QSurfaceFormat>
 
 #include "TestStubs.h"
 
@@ -114,6 +115,12 @@ public:
         // Before any QSettings is constructed. See the note above.
         QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveVisual"));
         QCoreApplication::setApplicationName(QStringLiteral("Tidal Wave Visual"));
+
+        // The app asks for 4x multisampling before its window exists. Without
+        // it the stroked icons come out as hairlines, or not at all.
+        QSurfaceFormat format;
+        format.setSamples(4);
+        QSurfaceFormat::setDefaultFormat(format);
     }
 
 public slots:
