@@ -20,7 +20,7 @@ Menu {
     //
     // Opacity, and nothing else. Qt 6.4 has a Popup/Layout polish loop that
     // closes whenever a popup's own geometry feeds back into its contents
-    // (commit 5c1125f, and the long comment on the output picker's popup in
+    // (commit 5c467ca, and the long comment on the output picker's popup in
     // PlayerBar.qml); a transition that animated height, scale or y would hand
     // the positioner a moving target again, and that loop printed 1992
     // warnings and hung a test run.

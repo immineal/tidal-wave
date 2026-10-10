@@ -38,7 +38,7 @@ Rectangle {
     // What the last load was told, "" when it was served. Both of loadPlaylist's
     // callbacks dropped it - the tracks half as `if (!err)`, the header half
     // folded into `if (err || !p || requested !== root.playlistUuid)` - which is
-    // AlbumPage's bug from 8ec30ed: a playlist that has been deleted or made
+    // AlbumPage's bug from 0361ac1: a playlist that has been deleted or made
     // private by its owner is still in the favourites list and answers 404 for
     // both `playlists/<uuid>` and `playlists/<uuid>/tracks`, and the page kept
     // the title the caller handed it over an empty list, saying nothing.

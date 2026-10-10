@@ -16,7 +16,7 @@
 // four lines above the first of these icons ("A ColumnLayout reads
 // Layout.preferredHeight, not a plain height, so these spacers have to declare
 // it or they collapse to nothing"), RadioPage's back chevron says it again, and
-// the panel 8ec30ed added to AlbumPage gets it right. It had never been
+// the panel 0361ac1 added to AlbumPage gets it right. It had never been
 // asserted, so nothing stopped the next one.
 //
 // Measured rather than read. A test that checked the source for

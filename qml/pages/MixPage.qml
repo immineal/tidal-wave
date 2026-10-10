@@ -76,7 +76,7 @@ Rectangle {
 
     // What the last load was told, "" when it was served. The one callback used
     // to read `if (err) return` and drop it, which is AlbumPage's bug from
-    // 8ec30ed: a mix that has rotated out of the user's set, or one pinned to
+    // 0361ac1: a mix that has rotated out of the user's set, or one pinned to
     // the sidebar months ago, answers nothing for `pages/mix` - and the page
     // kept the title the caller handed it over an empty list, saying nothing
     // about why the list was empty.

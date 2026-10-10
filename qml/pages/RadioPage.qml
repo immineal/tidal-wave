@@ -28,7 +28,7 @@ Rectangle {
     property bool   loading:    false
 
     // What the last load was told, "" when it was served. The one callback used
-    // to read `if (!err)` and drop it, which is AlbumPage's bug from 8ec30ed on
+    // to read `if (!err)` and drop it, which is AlbumPage's bug from 0361ac1 on
     // the page with the least left over: a station Tidal will not build - ask
     // for one from a track that has since been delisted and `tracks/<id>/radio`
     // answers 404 the same way `albums/<id>` does - left `tracks` empty and

@@ -1082,7 +1082,7 @@ TestCase {
 
     // ── Search's tabs: one pill, travelling ──────────────────────────────
     //
-    // Search's chips used to do what Collection's did before e304a63: the one
+    // Search's chips used to do what Collection's did before 7174fcd: the one
     // being left faded back to nothing while the one arriving faded up to the
     // accent, so the highlight was briefly nowhere and nothing ever crossed the
     // gap between the two (QA: "the highlighting bar can move up and not just

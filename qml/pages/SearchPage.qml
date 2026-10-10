@@ -472,7 +472,7 @@ Rectangle {
                         // luminance-inverted against the two fills on the three
                         // light palettes - dark ink on a bare row becomes white ink
                         // on an accent chip - so a label cannot cross-fade between
-                        // them (measured in 354d460: under 2:1 for 57ms of a 140ms
+                        // them (measured in 172cb4f: under 2:1 for 57ms of a 140ms
                         // fade, bottoming out at 1.01:1), and it cannot be stepped
                         // either when a hard fill edge is sweeping across it:
                         // whichever ink it steps to, half the glyphs are on the

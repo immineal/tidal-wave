@@ -102,7 +102,7 @@ jobs:
   # assign to non-existent property popupType") is raised when the engine loads
   # the file. tests/qml/*.qml are only ever loaded at runtime, so a build-only
   # job cannot see them at all - which is how the declarative popupType in
-  # tst_menus_and_glyphs.qml that e972e24 replaced survived until a Debian box
+  # tst_menus_and_glyphs.qml that f10019c replaced survived until a Debian box
   # ran the suite on real 6.4.2. Qt comes from apt, as in packaging/Dockerfile,
   # so nothing is downloaded and the version cannot drift.
   test-debian-12:

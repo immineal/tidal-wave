@@ -680,7 +680,7 @@ TestCase {
     }
 
     // Both presses inside one turn, which is the shape of the Qt 6.4 bug
-    // a2f03de fixed: deciding what to restore may not wait on
+    // 2b7c0a1 fixed: deciding what to restore may not wait on
     // visibilityChanged, which does not arrive until later on 6.4.
     function test_two_presses_in_one_turn_still_land_back_on_the_playlist() {
         var win = showApp()

@@ -1,6 +1,6 @@
 // The four pages that still threw away the reason a fetch failed.
 //
-// 8ec30ed fixed this on AlbumPage and named the rest: ArtistPage (three
+// 0361ac1 fixed this on AlbumPage and named the rest: ArtistPage (three
 // callbacks), PlaylistPage (three), MixPage and RadioPage (one each) all read
 // `if (!err)` or `if (err) return` and kept nothing. The trigger is the one the
 // album report was traced to, in four more shapes: a record the favourites and
@@ -22,7 +22,7 @@
 //   keep their heading: the message goes in the list's footer, which on an empty
 //   list sits exactly where the missing tracks would be.
 //
-// RadioPage is in the second group although 8ec30ed's note put it in the first.
+// RadioPage is in the second group although 0361ac1's note put it in the first.
 // Both routes in set radioTitle - TrackRow's "Start radio" passes the track's
 // title, Now Playing's "Playing from" passes player.sourceName - so a failed
 // station is a correct heading over an empty rectangle, not a blank page. It is

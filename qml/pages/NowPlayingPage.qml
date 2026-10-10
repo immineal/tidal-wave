@@ -1725,7 +1725,7 @@ Rectangle {
                             // the top of its "S" to the foot of its "p".
                             //
                             // This is not a return to the 24 the pill painted
-                            // before f8aa785. That 24 was never asked for: it
+                            // before cf34d80. That 24 was never asked for: it
                             // was VectorIcon's implicit size being imposed over
                             // a declared 12, in a 28px pill, which left 4px of
                             // air above a clock with 16px beside it. 20 is
@@ -1941,7 +1941,7 @@ Rectangle {
                         // moves, and it repositions again. On a Qt 6.4.2 box
                         // that printed 1992 "called polish() inside
                         // updatePolish()" warnings and hung the test run
-                        // outright (commit 5c1125f; the output picker's popup in
+                        // outright (commit 5c467ca; the output picker's popup in
                         // PlayerBar.qml is written this way for the same
                         // reason). `width` is a literal, so no term below
                         // depends on anything the positioner touches.

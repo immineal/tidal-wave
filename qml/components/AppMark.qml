@@ -86,7 +86,7 @@ Item {
             // existence, because preferredRendererType arrived in Qt 6.6 and this
             // project still builds against the 6.4 on Debian bookworm, where
             // declaring it would be a "cannot assign to non-existent property"
-            // at load - the same class of breakage as commit 033d735. The `in`
+            // at load - the same class of breakage as commit 2e78e32. The `in`
             // test is false there and short-circuits before Shape.CurveRenderer
             // is ever named, so 6.4 sees no warning and no change. The software
             // backend ignores the preference entirely; its output is unchanged

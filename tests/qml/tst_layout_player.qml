@@ -983,7 +983,7 @@ TestCase {
     // the right-hand group going from 204 to 164 is 40px the bar's left group
     // gets instead, and the left group is where the title elides.
     //
-    // acbe964 shipped a compromise it wrote down - "At 640 that leaves the track
+    // b1ee02a shipped a compromise it wrote down - "At 640 that leaves the track
     // info on its 200px minimum against the 280 it asks for, so the title elides
     // between 640 and 675". Measured on that build, the left group ran from
     // 200px at a 640px window to 235 at 675 and 236 at 676, one pixel of group
@@ -2990,7 +2990,7 @@ TestCase {
 
     // The popup hangs off the pill and used to open downwards unconditionally.
     // At the 600px window minimum there is not that much window under the pill,
-    // so it ran off the bottom of the screen - and 30e519f, which gave it a
+    // so it ran off the bottom of the screen - and 7931658, which gave it a
     // Start button, made it taller and so made it worse. It flips above the
     // pill now when it has to.
 

@@ -34,7 +34,7 @@ Rectangle {
 
     // What the last load was told, "" when it was served. All three fetches
     // used to read `if (!err)` and drop this, which is the same bug AlbumPage
-    // had in 8ec30ed: an artist the API refuses - a followed artist whose page
+    // had in 0361ac1: an artist the API refuses - a followed artist whose page
     // has since been withdrawn answers 404 for the detail, the top tracks and
     // the discography alike - left every one of this page's sections invisible
     // behind a hero with an empty 36px name in it. That is the page's empty

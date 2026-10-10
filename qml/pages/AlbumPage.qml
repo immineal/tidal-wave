@@ -20,7 +20,7 @@ Rectangle {
     // edition still sitting in the user's favourites answers 404 for both the
     // header and the tracklist - left the page on its empty initial state with
     // no spinner and nothing said, and a dead record looked exactly like a
-    // broken app. Same lesson as the eleven dropped refusals in a35cbe3.
+    // broken app. Same lesson as the eleven dropped refusals in 72e5896.
     property string loadError: ""
 
     // Nothing came back at all. Either call failing on its own still leaves a
