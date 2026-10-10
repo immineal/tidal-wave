@@ -1611,7 +1611,7 @@ TestCase {
         var h = openPanel(1280, 1200)
         var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
         verify(parts.length >= 5,
-               "the privacy block is " + parts.length + " paragraphs; the approved text is five")
+               "the privacy block is " + parts.length + " paragraphs; the text is five")
 
         var all = ""
         for (var i = 0; i < parts.length; i++) {

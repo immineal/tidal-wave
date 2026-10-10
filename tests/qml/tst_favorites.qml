@@ -580,7 +580,7 @@ TestCase {
         clickCenter(pill)
 
         tryVerify(function () { return !page.isSaved }, 2000,
-                  "the mix could not be unsaved, which is the whole complaint")
+                  "the mix could not be unsaved, which is the defect this guards")
         compare(bridge.lastFavoriteCallForTest(), "removeMix:" + testCase.mixId,
                 "a saved mix's pill must send a remove, not an add")
         compare(page.favoriteAction.lastMessage, "",

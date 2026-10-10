@@ -1453,7 +1453,7 @@ TestCase {
                row.tag + ": " + volume.objectName + " is "
                + volume.height.toFixed(1)
                + "px tall against the " + volume.implicitHeight.toFixed(1)
-               + "px it asks for, so it folded - the user chose to keep it")
+               + "px it asks for, so it folded, and it has to stay")
         var volumeOpacity = effectiveOpacity(volume)
         verify(volumeOpacity > 0.99,
                row.tag + ": " + volume.objectName + " is drawn at "
