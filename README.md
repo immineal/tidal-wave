@@ -133,7 +133,7 @@ tar -xzf tidal-wave-linux-x86_64.tar.gz
 ```
 
 Install the runtime yourself. This build links Qt 6 Core, Gui, Widgets, Quick,
-Qml, QmlModels, Network, DBus, Multimedia, Svg, Concurrent and QuickControls2,
+Qml, QmlModels, Network, DBus, Multimedia, Svg and QuickControls2,
 and wants `ffmpeg` and `avahi` for Chromecast. The QML modules are the ones
 people miss: QtQuick, QtQuick.Shapes, QtQuick.Controls, QtQuick.Layouts,
 QtQuick.Window, QtQuick.Templates, QtQml.Models and QtQml.WorkerScript. On

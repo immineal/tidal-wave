@@ -24,7 +24,6 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     DBus
     Multimedia
     Svg
-    Concurrent
     # QQuickStyle, which Application::run() uses to pin the Controls style to
     # Basic. The call was commented out in the initial commit together with its
     # include, and this component was never added - a missing link, not an
@@ -248,7 +247,6 @@ target_link_libraries(tidalwave_qml PUBLIC
     Qt6::DBus
     Qt6::Multimedia
     Qt6::Svg
-    Qt6::Concurrent
     Qt6::QuickControls2
 )
 
@@ -559,7 +557,7 @@ by or affiliated with Tidal.")
     set(TW_QT_DEB_PACKAGES
         libqt6core6 libqt6gui6 libqt6widgets6 libqt6quick6 libqt6qml6
         libqt6network6 libqt6dbus6 libqt6multimedia6 libqt6svg6
-        libqt6concurrent6 libqt6opengl6
+        libqt6opengl6
         qml6-module-qtquick qml6-module-qtquick-shapes
         qml6-module-qtquick-controls qml6-module-qtquick-layouts
         qml6-module-qtquick-window qml6-module-qtquick-templates
@@ -598,6 +596,12 @@ by or affiliated with Tidal.")
     # running translated. Degrading silently is the outcome the version
     # floors above exist to prevent, so this is a Depends.
     list(APPEND TW_DEB_DEPENDS qt6-wayland)
+    # Qt below 6.5 plays through GStreamer, and no Qt package pulls in its
+    # plugins. -good decodes FLAC in MP4 and carries the sinks, -libav decodes
+    # AAC. Without them playback segfaults or reports an unsupported format.
+    if(Qt6_VERSION VERSION_LESS 6.5)
+        list(APPEND TW_DEB_DEPENDS gstreamer1.0-plugins-good gstreamer1.0-libav)
+    endif()
     list(JOIN TW_DEB_DEPENDS ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ffmpeg")
     # Left on so it can still add anything it *can* resolve on a machine where
