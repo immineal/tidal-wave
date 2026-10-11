@@ -142,6 +142,10 @@
         <translation>Singles &amp; EPs</translation>
     </message>
     <message>
+        <source>Appears On</source>
+        <translation>Erscheint auf</translation>
+    </message>
+    <message>
         <source>About</source>
         <translation>Info</translation>
     </message>

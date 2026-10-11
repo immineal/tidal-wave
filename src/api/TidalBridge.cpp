@@ -133,6 +133,8 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["duration"]    = a.duration;
     m["quality"]     = a.audioQuality;
     m["type"]        = a.type;
+    // ArtistPage files a release under Appears on by this.
+    m["featured"]    = a.featured;
     m["year"]        = a.releaseDate.left(4);
     return m;
 }

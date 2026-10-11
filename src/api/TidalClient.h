@@ -186,14 +186,17 @@ public:
     static QList<Mix> mergeMixLists(const QList<QList<Mix>> &lists);
 
     // The union of several album lists, deduplicated on the album id. The
-    // first list to carry an id fixes that release's position.
+    // first list to carry an id fixes that release's position and supplies the
+    // whole record, Album::featured included.
     static QList<Album> mergeAlbumLists(const QList<QList<Album>> &lists);
 
     // The `filter` values artists/<id>/albums takes. With no filter it
-    // answers the albums only; EPs with singles, and compilations, each need a
-    // request of their own.
+    // answers the albums only; EPs with singles need a request of their own.
     static constexpr auto kFilterEpsAndSingles = "EPSANDSINGLES";
-    static constexpr auto kFilterCompilations  = "COMPILATIONS";
+    // The wire value says COMPILATIONS. The endpoint answers it with records
+    // by other artists that this one appears on, and the constant is named
+    // for that.
+    static constexpr auto kFilterAppearsOn     = "COMPILATIONS";
 
     // The two sources fetchHomeMixes merges: the generated feed
     // (pages/my_collection_my_mixes) and the saved list (v2/favorites/mixes,

@@ -1,9 +1,9 @@
-// ArtistPage's two discography rows: which release lands in which, and what
-// the edition collapse may drop. The split is by type, with the track count
-// as a fallback. dedupeEditions() keys on the section as well as on artwork
-// and title, because a lead single often carries its album's artwork and
-// title. The request side is in tests/tst_artist_discography.cpp.
-// Every id, title and cover is invented.
+// ArtistPage's three release rows: which release lands in which, and what the
+// edition collapse may drop. Albums and Singles & EPs split by type, with the
+// track count as a fallback. `featured` outranks both and sends a release to
+// Appears on. dedupeEditions() keys on the row as well as on artwork and title.
+// The request side, and where `featured` is set, is in
+// tests/tst_artist_discography.cpp. Every id, title and cover is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -25,10 +25,10 @@ TestCase {
     Component { id: holderC; Item { } }
     Component { id: artistC; ArtistPage { anchors.fill: parent } }
 
-    function makePage() {
+    function makePage(width) {
         var holder = createTemporaryObject(holderC, testCase)
         verify(holder, "the holder was not created")
-        holder.width = 960
+        holder.width = width || 960
         holder.height = 700
         var page = createTemporaryObject(artistC, holder, {})
         verify(page, "the page was not created")
@@ -42,23 +42,34 @@ TestCase {
 
     function rel(id, title, type, numTracks, cover) {
         return { id: id, title: title, type: type, numTracks: numTracks,
-                 coverUrl: cover, year: "2021", artists: "Eine Band" }
+                 coverUrl: cover, year: "2021", artists: "Eine Band",
+                 featured: false }
     }
 
-    // Opens the page on an artist whose discography is `albums`, and hands back
-    // the two sections.
-    function openWith(albums) {
+    // A record by somebody else that this artist guests on. Only the flag
+    // differs: the shape of a release does not say whose it is.
+    function guest(id, title, type, numTracks, cover) {
+        var r = rel(id, title, type, numTracks, cover)
+        r.featured = true
+        return r
+    }
+
+    // Opens the page on an artist whose releases are `albums`, and hands back
+    // the three rows.
+    function openWith(albums, width) {
         bridge.setArtistForTest({ id: testCase.artistId, name: "Eine Band" }, [], albums)
-        var page = makePage()
+        var page = makePage(width)
         page.artistId = testCase.artistId
         settle(page)
         var out = {
-            page:    page,
-            albums:  findChild(page, "artistAlbumsSection"),
-            singles: findChild(page, "artistSinglesSection")
+            page:      page,
+            albums:    findChild(page, "artistAlbumsSection"),
+            singles:   findChild(page, "artistSinglesSection"),
+            appearsOn: findChild(page, "artistAppearsOnSection")
         }
-        verify(out.albums,  "the page has no Albums section at all")
-        verify(out.singles, "the page has no Singles & EPs section at all")
+        verify(out.albums,    "the page has no Albums section at all")
+        verify(out.singles,   "the page has no Singles & EPs section at all")
+        verify(out.appearsOn, "the page has no Appears on section at all")
         return out
     }
 
@@ -136,6 +147,132 @@ TestCase {
                + "') whether or not there is a singles row under it")
     }
 
+    // Guest appearances are other people's records, so they do not change the
+    // heading over the artist's own releases.
+    function test_the_appears_on_row_does_not_rename_the_albums_heading() {
+        var albumsOnly = openWith([
+            rel(900018001, "Ein Album", "ALBUM", 11, "11111111-0000-0000-0000-000000000000")
+        ])
+        var plainTitle = albumsOnly.albums.title
+
+        var withGuests = openWith([
+            rel(900018002, "Ein Album", "ALBUM", 11, "22222222-0000-0000-0000-000000000000"),
+            guest(900018003, "Fremdes Album", "ALBUM", 12, "33333333-0000-0000-0000-000000000000")
+        ])
+        compare(withGuests.appearsOn.visible, true,
+                "the Appears on row hid itself on an artist with a guest appearance")
+        compare(withGuests.singles.visible, false)
+        compare(withGuests.albums.title, plainTitle,
+                "an Appears on row changed the heading over the artist's own albums, from '"
+                + plainTitle + "' to '" + withGuests.albums.title + "'")
+    }
+
+    // The artist's own compilation is theirs and is long-form. With no track
+    // count the fallback would read it as a single.
+    function test_the_artists_own_compilation_is_an_album() {
+        var s = openWith([
+            rel(900024001, "Das Beste", "COMPILATION", 0,
+                "cccccccc-0000-0000-0000-000000000000")
+        ])
+
+        compare(idsOf(s.albums), [900024001],
+                "the artist's own compilation was filed under Singles & EPs")
+        compare(s.singles.visible, false)
+        compare(s.appearsOn.visible, false,
+                "a release that is the artist's own landed in Appears on")
+    }
+
+    // ── the third row ────────────────────────────────────────────────────────
+
+    // One guest appearance of each shape. None of them belongs in either row
+    // of the artist's own releases.
+    function test_guest_appearances_get_their_own_row() {
+        var s = openWith([
+            rel(900019001, "Ein Album",     "ALBUM",  11, "11111111-0000-0000-0000-000000000000"),
+            rel(900019002, "Eine Single",   "SINGLE",  1, "22222222-0000-0000-0000-000000000000"),
+            guest(900019003, "Fremdes Album", "ALBUM", 12, "33333333-0000-0000-0000-000000000000"),
+            guest(900019004, "Fremde EP",     "EP",     5, "44444444-0000-0000-0000-000000000000"),
+            guest(900019005, "Sammlung",      "COMPILATION", 20, "55555555-0000-0000-0000-000000000000")
+        ])
+
+        compare(idsOf(s.albums), [900019001],
+                "a record the artist only guests on was filed under Albums")
+        compare(idsOf(s.singles), [900019002],
+                "a record the artist only guests on was filed under Singles & EPs")
+        compare(idsOf(s.appearsOn), [900019003, 900019004, 900019005],
+                "the Appears on row holds the wrong releases")
+
+        compare(s.appearsOn.visible, true,
+                "the Appears on row hid itself on an artist with three guest appearances")
+        verify(s.appearsOn.title.length > 0
+               && s.appearsOn.title !== s.albums.title
+               && s.appearsOn.title !== s.singles.title,
+               "the Appears on row has no heading of its own: '" + s.appearsOn.title + "'")
+    }
+
+    // The artist's own work comes first on the page.
+    function test_the_appears_on_row_comes_last() {
+        var s = openWith([
+            rel(900020001, "Ein Album",   "ALBUM",  11, "11111111-0000-0000-0000-000000000000"),
+            rel(900020002, "Eine Single", "SINGLE",  1, "22222222-0000-0000-0000-000000000000"),
+            guest(900020003, "Fremdes Album", "ALBUM", 12, "33333333-0000-0000-0000-000000000000")
+        ])
+
+        var albumsY  = s.albums.mapToItem(s.page, 0, 0).y
+        var singlesY = s.singles.mapToItem(s.page, 0, 0).y
+        var guestsY  = s.appearsOn.mapToItem(s.page, 0, 0).y
+        verify(albumsY < singlesY,
+               "Singles & EPs is no longer under Albums: " + albumsY + " vs " + singlesY)
+        verify(singlesY < guestsY,
+               "Appears on is not last; it sits at " + guestsY
+               + " with Singles & EPs at " + singlesY)
+    }
+
+    // Most artists guest on nothing, and a heading over an empty row is worse
+    // than no row.
+    function test_the_appears_on_row_hides_with_nothing_in_it() {
+        var s = openWith([
+            rel(900021001, "Ein Album", "ALBUM", 11, "11111111-0000-0000-0000-000000000000")
+        ])
+        compare(s.appearsOn.visible, false,
+                "the Appears on row showed itself on an artist who guests on nothing")
+    }
+
+    // The widths tst_layout_pages.qml audits. At each, the row is laid out as
+    // the Singles & EPs row above it is, and ends inside the page.
+    function test_the_appears_on_row_is_laid_out_like_the_row_above_it() {
+        var widths = [640, 820, 960, 1280]
+        for (var i = 0; i < widths.length; ++i) {
+            var w = widths[i]
+            var releases = []
+            for (var n = 0; n < 8; ++n) {
+                releases.push(rel(900025100 + n, "Eine ziemlich lange Single Nummer " + n,
+                                  "SINGLE", 1, "0000000" + n + "-1111-0000-0000-000000000000"))
+                releases.push(guest(900025200 + n, "Ein ziemlich langes fremdes Album " + n,
+                                    "ALBUM", 12, "0000000" + n + "-2222-0000-0000-000000000000"))
+            }
+            var s = openWith(releases, w)
+            var at = " at " + w
+
+            compare(s.appearsOn.items.length, 8)
+            verify(s.appearsOn.width > 200 && s.appearsOn.height > 50,
+                   "the Appears on row was laid out at no size" + at + ": "
+                   + s.appearsOn.width + "x" + s.appearsOn.height)
+            compare(s.appearsOn.x, s.singles.x,
+                    "the Appears on row does not start where Singles & EPs starts" + at)
+            compare(s.appearsOn.width, s.singles.width,
+                    "the Appears on row is not as wide as Singles & EPs" + at)
+            compare(s.appearsOn.height, s.singles.height,
+                    "the Appears on row is not as tall as Singles & EPs" + at)
+            compare(s.appearsOn.y, s.singles.y + s.singles.height,
+                    "the Appears on row does not sit directly under Singles & EPs" + at)
+            var right = s.appearsOn.mapToItem(s.page, s.appearsOn.width, 0).x
+            verify(right <= s.page.width,
+                   "the Appears on row ends at " + right + " on a page "
+                   + s.page.width + " wide")
+        }
+    }
+
     // ── the edition collapse ─────────────────────────────────────────────────
 
     // A lead single often carries its album's artwork and title, so a collapse
@@ -176,6 +313,32 @@ TestCase {
 
         compare(idsOf(s.singles), [900016001],
                 "the editions of one single stopped collapsing into one row")
+    }
+
+    // A compilation often reuses the sleeve and title of the single licensed
+    // onto it. Both stay reachable, each in its own row.
+    function test_a_guest_appearance_sharing_artwork_and_title_is_kept() {
+        var sharedArt = "aaaaaaaa-0000-0000-0000-000000000000"
+        var s = openWith([
+            rel(900022001, "Nachtfahrt", "ALBUM", 10, sharedArt),
+            guest(900022002, "Nachtfahrt", "ALBUM", 10, sharedArt)
+        ])
+
+        compare(idsOf(s.albums), [900022001],
+                "the artist's own album was collapsed into a record they only guest on")
+        compare(idsOf(s.appearsOn), [900022002],
+                "the guest appearance was collapsed into the artist's own album and is unreachable")
+    }
+
+    function test_editions_of_one_guest_appearance_still_collapse() {
+        var art = "bbbbbbbb-0000-0000-0000-000000000000"
+        var s = openWith([
+            guest(900023001, "Sammlung",            "COMPILATION", 20, art),
+            guest(900023002, "Sammlung (Explicit)", "COMPILATION", 20, art)
+        ])
+
+        compare(idsOf(s.appearsOn), [900023001],
+                "the editions of one guest appearance stopped collapsing into one row")
     }
 
     // Different artwork is a different release, whatever the title says.

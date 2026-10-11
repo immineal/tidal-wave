@@ -74,6 +74,10 @@ struct Album {
     // carried no date. Half of the sidebar's ordering key, so it must not be
     // releaseDate.
     qint64  addedAt = 0;
+    // Somebody else's record that this artist appears on. No response carries
+    // it: TidalClient::fetchArtistAlbums() sets it from the request that
+    // answered, and it is false everywhere else.
+    bool    featured = false;
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};

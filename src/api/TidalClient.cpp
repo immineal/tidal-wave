@@ -406,7 +406,7 @@ void TidalClient::fetchArtistDetail(qint64 artistId,
 }
 
 // A release can answer to two filters at once, so the lists are deduplicated
-// on the album id. The first list to carry an id wins.
+// on the album id. The first list to carry an id wins, with its whole record.
 QList<Album> TidalClient::mergeAlbumLists(const QList<QList<Album>> &lists) {
     QList<Album> out;
     QSet<qint64> seen;
@@ -451,12 +451,12 @@ void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
 }
 
 void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
-    // One discography, three requests: see kFilterEpsAndSingles. Merged here
-    // so that ArtistPage gets one reply behind its one `loading` flag.
+    // Three requests: see kFilterEpsAndSingles and kFilterAppearsOn. Merged
+    // here so that ArtistPage gets one reply behind its one `loading` flag.
     struct Pending {
         QList<Album> albums;
         QList<Album> epsAndSingles;
-        QList<Album> compilations;
+        QList<Album> appearsOn;
         int          outstanding = 3;
         QString      err;
     };
@@ -464,8 +464,13 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
 
     const auto finish = [cb, pending]() {
         if (--pending->outstanding > 0) return;
+        // The three responses carry the same fields, so the guest appearances
+        // are marked while their list is still apart from the other two.
+        for (Album &a : pending->appearsOn) a.featured = true;
+        // The artist's own lists go first: a record of theirs that the
+        // appears-on filter also answers keeps its place and stays unmarked.
         const QList<Album> all = mergeAlbumLists(
-            {pending->albums, pending->epsAndSingles, pending->compilations});
+            {pending->albums, pending->epsAndSingles, pending->appearsOn});
         // One filter failing must not empty the page. The error is reported
         // only when none of the three yielded anything.
         if (all.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
@@ -480,13 +485,13 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         };
     };
 
-    // Albums first, so mergeAlbumLists() leaves a release that answers to two
-    // filters where the album list put it.
+    // Each request fills a slot of its own, so the order the replies land in
+    // changes nothing.
     fetchArtistAlbumPage(artistId, QString(), collect(&pending->albums));
     fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterEpsAndSingles),
                          collect(&pending->epsAndSingles));
-    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterCompilations),
-                         collect(&pending->compilations));
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterAppearsOn),
+                         collect(&pending->appearsOn));
 }
 
 void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {

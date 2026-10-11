@@ -1,7 +1,8 @@
-// An artist's discography: the three requests it takes, and what happens when
-// one of them does not come back. artists/<id>/albums with no `filter` answers
-// the albums only. EPs and singles need filter=EPSANDSINGLES, compilations
-// filter=COMPILATIONS, and each run is paged to its end.
+// An artist's discography: the three requests it takes, which of them marks a
+// release as a guest appearance, and what happens when one does not come back.
+// artists/<id>/albums with no `filter` answers the albums only. EPs and singles
+// need filter=EPSANDSINGLES. filter=COMPILATIONS answers records by other
+// artists that this one appears on. Each run is paged to its end.
 // FakeApi overrides TidalApi::get, so the cases drive the real TidalClient and
 // can see filters and offsets. Every id, title and cover below is invented.
 
@@ -30,7 +31,7 @@ namespace {
 
 const QString kNoFilter    = QString();
 const QString kEpsSingles  = QString::fromLatin1(TidalClient::kFilterEpsAndSingles);
-const QString kComps       = QString::fromLatin1(TidalClient::kFilterCompilations);
+const QString kAppearsOn   = QString::fromLatin1(TidalClient::kFilterAppearsOn);
 
 constexpr qint64 kArtistId = 900000001;
 
@@ -150,6 +151,11 @@ struct Run {
         for (const Album &a : albums) if (a.id == id) return &a;
         return nullptr;
     }
+    QList<qint64> featuredIds() const {
+        QList<qint64> out;
+        for (const Album &a : albums) if (a.featured) out << a.id;
+        return out;
+    }
 };
 
 void start(TidalClient &client, Run &run) {
@@ -160,7 +166,9 @@ void start(TidalClient &client, Run &run) {
     });
 }
 
-// An artist with one of each: album 1, single 2, compilation 3.
+// An artist with one of each: an album, a single, an EP, and one record by
+// somebody else under the appears-on filter. The guest record has the shape of
+// the artist's own album, so `type` cannot tell the two apart.
 void seedOneOfEach(FakeApi &api) {
     api.catalogue[kNoFilter]   = { release(900001001, QStringLiteral("Ein Album"), QStringLiteral("ALBUM"), 11,
                                            QStringLiteral("11111111-0000-0000-0000-000000000000")) };
@@ -168,7 +176,7 @@ void seedOneOfEach(FakeApi &api) {
                                            QStringLiteral("22222222-0000-0000-0000-000000000000")),
                                    release(900001003, QStringLiteral("Eine EP"), QStringLiteral("EP"), 4,
                                            QStringLiteral("33333333-0000-0000-0000-000000000000")) };
-    api.catalogue[kComps]      = { release(900001004, QStringLiteral("Eine Sammlung"), QStringLiteral("COMPILATION"), 20,
+    api.catalogue[kAppearsOn]  = { release(900001004, QStringLiteral("Fremdes Album"), QStringLiteral("ALBUM"), 12,
                                            QStringLiteral("44444444-0000-0000-0000-000000000000")) };
 }
 
@@ -196,7 +204,9 @@ private slots:
         QVERIFY2(asked.contains(kEpsSingles),
                  qPrintable(QStringLiteral("no filter=EPSANDSINGLES request was sent; filters asked: [%1]")
                             .arg(asked.join(QStringLiteral(", ")))));
-        QVERIFY2(asked.contains(kComps),
+        // The wire value is pinned as a literal: the constant is named for what
+        // the filter answers, and the server only takes this spelling.
+        QVERIFY2(asked.contains(QStringLiteral("COMPILATIONS")),
                  qPrintable(QStringLiteral("no filter=COMPILATIONS request was sent; filters asked: [%1]")
                             .arg(asked.join(QStringLiteral(", ")))));
 
@@ -217,7 +227,7 @@ private slots:
         QCOMPARE(run.albums.size(), 4);
         QVERIFY2(run.has(900001002), "the single is missing from the discography");
         QVERIFY2(run.has(900001003), "the EP is missing from the discography");
-        QVERIFY2(run.has(900001004), "the compilation is missing from the discography");
+        QVERIFY2(run.has(900001004), "the guest appearance is missing from the list");
         QVERIFY2(run.has(900001001), "the album is missing from the discography");
     }
 
@@ -234,12 +244,12 @@ private slots:
         const Album *album  = run.find(900001001);
         const Album *single = run.find(900001002);
         const Album *ep     = run.find(900001003);
-        const Album *comp   = run.find(900001004);
-        QVERIFY(album && single && ep && comp);
+        const Album *guest  = run.find(900001004);
+        QVERIFY(album && single && ep && guest);
         QCOMPARE(album->type,  QStringLiteral("ALBUM"));
         QCOMPARE(single->type, QStringLiteral("SINGLE"));
         QCOMPARE(ep->type,     QStringLiteral("EP"));
-        QCOMPARE(comp->type,   QStringLiteral("COMPILATION"));
+        QCOMPARE(guest->type,  QStringLiteral("ALBUM"));
         // The fallback must not be the thing doing the work: this EP has four
         // tracks, which `numTracks <= 3` would file under Albums.
         QCOMPARE(ep->numTracks, 4);
@@ -260,15 +270,81 @@ private slots:
         QCOMPARE(m.value(QStringLiteral("numTracks")).toInt(), 4);
     }
 
+    // ── whose record it is ───────────────────────────────────────────────────
+
+    // The three responses carry the same fields, so only the request says that
+    // a release is somebody else's. The client has to mark it.
+    void theAppearsOnReleasesAreMarked() {
+        FakeApi api;
+        seedOneOfEach(api);
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(run.albums.size(), 4);
+        const Album *guest = run.find(900001004);
+        QVERIFY(guest);
+        QVERIFY2(guest->featured,
+                 "the release from filter=COMPILATIONS came back unmarked, so the page "
+                 "shows another artist's record as this one's own");
+        // A flag set on everything would empty both of the artist's own rows.
+        QCOMPARE(run.featuredIds(), (QList<qint64>{900001004}));
+    }
+
+    // The mark holds past the first page of a long appears-on run.
+    void everyPageOfTheAppearsOnRunIsMarked() {
+        FakeApi api;
+        api.catalogue[kNoFilter] = {
+            release(900009001, QStringLiteral("Eigenes"), QStringLiteral("ALBUM"), 10) };
+        QList<QJsonObject> many;
+        QList<qint64> guestIds;
+        for (int i = 0; i < 120; ++i) {
+            many << release(900009100 + i, QStringLiteral("Fremdes %1").arg(i + 1),
+                            QStringLiteral("ALBUM"), 12);
+            guestIds << 900009100 + i;
+        }
+        api.catalogue[kAppearsOn] = many;
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(api.offsetsAsked(kAppearsOn), (QList<int>{0, 50, 100}));
+        QCOMPARE(run.albums.size(), 121);
+        QCOMPARE(run.featuredIds(), guestIds);
+    }
+
+    // The last hop before the page. The QML tests build their own maps, so a
+    // field dropped in albumToMap() fails nothing over there.
+    void theFeaturedFlagSurvivesTheHopToQml() {
+        Album own;
+        own.id    = 900008101;
+        own.title = QStringLiteral("Eigenes Album");
+        own.type  = QStringLiteral("ALBUM");
+
+        Album guest    = own;
+        guest.id       = 900008102;
+        guest.title    = QStringLiteral("Fremdes Album");
+        guest.featured = true;
+
+        const QVariantMap ownMap   = TidalBridge::albumToMap(own);
+        const QVariantMap guestMap = TidalBridge::albumToMap(guest);
+
+        QVERIFY2(guestMap.contains(QStringLiteral("featured")),
+                 "albumToMap() hands QML no `featured` key, so ArtistPage reads "
+                 "undefined and files every guest appearance under Albums");
+        QCOMPARE(guestMap.value(QStringLiteral("featured")).toBool(), true);
+        QCOMPARE(ownMap.value(QStringLiteral("featured")).toBool(), false);
+    }
+
     // ── one of three failing ─────────────────────────────────────────────────
 
-    // An artist with albums and a failed compilations request still has a
+    // An artist with albums and a failed appears-on request still has a
     // discography. ArtistPage shows its failure panel only when nothing arrived,
     // so no error is handed over here.
     void oneFilterFailingKeepsTheOtherTwo() {
         FakeApi api;
         seedOneOfEach(api);
-        api.errors[kComps] = QStringLiteral("503 Service Unavailable");
+        api.errors[kAppearsOn] = QStringLiteral("503 Service Unavailable");
         TidalClient client{&api};
         Run run;
         start(client, run);
@@ -276,8 +352,9 @@ private slots:
         QCOMPARE(run.replies, 1);
         QCOMPARE(run.err, QString());
         QCOMPARE(run.albums.size(), 3);
-        QVERIFY2(run.has(900001001), "a failed compilations request took the albums with it");
-        QVERIFY2(run.has(900001002), "a failed compilations request took the singles with it");
+        QVERIFY2(run.has(900001001), "a failed appears-on request took the albums with it");
+        QVERIFY2(run.has(900001002), "a failed appears-on request took the singles with it");
+        QCOMPARE(run.featuredIds(), QList<qint64>());
     }
 
     // The other way round: a failed singles request must not blank the albums.
@@ -292,7 +369,7 @@ private slots:
         QCOMPARE(run.err, QString());
         QCOMPARE(run.albums.size(), 2);
         QVERIFY2(run.has(900001001), "a failed singles request took the albums with it");
-        QVERIFY2(run.has(900001004), "a failed singles request took the compilations with it");
+        QVERIFY2(run.has(900001004), "a failed singles request took the guest appearances with it");
     }
 
     // The total failure that ArtistPage's failure panel is for: a withdrawn
@@ -302,7 +379,7 @@ private slots:
         seedOneOfEach(api);
         api.errors[kNoFilter]   = QStringLiteral("404 Not Found");
         api.errors[kEpsSingles] = QStringLiteral("404 Not Found");
-        api.errors[kComps]      = QStringLiteral("404 Not Found");
+        api.errors[kAppearsOn]  = QStringLiteral("404 Not Found");
         TidalClient client{&api};
         Run run;
         start(client, run);
@@ -336,7 +413,7 @@ private slots:
             release(900002001, QStringLiteral("Erstes"), QStringLiteral("ALBUM"), 10),
             release(900002002, QStringLiteral("Zweites"), QStringLiteral("ALBUM"), 9),
         };
-        api.catalogue[kComps] = {
+        api.catalogue[kAppearsOn] = {
             // The same id the unfiltered request already answered with.
             release(900002002, QStringLiteral("Zweites"), QStringLiteral("ALBUM"), 9),
             release(900002003, QStringLiteral("Drittes"), QStringLiteral("COMPILATION"), 18),
@@ -350,8 +427,32 @@ private slots:
         QCOMPARE(ids, (QList<qint64>{900002001, 900002002, 900002003}));
     }
 
-    // The albums come first and the compilations last, because that is the
-    // order the three lists are merged in and the sections preserve it.
+    // A record the artist made can also answer the appears-on request. It is
+    // theirs and stays unmarked, whichever of their own two lists carries it.
+    // The guest-only record is the control: marking nothing would pass the rest.
+    void aReleaseUnderTwoFiltersStaysTheArtistsOwn() {
+        FakeApi api;
+        api.catalogue[kNoFilter] = {
+            release(900002101, QStringLiteral("Eigenes"), QStringLiteral("ALBUM"), 10),
+        };
+        api.catalogue[kEpsSingles] = {
+            release(900002103, QStringLiteral("Eigene Single"), QStringLiteral("SINGLE"), 1),
+        };
+        api.catalogue[kAppearsOn] = {
+            release(900002101, QStringLiteral("Eigenes"), QStringLiteral("ALBUM"), 10),
+            release(900002102, QStringLiteral("Fremdes"), QStringLiteral("ALBUM"), 12),
+            release(900002103, QStringLiteral("Eigene Single"), QStringLiteral("SINGLE"), 1),
+        };
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(run.ids(), (QList<qint64>{900002101, 900002103, 900002102}));
+        QCOMPARE(run.featuredIds(), (QList<qint64>{900002102}));
+    }
+
+    // The albums come first and the guest appearances last, because that is
+    // the order the three lists are merged in and the rows preserve it.
     void theAlbumsComeBeforeTheRest() {
         FakeApi api;
         seedOneOfEach(api);
@@ -435,6 +536,8 @@ private slots:
         QCOMPARE(run.albums.size(), 4);
         // Still albums first: the order is the order the lists are merged in.
         QCOMPARE(run.ids(), (QList<qint64>{900001001, 900001002, 900001003, 900001004}));
+        // The appears-on reply landed first here and is still the only marked one.
+        QCOMPARE(run.featuredIds(), (QList<qint64>{900001004}));
     }
 
     // ── the merge on its own ─────────────────────────────────────────────────
@@ -444,6 +547,9 @@ private slots:
         Album b; b.id = 900007002; b.title = QStringLiteral("B");
         Album bAgain = b;
         Album c; c.id = 900007003; c.title = QStringLiteral("C");
+        // The later list is the marked one, as fetchArtistAlbums() hands it over.
+        bAgain.featured = true;
+        c.featured      = true;
 
         const QList<Album> merged =
             TidalClient::mergeAlbumLists({{a, b}, {bAgain, c}});
@@ -451,6 +557,10 @@ private slots:
         QCOMPARE(merged.at(0).id, a.id);
         QCOMPARE(merged.at(1).id, b.id);
         QCOMPARE(merged.at(2).id, c.id);
+        QVERIFY2(!merged.at(1).featured,
+                 "the repeated id kept the later copy's mark");
+        QVERIFY2(merged.at(2).featured,
+                 "an id that only the later list carries lost its mark");
     }
 };
 
