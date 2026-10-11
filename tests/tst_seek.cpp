@@ -4,6 +4,7 @@
 
 #include <QTest>
 #include <QByteArray>
+#include <QDataStream>
 #include <QFile>
 #include <QHostAddress>
 #include <QMediaDevices>
@@ -111,6 +112,25 @@ private:
     QVector<QByteArray> m_segments;
 };
 
+// Silence as 16-bit mono PCM. Its packets are a quarter of a second long, so
+// Qt 6.4's reader waits for the decoder after every one of them.
+constexpr qint64 kWavMs = 3000;
+
+QByteArray silentWav()
+{
+    const quint32 rate = 8000, bytes = quint32(rate * 2 * kWavMs / 1000);
+    QByteArray d;
+    QDataStream s(&d, QIODevice::WriteOnly);
+    s.setByteOrder(QDataStream::LittleEndian);
+    auto tag = [&s](const char *four) { s.writeRawData(four, 4); };
+    tag("RIFF"); s << quint32(36 + bytes); tag("WAVE");
+    tag("fmt "); s << quint32(16) << quint16(1) << quint16(1) << rate << rate * 2
+                   << quint16(2) << quint16(16);
+    tag("data"); s << bytes;
+    s.writeRawData(QByteArray(int(bytes), '\0').constData(), int(bytes));
+    return d;
+}
+
 // What one Player's QMediaPlayer did, as the test needs to ask about it.
 struct Watch {
     explicit Watch(QMediaPlayer *mp)
@@ -158,6 +178,11 @@ private slots:
         QVERIFY(!m_packaged.isEmpty());
         m_tidal = joined(tidal);
         QVERIFY(!m_tidal.isEmpty());
+
+        m_wav = m_dir.filePath(QStringLiteral("silence.wav"));
+        QFile wav(m_wav);
+        QVERIFY(wav.open(QIODevice::WriteOnly));
+        QCOMPARE(wav.write(silentWav()), qint64(44 + 16 * kWavMs));
     }
 
     void cleanupTestCase()
@@ -226,6 +251,59 @@ private slots:
 
         mp->play();
         QTRY_VERIFY2_WITH_TIMEOUT(watch.ended, "the track never reached its end", 10000);
+    }
+
+    void aTrackThatStandsStillWhilePlayingIsWoken_data() { layouts(); }
+
+    // The seek is made past the Player. On Qt 6.4 that leaves the reader
+    // asleep once it has read the file: the backend plays and nothing moves.
+    void aTrackThatStandsStillWhilePlayingIsWoken()
+    {
+        QFETCH(QString, track);
+        if (const char *why = obstacle(track)) QSKIP(why);
+        TidalApi    api;
+        TidalClient client{&api};
+        Player      player{&client};
+        QMediaPlayer *mp = startPlaying(player, track);
+        QVERIFY(mp);
+        Watch watch(mp);
+
+        QTRY_VERIFY_WITH_TIMEOUT(mp->position() >= 500, 10000);
+        QSignalSpy told(&player, &Player::playingChanged);
+        mp->setPosition(2000);
+        QTRY_VERIFY2_WITH_TIMEOUT(watch.furthest >= 3000,
+                                  "the position stayed where the seek put it", 6000);
+        // The wake is no pause as far as the UI is told.
+        QCOMPARE(told.count(), 0);
+        QTRY_VERIFY2_WITH_TIMEOUT(watch.ended, "the track never reached its end", 10000);
+    }
+
+    // Two seeks in a row right after the start, a second before the end.
+    // TIDALWAVE_SEEK_ROUNDS sets how often, for a measurement.
+    void seeksASecondBeforeTheEndReachTheEnd()
+    {
+        if (const char *why = obstacle(m_wav)) QSKIP(why);
+        const int asked  = qEnvironmentVariableIntValue("TIDALWAVE_SEEK_ROUNDS");
+        const int rounds = asked > 0 ? asked : 12;
+        TidalApi    api;
+        TidalClient client{&api};
+        Player      player{&client};
+        QMediaPlayer *mp = startPlaying(player, m_wav);
+        QVERIFY(mp);
+        Watch watch(mp);
+
+        for (int round = 0; round < rounds; ++round) {
+            // An empty source in between, so that each round opens the file anew.
+            mp->setSource(QUrl());
+            mp->setSource(QUrl::fromLocalFile(m_wav));
+            mp->play();
+            watch.ended = false;
+            player.seek(kWavMs - 1000);
+            player.seek(kWavMs - 1000);
+            QTRY_VERIFY2_WITH_TIMEOUT(watch.ended,
+                qPrintable(QStringLiteral("round %1: the track stood at %2 ms")
+                               .arg(round).arg(mp->position())), 10000);
+        }
     }
 
     void theEndOfTheLastTrackIsReportedOnce_data() { layouts(); }
@@ -339,6 +417,7 @@ private:
     QTemporaryDir m_dir;
     QString       m_packaged;
     QString       m_tidal;
+    QString       m_wav;
 };
 
 QTEST_MAIN(TestSeek)

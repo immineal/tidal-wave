@@ -322,8 +322,22 @@ private:
     QPointer<Prefs>      m_prefs;
     // Set during an output swap, so its transport churn does not reach the UI.
     bool                 m_rebinding     = false;
-    // Set while a seek pauses and resumes the backend around itself.
+    // Set while a seek or a wake pauses and resumes the backend itself.
     bool                 m_seekToggling  = false;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4's reader thread can sleep through the call that resumes it. The
+    // backend then plays and stands still until its state changes again.
+    void wakeStandingBackend();
+    // Whether the backend is where it was when last looked at.
+    bool backendStands();
+    static constexpr int    kStandCheckMs = 500;
+    static constexpr qint64 kStandMovedMs = 20;
+    // Wakes spent on one standstill. Past that it has another cause.
+    static constexpr int    kStandWakes   = 5;
+    QTimer              *m_standTimer    = nullptr;
+    qint64               m_standPos      = -1;
+    int                  m_standWakes    = 0;
+#endif
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
 

@@ -65,6 +65,18 @@ void Player::initAudio() {
     });
     connect(m_player, &QMediaPlayer::durationChanged,
             this, &Player::durationChanged);
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    m_standTimer = new QTimer(this);
+    m_standTimer->setInterval(kStandCheckMs);
+    connect(m_standTimer, &QTimer::timeout, this, &Player::wakeStandingBackend);
+    connect(m_player, &QMediaPlayer::playbackStateChanged, this,
+            [this](QMediaPlayer::PlaybackState state) {
+        if (state != QMediaPlayer::PlayingState) { m_standTimer->stop(); return; }
+        // A seek moved it, and the watch counts from where it is now.
+        backendStands();
+        m_standTimer->start();
+    });
+#endif
 
     // A session restored from the constructor had no player yet; load it now.
     if (m_restorePending) {
@@ -725,6 +737,29 @@ void Player::setPlayerPosition(qint64 ms) {
 #endif
     m_player->setPosition(ms);
 }
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+bool Player::backendStands() {
+    const qint64 pos = m_player->position();
+    if (qAbs(pos - m_standPos) < kStandMovedMs) return true;
+    m_standPos   = pos;
+    m_standWakes = 0;
+    return false;
+}
+
+void Player::wakeStandingBackend() {
+    if (m_player->playbackState() != QMediaPlayer::PlayingState) return;
+    if (!backendStands() || m_standWakes >= kStandWakes) return;
+    ++m_standWakes;
+    // A pause and a resume call the reader again. Nothing is flushed, so a
+    // backend that was only slow to report its position loses nothing.
+    m_seekToggling = true;
+    m_player->pause();
+    startBackend();
+    m_seekToggling = false;
+    tellPlaying();
+}
+#endif
 
 void Player::setVolume(double v) {
     m_pendingVolume = qBound(0.0, v, 1.0);
