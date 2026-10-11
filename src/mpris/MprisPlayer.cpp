@@ -135,6 +135,21 @@ void MprisPlayer::setLoopStatus(const QString &s) {
 bool MprisPlayer::shuffle() const { return m_player->shuffle(); }
 void MprisPlayer::setShuffle(bool s) { m_player->setShuffle(s); }
 
+// One entry for each artist, which is what xesam:artist holds.
+static QStringList artistNames(const QVariantMap &track) {
+    QStringList names;
+    const QVariantList artists = track.value(QStringLiteral("artistList")).toList();
+    for (const QVariant &artist : artists) {
+        const QString name = artist.toMap().value(QStringLiteral("name")).toString();
+        if (!name.isEmpty()) names.append(name);
+    }
+    // A row from an older version has the names in one string, which stays
+    // whole: a name may hold a comma.
+    const QString joined = track.value(QStringLiteral("artists")).toString();
+    if (names.isEmpty() && !joined.isEmpty()) names.append(joined);
+    return names;
+}
+
 QVariantMap MprisPlayer::metadata() const {
     QVariantMap m;
     const auto track = m_player->currentTrackMap();
@@ -145,7 +160,8 @@ QVariantMap MprisPlayer::metadata() const {
     m["mpris:length"]     = (qlonglong)(track["duration"].toLongLong() * 1000000LL);
     m["mpris:artUrl"]     = track["coverUrl"].toString();
     m["xesam:title"]      = track["title"].toString();
-    m["xesam:artist"]     = QStringList{ track["artists"].toString() };
+    const QStringList artists = artistNames(track);
+    if (!artists.isEmpty()) m["xesam:artist"] = artists;
     m["xesam:album"]      = track["albumTitle"].toString();
     m["xesam:trackNumber"]= track["trackNumber"].toInt();
     return m;

@@ -11,6 +11,7 @@
 #include <QDBusVariant>
 #include <QDataStream>
 #include <QGuiApplication>
+#include <QJSEngine>
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QProcess>
@@ -921,6 +922,53 @@ private slots:
                              .value<QDBusObjectPath>().path());
         QCOMPARE(heard, (QStringList{ trackPath(3002) }));
         QCOMPARE(desk().statuses(), QStringList());
+    }
+
+    // ── Metadata ────────────────────────────────────────────────────────────
+
+    // xesam:artist is a list of strings, one for each artist. The row comes
+    // through JavaScript, the way a page hands its tracks to the player.
+    void eachArtistIsSentOnItsOwn() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QJSEngine js;
+        QJSEngine::setObjectOwnership(&a.p(), QJSEngine::CppOwnership);
+        js.globalObject().setProperty(QStringLiteral("player"), js.newQObject(&a.p()));
+        const QJSValue played = js.evaluate(QStringLiteral(
+            "player.playTracks([{ id: 3000, title: 'T', duration: 30, artists: 'First, Second',"
+            " artistList: [{ id: 1, name: 'First' }, { id: 2, name: 'Second' }] }], 0)"));
+        QVERIFY2(!played.isError(), qPrintable(played.toString()));
+        QCOMPARE(currentId(a.p()), 3000);
+
+        QCOMPARE(desk().get(QStringLiteral("Metadata")).toMap()
+                     .value(QStringLiteral("xesam:artist")).toStringList(),
+                 (QStringList{ QStringLiteral("First"), QStringLiteral("Second") }));
+    }
+
+    void aRowWithoutTheListOfArtists_data() {
+        QTest::addColumn<QString>("joined");
+        QTest::addColumn<QStringList>("sent");
+        QTest::newRow("the names in one string, as older versions saved a row")
+            << QStringLiteral("First, Second") << QStringList{ QStringLiteral("First, Second") };
+        QTest::newRow("no artist at all") << QString() << QStringList();
+    }
+
+    // The one string cannot be taken apart, a name may hold a comma. With no
+    // name there is no xesam:artist.
+    void aRowWithoutTheListOfArtists() {
+        QFETCH(QString, joined);
+        QFETCH(QStringList, sent);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVariantMap row = trackOf(3000);
+        row[QStringLiteral("artists")] = joined;
+        a.p().playTracks({ row }, 0);
+
+        const QVariantMap metadata = desk().get(QStringLiteral("Metadata")).toMap();
+        QCOMPARE(metadata.value(QStringLiteral("xesam:title")).toString(), QStringLiteral("T3000"));
+        QCOMPARE(metadata.contains(QStringLiteral("xesam:artist")), !sent.isEmpty());
+        QCOMPARE(metadata.value(QStringLiteral("xesam:artist")).toStringList(), sent);
     }
 
     // ── What a client can do ────────────────────────────────────────────────
