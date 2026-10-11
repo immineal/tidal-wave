@@ -138,6 +138,11 @@ chmod +x tidal-wave-x86_64.AppImage
 ./tidal-wave-x86_64.AppImage
 ```
 
+The file runs as it is and installs nothing. To have it in the application menu
+and kept up to date, open it with
+[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
+
 Qt 6.12 and FFmpeg are inside, so no Qt has to be installed. The host supplies
 glibc 2.34 or newer, OpenGL and EGL, fontconfig, OpenSSL 3 with its CA
 certificates, libcom_err and libgpg-error. A desktop installation has all of
