@@ -454,6 +454,59 @@ private slots:
                  "the media player was started by the restore");
     }
 
+    // ── a restore the user overtakes ────────────────────────────────────────
+
+    // The restored track, 1002, is still being asked for when the user moves
+    // on. The load that follows is the user's own: its failure is reported and
+    // its row stays in the queue.
+    void aLoadTheUserStartsDuringARestoreIsTheUsersOwn_data() {
+        QTest::addColumn<QString>("action");
+        QTest::addColumn<qlonglong>("picked");
+        QTest::addColumn<bool>("ruledOut");
+
+        QTest::newRow("a new context")       << QStringLiteral("play")     << qlonglong(2000) << true;
+        QTest::newRow("next")                << QStringLiteral("next")     << qlonglong(1003) << true;
+        QTest::newRow("previous")            << QStringLiteral("previous") << qlonglong(1001) << true;
+        QTest::newRow("a queue jump")        << QStringLiteral("jump")     << qlonglong(1004) << true;
+        QTest::newRow("removing the row")    << QStringLiteral("remove")   << qlonglong(1003) << true;
+        QTest::newRow("next, unreachable")   << QStringLiteral("next")     << qlonglong(1003) << false;
+    }
+
+    void aLoadTheUserStartsDuringARestoreIsTheUsersOwn() {
+        QFETCH(QString, action);
+        QFETCH(qlonglong, picked);
+        QFETCH(bool, ruledOut);
+        QVERIFY(saveFiveRowSession());
+
+        ScriptedLaunch b(ScriptedClient::Silent);
+        b.client.answerFor[picked] = ruledOut ? ScriptedClient::Unavailable
+                                              : ScriptedClient::Unreachable;
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.settle());
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+
+        if (action == QLatin1String("play")) {
+            b.p().playTracks(contextOf(2000, 3), 0);
+        } else if (action == QLatin1String("next")) {
+            b.p().next();
+        } else if (action == QLatin1String("previous")) {
+            // Twelve seconds in, the first press only rewinds.
+            b.p().previous();
+            b.p().previous();
+        } else if (action == QLatin1String("jump")) {
+            b.p().jumpToQueue(4);
+        } else {
+            b.p().removeFromQueue(2);
+        }
+        QVERIFY(b.settle());
+
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked}));
+        QCOMPARE(currentId(b.p()), picked);
+        QVERIFY2(ids(b.p().queueTracks()).contains(picked),
+                 "the track the user picked was dropped from the queue");
+        QCOMPARE(errorSpy.count(), 1);
+    }
+
     // ── a stale or enormous queue must not slow the launch ──────────────────
 
     // What quitting costs and what the next launch costs. The window around the

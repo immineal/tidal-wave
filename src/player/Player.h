@@ -240,7 +240,10 @@ private:
     // The only way to change m_index, so every move is announced.
     void setIndex(int i);
     void setManualCount(int n);
+    // A load the user asked for. It ends a restore that has not loaded yet.
     void loadAndPlay(int index);
+    // The load itself. Only the restore calls it directly, to stay in force.
+    void startLoad(int index);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;

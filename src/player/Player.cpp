@@ -69,7 +69,7 @@ void Player::initAudio() {
     // A session restored from the constructor had no player yet; load it now.
     if (m_restorePending) {
         m_restorePending = false;
-        loadAndPlay(m_index);
+        startLoad(m_index);
     }
 
     applySpectrumTap();
@@ -802,6 +802,15 @@ static void disposeDash(DashFetcher *dash, QObject *ctx) {
 }
 
 void Player::loadAndPlay(int index) {
+    if (index < 0 || index >= m_queue.count()) return;
+    // The user asked for this track, so a restore still waiting on its own
+    // load is over: this one plays, and its failures are reported.
+    m_restorePaused = false;
+    m_restoreSkips  = false;
+    startLoad(index);
+}
+
+void Player::startLoad(int index) {
     if (!m_player || index < 0 || index >= m_queue.count()) return;
 
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
@@ -1401,7 +1410,7 @@ void Player::restorePlaybackState() {
         m_pendingSeek   = sameTrack ? qMax<qint64>(0, savedPos) : 0;
         m_restorePaused = true;
         m_restoreSkips  = true;
-        if (m_player) loadAndPlay(m_index);
+        if (m_player) startLoad(m_index);
         else          m_restorePending = true;   // initAudio() will pick it up
     }
 
@@ -1441,6 +1450,6 @@ void Player::skipUnplayableTrack() {
     }
     if (m_index >= m_queue.count()) setIndex(m_queue.count() - 1);
     emit queueChanged();
-    loadAndPlay(m_index);
+    startLoad(m_index);
 }
 
