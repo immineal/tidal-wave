@@ -717,6 +717,29 @@ private slots:
         QVERIFY(!desk().get(QStringLiteral("CanGoNext")).toBool());
     }
 
+    // SetPosition names the track it means. A call for a track that is no
+    // longer the current one, or for a place outside the track, is dropped.
+    void setPositionDropsAStaleTrackAndAPlaceOutsideTheTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        std::unique_ptr<Launch> l;
+        QVERIFY(pausedOnTheThirdOfFive(l, false));
+        desk().forget();
+        const auto setPosition = [this](qlonglong track, qlonglong micros) {
+            desk().player(QStringLiteral("SetPosition"),
+                          { QVariant::fromValue(QDBusObjectPath(trackPath(track))), micros });
+        };
+
+        setPosition(1001, 5000000);
+        setPosition(1002, -1);
+        setPosition(1002, 31000000);
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
+        QCOMPARE(desk().seeked, QList<qlonglong>());
+
+        setPosition(1002, 5000000);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().seeked, (QList<qlonglong>{ 5000000 }), 5000);
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
 

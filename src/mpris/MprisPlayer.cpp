@@ -153,7 +153,14 @@ void MprisPlayer::Play()      { if (!m_player->playing()) m_player->playPause();
 void MprisPlayer::PlayPause() { m_player->playPause(); }
 void MprisPlayer::Stop()      { m_player->seek(0); Pause(); }
 void MprisPlayer::Seek(qlonglong offsetMicros) { m_player->seek(m_player->position() + offsetMicros/1000); }
-void MprisPlayer::SetPosition(const QDBusObjectPath &, qlonglong posMicros) { m_player->seek(posMicros/1000); }
+void MprisPlayer::SetPosition(const QDBusObjectPath &trackId, qlonglong posMicros) {
+    // A call that names another track was meant for one that has since gone.
+    const QVariantMap current = metadata();
+    if (trackId != current.value(QStringLiteral("mpris:trackid")).value<QDBusObjectPath>()) return;
+    const qlonglong length = current.value(QStringLiteral("mpris:length")).toLongLong();
+    if (posMicros < 0 || (length > 0 && posMicros > length)) return;
+    m_player->seek(posMicros / 1000);
+}
 
 MprisManager::MprisManager(Player *player, QObject *parent) : QObject(parent) {
     m_root        = new MprisRoot(this);
