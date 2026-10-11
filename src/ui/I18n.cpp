@@ -11,6 +11,14 @@
 namespace {
 // The source language, the one the strings are written in.
 const QLatin1String kSource("en");
+
+// The language part of a locale name: "de" for "de-AT" and "de_AT.UTF-8".
+// All of it, because "den" is a different language from "de".
+QString languageOf(const QString &localeName) {
+    qsizetype length = 0;
+    while (length < localeName.size() && localeName.at(length).isLetter()) ++length;
+    return localeName.left(length).toLower();
+}
 }
 
 I18n::I18n(Prefs *prefs, QObject *parent) : QObject(parent), m_prefs(prefs) {
@@ -26,28 +34,33 @@ QStringList I18n::supportedLanguages() {
     return {QStringLiteral("en"), QStringLiteral("de")};
 }
 
-QString I18n::resolveLanguage(const QString &pref, const QLocale &systemLocale) {
+QStringList I18n::systemDisplayLanguages() {
+    // On Windows and macOS, Qt below 6.10 puts the regional format's locale
+    // first in this list when the list does not contain it.
+    return QLocale::system().uiLanguages();
+}
+
+QString I18n::resolveLanguage(const QString &pref, const QStringList &displayLanguages,
+                              const QLocale &formatLocale) {
     const QStringList supported = supportedLanguages();
     if (supported.contains(pref)) return pref;
     if (pref != QLatin1String("system")) return kSource;
 
     // Catalogues are per language, so every regional variant finds the same
     // file.
-    const QString language = QLocale::languageToCode(systemLocale.language());
-    if (supported.contains(language)) return language;
-
-    // uiLanguages() is the user's ordered preference list (LANGUAGE on Linux).
-    const QStringList uiLanguages = systemLocale.uiLanguages();
-    for (const QString &tag : uiLanguages) {
-        const QString base = tag.left(2).toLower();
-        if (supported.contains(base)) return base;
+    for (const QString &name : displayLanguages) {
+        const QString language = languageOf(name);
+        if (supported.contains(language)) return language;
     }
+
+    const QString language = QLocale::languageToCode(formatLocale.language());
+    if (supported.contains(language)) return language;
     return kSource;
 }
 
 void I18n::apply() {
-    const QString next =
-        resolveLanguage(m_prefs ? m_prefs->language() : QString(), QLocale::system());
+    const QString next = resolveLanguage(m_prefs ? m_prefs->language() : QString(),
+                                         systemDisplayLanguages(), QLocale::system());
     if (next == m_effective) return;
     m_effective = next;
 

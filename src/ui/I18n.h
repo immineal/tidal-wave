@@ -32,9 +32,15 @@ public:
     // The catalogues that ship, source language first.
     static QStringList supportedLanguages();
 
-    // Resolves "system" against a locale, or an explicit code. Anything
-    // unrecognised, or a locale with no catalogue, gives the source language.
-    static QString resolveLanguage(const QString &pref, const QLocale &systemLocale);
+    // The languages the user wants the interface in, most wanted first, as
+    // locale names such as "de-AT".
+    static QStringList systemDisplayLanguages();
+
+    // Resolves the setting to a catalogue. For "system" the first display
+    // language that has one wins, then the language of the regional format.
+    // Everything else gives the source language.
+    static QString resolveLanguage(const QString &pref, const QStringList &displayLanguages,
+                                   const QLocale &formatLocale);
 
     // True once a .qm for the effective language is installed.
     bool isCatalogueLoaded() const { return m_loaded; }

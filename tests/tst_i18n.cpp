@@ -4,11 +4,36 @@
 
 #include <QTest>
 #include <QLocale>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
+#include <cstdio>
+
 #include "ui/I18n.h"
 #include "ui/Prefs.h"
+
+namespace {
+
+const char kChildFlag[] = "--print-system-language";
+
+// Prints the language a fresh install starts in, with the settings kept in
+// `settingsDir`.
+int printSystemLanguage(const QString &settingsDir) {
+    QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
+    QCoreApplication::setApplicationName(QStringLiteral("tst_i18n-child"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir);
+
+    Prefs prefs;
+    I18n i18n(&prefs);
+    std::fputs(qPrintable(i18n.effectiveLanguage()), stdout);
+    return 0;
+}
+
+} // namespace
 
 class TestI18n : public QObject {
     Q_OBJECT
@@ -42,41 +67,125 @@ private slots:
 
     void resolve_data() {
         QTest::addColumn<QString>("pref");
-        QTest::addColumn<QLocale>("system");
+        QTest::addColumn<QStringList>("display");
+        QTest::addColumn<QLocale>("format");
         QTest::addColumn<QString>("expected");
 
-        QTest::newRow("explicit english")
-            << "en" << QLocale(QLocale::German, QLocale::Germany) << "en";
-        QTest::newRow("explicit german")
-            << "de" << QLocale(QLocale::English, QLocale::UnitedStates) << "de";
+        const QLocale german(QLocale::German, QLocale::Germany);
+        const QLocale american(QLocale::English, QLocale::UnitedStates);
+        const QLocale french(QLocale::French, QLocale::France);
+        const QStringList none;
 
-        QTest::newRow("system, german")
-            << "system" << QLocale(QLocale::German, QLocale::Germany) << "de";
+        QTest::newRow("explicit english") << "en" << QStringList{"de-DE"} << german << "en";
+        QTest::newRow("explicit german")  << "de" << QStringList{"en-US"} << american << "de";
+
+        // The display language decides, whatever the regional format is.
+        QTest::newRow("german display, english format")
+            << "system" << QStringList{"de-DE"} << american << "de";
+        QTest::newRow("english display, german format")
+            << "system" << QStringList{"en-US"} << german << "en";
+        // The list is in the user's order, and the first with a catalogue wins.
+        QTest::newRow("display order, german ahead of english")
+            << "system" << QStringList{"fr-FR", "de-DE", "en-US"} << american << "de";
+        QTest::newRow("display order, english ahead of german")
+            << "system" << QStringList{"en-GB", "de-DE"} << german << "en";
         // Austrian and Swiss German have to find the same catalogue.
-        QTest::newRow("system, austrian german")
-            << "system" << QLocale(QLocale::German, QLocale::Austria) << "de";
-        QTest::newRow("system, swiss german")
-            << "system" << QLocale(QLocale::German, QLocale::Switzerland) << "de";
-        QTest::newRow("system, british english")
-            << "system" << QLocale(QLocale::English, QLocale::UnitedKingdom) << "en";
+        QTest::newRow("austrian german display")
+            << "system" << QStringList{"de-AT"} << american << "de";
+        QTest::newRow("swiss german display, POSIX spelling")
+            << "system" << QStringList{"de_CH.UTF-8"} << american << "de";
+        // "den" is a language of its own and only starts like "de".
+        QTest::newRow("a longer code is another language")
+            << "system" << QStringList{"den", "en-US"} << QLocale(QLocale::C) << "en";
+
+        // The regional format is asked when no display language has a catalogue.
+        QTest::newRow("no display language, german format")
+            << "system" << none << german << "de";
+        QTest::newRow("no display language, austrian format")
+            << "system" << none << QLocale(QLocale::German, QLocale::Austria) << "de";
+        QTest::newRow("no display language, british format")
+            << "system" << none << QLocale(QLocale::English, QLocale::UnitedKingdom) << "en";
+        QTest::newRow("untranslated display, german format")
+            << "system" << QStringList{"fr-FR"} << german << "de";
         // No catalogue for French, so English rather than nothing.
-        QTest::newRow("system, untranslated locale")
-            << "system" << QLocale(QLocale::French, QLocale::France) << "en";
-        QTest::newRow("system, C locale")
-            << "system" << QLocale(QLocale::C) << "en";
+        QTest::newRow("untranslated display and format")
+            << "system" << QStringList{"fr-FR", "es-ES"} << french << "en";
+        QTest::newRow("C locale")
+            << "system" << QStringList{"C"} << QLocale(QLocale::C) << "en";
 
         // A settings file from a build that offered more languages.
         QTest::newRow("unknown code falls back")
-            << "klingon" << QLocale(QLocale::German, QLocale::Germany) << "en";
+            << "klingon" << QStringList{"de-DE"} << german << "en";
         QTest::newRow("empty falls back")
-            << "" << QLocale(QLocale::German, QLocale::Germany) << "en";
+            << "" << QStringList{"de-DE"} << german << "en";
     }
 
     void resolve() {
         QFETCH(QString, pref);
-        QFETCH(QLocale, system);
+        QFETCH(QStringList, display);
+        QFETCH(QLocale, format);
         QFETCH(QString, expected);
-        QCOMPARE(I18n::resolveLanguage(pref, system), expected);
+        QCOMPARE(I18n::resolveLanguage(pref, display, format), expected);
+    }
+
+    // What "system" comes to under a real environment. The child is this
+    // binary again: Qt reads the locale variables once per process.
+    void systemFollowsTheEnvironment_data() {
+        QTest::addColumn<QStringList>("environment");
+        QTest::addColumn<QString>("expected");
+
+        const auto row = [](const char *environment, const char *expected) {
+            QTest::newRow(*environment ? environment : "nothing set")
+                << QString::fromLatin1(environment).split(QLatin1Char(' '), Qt::SkipEmptyParts)
+                << QString::fromLatin1(expected);
+        };
+        row("LANG=de_DE.UTF-8", "de");
+        row("LANG=de_AT.UTF-8", "de");
+        row("LANG=en_US.UTF-8", "en");
+        row("LANG=fr_FR.UTF-8", "en");
+        // LANGUAGE is an ordered list and outranks LANG.
+        row("LANG=en_US.UTF-8 LANGUAGE=de:en", "de");
+        row("LANG=de_DE.UTF-8 LANGUAGE=en:de", "en");
+        row("LANG=en_US.UTF-8 LANGUAGE=fr:de:en", "de");
+        row("LANG=de_DE.UTF-8 LANGUAGE=fr", "en");
+        // LC_MESSAGES overrides LANG for the language, and LC_ALL overrides both.
+        row("LANG=de_DE.UTF-8 LC_MESSAGES=en_US.UTF-8", "en");
+        row("LANG=en_US.UTF-8 LC_MESSAGES=de_DE.UTF-8", "de");
+        row("LANG=en_US.UTF-8 LC_MESSAGES=en_US.UTF-8 LC_ALL=de_DE.UTF-8", "de");
+        // Number and date formats alone do not change the language.
+        row("LANG=en_US.UTF-8 LC_NUMERIC=de_DE.UTF-8 LC_TIME=de_DE.UTF-8", "en");
+        row("LANG=de_DE.UTF-8 LC_NUMERIC=en_US.UTF-8 LC_TIME=en_US.UTF-8", "de");
+        row("LANG=C", "en");
+        row("LANG=de_DE.UTF-8 LC_MESSAGES=C", "en");
+        row("", "en");
+    }
+
+    void systemFollowsTheEnvironment() {
+        QFETCH(QStringList, environment);
+        QFETCH(QString, expected);
+
+        QTemporaryDir settings;
+        QVERIFY(settings.isValid());
+
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QStringList inherited = env.keys();
+        for (const QString &key : inherited) {
+            if (key == QLatin1String("LANG") || key == QLatin1String("LANGUAGE")
+                || key.startsWith(QLatin1String("LC_")))
+                env.remove(key);
+        }
+        for (const QString &assignment : std::as_const(environment))
+            env.insert(assignment.section(QLatin1Char('='), 0, 0),
+                       assignment.section(QLatin1Char('='), 1));
+
+        QProcess child;
+        child.setProcessEnvironment(env);
+        child.start(QCoreApplication::applicationFilePath(),
+                    { QString::fromLatin1(kChildFlag), settings.path() });
+        QVERIFY2(child.waitForFinished(30000), "the child did not finish");
+        QCOMPARE(child.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(child.exitCode(), 0);
+        QCOMPARE(QString::fromLatin1(child.readAllStandardOutput()), expected);
     }
 
     // ── the live object ──────────────────────────────────────────────────
@@ -213,5 +322,13 @@ private:
     QTemporaryDir m_dir;
 };
 
-QTEST_GUILESS_MAIN(TestI18n)
+int main(int argc, char **argv) {
+    QCoreApplication app(argc, argv);
+    if (argc == 3 && qstrcmp(argv[1], kChildFlag) == 0)
+        return printSystemLanguage(QString::fromLocal8Bit(argv[2]));
+
+    TestI18n tc;
+    return QTest::qExec(&tc, argc, argv);
+}
+
 #include "tst_i18n.moc"
