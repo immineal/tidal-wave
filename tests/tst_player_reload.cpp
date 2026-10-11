@@ -525,6 +525,70 @@ private slots:
                                 "The audio format may not be supported."));
     }
 
+    // Nothing is loaded behind such a track, whichever way its file came to
+    // the backend. The player does not say that it plays, and the next press
+    // on play asks for the track again.
+    void aFileTheBackendCannotOpenLeavesTheLoadOwed_data() {
+        QTest::addColumn<QString>("how");
+        QTest::newRow("a track the user picked") << QStringLiteral("picked");
+        QTest::newRow("a restored track")        << QStringLiteral("restored");
+        QTest::newRow("a track fetched ahead")   << QStringLiteral("ahead");
+    }
+
+    void aFileTheBackendCannotOpenLeavesTheLoadOwed() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, how);
+        const StreamManifest noise = oneFileAt(m_server.url(QStringLiteral("/noise")));
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+        if (how == QLatin1String("restored")) QVERIFY(saveFiveRowSession());
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        QSignalSpy fetched(a.network(), &QNetworkAccessManager::finished);
+        qlonglong id = 3000;
+        if (how == QLatin1String("restored")) {
+            id = 1002;
+            QVERIFY(a.client.answer(id, noise));
+        } else if (how == QLatin1String("ahead")) {
+            // Downloaded while the track before it plays, handed over at its end.
+            id = 3001;
+            a.p().playTracks(contextOf(3000, 3), 0);
+            QVERIFY(a.client.answer(3000, track));
+            QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+            a.mp()->setPosition(6000);
+            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001}), 5000);
+            QVERIFY(a.client.answer(id, noise));
+            QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 2, 10000);
+            a.mp()->setPosition(29000);
+        } else {
+            a.p().playTracks(contextOf(3000, 2), 0);
+            QVERIFY(a.client.answer(id, noise));
+        }
+
+        QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() >= 1, 15000);
+        QTest::qWait(500);
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(),
+                 QStringLiteral("This track could not be played. "
+                                "The audio format may not be supported."));
+        QCOMPARE(currentId(a.p()), id);
+        QVERIFY(!a.p().loading());
+        QVERIFY2(!a.p().playing(), "the player says it plays a file the backend could not open");
+        QVERIFY2(a.mp()->playbackState() == QMediaPlayer::StoppedState,
+                 "the backend was started on a file it could not open");
+
+        const QList<qlonglong> asked = a.client.asked;
+        a.p().playPause();
+        QVERIFY2(a.client.asked == asked + QList<qlonglong>{id},
+                 "the press on play asked for nothing");
+        QVERIFY(a.p().loading());
+        QVERIFY(a.client.answer(id, track));
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track did not play once its file opened",
+                                  10000);
+        QCOMPARE(errorSpy.count(), 1);
+    }
+
     // ── a track Tidal no longer has ─────────────────────────────────────────
 
     // Picked by the user, it stays where it is and is named for what it is,

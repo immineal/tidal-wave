@@ -1118,8 +1118,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         next();
         break;
     case QMediaPlayer::InvalidMedia:
-        setLoading(false);
-        setLoadError(tr("This track could not be played. The audio format may not be supported."));
+        failLoad(tr("This track could not be played. The audio format may not be supported."));
         break;
     default: break;
     }
@@ -1136,10 +1135,19 @@ void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 }
 
 void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
-    setLoading(false);
     qWarning() << "Player error:" << msg;
     // The sentence for invalid media, which the backend reports as well.
-    setLoadError(tr("This track could not be played. The audio format may not be supported."));
+    const QString said =
+        tr("This track could not be played. The audio format may not be supported.");
+    // The backend could not open the file it was handed, so nothing is
+    // loaded. Qt 6.4 reports that here alone, with no invalid media to follow.
+    if (m_player && !m_player->source().isEmpty()
+        && m_player->mediaStatus() == QMediaPlayer::LoadingMedia) {
+        failLoad(said);
+        return;
+    }
+    setLoading(false);
+    setLoadError(said);
 }
 
 void Player::cancelPreload() {
@@ -1533,6 +1541,12 @@ void Player::restorePlaybackState() {
 
 void Player::beginPlayback() {
     if (!m_player) return;
+    // Qt 6.4 opens the file inside setSource(). One it refused there is not
+    // started: the backend would report that it plays.
+    if (m_loadOwed) {
+        m_restorePaused = false;
+        return;
+    }
     if (m_restorePaused) {
         // A restored session stays paused: opening the app must not play.
         m_restorePaused = false;
