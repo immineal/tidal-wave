@@ -583,8 +583,132 @@ private slots:
         QCOMPARE(desk().seeked, QList<qlonglong>());
     }
 
+    // ── Next and Previous ───────────────────────────────────────────────────
+
+    void steps_data() {
+        QTest::addColumn<bool>("restored");
+        QTest::addColumn<bool>("forward");
+        QTest::newRow("Next, a session started by hand")     << false << true;
+        QTest::newRow("Previous, a session started by hand") << false << false;
+        QTest::newRow("Next, a restored session")            << true  << true;
+        QTest::newRow("Previous, a restored session")        << true  << false;
+    }
+
+    // The specification: "If playback is paused or stopped, it remains that
+    // way." The track changes, and it waits at its start for Play.
+    void nextAndPreviousLeaveAPausedPlayerPaused_data() { steps_data(); }
+    void nextAndPreviousLeaveAPausedPlayerPaused() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, restored);
+        QFETCH(bool, forward);
+        const qlonglong to = forward ? 1003 : 1001;
+
+        std::unique_ptr<Launch> l;
+        QVERIFY(pausedOnTheThirdOfFive(l, restored));
+        desk().forget();
+
+        desk().player(forward ? QStringLiteral("Next") : QStringLiteral("Previous"));
+        QCOMPARE(currentId(l->p()), to);
+        QVERIFY(l->client.answer(to, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(l->loaded(), 10000);
+        QTest::qWait(400);
+        QVERIFY2(!l->p().playing(), "the step started playback");
+        QCOMPARE(desk().statuses(), QStringList());
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
+        const QVariantList metadata = desk().announced(QStringLiteral("Metadata"));
+        QCOMPARE(metadata.count(), 1);
+        QCOMPARE(metadata.constFirst().toMap().value(QStringLiteral("mpris:trackid"))
+                     .value<QDBusObjectPath>().path(), trackPath(to));
+
+        // The new track is loaded, so Play starts it without another request.
+        desk().player(QStringLiteral("Play"));
+        QTRY_VERIFY_WITH_TIMEOUT(l->p().playing(), 10000);
+        QCOMPARE(l->client.asked, (QList<qlonglong>{1002, to}));
+        QTRY_COMPARE_WITH_TIMEOUT(desk().statuses(),
+                                  (QStringList{ QStringLiteral("Playing") }), 5000);
+    }
+
+    // The program's own buttons are a separate matter: a step onto another
+    // track starts it, in either kind of session.
+    void theProgramsOwnNextAndPreviousStartTheTrack_data() { steps_data(); }
+    void theProgramsOwnNextAndPreviousStartTheTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, restored);
+        QFETCH(bool, forward);
+        const qlonglong to = forward ? 1003 : 1001;
+
+        std::unique_ptr<Launch> l;
+        QVERIFY(pausedOnTheThirdOfFive(l, restored));
+
+        if (forward) l->p().next();
+        else         l->p().previous();
+        QCOMPARE(currentId(l->p()), to);
+        QVERIFY(l->client.answer(to, track()));
+        QTRY_VERIFY2_WITH_TIMEOUT(l->p().playing(), "the step left the track paused", 10000);
+    }
+
+    // More than three seconds in, Previous goes back to the start of the same
+    // track, and a paused track stays paused there.
+    void previousFarIntoAPausedTrackGoesToItsStart() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QVERIFY(saveFiveRowSession());
+
+        Launch b;
+        QVERIFY(b.audioUp());
+        QVERIFY(b.client.answer(1002, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
+        desk().forget();
+
+        desk().player(QStringLiteral("Previous"));
+        QCOMPARE(currentId(b.p()), 1002);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().seeked, (QList<qlonglong>{0}), 5000);
+        QVERIFY(!b.p().playing());
+        QCOMPARE(desk().statuses(), QStringList());
+    }
+
+    // While a track plays, Next plays the one after it.
+    void nextWhilePlayingPlaysTheNextTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirstOf(a, 3000));
+        desk().forget();
+
+        desk().player(QStringLiteral("Next"));
+        QCOMPARE(currentId(a.p()), 3001);
+        QVERIFY(a.client.answer(3001, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        QCOMPARE(desk().statuses(), QStringList());
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
+
+    // Five rows, paused at the start of the third with the track loaded. The
+    // restored kind was left there by an earlier launch.
+    bool pausedOnTheThirdOfFive(std::unique_ptr<Launch> &l, bool restored)
+    {
+        if (restored) {
+            Launch a;
+            if (!a.audioUp()) return false;
+            a.p().playTracks(contextOf(1000, 5), 2);
+            a.p().savePlaybackState();
+        }
+        l = std::make_unique<Launch>();
+        if (!l->audioUp()) return false;
+        if (!restored) l->p().playTracks(contextOf(1000, 5), 2);
+        if (!l->client.answer(1002, track())) return false;
+        if (!restored) {
+            if (!QTest::qWaitFor([&l] { return l->p().playing(); }, 10000)) return false;
+            l->p().playPause();
+            l->p().seek(0);
+        }
+        return QTest::qWaitFor([&l] {
+            return l->loaded() && l->mp()->playbackState() == QMediaPlayer::PausedState
+                && l->mp()->position() == 0;
+        }, 10000);
+    }
 
     // Whether a position in microseconds lies between two in milliseconds.
     static bool within(qlonglong micros, qint64 fromMs, qint64 toMs)

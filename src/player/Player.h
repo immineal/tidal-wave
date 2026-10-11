@@ -138,8 +138,9 @@ public:
     Q_INVOKABLE void playTracks      (const QVariantList &tracks, int startIndex = 0);
 
     Q_INVOKABLE void playPause ();
-    Q_INVOKABLE void next      ();
-    Q_INVOKABLE void previous  ();
+    // heldPaused is for MPRIS: the track changes and waits there for play.
+    Q_INVOKABLE void next      (bool heldPaused = false);
+    Q_INVOKABLE void previous  (bool heldPaused = false);
     Q_INVOKABLE void seek      (qint64 ms);
     Q_INVOKABLE void setVolume (double v);
     Q_INVOKABLE void setMuted  (bool m);
@@ -246,7 +247,7 @@ private:
     void setIndex(int i);
     void setManualCount(int n);
     // A load the user asked for. It ends a restore that has not loaded yet.
-    void loadAndPlay(int index);
+    void loadAndPlay(int index, bool heldPaused = false);
     // The load itself. Only the restore calls it directly, to stay in force.
     void startLoad(int index);
     // The load ended with nothing to play: reports why, and owes the track
@@ -332,7 +333,8 @@ private:
     bool                 m_suspendPersist = false;
     // The restore ran before initAudio(), so the load is owed.
     bool                 m_restorePending = false;
-    // The next successful load belongs to a restored session: hold it paused.
+    // The next successful load comes up paused: a restored session, or a step
+    // MPRIS made while paused.
     bool                 m_restorePaused  = false;
     // Whether the load under way ends in playback. Set as the load starts.
     bool                 m_loadPlays      = false;

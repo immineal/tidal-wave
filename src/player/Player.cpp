@@ -610,11 +610,11 @@ void Player::playPause() {
         m_player->play();
 }
 
-void Player::next() {
+void Player::next(bool heldPaused) {
     if (!m_player) return;
     const int n = nextIndex();
     if (n < 0) { m_player->stop(); return; }
-    if (n == m_index) { loadAndPlay(m_index); return; }   // repeat one
+    if (n == m_index) { loadAndPlay(m_index, heldPaused); return; }   // repeat one
     if (n == m_index + 1 && m_manualCount > 0) {
         // Stepping onto the head of the manual queue consumes it.
         setManualCount(m_manualCount - 1);
@@ -623,15 +623,15 @@ void Player::next() {
     } else if (relocateTo(n)) {
         emit queueChanged();
     }
-    loadAndPlay(m_index);
+    loadAndPlay(m_index, heldPaused);
 }
 
-void Player::previous() {
+void Player::previous(bool heldPaused) {
     if (position() > 3000) { seek(0); return; }
     const int p = previousIndex();
     if (p < 0) { seek(0); return; }
     if (relocateTo(p)) emit queueChanged();
-    loadAndPlay(m_index);
+    loadAndPlay(m_index, heldPaused);
 }
 
 void Player::seek(qint64 ms) {
@@ -823,11 +823,12 @@ static QTemporaryFile *saveToTempFile(const QByteArray &data) {
     return nullptr;
 }
 
-void Player::loadAndPlay(int index) {
+void Player::loadAndPlay(int index, bool heldPaused) {
     if (index < 0 || index >= m_queue.count()) return;
     // The user asked for this track, so a restore still waiting on its own
-    // load is over: this one plays, and its failures are reported.
-    m_restorePaused = false;
+    // load is over: this one plays unless it is held, and its failures are
+    // reported. A cast device takes no hold.
+    m_restorePaused = heldPaused && !casting();
     m_restoreSkips  = false;
     startLoad(index);
 }

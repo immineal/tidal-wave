@@ -129,8 +129,9 @@ double MprisPlayer::volume() const { return m_player->volume(); }
 void   MprisPlayer::setVolume(double v) { m_player->setVolume(v); }
 qlonglong MprisPlayer::position() const { return m_player->position() * 1000LL; }
 
-void MprisPlayer::Next()      { m_player->next(); }
-void MprisPlayer::Previous()  { m_player->previous(); }
+// "If playback is paused or stopped, it remains that way."
+void MprisPlayer::Next()      { m_player->next(playbackStatus() != QLatin1String("Playing")); }
+void MprisPlayer::Previous()  { m_player->previous(playbackStatus() != QLatin1String("Playing")); }
 void MprisPlayer::Pause()     { if (m_player->playing()) m_player->playPause(); }
 void MprisPlayer::Play()      { if (!m_player->playing()) m_player->playPause(); }
 void MprisPlayer::PlayPause() { m_player->playPause(); }
