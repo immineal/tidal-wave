@@ -106,6 +106,12 @@ void MprisPlayer::announce() {
     }
 }
 
+qint64 MprisPlayer::lengthMs() const {
+    const qint64 loaded = m_player->duration();
+    if (loaded > 0) return loaded;
+    return m_player->currentTrackMap().value(QStringLiteral("duration")).toLongLong() * 1000;
+}
+
 QString MprisPlayer::playbackStatus() const {
     if (m_player->currentTrackMap().isEmpty()) return QStringLiteral("Stopped");
     if (m_player->playing()) return QStringLiteral("Playing");
@@ -156,7 +162,15 @@ void MprisPlayer::Pause()     { if (m_player->playing()) m_player->playPause(); 
 void MprisPlayer::Play()      { if (!m_player->playing()) m_player->playPause(); }
 void MprisPlayer::PlayPause() { m_player->playPause(); }
 void MprisPlayer::Stop()      { m_player->seek(0); Pause(); }
-void MprisPlayer::Seek(qlonglong offsetMicros) { m_player->seek(m_player->position() + offsetMicros/1000); }
+void MprisPlayer::Seek(qlonglong offsetMicros) {
+    if (!hasTrack()) return;
+    const qint64 to = m_player->position() + offsetMicros / 1000;
+    // "If the value passed in would mean seeking beyond the end of the track,
+    // acts like a call to Next." The end itself counts: nothing plays from it.
+    const qint64 length = lengthMs();
+    if (length > 0 && to >= length) { Next(); return; }
+    m_player->seek(qMax<qint64>(0, to));
+}
 void MprisPlayer::SetPosition(const QDBusObjectPath &trackId, qlonglong posMicros) {
     // A call that names another track was meant for one that has since gone.
     const QVariantMap current = metadata();

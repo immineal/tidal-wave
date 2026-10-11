@@ -24,6 +24,9 @@
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
+#ifdef Q_OS_LINUX
+#include "cast/CastSession.h"
+#endif
 #include "mpris/MprisPlayer.h"
 #include "player/Player.h"
 
@@ -600,6 +603,81 @@ private slots:
         QTest::qWait(300);
         const qlonglong position = desk().get(QStringLiteral("Position")).toLongLong();
         QVERIFY2(within(position, 11750, 12250), qPrintable(QString::number(position)));
+        QCOMPARE(desk().seeked, QList<qlonglong>());
+    }
+
+    // ── Seek ────────────────────────────────────────────────────────────────
+
+    void aSeekPastTheEndActsLikeNext_data() {
+        QTest::addColumn<bool>("paused");
+        QTest::addColumn<qlonglong>("by");
+        QTest::newRow("a paused track, to its very end")  << true  << qlonglong(30000000);
+        QTest::newRow("a track that plays, past its end") << false << qlonglong(40000000);
+    }
+
+    // The specification: "If the value passed in would mean seeking beyond the
+    // end of the track, acts like a call to Next." A paused player waits on
+    // the next track, and no client hears of a place at or past the end.
+    void aSeekPastTheEndActsLikeNext() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, paused);
+        QFETCH(qlonglong, by);
+
+        std::unique_ptr<Launch> l;
+        QVERIFY(pausedOnTheThirdOfFive(l, false));
+        if (!paused) {
+            l->p().playPause();
+            QTRY_VERIFY_WITH_TIMEOUT(l->started(), 10000);
+        }
+        desk().forget();
+
+        desk().player(QStringLiteral("Seek"), { by });
+        QCOMPARE(currentId(l->p()), 1003);
+        QVERIFY(l->client.answer(1003, track()));
+        if (paused) {
+            QTRY_VERIFY_WITH_TIMEOUT(l->loaded(), 10000);
+            QTest::qWait(400);
+            QVERIFY2(!l->p().playing(), "the seek started playback");
+        } else {
+            QTRY_VERIFY_WITH_TIMEOUT(l->started(), 10000);
+            QTest::qWait(400);
+        }
+        QCOMPARE(desk().status(), paused ? QStringLiteral("Paused") : QStringLiteral("Playing"));
+        QCOMPARE(desk().statuses(), QStringList());
+        for (const qlonglong at : std::as_const(desk().seeked))
+            QVERIFY2(within(at, 0, 500), qPrintable(QString::number(at)));
+    }
+
+    // A seek back past the start goes to the start. A cast device is sent the
+    // place as it is and reports it back, so it has to be in the track.
+    void aSeekBackPastTheStartGoesToTheStart() {
+#ifdef Q_OS_LINUX
+        CastSession device;
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(3000, 2), 0);
+        a.p().beginCast(&device);
+        a.p().onCastDuration(30);
+        a.p().onCastPosition(5);
+        desk().forget();
+
+        desk().player(QStringLiteral("Seek"), { qlonglong(-20000000) });
+        QTRY_COMPARE_WITH_TIMEOUT(desk().seeked, (QList<qlonglong>{ 0 }), 5000);
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
+        QCOMPARE(currentId(a.p()), 3000);
+#else
+        QSKIP("casting is built on Linux only");
+#endif
+    }
+
+    // "If the CanSeek property is false, this has no effect."
+    void withNoTrackSeekMovesNothing() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        desk().forget();
+
+        desk().player(QStringLiteral("Seek"), { qlonglong(5000000) });
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
         QCOMPARE(desk().seeked, QList<qlonglong>());
     }
 

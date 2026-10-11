@@ -107,6 +107,8 @@ private:
     bool hasTrack() const { return !m_player->currentTrackMap().isEmpty(); }
     // Where a client that heard every signal takes the position to be.
     qint64 reckonedPosition() const;
+    // The length of what is loaded, and the catalogue's until something is.
+    qint64 lengthMs() const;
 
     // How far the position may be from the reckoned one and go unannounced.
     static constexpr qint64 kReckoningSlackMs = 500;
