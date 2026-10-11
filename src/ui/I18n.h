@@ -2,6 +2,7 @@
 
 #pragma once
 #include <QObject>
+#include <QPointer>
 #include <QQmlEngine>
 #include <QStringList>
 #include <QTranslator>
@@ -48,7 +49,8 @@ private:
     void apply();
 
     Prefs      *m_prefs  = nullptr;
-    QQmlEngine *m_engine = nullptr;
+    // Guarded: the engine is destroyed before this object.
+    QPointer<QQmlEngine> m_engine;
     QTranslator m_appTranslator;
     QTranslator m_qtTranslator;
     QString     m_effective;

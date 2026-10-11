@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QWindow>
@@ -538,6 +539,13 @@ bool Application::reallyQuit() const {
 }
 
 Application::Application(QObject *parent) : QObject(parent) {
+}
+
+Application::~Application() {
+    // The engine goes first: its bindings read this object and its children,
+    // and would re-evaluate against null as each of them is destroyed.
+    // The member is cleared first, so nothing reaches a half-destroyed engine.
+    delete std::exchange(m_engine, nullptr);
 }
 
 int Application::run(int argc, char **argv) {

@@ -31,6 +31,7 @@ class Application : public QObject {
     Q_PROPERTY(bool reducedMotion READ reducedMotion NOTIFY reducedMotionChanged)
 public:
     explicit Application(QObject *parent = nullptr);
+    ~Application() override;
     int run(int argc, char **argv);
 
     bool reallyQuit() const;
