@@ -133,17 +133,17 @@
          here that has to be touched by hand when v@PROJECT_VERSION@ is tagged. -->
     <release version="@PROJECT_VERSION@" date="2026-10-11">
       <description>
-        <p>Six themes, a settings panel, and lossless that is actually lossless.</p>
+        <p>Six themes, a sidebar for the whole library, and lossless that is actually lossless.</p>
         <ul>
           <li>Lossless plays the FLAC file. It had been serving the same 320 kbps AAC as High</li>
           <li>An artist page shows singles, EPs and compilations, not only full albums</li>
           <li>Six themes, paired light and dark, plus a true-black mode for OLED screens</li>
-          <li>A lyrics view, album credits, and artist biographies with clickable names</li>
-          <li>A Settings panel, live language switching, and a complete German catalogue</li>
-          <li>The sidebar rebuilt as one searchable list, with pinning and drag-to-reorder</li>
-          <li>Now Playing reworked: a spectrum display, a cover-coloured page, a sleep timer</li>
+          <li>A fullscreen reading view for lyrics, and credits for tracks and albums</li>
+          <li>Live language switching and a complete German catalogue</li>
+          <li>The sidebar lists the whole library in one searchable list, with pinning and drag-to-reorder</li>
+          <li>Fullscreen Now Playing coloured from the cover, and bars that can follow the music</li>
           <li>The audio output follows the system default as it changes, without losing position</li>
-          <li>Reduced-motion and software-rendering switches, and a daily opt-out update check</li>
+          <li>Settings grew into a full panel, with a software-rendering switch and a daily opt-out update check</li>
         </ul>
       </description>
     </release>
