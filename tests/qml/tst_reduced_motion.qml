@@ -50,9 +50,17 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(1)
-        waitForRendering(item, settleMs)
+        frame(item)
     }
 
     // One turn of the scene: long enough for a zero-duration animation to
@@ -157,7 +165,7 @@ TestCase {
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         return host
     }
 
@@ -239,7 +247,7 @@ TestCase {
         var host = createTemporaryObject(shellHost, testCase)
         verify(host, "the sidebar host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
 
         var sb = host.sidebar
         compare(sb.reduceMotion, row.reduced,
@@ -652,7 +660,7 @@ TestCase {
         verify(host, "the sidebar host window was not created")
         host.width = 1280
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
 
         var sb = host.sidebar
         verify(!sb.compact, "1280px must give the full sidebar, not the rail")
@@ -874,7 +882,7 @@ TestCase {
         verify(host, "the sidebar host window was not created")
         host.width = 1280
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
 
         var sb = host.sidebar
         verify(!sb.compact, "1280px must give the full sidebar, not the rail")
@@ -987,7 +995,7 @@ TestCase {
                    + rowCentre(bar, coll).toFixed(1))
             wait(4)
         }
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         verify(Math.abs(barCentre(bar) - rowCentre(bar, coll)) <= 1,
                "the bar is not on Collection")
         verify(Math.abs(rowCentre(bar, coll) - rowCentre(bar, home)) > 8,
@@ -1430,7 +1438,7 @@ TestCase {
         win.width = 1280
         win.height = 900
         win.visible = true
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         compare(win.currentPage, "home", "the window did not start on Home")
         compare(win.nowPlayingness, 0, "Now Playing is up with nothing asking for it")
@@ -1507,7 +1515,7 @@ TestCase {
         page.showLyrics = true
         tryVerify(function () { return page.lyricsness === 1 }, settleMs,
                   "the lyrics panel never opened")
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
 
         var view = findByName(page, "nowPlayingLyricsView")
         verify(view, "the lyric list was not found")

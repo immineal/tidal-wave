@@ -154,9 +154,17 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(1)
-        waitForRendering(item, 2000)
+        frame(item)
     }
 
     function findByName(item, name) {
@@ -255,7 +263,7 @@ TestCase {
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
 
         var panel = host.sidebar.settingsPanel
         verify(panel, "SideBar exposes no settingsPanel")

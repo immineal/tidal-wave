@@ -129,11 +129,19 @@ TestCase {
         return page
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     // Layouts resize in the polish phase, so give the window a frame (plus one
     // event-loop turn for the bindings the stubs resolve synchronously).
     function settle(item) {
         wait(1)
-        waitForRendering(item, 2000)
+        frame(item)
     }
 
     function describe(item) {

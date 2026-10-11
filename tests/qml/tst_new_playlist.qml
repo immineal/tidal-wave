@@ -81,9 +81,17 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(1)
-        waitForRendering(item, settleMs)
+        frame(item)
     }
 
     function findByName(item, name) {
@@ -167,7 +175,7 @@ TestCase {
         verify(host, "the host window was not created")
         host.width = w
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         // Park the pointer clear of the rail: a freshly shown window inherits the
         // position of the last synthesized event, which under the offscreen
         // platform is often inside the sidebar and would hover-expand it.
@@ -184,7 +192,7 @@ TestCase {
         verify(host, "the host window was not created")
         host.width = w
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         mouseMove(host.contentItem, 4, host.height - 4)
         wait(1)
         return host
@@ -302,7 +310,7 @@ TestCase {
     function test_the_dialog_fits_the_smallest_window() {
         var host = showPane(640)
         host.height = 600
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         var dlg = createTemporaryObject(dialogC, host.pane, {})
         verify(dlg, "NewPlaylistDialog did not load")
         dlg.openEmpty()

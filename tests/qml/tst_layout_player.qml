@@ -278,6 +278,14 @@ TestCase {
         }
     }
 
+    // Asks the window for a frame and waits for it. A window with nothing new
+    // to draw swaps no frame, and waitForRendering() alone would run out its
+    // five seconds and return false.
+    function frame(host) {
+        host.update()
+        verify(waitForRendering(host.contentItem), "the window drew no frame")
+    }
+
     // The size goes in as an initial property. Assigned after creation, the
     // page would be born at the host's declared size and measured part way
     // through its rearrangement: waitForRendering() does not wait for it.
@@ -286,7 +294,7 @@ TestCase {
                                          { width: w, height: h })
         verify(host, "host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host)
         return host
     }
 
@@ -720,7 +728,7 @@ TestCase {
         var host = showHost(nowPlayingHost, 1920, 1200)
         var page = host.page
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
         var cluster = volumeCluster(page)
         var mute = findChild(cluster, "nowPlayingMuteButton")
         var pct  = findChild(cluster, "nowPlayingVolumePercent")
@@ -983,13 +991,13 @@ TestCase {
 
     function sweepBar(host, bar, from, to) {
         host.width = from
-        waitForRendering(host.contentItem)
+        frame(host)
         var rows = []
         host.width = to
         // One frame before the first sample. Setting a Window's width moves the
         // window's own property at once and the items in it on the next polish
         // pass, so in the frame of the assignment the two disagree.
-        waitForRendering(host.contentItem)
+        frame(host)
         for (var i = 0; i < 14; i++) {
             rows.push(barSample(bar))
             wait(16)
@@ -1095,7 +1103,7 @@ TestCase {
                                            sliderVertical: vertical === true })
         verify(host, "slider host was not created")
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host)
         return host
     }
 
@@ -1232,7 +1240,7 @@ TestCase {
         giveLyrics(page, lines === undefined ? 40 : lines)
         page.showLyrics = true
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
         return page
     }
 
@@ -1339,7 +1347,7 @@ TestCase {
     function enterReading(host) {
         host.fullScreen = true
         settlePage(host.page)
-        waitForRendering(host.contentItem)
+        frame(host)
     }
 
     // The size the first lyric line is painted at, read off the delegate:
@@ -1591,7 +1599,7 @@ TestCase {
         tryVerify(function () { return page.readingness === 0 }, 3000,
                   row.tag + ": the page is still drawing the reading view")
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
 
         // Only the panel closed. Fullscreen is the chrome row's button and
         // nothing here is allowed to press it.
@@ -1617,7 +1625,7 @@ TestCase {
                   row.tag + ": the page is still drawing the reading view "
                   + "after leaving fullscreen")
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
 
         var back = panelShape(page)
         compare(back.size, docked.size, row.tag + ": the type did not come back")
@@ -1644,7 +1652,7 @@ TestCase {
 
         page.showCredits = true
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
         verify(!page.showLyrics,
                row.tag + ": opening the credits did not close the lyrics")
         verify(page.readingView, row.tag + ": the credits are not the reading view")
@@ -1765,7 +1773,7 @@ TestCase {
         if (row.reading) { openLyrics(host); enterReading(host) }
         else if (row.full) { host.fullScreen = true; settlePage(host.page) }
         else settlePage(host.page)
-        waitForRendering(host.contentItem)
+        frame(host)
         return host
     }
 
@@ -1826,7 +1834,7 @@ TestCase {
         verify(play, "the play button was not found")
 
         function centre() {
-            waitForRendering(host.contentItem)
+            frame(host)
             return play.mapToItem(page, play.width / 2, 0).x
         }
 
@@ -1988,12 +1996,9 @@ TestCase {
         return rows
     }
 
-    // A frame is asked for and then waited on. With none pending,
-    // waitForRendering() on Qt 6.4 sits out its five seconds.
     function settleVolumeHost(host) {
         settlePage(host.page)
-        host.update()
-        waitForRendering(host.contentItem)
+        frame(host)
     }
 
     // Each pair differs in exactly one of width and fullscreen, so every move
@@ -2215,7 +2220,7 @@ TestCase {
         var host = showHost(nowPlayingHost, row.w, row.h)
         var page = host.page
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
 
         var pct = volumePercentIn(page)
         compare(pct.text, "70%", row.tag + ": the fixture did not start at 70%")
@@ -2302,7 +2307,7 @@ TestCase {
         // Across the stack breakpoint, which resizes the lyrics column.
         host.width = 820
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host)
         tryVerify(function () { return centred() <= 8 }, 3000,
                   "after the mode change the active line is off centre by "
                   + centred().toFixed(1) + "px")
@@ -2395,11 +2400,11 @@ TestCase {
         // frame. The pill has just left its idle state, which is a different
         // width, and Layout.preferredWidth needs a polish pass to land.
         host.sleepTimeLeft = seconds[0]
-        waitForRendering(pill)
+        frame(host)
         var first = pill.width
         // The baseline must not be stale: a width still on its way moves
         // between two frames, and a settled one does not.
-        waitForRendering(pill)
+        frame(host)
         compare(pill.width, first,
                 "the pill was still settling when the baseline was taken: "
                 + pill.width.toFixed(1) + " one frame after " + first.toFixed(1))
@@ -2410,10 +2415,10 @@ TestCase {
 
         for (var i = 0; i < seconds.length; i++) {
             host.sleepTimeLeft = seconds[i]
-            // waitForRendering, because wait(0) returns in the middle of a turn,
-            // between the text changing and the width binding re-evaluating, and
-            // can read a width no frame was painted with.
-            waitForRendering(pill)
+            // A frame, because wait(0) returns in the middle of a turn, between
+            // the text changing and the width binding re-evaluating, and can
+            // read a width no frame was painted with.
+            frame(host)
             compare(pill.width, first,
                     "the pill resized at \"" + label.text + "\": "
                     + pill.width.toFixed(1) + " against " + first.toFixed(1))
@@ -2510,7 +2515,7 @@ TestCase {
         wait(0)
         var pill = findChild(host.page, "nowPlayingSleepTimerButton")
         verify(pill, "the sleep timer pill was not found")
-        waitForRendering(pill)
+        frame(host)
 
         // The two colours the pill is built from, read off the pill. Sampling
         // would start from wherever the last case left the pointer, which can be
@@ -2590,7 +2595,7 @@ TestCase {
         popup.open()
         tryVerify(function() { return popup.visible }, 2000,
                   "the sleep timer popup never opened")
-        waitForRendering(host.contentItem)
+        frame(host)
 
         var start = findChild(host.page, "nowPlayingSleepTimerStart")
         verify(start, "the popup has no Start control to find")
@@ -2655,7 +2660,7 @@ TestCase {
         popup.open()
         tryVerify(function() { return popup.visible }, 2000,
                   "the sleep timer popup never opened")
-        waitForRendering(host.contentItem)
+        frame(host)
         verify(popup.width > 0 && popup.height > 0,
                "the sleep timer popup measured "
                + popup.width.toFixed(1) + "x" + popup.height.toFixed(1))

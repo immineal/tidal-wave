@@ -76,12 +76,20 @@ TestCase {
         }
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showHost(component, w, h) {
         var host = createTemporaryObject(component, testCase,
                                         { width: w, height: h })
         verify(host, "host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return host
     }
 
@@ -124,7 +132,7 @@ TestCase {
         var page = host.page
         page.showCredits = true
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return page
     }
 
@@ -260,7 +268,7 @@ TestCase {
                   "the empty answer did not land on \"unavailable\", it is in \""
                   + page.creditsState + "\"")
         settlePage(page)
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
 
         var panel = findChild(page, "nowPlayingCreditsPanel")
         verify(panel && panel.visible, "the credits panel did not open")
@@ -447,7 +455,7 @@ TestCase {
         player.setCurrentTrackForTest(makeTrack(1))
         tryVerify(function () { return page.creditsState !== "loading" }, settleMs,
                   "the new track's credits never settled")
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         verify(!hasTextContaining(findChild(page, "nowPlayingCreditsPanel"),
                                   "Pat Invented"),
                "the previous track's credits are still on the panel")
@@ -476,7 +484,7 @@ TestCase {
         openCredits(host)
         tryVerify(function () { return page.creditsState !== "loading" }, settleMs,
                   "the new track's credits never settled")
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         verify(!hasTextContaining(findChild(page, "nowPlayingCreditsPanel"),
                                   "Pat Invented"),
                "the previous track's credits came back when the tab reopened")
@@ -496,7 +504,7 @@ TestCase {
             numTracks: 11, duration: 2400, quality: "LOSSLESS",
             copyright: "(P) 2017 An Invented Label Ltd.", upc: "000000000001"
         }
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
 
         var facts = ""
         var all = visibleTexts(page, [])
@@ -529,7 +537,7 @@ TestCase {
             numTracks: 11, duration: 2400, quality: "LOSSLESS",
             copyright: "(P) 2017 An Invented Label Ltd.", upc: "000000000001"
         }
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
 
         var line = findChild(page, "albumCopyright")
         verify(line, "the album hero has no rights line")
@@ -544,7 +552,7 @@ TestCase {
             releaseDate: "2019-01-04", year: "2019",
             numTracks: 9, duration: 1800, quality: "LOSSLESS"
         }
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         verify(!line.visible,
                "the rights line is still showing with nothing in it")
     }

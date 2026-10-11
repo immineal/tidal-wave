@@ -75,10 +75,18 @@ TestCase {
         return out
     }
 
+    // Asks the window for a frame and waits for it. A window with nothing new
+    // to draw swaps no frame, and waitForRendering() alone would run out its
+    // five seconds and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function makeMark(size) {
         var mark = createTemporaryObject(markC, testCase, { width: size, height: size })
         verify(mark, "the mark would not instantiate at " + size)
-        waitForRendering(mark)
+        frame(mark)
         return mark
     }
 
@@ -106,7 +114,7 @@ TestCase {
     function test_row_glyphs_carry_no_layer() {
         var icon = createTemporaryObject(iconC, testCase, { width: 24, height: 24 })
         verify(icon, "VectorIcon would not instantiate")
-        waitForRendering(icon)
+        frame(icon)
 
         var walk = function (item) {
             if (item.layer && item.layer.enabled)
@@ -190,7 +198,7 @@ TestCase {
 
         for (var t = 0; t < names.length; ++t) {
             prefs.theme = names[t]
-            waitForRendering(mark)
+            frame(mark)
 
             compare(tile.color.toString(), "#0079a8",
                     names[t] + " changed the mark's tile")

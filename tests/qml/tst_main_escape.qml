@@ -31,6 +31,14 @@ TestCase {
         updateCheck.clearForTest()
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showApp() {
         var win = createTemporaryObject(appWindowHost, testCase)
         verify(win, "the application window was not created")
@@ -38,7 +46,7 @@ TestCase {
         win.height = 800
         win.visible = true
         win.requestActivate()
-        waitForRendering(win.contentItem, 2000)
+        frame(win.contentItem)
         return win
     }
 
@@ -156,7 +164,7 @@ TestCase {
             return true
         }
         // The button is aimed at by position, so it has to have arrived first.
-        waitForRendering(win.contentItem, 2000)
+        frame(win.contentItem)
         var b = backButtonIn(win)
         if (!b) return false
         centerClick(b)

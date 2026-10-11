@@ -98,19 +98,27 @@ TestCase {
         return item.mapToItem(container, item.width, 0).x
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showHost(component, w, h) {
         var host = createTemporaryObject(component, testCase)
         verify(host, "host window was not created")
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
         return host
     }
 
     function settle(host) {
         wait(1)
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
     }
 
     // ── hosts ────────────────────────────────────────────────────────────

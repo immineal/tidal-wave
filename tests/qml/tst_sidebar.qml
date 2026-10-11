@@ -72,11 +72,19 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     // Layouts resize in the polish phase, so give the scene a frame plus one
     // turn of the event loop for the synchronous stub bindings.
     function settle(item) {
         wait(1)
-        waitForRendering(item, 2000)
+        frame(item)
     }
 
     function showHost(w, h) {
@@ -85,7 +93,7 @@ TestCase {
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
         // Park the pointer over the page. A freshly shown window inherits the
         // position of the last synthesized event, which under the offscreen
         // platform is often inside the rail and would hover-expand the sidebar.
@@ -1335,7 +1343,7 @@ TestCase {
         var host = showHost(sweepFrom, 760)
         var page = loadSweepPage(host, data.which)
         verify(page, "the " + data.tag + " page was never built")
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
         settle(host.contentItem)
 
         // The square hero cover is a fixed size in a RowLayout that never

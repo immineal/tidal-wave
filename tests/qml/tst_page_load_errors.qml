@@ -48,8 +48,16 @@ TestCase {
         return page
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
-        waitForRendering(item, 2000)
+        frame(item)
         wait(1)
     }
 

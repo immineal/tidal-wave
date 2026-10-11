@@ -124,12 +124,17 @@ TestCase {
         return item.mapToItem(host.contentItem, dx, dy)
     }
 
-    // A settled scene produces no new frame, so waitForRendering would sit
-    // out its whole timeout. The cap keeps that short, and anything pending
-    // arrives inside one frame.
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(1)
-        waitForRendering(item, 100)
+        frame(item)
         wait(1)        // lets the callLater that frame scheduled actually run
     }
 
@@ -167,7 +172,7 @@ TestCase {
         var host = createTemporaryObject(queueHost, testCase)
         verify(host, "host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem, 2000)
+        frame(host.contentItem)
         return host
     }
 

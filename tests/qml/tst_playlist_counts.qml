@@ -86,9 +86,17 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(1)
-        waitForRendering(item, settleMs)
+        frame(item)
     }
 
     function findByName(item, name) {
@@ -124,7 +132,7 @@ TestCase {
         verify(host, "the host window was not created")
         host.width = w
         host.visible = true
-        waitForRendering(host.contentItem, settleMs)
+        frame(host.contentItem)
         mouseMove(host.contentItem, 4, host.height - 4)
         wait(1)
         return host
