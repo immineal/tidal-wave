@@ -168,6 +168,8 @@ public:
         return false;
     }
 
+    int waiting() const { return int(m_held.count()); }
+
 private:
     QList<std::pair<qlonglong, StreamCb>> m_held;
 };
@@ -185,6 +187,14 @@ StreamManifest ruledOut() {
     StreamManifest m;
     m.unavailable = true;
     return m;
+}
+
+// What comes with a 404: Qt's text for the transfer.
+const QString kGone = QStringLiteral(
+    "Error transferring https://api.example.invalid/v1/tracks/1 - server replied: Not Found");
+
+QString skipped(qlonglong id) {
+    return QStringLiteral("“T%1” is no longer available on Tidal and was skipped.").arg(id);
 }
 
 StreamManifest losslessFrom(const QString &xml) {
@@ -487,6 +497,235 @@ private slots:
         QCOMPARE(errorSpy.at(0).at(0).toString(),
                  QStringLiteral("This track could not be played. "
                                 "The audio format may not be supported."));
+    }
+
+    // ── a track Tidal no longer has ─────────────────────────────────────────
+
+    // Picked by the user, it stays where it is and is named for what it is,
+    // without the transfer's text. Play asks again: the same answer covers a
+    // track the account may only preview, and that can change.
+    void aWithdrawnTrackTheUserPicksIsReportedInOneSentence() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 3), 1);
+        QVERIFY(a.client.answer(8001, ruledOut(), kGone));
+
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(),
+                 QStringLiteral("This track is no longer available on Tidal."));
+        QCOMPARE(currentId(a.p()), 8001);
+        QCOMPARE(a.p().queueCount(), 3);
+        QVERIFY(!a.p().loading());
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8001}));
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8001, 8001}));
+    }
+
+    // The queue comes onto it by itself or by a step. The row is dropped, the
+    // user is told once which one, and the row beyond it plays.
+    void theQueueStepsOverAWithdrawnTrack_data() {
+        QTest::addColumn<QString>("move");
+        QTest::addColumn<qlonglong>("from");
+        QTest::addColumn<qlonglong>("lands");
+        QTest::newRow("Next")              << QStringLiteral("next")     << 8001LL << 8003LL;
+        QTest::newRow("Previous")          << QStringLiteral("previous") << 8003LL << 8001LL;
+        QTest::newRow("the track ran out") << QStringLiteral("end")      << 8001LL << 8003LL;
+    }
+
+    void theQueueStepsOverAWithdrawnTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, move);
+        QFETCH(qlonglong, from);
+        QFETCH(qlonglong, lands);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 5), int(from - 8000));
+        QVERIFY(a.client.answer(from, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+
+        if (move == QLatin1String("next")) {
+            a.p().next();
+        } else if (move == QLatin1String("previous")) {
+            a.p().previous();
+        } else {
+            // The request made ahead of time stays out, so the row is asked
+            // for again when the track before it has run out.
+            a.mp()->setPosition(29000);
+            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
+            QVERIFY(a.client.answer(8002, ruledOut(), kGone));
+        }
+        QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY(a.client.answer(8002, ruledOut(), kGone));
+
+        QCOMPARE(currentId(a.p()), lands);
+        QCOMPARE(a.client.asked.constLast(), lands);
+        QCOMPARE(a.p().queueCount(), 4);
+        QVERIFY(a.p().loading());
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), skipped(8002));
+
+        QVERIFY(a.client.answer(lands, track));
+        QTRY_VERIFY2_WITH_TIMEOUT(a.p().playing(), "the row beyond the withdrawn one never played",
+                                  10000);
+        QCOMPARE(a.p().loadError(), skipped(8002));
+        QCOMPARE(errorSpy.count(), 1);
+    }
+
+    // A step taken while the restored track is still loading is a step like
+    // any other: it passes over the withdrawn row, says so, and plays.
+    void aStepTakenDuringARestorePassesOverAWithdrawnTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QVERIFY(saveFiveRowSession());
+
+        Launch b;
+        QVERIFY(b.audioUp());
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        b.p().next();
+        QVERIFY(b.client.answer(1003, ruledOut(), kGone));
+
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004}));
+        QCOMPARE(currentId(b.p()), 1004);
+        QCOMPARE(b.p().queueCount(), 4);
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), skipped(1003));
+        QVERIFY(b.client.answer(1004, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY2_WITH_TIMEOUT(b.p().playing(), "the row beyond the withdrawn one came up paused",
+                                  10000);
+    }
+
+    // Nothing that plays is left ahead. The queue ends on the last row it
+    // still has, stopped, and asks for nothing more until play is pressed.
+    void aQueueWithNothingPlayableAheadEnds() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+
+        a.p().next();
+        QVERIFY(a.client.answer(8001, ruledOut(), kGone));
+        QVERIFY(a.client.answer(8002, ruledOut(), kGone));
+
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}));
+        QCOMPARE(a.p().queueCount(), 1);
+        QCOMPARE(currentId(a.p()), 8000);
+        QVERIFY(!a.p().loading());
+        QVERIFY(!a.p().playing());
+        QCOMPARE(a.p().loadError(),
+                 QStringLiteral("Several tracks are no longer available on Tidal and were skipped."));
+        QTest::qWait(300);
+        QCOMPARE(a.client.waiting(), 0);
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002, 8000}));
+    }
+
+    // Repeat and shuffle send the queue round again. Each row is still asked
+    // for once, and a queue with nothing left in it is empty and at rest.
+    void repeatAndShuffleDoNotGoRoundAQueueOfWithdrawnTracks_data() {
+        QTest::addColumn<int>("repeat");
+        QTest::addColumn<bool>("shuffle");
+        QTest::newRow("repeat all")             << 1 << false;
+        QTest::newRow("repeat one")             << 2 << false;
+        QTest::newRow("shuffle and repeat all") << 1 << true;
+    }
+
+    void repeatAndShuffleDoNotGoRoundAQueueOfWithdrawnTracks() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(int, repeat);
+        QFETCH(bool, shuffle);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().setShuffle(shuffle);
+        a.p().setRepeatMode(repeat);
+        a.p().playTracks(contextOf(8000, 5), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+
+        // From here on Tidal has none of them, the one that played included.
+        a.p().next();
+        int answered = 0;
+        while (a.client.waiting() > 0 && answered < 50) {
+            QVERIFY(a.client.answer(a.client.asked.constLast(), ruledOut(), kGone));
+            ++answered;
+        }
+
+        QCOMPARE(answered, 5);
+        QCOMPARE(a.p().queueCount(), 0);
+        QVERIFY(a.p().currentTrackMap().isEmpty());
+        QVERIFY(!a.p().loading());
+        QVERIFY(!a.p().playing());
+    }
+
+    // The row ahead is asked for while the current one plays. Withdrawn, it
+    // must not be where the change at the end of the track lands.
+    void theChangeAtTheEndOfATrackPassesOverAWithdrawnRow() {
+        if (const char *why = obstacle()) QSKIP(why);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
+        QVERIFY(a.client.answer(8001, ruledOut(), kGone));
+
+        // Tidal goes on answering the same for both rows.
+        a.mp()->setPosition(29000);
+        QTest::qWaitFor([&] {
+            while (a.client.answer(8001, ruledOut(), kGone)) {}
+            while (a.client.answer(8002, track)) {}
+            return currentId(a.p()) == 8002 && a.p().playing();
+        }, 15000);
+
+        QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY(a.p().playing());
+        QCOMPARE(a.p().queueCount(), 2);
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), skipped(8001));
+    }
+
+    // Dropped ahead of time, the withdrawn row leaves its place to the next
+    // one, which is fetched ahead and handed over without a second request.
+    void theRowBeyondAWithdrawnOneIsFetchedAheadInItsPlace() {
+        if (const char *why = obstacle()) QSKIP(why);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy fetched(a.network(), &QNetworkAccessManager::finished);
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
+
+        QVERIFY(a.client.answer(8001, ruledOut(), kGone));
+        QCOMPARE(currentId(a.p()), 8000);
+        QVERIFY(a.p().playing());
+        QCOMPARE(a.p().queueCount(), 2);
+        QCOMPARE(a.p().loadError(), skipped(8001));
+
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}), 5000);
+        QVERIFY(a.client.answer(8002, track));
+        QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 2, 10000);
+
+        a.mp()->setPosition(29000);
+        QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}));
     }
 
     // ── replies nobody is waiting for ───────────────────────────────────────

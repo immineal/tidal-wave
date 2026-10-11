@@ -456,25 +456,27 @@ private slots:
     // ── a restore the user overtakes ────────────────────────────────────────
 
     // The restored track, 1002, is still being asked for when the user moves
-    // on. The load that follows is the user's own: its failure is reported and
-    // its row stays in the queue.
+    // on. The load that follows is the user's own and its failure is reported.
+    // A row the user picked stays; one a step landed on is passed over.
     void aLoadTheUserStartsDuringARestoreIsTheUsersOwn_data() {
         QTest::addColumn<QString>("action");
         QTest::addColumn<qlonglong>("picked");
         QTest::addColumn<bool>("ruledOut");
+        QTest::addColumn<qlonglong>("beyond");   // asked for after a step, 0 for none
 
-        QTest::newRow("a new context")       << QStringLiteral("play")     << qlonglong(2000) << true;
-        QTest::newRow("next")                << QStringLiteral("next")     << qlonglong(1003) << true;
-        QTest::newRow("previous")            << QStringLiteral("previous") << qlonglong(1001) << true;
-        QTest::newRow("a queue jump")        << QStringLiteral("jump")     << qlonglong(1004) << true;
-        QTest::newRow("removing the row")    << QStringLiteral("remove")   << qlonglong(1003) << true;
-        QTest::newRow("next, unreachable")   << QStringLiteral("next")     << qlonglong(1003) << false;
+        QTest::newRow("a new context")       << QStringLiteral("play")     << qlonglong(2000) << true  << qlonglong(0);
+        QTest::newRow("next")                << QStringLiteral("next")     << qlonglong(1003) << true  << qlonglong(1004);
+        QTest::newRow("previous")            << QStringLiteral("previous") << qlonglong(1001) << true  << qlonglong(1000);
+        QTest::newRow("a queue jump")        << QStringLiteral("jump")     << qlonglong(1004) << true  << qlonglong(0);
+        QTest::newRow("removing the row")    << QStringLiteral("remove")   << qlonglong(1003) << true  << qlonglong(0);
+        QTest::newRow("next, unreachable")   << QStringLiteral("next")     << qlonglong(1003) << false << qlonglong(0);
     }
 
     void aLoadTheUserStartsDuringARestoreIsTheUsersOwn() {
         QFETCH(QString, action);
         QFETCH(qlonglong, picked);
         QFETCH(bool, ruledOut);
+        QFETCH(qlonglong, beyond);
         QVERIFY(saveFiveRowSession());
 
         Launch b;
@@ -499,10 +501,17 @@ private slots:
         }
         QVERIFY(b.settle());
 
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked}));
-        QCOMPARE(currentId(b.p()), picked);
-        QVERIFY2(ids(b.p().queueTracks()).contains(picked),
-                 "the track the user picked was dropped from the queue");
+        if (beyond) {
+            QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked, beyond}));
+            QCOMPARE(currentId(b.p()), beyond);
+            QVERIFY2(!ids(b.p().queueTracks()).contains(picked),
+                     "the withdrawn track the step landed on is still in the queue");
+        } else {
+            QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked}));
+            QCOMPARE(currentId(b.p()), picked);
+            QVERIFY2(ids(b.p().queueTracks()).contains(picked),
+                     "the track the user picked was dropped from the queue");
+        }
         QCOMPARE(errorSpy.count(), 1);
     }
 

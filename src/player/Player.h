@@ -199,8 +199,9 @@ public:
     // Public so the tests can round-trip them.
     void savePlaybackState();
     void restorePlaybackState();
-    // Drops the row that will not resolve and comes back on the next one.
-    // Public because a test cannot make the network fail.
+    // Drops the current row, which Tidal has ruled out, and loads the next one
+    // in the direction of travel. Public because a test cannot make the
+    // network fail.
     void skipUnplayableTrack();
 
 signals:
@@ -255,8 +256,11 @@ private:
     // The only way to change m_index, so every move is announced.
     void setIndex(int i);
     void setManualCount(int n);
+    // How the queue came onto the row being loaded. A track Tidal has ruled
+    // out is reported where it was picked and stepped over on the way through.
+    enum class Travel { Picked, Forward, Backward };
     // A load the user asked for. It ends a restore that has not loaded yet.
-    void loadAndPlay(int index, bool heldPaused = false);
+    void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
     // The load itself. Only the restore calls it directly, to stay in force.
     void startLoad(int index);
     // The load ended with nothing to play: reports why, and owes the track
@@ -265,6 +269,9 @@ private:
     // Keeps the sentence for the views and emits error(). The backend's own
     // text goes to the log and never in here.
     void setLoadError(const QString &msg);
+    // Tells the user that a row was dropped. Rows dropped one after another
+    // are told as one.
+    void noteSkipped(const QString &title);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;
@@ -331,6 +338,9 @@ private:
     bool                 m_loading       = false;
     QString              m_loadError;
     bool                 m_loadErrorClaimed = false;
+    Travel               m_travel        = Travel::Picked;
+    // Rows dropped since a load was last asked for.
+    int                  m_skippedRun    = 0;
     bool                 m_shuffle       = false;
     int                  m_repeatMode    = 0;  // 0=no 1=all 2=one
     QString              m_sourceType;

@@ -629,7 +629,10 @@ void Player::next(bool heldPaused) {
     if (!m_player) return;
     const int n = nextIndex();
     if (n < 0) { m_player->stop(); return; }
-    if (n == m_index) { loadAndPlay(m_index, heldPaused); return; }   // repeat one
+    if (n == m_index) {   // repeat one
+        loadAndPlay(m_index, heldPaused, Travel::Forward);
+        return;
+    }
     if (n == m_index + 1 && m_manualCount > 0) {
         // Stepping onto the head of the manual queue consumes it.
         setManualCount(m_manualCount - 1);
@@ -638,7 +641,7 @@ void Player::next(bool heldPaused) {
     } else if (relocateTo(n)) {
         emit queueChanged();
     }
-    loadAndPlay(m_index, heldPaused);
+    loadAndPlay(m_index, heldPaused, Travel::Forward);
 }
 
 void Player::previous(bool heldPaused) {
@@ -646,7 +649,7 @@ void Player::previous(bool heldPaused) {
     const int p = previousIndex();
     if (p < 0) { seek(0); return; }
     if (relocateTo(p)) emit queueChanged();
-    loadAndPlay(m_index, heldPaused);
+    loadAndPlay(m_index, heldPaused, Travel::Backward);
 }
 
 void Player::seek(qint64 ms) {
@@ -838,13 +841,15 @@ static QTemporaryFile *saveToTempFile(const QByteArray &data) {
     return nullptr;
 }
 
-void Player::loadAndPlay(int index, bool heldPaused) {
+void Player::loadAndPlay(int index, bool heldPaused, Travel travel) {
     if (index < 0 || index >= m_queue.count()) return;
     // The user asked for this track, so a restore still waiting on its own
     // load is over: this one plays unless it is held, and its failures are
     // reported. A cast device takes no hold.
     m_restorePaused = heldPaused && !casting();
     m_restoreSkips  = false;
+    m_travel        = travel;
+    m_skippedRun    = 0;
     startLoad(index);
 }
 
@@ -952,10 +957,13 @@ void Player::startLoad(int index) {
                 return;
             }
             if (!err.isEmpty()) {
+                // A restore and a queue on its way step over a track Tidal has
+                // ruled out. The loading flag stays up for the row that follows.
+                if (manifest.unavailable && (m_restoreSkips || m_travel != Travel::Picked)) {
+                    skipUnplayableTrack();
+                    return;
+                }
                 setLoading(false);
-                // A restored queue can name a track that no longer streams.
-                // Step over it without an error dialog at startup.
-                if (m_restoreSkips && manifest.unavailable) { skipUnplayableTrack(); return; }
                 // Nothing is loaded behind this track, so the next play asks again.
                 m_loadOwed = true;
                 if (m_restoreSkips) {
@@ -966,7 +974,9 @@ void Player::startLoad(int index) {
                     return;
                 }
                 qWarning() << "Stream request failed:" << err;
-                setLoadError(tr("Could not load this track for playback."));
+                setLoadError(manifest.unavailable
+                    ? tr("This track is no longer available on Tidal.")
+                    : tr("Could not load this track for playback."));
                 return;
             }
             // Something resolved: the restore is over, later failures are reported.
@@ -1132,7 +1142,21 @@ void Player::preloadNext() {
 
     m_client->fetchStreamManifest(trackId, [this, next, trackId](StreamManifest manifest, QString err) {
         if (m_preloadIndex != next) return;
-        if (!err.isEmpty()) { preloadGaveUp(next); return; }
+        if (!err.isEmpty()) {
+            // Tidal has ruled out the row ahead. Dropped now, it is never
+            // where the change at the end of this track lands.
+            const bool sameRow = next < m_queue.count() && next != m_index
+                && m_queue.at(next).track.value("id").toLongLong() == trackId;
+            if (manifest.unavailable && sameRow) {
+                const QString title = m_queue.at(next).track.value("title").toString();
+                m_preloadIndex = -1;
+                removeFromQueue(next);
+                noteSkipped(title);
+                return;
+            }
+            preloadGaveUp(next);
+            return;
+        }
 
         m_preloadQuality = manifest.codec;
 
@@ -1471,12 +1495,11 @@ void Player::beginPlayback() {
 
 void Player::skipUnplayableTrack() {
     if (m_index < 0 || m_index >= m_queue.count()) return;
+    // A restore says nothing and always goes forward.
+    const bool restoring = m_restoreSkips;
+    const QString title = m_queue.at(m_index).track.value(QStringLiteral("title")).toString();
     m_pendingSeek = 0;   // that position belonged to the row being dropped
     m_queue.removeAt(m_index);
-
-    // If the head of the manual queue slides into place, it has been consumed.
-    if (m_index < m_queue.count() && m_queue.at(m_index).manual && m_manualCount > 0)
-        setManualCount(m_manualCount - 1);
 
     if (m_queue.isEmpty()) {
         if (m_player) m_player->stop();
@@ -1487,10 +1510,48 @@ void Player::skipUnplayableTrack() {
         setLoading(false);
         emit currentTrackChanged();
         emit queueChanged();
+        if (!restoring) noteSkipped(title);
         return;
     }
-    if (m_index >= m_queue.count()) setIndex(m_queue.count() - 1);
+
+    bool rowLeft = true;
+    if (!restoring && m_travel == Travel::Backward && m_index > 0) {
+        setIndex(m_index - 1);
+    } else {
+        // The next row slid into place. As the head of the manual queue it
+        // has been consumed.
+        if (m_index < m_queue.count() && m_queue.at(m_index).manual && m_manualCount > 0)
+            setManualCount(m_manualCount - 1);
+        if (m_index >= m_queue.count()) {
+            // Past the end. Each step drops a row, so a wrap cannot go round
+            // for ever.
+            const bool wraps = !restoring && m_repeatMode == 1;
+            rowLeft = restoring || wraps;
+            setIndex(wraps ? firstContextRow() : int(m_queue.count()) - 1);
+        }
+    }
     emit queueChanged();
-    startLoad(m_index);
+
+    if (rowLeft) {
+        startLoad(m_index);
+    } else {
+        // The queue ends on a row with nothing loaded, which play asks for.
+        m_currentTrack  = trackFromMap(m_queue.at(m_index).track);
+        m_restorePaused = false;
+        m_loadOwed      = true;
+        setLoading(false);
+        emit currentTrackChanged();
+    }
+    if (!restoring) {
+        noteSkipped(title);
+        schedulePersist();
+    }
+}
+
+void Player::noteSkipped(const QString &title) {
+    ++m_skippedRun;
+    setLoadError(m_skippedRun == 1
+        ? tr("“%1” is no longer available on Tidal and was skipped.").arg(title)
+        : tr("Several tracks are no longer available on Tidal and were skipped."));
 }
 

@@ -891,6 +891,18 @@
         <translation>Dieser Titel konnte nicht abgespielt werden. Das Audioformat wird möglicherweise nicht unterstützt.</translation>
     </message>
     <message>
+        <source>This track is no longer available on Tidal.</source>
+        <translation>Dieser Titel ist bei Tidal nicht mehr verfügbar.</translation>
+    </message>
+    <message>
+        <source>“%1” is no longer available on Tidal and was skipped.</source>
+        <translation>„%1“ ist bei Tidal nicht mehr verfügbar und wurde übersprungen.</translation>
+    </message>
+    <message>
+        <source>Several tracks are no longer available on Tidal and were skipped.</source>
+        <translation>Mehrere Titel sind bei Tidal nicht mehr verfügbar und wurden übersprungen.</translation>
+    </message>
+    <message>
         <source>Max</source>
         <translation>Max</translation>
     </message>

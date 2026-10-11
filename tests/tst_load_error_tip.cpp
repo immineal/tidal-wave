@@ -21,6 +21,8 @@
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/Player.h"
+#include "ui/I18n.h"
+#include "ui/Prefs.h"
 
 namespace {
 
@@ -271,6 +273,32 @@ private slots:
         QVERIFY(a.openNowPlaying());
 
         QTRY_VERIFY2_WITH_TIMEOUT(!a.tipUp(), "the message stayed where the bar had been", 2000);
+    }
+
+    // Without its entry in the catalogue a sentence comes out in English.
+    void everySentenceHasItsGerman_data() {
+        QTest::addColumn<QString>("sentence");
+        const char *const sentences[] = {
+            "Could not load this track for playback.",
+            "Could not download the audio for this track.",
+            "Could not download the audio for this track. No data came back.",
+            "Could not save the audio to a temporary file. Check that there is free disk space.",
+            "Could not read the lossless stream details for this track.",
+            "This track could not be played. The audio format may not be supported.",
+            "This track is no longer available on Tidal.",
+            "“%1” is no longer available on Tidal and was skipped.",
+            "Several tracks are no longer available on Tidal and were skipped.",
+        };
+        for (const char *s : sentences) QTest::newRow(s) << QString::fromUtf8(s);
+    }
+
+    void everySentenceHasItsGerman() {
+        QFETCH(QString, sentence);
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+        QVERIFY(QCoreApplication::translate("Player", sentence.toUtf8().constData()) != sentence);
     }
 
 private:

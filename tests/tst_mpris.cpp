@@ -682,6 +682,62 @@ private slots:
         QCOMPARE(desk().statuses(), QStringList());
     }
 
+    // ── A track Tidal no longer has ─────────────────────────────────────────
+
+    // Next lands on a withdrawn track and the player steps over it. The
+    // desktop is left with the track that plays and hears no pause on the way.
+    void aStepOverAWithdrawnTrackEndsOnTheTrackThatPlays() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(3000, 3), 0);
+        QVERIFY(a.client.answer(3000, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        desk().forget();
+
+        desk().player(QStringLiteral("Next"));
+        QVERIFY(a.client.answer(3001, withdrawn(), QStringLiteral("Not Found")));
+        QVERIFY2(a.client.answer(3002, track()), "the track after the withdrawn one was not asked for");
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        QTest::qWait(300);
+
+        QCOMPARE(desk().get(QStringLiteral("Metadata")).toMap()
+                     .value(QStringLiteral("mpris:trackid")).value<QDBusObjectPath>().path(),
+                 trackPath(3002));
+        QCOMPARE(desk().status(), QStringLiteral("Playing"));
+        QCOMPARE(desk().statuses(), QStringList());
+    }
+
+    // Found withdrawn while it was still the row ahead, it is never the
+    // current track, so the desktop does not hear of it at all.
+    void aWithdrawnTrackAheadIsNeverAnnounced() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(3000, 3), 0);
+        QVERIFY(a.client.answer(3000, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        desk().forget();
+
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001}), 5000);
+        QVERIFY(a.client.answer(3001, withdrawn(), QStringLiteral("Not Found")));
+        a.mp()->setPosition(29000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001, 3002}), 10000);
+        QVERIFY(a.client.answer(3002, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(currentId(a.p()) == 3002 && a.p().playing(), 15000);
+        QTest::qWait(300);
+
+        QStringList heard;
+        for (const QVariant &m : desk().announced(QStringLiteral("Metadata")))
+            heard.append(m.toMap().value(QStringLiteral("mpris:trackid"))
+                             .value<QDBusObjectPath>().path());
+        QCOMPARE(heard, (QStringList{ trackPath(3002) }));
+        QCOMPARE(desk().statuses(), QStringList());
+    }
+
     // ── What a client can do ────────────────────────────────────────────────
 
     // With no track there is nothing to play, pause, seek in or step from.
@@ -800,6 +856,14 @@ private:
     }
 
     StreamManifest track() const { return oneFileAt(m_server.url(QStringLiteral("/track"))); }
+
+    // What comes with Tidal's answer that it does not have the track.
+    static StreamManifest withdrawn()
+    {
+        StreamManifest m;
+        m.unavailable = true;
+        return m;
+    }
 
     // Why this Qt on this machine cannot run the cases that load audio, or null.
     static const char *obstacle()
