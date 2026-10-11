@@ -385,7 +385,7 @@ private slots:
 
         // The request made ahead of time stays unanswered, so the track is
         // asked for again when it is reached.
-        a.mp()->setPosition(29000);
+        a.p().seek(29000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001, 3001}), 10000);
         QCOMPARE(currentId(a.p()), 3001);
         QCOMPARE(desk().status(), QStringLiteral("Playing"));
@@ -811,10 +811,10 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         desk().forget();
 
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001}), 5000);
         QVERIFY(a.client.answer(3001, withdrawn(), QStringLiteral("Not Found")));
-        a.mp()->setPosition(29000);
+        a.p().seek(29000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001, 3002}), 10000);
         QVERIFY(a.client.answer(3002, track()));
         QTRY_VERIFY_WITH_TIMEOUT(currentId(a.p()) == 3002 && a.started(), 15000);
