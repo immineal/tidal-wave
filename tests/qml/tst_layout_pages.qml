@@ -77,6 +77,21 @@ TestCase {
         return out
     }
 
+    // An artist's whole discography: albums, singles, and records by others
+    // that the artist guests on, so each of the page's three rows has cards.
+    function makeDiscography(n) {
+        var out = makeAlbums(n)
+        for (var i = 0; i < n; ++i) {
+            out.push({ id: 500 + i, title: "Eine ziemlich lange Single Nummer " + (i + 1),
+                       artists: "Erster Interpret und noch ein zweiter", year: "2021",
+                       coverUrl: "", type: "SINGLE", numTracks: 1 })
+            out.push({ id: 600 + i, title: "Ein ziemlich langes fremdes Album " + (i + 1),
+                       artists: "Ein ganz anderer Interpret", year: "2020",
+                       coverUrl: "", type: "ALBUM", numTracks: 12, featured: true })
+        }
+        return out
+    }
+
     function makeArtists(n) {
         var out = []
         for (var i = 0; i < n; ++i)
@@ -260,8 +275,16 @@ TestCase {
                 similarArtists: makeArtists(8)
             }
             page.topTracks = makeTracks(6)
-            page.albums = makeAlbums(12)
+            page.albums = makeDiscography(12)
             settle(page)
+            // A row with nothing in it is invisible, and the audit skips those.
+            var rows = ["artistAlbumsSection", "artistSinglesSection",
+                        "artistAppearsOnSection"]
+            for (var r = 0; r < rows.length; ++r) {
+                var section = findByName(page, rows[r])
+                verify(section && section.visible && section.items.length === 12,
+                       "@" + w + ": " + rows[r] + " is not on the page to be audited")
+            }
             audit(page, "ArtistPage @" + w)
         }
     }
