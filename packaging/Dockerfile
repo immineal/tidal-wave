@@ -1,20 +1,8 @@
-# Build toolchain for the release .deb.
-#
-# Why a container at all: the depends list in CMakeLists.txt derives its floors
-# from the toolchain that configured the build - the Qt's own version for every
-# libqt6*/qml6-module-* entry, and the compiler's major for libstdc++6. Built on
-# a rolling dev box (Qt 6.12, GCC 16) that is honest and useless: the package
-# correctly refuses to install on anything older, which is nearly everything.
-# Built here it asks for Qt 6.4 and libstdc++ 12, which is the oldest toolchain
-# we mean to support and the floor almost every live Debian/Ubuntu clears.
-#
-# bookworm pins the whole story: Qt 6.4.2 and GCC 12.2. Nothing below is pinned
-# to a dev machine and no Qt is downloaded - apt owns it, which also makes
-# dpkg-shlibdeps able to resolve the Qt libraries for the first time (on the dev
-# box they live in ~/Qt and no package owns them, so it contributes nothing).
-#
-# This image carries build deps only. The source tree is bind-mounted at build
-# time by packaging/build-deb.sh, so changing a source file does not rebuild it.
+# Build toolchain for the release .deb. CMakeLists.txt derives the package's
+# dependency floors from the toolchain that configured the build, so the
+# release is built on the oldest one supported: bookworm, Qt 6.4.2, GCC 12.2.
+# Qt comes from apt, which lets dpkg-shlibdeps resolve it. Build deps only:
+# packaging/build-deb.sh bind-mounts the source tree at build time.
 FROM debian:bookworm
 
 # Keep apt from asking anything and from keeping its lists in the layer.
@@ -30,16 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Qt 6.4.2 development packages, one per component the top-level
-# find_package(Qt6 ...) asks for:
-#   qt6-base-dev        Core Gui Widgets Network DBus  (+ Test)
-#   qt6-declarative-dev Quick Qml QmlModels                       (+ QuickTest)
-#   qt6-multimedia-dev  Multimedia
-#   qt6-svg-dev         Svg
-#   qt6-tools-dev{,-tools}  LinguistTools - optional in CMakeLists, but without
-#                       it the build warns and ships no German catalogue, which
-#                       is not what a release should do.
-# libavahi-client-dev is the Chromecast mDNS discovery dependency (Linux only).
+# One package per component find_package(Qt6 ...) asks for. qt6-tools-dev is
+# LinguistTools: without it the build ships no German catalogue.
+# libavahi-client-dev is for Chromecast discovery.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qt6-base-dev \
         qt6-declarative-dev \
@@ -50,10 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libavahi-client-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Runtime QML modules. The app's own QML is embedded in its resources, but the
-# modules it imports are not, so without these the test suite's QML half and any
-# in-container launch fail at import rather than at link. These are the same
-# qml6-module-* packages the generated Depends list names.
+# Runtime QML modules: the app's own QML is embedded, the modules it imports
+# are not, so tests fail at import without them. The same qml6-module-*
+# packages as the generated Depends list.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qml6-module-qtquick \
         qml6-module-qtquick-controls \

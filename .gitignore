@@ -47,9 +47,7 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
-# Any build directory (build/, build_custom/, build_dl/, …)
 /build*/
-# flatpak-builder's cache and checkout tree, which it writes next to the manifest.
 /.flatpak-builder/
 
 # IDE files
@@ -69,7 +67,7 @@ Thumbs.db
 # Project-specific / Anthropic / Claude temp files
 .claude/
 
-# Release artifacts: where packaging/build-deb.sh drops the .deb it builds.
+# Release artifacts from the packaging scripts
 /dist/
 
 # Temporary / testing files and outputs
@@ -83,16 +81,8 @@ Thumbs.db
 /*.zip
 /aqtinstall.log
 
-# The working queue. Development notes, not something a user installing the app
-# has any use for - and it is where the only leak of the user's own listening
-# data into a tracked file happened. It stays on disk, untracked, and is read
-# at the start of every session.
+# Working documents, kept on disk and out of the repository
 /HANDOFF.md
-
-# Working documents, not for people installing or packaging the app. They stay
-# on disk and out of the repository: machine-specific test scripts, the frozen
-# session spec with the development hardware in it, the design review page, and
-# the packaging plan, which records decisions in the first person.
 docs/DEBIAN-FIRST-RUN.md
 docs/SPEC-0.4.0.md
 docs/design-review.html

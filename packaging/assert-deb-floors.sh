@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # Check that a built .deb asks for the Qt and the C++ runtime of Debian 12.
-#
 #     packaging/assert-deb-floors.sh <package.deb | control file>
-#
 # CMakeLists.txt derives both floors from the toolchain that configured the
-# build. A package built on anything newer than bookworm asks for more than
-# Debian 12 and Ubuntu 24.04 have, and apt refuses it there.
-#
+# build; a package built on anything newer is refused by apt on Debian 12.
 # Exit status: 0 as expected, 1 a floor is missing or wrong, 2 bad argument.
 set -euo pipefail
 

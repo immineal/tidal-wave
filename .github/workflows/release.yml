@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows is held at 6.10.3 because aqtinstall cannot install a newer
-        # one; ci.yml has the measurement. Keep the two files in sync.
+        # one. Keep in sync with ci.yml.
         include:
           - os: ubuntu-24.04
             asset_name: tidal-wave-linux-x86_64.tar.gz

@@ -1,34 +1,9 @@
-// Preparing a lossless track for a Chromecast without asking ffmpeg to demux DASH.
-//
-// CastMediaPrep was the third site with the shape that was the release blocker on
-// the playback path: write Tidal's DASH manifest out to a .mpd, hand the file to
-// the CLI ffmpeg behind -protocol_whitelist, and leave ffmpeg to fetch the
-// segments itself. That needs ffmpeg's DASH demuxer, which is only built when
-// libxml2 is present. It now joins the segments through DashFetcher and hands
-// ffmpeg an ordinary fragmented MP4.
-//
-// WHAT THIS CANNOT PROVE, AND SAYS SO INSTEAD OF PRETENDING: the libxml2
-// dependency is latent on this machine, not live. The CLI ffmpeg here
-// (/lib64/libavformat.so.58.76.100) *does* have the dash demuxer, which is why
-// casting kept working while playback did not. So a test asserting "the output
-// decodes" passes before the fix as well, and would be worthless.
-//
-// What it asserts instead is the property that actually changed and that holds
-// everywhere: the bytes ffmpeg reads were fetched by the app, through the app's
-// own authenticated requests, and are already on local disk by the time ffmpeg
-// starts. The segment server answers only requests carrying the X-Tidal-Token
-// header that TidalApi::makeRequest sets. The app's own fetches have it; the CLI
-// ffmpeg's do not. So after the fix the join succeeds and ffmpeg never touches
-// the network, and before it ffmpeg is the only fetcher, is refused, and the
-// preparation fails. That is red for the right reason on any machine, libxml2 or
-// not.
-//
-// The fixture is tst_dash's: one second of a 440 Hz tone as 16-bit mono FLAC in
-// fragmented MP4, from ffmpeg's own dash muxer. FLAC-in-MP4 is what Tidal
-// delivers, and -c:a copy to a native .flac is what the cast path does with it.
-// NOTHING HERE MAKES A SOUND: no QAudioOutput is constructed (on Qt 6.4 a muted
-// one is, see the probe) and nothing is ever played; the output is read back
-// only for its container and its duration.
+// Preparing a lossless track for a Chromecast without ffmpeg's DASH demuxer.
+// The segment server answers only requests carrying the X-Tidal-Token header
+// that TidalApi::makeRequest sets, so the test proves the app fetched the
+// bytes and ffmpeg read a local file. Checking only that the output decodes
+// would pass wherever ffmpeg has the demuxer. The fixture is tst_dash's: one
+// second of FLAC in fragmented MP4. Nothing is played.
 
 #include <QTest>
 #include <QAudioOutput>
@@ -51,17 +26,9 @@
 #include "api/TidalClient.h"
 #include "cast/CastMediaPrep.h"
 
-// @BASE@ rather than the host written out: moc honours a // comment inside a raw
-// string literal, so a "http://host/" plus a quote in here makes it lose track of
-// where strings end and fail the build pointing at an unrelated line. The house
-// rule is in tst_dash.cpp, from the same bruise.
-//
-// profiles= is load-bearing and not decoration. Without it ffmpeg's own DASH
-// demuxer refuses the manifest with "Invalid data found when processing input"
-// before it makes a single request, which would make the pre-fix comparison
-// below red for the wrong reason - the point is to watch ffmpeg go to the network
-// and be turned away, not to watch it fail to parse. Tidal's real manifests carry
-// it (see tst_dash.cpp), so this is the honest shape.
+// @BASE@ and no host written out: moc honours a // comment inside a raw string
+// literal and loses track of where strings end. profiles= is required: without
+// it ffmpeg's DASH demuxer refuses the manifest before it makes a request.
 constexpr auto kManifest = R"MPD(<?xml version="1.0" encoding="UTF-8"?>
 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
      profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static"
@@ -92,13 +59,8 @@ QByteArray mediaSegment1() { return QByteArray::fromBase64(QByteArray(kSeg1B64))
 QByteArray mediaSegment2() { return QByteArray::fromBase64(QByteArray(kSeg2B64)); }
 QByteArray mediaSegment3() { return QByteArray::fromBase64(QByteArray(kSeg3B64)); }
 
-// Serves the segments to the app and to nobody else.
-//
-// The gate is the X-Tidal-Token header, which TidalApi::makeRequest puts on every
-// request and the CLI ffmpeg has no way to send. It is the whole discriminator of
-// this file: it is what makes "we fetched the bytes" and "ffmpeg fetched the
-// bytes" two different, observable outcomes on a machine where both would
-// otherwise work.
+// Serves the segments only to requests with the X-Tidal-Token header, which
+// TidalApi::makeRequest sets and the CLI ffmpeg cannot send.
 class GatedSegmentServer : public QTcpServer {
 public:
     explicit GatedSegmentServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -165,9 +127,8 @@ class TestCastPrep : public QObject {
 private slots:
     void initTestCase()
     {
-        // The cast path shells out, so without ffmpeg there is nothing to say.
-        // This is not a soft skip in disguise: ffmpeg is present on this machine
-        // and in CI, and a skip here would be worth chasing.
+        // The cast path shells out to ffmpeg. CI has it, so a skip is worth
+        // chasing.
         m_ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     }
 
@@ -212,8 +173,7 @@ private slots:
                             .arg(server.served).arg(server.refused)));
         QCOMPARE(ready.count(), 1);
 
-        // Four requests, every one of them ours. The old shape made none: it
-        // wrote the manifest to a .mpd and left ffmpeg to go and get them.
+        // Four requests, every one of them from the app.
         QCOMPARE(server.served, 4);
         QVERIFY2(server.refused == 0,
                  qPrintable(QStringLiteral("%1 segment requests arrived without the "
@@ -233,15 +193,9 @@ private slots:
         out.close();
         QCOMPARE(magic, QByteArrayLiteral("fLaC"));
 
-        // Not an empty container: an input ffmpeg could not read used to leave a
-        // file that existed and held nothing. A second of 16-bit mono 44.1 kHz
-        // FLAC is about 20 kB, so anything near zero is that failure.
-        //
-        // Not asserted on the duration, because there is none to assert on:
-        // -c:a copy writes the FLAC header before it knows the sample count, so
-        // the stream says "Duration: N/A" and QMediaPlayer reports 0. That is
-        // true of this path before and after the change and is noted here so the
-        // next person does not take it for a regression.
+        // An input ffmpeg cannot read leaves a near-empty file; a second of this
+        // fixture is about 20 kB. No duration check: -c:a copy writes the FLAC
+        // header before the sample count is known, so QMediaPlayer reports 0.
         QVERIFY2(size > 10000 && size < 100000,
                  qPrintable(QStringLiteral("the converted track is %1 bytes, not the "
                                            "~20 kB a second of this fixture makes")

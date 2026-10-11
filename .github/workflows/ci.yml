@@ -1,7 +1,5 @@
 name: CI
 
-# Build on every push and pull request so cross-platform breakage (e.g. Linux-only
-# /tmp paths, resource-prefix changes) is caught before a release, not after.
 on:
   push:
     branches: [main]
@@ -14,20 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux and macOS build against 6.12.0. Windows is held at 6.10.3, and
-        # the reason is the installer, nothing in this code: from 6.11.0 on,
-        # Qt's windows_x86 repository keeps its metadata under
-        # qt6_<ver>/qt6_<ver>_msvc2022_64/Updates.xml, and the plain
-        # qt6_<ver>/qt6_<ver>/Updates.xml that aqtinstall 3.3.0 asks for is a
-        # 404. 3.3.0 is the newest aqtinstall there is, so every Windows Qt
-        # from 6.11.0 up fails at "Failed to locate XML data". 6.10.3 is the
-        # last one on the old layout and carries qtmultimedia for
-        # win64_msvc2022_64. Lift the pin when aqtinstall learns the new
-        # layout. Keep this in sync with release.yml.
-        #
-        # ubuntu-24.04 by name: the ubuntu-latest label moves to a new release
-        # on a date GitHub picks, and a build that changes under a release is
-        # the wrong surprise.
+        # Windows is held at 6.10.3: aqtinstall 3.3.0 cannot read the repository
+        # layout Qt uses for Windows from 6.11.0 on. Keep in sync with release.yml.
+        # ubuntu-24.04 by name, because ubuntu-latest moves under a release.
         include:
           - os: ubuntu-24.04
             qt: '6.12.0'
@@ -44,14 +31,9 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt }}
-          # qtmultimedia is the only add-on module needed; QtSvg/DBus/Sql/etc.
-          # ship in the base desktop install (aqt has no separate 'qtsvg' module).
-          # qttools was dropped as a separate module: `aqt list-qt linux
-          # desktop --modules 6.12.0 linux_gcc_64` does not list it for 6.12,
-          # and asking for it fails the whole install step. lrelease ships in
-          # the base desktop package now. TIDALWAVE_REQUIRE_TRANSLATIONS below
-          # turns a Qt without it into a configure error rather than a build
-          # that silently ships English only.
+          # qtmultimedia is the only add-on needed. qttools is not a module for
+          # 6.12 and asking for it fails the step; lrelease ships in the base
+          # install.
           modules: 'qtmultimedia'
 
       - name: Install dependencies (Linux)
@@ -71,8 +53,7 @@ jobs:
   test:
     name: Tests (Ubuntu 24.04, Qt 6.12)
     runs-on: ubuntu-24.04
-    # The suite takes about thirteen minutes here. An hour is the ceiling for a
-    # run that has hung, where the default is six.
+    # A ceiling for a hung run; the default is six hours.
     timeout-minutes: 60
 
     steps:
@@ -83,9 +64,8 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.12.0'
-          # qtmultimedia as in the build job; Qt6::Test, Qt6::QuickTest and
-          # lrelease all ship with the base desktop install. qttools is not a
-          # module for 6.12 and asking for it fails the step.
+          # As in the build job. Qt6::Test and Qt6::QuickTest ship in the base
+          # install.
           modules: 'qtmultimedia'
 
       - name: Install dependencies
@@ -111,21 +91,9 @@ jobs:
           # The session bus test guards the media keys. It must not be among them.
           ! grep -q TestSessionBus skipped.txt
 
-  # The declared Qt floor, which no other job here builds: every job above pins
-  # 6.12, so a construct that needs a newer Qt than find_package(Qt6 6.4) asks
-  # for compiles green all the way to the .deb and then fails on the machine of
-  # whoever installed it. Debian 12 "bookworm" is that floor exactly - Qt 6.4.2
-  # and GCC 12.2 - and it is the distribution the release .deb targets.
-  #
-  # Tests run here, not only the build. What this is for is QML that a newer Qt
-  # accepts and 6.4 does not, and that is a load-time error rather than a
-  # compile-time one: assigning a property the type does not have ("Cannot
-  # assign to non-existent property popupType") is raised when the engine loads
-  # the file. tests/qml/*.qml are only ever loaded at runtime, so a build-only
-  # job cannot see them at all - which is how the declarative popupType in
-  # tst_menus_and_glyphs.qml that f10019c replaced survived until a Debian box
-  # ran the suite on real 6.4.2. Qt comes from apt, as in packaging/Dockerfile,
-  # so nothing is downloaded and the version cannot drift.
+  # The declared Qt floor: Debian 12 has Qt 6.4.2 and GCC 12.2. Tests run too,
+  # because QML that 6.4 rejects fails at load time, which a build cannot see.
+  # Qt comes from apt, as in packaging/Dockerfile, so the version cannot drift.
   test-debian-12:
     name: Tests (Debian 12, Qt 6.4)
     runs-on: ubuntu-24.04
@@ -133,10 +101,8 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # Before the checkout: the container is bare, and actions/checkout needs
-      # git or it silently falls back to a tarball download with no .git.
-      # The package set is packaging/Dockerfile's, which says why each entry
-      # is there.
+      # Before the checkout: actions/checkout needs git, or it falls back to a
+      # tarball with no .git. The package set is packaging/Dockerfile's.
       - name: Install build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -182,10 +148,8 @@ jobs:
           # The session bus test guards the media keys. It must not be among them.
           ! grep -q TestSessionBus skipped.txt
 
-  # Ten seconds, no Qt, no build: catches a private address being committed
-  # before anything slow runs. An allowlist and not a blocklist on purpose -
-  # the address this exists to keep out never has to be written down here, and
-  # the next one is caught too.
+  # Catches a private address before anything slow runs. An allowlist, so the
+  # address it keeps out never has to be written down here.
   addresses:
     name: Only addresses we mean to publish
     runs-on: ubuntu-24.04
@@ -200,15 +164,9 @@ jobs:
       - name: Scan the tracked tree
         run: |
           allowed='tidal-wave@linu\.li|noreply@anthropic\.com|someone@example\.com'
-          # tidal-wave@linu.li is the project mailbox (src/ui/Feedback.cpp, the
-          # .deb Maintainer field). someone@example.com is the fake username in
-          # tests/tst_auth.cpp. Anything else is a mistake until it is added here.
-          # @BASE@ is the substitution marker in the DASH fixtures, as in
-          # initialization="@BASE@init.mp4" in tst_cast_prep.cpp, tst_dash.cpp
-          # and tst_progressive.cpp. The regex reads what follows the marker as
-          # a domain and reports the whole thing as an address, so the marker
-          # comes out of the text before the scan. Do not write the matched
-          # form into this comment; the scan reads this file too.
+          # Allowed: the project mailbox and the fake user in tests/tst_auth.cpp.
+          # @BASE@ is the marker in the DASH fixtures; what follows it reads as a
+          # domain, so it comes out first. This file is scanned too.
           found=$(git grep -hI -e '' -- . | sed 's/@BASE@//g' \
                   | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' \
                   | sort -u | grep -ivE "^($allowed)$" || true)
@@ -223,13 +181,8 @@ jobs:
 
       - name: Scan the maintainer's own commits
         run: |
-          # The scan above reads files. It cannot see commit metadata, and that
-          # is where a private address sat on every commit of this repository
-          # until the history was rewritten: git signs a commit with whatever
-          # user.email the machine has configured, and nothing in the tree
-          # shows it. Commits by the maintainer have to carry a GitHub noreply
-          # address. Anyone else's commits are theirs to sign as they like, so
-          # this looks at one name only.
+          # Commit metadata is not in the tree. The maintainer's commits must
+          # carry a GitHub noreply address; other authors sign as they like.
           found=$(git log --format='%an <%ae>%n%cn <%ce>' \
                   | grep '^Linus Linhof <' | sort -u \
                   | grep -vE '<[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com>$' || true)
@@ -242,11 +195,8 @@ jobs:
           fi
           echo "clean"
 
-  # Also seconds, no Qt, no build, for the same reason the job above exists: the
-  # two files every Linux store reads are the two nothing else in CI looks at,
-  # and a mistake in either is found by the store that rejects the submission.
-  # The AppStream metainfo file is the hard blocker for Flathub, KDE Discover and
-  # GNOME Software.
+  # The desktop entry and the AppStream metainfo are read by every Linux store
+  # and by nothing else in CI.
   store-metadata:
     name: The metadata stores read is valid
     runs-on: ubuntu-24.04
@@ -257,11 +207,8 @@ jobs:
       - name: Install the validators
         run: |
           sudo apt-get update
-          # ca-certificates is not decoration: appstreamcli reaches out to every
-          # <url> in the file (and will reach out to every screenshot once there
-          # are any), and without a CA bundle each one comes back as
-          # "W: url-not-reachable ... server certificate verification failed",
-          # which is four warnings and a red job on a correct file.
+          # ca-certificates: appstreamcli fetches every <url> in the file, and
+          # without a CA bundle each one fails as url-not-reachable.
           sudo apt-get install -y --no-install-recommends \
             appstream desktop-file-utils ca-certificates
 
@@ -269,21 +216,16 @@ jobs:
         run: |
           set -euo pipefail
           id=io.github.immineal.TidalWave
-          # Named after the app id, not after the binary: Flatpak exports only
-          # <app-id>.desktop. The check below that <launchable> matches this
-          # basename is what keeps the two from drifting apart again.
+          # Named after the app id: Flatpak exports only <app-id>.desktop.
           desktop="packaging/$id.desktop"
           template="packaging/$id.metainfo.xml.in"
 
-          # --warn-kde because Plasma is where this app's tray lives and where a
-          # blank icon has already cost a bug once; the extra checks are free.
+          # --warn-kde: Plasma is where this app's tray lives.
           desktop-file-validate --warn-kde "$desktop"
           echo "desktop-file-validate: clean"
 
-          # The metainfo file in the tree is a configure_file() template, so
-          # substitute it the way CMakeLists.txt does - out of the same single
-          # declaration of the version - and validate the text that is actually
-          # installed rather than the template.
+          # The file in the tree is a configure_file() template: substitute the
+          # version as CMakeLists.txt does and validate what is installed.
           ver=$(sed -n 's/^project(tidal-wave VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           test -n "$ver" || { echo "no version found in CMakeLists.txt"; exit 1; }
           echo "project() version: $ver"
@@ -294,27 +236,13 @@ jobs:
             exit 1
           fi
 
-          # No --no-net on purpose. Once a <screenshots> block exists, this is
-          # the step that fetches each image and fails on one that is not there,
-          # which is otherwise a mistake Flathub finds for us.
-          #
-          # --explain and --pedantic are for the log, not for the verdict.
-          # appstreamcli exits non-zero on errors and on warnings, and zero on
-          # infos and pedantic hints, so the gate is its own severity judgement
-          # with nothing escalated on top. Escalating pedantic would be wrong
-          # here: the one hint this file draws is cid-contains-uppercase-letter
-          # on io.github.immineal.TidalWave, and that is the app id the owner
-          # decided on and the casing Flathub itself uses throughout. A job that
-          # goes red on a correct file teaches people to ignore it.
+          # No --no-net: this step fetches each screenshot and fails on a missing
+          # one. --pedantic only adds hints to the log; appstreamcli exits
+          # non-zero on errors and warnings alone.
           appstreamcli validate --explain --pedantic "$id.metainfo.xml"
 
-          # The three ways the component names itself, which nothing above can
-          # check because each lives in a different file:
-          #
           # 1. AppStream pairs a metainfo file with its component by filename, so
-          #    <id> and the installed basename have to be the same string. This
-          #    is also the guard against the second spelling of the app id that
-          #    the packaging notes warn about.
+          #    <id> and the installed basename have to be the same string.
           grep -q "<id>$id</id>" "$id.metainfo.xml" \
             || { echo "<id> does not match the filename $id.metainfo.xml"; exit 1; }
           # 2. <launchable> has to name the desktop entry as installed. If it

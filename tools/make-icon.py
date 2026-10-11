@@ -44,25 +44,12 @@ INK = "#FFFFFF"
 CENTRES = [1.5 * THICK + AMP, 32.0, 64 - (1.5 * THICK + AMP)]
 
 # ── the inset, which belongs to the exported file only ──────────────────────
-# Margin on each side, as a fraction of the 64-unit canvas, so the mark covers
-# 1 - 2 * ICON_INSET of it. Desktop icons are drawn with a margin and ours was
-# not, so at 0 it measured about 10% larger than everything beside it in the
-# panel: 32x32 in a 32px box where Firefox was 28x29 and Dolphin 30x26. At
-# 0.0625 the mark is 28px in that box, which is the same weight as its
-# neighbours.
-#
-# This is applied as a transform around the whole drawing when the SVG is
-# written, so the paths below stay identical to the ones AppMark.qml generates
-# and the two can still be compared number for number. The tile's corner radius
-# rides on the same transform, so the corner keeps its proportion.
-#
-# AppMark.qml is deliberately not inset. The in-app marks sit inside the app's
-# own layout, which already puts space around them; insetting them as well
-# would only make the logo look undersized.
+# Margin on each side as a fraction of the 64-unit canvas: desktop icons are
+# drawn with one. Applied as a transform around the drawing, so the paths stay
+# identical to AppMark.qml's, which is not inset.
 ICON_INSET = 0.0625
 
-# Which way the wave runs. The first half period rises, then falls, reading
-# left to right, the way the "≋" glyph this replaced did. SVG y grows
+# The first half period rises, then falls, reading left to right. SVG y grows
 # downward, so rising is the negative amplitude.
 RISE_FIRST = True
 

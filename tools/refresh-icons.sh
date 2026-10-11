@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Put the current artwork on every icon surface this user has, and clear the
-# caches that sit in front of them.
-#
-# Why this exists: the icon lives in six or seven places at once, each with its
-# own cache, and fixing the asset alone updates none of them. docs/ICONS.md is
-# the full map; this is the one command that walks it.
-#
-# Safety: it writes only under $HOME (the user's own icon theme, desktop entries
-# and caches), never under /usr or /etc, and it never restarts an application.
-# Anything that needs a restart is printed at the end for you to decide on.
-#
-# Usage:
+# Put the current artwork on every icon surface this user has and clear the
+# caches in front of them. docs/ICONS.md is the full map. Writes only under
+# $HOME and never restarts an application.
 #   tools/refresh-icons.sh              # update the files and the caches
 #   tools/refresh-icons.sh --dry-run    # print what it would do, change nothing
 set -uo pipefail
@@ -22,9 +13,9 @@ DRY=0
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 src_png="$repo/assets/icon.png"
 src_svg="$repo/assets/icon.svg"
-# Two names, not one. The icon *files* and the Icon= key are still "tidal-wave";
-# the desktop entry's basename is the app id, because Flatpak exports only
-# <app-id>.desktop. Conflating them is what this pair of variables prevents.
+# Two names: the icon files and the Icon= key are "tidal-wave", while the
+# desktop entry's basename is the app id, because Flatpak exports only
+# <app-id>.desktop.
 name="tidal-wave"
 entry="io.github.immineal.TidalWave"
 legacy_entry="tidal-wave"
@@ -55,9 +46,8 @@ echo
 
 # ── 1. the user's hicolor theme ──────────────────────────────────────────────
 # Only two files belong here: the scalable SVG and the 128 PNG, the same pair
-# `cmake --install` writes. Every other size is a leftover from the old runtime
-# self-install, and a leftover wins over the SVG at that exact size, so an old
-# 22x22 would keep showing in the tray for ever.
+# `cmake --install` writes. A leftover at any other size wins over the SVG at
+# that size.
 echo "1. hicolor theme under $hicolor"
 shopt -s nullglob
 for stale in "$hicolor"/*/apps/"$name".png "$hicolor"/*/apps/"$name".svg; do
@@ -94,10 +84,9 @@ echo "2. desktop entry"
 run mkdir -p "$data_home/applications"
 run cp -f "$repo/packaging/$entry.desktop" "$data_home/applications/$entry.desktop"
 did "wrote $data_home/applications/$entry.desktop"
-# The entry used to be called $legacy_entry.desktop. Nothing owns a file under
-# $data_home, so a copy left from before the rename would sit beside the new one
-# and show this app twice in the launcher for ever. Same sweep as the one in
-# CMakeLists.txt's install rule, for the surface that install rule never reaches.
+# Nothing owns a file under $data_home, so a copy under the old basename would
+# show the app twice in the launcher. CMakeLists.txt's install rule does the
+# same sweep.
 if [ "$legacy_entry" != "$entry" ] && [ -e "$data_home/applications/$legacy_entry.desktop" ]; then
     echo "   superseded entry, removing: $data_home/applications/$legacy_entry.desktop"
     run rm -f "$data_home/applications/$legacy_entry.desktop"
