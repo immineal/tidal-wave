@@ -107,9 +107,7 @@ void MprisPlayer::announce() {
 
 QString MprisPlayer::playbackStatus() const {
     if (m_player->currentTrackMap().isEmpty()) return QStringLiteral("Stopped");
-    // A load that ends in playback counts as playing, so a widget does not
-    // show a pause between one track and the next.
-    if (m_player->playing() || m_player->startingPlayback()) return QStringLiteral("Playing");
+    if (m_player->playing()) return QStringLiteral("Playing");
     return QStringLiteral("Paused");
 }
 

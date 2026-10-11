@@ -284,13 +284,17 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 
     // If the swap changed the state after all, tell the UI.
     if (!casting()) {
-        const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
-        if (playing != state.playing) emit playingChanged(playing);
+        tellPlaying();
         if (m_player->position() != state.position) emit positionChanged(m_player->position());
     }
 }
 
-bool   Player::playing()  const { return casting() ? m_castPlaying  : (m_player && m_player->playbackState() == QMediaPlayer::PlayingState); }
+bool Player::playing() const {
+    if (casting()) return m_castPlaying;
+    // A load on its way to playing counts, so one track follows another
+    // without a pause, and a press on pause finds something to act on.
+    return m_loadPlays || (m_player && m_player->playbackState() == QMediaPlayer::PlayingState);
+}
 qint64 Player::position() const {
     if (casting()) return m_castPosition;
     // A position owed to media that is not loaded yet: a restored session,
@@ -302,10 +306,11 @@ qint64 Player::duration() const { return casting() ? m_castDuration : (m_player 
 double Player::volume()   const { return m_audioOut ? m_audioOut->volume() : m_pendingVolume; }
 bool   Player::muted()    const { return m_audioOut ? m_audioOut->isMuted() : m_pendingMuted; }
 
-bool Player::startingPlayback() const {
-    // Loading can also mean a paused track that is buffering.
-    return m_loading && m_loadPlays && !casting()
-        && m_player && m_player->playbackState() == QMediaPlayer::StoppedState;
+void Player::tellPlaying() {
+    const bool now = playing();
+    if (now == m_playingTold) return;
+    m_playingTold = now;
+    emit playingChanged(now);
 }
 
 QVariantMap Player::currentTrackMap() const {
@@ -314,9 +319,14 @@ QVariantMap Player::currentTrackMap() const {
 }
 
 void Player::setLoading(bool l) {
-    if (m_loading == l) return;
-    m_loading = l;
-    emit loadingChanged(l);
+    // A load that is over is no longer on its way to playing.
+    const bool endsPlaying = !l && m_loadPlays;
+    if (endsPlaying) m_loadPlays = false;
+    if (m_loading != l) {
+        m_loading = l;
+        emit loadingChanged(l);
+    }
+    if (endsPlaying) tellPlaying();
 }
 
 void Player::setLoadError(const QString &msg) {
@@ -619,6 +629,21 @@ void Player::playPause() {
     if (!m_player) return;
     // Nothing is loaded behind the current track for play() to start.
     if (m_loadOwed) { loadAndPlay(m_index); return; }
+    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+        // A load is under way, and the press decides what it ends in.
+        m_loadPlays = !m_loadPlays;
+        if (m_loadPlays && m_restoreSkips) {
+            // Play pressed on a restored track makes the load the user's own.
+            m_restoreSkips = false;
+            m_travel       = Travel::Picked;
+        }
+        // Until the file is handed to the backend the hold is kept here.
+        if (m_player->source().isEmpty()) m_restorePaused = !m_loadPlays;
+        else if (m_loadPlays)             m_player->play();
+        else                              m_player->pause();
+        tellPlaying();
+        return;
+    }
     if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
     else
@@ -680,8 +705,7 @@ void Player::setPlayerPosition(qint64 ms) {
         m_player->play();
         m_seekToggling = false;
         // If it did not come back up, the UI has to hear of it.
-        if (!m_rebinding && m_player->playbackState() != QMediaPlayer::PlayingState)
-            emit playingChanged(false);
+        if (!m_rebinding) tellPlaying();
         return;
     }
 #endif
@@ -861,13 +885,15 @@ void Player::startLoad(int index) {
     const quint64 serial = ++m_loadSerial;
     setLoadError(QString());
 
+    // Set before the stop, so that leaving the track before is no pause.
+    m_loadPlays = !m_restorePaused;
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
     // lowers the loading flag. Raised before them it would be lowered again
     // for the whole of the next track's fetch.
     m_player->stop();
     m_player->setSource(QUrl());
-    m_loadPlays = !m_restorePaused;
     setLoading(true);
+    tellPlaying();
 
     if (m_activeDownload) {
         auto *dl = m_activeDownload;
@@ -1061,7 +1087,9 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         setLoading(true); break;
     case QMediaPlayer::BufferedMedia:
     case QMediaPlayer::LoadedMedia:
-        setLoading(false);
+        // The backend reports a track loaded before it starts it. A load
+        // that plays stays one until then.
+        if (!m_loadPlays || casting()) setLoading(false);
         // A held position can only be applied once the media has a duration.
         if (m_pendingSeek > 0 && m_player) {
             const qint64 to = m_pendingSeek;
@@ -1087,7 +1115,7 @@ void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     // Audio is coming out, so the load is over even if a media status was
     // missed. After the guard above: a rebind's transient Playing is no load.
     if (state == QMediaPlayer::PlayingState) setLoading(false);
-    emit playingChanged(state == QMediaPlayer::PlayingState);
+    tellPlaying();
     schedulePersist();         // a pause is the position worth coming back to
 }
 
@@ -1248,7 +1276,7 @@ void Player::beginCast(CastSession *session) {
     m_castPosition = 0;
     m_castDuration = duration();   // seed from current until the device reports
     m_castPlaying  = true;
-    emit playingChanged(true);
+    tellPlaying();
 }
 
 void Player::endCast() {
@@ -1262,7 +1290,7 @@ void Player::endCast() {
     if (m_index >= 0 && m_index < m_queue.count())
         loadAndPlay(m_index);
     else
-        emit playingChanged(false);
+        tellPlaying();
 }
 
 void Player::onCastPosition(double sec) {
@@ -1280,7 +1308,7 @@ void Player::onCastDuration(double sec) {
 void Player::onCastPlaying(bool playing) {
     if (m_castPlaying == playing) return;
     m_castPlaying = playing;
-    if (casting()) emit playingChanged(playing);
+    tellPlaying();
 }
 
 void Player::handleUserIdChanged(qint64 uid) {

@@ -62,6 +62,7 @@ public:
     explicit Player(TidalClient *client, QObject *parent = nullptr);
     ~Player() override;
 
+    // Also true while a load is under way that ends in playback.
     bool        playing()     const;
     bool        loading()     const { return m_loading; }
     QString     loadError()   const { return m_loadError; }
@@ -92,8 +93,6 @@ public:
     // For MPRIS.
     Track currentTrack() const { return m_currentTrack; }
     qlonglong currentTrackId() const { return m_currentTrack.id; }
-    // Nothing sounds yet, and the load under way ends in playback.
-    bool startingPlayback() const;
     // Whether next() has a row to go to.
     bool hasNext() const { return nextIndex() >= 0; }
 
@@ -274,6 +273,9 @@ private:
     void noteSkipped(const QString &title);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
+    // The one place playingChanged comes from: it is emitted when playing()
+    // differs from what was last told.
+    void tellPlaying();
     Track trackFromMap(const QVariantMap &m) const;
     int  nextIndex() const;
     int  previousIndex() const;
@@ -357,11 +359,13 @@ private:
     bool                 m_suspendPersist = false;
     // The restore ran before initAudio(), so the load is owed.
     bool                 m_restorePending = false;
-    // The next successful load comes up paused: a restored session, or a step
-    // MPRIS made while paused.
+    // The load under way comes up paused: a restored session, a step MPRIS
+    // made while paused, or pause pressed while it loads.
     bool                 m_restorePaused  = false;
-    // Whether the load under way ends in playback. Set as the load starts.
+    // A load is under way and ends in playback. Lowered with the loading flag.
     bool                 m_loadPlays      = false;
+    // What playingChanged last said.
+    bool                 m_playingTold    = false;
     // Until a restored track resolves, a failed load stays quiet: the row is
     // dropped if Tidal ruled the track out, and left to load on play otherwise.
     bool                 m_restoreSkips   = false;
