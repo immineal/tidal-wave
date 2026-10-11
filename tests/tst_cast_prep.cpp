@@ -1,5 +1,5 @@
 // Preparing a lossless track for a Chromecast without ffmpeg's DASH demuxer.
-// The segment server answers only requests carrying the X-Tidal-Token header
+// The segment server answers only requests carrying the User-Agent header
 // that TidalApi::makeRequest sets, so the test proves the app fetched the
 // bytes and ffmpeg read a local file. Checking only that the output decodes
 // would pass wherever ffmpeg has the demuxer. The fixture is tst_dash's: one
@@ -59,8 +59,8 @@ QByteArray mediaSegment1() { return QByteArray::fromBase64(QByteArray(kSeg1B64))
 QByteArray mediaSegment2() { return QByteArray::fromBase64(QByteArray(kSeg2B64)); }
 QByteArray mediaSegment3() { return QByteArray::fromBase64(QByteArray(kSeg3B64)); }
 
-// Serves the segments only to requests with the X-Tidal-Token header, which
-// TidalApi::makeRequest sets and the CLI ffmpeg cannot send.
+// Serves the segments only to requests with the browser User-Agent that
+// TidalApi::makeRequest sets. The CLI ffmpeg names itself Lavf.
 class GatedSegmentServer : public QTcpServer {
 public:
     explicit GatedSegmentServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -96,8 +96,7 @@ private:
                 const int q = path.indexOf(QLatin1Char('?'));
                 if (q >= 0) path = path.left(q);
 
-                const bool fromTheApp =
-                    head.contains("X-Tidal-Token") || head.contains("x-tidal-token");
+                const bool fromTheApp = head.toLower().contains("user-agent: mozilla/");
                 if (!fromTheApp) {
                     ++refused;
                     sock->write("HTTP/1.0 403 Forbidden\r\nContent-Length: 0\r\n\r\n");

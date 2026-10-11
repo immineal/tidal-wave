@@ -59,6 +59,10 @@ public:
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
     QNetworkReply* getRaw(const QUrl &url, RawCallback cb);
 
+    // The request every call above except post() sends. Public for
+    // tst_request_headers.
+    QNetworkRequest makeRequest(const QUrl &url) const;
+
     static constexpr auto kApiBase    = "https://api.tidal.com/v1/";
     static constexpr auto kApiBaseV2  = "https://api.tidal.com/v2/";
     static constexpr auto kAuthBase   = "https://auth.tidal.com/v1/";
@@ -79,7 +83,6 @@ private:
     QString m_accessToken;
     QString m_countryCode;
 
-    QNetworkRequest makeRequest(const QUrl &url);
     void getFrom(const QString &base, const QString &endpoint,
                  const QUrlQuery &params, StatusCallback cb);
     // What getFrom() and getArray() share. Hands back the whole document.

@@ -21,13 +21,29 @@ TidalApi::TidalApi(QObject *parent) : QObject(parent) {
 void TidalApi::setAccessToken(const QString &token) { m_accessToken = token; }
 void TidalApi::setCountryCode(const QString &cc)    { m_countryCode = cc; }
 
-QNetworkRequest TidalApi::makeRequest(const QUrl &url) {
+// The origins that are sent the access token and the client token. Every
+// other host, the audio CDN and the image host among them, gets neither.
+static bool takesTokens(const QUrl &url) {
+    static const QLatin1String kApiHosts[] = {
+        QLatin1String("api.tidal.com"),
+        QLatin1String("openapi.tidal.com"),
+    };
+    if (url.scheme() != QLatin1String("https") || url.port(443) != 443) return false;
+    const QString host = url.host();
+    for (const QLatin1String &apiHost : kApiHosts)
+        if (host.compare(apiHost, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+
+QNetworkRequest TidalApi::makeRequest(const QUrl &url) const {
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader,
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 KHTML, like Gecko Chrome/131 Safari/537.36");
-    req.setRawHeader("X-Tidal-Token", "fX2JxdmntZWK0ixT");
-    if (!m_accessToken.isEmpty())
-        req.setRawHeader("Authorization", ("Bearer " + m_accessToken).toUtf8());
+    if (takesTokens(url)) {
+        req.setRawHeader("X-Tidal-Token", "fX2JxdmntZWK0ixT");
+        if (!m_accessToken.isEmpty())
+            req.setRawHeader("Authorization", ("Bearer " + m_accessToken).toUtf8());
+    }
     return req;
 }
 
