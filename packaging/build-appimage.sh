@@ -92,6 +92,14 @@ do
     [ -f "$APPDIR/usr/$installed" ] || { echo "ERROR: cmake --install did not place usr/$installed" >&2; exit 1; }
 done
 
+echo "=== the entry, as integration tools copy it ==="
+# Gear Lever and AppImageLauncher copy this entry into the user's menu, comment
+# lines included, and show X-AppImage-Version as the version. Without the key
+# Gear Lever names the entry after a hash of the file.
+ENTRY="$APPDIR/usr/share/applications/io.github.immineal.TidalWave.desktop"
+sed -i '/^#/d' "$ENTRY"
+echo "X-AppImage-Version=$TW_VERSION" >> "$ENTRY"
+
 echo "=== deploy Qt ==="
 # LD_LIBRARY_PATH because the installed binary has no RUNPATH yet, so nothing
 # else tells linuxdeploy where the Qt libraries are. Its "Missing qml module:

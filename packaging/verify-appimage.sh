@@ -5,8 +5,9 @@
 #
 # Defaults: the newest AppImage in dist/, and debian:bookworm. The container
 # gets only the packages listed below. They are what the AppImage needs from
-# the host, and the README names the same ones. Pass means the app is still
-# running after 25 seconds and its log carries no QML or plugin load error.
+# the host, and the README names the same ones. Pass means the bundle carries
+# what integration tools read, the app is still running after 25 seconds and
+# its log carries no QML or plugin load error.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +17,7 @@ IMAGE="debian:bookworm"
 APPIMAGE=""
 for arg in "$@"; do
     case "$arg" in
-        -h|--help)  sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)  sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *.AppImage) APPIMAGE="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")" ;;
         *)          IMAGE="$arg" ;;
     esac
@@ -51,10 +52,50 @@ else
 fi
 
 echo
-echo "=== 2. launch the AppImage, headless ==="
+echo "=== 2. what integration tools read ==="
 # Copied, because the mount it arrives on may not allow execution.
-cp /pkg/*.AppImage /tmp/tidal-wave.AppImage
+NAME="$(basename /pkg/*.AppImage)"
+cp "/pkg/$NAME" /tmp/tidal-wave.AppImage
 chmod +x /tmp/tidal-wave.AppImage
+(cd /tmp && ./tidal-wave.AppImage --appimage-extract >/dev/null)
+ROOT=/tmp/squashfs-root
+ID=io.github.immineal.TidalWave
+key() { sed -n "s/^$1=//p" "$ROOT/$ID.desktop"; }
+check() {
+    local what="$1"
+    shift
+    if "$@" >/dev/null 2>&1; then echo "ok: $what"; else fail "$what"; fi
+}
+
+# The entry a tool copies into the menu, and the version it shows there.
+check "the one entry at the top is $ID.desktop" \
+    [ "$(cd "$ROOT" && echo *.desktop)" = "$ID.desktop" ]
+check "Exec names the bundled binary" \
+    [ "$(key Exec)" = tidal-wave -a -x "$ROOT/usr/bin/tidal-wave" ]
+check "Icon is tidal-wave" [ "$(key Icon)" = tidal-wave ]
+VERSION="$(key X-AppImage-Version)"
+check "X-AppImage-Version is a version: $VERSION" expr "$VERSION" : '[0-9][0-9.]*$'
+case "$NAME" in
+    tidal-wave-[0-9]*) check "it is the version in the file name" \
+        [ "$NAME" = "tidal-wave-$VERSION-x86_64.AppImage" ] ;;
+esac
+
+# The icon by every path a tool looks under. .DirIcon and the top-level file
+# are links into the theme directory.
+for icon in .DirIcon tidal-wave.svg \
+    usr/share/icons/hicolor/scalable/apps/tidal-wave.svg \
+    usr/share/icons/hicolor/128x128/apps/tidal-wave.png
+do
+    check "icon: $icon" [ -s "$ROOT/$icon" ]
+done
+
+META="$ROOT/usr/share/metainfo/$ID.metainfo.xml"
+check "the metainfo file carries the id" grep -q "<id>$ID</id>" "$META"
+check "the metainfo file launches the entry" \
+    grep -q "<launchable type=\"desktop-id\">$ID.desktop</launchable>" "$META"
+
+echo
+echo "=== 3. launch the AppImage, headless ==="
 export QT_QPA_PLATFORM=offscreen
 export HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/home
 mkdir -m 700 "$HOME"
@@ -73,7 +114,7 @@ else
 fi
 
 echo
-echo "=== 3. scan the log ==="
+echo "=== 4. scan the log ==="
 for pattern in \
     'is not a type' \
     'ReferenceError' \
