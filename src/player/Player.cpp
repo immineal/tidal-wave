@@ -714,6 +714,15 @@ void Player::seek(qint64 ms) {
     }
 #endif
     if (!m_player) return;
+    // A target at or past the end is the end of the track, and the queue
+    // moves on as it does when a track has played out. The backend of Qt 6.5
+    // and later would stay there and report no end. A paused player waits.
+    const qint64 length = m_player->duration();
+    if (length > 0 && ms >= length) {
+        m_pendingSeek = 0;
+        next(!playing());
+        return;
+    }
     setPlayerPosition(ms);
     // Nothing is loaded to seek inside yet, so hold it until something is.
     m_pendingSeek = (m_player->duration() > 0) ? 0 : qMax<qint64>(0, ms);

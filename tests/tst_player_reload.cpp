@@ -1499,6 +1499,59 @@ private slots:
         QVERIFY(QCoreApplication::translate("Player", sentence.toUtf8().constData()) != sentence);
     }
 
+    // ── a seek to the end ───────────────────────────────────────────────────
+
+    void aSeekToTheEndIsTheEndOfTheTrack_data() {
+        QTest::addColumn<qint64>("beyond");
+        QTest::addColumn<bool>("paused");
+        QTest::addColumn<bool>("last");
+        QTest::newRow("at the end")        << qint64(0)     << false << false;
+        QTest::newRow("past the end")      << qint64(15000) << false << false;
+        QTest::newRow("while paused")      << qint64(0)     << true  << false;
+        QTest::newRow("on the last track") << qint64(0)     << false << true;
+    }
+
+    // The forward shortcut, the right edge of the seek bar and MPRIS all ask
+    // for the length of the track or more.
+    void aSeekToTheEndIsTheEndOfTheTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(qint64, beyond);
+        QFETCH(bool, paused);
+        QFETCH(bool, last);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(8000, last ? 1 : 3), 0);
+        QVERIFY(a.client.answer(8000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.p().duration() > 0, 10000);
+        if (paused) {
+            a.p().playPause();
+            QTRY_COMPARE_WITH_TIMEOUT(a.mp()->playbackState(), QMediaPlayer::PausedState, 5000);
+        }
+
+        a.p().seek(a.p().duration() + beyond);
+        if (last) {
+            // As when it has played out: stopped, and back at its start.
+            QTRY_VERIFY2_WITH_TIMEOUT(!a.p().playing(), "the end never came", 8000);
+            QCOMPARE(a.mp()->playbackState(), QMediaPlayer::StoppedState);
+            QCOMPARE(a.p().position(), qint64(0));
+            QCOMPARE(currentId(a.p()), 8000);
+            return;
+        }
+        QTRY_VERIFY2_WITH_TIMEOUT(currentId(a.p()) == 8001, "the end never came", 8000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001}));
+        QVERIFY(a.client.answer(8001, track));
+        if (paused) {
+            // A paused player moves on and waits there.
+            QTRY_VERIFY_WITH_TIMEOUT(!a.p().loading() && a.loaded(), 10000);
+            QTest::qWait(300);
+            QVERIFY2(!a.started() && !a.p().playing(), "the track after a paused one played");
+        } else {
+            QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track after it never played", 10000);
+        }
+    }
+
 private:
     // Why this Qt on this machine cannot run the cases that load audio, or null.
     static const char *obstacle()
