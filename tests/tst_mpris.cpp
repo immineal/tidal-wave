@@ -426,6 +426,48 @@ private slots:
         QCOMPARE(desk().statuses(), QStringList());
     }
 
+    // ── Play ────────────────────────────────────────────────────────────────
+
+    // The session was restored and its track never loaded: Tidal was out of
+    // reach, or the stream resolved and the download failed. Nothing is loaded
+    // for Play to start, so it asks again and plays from where it was left.
+    void playLoadsARestoredTrackThatNeverLoaded_data() {
+        QTest::addColumn<bool>("streamResolved");
+        QTest::addColumn<QString>("method");
+        QTest::newRow("Play, Tidal out of reach")        << false << QStringLiteral("Play");
+        QTest::newRow("PlayPause, Tidal out of reach")   << false << QStringLiteral("PlayPause");
+        QTest::newRow("Play, the download failed")       << true  << QStringLiteral("Play");
+    }
+
+    void playLoadsARestoredTrackThatNeverLoaded() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, streamResolved);
+        QFETCH(QString, method);
+        QVERIFY(saveFiveRowSession());
+
+        Launch b;
+        QVERIFY(b.audioUp());
+        if (streamResolved) {
+            QSignalSpy errorSpy(&b.p(), &Player::error);
+            QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/gone")))));
+            QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
+        } else {
+            QVERIFY(b.client.answer(1002, StreamManifest(), QStringLiteral("Host not found")));
+        }
+        QCOMPARE(desk().status(), QStringLiteral("Paused"));
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 12000000LL);
+        desk().forget();
+
+        desk().player(method);
+        QVERIFY2(b.client.answer(1002, track()), "Play asked for nothing");
+        QTRY_VERIFY2_WITH_TIMEOUT(b.p().playing(), "Play left it paused", 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(b.mp()->position() >= 11500, 5000);
+        QCOMPARE(desk().statuses(), (QStringList{ QStringLiteral("Playing") }));
+        // The third request fetches the next row ahead of time.
+        QTRY_COMPARE_WITH_TIMEOUT(b.client.asked, (QList<qlonglong>{1002, 1002, 1003}), 5000);
+        QCOMPARE(b.p().queueCount(), 5);
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
 
