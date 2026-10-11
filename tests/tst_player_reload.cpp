@@ -556,11 +556,11 @@ private slots:
             a.p().playTracks(contextOf(3000, 3), 0);
             QVERIFY(a.client.answer(3000, track));
             QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
-            a.mp()->setPosition(6000);
+            a.p().seek(6000);
             QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001}), 5000);
             QVERIFY(a.client.answer(id, noise));
             QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 2, 10000);
-            a.mp()->setPosition(29000);
+            a.p().seek(29000);
         } else {
             a.p().playTracks(contextOf(3000, 2), 0);
             QVERIFY(a.client.answer(id, noise));
@@ -644,7 +644,7 @@ private slots:
         } else {
             // The request made ahead of time stays out, so the row is asked
             // for again when the track before it has run out.
-            a.mp()->setPosition(29000);
+            a.p().seek(29000);
             QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
             QVERIFY(a.client.answer(8002, ruledOut(), kGone));
         }
@@ -767,12 +767,12 @@ private slots:
         a.p().playTracks(contextOf(8000, 3), 0);
         QVERIFY(a.client.answer(8000, track));
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
         QVERIFY(a.client.answer(8001, ruledOut(), kGone));
 
         // Tidal goes on answering the same for both rows.
-        a.mp()->setPosition(29000);
+        a.p().seek(29000);
         QTest::qWaitFor([&] {
             while (a.client.answer(8001, ruledOut(), kGone)) {}
             while (a.client.answer(8002, track)) {}
@@ -798,7 +798,7 @@ private slots:
         a.p().playTracks(contextOf(8000, 3), 0);
         QVERIFY(a.client.answer(8000, track));
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
 
         QVERIFY(a.client.answer(8001, ruledOut(), kGone));
@@ -811,7 +811,7 @@ private slots:
         QVERIFY(a.client.answer(8002, track));
         QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 2, 10000);
 
-        a.mp()->setPosition(29000);
+        a.p().seek(29000);
         QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002, 10000);
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}));
@@ -870,7 +870,7 @@ private slots:
             a.p().previous();
         } else {
             // Asked for ahead of time and again when the track before it ran out.
-            a.mp()->setPosition(29000);
+            a.p().seek(29000);
             QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
             QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
         }
@@ -903,7 +903,7 @@ private slots:
         a.p().playTracks(contextOf(8000, 3), 0);
         QVERIFY(a.client.answer(8000, track));
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
 
         QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
@@ -914,7 +914,7 @@ private slots:
         QVERIFY2(a.client.asked == (QList<qlonglong>{8000, 8001}),
                  "the row ahead was asked for again while the track before it played");
 
-        a.mp()->setPosition(29000);
+        a.p().seek(29000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001, 8001}), 10000);
         QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
         QCOMPARE(currentId(a.p()), 8002);
@@ -1105,7 +1105,7 @@ private slots:
         a.p().playTracks(contextOf(8000, 10), 0);
         QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
 
         for (qlonglong id = 8001; id <= 8006; ++id) {
             QTRY_COMPARE_WITH_TIMEOUT(a.client.asked.constLast(), id, 5000);
@@ -1199,7 +1199,7 @@ private slots:
         a.p().playTracks(contextOf(6000, 3), 0);
         QVERIFY(a.client.answer(6000, track));
         QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001}), 5000);
         QVERIFY(a.client.answer(6001, oneFileAt(m_server.url(QStringLiteral("/held")))));
         QTRY_COMPARE_WITH_TIMEOUT(m_server.requestsHeld, heldBefore + 1, 5000);
@@ -1210,7 +1210,7 @@ private slots:
         QVERIFY(a.client.answer(6001, track));
         QTRY_VERIFY_WITH_TIMEOUT(!a.mp()->source().isEmpty() && a.loaded(), 10000);
 
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked,
                                   (QList<qlonglong>{6000, 6001, 6001, 6002}), 5000);
     }
@@ -1267,7 +1267,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
         QCOMPARE(fetched.count(), 1);
 
-        a.mp()->setPosition(6000);
+        a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{7000, 7001}), 5000);
         {
             const FileSizeCap full(4096);
