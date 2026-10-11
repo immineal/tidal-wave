@@ -158,7 +158,9 @@ QVariantMap MprisPlayer::metadata() const {
     qlonglong id = track["id"].toLongLong();
     m["mpris:trackid"]    = QVariant::fromValue(QDBusObjectPath("/org/tidalwave/track/" + QString::number(id)));
     m["mpris:length"]     = (qlonglong)(track["duration"].toLongLong() * 1000000LL);
-    m["mpris:artUrl"]     = track["coverUrl"].toString();
+    // A URI, so a track with no cover goes without the key.
+    const QString cover = track["coverUrl"].toString();
+    if (!cover.isEmpty()) m["mpris:artUrl"] = cover;
     m["xesam:title"]      = track["title"].toString();
     const QStringList artists = artistNames(track);
     if (!artists.isEmpty()) m["xesam:artist"] = artists;

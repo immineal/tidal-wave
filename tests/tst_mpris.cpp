@@ -971,6 +971,27 @@ private slots:
         QCOMPARE(metadata.value(QStringLiteral("xesam:artist")).toStringList(), sent);
     }
 
+    // mpris:artUrl is a URI, and an empty string is none: a track with no
+    // cover goes without the key.
+    void theCoverIsNamedOnlyWhereThereIsOne() {
+        const QString cover = QStringLiteral("https://resources.tidal.com/images/ab/cd/320x320.jpg");
+        QVariantMap covered = trackOf(3001);
+        covered[QStringLiteral("coverUrl")] = cover;
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks({ trackOf(3000), covered }, 0);
+        const QVariantMap bare = desk().get(QStringLiteral("Metadata")).toMap();
+        QCOMPARE(bare.value(QStringLiteral("xesam:title")).toString(), QStringLiteral("T3000"));
+        QVERIFY2(!bare.contains(QStringLiteral("mpris:artUrl")),
+                 qPrintable(QStringLiteral("mpris:artUrl is \"%1\"")
+                                .arg(bare.value(QStringLiteral("mpris:artUrl")).toString())));
+
+        a.p().next();
+        QCOMPARE(desk().get(QStringLiteral("Metadata")).toMap()
+                     .value(QStringLiteral("mpris:artUrl")).toString(), cover);
+    }
+
     // ── What a client can do ────────────────────────────────────────────────
 
     // With no track there is nothing to play, pause, seek in or step from.
