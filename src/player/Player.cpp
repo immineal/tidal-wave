@@ -801,6 +801,20 @@ static void disposeDash(DashFetcher *dash, QObject *ctx) {
     QTimer::singleShot(0, ctx, [dash] { delete dash; });
 }
 
+// A downloaded track in a temp file of its own, or null if it could not all
+// be written. A full disk lets the file open, and write() only fills a
+// buffer, so the flush is what reports it.
+static QTemporaryFile *saveToTempFile(const QByteArray &data) {
+    auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
+    f->setAutoRemove(false);
+    const bool saved = f->open() && f->write(data) == data.size() && f->flush();
+    f->close();
+    if (saved) return f;
+    f->remove();
+    delete f;
+    return nullptr;
+}
+
 void Player::loadAndPlay(int index) {
     if (index < 0 || index >= m_queue.count()) return;
     // The user asked for this track, so a restore still waiting on its own
@@ -946,13 +960,8 @@ void Player::startLoad(int index) {
                             : tr("Could not download the audio for this track. %1").arg(err));
                         return;
                     }
-                    m_mpdTempFile = new QTemporaryFile(
-                        QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
-                    m_mpdTempFile->setAutoRemove(false);
-                    if (m_mpdTempFile->open()) {
-                        m_mpdTempFile->write(data);
-                        m_mpdTempFile->flush();
-                        m_mpdTempFile->close();
+                    m_mpdTempFile = saveToTempFile(data);
+                    if (m_mpdTempFile) {
                         // Casting may have started while this fetch was in flight.
                         if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
@@ -1102,17 +1111,13 @@ void Player::preloadNext() {
                 m_preloadDownload = nullptr;
                 if (m_preloadIndex != next) return;
                 if (!dlErr.isEmpty() || data.isEmpty()) { preloadGaveUp(next); return; }
-                auto *f = new QTemporaryFile(QDir::tempPath() + QStringLiteral("/tidal-wave-XXXXXX.mp4"));
-                f->setAutoRemove(false);
-                if (f->open()) {
-                    f->write(data); f->flush(); f->close();
+                if (auto *f = saveToTempFile(data)) {
                     m_preloadTempFile = f;
                     m_preloadTrackId  = trackId;
                     m_preloadReady    = true;
                 } else {
                     // A full temp directory lands here. Silent: a failed preload
                     // costs a wait, and the live load reports the disk itself.
-                    delete f;
                     preloadGaveUp(next);
                 }
             });

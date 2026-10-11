@@ -1,7 +1,6 @@
-// A load that follows one which ended badly: a restore the user overtakes,
-// and a track left with nothing loaded. Stream requests are held until the
-// test answers them, and the audio is a silent WAV from a localhost server.
-// Every Player here is muted before its output opens.
+// Loads that overtake another or follow one which ended badly. The test holds
+// each stream request until it answers it, and the audio is a silent WAV from
+// a localhost server. Every Player is muted before its output opens.
 
 #include <QTest>
 #include <QByteArray>
@@ -10,6 +9,7 @@
 #include <QFile>
 #include <QMediaDevices>
 #include <QMediaPlayer>
+#include <QNetworkAccessManager>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -18,6 +18,11 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <memory>
+
+#ifdef Q_OS_UNIX
+#include <csignal>
+#include <sys/resource.h>
+#endif
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -204,6 +209,23 @@ struct TempDirAt {
     }
 };
 
+#ifdef Q_OS_UNIX
+// Caps the size of any file this process writes while it lives. A write
+// past the cap fails the way a write to a full disk does.
+struct FileSizeCap {
+    rlimit was{};
+
+    explicit FileSizeCap(rlim_t bytes) {
+        std::signal(SIGXFSZ, SIG_IGN);   // the default action ends the process
+        getrlimit(RLIMIT_FSIZE, &was);
+        rlimit cap = was;
+        cap.rlim_cur = bytes;
+        setrlimit(RLIMIT_FSIZE, &cap);
+    }
+    ~FileSizeCap() { setrlimit(RLIMIT_FSIZE, &was); }
+};
+#endif
+
 // One launch of the app. With the account set first, the Player restores
 // from its constructor as it does at startup.
 struct Launch {
@@ -219,6 +241,8 @@ struct Launch {
     }
     Player &p() { return *player; }
     QMediaPlayer *mp() { return player->findChild<QMediaPlayer *>(); }
+    // Its finished() comes with each download's own, in the same emission.
+    QNetworkAccessManager *network() { return api.findChild<QNetworkAccessManager *>(); }
     // The Player builds its audio objects on the first turn of the loop.
     bool audioUp() {
         return QTest::qWaitFor([this] { return mp() != nullptr; }, 10000);
@@ -537,6 +561,72 @@ private slots:
         a.mp()->setPosition(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked,
                                   (QList<qlonglong>{6000, 6001, 6001, 6002}), 5000);
+    }
+
+    // ── a disk with no room ─────────────────────────────────────────────────
+
+    // The temp file opens and the write into it comes up short. The user is
+    // told about the disk, play asks again, and the short file is not kept.
+    void aDownloadThatDoesNotFitOnDiskIsReported() {
+#ifndef Q_OS_UNIX
+        QSKIP("a full disk is staged with a POSIX file size limit");
+#else
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const TempDirAt own(tmp.path());
+        {
+            Launch a;
+            QVERIFY(a.audioUp());
+            QSignalSpy errorSpy(&a.p(), &Player::error);
+            QSignalSpy fetched(a.network(), &QNetworkAccessManager::finished);
+            a.p().playTracks(contextOf(7000, 2), 0);
+            {
+                const FileSizeCap full(4096);
+                QVERIFY(a.client.answer(7000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+                QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 1, 10000);
+            }
+            QCOMPARE(errorSpy.count(), 1);
+            const QString msg = errorSpy.at(0).at(0).toString();
+            QVERIFY2(msg.startsWith(QStringLiteral("Could not save the audio to a temporary file.")),
+                     qPrintable(msg));
+            QVERIFY(!a.p().loading());
+            QCOMPARE(QDir(tmp.path()).entryList(QDir::Files), QStringList());
+
+            a.p().playPause();
+            QCOMPARE(a.client.asked, (QList<qlonglong>{7000, 7000}));
+        }
+#endif
+    }
+
+    // The same shortfall in a preload costs only the preload. The short file
+    // is not handed over: the track is asked for again when it is reached.
+    void aPreloadThatDoesNotFitOnDiskIsNotHandedOver() {
+#ifndef Q_OS_UNIX
+        QSKIP("a full disk is staged with a POSIX file size limit");
+#else
+        if (const char *why = obstacle()) QSKIP(why);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy fetched(a.network(), &QNetworkAccessManager::finished);
+        a.p().playTracks(contextOf(7000, 2), 0);
+        QVERIFY(a.client.answer(7000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
+        QCOMPARE(fetched.count(), 1);
+
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{7000, 7001}), 5000);
+        {
+            const FileSizeCap full(4096);
+            QVERIFY(a.client.answer(7001, track));
+            QTRY_COMPARE_WITH_TIMEOUT(fetched.count(), 2, 10000);
+        }
+
+        a.p().next();
+        QCOMPARE(currentId(a.p()), 7001);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{7000, 7001, 7001}));
+#endif
     }
 
 private:
