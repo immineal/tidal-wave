@@ -269,8 +269,8 @@ private:
     // one that is not for this account keeps it.
     void passOverTrack(StreamManifest::Reason reason);
     // Tells the user that a row was passed over. Rows passed over one after
-    // another are told as one.
-    void notePassedOver(const QString &title);
+    // another are told as one, and a run that ended is told as that.
+    void notePassedOver(const QString &title, bool runEnded = false);
     // Puts the cursor on row n the way a step does.
     void stepTo(int n);
     void setPlayerPosition(qint64 ms);
@@ -343,6 +343,9 @@ private:
     QString              m_loadError;
     bool                 m_loadErrorClaimed = false;
     Travel               m_travel        = Travel::Picked;
+    // How many rows are passed over one after another before the queue rests
+    // on the next one without asking for it.
+    static constexpr int kMaxPassedOver = 5;
     // Rows passed over since a load was last asked for: those dropped and
     // those kept.
     int                  m_droppedRun    = 0;

@@ -1192,7 +1192,8 @@ void Player::preloadNext() {
             // kept is passed over once the queue reaches it.
             const bool sameRow = next < m_queue.count() && next != m_index
                 && m_queue.at(next).track.value("id").toLongLong() == trackId;
-            if (manifest.reason == StreamManifest::Gone && sameRow) {
+            const bool runGoesOn = m_droppedRun + m_keptRun < kMaxPassedOver;
+            if (manifest.reason == StreamManifest::Gone && sameRow && runGoesOn) {
                 const QString title = m_queue.at(next).track.value("title").toString();
                 m_preloadIndex = -1;
                 removeFromQueue(next);
@@ -1595,10 +1596,14 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         if (rowLeft) stepTo(to);
     }
 
-    if (rowLeft) {
+    // A run this long has one cause for all its rows, and the next request
+    // would meet it again. The row the cursor is on now was not asked for.
+    const bool runEnds = rowLeft && m_droppedRun + m_keptRun >= kMaxPassedOver;
+
+    if (rowLeft && !runEnds) {
         startLoad(m_index);
     } else {
-        // The queue ends on a row with nothing loaded, which play asks for.
+        // The queue rests on a row with nothing loaded, which play asks for.
         m_currentTrack  = trackFromMap(m_queue.at(m_index).track);
         m_restorePaused = false;
         m_restoreSkips  = false;
@@ -1606,15 +1611,22 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         setLoading(false);
         emit currentTrackChanged();
     }
-    if (!restoring) {
-        notePassedOver(title);
-        schedulePersist();
-    }
+    // A run that ends is told in a restore as well.
+    if (runEnds || !restoring) notePassedOver(title, runEnds);
+    if (!restoring) schedulePersist();
 }
 
-void Player::notePassedOver(const QString &title) {
+void Player::notePassedOver(const QString &title, bool runEnded) {
     QString said;
-    if (m_droppedRun + m_keptRun == 1) {
+    if (runEnded) {
+        said = m_keptRun == 0
+                ? tr("Several tracks in a row are no longer available on Tidal, "
+                     "so playback stopped here.")
+            : m_droppedRun == 0
+                ? tr("Several tracks in a row are not available for your account or region, "
+                     "so playback stopped here.")
+                : tr("Several tracks in a row are not available, so playback stopped here.");
+    } else if (m_droppedRun + m_keptRun == 1) {
         said = m_droppedRun == 1
             ? tr("“%1” is no longer available on Tidal and was skipped.").arg(title)
             : tr("“%1” is not available for your account or region and was skipped.").arg(title);

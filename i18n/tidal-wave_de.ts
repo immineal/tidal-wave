@@ -919,6 +919,18 @@
         <translation>Mehrere Titel sind nicht verfügbar und wurden übersprungen.</translation>
     </message>
     <message>
+        <source>Several tracks in a row are no longer available on Tidal, so playback stopped here.</source>
+        <translation>Mehrere Titel in Folge sind bei Tidal nicht mehr verfügbar, daher wurde die Wiedergabe hier angehalten.</translation>
+    </message>
+    <message>
+        <source>Several tracks in a row are not available for your account or region, so playback stopped here.</source>
+        <translation>Mehrere Titel in Folge sind für dein Konto oder deine Region nicht verfügbar, daher wurde die Wiedergabe hier angehalten.</translation>
+    </message>
+    <message>
+        <source>Several tracks in a row are not available, so playback stopped here.</source>
+        <translation>Mehrere Titel in Folge sind nicht verfügbar, daher wurde die Wiedergabe hier angehalten.</translation>
+    </message>
+    <message>
         <source>Max</source>
         <translation>Max</translation>
     </message>

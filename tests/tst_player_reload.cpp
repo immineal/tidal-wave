@@ -971,6 +971,91 @@ private slots:
         QCOMPARE(a.p().loadError(), kSeveralNotForAccount);
     }
 
+    // ── a run of rows that cannot be played ─────────────────────────────────
+
+    // Five rows in a row are passed over and the sixth is not asked for. The
+    // queue rests on it, the rows beyond are as they were, and one sentence
+    // says why. Play asks for the row it rests on.
+    void aRunOfRowsThatCannotBePlayedEnds_data() {
+        QTest::addColumn<QString>("answers");   // g: gone, a: not for this account
+        QTest::addColumn<int>("rowsLeft");
+        QTest::addColumn<QString>("said");
+        QTest::newRow("Tidal has none of them") << QStringLiteral("ggggg") << 5
+            << QStringLiteral("Several tracks in a row are no longer available on Tidal, "
+                              "so playback stopped here.");
+        QTest::newRow("none is for this account") << QStringLiteral("aaaaa") << 10
+            << QStringLiteral("Several tracks in a row are not available for your account "
+                              "or region, so playback stopped here.");
+        QTest::newRow("some of each") << QStringLiteral("gagag") << 7
+            << QStringLiteral("Several tracks in a row are not available, "
+                              "so playback stopped here.");
+    }
+
+    void aRunOfRowsThatCannotBePlayedEnds() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, answers);
+        QFETCH(int, rowsLeft);
+        QFETCH(QString, said);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 10), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        a.p().next();
+        for (int i = 0; i < answers.size(); ++i) {
+            const qlonglong id = 8001 + i;
+            QCOMPARE(a.client.asked.constLast(), id);
+            QVERIFY(answers.at(i) == QLatin1Char('g')
+                        ? a.client.answer(id, ruledOut(), kGone)
+                        : a.client.answer(id, notForAccount(), kPreview));
+        }
+
+        QVERIFY2(a.client.asked == (QList<qlonglong>{8000, 8001, 8002, 8003, 8004, 8005}),
+                 "a sixth row was asked for");
+        QCOMPARE(a.client.waiting(), 0);
+        QCOMPARE(currentId(a.p()), 8006);
+        QCOMPARE(a.p().queueCount(), rowsLeft);
+        QVERIFY(!a.p().loading());
+        QVERIFY(!a.p().playing());
+        QCOMPARE(a.p().loadError(), said);
+        int told = 0;
+        for (const QList<QVariant> &args : errorSpy)
+            if (args.at(0).toString() == said) ++told;
+        QCOMPARE(told, 1);
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked.count(), 7);
+        QCOMPARE(a.client.asked.constLast(), 8006);
+    }
+
+    // Rows ahead that Tidal no longer has are dropped up to the same number.
+    // The next one keeps its place, and nothing beyond it is asked for.
+    void rowsAheadAreDroppedUpToTheSameNumber() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(8000, 10), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+        a.mp()->setPosition(6000);
+
+        for (qlonglong id = 8001; id <= 8006; ++id) {
+            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked.constLast(), id, 5000);
+            QVERIFY(a.client.answer(id, ruledOut(), kGone));
+        }
+
+        QVERIFY2(a.p().queueCount() == 5, "a sixth row ahead was dropped");
+        QTest::qWait(500);
+        QCOMPARE(a.client.asked.count(), 7);
+        QVERIFY(a.p().playing());
+        QCOMPARE(a.p().loadError(),
+                 QStringLiteral("Several tracks are no longer available on Tidal and were skipped."));
+    }
+
     // ── replies nobody is waiting for ───────────────────────────────────────
 
     // Moving on aborts the download in flight, which is the player's own
@@ -1333,6 +1418,10 @@ private slots:
             "“%1” is not available for your account or region and was skipped.",
             "Several tracks are not available for your account or region and were skipped.",
             "Several tracks are not available and were skipped.",
+            "Several tracks in a row are no longer available on Tidal, so playback stopped here.",
+            "Several tracks in a row are not available for your account or region, "
+                "so playback stopped here.",
+            "Several tracks in a row are not available, so playback stopped here.",
         };
         for (const char *s : sentences) QTest::newRow(s) << QString::fromUtf8(s);
     }

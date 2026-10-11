@@ -330,7 +330,8 @@ private slots:
                 QVERIFY2(!args.at(0).toBool(), "skipping a dead track started playback");
         }
 
-        // Even if every single one is dead, the restore ends quietly.
+        // Four rows, every one of them dead: fewer than a restore gives up
+        // after, so it drops them all and ends quietly.
         Launch c(ScriptedClient::Unavailable);
         QSignalSpy errorSpy(&c.p(), &Player::error);
         QVERIFY(c.settle());
@@ -338,6 +339,68 @@ private slots:
         QCOMPARE(c.p().queueCount(), 0);
         QCOMPARE(c.p().queueIndex(), -1);
         QCOMPARE(errorSpy.count(), 0);
+    }
+
+    // A restore asks for five rows in a row and for no more, however many are
+    // saved. The rows it did not ask for are as they were, the queue rests on
+    // the first of them, and one sentence says why.
+    void aRestoreStopsAskingAfterARunOfRowsThatCannotBePlayed_data() {
+        QTest::addColumn<int>("answer");
+        QTest::addColumn<QList<qlonglong>>("rowsLeft");
+        QTest::addColumn<QString>("said");
+
+        QList<qlonglong> all;
+        for (qlonglong id = 1000; id < 1040; ++id) all.append(id);
+        QTest::newRow("Tidal has none of them")
+            << int(ScriptedClient::Unavailable)
+            << (all.mid(0, 2) + all.mid(7))
+            << QStringLiteral("Several tracks in a row are no longer available on Tidal, "
+                              "so playback stopped here.");
+        QTest::newRow("none is for this account")
+            << int(ScriptedClient::NotForAccount) << all
+            << QStringLiteral("Several tracks in a row are not available for your account "
+                              "or region, so playback stopped here.");
+    }
+
+    void aRestoreStopsAskingAfterARunOfRowsThatCannotBePlayed() {
+        QFETCH(int, answer);
+        QFETCH(QList<qlonglong>, rowsLeft);
+        QFETCH(QString, said);
+        {
+            Launch a;
+            QVERIFY(a.settle());
+            a.p().playTracks(contextOf(1000, 40), 2);
+            a.p().seek(12000);
+            a.p().savePlaybackState();
+        }
+        {
+            Launch b{ScriptedClient::Answer(answer)};
+            QSignalSpy errorSpy(&b.p(), &Player::error);
+            QSignalSpy playingSpy(&b.p(), &Player::playingChanged);
+            QVERIFY(b.settle());
+
+            QVERIFY2(b.client.asked == (QList<qlonglong>{1002, 1003, 1004, 1005, 1006}),
+                     qPrintable(QStringLiteral("%1 rows were asked for").arg(b.client.asked.count())));
+            QCOMPARE(ids(b.p().queueTracks()), rowsLeft);
+            QCOMPARE(currentId(b.p()), 1007);
+            QCOMPARE(b.p().position(), qint64(0));
+            QVERIFY(!b.p().loading());
+            QVERIFY(!b.p().playing());
+            QCOMPARE(playingSpy.count(), 0);
+            QCOMPARE(errorSpy.count(), 1);
+            QCOMPARE(errorSpy.at(0).at(0).toString(), said);
+
+            // Play is the user's own request for the row the queue rests on.
+            b.client.answer = ScriptedClient::Silent;
+            b.p().playPause();
+            QCOMPARE(b.client.asked.count(), 6);
+            QCOMPARE(b.client.asked.constLast(), 1007);
+        }
+
+        Launch c;
+        QVERIFY(c.settle());
+        QCOMPARE(ids(c.p().queueTracks()), rowsLeft);
+        QCOMPARE(currentId(c.p()), 1007);
     }
 
     // ── a launch that cannot ask ────────────────────────────────────────────
