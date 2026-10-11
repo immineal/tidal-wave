@@ -172,6 +172,93 @@ if [ "${#copied_elf[@]}" -gt 0 ]; then
 fi
 unset LD_LIBRARY_PATH
 
+echo "=== what the program cannot load ==="
+# linuxdeploy copies qml/QtQuick whole, with every Controls style, and the
+# libraries all of it links. Kept are the modules the program's QML imports,
+# the two styles Application.cpp selects, and what those import in turn.
+KEEP_QML=" QML QtQml QtQml/Models QtQml/WorkerScript QtQuick QtQuick/Controls \
+QtQuick/Controls/Basic QtQuick/Controls/Basic/impl QtQuick/Controls/Fusion \
+QtQuick/Controls/Fusion/impl QtQuick/Controls/impl QtQuick/Layouts \
+QtQuick/Shapes QtQuick/Templates QtQuick/Window "
+kept() { case "$KEEP_QML" in *" ${1//.//} "*) return 0 ;; esac; return 1; }
+appdir_bytes() { du -sb "$APPDIR" | cut -f1; }
+before="$(appdir_bytes)"
+
+# A file belongs to the nearest directory above it that holds a qmldir. The
+# designer directories serve Qt Design Studio and go in any case.
+declare -A module=()
+while IFS= read -r qmldir; do
+    module["$(dirname "$qmldir")"]=1
+done < <(find "$APPDIR/usr/qml" -name qmldir)
+dropped=0
+while IFS= read -r file; do
+    dir="$(dirname "$file")"
+    until [ -n "${module[$dir]:-}" ] || [ "$dir" = "$APPDIR/usr/qml" ]; do
+        dir="$(dirname "$dir")"
+    done
+    case "$file" in
+        */designer/*) ;;
+        *) kept "${dir#"$APPDIR/usr/qml/"}" && continue ;;
+    esac
+    rm -f "$file"
+    dropped=$((dropped + 1))
+done < <(find "$APPDIR/usr/qml" \( -type f -o -type l \) | sort)
+find "$APPDIR/usr/qml" -depth -type d -empty -delete
+echo "QML: $dropped files dropped"
+
+# An import of a dropped module fails only when the page that has it is first
+# shown. So every import in the program and in what was kept must be kept.
+missing=0
+for name in $({
+        grep -rhoE --include='*.qml' '^[[:space:]]*import[[:space:]]+[A-Z][A-Za-z0-9_.]*' \
+            /src/qml "$APPDIR/usr/qml" | awk '{ print $2 }'
+        find "$APPDIR/usr/qml" -name qmldir -exec awk \
+            '$1 == "import" || $1 == "depends" { print $2 } $1 == "default" && $2 == "import" { print $3 }' {} +
+    } | sort -u); do
+    [ "$name" = TidalWave ] && continue
+    kept "$name" || { echo "imported, and dropped from the bundle: $name" >&2; missing=1; }
+done
+[ "$missing" = 0 ] || { echo "ERROR: add the module to KEEP_QML" >&2; exit 1; }
+
+# Libraries that nothing left in the bundle links, followed from the binary
+# and from every plugin.
+declare -A linked=()
+queue=()
+while IFS= read -r elf; do
+    queue+=("$elf")
+done < <(find "$APPDIR/usr/bin" "$APPDIR/usr/plugins" "$APPDIR/usr/qml" -type f \
+    \( -name '*.so' -o -name '*.so.*' -o -path '*/usr/bin/*' \))
+while [ "${#queue[@]}" -gt 0 ]; do
+    elf="${queue[0]}"
+    queue=("${queue[@]:1}")
+    for lib in $(objdump -p "$elf" 2>/dev/null | awk '$1 == "NEEDED" { print $2 }'); do
+        if [ -z "${linked[$lib]:-}" ] && [ -f "$APPDIR/usr/lib/$lib" ]; then
+            linked[$lib]=1
+            queue+=("$APPDIR/usr/lib/$lib")
+        fi
+    done
+done
+orphans=()
+for lib in "$APPDIR"/usr/lib/*; do
+    [ -f "$lib" ] || continue
+    [ -n "${linked[${lib##*/}]:-}" ] || orphans+=("$lib")
+done
+if [ "${#orphans[@]}" -gt 0 ]; then
+    rm -f "${orphans[@]}"
+    echo "libraries: ${#orphans[@]} dropped: ${orphans[*]##*/}"
+fi
+
+# I18n loads Qt's own catalogue for the program's languages, and only qtbase.
+for qm in "$APPDIR"/usr/translations/*.qm; do
+    name="${qm##*/}"
+    case "$name" in
+        qtbase_*) lang="${name#qtbase_}"; [ -f "/src/i18n/tidal-wave_${lang%.qm}.ts" ] && continue ;;
+    esac
+    rm -f "$qm"
+done
+echo "translations kept: $(ls "$APPDIR/usr/translations" | tr '\n' ' ')"
+echo "AppDir: $before bytes before, $(appdir_bytes) after"
+
 echo "=== entry point ==="
 # linuxdeploy wraps AppRun in a script that sources a plugin hook naming a
 # Qt 5 platform theme. The AppRun written here replaces both.

@@ -106,6 +106,11 @@ check "the metainfo file carries the id" grep -q "<id>$ID</id>" "$META"
 check "the metainfo file launches the entry" \
     grep -q "<launchable type=\"desktop-id\">$ID.desktop</launchable>" "$META"
 
+# The build drops what the program cannot load. A style that came back would
+# bring its libraries with it.
+check "the Controls styles in the bundle are Basic and Fusion" \
+    [ "$(cd "$ROOT/usr/qml/QtQuick/Controls" && echo */)" = "Basic/ Fusion/ impl/" ]
+
 echo
 echo "=== 3. launch the AppImage, headless ==="
 export QT_QPA_PLATFORM=offscreen
