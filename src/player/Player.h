@@ -244,6 +244,9 @@ private:
     void loadAndPlay(int index);
     // The load itself. Only the restore calls it directly, to stay in force.
     void startLoad(int index);
+    // The load ended with nothing to play: reports why, and owes the track
+    // another load on the next press on play.
+    void failLoad(const QString &msg);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;
@@ -329,7 +332,8 @@ private:
     // Until a restored track resolves, a failed load stays quiet: the row is
     // dropped if Tidal ruled the track out, and left to load on play otherwise.
     bool                 m_restoreSkips   = false;
-    // The current track's stream could not be fetched; the next play asks again.
+    // The current track's load failed and left nothing loaded; the next play
+    // asks again.
     bool                 m_loadOwed       = false;
     // Where the restored track was left, applied once the media is ready.
     qint64               m_pendingSeek    = 0;

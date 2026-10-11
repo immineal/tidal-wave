@@ -936,9 +936,7 @@ void Player::startLoad(int index) {
                         return;
                     }
                     if (!err.isEmpty() || data.isEmpty()) {
-                        setLoading(false);
-                        if (m_restoreSkips) { skipUnplayableTrack(); return; }
-                        emit error(err.isEmpty()
+                        failLoad(err.isEmpty()
                             ? tr("Could not download the audio for this track. No data came back.")
                             : tr("Could not download the audio for this track. %1").arg(err));
                         return;
@@ -955,9 +953,8 @@ void Player::startLoad(int index) {
                         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                         beginPlayback();
                     } else {
-                        setLoading(false);
-                        emit error(tr("Could not save the audio to a temporary file. "
-                                      "Check that there is free disk space."));
+                        failLoad(tr("Could not save the audio to a temporary file. "
+                                    "Check that there is free disk space."));
                     }
                 });
             } else {
@@ -967,9 +964,7 @@ void Player::startLoad(int index) {
                 if (!fetcher->isValid() || !fetcher->openedTempFile()) {
                     const bool manifestWasReadable = fetcher->isValid();
                     delete fetcher;
-                    setLoading(false);
-                    if (m_restoreSkips) { skipUnplayableTrack(); return; }
-                    emit error(manifestWasReadable
+                    failLoad(manifestWasReadable
                         ? tr("Could not save the audio to a temporary file. "
                              "Check that there is free disk space.")
                         : tr("Could not read the lossless stream details for this track."));
@@ -985,9 +980,7 @@ void Player::startLoad(int index) {
                         return;
                     }
                     if (!file) {
-                        setLoading(false);
-                        if (m_restoreSkips) { skipUnplayableTrack(); return; }
-                        emit error(dashErr.isEmpty()
+                        failLoad(dashErr.isEmpty()
                             ? tr("Could not download the audio for this track. No data came back.")
                             : tr("Could not download the audio for this track. %1").arg(dashErr));
                         return;
@@ -1000,6 +993,12 @@ void Player::startLoad(int index) {
                 });
             }
         });
+}
+
+void Player::failLoad(const QString &msg) {
+    setLoading(false);
+    m_loadOwed = true;
+    emit error(msg);
 }
 
 void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {

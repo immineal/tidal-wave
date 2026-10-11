@@ -1,10 +1,12 @@
-// A restore the user overtakes. Stream requests are held until the test
-// answers them, and the audio is a silent WAV from a localhost server. Every
-// Player here is muted before its output opens.
+// A load that follows one which ended badly: a restore the user overtakes,
+// and a track left with nothing loaded. Stream requests are held until the
+// test answers them, and the audio is a silent WAV from a localhost server.
+// Every Player here is muted before its output opens.
 
 #include <QTest>
 #include <QByteArray>
 #include <QDataStream>
+#include <QFile>
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QSettings>
@@ -19,6 +21,28 @@
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/Player.h"
+
+// A lossless manifest with its segments under @BASE@. No "//" inside the raw
+// string: moc can take it for a comment.
+constexpr auto kLosslessManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
+<MPD profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static"
+     mediaPresentationDuration="PT1.0S" minBufferTime="PT1.0S">
+  <Period id="0" start="PT0.0S">
+    <AdaptationSet id="0" contentType="audio" segmentAlignment="true">
+      <Representation id="0" mimeType="audio/mp4" codecs="flac"
+                      bandwidth="128000" audioSamplingRate="16000">
+        <SegmentTemplate timescale="16000" startNumber="1"
+                         initialization="@BASE@init.m4s"
+                         media="@BASE@chunk-$Number$.m4s">
+          <SegmentTimeline>
+            <S t="0" d="8000" r="1"/>
+          </SegmentTimeline>
+        </SegmentTemplate>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
+)MPD";
 
 namespace {
 
@@ -66,8 +90,8 @@ QByteArray silentWav() {
     return d;
 }
 
-// A localhost origin for the audio. /track is the WAV and every other path
-// is not there.
+// A localhost origin for the audio. /track is the WAV, /empty answers with no
+// bytes and every other path is not there.
 class MediaServer : public QTcpServer {
 public:
     explicit MediaServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -90,9 +114,10 @@ private:
             connect(sock, &QTcpSocket::readyRead, sock, [this, sock, buf] {
                 buf->append(sock->readAll());
                 if (buf->indexOf("\r\n\r\n") < 0) return;
-                const bool found = buf->startsWith("GET /track ");
+                const QByteArray path = buf->mid(4, buf->indexOf(' ', 4) - 4);
                 buf->clear();
-                const QByteArray body = found ? track : QByteArray();
+                const bool found = path == "/track" || path == "/empty";
+                const QByteArray body = path == "/track" ? track : QByteArray();
                 sock->write(found ? "HTTP/1.0 200 OK\r\n" : "HTTP/1.0 404 Not Found\r\n");
                 sock->write("Content-Type: audio/wav\r\nContent-Length: "
                             + QByteArray::number(body.size()) + "\r\n\r\n");
@@ -150,6 +175,30 @@ StreamManifest ruledOut() {
     return m;
 }
 
+StreamManifest losslessFrom(const QString &xml) {
+    StreamManifest m;
+    m.type     = StreamManifest::MPD;
+    m.url      = xml;
+    m.mimeType = QStringLiteral("application/dash+xml");
+    m.codec    = QStringLiteral("LOSSLESS");
+    return m;
+}
+
+// Points TMPDIR at a plain file while it lives, so that no temp file can be
+// created, whoever runs the test.
+struct NoTempDir {
+    const bool       wasSet = qEnvironmentVariableIsSet("TMPDIR");
+    const QByteArray was    = qgetenv("TMPDIR");
+
+    explicit NoTempDir(const QString &plainFile) {
+        qputenv("TMPDIR", QFile::encodeName(plainFile));
+    }
+    ~NoTempDir() {
+        if (wasSet) qputenv("TMPDIR", was);
+        else        qunsetenv("TMPDIR");
+    }
+};
+
 // One launch of the app. With the account set first, the Player restores
 // from its constructor as it does at startup.
 struct Launch {
@@ -196,6 +245,10 @@ private slots:
 
         m_server.track = silentWav();
         QVERIFY(m_server.listen(QHostAddress::LocalHost));
+
+        m_plainFile = m_dir.filePath(QStringLiteral("plain-file"));
+        QFile f(m_plainFile);
+        QVERIFY(f.open(QIODevice::WriteOnly));
     }
 
     void init() {
@@ -277,6 +330,115 @@ private slots:
         QCOMPARE(b.p().queueCount(), 4);
     }
 
+    // ── a track left with nothing loaded ────────────────────────────────────
+
+    // Each of these ends a load after the stream request was answered. The
+    // user is told, and the next press on play asks for the track again.
+    void pressingPlayAsksAgainAfterAFailedLoad_data() {
+        QTest::addColumn<QString>("stream");
+        QTest::addColumn<bool>("noTempDir");
+        QTest::addColumn<QString>("said");
+
+        const QString download = QStringLiteral("Could not download the audio for this track.");
+        const QString save     = QStringLiteral("Could not save the audio to a temporary file.");
+
+        QTest::newRow("the download is refused")
+            << QStringLiteral("/gone") << false << download;
+        QTest::newRow("the download is empty")
+            << QStringLiteral("/empty") << false
+            << QStringLiteral("Could not download the audio for this track. No data came back.");
+        QTest::newRow("the download cannot be saved")
+            << QStringLiteral("/track") << true << save;
+        QTest::newRow("the lossless details cannot be read")
+            << QStringLiteral("unreadable") << false
+            << QStringLiteral("Could not read the lossless stream details for this track.");
+        QTest::newRow("the lossless join cannot be saved")
+            << QStringLiteral("lossless") << true << save;
+        QTest::newRow("a lossless segment is refused")
+            << QStringLiteral("lossless") << false << download;
+    }
+
+    void pressingPlayAsksAgainAfterAFailedLoad() {
+        QFETCH(QString, stream);
+        QFETCH(bool, noTempDir);
+        QFETCH(QString, said);
+
+        StreamManifest manifest;
+        if (stream == QLatin1String("unreadable")) {
+            manifest = losslessFrom(QStringLiteral("<MPD/>"));
+        } else if (stream == QLatin1String("lossless")) {
+            QString xml = QString::fromUtf8(kLosslessManifest);
+            xml.replace(QStringLiteral("@BASE@"), m_server.url(QStringLiteral("/gone/")));
+            manifest = losslessFrom(xml);
+        } else {
+            manifest = oneFileAt(m_server.url(stream));
+        }
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(3000, 2), 0);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000}));
+
+        {
+            std::unique_ptr<NoTempDir> full;
+            if (noTempDir) full = std::make_unique<NoTempDir>(m_plainFile);
+            QVERIFY(a.client.answer(3000, manifest));
+            QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
+        }
+        const QString msg = errorSpy.at(0).at(0).toString();
+        QVERIFY2(msg.startsWith(said), qPrintable(msg));
+        QVERIFY(!a.p().loading());
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000, 3000}));
+        QVERIFY(a.p().loading());
+    }
+
+    // The second request can succeed. The track then plays, and the press
+    // after that pauses it.
+    void theTrackPlaysOnceTheSecondRequestSucceeds() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(3000, 2), 0);
+        QVERIFY(a.client.answer(3000, oneFileAt(m_server.url(QStringLiteral("/gone")))));
+        QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
+
+        a.p().playPause();
+        QVERIFY2(a.client.answer(3000, oneFileAt(m_server.url(QStringLiteral("/track")))),
+                 "the press on play asked for nothing");
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+
+        a.p().playPause();
+        QTRY_VERIFY_WITH_TIMEOUT(!a.p().playing(), 5000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000, 3000}));
+        QCOMPARE(errorSpy.count(), 1);
+    }
+
+    // A restored track whose stream resolved and whose download then failed.
+    // The press on play is the user's: the track plays from where it was left.
+    void aRestoredTrackWhoseDownloadFailedPlaysOnThePress() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QVERIFY(saveFiveRowSession());
+
+        Launch b;
+        QVERIFY(b.audioUp());
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/gone")))));
+        QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
+        QCOMPARE(b.p().position(), qint64(12000));
+
+        b.p().playPause();
+        QVERIFY2(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/track")))),
+                 "the press on play asked for nothing");
+        QTRY_VERIFY2_WITH_TIMEOUT(b.p().playing(), "the press on play left it paused", 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(b.mp()->position() >= 11500, 5000);
+        QCOMPARE(b.p().queueCount(), 5);
+    }
+
 private:
     // Why this Qt on this machine cannot run the cases that load audio, or null.
     static const char *obstacle()
@@ -301,6 +463,7 @@ private:
 
     QTemporaryDir m_dir;
     MediaServer   m_server;
+    QString       m_plainFile;
 };
 
 QTEST_MAIN(TestPlayerReload)
