@@ -979,6 +979,31 @@ TestCase {
         compare(win.page.tracks.length, 40)
     }
 
+    // A window made taller can leave the list ending above its bottom, with
+    // nothing left to scroll.
+    function test_a_window_that_outgrows_the_list_loads_on() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(125), [], [], [])
+        win.page.activeTab = 1
+        frame(win.contentItem)
+        search(win, query)
+        frame(win.contentItem)
+        var f = scrollerIn(win.page)
+        verify(f.height < f.contentHeight - win.page.loadMoreMargin,
+               "twenty rows do not fill the window as it is, so this case "
+               + "could not tell what the taller window changed")
+        compare(bridge.searchCountForTest(), 1)
+
+        win.height = 1600
+        tryVerify(function () { return win.page.tracks.length >= 40 },
+                  settleMs, "the window grew past the end of twenty rows, "
+                  + "which leaves nothing to scroll, and no page was asked for")
+        frame(win.contentItem)
+        frame(win.contentItem)
+        compare(bridge.searchCountForTest(), 2,
+                "the page went on asking after the list had filled the window")
+    }
+
     // A page of rows that are all on screen already adds nothing, so the view
     // is still at the bottom when it has arrived.
     function test_a_page_of_rows_already_shown_is_followed_by_the_next() {

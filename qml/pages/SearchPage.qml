@@ -632,11 +632,13 @@ Rectangle {
     }
 
     // The bottom of the results, watched. Outside the ScrollView, which takes
-    // exactly one content item.
+    // exactly one content item. A taller viewport can pass the end of a list
+    // that filled it, and then there is nothing to scroll.
     Connections {
         target: resultsScroll.contentItem
         function onContentYChanged()      { root._checkBottomAfterLayout() }
         function onContentHeightChanged() { root._checkBottomAfterLayout() }
+        function onHeightChanged()        { root._checkBottomAfterLayout() }
     }
 
     // Rows are positioned when the window polishes its items for a frame, and
