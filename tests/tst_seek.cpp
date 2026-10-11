@@ -228,6 +228,49 @@ private slots:
         QTRY_VERIFY2_WITH_TIMEOUT(watch.ended, "the track never reached its end", 10000);
     }
 
+    void theEndOfTheLastTrackIsReportedOnce_data() { layouts(); }
+
+    // No seek here: the track plays from its start to its end, and the queue
+    // has nothing after it.
+    void theEndOfTheLastTrackIsReportedOnce()
+    {
+        QFETCH(QString, track);
+        if (const char *why = obstacle(track)) QSKIP(why);
+        TidalApi    api;
+        TidalClient client{&api};
+        Player      player{&client};
+        QMediaPlayer *mp = startPlaying(player, track);
+        QVERIFY(mp);
+
+        // Counted from the first report of the end on.
+        int ends = 0, positions = 0;
+        connect(mp, &QMediaPlayer::mediaStatusChanged, &player,
+                [&ends](QMediaPlayer::MediaStatus s) {
+            if (s == QMediaPlayer::EndOfMedia) ++ends;
+        });
+        connect(&player, &Player::positionChanged, &player, [&ends, &positions] {
+            if (ends > 0) ++positions;
+        });
+        QTRY_VERIFY2_WITH_TIMEOUT(ends > 0, "the track never reached its end", 15000);
+        QSignalSpy plays(&player, &Player::playingChanged);
+        QTest::qWait(1500);
+
+        QCOMPARE(ends, 1);
+        // The position goes back to the start, once.
+        QVERIFY2(positions <= 1,
+                 qPrintable(QStringLiteral("the position was told %1 times").arg(positions)));
+        QCOMPARE(plays.count(), 0);
+        QCOMPARE(mp->playbackState(), QMediaPlayer::StoppedState);
+        QVERIFY(!player.playing());
+        QCOMPARE(player.position(), 0);
+
+        // A press on play starts the track over.
+        player.playPause();
+        QTRY_VERIFY2_WITH_TIMEOUT(mp->position() >= 300 && mp->position() < 2000,
+                                  "the track did not start over", 10000);
+        QVERIFY(player.playing());
+    }
+
 private:
     // Why this Qt on this machine cannot run these tests on a track, or null.
     const char *obstacle(const QString &track) const
