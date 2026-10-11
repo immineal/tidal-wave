@@ -887,6 +887,10 @@
         <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
+        <source>No audio device was found. Check the sound settings of your system.</source>
+        <translation>Es wurde kein Audiogerät gefunden. Die Toneinstellungen des Systems prüfen.</translation>
+    </message>
+    <message>
         <source>This track could not be played. The audio format may not be supported.</source>
         <translation>Dieser Titel konnte nicht abgespielt werden. Das Audioformat wird möglicherweise nicht unterstützt.</translation>
     </message>

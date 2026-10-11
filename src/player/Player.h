@@ -299,6 +299,8 @@ private:
     // Starts the track that was just loaded, unless this is the first load of
     // a restored session, which comes back paused where it was left.
     void beginPlayback();
+    // Starts the backend, or tells the user why it cannot be started.
+    bool startBackend();
     // The chosen device if it is still present, else the system default.
     QAudioDevice resolveAudioDevice() const;
     // Rebinds only when the resolved device differs from the bound one.

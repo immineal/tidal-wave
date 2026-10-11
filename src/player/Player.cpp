@@ -254,7 +254,7 @@ void Player::restoreAudioState(const AudioState &state) {
     if (state.position > 0 && m_player->position() != state.position && m_player->isSeekable())
         setPlayerPosition(state.position);
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
-    if (state.playing && !playing)      m_player->play();
+    if (state.playing && !playing)      startBackend();
     else if (!state.playing && playing) m_player->pause();
 }
 
@@ -263,6 +263,10 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 
     const AudioState state = captureAudioState();
     m_rebinding = true;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // With no device left, Qt 6.4 must not be playing when it gets the output.
+    if (state.playing && device.isNull()) m_player->pause();
+#endif
 
     auto *fresh = new QAudioOutput(device, this);
     fresh->setVolume(state.volume);
@@ -641,7 +645,7 @@ void Player::playPause() {
         }
         // Until the file is handed to the backend the hold is kept here.
         if (m_player->source().isEmpty()) m_restorePaused = !m_loadPlays;
-        else if (m_loadPlays)             m_player->play();
+        else if (m_loadPlays)             startBackend();
         else                              m_player->pause();
         tellPlaying();
         return;
@@ -649,7 +653,7 @@ void Player::playPause() {
     if (m_player->playbackState() == QMediaPlayer::PlayingState)
         m_player->pause();
     else
-        m_player->play();
+        startBackend();
 }
 
 void Player::next(bool heldPaused) {
@@ -1553,7 +1557,22 @@ void Player::beginPlayback() {
         m_player->pause();
         return;
     }
+    startBackend();
+}
+
+bool Player::startBackend() {
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4 writes into the sink it opens for a track without looking
+    // whether one opened, and with no device none does.
+    if (QMediaDevices::audioOutputs().isEmpty()) {
+        setLoading(false);
+        setLoadError(QString());
+        setLoadError(tr("No audio device was found. Check the sound settings of your system."));
+        return false;
+    }
+#endif
     m_player->play();
+    return true;
 }
 
 void Player::passOverTrack(StreamManifest::Reason reason) {
