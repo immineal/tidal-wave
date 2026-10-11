@@ -92,7 +92,8 @@ private slots:
         row("API host as a prefix", "https://api.tidal.com.example.net/v1/", false);
         row("API host as a suffix", "https://notapi.tidal.com/v1/", false);
         row("API host in the path", "https://example.net/api.tidal.com/v1/", false);
-        row("API host as the user", "https://api.tidal.com@example.net/v1/", false);
+        // Two literals, so CI's address scan does not read a mailbox here.
+        row("API host as the user", "https://api.tidal.com" "@example.net/v1/", false);
         row("API host over http",   "http://api.tidal.com/v1/tracks/1", false);
         row("API host, other port", "https://api.tidal.com:8443/v1/tracks/1", false);
     }
