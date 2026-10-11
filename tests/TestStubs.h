@@ -1235,6 +1235,7 @@ class StubPlayer : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool playing READ playing NOTIFY playingChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(QString loadError READ loadError NOTIFY loadErrorChanged)
     Q_PROPERTY(qint64 position READ position NOTIFY positionChanged)
     Q_PROPERTY(qint64 duration READ duration NOTIFY durationChanged)
     Q_PROPERTY(double volume READ volume WRITE setVolume NOTIFY volumeChanged)
@@ -1269,6 +1270,13 @@ public:
 
     bool         playing() const { return m_playing; }
     bool         loading() const { return m_loading; }
+    QString      loadError() const { return m_loadError; }
+    // As Player's: true once for each message, for the view that shows it.
+    Q_INVOKABLE bool claimLoadError() {
+        if (m_loadError.isEmpty() || m_loadErrorClaimed) return false;
+        m_loadErrorClaimed = true;
+        return true;
+    }
     qint64       position() const { return m_position; }
     qint64       duration() const { return m_duration; }
     double       volume() const { return m_volume; }
@@ -1510,6 +1518,12 @@ public:
         m_loading = loading;
         emit loadingChanged(m_loading);
     }
+    Q_INVOKABLE void setLoadErrorForTest(const QString &message) {
+        if (m_loadError == message) return;
+        m_loadError = message;
+        m_loadErrorClaimed = false;
+        emit loadErrorChanged();
+    }
     Q_INVOKABLE void setDurationForTest(qint64 ms) {
         m_duration = ms;
         emit durationChanged(m_duration);
@@ -1550,10 +1564,13 @@ signals:
     void sourceChanged();
     void castTrackChanged();
     void error(const QString &msg);
+    void loadErrorChanged();
 
 private:
     bool         m_playing = false;
     bool         m_loading = false;
+    QString      m_loadError;
+    bool         m_loadErrorClaimed = false;
     qint64       m_position = 0;
     qint64       m_duration = 0;
     double       m_volume = 0.7;   // same default as Player, so VolumeSlider looks real

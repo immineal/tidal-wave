@@ -319,6 +319,21 @@ void Player::setLoading(bool l) {
     emit loadingChanged(l);
 }
 
+void Player::setLoadError(const QString &msg) {
+    // A repeat is the same failure seen by a second callback.
+    if (msg == m_loadError) return;
+    m_loadError        = msg;
+    m_loadErrorClaimed = false;
+    emit loadErrorChanged();
+    if (!msg.isEmpty()) emit error(msg);
+}
+
+bool Player::claimLoadError() {
+    if (m_loadError.isEmpty() || m_loadErrorClaimed) return false;
+    m_loadErrorClaimed = true;
+    return true;
+}
+
 void Player::setIndex(int i) {
     if (m_index == i) return;
     m_index = i;
@@ -839,6 +854,7 @@ void Player::startLoad(int index) {
     // Replies still out for an earlier load, the download aborted below
     // among them, find a newer number and drop out.
     const quint64 serial = ++m_loadSerial;
+    setLoadError(QString());
 
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
     // lowers the loading flag. Raised before them it would be lowered again
@@ -949,7 +965,8 @@ void Player::startLoad(int index) {
                     m_restoreSkips  = false;
                     return;
                 }
-                emit error(tr("Could not load this track for playback. %1").arg(err));
+                qWarning() << "Stream request failed:" << err;
+                setLoadError(tr("Could not load this track for playback."));
                 return;
             }
             // Something resolved: the restore is over, later failures are reported.
@@ -965,9 +982,10 @@ void Player::startLoad(int index) {
                         return;
                     }
                     if (!err.isEmpty() || data.isEmpty()) {
+                        if (!err.isEmpty()) qWarning() << "Audio download failed:" << err;
                         failLoad(err.isEmpty()
                             ? tr("Could not download the audio for this track. No data came back.")
-                            : tr("Could not download the audio for this track. %1").arg(err));
+                            : tr("Could not download the audio for this track."));
                         return;
                     }
                     m_mpdTempFile = saveToTempFile(data);
@@ -1004,9 +1022,10 @@ void Player::startLoad(int index) {
                         return;
                     }
                     if (!file) {
+                        if (!dashErr.isEmpty()) qWarning() << "Audio download failed:" << dashErr;
                         failLoad(dashErr.isEmpty()
                             ? tr("Could not download the audio for this track. No data came back.")
-                            : tr("Could not download the audio for this track. %1").arg(dashErr));
+                            : tr("Could not download the audio for this track."));
                         return;
                     }
                     m_mpdTempFile = file;
@@ -1022,7 +1041,7 @@ void Player::startLoad(int index) {
 void Player::failLoad(const QString &msg) {
     setLoading(false);
     m_loadOwed = true;
-    emit error(msg);
+    setLoadError(msg);
 }
 
 void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
@@ -1046,7 +1065,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         break;
     case QMediaPlayer::InvalidMedia:
         setLoading(false);
-        emit error(tr("This track could not be played. The audio format may not be supported."));
+        setLoadError(tr("This track could not be played. The audio format may not be supported."));
         break;
     default: break;
     }
@@ -1065,7 +1084,8 @@ void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
 void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
     setLoading(false);
     qWarning() << "Player error:" << msg;
-    emit error(msg);
+    // The sentence for invalid media, which the backend reports as well.
+    setLoadError(tr("This track could not be played. The audio format may not be supported."));
 }
 
 void Player::cancelPreload() {

@@ -26,6 +26,9 @@ class Player : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool       playing      READ playing      NOTIFY playingChanged)
     Q_PROPERTY(bool       loading      READ loading      NOTIFY loadingChanged)
+    // Why the current track has nothing to play, as a sentence for the user.
+    // Empty again once a load starts.
+    Q_PROPERTY(QString    loadError    READ loadError    NOTIFY loadErrorChanged)
     Q_PROPERTY(qint64     position     READ position     NOTIFY positionChanged)
     Q_PROPERTY(qint64     duration     READ duration     NOTIFY durationChanged)
     Q_PROPERTY(double     volume       READ volume  WRITE setVolume  NOTIFY volumeChanged)
@@ -61,6 +64,9 @@ public:
 
     bool        playing()     const;
     bool        loading()     const { return m_loading; }
+    QString     loadError()   const { return m_loadError; }
+    // True once for each loadError: the view that gets it puts it on screen.
+    Q_INVOKABLE bool claimLoadError();
     qint64      position()    const;
     qint64      duration()    const;
     double      volume()      const;
@@ -200,6 +206,7 @@ public:
 signals:
     void playingChanged     (bool playing);
     void loadingChanged     (bool loading);
+    void loadErrorChanged   ();
     void positionChanged    (qint64 ms);
     // The position was moved by seek(). MPRIS announces that and stays
     // silent about the progress of a track.
@@ -255,6 +262,9 @@ private:
     // The load ended with nothing to play: reports why, and owes the track
     // another load on the next press on play.
     void failLoad(const QString &msg);
+    // Keeps the sentence for the views and emits error(). The backend's own
+    // text goes to the log and never in here.
+    void setLoadError(const QString &msg);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     Track trackFromMap(const QVariantMap &m) const;
@@ -319,6 +329,8 @@ private:
     QList<QVariantMap>   m_recentlyPlayed;
     Track                m_currentTrack;
     bool                 m_loading       = false;
+    QString              m_loadError;
+    bool                 m_loadErrorClaimed = false;
     bool                 m_shuffle       = false;
     int                  m_repeatMode    = 0;  // 0=no 1=all 2=one
     QString              m_sourceType;

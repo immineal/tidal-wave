@@ -223,6 +223,7 @@ Rectangle {
 
                 Rectangle {
                     id: playPauseBtn
+                    objectName: "playerBarPlayButton"
                     width: 40; height: 40; radius: 20; color: Theme.textPrimary
                     border.width: activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -249,6 +250,7 @@ Rectangle {
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler   { onTapped: player.playPause() }
+                    LoadErrorTip { }
                 }
 
                 IconButton { icon: "next"; size: 22; iconColor: Theme.textPrimary; onClicked: player.next() }
@@ -730,6 +732,36 @@ Rectangle {
                          && (orow.label !== orow.fullLabel || orowLabel.truncated)
         ToolTip.text: orow.fullLabel
         ToolTip.delay: 600
+    }
+
+    // Says player.loadError once, above the play button it is placed in, and
+    // waits for that button and the window to be on screen. Now Playing uses
+    // it too. The button must bind no ToolTip of its own: one tip per window.
+    component LoadErrorTip : Item {
+        id: errorTip
+        visible: false
+
+        // A sentence to read, so longer than a confirmation gets. A dwell
+        // time, so no Theme.dur(): 0 under reduced motion means never to ToolTip.
+        readonly property int dwellMs: 6000
+        readonly property string message: player.loadError || ""
+        readonly property bool onScreen: parent !== null && parent.visible
+            && Window.visibility !== Window.Hidden
+            && Window.visibility !== Window.Minimized
+        property bool shown: false
+
+        // The tip is drawn over the window, so it is taken down with its button.
+        function sync() {
+            if (shown && (message === "" || !onScreen)) {
+                shown = false
+                parent.ToolTip.hide()
+            } else if (message !== "" && onScreen && player.claimLoadError()) {
+                shown = true
+                parent.ToolTip.show(message, dwellMs)
+            }
+        }
+        onMessageChanged:  sync()
+        onOnScreenChanged: sync()
     }
 
     component IconButton : Item {

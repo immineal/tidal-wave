@@ -1700,6 +1700,7 @@ Rectangle {
                                 scale: pHov.hovered ? 0.95 : 1; Behavior on scale { NumberAnimation { duration: Theme.dur(100) } }
                                 HoverHandler { id: pHov; cursorShape: Qt.PointingHandCursor }
                                 TapHandler   { onTapped: player.playPause() }
+                                PlayerBar.LoadErrorTip { }
                             }
                             CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
                             Item { Layout.fillWidth: true }

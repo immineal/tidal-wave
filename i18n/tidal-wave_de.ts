@@ -863,16 +863,16 @@
         <translation>Systemstandard</translation>
     </message>
     <message>
-        <source>Could not load this track for playback. %1</source>
-        <translation>Dieser Titel konnte nicht zur Wiedergabe geladen werden. %1</translation>
+        <source>Could not load this track for playback.</source>
+        <translation>Dieser Titel konnte nicht zur Wiedergabe geladen werden.</translation>
     </message>
     <message>
         <source>Could not download the audio for this track. No data came back.</source>
         <translation>Die Audiodaten für diesen Titel konnten nicht heruntergeladen werden. Es kamen keine Daten zurück.</translation>
     </message>
     <message>
-        <source>Could not download the audio for this track. %1</source>
-        <translation>Die Audiodaten für diesen Titel konnten nicht heruntergeladen werden. %1</translation>
+        <source>Could not download the audio for this track.</source>
+        <translation>Die Audiodaten für diesen Titel konnten nicht heruntergeladen werden.</translation>
     </message>
     <message>
         <source>Could not save the audio to a temporary file. Check that there is free disk space.</source>
