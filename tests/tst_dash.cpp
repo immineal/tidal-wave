@@ -1,41 +1,13 @@
-// Lossless playback on a build made against the Qt installer.
-//
-// Tidal serves LOSSLESS and HI_RES_LOSSLESS as MPEG-DASH. The app used to write
-// the manifest to a .mpd and hand the file to QMediaPlayer, which only works
-// where libavformat was built with libxml2 - that is what gates its DASH
-// demuxer. The ffmpeg the Qt installer bundles has no libxml2:
-//
-//     ldd ~/Qt/6.12.0/gcc_64/lib/libavformat.so.61 | grep -c xml2   ->  0
-//     ldd /usr/lib/libavformat.so.61               | grep -c xml2   ->  1
-//
-// and libffmpegmediaplugin.so has RUNPATH $ORIGIN/../../lib, so on such a build
-// the bundled copy always wins and every lossless track was rejected as
-// InvalidMedia inside a millisecond, silently, with nothing audible to show for
-// it. Whether lossless played came down to which Qt the packager happened to
-// have.
-//
-// DashFetcher joins the segments itself, which turns the manifest into an
-// ordinary fragmented MP4 that needs no demuxer anyone might be missing. These
-// tests are the proof, and they are deliberately not "the parser returns the
-// right strings": the fixture is a real DASH stream from ffmpeg's own packager,
-// it is served over real localhost HTTP through the real TidalClient::fetchRaw,
-// and the joined result is decoded and measured. A fixture that were silence, or
-// truncated, or stitched in the wrong order, fails the length and frequency
-// assertions rather than passing a shape check.
-//
-// NOTHING HERE MAKES A SOUND. No QAudioOutput is ever constructed - the decoded
-// samples arrive through QAudioBufferOutput, which cannot reach the sound card.
-// Qt 6.4 is the one exception: decodeSilently() attaches a muted output there.
-// The app's own Player *does* own a QAudioOutput, which is why these tests drive
-// DashFetcher plus a QMediaPlayer of their own rather than a Player.
-//
-// The fixture was made with (ffmpeg 7.1, system build):
-//     ffmpeg -f lavfi -i "sine=f=440:r=44100:d=1" -ac 1 -c:a flac -strict -2 \
-//            -f dash -seg_duration 0.4 -use_timeline 1 -use_template 1 out.mpd
-// which is one second of a 440 Hz tone as 16-bit mono FLAC in fragmented MP4:
-// an initialization segment and three media segments, FLAC-in-MP4 being exactly
-// what Tidal delivers. Its peak sample is 4095/32768, which is where the 0.125
-// below comes from.
+// Lossless arrives as MPEG-DASH, and DashFetcher joins the segments into one
+// fragmented MP4 so no DASH demuxer is needed. The fixture is a real DASH
+// stream from ffmpeg's packager, served over localhost through
+// TidalClient::fetchRaw, and the joined file is decoded and measured.
+// Nothing here makes a sound: samples arrive through QAudioBufferOutput, and
+// on Qt 6.4 decodeSilently() attaches a muted output.
+
+// The fixture: one second of 440 Hz as 16-bit mono FLAC in fragmented MP4, an
+// init segment and three media segments from ffmpeg -f dash. Its peak sample
+// is 4095/32768, which is where the 0.125 below comes from.
 
 #include <QTest>
 #include <QAudioBuffer>
@@ -67,21 +39,13 @@
 #endif
 
 // ── the manifests ─────────────────────────────────────────────────────────
-//
-// The host goes in through @BASE@ rather than being written out, and that is not
-// cosmetic: there is no "//" anywhere inside these raw strings because moc
-// honours a // comment even inside a raw string literal. A line holding a
-// "http://host/" and a quote after it makes moc lose track of where strings end,
-// stop recognising Q_OBJECT classes altogether, and fail the build with a
-// "missing ')' in macro usage" pointing at some unrelated line further down.
-// (#ifndef Q_MOC_RUN does not help: moc still lexes what it skips.) The house
-// rule from the same bruise is in tst_shortcuts.cpp, which avoids raw strings
-// altogether; this file keeps them and avoids the one sequence that sets moc off.
+// The host goes in through @BASE@: moc honours a comment marker inside a raw
+// string literal and loses track of where strings end, which breaks the build
+// far from the cause. Q_MOC_RUN guards do not help.
 
-// ffmpeg's dash muxer wrote this, with only the two template attributes
-// rewritten from relative names to an absolute base - the one way Tidal's
-// manifests differ in shape. $RepresentationID$ and the printf width in
-// $Number%05d$ are the packager's, not ours.
+// From ffmpeg's dash muxer, with the two template attributes rewritten to an
+// absolute base. $RepresentationID$ and the width in $Number%05d$ are the
+// packager's.
 constexpr auto kPackagerManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011"
      type="static" mediaPresentationDuration="PT1.0S" maxSegmentDuration="PT0.4S" minBufferTime="PT2.0S">
@@ -103,10 +67,9 @@ constexpr auto kPackagerManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
 </MPD>
 )MPD";
 
-// Tidal's own shape: plain $Number$, absolute presigned CDN URLs, and therefore
-// a query string whose ampersands are XML entities in the manifest. Getting
-// those back as '&' is the parser's job, and a presigned URL without its query
-// intact names a different object.
+// Tidal's shape: plain $Number$ and absolute presigned URLs, so the query
+// string's ampersands are XML entities here. The parser has to give them back
+// as '&', or the URL names a different object.
 constexpr auto kTidalManifest = R"MPD(<?xml version="1.0" encoding="UTF-8"?>
 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"
      type="static" minBufferTime="PT1.500S" mediaPresentationDuration="PT0H0M1.000S">
@@ -252,10 +215,8 @@ QString withBase(const char *xml, const QString &base)
 }
 
 // ── a localhost segment server ──────────────────────────────────────────────
-//
 // Real sockets and real QNetworkAccessManager requests, so the fetcher runs
-// through the same TidalClient::fetchRaw it uses against Tidal. A hand-written
-// fetch callback would have proved only that the test's own fake works.
+// through the same TidalClient::fetchRaw it uses against Tidal.
 class SegmentServer : public QTcpServer {
 public:
     explicit SegmentServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -609,10 +570,8 @@ private slots:
         QCOMPARE(f.readAll(), joinedByHand());
         f.close();
 
-        // For the record, and deliberately not an assertion: on a Qt whose
-        // libavformat does have libxml2 the backend opens the manifest quite
-        // happily. The fix is that it no longer has to, so what is asserted is
-        // the part below - the joined file plays, on every build.
+        // Deliberately no assertion here: a Qt whose libavformat has libxml2
+        // opens the manifest itself. What is asserted is below.
         {
             QTemporaryDir dir;
             QVERIFY(dir.isValid());

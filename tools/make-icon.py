@@ -3,11 +3,9 @@
 
 The mark is drawn twice: once in QML (qml/components/AppMark.qml, for the
 in-app marks) and once as a static asset (assets/icon.svg, for the window,
-tray, taskbar and launcher). Those two drawings have drifted apart more than
-once, because the SVG was hand-edited while the QML was not. This script is
-the cure: it holds the same constants AppMark.qml does and emits the SVG from
-them, so a change to the geometry is a change in two places that are checked
-against each other rather than two places that are hand-copied.
+tray, taskbar and launcher). This script holds the same constants AppMark.qml
+does and emits the SVG from them, so the two drawings are checked against
+each other and neither is copied by hand.
 
 Usage:
     tools/make-icon.py              # write assets/icon.svg and assets/icon.png
