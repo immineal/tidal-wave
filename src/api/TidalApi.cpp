@@ -53,7 +53,10 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) const {
 
 // For the callers that have no use for the HTTP status.
 static TidalApi::StatusCallback withoutStatus(TidalApi::JsonCallback cb) {
-    return [cb = std::move(cb)](QJsonObject obj, QString err, int) { cb(obj, err); };
+    // The body of a refusal is for the callers that ask for the status.
+    return [cb = std::move(cb)](QJsonObject obj, QString err, int) {
+        cb(err.isEmpty() ? obj : QJsonObject(), err);
+    };
 }
 
 void TidalApi::get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
@@ -118,8 +121,7 @@ void TidalApi::getOpenApiWithStatus(const QString &endpoint, const QUrlQuery &pa
 void TidalApi::getFrom(const QString &base, const QString &endpoint,
                        const QUrlQuery &params, StatusCallback cb) {
     getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err, int httpStatus) {
-        if (!err.isEmpty()) { cb({}, err, httpStatus); return; }
-        cb(doc.object(), {}, httpStatus);
+        cb(doc.object(), err, httpStatus);
     });
 }
 
@@ -138,7 +140,9 @@ void TidalApi::getDoc(const QString &base, const QString &endpoint,
         const int httpStatus =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            cb({}, reply->errorString(), httpStatus);
+            // The body of a refusal holds Tidal's own code for it. One that
+            // is no JSON reads as an empty document.
+            cb(QJsonDocument::fromJson(reply->readAll()), reply->errorString(), httpStatus);
             return;
         }
         QJsonParseError err;

@@ -21,6 +21,7 @@ public:
     using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
     // For a caller that acts on the HTTP status. It is 0 when no answer came.
+    // Beside an error the object is the body of the refusal, if that was JSON.
     using StatusCallback = std::function<void(QJsonObject, QString /*error*/, int /*httpStatus*/)>;
 
     explicit TidalApi(QObject *parent = nullptr);

@@ -384,12 +384,26 @@ private slots:
         QCOMPARE(int(got.reason), reason);
     }
 
-    // The refusals the status alone decides, over HTTP on both endpoints.
+    // The same over HTTP on both endpoints: the status and the body of a
+    // refusal both reach the place that decides.
     void aRefusedRequestCarriesItsReason_data()
     {
         QTest::addColumn<int>("quality");
         QTest::addColumn<int>("status");        // 0: nothing listens on the port
+        QTest::addColumn<QJsonObject>("body");
         QTest::addColumn<int>("reason");
+
+        const int v1 = int(AudioQuality::Low320k), openApi = int(AudioQuality::Lossless);
+        QTest::newRow("playbackinfopostpaywall 401, asset not ready")
+            << v1 << 401 << subStatus(401, 4005) << int(StreamManifest::Gone);
+        QTest::newRow("playbackinfopostpaywall 401, the session ran out")
+            << v1 << 401 << subStatus(401, 11003) << int(StreamManifest::Unknown);
+        QTest::newRow("trackManifests 403, blocked by region")
+            << openApi << 403 << coded("GEO_RESTRICTED") << int(StreamManifest::NotForAccount);
+        QTest::newRow("trackManifests 403, another code")
+            << openApi << 403 << coded("FORBIDDEN") << int(StreamManifest::Unknown);
+        QTest::newRow("trackManifests 404, with its code")
+            << openApi << 404 << coded("CONTENT_NOT_FOUND") << int(StreamManifest::Gone);
 
         const struct { const char *name; AudioQuality quality; } endpoints[] = {
             {"playbackinfopostpaywall", AudioQuality::Low320k},
@@ -405,18 +419,20 @@ private slots:
         for (const auto &e : endpoints)
             for (const auto &a : answers)
                 QTest::addRow("%s %d", e.name, a.status)
-                    << int(e.quality) << a.status << int(a.reason);
+                    << int(e.quality) << a.status << QJsonObject{} << int(a.reason);
     }
 
     void aRefusedRequestCarriesItsReason()
     {
         QFETCH(int, quality);
         QFETCH(int, status);
+        QFETCH(QJsonObject, body);
         QFETCH(int, reason);
 
         OneAnswerServer srv;
         QVERIFY(srv.listen(QHostAddress::LocalHost));
         srv.status = status;
+        srv.body   = QJsonDocument(body).toJson();
         LocalApi api;
         api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
         if (status == 0) srv.close();
@@ -437,6 +453,26 @@ private slots:
                 : QStringLiteral("/tracks/100000001/playbackinfopostpaywall");
             QCOMPARE(srv.paths, QStringList{asked});
         }
+    }
+
+    // A caller that does not ask for the status gets the error and no body.
+    void aPlainGetGetsNoBodyBesideAnError()
+    {
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.status = 404;
+        srv.body   = QJsonDocument(subStatus(404, 2001)).toJson();
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        bool answered = false;
+        QJsonObject got{{"untouched", true}};
+        QString err;
+        api.get(QStringLiteral("tracks/1"), {},
+                [&](QJsonObject o, QString e) { answered = true; got = o; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+        QVERIFY(!err.isEmpty());
+        QVERIFY(got.isEmpty());
     }
 
     // The same route with a 200, so the rows above are about the status.

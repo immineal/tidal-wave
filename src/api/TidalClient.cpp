@@ -801,8 +801,6 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
         m_api->getOpenApiWithStatus(QStringLiteral("trackManifests/%1").arg(trackId), q,
             [cb](QJsonObject root, QString err, int httpStatus) {
                 if (!err.isEmpty()) {
-                    // TidalApi hands on no body beside an error, so here and
-                    // below only the status decides.
                     cb(refusedManifest(refusalReason(true, httpStatus, root)), err);
                     return;
                 }
