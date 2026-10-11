@@ -281,8 +281,14 @@ public:
 
     // Reads a v2/trackManifests body into a StreamManifest. Anything that is
     // no full-track DASH manifest (a preview, an HLS playlist) sets *err and
-    // returns {}.
+    // returns a manifest that holds the reason and nothing else.
     static StreamManifest parseTrackManifests(const QJsonObject &root, QString *err);
+
+    // What a refused stream request says about the track. Tidal's own code in
+    // the body decides where the status alone has other meanings. `openApi`
+    // is true for v2/trackManifests.
+    static StreamManifest::Reason refusalReason(bool openApi, int httpStatus,
+                                                const QJsonObject &body);
 
 private:
 

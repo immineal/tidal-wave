@@ -84,6 +84,20 @@ QJsonObject btsAnswer()
     };
 }
 
+// The body of a refusal by playbackinfopostpaywall.
+QJsonObject subStatus(int status, int sub)
+{
+    return QJsonObject{{"status", status}, {"subStatus", sub},
+                       {"userMessage", QStringLiteral("Asset is not ready for playback")}};
+}
+
+// The body of a refusal by trackManifests, in the JSON:API shape.
+QJsonObject coded(const char *code)
+{
+    return QJsonObject{{"errors", QJsonArray{QJsonObject{
+        {"code", QString::fromLatin1(code)}, {"detail", QStringLiteral("refused")}}}}};
+}
+
 // Answers every request with one status and one body, and notes the paths.
 class OneAnswerServer : public QTcpServer {
 public:
@@ -236,6 +250,7 @@ private slots:
 
         QVERIFY(!err.isEmpty());
         QCOMPARE(m.url, QString());
+        QCOMPARE(m.reason, StreamManifest::NotForAccount);
     }
 
     void refusesANonDashManifest()
@@ -271,36 +286,133 @@ private slots:
         QCOMPARE(m.url, QString());
     }
 
-    // ── the request that fails ───────────────────────────────────────────────
+    // ── the request that is refused ──────────────────────────────────────────
 
-    // 404 and 410 are Tidal saying the track does not exist. Any other
-    // failure, and no answer at all, says nothing about the track.
-    void onlyA404OrA410MarksTheTrackUnavailable_data()
+    // 404 and 410 say the track does not exist. A 401 and a 403 have other
+    // meanings as well, so there Tidal's own code in the body decides. Any
+    // other refusal says nothing about the track.
+    void whatARefusalSaysAboutTheTrack_data()
+    {
+        QTest::addColumn<bool>("openApi");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<QJsonObject>("body");
+        QTest::addColumn<int>("reason");
+
+        const int unknown = StreamManifest::Unknown, gone = StreamManifest::Gone,
+                  notForAccount = StreamManifest::NotForAccount;
+        const QJsonObject none;
+
+        QTest::newRow("v1 404") << false << 404 << none << gone;
+        QTest::newRow("v1 410") << false << 410 << none << gone;
+        QTest::newRow("v1 401, asset not ready")
+            << false << 401 << subStatus(401, 4005) << gone;
+        QTest::newRow("v1 401, the session ran out")
+            << false << 401 << subStatus(401, 11003) << unknown;
+        QTest::newRow("v1 401, no body") << false << 401 << none << unknown;
+        QTest::newRow("v1 403, asset not ready")
+            << false << 403 << subStatus(403, 4005) << unknown;
+        QTest::newRow("v1 500, sub-status 999")
+            << false << 500 << subStatus(500, 999) << unknown;
+        QTest::newRow("v1 403, the other endpoint's code")
+            << false << 403 << coded("GEO_RESTRICTED") << unknown;
+
+        QTest::newRow("openapi 404") << true << 404 << coded("CONTENT_NOT_FOUND") << gone;
+        QTest::newRow("openapi 410") << true << 410 << none << gone;
+        QTest::newRow("openapi 403, blocked by region")
+            << true << 403 << coded("GEO_RESTRICTED") << notForAccount;
+        QTest::newRow("openapi 403, another code")
+            << true << 403 << coded("FORBIDDEN") << unknown;
+        QTest::newRow("openapi 403, no body") << true << 403 << none << unknown;
+        QTest::newRow("openapi 500, blocked by region")
+            << true << 500 << coded("GEO_RESTRICTED") << unknown;
+        QTest::newRow("openapi 401, the other endpoint's code")
+            << true << 401 << subStatus(401, 4005) << unknown;
+
+        for (const bool openApi : {false, true})
+            for (const int status : {0, 400, 429, 500, 503})
+                QTest::addRow("%s %d", openApi ? "openapi" : "v1", status)
+                    << openApi << status << none << unknown;
+    }
+
+    void whatARefusalSaysAboutTheTrack()
+    {
+        QFETCH(bool, openApi);
+        QFETCH(int, status);
+        QFETCH(QJsonObject, body);
+        QFETCH(int, reason);
+        QCOMPARE(int(TidalClient::refusalReason(openApi, status, body)), reason);
+    }
+
+    // A 200 that holds no whole track. A preview is what an account without
+    // the right to the track gets; an answer the app cannot read says nothing.
+    void anAnswerThatIsNoWholeTrackCarriesItsReason_data()
+    {
+        QTest::addColumn<QJsonObject>("body");
+        QTest::addColumn<int>("reason");
+        QTest::newRow("a preview")
+            << envelope(mpdWith("FLAC,44100,16", "flac"), QStringLiteral("FLAC"),
+                        QStringLiteral("PREVIEW"))
+            << int(StreamManifest::NotForAccount);
+        QTest::newRow("an HLS playlist")
+            << envelope("#EXTM3U\n#EXT-X-VERSION:3\n", QStringLiteral("FLAC"),
+                        QStringLiteral("FULL"), QStringLiteral("application/vnd.apple.mpegurl"))
+            << int(StreamManifest::Unknown);
+        QTest::newRow("an empty body") << QJsonObject{} << int(StreamManifest::Unknown);
+    }
+
+    void anAnswerThatIsNoWholeTrackCarriesItsReason()
+    {
+        QFETCH(QJsonObject, body);
+        QFETCH(int, reason);
+
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.body = QJsonDocument(body).toJson();
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        TidalClient client{&api};
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001, AudioQuality::Lossless,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QVERIFY2(!err.isEmpty(), "an answer with no whole track came back without an error");
+        QCOMPARE(got.url, QString());
+        QCOMPARE(int(got.reason), reason);
+    }
+
+    // The refusals the status alone decides, over HTTP on both endpoints.
+    void aRefusedRequestCarriesItsReason_data()
     {
         QTest::addColumn<int>("quality");
         QTest::addColumn<int>("status");        // 0: nothing listens on the port
-        QTest::addColumn<bool>("unavailable");
+        QTest::addColumn<int>("reason");
 
         const struct { const char *name; AudioQuality quality; } endpoints[] = {
             {"playbackinfopostpaywall", AudioQuality::Low320k},
             {"trackManifests",          AudioQuality::Lossless},
         };
-        const struct { int status; bool unavailable; } answers[] = {
-            {404, true},  {410, true},
-            {400, false}, {401, false}, {403, false}, {429, false},
-            {500, false}, {503, false}, {0, false},
+        const struct { int status; StreamManifest::Reason reason; } answers[] = {
+            {404, StreamManifest::Gone},    {410, StreamManifest::Gone},
+            {400, StreamManifest::Unknown}, {401, StreamManifest::Unknown},
+            {403, StreamManifest::Unknown}, {429, StreamManifest::Unknown},
+            {500, StreamManifest::Unknown}, {503, StreamManifest::Unknown},
+            {0,   StreamManifest::Unknown},
         };
         for (const auto &e : endpoints)
             for (const auto &a : answers)
                 QTest::addRow("%s %d", e.name, a.status)
-                    << int(e.quality) << a.status << a.unavailable;
+                    << int(e.quality) << a.status << int(a.reason);
     }
 
-    void onlyA404OrA410MarksTheTrackUnavailable()
+    void aRefusedRequestCarriesItsReason()
     {
         QFETCH(int, quality);
         QFETCH(int, status);
-        QFETCH(bool, unavailable);
+        QFETCH(int, reason);
 
         OneAnswerServer srv;
         QVERIFY(srv.listen(QHostAddress::LocalHost));
@@ -317,8 +429,8 @@ private slots:
             [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
         QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
 
-        QVERIFY2(!err.isEmpty(), "a failed stream request came back without an error");
-        QCOMPARE(got.unavailable, unavailable);
+        QVERIFY2(!err.isEmpty(), "a refused stream request came back without an error");
+        QCOMPARE(int(got.reason), reason);
         if (status != 0) {
             const QString asked = TidalClient::usesTrackManifests(AudioQuality(quality))
                 ? QStringLiteral("/trackManifests/100000001")
@@ -364,7 +476,7 @@ private slots:
         QCOMPARE(err, QString());
         QCOMPARE(int(got.type), type);
         QVERIFY(!got.url.isEmpty());
-        QVERIFY(!got.unavailable);
+        QCOMPARE(got.reason, StreamManifest::Unknown);
     }
 };
 

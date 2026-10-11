@@ -951,7 +951,7 @@ private:
     static StreamManifest withdrawn()
     {
         StreamManifest m;
-        m.unavailable = true;
+        m.reason = StreamManifest::Gone;
         return m;
     }
 

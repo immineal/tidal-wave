@@ -61,7 +61,7 @@ qlonglong currentId(const Player &p) {
 // like a reply, and records what was asked for. Nothing reaches the network.
 class ScriptedClient : public TidalClient {
 public:
-    enum Answer { Silent, Unreachable, Unavailable };
+    enum Answer { Silent, Unreachable, Unavailable, NotForAccount };
     using TidalClient::TidalClient;
 
     Answer                   answer = Silent;   // for any track not named below
@@ -76,9 +76,11 @@ public:
         ++undelivered;
         QTimer::singleShot(0, this, [this, cb = std::move(cb), a] {
             StreamManifest m;
-            m.unavailable = (a == Unavailable);
-            cb(m, a == Unavailable ? QStringLiteral("only a preview")
-                                   : QStringLiteral("Host not found"));
+            if (a == Unavailable)   m.reason = StreamManifest::Gone;
+            if (a == NotForAccount) m.reason = StreamManifest::NotForAccount;
+            cb(m, a == Unavailable   ? QStringLiteral("Not Found")
+                : a == NotForAccount ? QStringLiteral("only a preview")
+                                     : QStringLiteral("Host not found"));
             --undelivered;
         });
     }
@@ -293,7 +295,7 @@ private slots:
     }
 
     // The row looks fine and Tidal rules the track out anyway, as it does for
-    // one pulled from the catalogue or region-locked.
+    // one pulled from the catalogue.
     void aStreamThatWillNotResolveIsSteppedOverNotReported() {
         {
             Launch a;
@@ -367,8 +369,59 @@ private slots:
         QCOMPARE(c.p().position(), qint64(12000));
     }
 
-    // The other answer: Tidal replied with something other than a whole track.
-    // That row is dropped and the one after it is asked for.
+    // Tidal has the track and does not play it to this account. The row stays
+    // in the queue, the restore passes over it without a word, and the next
+    // launch finds every row.
+    void aTrackTheAccountMayNotPlayIsPassedOverOnRestoreAndKept() {
+        QVERIFY(saveFiveRowSession());
+        {
+            Launch b;
+            b.client.answerFor[1002] = ScriptedClient::NotForAccount;
+            QSignalSpy errorSpy(&b.p(), &Player::error);
+            QVERIFY(b.settle());
+
+            QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
+            QCOMPARE(ids(b.p().queueTracks()),
+                     (QList<qlonglong>{1000, 1001, 1002, 1003, 1004}));
+            QCOMPARE(currentId(b.p()), 1003);
+            QCOMPARE(b.p().position(), qint64(0));
+            QVERIFY(!b.p().playing());
+            QCOMPARE(errorSpy.count(), 0);
+        }
+
+        Launch c;
+        QVERIFY(c.settle());
+        QCOMPARE(c.p().queueCount(), 5);
+        QCOMPARE(currentId(c.p()), 1003);
+    }
+
+    // The account gets none of the saved rows. The restore asks for those
+    // from the saved one to the end and rests there with the queue whole.
+    void aRestoreOntoRowsTheAccountMayNotPlayKeepsTheQueue() {
+        QVERIFY(saveFiveRowSession());
+
+        Launch b(ScriptedClient::NotForAccount);
+        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.settle());
+
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004}));
+        QCOMPARE(ids(b.p().queueTracks()), (QList<qlonglong>{1000, 1001, 1002, 1003, 1004}));
+        QCOMPARE(currentId(b.p()), 1004);
+        QVERIFY(!b.p().loading());
+        QVERIFY(!b.p().playing());
+        QCOMPARE(errorSpy.count(), 0);
+
+        // Play is the user's own request, and its failure is said.
+        b.p().playPause();
+        QVERIFY(b.settle());
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004, 1004}));
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(),
+                 QStringLiteral("This track is not available for your account or region."));
+    }
+
+    // The other answer: Tidal no longer has the track. That row is dropped
+    // and the one after it is asked for.
     void aTrackTidalRulesOutIsSteppedOverOnRestore() {
         QVERIFY(saveFiveRowSession());
 

@@ -345,9 +345,14 @@ struct StreamManifest {
     int     bitDepth   = 16;
     double  replayGainTrack = 0.0;
     double  replayGainAlbum = 0.0;
-    // Only read beside an error: Tidal answered, and the answer rules the track
-    // out. False when the request itself failed, which says nothing about it.
-    bool    unavailable = false;
+    // Read beside an error: what Tidal's answer says about the track. Unknown
+    // when the request itself failed, which says nothing about it.
+    enum Reason {
+        Unknown,
+        Gone,            // Tidal no longer has the track
+        NotForAccount,   // Tidal has it and does not play it to this account or region
+    };
+    Reason  reason = Unknown;
 };
 
 struct SearchResults {

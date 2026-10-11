@@ -697,8 +697,15 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     // This endpoint has no assetpresentation parameter. The body says what it
     // gave, so a preview is refused here.
     const QString presentation = attrs["trackPresentation"].toString();
-    if (presentation != QStringLiteral("FULL")) {
+    if (presentation == QStringLiteral("PREVIEW")) {
         if (err) *err = tr("Tidal returned only a preview of this track, not the whole track.");
+        // The track exists and this account does not get the whole of it.
+        StreamManifest preview;
+        preview.reason = StreamManifest::NotForAccount;
+        return preview;
+    }
+    if (presentation != QStringLiteral("FULL")) {
+        if (err) *err = tr("Tidal did not return a playable manifest for this track.");
         return {};
     }
 
@@ -752,11 +759,28 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     return m;
 }
 
-// What goes with the error of a failed stream request. 404 and 410 are Tidal
-// saying the track does not exist; any other failure says nothing about it.
-static StreamManifest failedManifest(int httpStatus) {
+StreamManifest::Reason TidalClient::refusalReason(bool openApi, int httpStatus,
+                                                  const QJsonObject &body) {
+    if (httpStatus == 404 || httpStatus == 410) return StreamManifest::Gone;
+    if (openApi) {
+        // JSON:API: {errors: [{code}]}.
+        if (httpStatus != 403) return StreamManifest::Unknown;
+        const QJsonArray errors = body["errors"].toArray();
+        for (const QJsonValue &e : errors)
+            if (e.toObject()["code"].toString() == QLatin1String("GEO_RESTRICTED"))
+                return StreamManifest::NotForAccount;
+        return StreamManifest::Unknown;
+    }
+    // "Asset is not ready for playback", the v1 answer for a track that
+    // tracks/<id> answers with 404. Any other 401 is about the session.
+    if (httpStatus == 401 && body["subStatus"].toInt() == 4005) return StreamManifest::Gone;
+    return StreamManifest::Unknown;
+}
+
+// What goes with the error of a refused stream request.
+static StreamManifest refusedManifest(StreamManifest::Reason reason) {
     StreamManifest m;
-    m.unavailable = (httpStatus == 404 || httpStatus == 410);
+    m.reason = reason;
     return m;
 }
 
@@ -776,17 +800,16 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
 
         m_api->getOpenApiWithStatus(QStringLiteral("trackManifests/%1").arg(trackId), q,
             [cb](QJsonObject root, QString err, int httpStatus) {
-                if (!err.isEmpty()) { cb(failedManifest(httpStatus), err); return; }
-                QString parseErr;
-                const StreamManifest m = parseTrackManifests(root, &parseErr);
-                if (!parseErr.isEmpty()) {
-                    // Tidal answered with something other than a whole track.
-                    StreamManifest refused;
-                    refused.unavailable = true;
-                    cb(refused, parseErr);
+                if (!err.isEmpty()) {
+                    // TidalApi hands on no body beside an error, so here and
+                    // below only the status decides.
+                    cb(refusedManifest(refusalReason(true, httpStatus, root)), err);
                     return;
                 }
-                cb(m, {});
+                QString parseErr;
+                const StreamManifest m = parseTrackManifests(root, &parseErr);
+                // With an error the manifest holds the reason and nothing else.
+                cb(m, parseErr);
             });
         return;
     }
@@ -799,7 +822,10 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
 
     m_api->getWithStatus(QStringLiteral("tracks/%1/playbackinfopostpaywall").arg(trackId), q,
         [cb](QJsonObject root, QString err, int httpStatus) {
-            if (!err.isEmpty()) { cb(failedManifest(httpStatus), err); return; }
+            if (!err.isEmpty()) {
+                cb(refusedManifest(refusalReason(false, httpStatus, root)), err);
+                return;
+            }
 
             StreamManifest m;
             m.codec      = root["audioQuality"].toString();

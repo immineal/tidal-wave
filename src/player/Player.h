@@ -198,10 +198,6 @@ public:
     // Public so the tests can round-trip them.
     void savePlaybackState();
     void restorePlaybackState();
-    // Drops the current row, which Tidal has ruled out, and loads the next one
-    // in the direction of travel. Public because a test cannot make the
-    // network fail.
-    void skipUnplayableTrack();
 
 signals:
     void playingChanged     (bool playing);
@@ -268,9 +264,15 @@ private:
     // Keeps the sentence for the views and emits error(). The backend's own
     // text goes to the log and never in here.
     void setLoadError(const QString &msg);
-    // Tells the user that a row was dropped. Rows dropped one after another
-    // are told as one.
-    void noteSkipped(const QString &title);
+    // Leaves the current row, which Tidal has ruled out, and loads the next one
+    // in the direction of travel. A track Tidal no longer has loses its row;
+    // one that is not for this account keeps it.
+    void passOverTrack(StreamManifest::Reason reason);
+    // Tells the user that a row was passed over. Rows passed over one after
+    // another are told as one.
+    void notePassedOver(const QString &title);
+    // Puts the cursor on row n the way a step does.
+    void stepTo(int n);
     void setPlayerPosition(qint64 ms);
     void setLoading(bool l);
     // The one place playingChanged comes from: it is emitted when playing()
@@ -341,8 +343,10 @@ private:
     QString              m_loadError;
     bool                 m_loadErrorClaimed = false;
     Travel               m_travel        = Travel::Picked;
-    // Rows dropped since a load was last asked for.
-    int                  m_skippedRun    = 0;
+    // Rows passed over since a load was last asked for: those dropped and
+    // those kept.
+    int                  m_droppedRun    = 0;
+    int                  m_keptRun       = 0;
     bool                 m_shuffle       = false;
     int                  m_repeatMode    = 0;  // 0=no 1=all 2=one
     QString              m_sourceType;
@@ -367,7 +371,8 @@ private:
     // What playingChanged last said.
     bool                 m_playingTold    = false;
     // Until a restored track resolves, a failed load stays quiet: the row is
-    // dropped if Tidal ruled the track out, and left to load on play otherwise.
+    // passed over if Tidal ruled the track out, and left to load on play
+    // otherwise.
     bool                 m_restoreSkips   = false;
     // The current track's load failed and left nothing loaded; the next play
     // asks again.

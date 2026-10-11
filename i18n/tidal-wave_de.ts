@@ -903,6 +903,22 @@
         <translation>Mehrere Titel sind bei Tidal nicht mehr verfügbar und wurden übersprungen.</translation>
     </message>
     <message>
+        <source>This track is not available for your account or region.</source>
+        <translation>Dieser Titel ist für dein Konto oder deine Region nicht verfügbar.</translation>
+    </message>
+    <message>
+        <source>“%1” is not available for your account or region and was skipped.</source>
+        <translation>„%1“ ist für dein Konto oder deine Region nicht verfügbar und wurde übersprungen.</translation>
+    </message>
+    <message>
+        <source>Several tracks are not available for your account or region and were skipped.</source>
+        <translation>Mehrere Titel sind für dein Konto oder deine Region nicht verfügbar und wurden übersprungen.</translation>
+    </message>
+    <message>
+        <source>Several tracks are not available and were skipped.</source>
+        <translation>Mehrere Titel sind nicht verfügbar und wurden übersprungen.</translation>
+    </message>
+    <message>
         <source>Max</source>
         <translation>Max</translation>
     </message>

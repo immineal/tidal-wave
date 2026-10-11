@@ -27,6 +27,8 @@
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/Player.h"
+#include "ui/I18n.h"
+#include "ui/Prefs.h"
 
 // A lossless manifest with its segments under @BASE@. No "//" inside the raw
 // string: moc can take it for a comment.
@@ -185,7 +187,7 @@ StreamManifest oneFileAt(const QString &url) {
 
 StreamManifest ruledOut() {
     StreamManifest m;
-    m.unavailable = true;
+    m.reason = StreamManifest::Gone;
     return m;
 }
 
@@ -196,6 +198,25 @@ const QString kGone = QStringLiteral(
 QString skipped(qlonglong id) {
     return QStringLiteral("“T%1” is no longer available on Tidal and was skipped.").arg(id);
 }
+
+// Tidal has the track and does not play it to this account.
+StreamManifest notForAccount() {
+    StreamManifest m;
+    m.reason = StreamManifest::NotForAccount;
+    return m;
+}
+
+// What comes with a preview: the client's own sentence.
+const QString kPreview = QStringLiteral(
+    "Tidal returned only a preview of this track, not the whole track.");
+
+QString passedOver(qlonglong id) {
+    return QStringLiteral("“T%1” is not available for your account or region and was skipped.")
+        .arg(id);
+}
+
+const QString kSeveralNotForAccount = QStringLiteral(
+    "Several tracks are not available for your account or region and were skipped.");
 
 StreamManifest losslessFrom(const QString &xml) {
     StreamManifest m;
@@ -507,8 +528,7 @@ private slots:
     // ── a track Tidal no longer has ─────────────────────────────────────────
 
     // Picked by the user, it stays where it is and is named for what it is,
-    // without the transfer's text. Play asks again: the same answer covers a
-    // track the account may only preview, and that can change.
+    // without the transfer's text. Play asks again, as after any failed load.
     void aWithdrawnTrackTheUserPicksIsReportedInOneSentence() {
         Launch a;
         QVERIFY(a.audioUp());
@@ -731,6 +751,224 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002, 10000);
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}));
+    }
+
+    // ── a track Tidal has and does not play to this account ─────────────────
+
+    // Picked by the user, it is named for what it is. Nothing says that Tidal
+    // no longer has it.
+    void aTrackTheAccountMayNotPlayIsNamedAsThat() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 3), 1);
+        QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
+
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(),
+                 QStringLiteral("This track is not available for your account or region."));
+        QCOMPARE(currentId(a.p()), 8001);
+        QCOMPARE(a.p().queueCount(), 3);
+        QVERIFY(!a.p().loading());
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8001, 8001}));
+    }
+
+    // The queue comes onto it by itself or by a step. The row stays in the
+    // queue, the user is told once which one, and the row beyond it plays.
+    void theQueuePassesOverATrackTheAccountMayNotPlayAndKeepsIt_data() {
+        QTest::addColumn<QString>("move");
+        QTest::addColumn<qlonglong>("from");
+        QTest::addColumn<qlonglong>("lands");
+        QTest::newRow("Next")              << QStringLiteral("next")     << 8001LL << 8003LL;
+        QTest::newRow("Previous")          << QStringLiteral("previous") << 8003LL << 8001LL;
+        QTest::newRow("the track ran out") << QStringLiteral("end")      << 8001LL << 8003LL;
+    }
+
+    void theQueuePassesOverATrackTheAccountMayNotPlayAndKeepsIt() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, move);
+        QFETCH(qlonglong, from);
+        QFETCH(qlonglong, lands);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 5), int(from - 8000));
+        QVERIFY(a.client.answer(from, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        if (move == QLatin1String("next")) {
+            a.p().next();
+        } else if (move == QLatin1String("previous")) {
+            a.p().previous();
+        } else {
+            // Asked for ahead of time and again when the track before it ran out.
+            a.mp()->setPosition(29000);
+            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
+            QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
+        }
+        QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
+
+        QCOMPARE(currentId(a.p()), lands);
+        QCOMPARE(a.client.asked.constLast(), lands);
+        QVERIFY2(a.p().queueCount() == 5, "the row the account may not play was removed");
+        QVERIFY(a.p().loading());
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), passedOver(8002));
+
+        QVERIFY(a.client.answer(lands, track));
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the row beyond the one passed over never played",
+                                  10000);
+        QCOMPARE(a.p().loadError(), passedOver(8002));
+        QCOMPARE(errorSpy.count(), 1);
+    }
+
+    // Found out while it is still the row ahead, it keeps its place and
+    // nothing is said. The change at the end of the track passes over it.
+    void aRowAheadTheAccountMayNotPlayIsKeptUntilTheQueueReachesIt() {
+        if (const char *why = obstacle()) QSKIP(why);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
+
+        QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
+        QCOMPARE(a.p().queueCount(), 3);
+        QCOMPARE(a.p().loadError(), QString());
+        QVERIFY(a.p().playing());
+        QTest::qWait(300);
+        QVERIFY2(a.client.asked == (QList<qlonglong>{8000, 8001}),
+                 "the row ahead was asked for again while the track before it played");
+
+        a.mp()->setPosition(29000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001, 8001}), 10000);
+        QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
+        QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY(a.client.answer(8002, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        QCOMPARE(a.p().queueCount(), 3);
+        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.at(0).at(0).toString(), passedOver(8001));
+    }
+
+    // Two rows passed over one after the other are told as one. The sentence
+    // gives the reason where both have the same, and none where they differ.
+    void rowsPassedOverTogetherAreToldAsOne_data() {
+        QTest::addColumn<bool>("firstGone");
+        QTest::addColumn<bool>("secondGone");
+        QTest::addColumn<int>("rowsLeft");
+        QTest::addColumn<QString>("said");
+        QTest::newRow("neither is for this account") << false << false << 5 << kSeveralNotForAccount;
+        QTest::newRow("Tidal has neither") << true << true << 3
+            << QStringLiteral("Several tracks are no longer available on Tidal and were skipped.");
+        const QString mixed = QStringLiteral("Several tracks are not available and were skipped.");
+        QTest::newRow("gone, then not for this account") << true  << false << 4 << mixed;
+        QTest::newRow("not for this account, then gone") << false << true  << 4 << mixed;
+    }
+
+    void rowsPassedOverTogetherAreToldAsOne() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, firstGone);
+        QFETCH(bool, secondGone);
+        QFETCH(int, rowsLeft);
+        QFETCH(QString, said);
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(8000, 5), 0);
+        QVERIFY(a.client.answer(8000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        a.p().next();
+        QVERIFY(firstGone ? a.client.answer(8001, ruledOut(), kGone)
+                          : a.client.answer(8001, notForAccount(), kPreview));
+        QVERIFY(secondGone ? a.client.answer(8002, ruledOut(), kGone)
+                           : a.client.answer(8002, notForAccount(), kPreview));
+
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002, 8003}));
+        QCOMPARE(currentId(a.p()), 8003);
+        QCOMPARE(a.p().queueCount(), rowsLeft);
+        QCOMPARE(a.p().loadError(), said);
+        QVERIFY(a.client.answer(8003, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+    }
+
+    // Nothing ahead is for this account. Every row is still there, and the
+    // queue rests on the last one it asked for until play is pressed.
+    void aQueueWithNothingForTheAccountAheadEndsWhole() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        a.p().next();
+        QVERIFY(a.client.answer(8001, notForAccount(), kPreview));
+        QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
+
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002}));
+        QCOMPARE(a.p().queueCount(), 3);
+        QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY(!a.p().loading());
+        QVERIFY(!a.p().playing());
+        QCOMPARE(a.p().loadError(), kSeveralNotForAccount);
+        QTest::qWait(300);
+        QCOMPARE(a.client.waiting(), 0);
+
+        a.p().playPause();
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, 8002, 8002}));
+    }
+
+    // Kept rows could be gone round for ever. Each is asked for once, and the
+    // queue comes to rest with all of them in it.
+    void repeatDoesNotGoRoundAQueueTheAccountMayNotPlay_data() {
+        QTest::addColumn<int>("repeat");
+        QTest::addColumn<bool>("shuffle");
+        QTest::newRow("repeat all")             << 1 << false;
+        QTest::newRow("repeat one")             << 2 << false;
+        QTest::newRow("shuffle and repeat all") << 1 << true;
+    }
+
+    void repeatDoesNotGoRoundAQueueTheAccountMayNotPlay() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(int, repeat);
+        QFETCH(bool, shuffle);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().setShuffle(shuffle);
+        a.p().setRepeatMode(repeat);
+        a.p().playTracks(contextOf(8000, 3), 0);
+        QVERIFY(a.client.answer(8000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+
+        // From here on the account gets none of them, the one that played included.
+        a.p().next();
+        int answered = 0;
+        while (a.client.waiting() > 0 && answered < 50) {
+            QVERIFY(a.client.answer(a.client.asked.constLast(), notForAccount(), kPreview));
+            ++answered;
+        }
+
+        QCOMPARE(answered, 3);
+        QCOMPARE(a.p().queueCount(), 3);
+        QVERIFY(!a.p().loading());
+        QVERIFY(!a.p().playing());
+        QCOMPARE(a.p().loadError(), kSeveralNotForAccount);
     }
 
     // ── replies nobody is waiting for ───────────────────────────────────────
@@ -1084,6 +1322,28 @@ private slots:
                  "the press on pause was lost and the track plays");
         QVERIFY(!a.p().playing());
         QVERIFY(!a.p().loading());
+    }
+
+    // Without its entry in the catalogue a sentence comes out in English.
+    // Last, because the German stays installed.
+    void theSentencesForATrackThatCannotBePlayedHaveTheirGerman_data() {
+        QTest::addColumn<QString>("sentence");
+        const char *const sentences[] = {
+            "This track is not available for your account or region.",
+            "“%1” is not available for your account or region and was skipped.",
+            "Several tracks are not available for your account or region and were skipped.",
+            "Several tracks are not available and were skipped.",
+        };
+        for (const char *s : sentences) QTest::newRow(s) << QString::fromUtf8(s);
+    }
+
+    void theSentencesForATrackThatCannotBePlayedHaveTheirGerman() {
+        QFETCH(QString, sentence);
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+        QVERIFY(QCoreApplication::translate("Player", sentence.toUtf8().constData()) != sentence);
     }
 
 private:
