@@ -480,8 +480,9 @@ private slots:
         QCOMPARE(b.p().queueCount(), 5);
     }
 
-    // A file the backend cannot open reaches the player as an error and as
-    // invalid media. The user is told once, in the player's own sentence.
+    // A file the backend cannot open reaches the player as an error, and on
+    // some Qt versions as invalid media as well. The user is told once, in
+    // the player's own sentence.
     void aFileTheBackendCannotOpenIsReportedOnce() {
         if (const char *why = obstacle()) QSKIP(why);
 
@@ -491,9 +492,10 @@ private slots:
         a.p().playTracks(contextOf(3000, 2), 0);
         QVERIFY(a.client.answer(3000, oneFileAt(m_server.url(QStringLiteral("/noise")))));
 
-        QTRY_VERIFY_WITH_TIMEOUT(a.mp()->mediaStatus() == QMediaPlayer::InvalidMedia, 10000);
-        QTest::qWait(300);
+        QTRY_VERIFY_WITH_TIMEOUT(errorSpy.count() >= 1, 10000);
+        QTest::qWait(500);
         QCOMPARE(errorSpy.count(), 1);
+        QVERIFY(!a.p().loading());
         QCOMPARE(errorSpy.at(0).at(0).toString(),
                  QStringLiteral("This track could not be played. "
                                 "The audio format may not be supported."));
