@@ -24,6 +24,9 @@ TestCase {
     // a change to it fails here.
     readonly property int debounceMs: 400
     readonly property int settleMs: 2000
+    // How long a case keeps a window from drawing while it watches for a
+    // request. A longer hold only makes such a case stricter.
+    readonly property int heldBackMs: 250
 
     // Two characters is the threshold the page searches above.
     // A query that appears in none of the fixtures below, so a visible line of
@@ -548,6 +551,15 @@ TestCase {
         return f
     }
 
+    // The page judges the bottom when the window draws. One frame lays out
+    // the rows that have arrived, the next follows the scroll.
+    function scrollToBottomAndDraw(win) {
+        frame(win.contentItem)
+        var f = scrollToBottom(win.page)
+        frame(win.contentItem)
+        return f
+    }
+
     // Types `q` and waits until a reply for it has landed.
     function search(win, q) {
         typeInto(win.page, q)
@@ -655,16 +667,13 @@ TestCase {
         frame(win.contentItem)
 
         // Two more pages: 20 + 20 + 5.
-        for (var round = 0; round < 6; ++round) {
-            scrollToBottom(win.page)
-            wait(60)
-            if (win.page.tracks.length === 45) break
-        }
+        scrollToBottomAndDraw(win)
+        scrollToBottomAndDraw(win)
         compare(win.page.tracks.length, 45,
                 "paging never reached the end of the 45 canned tracks")
 
         var settled = bridge.searchCountForTest()
-        scrollToBottom(win.page)
+        scrollToBottomAndDraw(win)
         wait(200)
         compare(bridge.searchCountForTest(), settled,
                 "the page is still asking for more after the last row: every "
@@ -684,6 +693,7 @@ TestCase {
         scrollToBottom(win.page)
         tryVerify(function () { return win.page.tracks.length === 40 },
                   settleMs, "the second page never arrived")
+        frame(win.contentItem)
         wait(250)        // long enough for a third request to have gone out
 
         // Two requests and no more. A third would come back empty and end the
@@ -784,7 +794,7 @@ TestCase {
         compare(win.page.activeTab, 0)
 
         var before = bridge.searchCountForTest()
-        scrollToBottom(win.page)
+        scrollToBottomAndDraw(win)
         wait(250)
         compare(bridge.searchCountForTest(), before,
                 "the All tab asked for another page; it is an overview and the "
@@ -857,10 +867,135 @@ TestCase {
                 "a failed page threw away the rows that had already arrived")
 
         var settled = bridge.searchCountForTest()
-        scrollToBottom(win.page)
+        scrollToBottomAndDraw(win)
         wait(200)
         compare(bridge.searchCountForTest(), settled,
                 "the page retries the failed page on every pixel of scroll")
+    }
+
+    // The rows of a page exist when its reply lands and are positioned when
+    // the window next draws. A scroll in between has only the heights of the
+    // rows before them to go by.
+    function test_a_scroll_before_an_arrived_page_is_drawn_asks_for_nothing() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(125), [], [], [])
+        search(win, query)
+        win.page.activeTab = 1
+        frame(win.contentItem)
+
+        bridge.setDeferSearchForTest(true)
+        var f = scrollToBottom(win.page)
+        tryVerify(function () { return bridge.pendingSearchCountForTest() === 1 },
+                  settleMs, "the next page was never asked for")
+        bridge.flushSearchRepliesForTest()
+        compare(win.page.tracks.length, 40, "the second page was not appended")
+
+        f.contentY = f.contentY - 1
+        frame(win.contentItem)
+        verify(f.contentY + f.height < f.contentHeight - win.page.loadMoreMargin,
+               "the view is at the bottom of forty rows as well, so this case "
+               + "could not tell an early request from a due one")
+        compare(bridge.searchCountForTest(), 2,
+                "a third page was asked for by a scroll of one pixel, judged "
+                + "against the height of the first twenty rows while forty "
+                + "were on the page")
+    }
+
+    // A hidden window draws no frame, so rows that arrive meanwhile stay
+    // unpositioned and the scroller keeps the height it had.
+    function test_a_page_that_is_not_laid_out_yet_asks_for_nothing_data() {
+        return [
+            { tag: "searched on the Tracks tab", tabFirst: true },
+            { tag: "the Tracks tab opened after the search", tabFirst: false }
+        ]
+    }
+
+    function test_a_page_that_is_not_laid_out_yet_asks_for_nothing(row) {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
+        var f = scrollerIn(win.page)
+        if (row.tabFirst) {
+            win.page.activeTab = 1
+            frame(win.contentItem)
+            bridge.setDeferSearchForTest(true)
+            typeInto(win.page, query)
+            tryVerify(function () { return bridge.pendingSearchCountForTest() === 1 },
+                      settleMs, "the search was never dispatched")
+            win.visible = false
+            bridge.setDeferSearchForTest(false)
+            bridge.flushSearchRepliesForTest()
+        } else {
+            search(win, query)
+            frame(win.contentItem)
+            win.visible = false
+            win.page.activeTab = 1
+        }
+        compare(win.page.tracks.length, 20)
+        var stale = f.contentHeight
+        verify(stale <= f.height,
+               "the scroller is " + stale + " high before the rows are laid "
+               + "out, which already fills the viewport of " + f.height)
+
+        // Any guess at when the frame comes gets its chance here.
+        wait(heldBackMs)
+        compare(f.contentHeight, stale,
+                "the hidden window laid the rows out, so nothing was held back")
+        compare(bridge.searchCountForTest(), 1,
+                "the next page was asked for while the scroller was still "
+                + stale + " high: twenty rows were on the page and none of "
+                + "them had been positioned")
+
+        win.visible = true
+        frame(win.contentItem)
+        verify(f.contentY + f.height < f.contentHeight - win.page.loadMoreMargin,
+               "twenty tracks end at the bottom of the viewport, so this case "
+               + "could not tell an early request from a due one")
+        compare(bridge.searchCountForTest(), 1,
+                "the next page was asked for though the first fills the "
+                + "window and nobody scrolled")
+    }
+
+    // A page that ends above the bottom of the window is already showing its
+    // last row, so the next follows without a scroll until the window is full.
+    function test_a_list_shorter_than_the_window_loads_on_until_it_fills_it() {
+        var win = showPage()
+        win.height = 1600
+        win.page.activeTab = 1
+        frame(win.contentItem)
+        bridge.setSearchResultsForTest(fakeTracks(125), [], [], [])
+        search(win, query)
+
+        tryVerify(function () { return win.page.tracks.length >= 40 },
+                  settleMs, "a first page of twenty rows ends above the bottom "
+                  + "of the window and no second was asked for")
+        frame(win.contentItem)
+        var f = scrollerIn(win.page)
+        verify(f.contentHeight - win.page.loadMoreMargin > f.height,
+               "forty rows do not fill the window either, so this case could "
+               + "not see the asking stop")
+        frame(win.contentItem)
+        compare(bridge.searchCountForTest(), 2,
+                "the page went on asking after the list had filled the window")
+        compare(win.page.tracks.length, 40)
+    }
+
+    // A page of rows that are all on screen already adds nothing, so the view
+    // is still at the bottom when it has arrived.
+    function test_a_page_of_rows_already_shown_is_followed_by_the_next() {
+        var win = showPage()
+        var tracks = fakeTracks(60)
+        for (var i = 20; i < 40; ++i) tracks[i] = tracks[i - 20]
+        bridge.setSearchResultsForTest(tracks, [], [], [])
+        search(win, query)
+        win.page.activeTab = 1
+        frame(win.contentItem)
+
+        scrollToBottom(win.page)
+        tryVerify(function () { return bridge.lastSearchOffsetForTest() === 40 },
+                  settleMs, "the second page brought nothing new, the view is "
+                  + "still at the bottom and the third was never asked for")
+        compare(bridge.searchCountForTest(), 3)
+        compare(win.page.tracks.length, 40)
     }
 
     // ════════════════════════════════════════════════════════════════════

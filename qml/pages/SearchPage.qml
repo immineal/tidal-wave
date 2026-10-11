@@ -116,9 +116,7 @@ Rectangle {
     }
     onActiveTabChanged: {
         resultsEntry.restart()
-        // The column still has the previous tab's height until it is laid out
-        // again, so the bottom check waits for it to settle.
-        bottomSettle.restart()
+        root._checkBottomAfterLayout()
     }
 
     // ── recent searches ─────────────────────────────────────────────────
@@ -634,18 +632,29 @@ Rectangle {
     }
 
     // The bottom of the results, watched. Outside the ScrollView, which takes
-    // exactly one content item. A scroll is checked on the spot. A height
-    // change waits for bottomSettle: appended rows arrive over several passes.
+    // exactly one content item.
     Connections {
         target: resultsScroll.contentItem
-        function onContentYChanged()      { root._maybeLoadMore() }
-        function onContentHeightChanged() { bottomSettle.restart() }
+        function onContentYChanged()      { root._checkBottomAfterLayout() }
+        function onContentHeightChanged() { root._checkBottomAfterLayout() }
     }
 
-    Timer {
-        id: bottomSettle
-        interval: 60
-        onTriggered: root._maybeLoadMore()
+    // Rows are positioned when the window polishes its items for a frame, and
+    // afterAnimating follows that pass. The bottom is judged there and nowhere
+    // else, so the heights it reads belong to the rows on the page.
+    property bool _bottomOwed: false
+    function _checkBottomAfterLayout() {
+        _bottomOwed = true
+        // Nothing else may have asked for a frame.
+        if (Window.window) Window.window.update()
+    }
+    Connections {
+        target: root.Window.window
+        enabled: root._bottomOwed
+        function onAfterAnimating() {
+            root._bottomOwed = false
+            root._maybeLoadMore()
+        }
     }
 
     // ── the sections ────────────────────────────────────────────────────
@@ -1068,8 +1077,8 @@ Rectangle {
             if (root.totalHits > 0) bridge.addRecentSearch(q)
 
             // A first page that does not fill the window is already showing
-            // its last row. Once the column has settled, and not before.
-            bottomSettle.restart()
+            // its last row.
+            root._checkBottomAfterLayout()
         }, pageSize, 0)
     }
 
@@ -1137,6 +1146,8 @@ Rectangle {
 
             root._setMore(kind, root._hasMore(page.length, sent[kind], total[kind]))
             root._restoreScroll(keepY)
+            // The page may have left the bottom where it was.
+            root._checkBottomAfterLayout()
         }, pageSize, _sent[kind])
     }
 
