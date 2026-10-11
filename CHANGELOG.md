@@ -5,7 +5,7 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
-## [0.4.0] - 2026-10-05
+## [0.4.0] - 2026-10-11
 
 ### Added
 
@@ -43,6 +43,9 @@ milestones and not a semver promise about an API.
 - AppStream metainfo, a `.desktop` entry named after the app id, and a PKGBUILD,
   so Linux software stores can list the app.
 - Every artist in a track row is its own link.
+- An AppImage that carries its own Qt, for systems whose Qt is too old for the
+  app or that have none.
+- `SHA256SUMS` beside the downloads.
 
 ### Changed
 
@@ -58,6 +61,11 @@ milestones and not a semver promise about an API.
 - Video mixes are dropped from the generated mixes page, because the app has no
   video support and those tiles opened empty. A video mix you saved yourself is
   kept.
+- The `.deb` is built on Debian 12, the oldest system it supports, and is
+  installed on Debian 12 and 13 and Ubuntu 24.04 before it is published.
+- The Windows zip brings the Visual C++ runtime with it.
+- The macOS download is named for what it holds, `tidal-wave-macos-arm64.tar.gz`.
+- The screenshots show an invented library.
 
 ### Fixed
 
@@ -113,6 +121,20 @@ milestones and not a semver promise about an API.
 - The sleep timer popup hung off the bottom of a short window.
 - Every label on an accent fill was black.
 - Share links took a `/browse/` detour they did not need.
+- The `.deb` first published for this version could not be installed on any
+  system. It asked for Qt 6.12 and a libstdc++ that no Debian or Ubuntu release
+  had.
+- Lossless did not play on Qt 6.4, which is what Debian 12 and Ubuntu 24.04
+  have. The segment downloads broke down after the first few requests and the
+  player stayed paused without a word.
+- A seek inside a lossless track on Qt 6.4 silenced the rest of the track.
+- Media keys and desktop media widgets (MPRIS) had stopped answering.
+- A restored session lost its queue when the stream could not be requested at
+  startup.
+- Reopening a menu crashed the app under software rendering on Qt 6.4.
+- The volume control sat on the shuffle button when a narrow window went
+  fullscreen.
+- The Windows build did not start on a machine without the Visual C++ runtime.
 
 ## Earlier releases
 
