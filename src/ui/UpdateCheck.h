@@ -16,7 +16,7 @@ class QNetworkAccessManager;
 class UpdateCheck : public QObject {
     Q_OBJECT
     QML_ELEMENT
-    QML_UNCREATABLE("Use the update context property")
+    QML_UNCREATABLE("Use the updateCheck context property")
 
     // True when a release is newer than this build, not a prerelease, not
     // skipped by the user, and the check is switched on.
