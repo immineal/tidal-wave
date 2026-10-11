@@ -584,11 +584,19 @@ TestCase {
         verify(entry, "the current row has no delegate at 5000 rows")
         compare(entry.titleText, "Ctx 4000", "the reveal landed on the wrong row")
 
-        // Scrolling the whole way must not accumulate delegates either.
-        view.contentY = 0
+        // Scrolling the whole way must not accumulate delegates either. Through
+        // the view's own calls: the position of an unbuilt row is an estimate,
+        // so a contentY worked out here can lie outside the content.
+        view.positionViewAtBeginning()
         settle(host.contentItem)
-        view.contentY = view.contentHeight - view.height
+        compare(view.indexAt(1, view.contentY + 1), 0,
+                "the view is not showing the first row")
+        live = liveDelegates(view)
+        verify(live < 400, live + " delegates are alive at the top of the queue")
+        view.positionViewAtEnd()
         settle(host.contentItem)
+        compare(view.indexAt(1, view.contentY + view.height - 2), panel.rowCount - 1,
+                "the view is not showing the last row")
         live = liveDelegates(view)
         verify(live < 400,
                live + " delegates are alive after scrolling, so the view keeps "
