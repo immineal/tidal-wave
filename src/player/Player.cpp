@@ -813,6 +813,10 @@ void Player::loadAndPlay(int index) {
 void Player::startLoad(int index) {
     if (!m_player || index < 0 || index >= m_queue.count()) return;
 
+    // Replies still out for an earlier load, the download aborted below
+    // among them, find a newer number and drop out.
+    const quint64 serial = ++m_loadSerial;
+
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
     // lowers the loading flag. Raised before them it would be lowered again
     // for the whole of the next track's fetch.
@@ -903,8 +907,8 @@ void Player::startLoad(int index) {
 
     qlonglong loadingTrackId = m_currentTrack.id;
     m_client->fetchStreamManifest(loadingTrackId,
-        [this, loadingTrackId](StreamManifest manifest, QString err) {
-            if (m_currentTrack.id != loadingTrackId) {
+        [this, loadingTrackId, serial](StreamManifest manifest, QString err) {
+            if (serial != m_loadSerial || m_currentTrack.id != loadingTrackId) {
                 return;
             }
             if (!err.isEmpty()) {
@@ -930,7 +934,8 @@ void Player::startLoad(int index) {
             emit currentTrackChanged();
 
             if (manifest.type == StreamManifest::BTS) {
-                m_activeDownload = m_client->fetchRaw(QUrl(manifest.url), [this, loadingTrackId](QByteArray data, QString err) {
+                m_activeDownload = m_client->fetchRaw(QUrl(manifest.url), [this, loadingTrackId, serial](QByteArray data, QString err) {
+                    if (serial != m_loadSerial) return;
                     m_activeDownload = nullptr;
                     if (m_currentTrack.id != loadingTrackId) {
                         return;
@@ -971,11 +976,11 @@ void Player::startLoad(int index) {
                     return;
                 }
                 m_dash = fetcher;
-                fetcher->start([this, fetcher, loadingTrackId](QTemporaryFile *file, const QString &dashErr) {
+                fetcher->start([this, fetcher, loadingTrackId, serial](QTemporaryFile *file, const QString &dashErr) {
                     // Dispose this callback's fetcher, whatever the member holds.
                     if (m_dash == fetcher) m_dash = nullptr;
                     disposeDash(fetcher, this);
-                    if (m_currentTrack.id != loadingTrackId) {
+                    if (serial != m_loadSerial || m_currentTrack.id != loadingTrackId) {
                         if (file) { file->remove(); delete file; }
                         return;
                     }

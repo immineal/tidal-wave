@@ -6,6 +6,7 @@
 #include <QTest>
 #include <QByteArray>
 #include <QDataStream>
+#include <QDir>
 #include <QFile>
 #include <QMediaDevices>
 #include <QMediaPlayer>
@@ -91,7 +92,7 @@ QByteArray silentWav() {
 }
 
 // A localhost origin for the audio. /track is the WAV, /empty answers with no
-// bytes and every other path is not there.
+// bytes, /held never answers and every other path is not there.
 class MediaServer : public QTcpServer {
 public:
     explicit MediaServer(QObject *parent = nullptr) : QTcpServer(parent)
@@ -100,6 +101,8 @@ public:
     }
 
     QByteArray track;
+    int        tracksServed = 0;
+    int        requestsHeld = 0;
 
     QString url(const QString &path) const
     {
@@ -116,6 +119,8 @@ private:
                 if (buf->indexOf("\r\n\r\n") < 0) return;
                 const QByteArray path = buf->mid(4, buf->indexOf(' ', 4) - 4);
                 buf->clear();
+                if (path == "/held") { ++requestsHeld; return; }
+                if (path == "/track") ++tracksServed;
                 const bool found = path == "/track" || path == "/empty";
                 const QByteArray body = path == "/track" ? track : QByteArray();
                 sock->write(found ? "HTTP/1.0 200 OK\r\n" : "HTTP/1.0 404 Not Found\r\n");
@@ -184,16 +189,16 @@ StreamManifest losslessFrom(const QString &xml) {
     return m;
 }
 
-// Points TMPDIR at a plain file while it lives, so that no temp file can be
+// Points TMPDIR elsewhere while it lives. At a plain file no temp file can be
 // created, whoever runs the test.
-struct NoTempDir {
+struct TempDirAt {
     const bool       wasSet = qEnvironmentVariableIsSet("TMPDIR");
     const QByteArray was    = qgetenv("TMPDIR");
 
-    explicit NoTempDir(const QString &plainFile) {
-        qputenv("TMPDIR", QFile::encodeName(plainFile));
+    explicit TempDirAt(const QString &path) {
+        qputenv("TMPDIR", QFile::encodeName(path));
     }
-    ~NoTempDir() {
+    ~TempDirAt() {
         if (wasSet) qputenv("TMPDIR", was);
         else        qunsetenv("TMPDIR");
     }
@@ -381,8 +386,8 @@ private slots:
         QCOMPARE(a.client.asked, (QList<qlonglong>{3000}));
 
         {
-            std::unique_ptr<NoTempDir> full;
-            if (noTempDir) full = std::make_unique<NoTempDir>(m_plainFile);
+            std::unique_ptr<TempDirAt> full;
+            if (noTempDir) full = std::make_unique<TempDirAt>(m_plainFile);
             QVERIFY(a.client.answer(3000, manifest));
             QTRY_COMPARE_WITH_TIMEOUT(errorSpy.count(), 1, 10000);
         }
@@ -437,6 +442,72 @@ private slots:
         QTRY_VERIFY2_WITH_TIMEOUT(b.p().playing(), "the press on play left it paused", 10000);
         QTRY_VERIFY_WITH_TIMEOUT(b.mp()->position() >= 11500, 5000);
         QCOMPARE(b.p().queueCount(), 5);
+    }
+
+    // ── replies nobody is waiting for ───────────────────────────────────────
+
+    // Moving on aborts the download in flight, which is the player's own
+    // doing. Nothing is reported, and the track now asked for shows as loading.
+    void movingOnDuringADownloadReportsNothing() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        const int heldBefore = m_server.requestsHeld;
+
+        a.p().playTracks(contextOf(5000, 2), 0);
+        QVERIFY(a.client.answer(5000, oneFileAt(m_server.url(QStringLiteral("/held")))));
+        QTRY_COMPARE_WITH_TIMEOUT(m_server.requestsHeld, heldBefore + 1, 5000);
+
+        a.p().next();
+        QCOMPARE(currentId(a.p()), 5001);
+        QCOMPARE(errorSpy.count(), 0);
+        QVERIFY2(a.p().loading(), "the aborted download lowered the next track's loading flag");
+    }
+
+    // Two clicks on one row are two requests for one track. Only the second
+    // is acted on: one download, and no file left behind for the first.
+    void aTrackAskedForTwiceIsFetchedOnce() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const TempDirAt own(tmp.path());
+        const int servedBefore = m_server.tracksServed;
+        {
+            Launch a;
+            QVERIFY(a.audioUp());
+            a.p().playTracks(contextOf(5000, 2), 0);
+            a.p().playTracks(contextOf(5000, 2), 0);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{5000, 5000}));
+            QVERIFY(a.client.answer(5000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+            QVERIFY(a.client.answer(5000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+
+            QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+            QTest::qWait(300);
+            QCOMPARE(m_server.tracksServed - servedBefore, 1);
+        }
+        QCOMPARE(QDir(tmp.path()).entryList(QDir::Files), QStringList());
+    }
+
+    // The first of two requests fails after the second went out. The failure
+    // belongs to a load that was replaced, so it is neither reported nor owed.
+    void aStaleFailureDoesNotSpeakForTheLoadThatReplacedIt() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QSignalSpy errorSpy(&a.p(), &Player::error);
+        a.p().playTracks(contextOf(5000, 2), 0);
+        a.p().playTracks(contextOf(5000, 2), 0);
+
+        QVERIFY(a.client.answer(5000, StreamManifest(), QStringLiteral("Host not found")));
+        QCOMPARE(errorSpy.count(), 0);
+        QVERIFY(a.p().loading());
+
+        QVERIFY(a.client.answer(5000, oneFileAt(m_server.url(QStringLiteral("/track")))));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing(), 10000);
+        a.p().playPause();
+        QTRY_VERIFY_WITH_TIMEOUT(!a.p().playing(), 5000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{5000, 5000}));
     }
 
 private:

@@ -335,6 +335,9 @@ private:
     // The current track's load failed and left nothing loaded; the next play
     // asks again.
     bool                 m_loadOwed       = false;
+    // Numbers the loads, so a reply can tell that a newer load has replaced
+    // the one that asked for it.
+    quint64              m_loadSerial     = 0;
     // Where the restored track was left, applied once the media is ready.
     qint64               m_pendingSeek    = 0;
 
