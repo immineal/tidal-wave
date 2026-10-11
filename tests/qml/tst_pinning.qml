@@ -28,12 +28,12 @@ TestCase {
     // are numeric strings because the pages build their pin id from those.
     function baseEntries() {
         return [
-            { kind: "album",    id: "43",      title: "Aquarium",         subtitle: "Aqua Band",  imageUrl: "cdn/43.jpg",  trackCount: 11 },
-            { kind: "artist",   id: "7",       title: "Boards of Canada", subtitle: "",           imageUrl: "cdn/7.jpg",   trackCount: 0  },
-            { kind: "mix",      id: "mix-1",   title: "Daily Discovery",  subtitle: "Your mix",   imageUrl: "cdn/m1.jpg",  trackCount: 0  },
-            { kind: "playlist", id: "uuid-p1", title: "Evening Drive",    subtitle: "",           imageUrl: "cdn/p1.jpg",  trackCount: 31 },
-            { kind: "album",    id: "42",      title: "Fever Dream",      subtitle: "The Band",   imageUrl: "cdn/42.jpg",  trackCount: 14 },
-            { kind: "playlist", id: "uuid-p2", title: "Golden Hour",      subtitle: "",           imageUrl: "cdn/p2.jpg",  trackCount: 9  }
+            { kind: "album",    id: "43",      title: "Amber Signals",   subtitle: "Lumen Drift",    imageUrl: "cdn/43.jpg", trackCount: 11 },
+            { kind: "artist",   id: "7",       title: "Brackwater",      subtitle: "",               imageUrl: "cdn/7.jpg",  trackCount: 0  },
+            { kind: "mix",      id: "mix-1",   title: "Daily Discovery", subtitle: "Your mix",       imageUrl: "cdn/m1.jpg", trackCount: 0  },
+            { kind: "playlist", id: "uuid-p1", title: "Evening Drive",   subtitle: "",               imageUrl: "cdn/p1.jpg", trackCount: 31 },
+            { kind: "album",    id: "42",      title: "Glass Orchard",   subtitle: "Kestrel Arcade", imageUrl: "cdn/42.jpg", trackCount: 14 },
+            { kind: "playlist", id: "uuid-p2", title: "Kitchen Radio",   subtitle: "",               imageUrl: "cdn/p2.jpg", trackCount: 9  }
         ]
     }
 
@@ -41,7 +41,7 @@ TestCase {
     // ever reach the list through a search.
     function makeTracks() {
         return [
-            { kind: "track", id: "t1", title: "Zodiac Shift", subtitle: "Radiohead", imageUrl: "cdn/t1.jpg", albumId: 42 }
+            { kind: "track", id: "t1", title: "Tidewrack", subtitle: "Kestrel Arcade", imageUrl: "cdn/t1.jpg", albumId: 42 }
         ]
     }
 
@@ -217,7 +217,7 @@ TestCase {
         case "album":
             page = createTemporaryObject(albumC, host.pane)
             page.albumId = 42
-            page.albumData = { title: "Fever Dream", artists: "The Band", year: "2019",
+            page.albumData = { title: "Glass Orchard", artists: "Kestrel Arcade", year: "2019",
                                numTracks: 14, duration: 2400, coverUrl: "cdn/42.jpg",
                                coverUrl640: "", artistId: 7 }
             break
@@ -237,7 +237,7 @@ TestCase {
         case "artist":
             page = createTemporaryObject(artistC, host.pane)
             page.artistId = 7
-            page.artistData = { name: "Boards of Canada", coverUrl: "cdn/7.jpg", coverUrl750: "" }
+            page.artistData = { name: "Brackwater", coverUrl: "cdn/7.jpg", coverUrl750: "" }
             break
         }
         verify(page, "the " + kind + " page was not created")
@@ -248,10 +248,10 @@ TestCase {
     // What a pin made from this page should look like.
     function pageTarget(kind) {
         switch (kind) {
-        case "album":    return { id: "42",      title: "Fever Dream" }
+        case "album":    return { id: "42",      title: "Glass Orchard" }
         case "playlist": return { id: "uuid-p1", title: "Evening Drive" }
         case "mix":      return { id: "mix-1",   title: "Daily Discovery" }
-        case "artist":   return { id: "7",       title: "Boards of Canada" }
+        case "artist":   return { id: "7",       title: "Brackwater" }
         }
         return null
     }
@@ -263,7 +263,7 @@ TestCase {
         var sb = host.sidebar
 
         var row = rowFor(sb, "42")
-        verify(row, "the library list never drew the Fever Dream row")
+        verify(row, "the library list never drew the Glass Orchard row")
         rightClickItem(host, row)
 
         var menu = sb.pinMenu
@@ -293,8 +293,8 @@ TestCase {
     function test_media_card_offers_pin_and_unpin() {
         var host = showHost(1280)
         var card = createTemporaryObject(mediaCardC, host.pane, {
-            mediaType: "album", itemId: "42", title: "Fever Dream",
-            subtitle: "The Band", coverUrl: "cdn/42.jpg"
+            mediaType: "album", itemId: "42", title: "Glass Orchard",
+            subtitle: "Kestrel Arcade", coverUrl: "cdn/42.jpg"
         })
         verify(card, "the card was not created")
         settle(host.contentItem)
@@ -305,7 +305,7 @@ TestCase {
         compare(menu.pinItem.text, qsTr("Pin", "verb, pin to the sidebar"), "card menu label")
         menu.pinItem.triggered()
         verify(pins.isPinned("album", "42"), "pinning from a card did not reach PinStore")
-        compare(pins.items[0].title, "Fever Dream", "the card pinned the wrong title")
+        compare(pins.items[0].title, "Glass Orchard", "the card pinned the wrong title")
         compare(pins.items[0].imageUrl, "cdn/42.jpg", "the card pinned no artwork")
         menu.close()
 
@@ -324,8 +324,8 @@ TestCase {
     function test_a_tile_pins_data_and_not_app_text_data() {
         return [
             { tag: "album keeps its artists",
-              kind: "album",    id: "42",      drawn: "The Band",
-              stored: "The Band" },
+              kind: "album",    id: "42",      drawn: "Kestrel Arcade",
+              stored: "Kestrel Arcade" },
             { tag: "mix keeps Tidal's own subtitle",
               kind: "mix",      id: "mix-1",   drawn: "Your mix",
               stored: "Your mix" },
@@ -381,15 +381,15 @@ TestCase {
         verify(row, "the pinned album has no sidebar row")
         verify(row.pinned, "the row did not come through as pinned")
 
-        compare(row.title, "Fever Dream", "the row drew the pin's title")
-        compare(row.modelData.subtitle, "The Band", "the row drew the pin's subtitle")
+        compare(row.title, "Glass Orchard", "the row drew the pin's title")
+        compare(row.modelData.subtitle, "Kestrel Arcade", "the row drew the pin's subtitle")
         compare(row.modelData.imageUrl, "cdn/42.jpg", "the row drew the pin's artwork")
 
         // The tooltip is on every row, because in the collapsed rail the title
         // is not on screen. It is built from the library row too.
         var box = findByName(row, "libraryRowTitle").parent
         verify(box, "the row has no content box to carry the tooltip")
-        compare(box.ToolTip.text, "Fever Dream · The Band",
+        compare(box.ToolTip.text, "Glass Orchard · Kestrel Arcade",
                 "the row tooltip is not built from the library row")
     }
 
@@ -419,7 +419,7 @@ TestCase {
     function test_collection_album_grid_can_pin() {
         var host = showHost(1280)
         var page = makeCollection(host, 1, [
-            { id: 42, title: "Fever Dream", artists: "The Band", coverUrl: "cdn/42.jpg" }
+            { id: 42, title: "Glass Orchard", artists: "Kestrel Arcade", coverUrl: "cdn/42.jpg" }
         ])
         var cards = cardsOn(page)
         compare(cards.length, 1, "the albums grid drew no tile")
@@ -434,7 +434,7 @@ TestCase {
         menu.pinItem.triggered()
         verify(pins.isPinned("album", "42"),
                "pinning an album from Collection did not reach PinStore")
-        compare(pins.items[0].title, "Fever Dream")
+        compare(pins.items[0].title, "Glass Orchard")
         menu.close()
 
         // And the rest of the one menu is here too, destructive entry last,
@@ -459,7 +459,7 @@ TestCase {
     function test_collection_artist_grid_can_pin() {
         var host = showHost(1280)
         var page = makeCollection(host, 2, [
-            { id: 7, name: "Boards of Canada", coverUrl: "cdn/7.jpg" }
+            { id: 7, name: "Brackwater", coverUrl: "cdn/7.jpg" }
         ])
         var cards = cardsOn(page)
         compare(cards.length, 1, "the artists grid drew no tile")
@@ -531,7 +531,7 @@ TestCase {
         var sb = host.sidebar
 
         var card = createTemporaryObject(mediaCardC, host.pane, {
-            mediaType: "track", itemId: "t1", title: "Zodiac Shift", subtitle: "Radiohead"
+            mediaType: "track", itemId: "t1", title: "Tidewrack", subtitle: "Kestrel Arcade"
         })
         settle(host.contentItem)
         rightClickItem(host, card)
@@ -540,7 +540,7 @@ TestCase {
 
         // And the same from the sidebar, where a song only ever appears as a
         // search result.
-        findByName(sb, "sidebarFinder").query = "zodiac"
+        findByName(sb, "sidebarFinder").query = "tidewrack"
         tryVerify(function () { return rowIds(sb).join(",") === "t1" }, 2000,
                   "the search did not reach the song index")
         settle(host.contentItem)
@@ -595,7 +595,7 @@ TestCase {
         compare(breaks[0].rowIndex, 1, "the break sits at the wrong row")
 
         // Unpinning puts it back where the alphabet wants it, between Evening
-        // Drive and Golden Hour.
+        // Drive and Kitchen Radio.
         rightClickItem(host, findByName(page, "heroPinArea"))
         tryVerify(function () { return page.pinMenu.visible }, 2000, "no hero menu the second time")
         compare(page.pinMenu.pinItem.text, qsTr("Unpin"), "the hero should offer Unpin now")
@@ -614,7 +614,7 @@ TestCase {
 
     function test_drag_reorders_the_pinned_block() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
-                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("album",    "43",      "Amber Signals"),
                  pinRow("mix",      "mix-1",   "Daily Discovery")])
 
         var host = showHost(1280)
@@ -670,7 +670,7 @@ TestCase {
 
     function test_a_block_of_two_swaps_wherever_the_handle_was_grabbed(row) {
         setPins([pinRow("mix",   "mix-1", "Daily Discovery"),
-                 pinRow("album", "43",    "Aquarium")])
+                 pinRow("album", "43",    "Amber Signals")])
 
         var host = showHost(1280)
         var sb = host.sidebar
@@ -713,7 +713,7 @@ TestCase {
     // library list below is not reordered, and is certainly not unpinned.
     function test_a_drop_outside_the_pinned_block_changes_nothing() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
-                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("album",    "43",      "Amber Signals"),
                  pinRow("mix",      "mix-1",   "Daily Discovery")])
 
         var host = showHost(1280)
@@ -758,7 +758,7 @@ TestCase {
         settle(host.contentItem)
 
         var plain = rowFor(sb, "42")
-        verify(plain, "the Fever Dream row was never drawn")
+        verify(plain, "the Glass Orchard row was never drawn")
         var grip = findByName(plain, "pinDragArea")
         verify(!grip || !grip.enabled, "an unpinned row can be dragged")
     }
@@ -768,7 +768,7 @@ TestCase {
     // No settle() between the drags: the press must land on such a row.
     function test_a_second_drag_lands_while_the_first_is_still_travelling() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
-                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("album",    "43",      "Amber Signals"),
                  pinRow("mix",      "mix-1",   "Daily Discovery")])
 
         var host = showHost(1280)
@@ -827,7 +827,7 @@ TestCase {
     // release the delegate holding the grab. Only a busy machine shows a failure.
     function test_the_library_arriving_mid_drag_does_not_lose_the_drop() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
-                 pinRow("album",    "43",      "Aquarium"),
+                 pinRow("album",    "43",      "Amber Signals"),
                  pinRow("mix",      "mix-1",   "Daily Discovery")])
 
         var host = showHost(1280)
@@ -890,7 +890,7 @@ TestCase {
     // right-click there can only mean the one thing: unpin.
     function test_right_clicking_a_rail_cover_offers_unpin() {
         setPins([pinRow("playlist", "uuid-p1", "Evening Drive"),
-                 pinRow("album",    "43",      "Aquarium")])
+                 pinRow("album",    "43",      "Amber Signals")])
 
         var host = showHost(640)
         var sb = host.sidebar

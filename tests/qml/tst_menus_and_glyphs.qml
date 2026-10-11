@@ -345,12 +345,12 @@ TestCase {
     function test_an_open_pin_menu_ships_no_text_glyph() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var card = createTemporaryObject(mediaCardC, holder, {
-            mediaType: "album", itemId: "42", title: "Fever Dream", subtitle: "The Band"
+            mediaType: "album", itemId: "42", title: "Glass Orchard", subtitle: "Kestrel Arcade"
         })
         verify(card, "the card was not created")
         settle(holder)
 
-        card.pinMenu.showPin(10, 10, "album", "42", "Fever Dream", "The Band", "")
+        card.pinMenu.showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
         tryVerify(function () { return card.pinMenu.visible }, 2000, "the card menu did not open")
         verify(sweep(card.pinMenu.contentItem, "the pin menu") > 0,
                "the sweep found no labels at all, so it proved nothing")

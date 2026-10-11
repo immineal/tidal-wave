@@ -365,9 +365,9 @@ TestCase {
     // in its compact mode.
     function test_player_bar_long_names_stay_inside_the_line() {
         player.setCurrentTrackForTest(trackWith([
-            { id: 11, name: "Rundfunk-Tanzorchester Ehrenfeld" },
-            { id: 22, name: "Mitteldeutscher Kammerchor" },
-            { id: 33, name: "Johanna von Hohenzollern-Sigmaringen" }
+            { id: 11, name: "Rundfunk-Tanzorchester Salzwiesen" },
+            { id: 22, name: "Kammerchor am Brackwasserhafen" },
+            { id: 33, name: "Henriette von Salzwiesen-Brackwasser" }
         ]))
         var host = showHost(playerBarHost, 640, 200)
         var line = findChild(host.bar, "playerBarArtistLine")
@@ -547,9 +547,9 @@ TestCase {
     // and the text column is at its tightest.
     function test_now_playing_long_names_stay_inside_the_line() {
         player.setCurrentTrackForTest(trackWith([
-            { id: 11, name: "Rundfunk-Tanzorchester Ehrenfeld" },
-            { id: 22, name: "Mitteldeutscher Kammerchor" },
-            { id: 33, name: "Johanna von Hohenzollern-Sigmaringen" }
+            { id: 11, name: "Rundfunk-Tanzorchester Salzwiesen" },
+            { id: 22, name: "Kammerchor am Brackwasserhafen" },
+            { id: 33, name: "Henriette von Salzwiesen-Brackwasser" }
         ]))
         var host = showHost(nowPlayingHost, 640, 600)
         // 640 is below the stack breakpoint and the host is born wide, so the

@@ -497,7 +497,7 @@ TestCase {
         var host = makeRow(trackWith([
             { id: 11, name: "Erika Mustermann" },
             { id: 22, name: "Gastsängerin" },
-            { id: 33, name: "Rundfunk-Tanzorchester Ehrenfeld" }
+            { id: 33, name: "Rundfunk-Tanzorchester Salzwiesen" }
         ]))
         var menu = openRowMenu(host)
 
@@ -515,7 +515,7 @@ TestCase {
         verify(subRow.subMenu, "the row has no submenu attached")
 
         compare(creditLabels(subRow.subMenu),
-                "Erika Mustermann | Gastsängerin | Rundfunk-Tanzorchester Ehrenfeld",
+                "Erika Mustermann | Gastsängerin | Rundfunk-Tanzorchester Salzwiesen",
                 "the submenu lists the credits in order")
         menu.close()
     }
@@ -524,7 +524,7 @@ TestCase {
         var host = makeRow(trackWith([
             { id: 11, name: "Erika Mustermann" },
             { id: 22, name: "Gastsängerin" },
-            { id: 33, name: "Rundfunk-Tanzorchester Ehrenfeld" }
+            { id: 33, name: "Rundfunk-Tanzorchester Salzwiesen" }
         ]))
         var menu = openRowMenu(host)
         var subRow = menuItemNamed(menu, "goToArtistSubMenuRow")
@@ -551,7 +551,7 @@ TestCase {
         var host = makeRow(trackWith([
             { id: 11, name: "Erika Mustermann" },
             { id: 0,  name: "Unbekannt" },
-            { id: 33, name: "Rundfunk-Tanzorchester Ehrenfeld" }
+            { id: 33, name: "Rundfunk-Tanzorchester Salzwiesen" }
         ]))
         var menu = openRowMenu(host)
         var subRow = menuItemNamed(menu, "goToArtistSubMenuRow")
@@ -560,14 +560,14 @@ TestCase {
         verify(subMenu, "the submenu row has no submenu attached")
         compare(subMenu.count, 2, "a credit with no id must not get a row")
         compare(creditLabels(subMenu),
-                "Erika Mustermann | Rundfunk-Tanzorchester Ehrenfeld")
+                "Erika Mustermann | Rundfunk-Tanzorchester Salzwiesen")
         menu.close()
     }
 
     function test_go_to_artist_collapses_when_only_one_credit_is_usable() {
         var host = makeRow(trackWith([
             { id: 0,  name: "Unbekannt" },
-            { id: 33, name: "Rundfunk-Tanzorchester Ehrenfeld" }
+            { id: 33, name: "Rundfunk-Tanzorchester Salzwiesen" }
         ]))
         var menu = openRowMenu(host)
 

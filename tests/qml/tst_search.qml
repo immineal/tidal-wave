@@ -1054,14 +1054,14 @@ TestCase {
     // word-start 200, mid-word 100, plus up to 40 for coverage, minus one per
     // row below the top. The best kind leads only if it is 100 clear.
 
-    // The catalogue the kendrick cases share, held fixed across them: the
-    // examples differ in the query. Public catalogue names, invented ids.
-    function kendrickResults() {
+    // The catalogue the section-order cases share, held fixed across them:
+    // the examples differ in the query.
+    function sharedResults() {
         return {
-            tracks:    tracksWithTitles(["Alright", "Money Trees", "Swimming Pools"]),
-            albums:    albumsWithTitles(["To Pimp a Butterfly", "Section.80"]),
-            artists:   artistsWithNames(["Kendrick Lamar"]),
-            playlists: playlistsWithTitles(["This Is Kendrick Lamar", "Rap Caviar"]),
+            tracks:    tracksWithTitles(["Thimble", "Signal Box", "Pilot Light"]),
+            albums:    albumsWithTitles(["Late Trains Home", "Night Buses"]),
+            artists:   artistsWithNames(["Slate Meridian"]),
+            playlists: playlistsWithTitles(["This Is Slate Meridian", "Kitchen Radio"]),
             mixes:     []
         }
     }
@@ -1085,22 +1085,22 @@ TestCase {
 
     function test_the_section_order_follows_the_query_data() {
         return [
-            // Artists: a prefix hit at index 0 (300 + 22 = 322) against the
-            // playlist that contains the name mid-title (200 + 14 = 214).
-            { tag: "an artist's name",  q: "kendrick",   lead: "Artists" },
+            // Artists: a prefix hit at index 0 (300 + 14 = 314) against the
+            // playlist that contains the name mid-title (200 + 9 = 209).
+            { tag: "an artist's name",  q: "slate",      lead: "Artists" },
             // Tracks: an exact title, 400 + 40.
-            { tag: "an exact title",    q: "alright",    lead: "Tracks" },
+            { tag: "an exact title",    q: "thimble",    lead: "Tracks" },
             // Albums: an exact title again.
-            { tag: "an exact album",    q: "to pimp a butterfly", lead: "Albums" },
+            { tag: "an exact album",    q: "late trains home", lead: "Albums" },
             // The default order: no single name matches the whole query, so
             // every kind scores 0 and Tidal's own ranking stands.
-            { tag: "two things at once", q: "kendrick alright", lead: "" }
+            { tag: "two things at once", q: "slate thimble", lead: "" }
         ]
     }
 
     function test_the_section_order_follows_the_query(row) {
         var win = showPage()
-        feed(kendrickResults())
+        feed(sharedResults())
         search(win, row.q)
 
         var got = orderNames(win.page)
@@ -1128,7 +1128,7 @@ TestCase {
         feed({
             tracks:    tracksWithTitles(["Jazz Hands"]),
             albums:    albumsWithTitles(["Jazz Essentials"]),
-            artists:   artistsWithNames(["Jazzanova"]),
+            artists:   artistsWithNames(["Jazzmarsh"]),
             playlists: playlistsWithTitles(["Late Night Jazz"]),
             mixes:     []
         })
@@ -1144,57 +1144,57 @@ TestCase {
     function test_a_half_typed_query_over_an_ambiguous_set_holds_still() {
         var win = showPage()
         feed({
-            tracks:    tracksWithTitles(["Kendo", "Bend"]),
-            albums:    albumsWithTitles(["Kendal Mint"]),
-            artists:   artistsWithNames(["Kendrick Lamar"]),
-            playlists: playlistsWithTitles(["This Is Kendrick Lamar"]),
+            tracks:    tracksWithTitles(["Slats", "Plate"]),
+            albums:    albumsWithTitles(["Slate Roofs"]),
+            artists:   artistsWithNames(["Slate Meridian"]),
+            playlists: playlistsWithTitles(["This Is Slate Meridian"]),
             mixes:     []
         })
-        search(win, "kend")
+        search(win, "slat")
 
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "a half-typed query jumped the page around")
     }
 
-    // ── the same half-typed query over the kendrick set ────────────────
+    // ── the same half-typed query over the shared set ──────────────────
     // When the leader and the runner-up are in adjacent tiers the gap is 100
     // plus the difference in coverage, so an artist whose name begins with the
     // query beats a playlist that contains it, even at four characters.
     function test_a_half_typed_query_over_the_same_set_does_reorder() {
         var win = showPage()
-        feed(kendrickResults())
-        search(win, "kend")
+        feed(sharedResults())
+        search(win, "slat")
 
         compare(orderNames(win.page)[0], "Artists",
                 "this case records a known departure from the rule's own "
-                + "example (`kend` -> default order). If the order is the "
+                + "example (`slat` -> default order). If the order is the "
                 + "default now, the rule changed and this case is the one "
                 + "to delete.")
-        compare(win.page.scoreKind(3, win.page.artists, "kend"), 311)
-        compare(win.page.scoreKind(4, win.page.playlists, "kend"), 207)
+        compare(win.page.scoreKind(3, win.page.artists, "slat"), 311)
+        compare(win.page.scoreKind(4, win.page.playlists, "slat"), 207)
     }
 
     // The leading section shows a few more rows. Tracks is the only section
     // with a cap.
     function test_the_leading_tracks_section_shows_more_rows() {
         var win = showPage()
-        var titles = ["Alright"]
+        var titles = ["Thimble"]
         for (var i = 2; i <= 12; ++i) titles.push("Erfundenes Lied " + i)
 
         feed({ tracks: tracksWithTitles(titles),
-               albums: albumsWithTitles(["To Pimp a Butterfly"]),
-               artists: artistsWithNames(["Kendrick Lamar"]),
+               albums: albumsWithTitles(["Late Trains Home"]),
+               artists: artistsWithNames(["Slate Meridian"]),
                playlists: [], mixes: [] })
 
-        search(win, "kendrick")           // Artists lead; Tracks are third
+        search(win, "slate")              // Artists lead; Tracks are third
         compare(win.page.sectionOrder[0], 3)
         compare(win.page.allTabTracksCap, 5,
                 "a section that is not leading shows its usual five rows")
         verify(!saysSomethingContaining(resultsArea(win.page), "Erfundenes Lied 7"),
                "a non-leading Tracks section is showing more than five rows")
 
-        search(win, "alright")            // now Tracks lead
+        search(win, "thimble")            // now Tracks lead
         compare(win.page.sectionOrder[0], 1)
         compare(win.page.allTabTracksCap, 8,
                 "the leading Tracks section shows no more rows than it would "
@@ -1209,8 +1209,8 @@ TestCase {
     // right slot and still have no height. The painted order is checked.
     function test_the_leading_section_is_really_drawn_first() {
         var win = showPage()
-        feed(kendrickResults())
-        search(win, "kendrick")
+        feed(sharedResults())
+        search(win, "slate")
         waitForRendering(win.contentItem, settleMs)
 
         var headings = headingOrder(win.page)
@@ -1244,12 +1244,12 @@ TestCase {
     // an append nor a keystroke can move the page under the user.
     function test_an_append_does_not_reorder_the_page() {
         var win = showPage()
-        var titles = ["Alright"]
-        for (var i = 2; i <= 45; ++i) titles.push("Kendrick Erfundenes Lied " + i)
+        var titles = ["Thimble"]
+        for (var i = 2; i <= 45; ++i) titles.push("Slate Erfundenes Lied " + i)
         feed({ tracks: tracksWithTitles(titles), albums: [],
-               artists: artistsWithNames(["Kendrick Lamar"]),
+               artists: artistsWithNames(["Slate Meridian"]),
                playlists: [], mixes: [] })
-        search(win, "alright")
+        search(win, "thimble")
         compare(orderNames(win.page)[0], "Tracks")
 
         win.page.activeTab = 1
@@ -1264,11 +1264,11 @@ TestCase {
 
     function test_clearing_the_query_restores_the_default_order() {
         var win = showPage()
-        feed(kendrickResults())
-        search(win, "kendrick")
+        feed(sharedResults())
+        search(win, "slate")
         compare(orderNames(win.page)[0], "Artists")
 
-        typeInto(win.page, "k")
+        typeInto(win.page, "s")
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "the previous query's order outlived the query")
@@ -1279,12 +1279,12 @@ TestCase {
     function test_an_accented_name_is_reached_without_the_accent() {
         var win = showPage()
         feed({ tracks: tracksWithTitles(["Ein Lied"]),
-               albums: [], artists: artistsWithNames(["Bjork Jóga"]),
+               albums: [], artists: artistsWithNames(["Brackwater Café"]),
                playlists: [], mixes: [] })
-        search(win, "joga")
+        search(win, "cafe")
 
         compare(orderNames(win.page)[0], "Artists",
-                "\"joga\" did not reach \"Jóga\": the fold is not stripping "
+                "\"cafe\" did not reach \"Café\": the fold is not stripping "
                 + "accents the way LibraryIndex does")
     }
 

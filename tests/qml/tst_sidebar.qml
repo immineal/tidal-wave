@@ -36,9 +36,9 @@ TestCase {
         return [
             { kind: "playlist", id: "p1",  title: "Pinned Mix Tape",  subtitle: "",             imageUrl: "cdn/p1.jpg", pinned: true,  trackCount: 12 },
             { kind: "album",    id: "a1",  title: "Pinned Album",     subtitle: "Pin Artist",   imageUrl: "cdn/a1.jpg", pinned: true,  trackCount: 9  },
-            { kind: "album",    id: "a2",  title: "Aquarium",         subtitle: "Aqua Artist",  imageUrl: "cdn/a2.jpg", pinned: false, trackCount: 11 },
+            { kind: "album",    id: "a2",  title: "Amber Signals",    subtitle: "Lumen Drift",  imageUrl: "cdn/a2.jpg", pinned: false, trackCount: 11 },
             // No artwork on purpose: a bare row still has to say what it is.
-            { kind: "artist",   id: "ar1", title: "Boards of Canada", subtitle: "",             imageUrl: "",           pinned: false, trackCount: 0 },
+            { kind: "artist",   id: "ar1", title: "Brackwater",       subtitle: "",             imageUrl: "",           pinned: false, trackCount: 0 },
             { kind: "mix",      id: "m1",  title: "Daily Discovery",  subtitle: "Your mix",     imageUrl: "cdn/m1.jpg", pinned: false, trackCount: 0 },
             { kind: "playlist", id: "p2",  title: "Evening Drive",    subtitle: "",             imageUrl: "cdn/p2.jpg", pinned: false, trackCount: 31 }
         ]
@@ -48,7 +48,7 @@ TestCase {
     // are handed to the stub separately.
     function makeTracks() {
         return [
-            { kind: "track", id: "t1", title: "Everything In Its Right Place", subtitle: "Radiohead", imageUrl: "cdn/t1.jpg", pinned: false, albumId: 55 }
+            { kind: "track", id: "t1", title: "A Map of the Shallows", subtitle: "Vellum Coast", imageUrl: "cdn/t1.jpg", pinned: false, albumId: 55 }
         ]
     }
 
@@ -474,9 +474,9 @@ TestCase {
 
         // Every kind a row can be, so none of them slips a mark through.
         var rows = [
-            { kind: "album",    id: "a2",  title: "Aquarium" },
+            { kind: "album",    id: "a2",  title: "Amber Signals" },
             { kind: "playlist", id: "p2",  title: "Evening Drive", type: "USER" },
-            { kind: "artist",   id: "ar1", title: "Boards of Canada" },
+            { kind: "artist",   id: "ar1", title: "Brackwater" },
             { kind: "mix",      id: "m1",  title: "Daily Discovery" }
         ]
         for (var i = 0; i < rows.length; ++i) {
@@ -934,7 +934,7 @@ TestCase {
         settle(host.contentItem)
         verify(rowIds(sb).indexOf("t1") === -1, "a song leaked into the library list")
 
-        findByName(sb, "sidebarFinder").query = "right place"
+        findByName(sb, "sidebarFinder").query = "the shallows"
         tryVerify(function() { return rowIds(sb).join(",") === "t1" }, 2000,
                   "the search did not reach the song index")
     }
@@ -1287,7 +1287,7 @@ TestCase {
             host.page.sourceComponent = albumC
             page = host.page.item
             page.albumId   = 42
-            page.albumData = { title: "Fever Dream", artists: "Die Band",
+            page.albumData = { title: "Glass Orchard", artists: "Kestrel Arcade",
                                releaseDate: "2021-01-01", numTracks: 10, duration: 2400,
                                quality: "HI_RES_LOSSLESS", artistId: 7,
                                coverUrl: "", coverUrl640: "" }

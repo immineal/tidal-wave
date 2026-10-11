@@ -634,9 +634,9 @@ TestCase {
     // over: the second order is what a play produces, which moves the thing
     // that was just played to the front.
     function libraryRows(playedSecond) {
-        var a = { kind: "album",  id: "a1", title: "Aquarium",   subtitle: "", imageUrl: "" }
-        var b = { kind: "album",  id: "b2", title: "Blue Lines", subtitle: "", imageUrl: "" }
-        var c = { kind: "artist", id: "c3", title: "Caribou",    subtitle: "", imageUrl: "" }
+        var a = { kind: "album",  id: "a1", title: "Amber Signals",   subtitle: "", imageUrl: "" }
+        var b = { kind: "album",  id: "b2", title: "Blue Hour Radio", subtitle: "", imageUrl: "" }
+        var c = { kind: "artist", id: "c3", title: "Corin Halvey",    subtitle: "", imageUrl: "" }
         return playedSecond ? [b, a, c] : [a, b, c]
     }
 
@@ -763,8 +763,8 @@ TestCase {
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var tr = createTemporaryObject(trackRowC, holder,
-                                       { width: 600, title: "Teardrop",
-                                         artists: "Massive Attack" })
+                                       { width: 600, title: "Estuary Light",
+                                         artists: "Vellum Coast" })
         verify(tr, "the track row was not created")
         settle(holder)
 
@@ -794,8 +794,8 @@ TestCase {
     function test_collection_content_fades_in(row) {
         app.setReducedMotionForTest(row.reduced)
         bridge.setFavoriteAlbumsForTest([
-            { id: 1, title: "Aquarium",   artists: "Aqua Band",      coverUrl: "" },
-            { id: 2, title: "Blue Lines", artists: "Massive Attack", coverUrl: "" }
+            { id: 1, title: "Amber Signals",   artists: "Lumen Drift",          coverUrl: "" },
+            { id: 2, title: "Blue Hour Radio", artists: "Little Harbour Radio", coverUrl: "" }
         ])
 
         var holder = createTemporaryObject(holderC, testCase, { width: 1100, height: 760 })

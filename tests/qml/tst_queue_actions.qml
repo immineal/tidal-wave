@@ -34,8 +34,8 @@ TestCase {
             out.push({
                 id:          8000 + i,
                 title:       "Track " + (i + 1),
-                artists:     "The Band",
-                albumTitle:  "Fever Dream",
+                artists:     "Kestrel Arcade",
+                albumTitle:  "Glass Orchard",
                 durationStr: "3:21",
                 coverUrl80:  "",
                 albumId:     42,
@@ -96,7 +96,7 @@ TestCase {
         var page = createTemporaryObject(albumC, holder, {})
         verify(page, "the album page was not created")
         page.albumId = 42
-        page.albumData = { title: "Fever Dream", artists: "The Band", coverUrl: "cdn/42.jpg" }
+        page.albumData = { title: "Glass Orchard", artists: "Kestrel Arcade", coverUrl: "cdn/42.jpg" }
         page.tracks = makeTracks(n)
         settle(holder)
         return page
@@ -115,7 +115,7 @@ TestCase {
     function makeCard() {
         var holder = makeHolder()
         var card = createTemporaryObject(mediaCardC, holder, {
-            mediaType: "album", itemId: "42", title: "Fever Dream", subtitle: "The Band"
+            mediaType: "album", itemId: "42", title: "Glass Orchard", subtitle: "Kestrel Arcade"
         })
         verify(card, "the card was not created")
         settle(holder)
@@ -185,7 +185,7 @@ TestCase {
         verify(menu, "the menu was not created")
         verify(menu.trackSource === null, "the bare menu invented a tracklist")
 
-        menu.showPin(10, 10, "album", "42", "Fever Dream", "The Band", "")
+        menu.showPin(10, 10, "album", "42", "Glass Orchard", "Kestrel Arcade", "")
         tryVerify(function () { return menu.visible }, 2000, "the menu did not open")
         verify(menu.pinItem.visible,          "the pin item vanished with the queue items")
         verify(!menu.playNextItem.visible,    "a menu with no tracklist offered Play next")
@@ -267,7 +267,7 @@ TestCase {
     function test_a_tile_has_a_tracklist_for_every_kind_that_owns_one(data) {
         var holder = makeHolder()
         var card = createTemporaryObject(mediaCardC, holder, {
-            mediaType: data.kind, itemId: "42", title: "Fever Dream"
+            mediaType: data.kind, itemId: "42", title: "Glass Orchard"
         })
         settle(holder)
         compare(card.pinMenu.trackSource !== null, data.queueable,

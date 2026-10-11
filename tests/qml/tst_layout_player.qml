@@ -34,7 +34,7 @@ TestCase {
     function makeTrack(i) {
         return {
             id:          1000 + i,
-            title:       "Everything In Its Right Place (Remastered Edition) " + i,
+            title:       "A Song Whose Title Takes Its Time (Remastered Edition) " + i,
             artists:     "Some Artist With A Long Name, And A Featured Guest",
             albumTitle:  "An Album Whose Title Also Runs On For A While",
             albumId:     55,
