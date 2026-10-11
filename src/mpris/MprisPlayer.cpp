@@ -14,13 +14,22 @@ MprisPlayer::MprisPlayer(Player *player, QObject *parent)
 {
     setAutoRelaySignals(true);
 
-    connect(m_player, &Player::playingChanged,      this, &MprisPlayer::scheduleAnnounce);
-    connect(m_player, &Player::loadingChanged,      this, &MprisPlayer::scheduleAnnounce);
-    connect(m_player, &Player::currentTrackChanged, this, &MprisPlayer::scheduleAnnounce);
+    // After these the position is compared with the reckoned one as well.
+    const auto stateChanged = [this] {
+        m_stateChanged = true;
+        scheduleAnnounce();
+    };
+    connect(m_player, &Player::playingChanged,      this, stateChanged);
+    connect(m_player, &Player::loadingChanged,      this, stateChanged);
+    connect(m_player, &Player::currentTrackChanged, this, stateChanged);
     connect(m_player, &Player::seeked, this, [this] {
         m_seeked = true;
         scheduleAnnounce();
     });
+    // These leave the position alone. A cast device's is too old to compare.
+    connect(m_player, &Player::currentIndexChanged, this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::queueChanged,        this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::repeatModeChanged,   this, &MprisPlayer::scheduleAnnounce);
 
     m_announced    = announcedProperties();
     m_trackId      = m_player->currentTrackMap().value(QStringLiteral("id")).toLongLong();
@@ -38,6 +47,11 @@ QVariantMap MprisPlayer::announcedProperties() const {
     return {
         { QStringLiteral("PlaybackStatus"), playbackStatus() },
         { QStringLiteral("Metadata"),       metadata() },
+        { QStringLiteral("CanGoNext"),      canGoNext() },
+        { QStringLiteral("CanGoPrevious"),  canGoPrevious() },
+        { QStringLiteral("CanPlay"),        canPlay() },
+        { QStringLiteral("CanPause"),       canPause() },
+        { QStringLiteral("CanSeek"),        canSeek() },
     };
 }
 
@@ -75,6 +89,8 @@ void MprisPlayer::announce() {
     }
 
     // Seeked is for a position that the client cannot have reckoned.
+    if (!m_seeked && !m_stateChanged) return;
+    m_stateChanged = false;
     const qint64 at = m_player->position();
     if (m_seeked || qAbs(at - reckonedPosition()) > kReckoningSlackMs) {
         m_seeked       = false;

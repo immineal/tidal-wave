@@ -88,6 +88,8 @@ public:
     qlonglong currentTrackId() const { return m_currentTrack.id; }
     // Nothing sounds yet, and the load under way ends in playback.
     bool startingPlayback() const;
+    // Whether next() has a row to go to.
+    bool hasNext() const { return nextIndex() >= 0; }
 
     // ── Audio output routing ────────────────────────────────────────────
     // Watches prefs->audioDevice(). Empty means follow the system default.

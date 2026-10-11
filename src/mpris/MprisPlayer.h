@@ -50,11 +50,11 @@ class MprisPlayer : public QDBusAbstractAdaptor {
     Q_PROPERTY(qlonglong  Position       READ position)
     Q_PROPERTY(double     MinimumRate   READ minimumRate     CONSTANT)
     Q_PROPERTY(double     MaximumRate   READ maximumRate     CONSTANT)
-    Q_PROPERTY(bool       CanGoNext      READ canGoNext       CONSTANT)
-    Q_PROPERTY(bool       CanGoPrevious  READ canGoPrevious   CONSTANT)
-    Q_PROPERTY(bool       CanPlay        READ canPlay         CONSTANT)
-    Q_PROPERTY(bool       CanPause       READ canPause        CONSTANT)
-    Q_PROPERTY(bool       CanSeek        READ canSeek         CONSTANT)
+    Q_PROPERTY(bool       CanGoNext      READ canGoNext)
+    Q_PROPERTY(bool       CanGoPrevious  READ canGoPrevious)
+    Q_PROPERTY(bool       CanPlay        READ canPlay)
+    Q_PROPERTY(bool       CanPause       READ canPause)
+    Q_PROPERTY(bool       CanSeek        READ canSeek)
     Q_PROPERTY(bool       CanControl     READ canControl      CONSTANT)
 public:
     explicit MprisPlayer(Player *player, QObject *parent);
@@ -72,11 +72,13 @@ public:
     qlonglong   position()        const;
     double      minimumRate()     const { return 1.0; }
     double      maximumRate()     const { return 1.0; }
-    bool        canGoNext()       const { return true; }
-    bool        canGoPrevious()   const { return true; }
-    bool        canPlay()         const { return true; }
-    bool        canPause()        const { return true; }
-    bool        canSeek()         const { return true; }
+    // False with no track. Previous at least restarts the track; Next needs a
+    // row to go to.
+    bool        canGoNext()       const { return hasTrack() && m_player->hasNext(); }
+    bool        canGoPrevious()   const { return hasTrack(); }
+    bool        canPlay()         const { return hasTrack(); }
+    bool        canPause()        const { return hasTrack(); }
+    bool        canSeek()         const { return hasTrack(); }
     bool        canControl()      const { return true; }
 
 public slots:
@@ -100,6 +102,7 @@ private:
     void announce();
     // Once per turn of the loop, so states a change passes through stay unsent.
     void scheduleAnnounce();
+    bool hasTrack() const { return !m_player->currentTrackMap().isEmpty(); }
     // Where a client that heard every signal takes the position to be.
     qint64 reckonedPosition() const;
 
@@ -115,6 +118,8 @@ private:
     QElapsedTimer m_reckonedSince;
     // The player was asked to seek, which is announced whatever the distance.
     bool          m_seeked       = false;
+    // The player changed state, so its position is compared as well.
+    bool          m_stateChanged = false;
 };
 
 class MprisManager : public QObject {

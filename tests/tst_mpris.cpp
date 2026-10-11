@@ -682,6 +682,41 @@ private slots:
         QCOMPARE(desk().statuses(), QStringList());
     }
 
+    // ── What a client can do ────────────────────────────────────────────────
+
+    // With no track there is nothing to play, pause, seek in or step from.
+    // Next has nowhere to go on the last row unless the queue repeats. A
+    // widget is told of each change.
+    void theCanPropertiesFollowTheQueue() {
+        const QStringList needATrack = {
+            QStringLiteral("CanPlay"), QStringLiteral("CanPause"), QStringLiteral("CanSeek"),
+            QStringLiteral("CanGoNext"), QStringLiteral("CanGoPrevious") };
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        for (const QString &can : needATrack)
+            QVERIFY2(!desk().get(can).toBool(), qPrintable(can + " with no track"));
+        QVERIFY(desk().get(QStringLiteral("CanControl")).toBool());
+        desk().forget();
+
+        a.p().playTracks(contextOf(3000, 2), 0);
+        for (const QString &can : needATrack)
+            QTRY_COMPARE_WITH_TIMEOUT(desk().announced(can), (QVariantList{ true }), 5000);
+
+        a.p().next();
+        QTRY_COMPARE_WITH_TIMEOUT(desk().announced(QStringLiteral("CanGoNext")),
+                                  (QVariantList{ true, false }), 5000);
+        QVERIFY(desk().get(QStringLiteral("CanGoPrevious")).toBool());
+        a.p().setRepeatMode(1);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().announced(QStringLiteral("CanGoNext")),
+                                  (QVariantList{ true, false, true }), 5000);
+
+        a.p().clearQueue();
+        QTRY_COMPARE_WITH_TIMEOUT(desk().announced(QStringLiteral("CanPlay")),
+                                  (QVariantList{ true, false }), 5000);
+        QVERIFY(!desk().get(QStringLiteral("CanGoNext")).toBool());
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
 
