@@ -4,10 +4,11 @@
 #     packaging/build-appimage.sh
 #     packaging/build-appimage.sh --rebuild-image
 #
-# The result is dist/tidal-wave-<version>-x86_64.AppImage. The container sets
-# the glibc floor; see packaging/Dockerfile.appimage. Qt, its plugins and FFmpeg
-# are bundled, while OpenSSL 3, OpenGL, fontconfig and X11 come from the host.
-# Any failure exits non-zero and leaves dist/ untouched.
+# The result is dist/tidal-wave-<version>-x86_64.AppImage and, next to it, the
+# .zsync file that update tools read. The container sets the glibc floor; see
+# packaging/Dockerfile.appimage. Qt, its plugins and FFmpeg are bundled, while
+# OpenSSL 3, OpenGL, fontconfig and X11 come from the host. Any failure exits
+# non-zero and leaves dist/ untouched.
 set -euo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +19,7 @@ REBUILD_IMAGE=0
 for arg in "$@"; do
     case "$arg" in
         --rebuild-image) REBUILD_IMAGE=1 ;;
-        -h|--help)       sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)       sed -n '2,11p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -38,6 +39,9 @@ BUILD=/build/appimage
 APPDIR="$BUILD/AppDir"
 TOOLS="$BUILD/tools"
 OUT="tidal-wave-${TW_VERSION:?}-x86_64.AppImage"
+# The name the file has on a release. The update information and the zsync
+# file both spell it, so the bundle is made under it and copied out as OUT.
+ASSET="tidal-wave-x86_64.AppImage"
 rm -rf "$BUILD"
 mkdir -p "$TOOLS"
 
@@ -222,10 +226,18 @@ echo "glibc:     $(floor GLIBC)"
 echo "libstdc++: $(floor GLIBCXX)"
 
 echo "=== AppImage ==="
-ARCH=x86_64 appimagetool-x86_64.AppImage --runtime-file "$TOOLS/runtime-x86_64" "$APPDIR" "$BUILD/$OUT"
+# The update information sends Gear Lever and AppImageUpdate to the zsync file
+# of the newest release, and that file to the AppImage beside it. appimagetool
+# writes the zsync file into the current directory.
+cd "$BUILD"
+ARCH=x86_64 appimagetool-x86_64.AppImage --runtime-file "$TOOLS/runtime-x86_64" \
+    --updateinformation "gh-releases-zsync|immineal|tidal-wave|latest|$ASSET.zsync" \
+    "$APPDIR" "$BUILD/$ASSET"
+[ -s "$BUILD/$ASSET.zsync" ] || { echo "ERROR: appimagetool wrote no zsync file" >&2; exit 1; }
 
 mkdir -p /out
-cp -v "$BUILD/$OUT" /out/
+cp -v "$BUILD/$ASSET" "/out/$OUT"
+cp -v "$BUILD/$ASSET.zsync" "/out/$OUT.zsync"
 INNER_EOF
 
 if [ "$REBUILD_IMAGE" = "1" ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then

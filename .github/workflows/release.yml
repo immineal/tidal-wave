@@ -151,20 +151,26 @@ jobs:
             packaging/verify-appimage.sh "$image"
           done
 
-      # One name across releases, so a link to the latest download keeps working.
-      - name: Give the AppImage its release name
-        run: mv dist/tidal-wave-*-x86_64.AppImage tidal-wave-x86_64.AppImage
+      # One name across releases, so a link to the latest download keeps working
+      # and the update information inside the AppImage keeps naming the zsync
+      # file. That file names the AppImage in turn, and holds its checksum.
+      - name: Give the AppImage and its zsync file their release names
+        run: |
+          mv dist/tidal-wave-*-x86_64.AppImage tidal-wave-x86_64.AppImage
+          mv dist/tidal-wave-*-x86_64.AppImage.zsync tidal-wave-x86_64.AppImage.zsync
 
-      - name: Keep the AppImage for the publish job
+      - name: Keep both for the publish job
         uses: actions/upload-artifact@v7
         with:
           name: tidal-wave-x86_64.AppImage
-          path: tidal-wave-x86_64.AppImage
+          path: |
+            tidal-wave-x86_64.AppImage
+            tidal-wave-x86_64.AppImage.zsync
           if-no-files-found: error
           compression-level: 0
 
   # Runs after a failed build too, so that the missing files are named once
-  # here. Nothing is uploaded unless all five are present.
+  # here. Nothing is uploaded unless all six are present.
   publish:
     name: Checksums and upload
     needs: [desktop, deb, appimage]
@@ -182,7 +188,7 @@ jobs:
           path: release
           merge-multiple: true
 
-      - name: Check that all five files are there
+      - name: Check that all six files are there
         run: |
           mkdir -p release
           cd release
@@ -190,6 +196,7 @@ jobs:
           for file in \
             'tidal-wave-linux-x86_64.deb' \
             'tidal-wave-x86_64.AppImage' \
+            'tidal-wave-x86_64.AppImage.zsync' \
             'tidal-wave-linux-x86_64.tar.gz' \
             'tidal-wave-macos-arm64.tar.gz' \
             'tidal-wave-windows-x64.zip'

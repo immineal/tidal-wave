@@ -3,7 +3,8 @@
 #
 #     packaging/verify-appimage.sh [file.AppImage] [image]
 #
-# Defaults: the newest AppImage in dist/, and debian:bookworm. The container
+# Defaults: the newest AppImage in dist/, and debian:bookworm. The .zsync file
+# is expected next to the AppImage, where the build leaves it. The container
 # gets only the packages listed below. They are what the AppImage needs from
 # the host, and the README names the same ones. Pass means the bundle carries
 # what integration tools read, the app is still running after 25 seconds and
@@ -17,7 +18,7 @@ IMAGE="debian:bookworm"
 APPIMAGE=""
 for arg in "$@"; do
     case "$arg" in
-        -h|--help)  sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help)  sed -n '2,11p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *.AppImage) APPIMAGE="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")" ;;
         *)          IMAGE="$arg" ;;
     esac
@@ -89,6 +90,17 @@ do
     check "icon: $icon" [ -s "$ROOT/$icon" ]
 done
 
+# What Gear Lever and AppImageUpdate follow to the next release: the update
+# information in the file, and a zsync file made from exactly this file.
+ASSET=tidal-wave-x86_64.AppImage
+check "the update information names the zsync file of the newest release" \
+    [ "$(/tmp/tidal-wave.AppImage --appimage-updateinformation)" = "gh-releases-zsync|immineal|tidal-wave|latest|$ASSET.zsync" ]
+zsync() { sed -n "s/^$1: //p;/^\$/q" "/pkg/$NAME.zsync" 2>/dev/null; }
+check "the zsync file points at $ASSET" [ "$(zsync URL)" = "$ASSET" ]
+check "the zsync file names the download $ASSET" [ "$(zsync Filename)" = "$ASSET" ]
+check "the zsync file was made from this AppImage" \
+    [ "$(zsync SHA-1)" = "$(sha1sum "/pkg/$NAME" | cut -d' ' -f1)" ]
+
 META="$ROOT/usr/share/metainfo/$ID.metainfo.xml"
 check "the metainfo file carries the id" grep -q "<id>$ID</id>" "$META"
 check "the metainfo file launches the entry" \
@@ -139,5 +151,6 @@ INNER_EOF
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp "$APPIMAGE" "$STAGE/"
+[ ! -f "$APPIMAGE.zsync" ] || cp "$APPIMAGE.zsync" "$STAGE/"
 
 docker run --rm -v "$STAGE:/pkg:ro" "$IMAGE" bash -c "$INNER"
