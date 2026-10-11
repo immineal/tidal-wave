@@ -20,6 +20,8 @@ public:
     // error.
     using ArrayCallback = std::function<void(QJsonArray, QString /*error*/)>;
     using RawCallback  = std::function<void(QByteArray, QString /*error*/)>;
+    // For a caller that acts on the HTTP status. It is 0 when no answer came.
+    using StatusCallback = std::function<void(QJsonObject, QString /*error*/, int /*httpStatus*/)>;
 
     explicit TidalApi(QObject *parent = nullptr);
 
@@ -42,6 +44,9 @@ public:
     // A GET against the track-manifest host, the only one that serves a FLAC
     // manifest. The body is JSON:API: {data: {attributes: {...}}}.
     void getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // get() and getOpenApi() with the HTTP status handed on.
+    void getWithStatus(const QString &endpoint, const QUrlQuery &params, StatusCallback cb);
+    void getOpenApiWithStatus(const QString &endpoint, const QUrlQuery &params, StatusCallback cb);
     // post() and postForm() target the OAuth host and send no auth headers.
     void post(const QString &endpoint, const QByteArray &body,
               const QMap<QString,QString> &extraHeaders, JsonCallback cb);
@@ -64,6 +69,11 @@ public:
     // minutes is safe. Without it a stalled request never calls back.
     static constexpr int kTransferTimeoutMs = 15000;
 
+protected:
+    // Where a GET for one of the base URLs above is sent. Virtual as a test
+    // seam only: a subclass points the requests at a local server.
+    virtual QString baseUrl(const QString &base) const { return base; }
+
 private:
     QNetworkAccessManager *m_nam;
     QString m_accessToken;
@@ -71,9 +81,9 @@ private:
 
     QNetworkRequest makeRequest(const QUrl &url);
     void getFrom(const QString &base, const QString &endpoint,
-                 const QUrlQuery &params, JsonCallback cb);
+                 const QUrlQuery &params, StatusCallback cb);
     // What getFrom() and getArray() share. Hands back the whole document.
     void getDoc(const QString &base, const QString &endpoint,
                 const QUrlQuery &params,
-                std::function<void(QJsonDocument, QString /*error*/)> cb);
+                std::function<void(QJsonDocument, QString /*error*/, int /*httpStatus*/)> cb);
 };

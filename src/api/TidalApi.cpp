@@ -31,12 +31,21 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) {
     return req;
 }
 
+// For the callers that have no use for the HTTP status.
+static TidalApi::StatusCallback withoutStatus(TidalApi::JsonCallback cb) {
+    return [cb = std::move(cb)](QJsonObject obj, QString err, int) { cb(obj, err); };
+}
+
 void TidalApi::get(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    getFrom(QString::fromLatin1(kApiBase), endpoint, params, withoutStatus(std::move(cb)));
+}
+
+void TidalApi::getWithStatus(const QString &endpoint, const QUrlQuery &params, StatusCallback cb) {
     getFrom(QString::fromLatin1(kApiBase), endpoint, params, std::move(cb));
 }
 
 void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
-    getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, std::move(cb));
+    getFrom(QString::fromLatin1(kApiBaseV2), endpoint, params, withoutStatus(std::move(cb)));
 }
 
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
@@ -71,28 +80,33 @@ void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
 
 void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
     getDoc(QString::fromLatin1(kApiBase), endpoint, params,
-        [cb](QJsonDocument doc, QString err) {
+        [cb](QJsonDocument doc, QString err, int) {
             if (!err.isEmpty()) { cb({}, err); return; }
             cb(doc.array(), {});
         });
 }
 
 void TidalApi::getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
+    getFrom(QString::fromLatin1(kOpenApiBase), endpoint, params, withoutStatus(std::move(cb)));
+}
+
+void TidalApi::getOpenApiWithStatus(const QString &endpoint, const QUrlQuery &params,
+                                    StatusCallback cb) {
     getFrom(QString::fromLatin1(kOpenApiBase), endpoint, params, std::move(cb));
 }
 
 void TidalApi::getFrom(const QString &base, const QString &endpoint,
-                       const QUrlQuery &params, JsonCallback cb) {
-    getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err) {
-        if (!err.isEmpty()) { cb({}, err); return; }
-        cb(doc.object(), {});
+                       const QUrlQuery &params, StatusCallback cb) {
+    getDoc(base, endpoint, params, [cb](QJsonDocument doc, QString err, int httpStatus) {
+        if (!err.isEmpty()) { cb({}, err, httpStatus); return; }
+        cb(doc.object(), {}, httpStatus);
     });
 }
 
 void TidalApi::getDoc(const QString &base, const QString &endpoint,
                       const QUrlQuery &params,
-                      std::function<void(QJsonDocument, QString)> cb) {
-    QUrl url(base + endpoint);
+                      std::function<void(QJsonDocument, QString, int)> cb) {
+    QUrl url(baseUrl(base) + endpoint);
     QUrlQuery q = params;
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
@@ -100,17 +114,20 @@ void TidalApi::getDoc(const QString &base, const QString &endpoint,
     auto *reply = m_nam->get(makeRequest(url));
     connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
         reply->deleteLater();
+        // Invalid, and so 0, when the request ended without an answer.
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
-            cb({}, reply->errorString());
+            cb({}, reply->errorString(), httpStatus);
             return;
         }
         QJsonParseError err;
         auto doc = QJsonDocument::fromJson(reply->readAll(), &err);
         if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
+            cb({}, err.errorString(), httpStatus);
             return;
         }
-        cb(doc, {});
+        cb(doc, {}, httpStatus);
     });
 }
 

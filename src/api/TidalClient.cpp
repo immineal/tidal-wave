@@ -743,6 +743,14 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     return m;
 }
 
+// What goes with the error of a failed stream request. 404 and 410 are Tidal
+// saying the track does not exist; any other failure says nothing about it.
+static StreamManifest failedManifest(int httpStatus) {
+    StreamManifest m;
+    m.unavailable = (httpStatus == 404 || httpStatus == 410);
+    return m;
+}
+
 void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb) {
     // tracks/<id>/playbackinfopostpaywall answers a LOSSLESS request with
     // 320 kbps AAC for this client id, so the FLAC tiers go to
@@ -757,9 +765,9 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
         q.addQueryItem("adaptive",     "false");
         q.addQueryItem("usage",        "PLAYBACK");
 
-        m_api->getOpenApi(QStringLiteral("trackManifests/%1").arg(trackId), q,
-            [cb](QJsonObject root, QString err) {
-                if (!err.isEmpty()) { cb({}, err); return; }
+        m_api->getOpenApiWithStatus(QStringLiteral("trackManifests/%1").arg(trackId), q,
+            [cb](QJsonObject root, QString err, int httpStatus) {
+                if (!err.isEmpty()) { cb(failedManifest(httpStatus), err); return; }
                 QString parseErr;
                 const StreamManifest m = parseTrackManifests(root, &parseErr);
                 if (!parseErr.isEmpty()) {
@@ -780,9 +788,9 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
     q.addQueryItem("audioquality",      qualityString(quality));
     q.addQueryItem("prefetch",          "false");
 
-    m_api->get(QStringLiteral("tracks/%1/playbackinfopostpaywall").arg(trackId), q,
-        [cb](QJsonObject root, QString err) {
-            if (!err.isEmpty()) { cb({}, err); return; }
+    m_api->getWithStatus(QStringLiteral("tracks/%1/playbackinfopostpaywall").arg(trackId), q,
+        [cb](QJsonObject root, QString err, int httpStatus) {
+            if (!err.isEmpty()) { cb(failedManifest(httpStatus), err); return; }
 
             StreamManifest m;
             m.codec      = root["audioQuality"].toString();
