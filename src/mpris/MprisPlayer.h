@@ -40,11 +40,11 @@ signals:
 class MprisPlayer : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2.Player")
-    Q_PROPERTY(QString    PlaybackStatus READ playbackStatus  NOTIFY playbackStatusChanged)
+    Q_PROPERTY(QString    PlaybackStatus READ playbackStatus)
     Q_PROPERTY(QString    LoopStatus     READ loopStatus      WRITE setLoopStatus)
     Q_PROPERTY(double     Rate           READ rate            WRITE setRate)
     Q_PROPERTY(bool       Shuffle        READ shuffle         WRITE setShuffle)
-    Q_PROPERTY(QVariantMap Metadata      READ metadata        NOTIFY metadataChanged)
+    Q_PROPERTY(QVariantMap Metadata      READ metadata)
     Q_PROPERTY(double     Volume         READ volume          WRITE setVolume)
     Q_PROPERTY(qlonglong  Position       READ position)
     Q_PROPERTY(double     MinimumRate   READ minimumRate     CONSTANT)
@@ -90,12 +90,19 @@ public slots:
     void OpenUri(const QString &) {}
 
 signals:
-    void playbackStatusChanged();
-    void metadataChanged();
     void Seeked(qlonglong position);
 
 private:
-    Player *m_player;
+    // The properties whose changes the specification wants announced.
+    QVariantMap announcedProperties() const;
+    // Sends one PropertiesChanged with whatever differs from the last one.
+    void announce();
+    // Once per turn of the loop, so states a change passes through stay unsent.
+    void scheduleAnnounce();
+
+    Player     *m_player;
+    QVariantMap m_announced;
+    bool        m_announceQueued = false;
 };
 
 class MprisManager : public QObject {

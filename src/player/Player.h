@@ -86,6 +86,8 @@ public:
     // For MPRIS.
     Track currentTrack() const { return m_currentTrack; }
     qlonglong currentTrackId() const { return m_currentTrack.id; }
+    // Nothing sounds yet, and the load under way ends in playback.
+    bool startingPlayback() const;
 
     // ── Audio output routing ────────────────────────────────────────────
     // Watches prefs->audioDevice(). Empty means follow the system default.
@@ -329,6 +331,8 @@ private:
     bool                 m_restorePending = false;
     // The next successful load belongs to a restored session: hold it paused.
     bool                 m_restorePaused  = false;
+    // Whether the load under way ends in playback. Set as the load starts.
+    bool                 m_loadPlays      = false;
     // Until a restored track resolves, a failed load stays quiet: the row is
     // dropped if Tidal ruled the track out, and left to load on play otherwise.
     bool                 m_restoreSkips   = false;

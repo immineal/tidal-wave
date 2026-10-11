@@ -14,33 +14,52 @@ MprisPlayer::MprisPlayer(Player *player, QObject *parent)
 {
     setAutoRelaySignals(true);
 
-    auto notifyProps = [this](const QVariantMap &changed) {
-        QDBusMessage msg = QDBusMessage::createSignal(
-            "/org/mpris/MediaPlayer2",
-            "org.freedesktop.DBus.Properties",
-            "PropertiesChanged");
-        msg << "org.mpris.MediaPlayer2.Player" << changed << QStringList();
-        QDBusConnection::sessionBus().send(msg);
-    };
-
-    connect(m_player, &Player::playingChanged, this, [this, notifyProps]() {
-        emit playbackStatusChanged();
-        notifyProps({ {"PlaybackStatus", playbackStatus()} });
-    });
-
-    connect(m_player, &Player::currentTrackChanged, this, [this, notifyProps]() {
-        emit metadataChanged();
-        notifyProps({ {"Metadata", metadata()} });
-    });
+    connect(m_player, &Player::playingChanged,      this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::loadingChanged,      this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::currentTrackChanged, this, &MprisPlayer::scheduleAnnounce);
+    m_announced = announcedProperties();
 
     connect(m_player, &Player::positionChanged, this, [this](qint64 ms) {
         emit Seeked(ms * 1000LL);
     });
 }
 
+QVariantMap MprisPlayer::announcedProperties() const {
+    return {
+        { QStringLiteral("PlaybackStatus"), playbackStatus() },
+        { QStringLiteral("Metadata"),       metadata() },
+    };
+}
+
+void MprisPlayer::scheduleAnnounce() {
+    if (m_announceQueued) return;
+    m_announceQueued = true;
+    QMetaObject::invokeMethod(this, &MprisPlayer::announce, Qt::QueuedConnection);
+}
+
+void MprisPlayer::announce() {
+    m_announceQueued = false;
+    const QVariantMap now = announcedProperties();
+    QVariantMap changed;
+    for (auto it = now.cbegin(); it != now.cend(); ++it)
+        if (m_announced.value(it.key()) != it.value()) changed.insert(it.key(), it.value());
+    if (changed.isEmpty()) return;
+    m_announced = now;
+
+    QDBusMessage msg = QDBusMessage::createSignal(
+        "/org/mpris/MediaPlayer2",
+        "org.freedesktop.DBus.Properties",
+        "PropertiesChanged");
+    msg << "org.mpris.MediaPlayer2.Player" << changed << QStringList();
+    QDBusConnection::sessionBus().send(msg);
+}
+
 QString MprisPlayer::playbackStatus() const {
-    if (m_player->loading()) return "Loading";
-    return m_player->playing() ? "Playing" : "Paused";
+    if (m_player->currentTrackMap().isEmpty()) return QStringLiteral("Stopped");
+    // A load that ends in playback counts as playing, so a widget does not
+    // show a pause between one track and the next.
+    if (m_player->playing() || m_player->startingPlayback()) return QStringLiteral("Playing");
+    return QStringLiteral("Paused");
 }
 
 QString MprisPlayer::loopStatus() const {

@@ -302,6 +302,12 @@ qint64 Player::duration() const { return casting() ? m_castDuration : (m_player 
 double Player::volume()   const { return m_audioOut ? m_audioOut->volume() : m_pendingVolume; }
 bool   Player::muted()    const { return m_audioOut ? m_audioOut->isMuted() : m_pendingMuted; }
 
+bool Player::startingPlayback() const {
+    // Loading can also mean a paused track that is buffering.
+    return m_loading && m_loadPlays && !casting()
+        && m_player && m_player->playbackState() == QMediaPlayer::StoppedState;
+}
+
 QVariantMap Player::currentTrackMap() const {
     if (m_index < 0 || m_index >= m_queue.count()) return {};
     return m_queue[m_index].track;
@@ -836,6 +842,7 @@ void Player::startLoad(int index) {
     // for the whole of the next track's fetch.
     m_player->stop();
     m_player->setSource(QUrl());
+    m_loadPlays = !m_restorePaused;
     setLoading(true);
 
     if (m_activeDownload) {
