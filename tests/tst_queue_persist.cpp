@@ -57,22 +57,6 @@ qlonglong currentId(const Player &p) {
     return p.currentTrackMap().value(QStringLiteral("id")).toLongLong();
 }
 
-// One launch of the app. The account id is set before the Player exists, so
-// the Player restores from its constructor exactly as it does at startup.
-struct Launch {
-    TidalApi    api;
-    TidalClient client{&api};
-    Player     *player = nullptr;
-
-    explicit Launch(qint64 uid = kUser) {
-        client.setUserId(uid);
-        player = new Player(&client);
-        QTest::qWait(30);   // Player defers its audio init by one event loop turn
-    }
-    ~Launch() { delete player; }
-    Player &p() { return *player; }
-};
-
 // Answers every stream fetch as the test says, a turn of the event loop later
 // like a reply, and records what was asked for. Nothing reaches the network.
 class ScriptedClient : public TidalClient {
@@ -100,15 +84,18 @@ public:
     }
 };
 
-// One launch against a ScriptedClient. The Player goes first on the way out.
-struct ScriptedLaunch {
+// One launch of the app. The account id is set before the Player exists, so
+// the Player restores from its constructor as it does at startup. The Player
+// goes first on the way out.
+struct Launch {
     TidalApi                api;
     ScriptedClient          client{&api};
     std::unique_ptr<Player> player;
 
-    explicit ScriptedLaunch(ScriptedClient::Answer answer) {
+    explicit Launch(ScriptedClient::Answer answer = ScriptedClient::Silent,
+                    qint64 uid = kUser) {
         client.answer = answer;
-        client.setUserId(kUser);
+        client.setUserId(uid);
         player = std::make_unique<Player>(&client);
     }
     Player &p() { return *player; }
@@ -121,9 +108,9 @@ struct ScriptedLaunch {
     }
 };
 
-// Five rows left on the third, twelve seconds in, with no network involved.
+// Five rows left on the third, twelve seconds in.
 bool saveFiveRowSession() {
-    ScriptedLaunch a(ScriptedClient::Silent);
+    Launch a;
     if (!a.settle()) return false;
     a.p().playTracks(contextOf(1000, 5), 2);
     a.p().seek(12000);
@@ -156,6 +143,7 @@ private slots:
     void volumeMuteShuffleAndRepeatComeBack() {
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, 6), 0);
             a.p().setVolume(0.33);
             a.p().setMuted(true);
@@ -165,15 +153,18 @@ private slots:
         }
 
         Launch b;
+        QVERIFY(b.settle());
         QVERIFY(qAbs(b.p().volume() - 0.33) < 0.001);
         QCOMPARE(b.p().muted(), true);
         QCOMPARE(b.p().shuffle(), true);
         QCOMPARE(b.p().repeatMode(), 1);
     }
 
-    // A fresh install restores nothing.
+    // A fresh install restores nothing and asks for nothing.
     void nothingSavedMeansNothingRestored() {
         Launch a;
+        QVERIFY(a.settle());
+        QVERIFY(a.client.asked.isEmpty());
         QCOMPARE(a.p().queueCount(), 0);
         QCOMPARE(a.p().queueIndex(), -1);
         QCOMPARE(a.p().shuffle(), false);
@@ -184,14 +175,17 @@ private slots:
     // session and not the last one.
     void theSessionIsPerAccount() {
         {
-            Launch a(kUser);
+            Launch a(ScriptedClient::Silent, kUser);
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, 4), 1);
             a.p().savePlaybackState();
         }
-        Launch other(kUser + 1);
+        Launch other(ScriptedClient::Silent, kUser + 1);
+        QVERIFY(other.settle());
         QCOMPARE(other.p().queueCount(), 0);
 
-        Launch same(kUser);
+        Launch same(ScriptedClient::Silent, kUser);
+        QVERIFY(same.settle());
         QCOMPARE(same.p().queueCount(), 4);
         QCOMPARE(currentId(same.p()), 1001);
     }
@@ -201,6 +195,7 @@ private slots:
     void bothSectionsTheCurrentTrackAndThePositionComeBack() {
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().setPlaybackSource(QStringLiteral("album"), QStringLiteral("7"),
                                     QStringLiteral("Life 1"));
             a.p().playTracks(contextOf(1000, 6), 2);
@@ -211,6 +206,7 @@ private slots:
         }
 
         Launch b;
+        QVERIFY(b.settle());
         auto &p = b.p();
         QCOMPARE(currentId(p), 1002);
         QCOMPARE(ids(p.queuePlayed()),  (QList<qlonglong>{1000, 1001}));
@@ -234,6 +230,7 @@ private slots:
         QList<qlonglong> expected;
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, 40), 0);
             a.p().setShuffle(true);
             expected = ids(a.p().queueTracks());
@@ -241,6 +238,7 @@ private slots:
         }
 
         Launch b;
+        QVERIFY(b.settle());
         QCOMPARE(ids(b.p().queueTracks()), expected);
         QCOMPARE(b.p().shuffle(), true);
     }
@@ -253,6 +251,7 @@ private slots:
     void aStoredTrackThatCannotResolveIsDropped() {
         {
             Launch a;
+            QVERIFY(a.settle());
             QVariantList ctx = contextOf(1000, 5);
             ctx[3] = trackOf(0, QStringLiteral("gone"));   // no id: unresolvable
             a.p().playTracks(ctx, 1);
@@ -262,6 +261,7 @@ private slots:
         }
 
         Launch b;
+        QVERIFY(b.settle());
         auto &p = b.p();
         QCOMPARE(currentId(p), 1001);
         QCOMPARE(ids(p.queueManual()),  (QList<qlonglong>{9002}));
@@ -278,6 +278,7 @@ private slots:
     void losingTheTrackItWasLeftOnComesBackOnTheNextOne() {
         {
             Launch a;
+            QVERIFY(a.settle());
             QVariantList ctx = contextOf(1000, 4);
             ctx[1] = trackOf(0, QStringLiteral("gone"));
             a.p().playTracks(ctx, 1);
@@ -286,50 +287,54 @@ private slots:
         }
 
         Launch b;
+        QVERIFY(b.settle());
         QCOMPARE(currentId(b.p()), 1002);
         QCOMPARE(b.p().position(), qint64(0));
     }
 
-    // The row looks fine and the stream fetch fails anyway, for a track pulled
-    // from the catalogue or region-locked. That path needs a network, so the
-    // handler it ends in is called directly.
+    // The row looks fine and Tidal rules the track out anyway, as it does for
+    // one pulled from the catalogue or region-locked.
     void aStreamThatWillNotResolveIsSteppedOverNotReported() {
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, 4), 0);
             a.p().addToQueue(one(9001));
             a.p().savePlaybackState();
         }
 
-        Launch b;
-        auto &p = b.p();
-        QCOMPARE(currentId(p), 1000);
+        {
+            Launch b;
+            b.client.answerFor[1000] = ScriptedClient::Unavailable;
+            auto &p = b.p();
+            QCOMPARE(currentId(p), 1000);
 
-        QSignalSpy errorSpy(&p, &Player::error);
-        QSignalSpy playingSpy(&p, &Player::playingChanged);
+            QSignalSpy errorSpy(&p, &Player::error);
+            QSignalSpy playingSpy(&p, &Player::playingChanged);
+            QVERIFY(b.settle());
 
-        p.skipUnplayableTrack();
+            // The dead row is gone and the queue carried on. The row that moves
+            // up is the one the user queued, which is consumed by taking over.
+            QCOMPARE(b.client.asked, (QList<qlonglong>{1000, 9001}));
+            QCOMPARE(currentId(p), 9001);
+            QCOMPARE(p.manualCount(), 0);
+            QVERIFY2(!ids(p.queueTracks()).contains(1000),
+                     "the track that would not resolve is still in the queue");
+            QCOMPARE(p.queueCount(), 4);
 
-        // The dead row is gone and the queue carried on. The row that moves up
-        // is the one the user queued, which is consumed by taking over.
-        QCOMPARE(currentId(p), 9001);
-        QCOMPARE(p.manualCount(), 0);
-        QVERIFY2(!ids(p.queueTracks()).contains(1000),
-                 "the track that would not resolve is still in the queue");
-        QCOMPARE(p.queueCount(), 4);
-
-        // No error dialog at launch, and still nothing playing.
-        QCOMPARE(errorSpy.count(), 0);
-        for (const QList<QVariant> &args : playingSpy)
-            QVERIFY2(!args.at(0).toBool(), "skipping a dead track started playback");
+            // No error dialog at launch, and still nothing playing.
+            QCOMPARE(errorSpy.count(), 0);
+            for (const QList<QVariant> &args : playingSpy)
+                QVERIFY2(!args.at(0).toBool(), "skipping a dead track started playback");
+        }
 
         // Even if every single one is dead, the restore ends quietly.
-        p.skipUnplayableTrack();
-        p.skipUnplayableTrack();
-        p.skipUnplayableTrack();
-        p.skipUnplayableTrack();
-        QCOMPARE(p.queueCount(), 0);
-        QCOMPARE(p.queueIndex(), -1);
+        Launch c(ScriptedClient::Unavailable);
+        QSignalSpy errorSpy(&c.p(), &Player::error);
+        QVERIFY(c.settle());
+        QCOMPARE(c.client.asked, (QList<qlonglong>{9001, 1001, 1002, 1003}));
+        QCOMPARE(c.p().queueCount(), 0);
+        QCOMPARE(c.p().queueIndex(), -1);
         QCOMPARE(errorSpy.count(), 0);
     }
 
@@ -340,7 +345,7 @@ private slots:
     void aRestoreThatCannotReachTidalKeepsTheWholeQueue() {
         QVERIFY(saveFiveRowSession());
         {
-            ScriptedLaunch b(ScriptedClient::Unreachable);
+            Launch b(ScriptedClient::Unreachable);
             QSignalSpy errorSpy(&b.p(), &Player::error);
             QVERIFY(b.settle());
 
@@ -355,7 +360,7 @@ private slots:
         }
 
         // The Player saves on its way out, so the next launch shows what it kept.
-        ScriptedLaunch c(ScriptedClient::Silent);
+        Launch c;
         QVERIFY(c.settle());
         QCOMPARE(c.p().queueCount(), 5);
         QCOMPARE(currentId(c.p()), 1002);
@@ -367,7 +372,7 @@ private slots:
     void aTrackTidalRulesOutIsSteppedOverOnRestore() {
         QVERIFY(saveFiveRowSession());
 
-        ScriptedLaunch b(ScriptedClient::Silent);
+        Launch b;
         b.client.answerFor[1002] = ScriptedClient::Unavailable;
         QSignalSpy errorSpy(&b.p(), &Player::error);
         QVERIFY(b.settle());
@@ -385,7 +390,7 @@ private slots:
     void pressingPlayLoadsTheTrackAFailedRestoreLeftUnloaded() {
         QVERIFY(saveFiveRowSession());
 
-        ScriptedLaunch b(ScriptedClient::Unreachable);
+        Launch b(ScriptedClient::Unreachable);
         QSignalSpy errorSpy(&b.p(), &Player::error);
         QVERIFY(b.settle());
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
@@ -411,7 +416,7 @@ private slots:
     void aPositionHeldForAnUnloadedTrackDoesNotCarryToAnother() {
         QVERIFY(saveFiveRowSession());
 
-        ScriptedLaunch b(ScriptedClient::Unreachable);
+        Launch b(ScriptedClient::Unreachable);
         QVERIFY(b.settle());
         QCOMPARE(b.p().position(), qint64(12000));
 
@@ -422,25 +427,19 @@ private slots:
 
     // ── it comes back paused ────────────────────────────────────────────────
 
-    // Nothing in a restore may start playback. The stream cannot resolve in a
-    // test, so what is checked is that nothing ever claims to be playing and
-    // that no transport was started on the way through.
+    // Nothing in a restore may start playback. The stream request is left
+    // unanswered here, so what is checked is that nothing claims to be playing
+    // and that no transport was started on the way through.
     void aRestoredSessionNeverStartsPlayingByItself() {
-        {
-            Launch a;
-            a.p().playTracks(contextOf(1000, 5), 2);
-            a.p().seek(12000);
-            a.p().savePlaybackState();
-        }
+        QVERIFY(saveFiveRowSession());
 
-        TidalApi    api;
-        TidalClient client{&api};
-        client.setUserId(kUser);
-        Player player{&client};
-
+        Launch b;
+        Player &player = b.p();
         QSignalSpy playingSpy(&player, &Player::playingChanged);
-        QTest::qWait(60);   // initAudio() and everything it sets going
+        QVERIFY(b.settle());
+        QTest::qWait(60);   // whatever initAudio() set going has run by now
 
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
         QCOMPARE(currentId(player), 1002);
         QCOMPARE(player.position(), qint64(12000));
         QVERIFY2(!player.playing(), "a restored session came back playing");
@@ -478,7 +477,7 @@ private slots:
         QFETCH(bool, ruledOut);
         QVERIFY(saveFiveRowSession());
 
-        ScriptedLaunch b(ScriptedClient::Silent);
+        Launch b;
         b.client.answerFor[picked] = ruledOut ? ScriptedClient::Unavailable
                                               : ScriptedClient::Unreachable;
         QSignalSpy errorSpy(&b.p(), &Player::error);
@@ -519,6 +518,7 @@ private slots:
         qint64 saveMs = 0;
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, kHuge), kHuge / 2);
             a.p().addToQueue(contextOf(90000, 20));
 
@@ -530,11 +530,9 @@ private slots:
 
         QElapsedTimer t;
         t.start();
-        TidalApi    api;
-        TidalClient client{&api};
-        client.setUserId(kUser);
-        Player player{&client};
+        Launch b;
         const qint64 restoreMs = t.elapsed();
+        Player &player = b.p();
 
         const int stored =
             QSettings().value(QStringLiteral("user_%1/playback/queue").arg(kUser))
@@ -558,7 +556,7 @@ private slots:
         QCOMPARE(player.manualCount(), 20);
         QVERIFY(player.queuePlayed().count()  > 0);
         QVERIFY(player.queueContext().count() > 100);
-        QTest::qWait(30);
+        QVERIFY(b.settle());
     }
 
     // A value written by another build, or a corrupted one, must not take the
@@ -571,6 +569,7 @@ private slots:
         s.sync();
 
         Launch a;
+        QVERIFY(a.settle());
         QCOMPARE(a.p().queueCount(), 0);
         QCOMPARE(a.p().queueIndex(), -1);
         QCOMPARE(a.p().shuffle(), true);   // the readable parts still apply
@@ -581,11 +580,13 @@ private slots:
     void restoringDoesNotDisturbASessionAlreadyUnderWay() {
         {
             Launch a;
+            QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, 4), 0);
             a.p().savePlaybackState();
         }
 
         Launch b;
+        QVERIFY(b.settle());
         QCOMPARE(b.p().queueCount(), 4);
 
         b.p().playTracks(contextOf(2000, 3), 1);
