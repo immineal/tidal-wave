@@ -30,6 +30,8 @@ MprisPlayer::MprisPlayer(Player *player, QObject *parent)
     connect(m_player, &Player::currentIndexChanged, this, &MprisPlayer::scheduleAnnounce);
     connect(m_player, &Player::queueChanged,        this, &MprisPlayer::scheduleAnnounce);
     connect(m_player, &Player::repeatModeChanged,   this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::shuffleChanged,      this, &MprisPlayer::scheduleAnnounce);
+    connect(m_player, &Player::volumeChanged,       this, &MprisPlayer::scheduleAnnounce);
 
     m_announced    = announcedProperties();
     m_trackId      = m_player->currentTrackMap().value(QStringLiteral("id")).toLongLong();
@@ -47,6 +49,9 @@ QVariantMap MprisPlayer::announcedProperties() const {
     return {
         { QStringLiteral("PlaybackStatus"), playbackStatus() },
         { QStringLiteral("Metadata"),       metadata() },
+        { QStringLiteral("LoopStatus"),     loopStatus() },
+        { QStringLiteral("Shuffle"),        shuffle() },
+        { QStringLiteral("Volume"),         volume() },
         { QStringLiteral("CanGoNext"),      canGoNext() },
         { QStringLiteral("CanGoPrevious"),  canGoPrevious() },
         { QStringLiteral("CanPlay"),        canPlay() },

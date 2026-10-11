@@ -740,6 +740,22 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(desk().seeked, (QList<qlonglong>{ 5000000 }), 5000);
     }
 
+    // Repeat, shuffle and volume are changed inside the program too, and a
+    // widget that shows them is told.
+    void repeatShuffleAndVolumeAreAnnounced() {
+        Launch a;
+        QVERIFY(a.audioUp());
+        desk().forget();
+
+        a.p().setRepeatMode(2);
+        a.p().setShuffle(true);
+        a.p().setVolume(0.25);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().announced(QStringLiteral("LoopStatus")),
+                                  (QVariantList{ QStringLiteral("Track") }), 3000);
+        QCOMPARE(desk().announced(QStringLiteral("Shuffle")), (QVariantList{ true }));
+        QCOMPARE(desk().announced(QStringLiteral("Volume")), (QVariantList{ 0.25 }));
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
 
