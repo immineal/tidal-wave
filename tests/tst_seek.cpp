@@ -1,24 +1,115 @@
 // Seeking inside a lossless track, through the app's own Player. The fixture is
-// FLAC in fragmented MP4, the layout DashFetcher writes. The Player's output is
-// muted before it opens, so nothing here is audible.
+// FLAC in DASH segments, and DashFetcher joins them as it does for the app. The
+// Player's output is muted before it opens, so nothing here is audible.
 
 #include <QTest>
 #include <QByteArray>
 #include <QFile>
+#include <QHostAddress>
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QUrl>
+#include <QVector>
+#include <QtEndian>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
+#include "player/DashFetcher.h"
 #include "player/Player.h"
+
+// The fixture's timeline, with segment n at @BASE@n and the initialization
+// segment at @BASE@0.
+constexpr auto kSeekManifest = R"MPD(<?xml version="1.0" encoding="utf-8"?>
+<MPD type="static" mediaPresentationDuration="PT4.0S">
+  <Period id="0">
+    <AdaptationSet id="0" contentType="audio">
+      <Representation id="0" mimeType="audio/mp4" codecs="flac" audioSamplingRate="16000">
+        <SegmentTemplate timescale="16000" startNumber="1"
+                         initialization="@BASE@0" media="@BASE@$Number$">
+          <SegmentTimeline>
+            <S t="0" d="8064" r="6"/>
+            <S d="8192"/>
+          </SegmentTimeline>
+        </SegmentTemplate>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
+)MPD";
 
 namespace {
 
 #include "progressive_fixture.inc"
+
+QByteArray be32(quint32 v) { QByteArray b(4, '\0'); qToBigEndian(v, b.data()); return b; }
+
+QByteArray box(const QByteArray &type, const QByteArray &body)
+{
+    return be32(quint32(body.size() + 8)) + type + body;
+}
+
+// A run of the fixture's boxes as Tidal packages a track: no edit list, the
+// whole duration in an mehd box, and media segments of a bare moof and mdat.
+QByteArray inTidalsLayout(const QByteArray &boxes)
+{
+    QByteArray out;
+    for (qint64 pos = 0; pos + 8 <= boxes.size(); ) {
+        const qint64 size = qFromBigEndian<quint32>(boxes.constData() + pos);
+        if (size < 8) break;
+        const QByteArray type = boxes.mid(pos + 4, 4);
+        const QByteArray body = boxes.mid(pos + 8, size - 8);
+        pos += size;
+        if (type == "styp" || type == "sidx" || type == "edts" || type == "udta") continue;
+        if (type == "moov" || type == "trak")
+            out += box(type, inTidalsLayout(body));
+        else if (type == "mvex")
+            out += box(type, box("mehd", be32(0) + be32(quint32(kProgDurationMs))) + body);
+        else
+            out += box(type, body);
+    }
+    return out;
+}
+
+// Answers GET /n on loopback with the nth of its segments.
+class SegmentServer : public QTcpServer {
+public:
+    explicit SegmentServer(const QVector<QByteArray> &segments) : m_segments(segments)
+    {
+        connect(this, &QTcpServer::newConnection, this, [this] {
+            while (QTcpSocket *sock = nextPendingConnection()) {
+                connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
+                connect(sock, &QTcpSocket::readyRead, sock, [this, sock] { answer(sock); });
+            }
+        });
+    }
+
+private:
+    void answer(QTcpSocket *sock)
+    {
+        if (!sock->canReadLine()) return;
+        // The request line is all that is read; one answer per connection.
+        QObject::disconnect(sock, &QTcpSocket::readyRead, nullptr, nullptr);
+        const QList<QByteArray> request = sock->readLine().split(' ');
+        bool ok = false;
+        const int n = request.value(1).mid(1).toInt(&ok);
+        if (!ok || n < 0 || n >= m_segments.size()) {
+            sock->write("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");
+        } else {
+            sock->write("HTTP/1.0 200 OK\r\nContent-Type: audio/mp4\r\nContent-Length: "
+                        + QByteArray::number(m_segments.at(n).size()) + "\r\n\r\n"
+                        + m_segments.at(n));
+        }
+        sock->disconnectFromHost();
+    }
+
+    QVector<QByteArray> m_segments;
+};
 
 // What one Player's QMediaPlayer did, as the test needs to ask about it.
 struct Watch {
@@ -57,21 +148,35 @@ private slots:
             qputenv("QT_MEDIA_BACKEND", QByteArrayLiteral("ffmpeg"));
 #endif
 
-        m_track = m_dir.filePath(QStringLiteral("joined.mp4"));
-        QFile f(m_track);
-        QVERIFY(f.open(QIODevice::WriteOnly));
-        for (int i = 0; i < kProgSegmentCount; ++i)
-            f.write(QByteArray::fromBase64(QByteArray(kProgSegmentsB64[i])));
+        QVector<QByteArray> packaged, tidal;
+        for (int i = 0; i < kProgSegmentCount; ++i) {
+            packaged.append(QByteArray::fromBase64(QByteArray(kProgSegmentsB64[i])));
+            tidal.append(inTidalsLayout(packaged.last()));
+        }
+        QVERIFY(tidal.at(1).mid(4, 4) == "moof");
+        m_packaged = joined(packaged);
+        QVERIFY(!m_packaged.isEmpty());
+        m_tidal = joined(tidal);
+        QVERIFY(!m_tidal.isEmpty());
     }
+
+    void cleanupTestCase()
+    {
+        for (const QString &track : { m_packaged, m_tidal })
+            if (!track.isEmpty()) QFile::remove(track);
+    }
+
+    void aSeekWhilePlayingPlaysOnToTheEndOfTheTrack_data() { layouts(); }
 
     // Twice, because the second seek is the one made after a seek.
     void aSeekWhilePlayingPlaysOnToTheEndOfTheTrack()
     {
-        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, track);
+        if (const char *why = obstacle(track)) QSKIP(why);
         TidalApi    api;
         TidalClient client{&api};
         Player      player{&client};
-        QMediaPlayer *mp = startPlaying(player);
+        QMediaPlayer *mp = startPlaying(player, track);
         QVERIFY(mp);
         Watch watch(mp);
 
@@ -96,13 +201,16 @@ private slots:
                  qPrintable(QStringLiteral("the track ended at %1 ms").arg(watch.furthest)));
     }
 
+    void aSeekWhilePausedStaysPaused_data() { layouts(); }
+
     void aSeekWhilePausedStaysPaused()
     {
-        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, track);
+        if (const char *why = obstacle(track)) QSKIP(why);
         TidalApi    api;
         TidalClient client{&api};
         Player      player{&client};
-        QMediaPlayer *mp = startPlaying(player);
+        QMediaPlayer *mp = startPlaying(player, track);
         QVERIFY(mp);
         Watch watch(mp);
 
@@ -121,22 +229,58 @@ private slots:
     }
 
 private:
-    // Why this Qt on this machine cannot run these tests, or null.
-    static const char *obstacle()
+    // Why this Qt on this machine cannot run these tests on a track, or null.
+    const char *obstacle(const QString &track) const
     {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
         // With no audio device one backend crashes in play() and the other
         // runs through the track unpaced.
         if (QMediaDevices::audioOutputs().isEmpty())
             return "Qt 6.4 needs an audio device to play a track at its own pace";
-        if (qgetenv("QT_MEDIA_BACKEND") != "ffmpeg")
-            return "Qt 6.4's GStreamer backend loses its place in fragments that have no index";
+        // ffmpeg's packager writes no mehd box, so its file states no duration.
+        if (track == m_packaged && qgetenv("QT_MEDIA_BACKEND") != "ffmpeg")
+            return "Qt 6.4's GStreamer backend cannot seek in fragments that state no duration";
+#else
+        Q_UNUSED(track)
 #endif
         return nullptr;
     }
 
-    // Loads the fixture into the Player's own QMediaPlayer and starts it.
-    QMediaPlayer *startPlaying(Player &player)
+    // The same track in the two layouts a joined file comes in.
+    void layouts()
+    {
+        QTest::addColumn<QString>("track");
+        QTest::newRow("as ffmpeg packages it") << m_packaged;
+        QTest::newRow("as Tidal packages it")  << m_tidal;
+    }
+
+    // Serves the segments and has DashFetcher join them, as the app does for
+    // a lossless track. Returns the joined file, or nothing when that failed.
+    static QString joined(const QVector<QByteArray> &segments)
+    {
+        SegmentServer srv(segments);
+        if (!srv.listen(QHostAddress::LocalHost)) return {};
+        QString mpd = QString::fromUtf8(kSeekManifest);
+        mpd.replace(QStringLiteral("@BASE@"),
+                    QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort()));
+
+        TidalApi    api;
+        TidalClient client{&api};
+        DashFetcher fetcher(&client, mpd);
+        if (fetcher.partCount() != segments.size() || !fetcher.openedTempFile()) return {};
+        bool    done = false;
+        QString path;
+        fetcher.start([&](QTemporaryFile *file, const QString &) {
+            done = true;
+            if (!file) return;
+            path = file->fileName();
+            delete file;
+        });
+        return QTest::qWaitFor([&done] { return done; }, 20000) ? path : QString();
+    }
+
+    // Loads a track into the Player's own QMediaPlayer and starts it.
+    QMediaPlayer *startPlaying(Player &player, const QString &track)
     {
         player.setMuted(true);
         player.setVolume(0.0);
@@ -144,13 +288,14 @@ private:
         QTest::qWait(30);
         auto *mp = player.findChild<QMediaPlayer *>();
         if (!mp) return nullptr;
-        mp->setSource(QUrl::fromLocalFile(m_track));
+        mp->setSource(QUrl::fromLocalFile(track));
         mp->play();
         return mp;
     }
 
     QTemporaryDir m_dir;
-    QString       m_track;
+    QString       m_packaged;
+    QString       m_tidal;
 };
 
 QTEST_MAIN(TestSeek)
