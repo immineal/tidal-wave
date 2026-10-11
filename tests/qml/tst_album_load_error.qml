@@ -55,12 +55,20 @@ TestCase {
         return holder
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function openAlbum(id) {
         var holder = makeHolder()
         var page = createTemporaryObject(albumC, holder, {})
         verify(page, "the album page was not created")
         page.albumId = id
-        waitForRendering(page, 2000)
+        frame(page)
         wait(1)
         return page
     }
@@ -172,7 +180,7 @@ TestCase {
         verify(win, "the album page host window was not created")
         win.visible = true
         win.page.albumId = testCase.deadAlbumId
-        waitForRendering(win.contentItem, 2000)
+        frame(win.contentItem)
         wait(1)
         verify(win.page.loadFailed,
                "the fixture did not produce a refused album, so nothing below is about the panel")
@@ -297,7 +305,7 @@ TestCase {
                + "indistinguishable from one that did not land")
         // A frame first: the line joins the column as it gains its text, and
         // until the layout is polished again it keeps its implicit width.
-        waitForRendering(win.contentItem, 2000)
+        frame(win.contentItem)
         verify(said.width > 100 && said.height > 10,
                "the progress line was laid out at no size: "
                + said.width + "x" + said.height)

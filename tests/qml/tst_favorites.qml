@@ -117,9 +117,17 @@ TestCase {
         return holder
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
         wait(0)
-        waitForRendering(item)
+        frame(item)
     }
 
     function makeBar() {
@@ -197,7 +205,7 @@ TestCase {
                                          { width: 1100, height: 900 })
         verify(host, "the Now Playing host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return host
     }
 

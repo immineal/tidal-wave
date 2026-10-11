@@ -95,8 +95,16 @@ TestCase {
         return texts.length
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function settle(item) {
-        waitForRendering(item)
+        frame(item)
         wait(1)
     }
 
@@ -291,7 +299,7 @@ TestCase {
         var win = createTemporaryObject(nowPlayingHostC, testCase, {})
         verify(win, "the Now Playing host was not created")
         win.show()
-        waitForRendering(win.page)
+        frame(win.page)
         wait(1)
         verify(sweep(win.page, "NowPlayingPage") > 10,
                "the sweep found almost no labels, so it proved nothing")
@@ -618,7 +626,7 @@ TestCase {
     function test_now_playing_and_settings_ask_for_no_note() {
         var win = createTemporaryObject(nowPlayingHostC, testCase, {})
         win.show()
-        waitForRendering(win.page)
+        frame(win.page)
         wait(1)
         var icons = collectIcons(win.page, [])
         verify(icons.length > 5, "the sweep found almost no icons, so it proved nothing")
@@ -805,7 +813,7 @@ TestCase {
     function test_the_track_strip_has_uniform_bars_and_gaps(row) {
         var icon = createTemporaryObject(trackIconC, testCase, { width: row.w, height: row.w })
         verify(icon, "could not build the icon")
-        waitForRendering(icon)
+        frame(icon)
 
         var bars = []
         collect(icon, "trackBar", bars)

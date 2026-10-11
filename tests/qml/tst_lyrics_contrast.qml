@@ -86,6 +86,14 @@ TestCase {
         }
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function openLyrics(host) {
         var page = host.page
         var lines = []
@@ -99,7 +107,7 @@ TestCase {
         page.showLyrics    = true
         tryVerify(function () { return page.lyricsness === 1 }, 3000,
                   "the lyrics panel never opened")
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return page
     }
 
@@ -199,10 +207,10 @@ TestCase {
         var host = createTemporaryObject(nowPlayingHost, testCase,
                                          { width: 1280, height: 900 })
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         var page = openLyrics(host)
         applyPalette(row)
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
 
         var line   = activeLine(page)
         var ground = panelGround(page)
@@ -249,10 +257,10 @@ TestCase {
         var host = createTemporaryObject(nowPlayingHost, testCase,
                                          { width: 1280, height: 900 })
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         var page = openLyrics(host)
         applyPalette(row)
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
 
         var active   = activeLine(page)
         var inactive = inactiveLine(page)

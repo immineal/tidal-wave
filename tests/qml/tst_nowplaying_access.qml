@@ -186,13 +186,21 @@ TestCase {
         Main {}
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showHost(component, w, h) {
         var host = createTemporaryObject(component, testCase)
         verify(host, "host window was not created")
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return host
     }
 
@@ -203,7 +211,7 @@ TestCase {
         win.height = 800
         win.visible = true
         win.requestActivate()
-        waitForRendering(win.contentItem)
+        frame(win.contentItem)
         return win
     }
 
@@ -293,7 +301,7 @@ TestCase {
         host.width = 700
         // A Window's own width moves on assignment and the items inside it only
         // on the next turn, so a frame is waited for before measuring.
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         for (var i = 0; i < 14; i++) {
             var arrow = bar.nowPlayingButton
             var queue = bar.queueButton
@@ -705,7 +713,7 @@ TestCase {
     function arrivedNowPlaying(win) {
         tryVerify(function () { return win.nowPlayingness === 1 }, 2000,
                   "Now Playing never finished sliding up, so nothing on it can be aimed at")
-        waitForRendering(win.contentItem, 2000)
+        frame(win.contentItem)
     }
 
     function chevronIn(win) {

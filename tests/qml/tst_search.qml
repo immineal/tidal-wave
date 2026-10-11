@@ -118,11 +118,19 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showPage() {
         var win = createTemporaryObject(pageHost, testCase)
         verify(win, "the search page host was not created")
         win.visible = true
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         return win
     }
 
@@ -133,7 +141,7 @@ TestCase {
         win.height = 800
         win.visible = true
         win.requestActivate()
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         return win
     }
 
@@ -361,7 +369,7 @@ TestCase {
 
         win.page.activeTab = row.tab
         wait(1)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         verify(saysSomethingContaining(resultsArea(win.page), query),
                "the " + row.tag + " tab is a blank pane: every section is hidden "
@@ -384,7 +392,7 @@ TestCase {
 
         win.page.activeTab = 2
         wait(1)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         verify(saysSomethingContaining(resultsArea(win.page), "No results for"),
                "a tab with nothing anywhere reports the tab instead of the "
@@ -468,7 +476,7 @@ TestCase {
     function test_the_field_has_focus_on_the_first_visit() {
         var win = showApp()
         win.navigate("search")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var bar = searchBarIn(win.contentItem)
         tryVerify(function () { return bar.focused }, settleMs,
@@ -478,17 +486,17 @@ TestCase {
     function test_the_field_still_has_focus_on_the_second_visit() {
         var win = showApp()
         win.navigate("search")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         var bar = searchBarIn(win.contentItem)
         tryVerify(function () { return bar.focused }, settleMs,
                   "the search field does not have focus on the first visit")
 
         win.navigate("home")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         verify(!bar.focused, "leaving the page did not release the field")
 
         win.navigate("search")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         tryVerify(function () { return bar.focused }, settleMs,
                   "the search field lost focus for good: leaving the page clears "
                   + "the only focus item in the Loader's scope and nothing puts "
@@ -503,7 +511,7 @@ TestCase {
         keyClick(Qt.Key_2, Qt.ControlModifier)
         tryVerify(function () { return win.currentPage === "search" }, settleMs,
                   "Ctrl+2 did not navigate to the search page")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         keyClick(Qt.Key_1, Qt.ControlModifier)
         tryVerify(function () { return win.currentPage === "home" }, settleMs,
@@ -511,7 +519,7 @@ TestCase {
         keyClick(Qt.Key_2, Qt.ControlModifier)
         tryVerify(function () { return win.currentPage === "search" }, settleMs,
                   "Ctrl+2 did not navigate back to the search page")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         tryVerify(function () { return win.isTypingContext(win.activeFocusItem) }, settleMs,
                   "after Ctrl+2 a second time the keyboard belongs to "
@@ -619,7 +627,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var before = bridge.searchCountForTest()
         scrollToBottom(win.page)
@@ -644,7 +652,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         // Two more pages: 20 + 20 + 5.
         for (var round = 0; round < 6; ++round) {
@@ -671,7 +679,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(40), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         scrollToBottom(win.page)
         tryVerify(function () { return win.page.tracks.length === 40 },
@@ -694,7 +702,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         verify(!saysSomethingContaining(win.page, "End of results"),
                "three results were announced as the end of a list")
@@ -710,7 +718,7 @@ TestCase {
         bridge.setSearchResultsForTest(tracks, [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         scrollToBottom(win.page)
         tryVerify(function () { return win.page.tracks.length >= 39 },
@@ -735,7 +743,7 @@ TestCase {
         bridge.setSearchResultsForTest(tracks, [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         scrollToBottom(win.page)
         tryVerify(function () { return bridge.lastSearchOffsetForTest() === 20 },
@@ -752,7 +760,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var f = scrollToBottom(win.page)
         var before = f.contentY
@@ -761,7 +769,7 @@ TestCase {
 
         tryVerify(function () { return win.page.tracks.length === 40 },
                   settleMs, "the second page never arrived")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         verify(f.contentY >= before - 1,
                "the view jumped back up on the append: it was at " + before
                + " and is at " + f.contentY)
@@ -790,7 +798,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         bridge.setDeferSearchForTest(true)
         scrollToBottom(win.page)
@@ -839,7 +847,7 @@ TestCase {
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
         search(win, query)
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         bridge.setSearchErrorForTest("Connection closed")
         scrollToBottom(win.page)
@@ -865,7 +873,7 @@ TestCase {
     function test_the_empty_state_lists_recent_searches() {
         var win = showPage()
         bridge.setRecentSearchesForTest(["grubenlampe", "beispielkapelle"])
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         verify(saysSomethingContaining(win.page, "Recent searches"),
                "the empty state does not offer the recent queries: "
@@ -941,14 +949,14 @@ TestCase {
     function test_a_recent_search_can_be_removed_on_its_own() {
         var win = showPage()
         bridge.setRecentSearchesForTest(["grubenlampe", "beispielkapelle"])
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var rows = findAllByName(win.page, "searchRecentRow")
         compare(rows.length, 2, "the two remembered queries are not two rows")
         var cross = findByName(rows[0], "searchRecentRemove")
         verify(cross, "a remembered query has no way to be removed")
         mouseClick(cross)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         compare(bridge.recentSearches(), ["beispielkapelle"],
                 "removing one row removed the wrong thing")
@@ -960,12 +968,12 @@ TestCase {
     function test_clear_all_empties_the_list() {
         var win = showPage()
         bridge.setRecentSearchesForTest(["grubenlampe", "beispielkapelle"])
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var clear = findByName(win.page, "searchRecentsClearAll")
         verify(clear, "the list has no clear-all")
         mouseClick(clear)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         compare(bridge.recentSearches().length, 0, "clear all left something behind")
         verify(saysSomethingContaining(win.page, "Search Tidal"),
@@ -977,7 +985,7 @@ TestCase {
         var win = showPage()
         bridge.setRecentSearchesForTest(["grubenlampe"])
         bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var rows = findAllByName(win.page, "searchRecentRow")
         compare(rows.length, 1)
@@ -1000,7 +1008,7 @@ TestCase {
     function test_there_is_a_mixes_chip() {
         var win = showPage()
         typeInto(win.page, query)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var tabs = findByName(win.page, "searchTabsRow")
         verify(tabs, "the tab row is missing")
@@ -1026,7 +1034,7 @@ TestCase {
         search(win, query)
 
         win.page.activeTab = 5
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         verify(saysSomethingContaining(resultsArea(win.page), "No mixes for"),
                "the Mixes tab with no mixes of its own says nothing: "
                + visibleCopy(resultsArea(win.page)))
@@ -1040,7 +1048,7 @@ TestCase {
         compare(win.page.mixes.length, 20)
 
         win.page.activeTab = 5
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         scrollToBottom(win.page)
         tryVerify(function () { return win.page.mixes.length === 40 },
                   settleMs, "the Mixes tab did not page: it holds "
@@ -1211,7 +1219,7 @@ TestCase {
         var win = showPage()
         feed(sharedResults())
         search(win, "slate")
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var headings = headingOrder(win.page)
         compare(headings[0], "Artists",
@@ -1253,7 +1261,7 @@ TestCase {
         compare(orderNames(win.page)[0], "Tracks")
 
         win.page.activeTab = 1
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
         scrollToBottom(win.page)
         tryVerify(function () { return win.page.tracks.length === 40 },
                   settleMs, "the second page never arrived")
@@ -1372,7 +1380,7 @@ TestCase {
             var win = showPage()
             win.width = w
             typeInto(win.page, query)
-            waitForRendering(win.contentItem, settleMs)
+            frame(win.contentItem)
 
             var found = pillAndTabs(win)
             var tabs = found.tabs, pill = found.pill
@@ -1425,7 +1433,7 @@ TestCase {
     function test_the_marked_chip_takes_no_hover_tint() {
         var win = showPage()
         typeInto(win.page, query)
-        waitForRendering(win.contentItem, settleMs)
+        frame(win.contentItem)
 
         var found = pillAndTabs(win)
         var tabs = found.tabs, pill = found.pill

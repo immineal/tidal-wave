@@ -98,13 +98,21 @@ TestCase {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showHost(w, h) {
         var host = createTemporaryObject(promptHost, testCase)
         verify(host, "host window was not created")
         host.width = w
         host.height = h
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return host
     }
 
@@ -115,7 +123,7 @@ TestCase {
         var opened = host.prompt.showIfAvailable()
         tryVerify(function() { return host.prompt.visible }, 2000,
                   "the prompt never became visible")
-        waitForRendering(host.prompt.contentItem)
+        frame(host.prompt.contentItem)
         return opened
     }
 

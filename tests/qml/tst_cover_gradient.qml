@@ -76,11 +76,19 @@ TestCase {
         }
     }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function showHost() {
         var host = createTemporaryObject(pageHost, testCase)
         verify(host, "host window was not created")
         host.visible = true
-        waitForRendering(host.contentItem)
+        frame(host.contentItem)
         return host
     }
 

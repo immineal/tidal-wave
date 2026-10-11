@@ -25,6 +25,14 @@ TestCase {
     Component { id: holderC;     Item { } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
 
+    // Asks the item's window for a frame and waits for it. A window with
+    // nothing new to draw swaps no frame, and waitForRendering() alone would
+    // run out its timeout and return false.
+    function frame(item) {
+        item.Window.window.update()
+        verify(waitForRendering(item), "the window drew no frame")
+    }
+
     function makeCollection(tab) {
         var holder = createTemporaryObject(holderC, testCase)
         verify(holder, "the holder was not created")
@@ -33,7 +41,7 @@ TestCase {
         var page = createTemporaryObject(collectionC, holder, {})
         verify(page, "the collection page was not created")
         page.activeTab = tab
-        waitForRendering(page, 2000)
+        frame(page)
         wait(1)
         return page
     }
