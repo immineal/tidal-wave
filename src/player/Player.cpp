@@ -1050,6 +1050,9 @@ void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
 }
 
 void Player::cancelPreload() {
+    // Before the abort: it runs the download's callback at once, and with no
+    // row claimed that callback drops out and records no failed preload.
+    m_preloadIndex = -1;
     if (m_preloadDownload) {
         auto *dl = m_preloadDownload;
         m_preloadDownload = nullptr;
@@ -1066,7 +1069,6 @@ void Player::cancelPreload() {
         delete m_preloadTempFile;
         m_preloadTempFile = nullptr;
     }
-    m_preloadIndex   = -1;
     m_preloadTrackId = 0;
     m_preloadReady   = false;
     m_preloadQuality = {};

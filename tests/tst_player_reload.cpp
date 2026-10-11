@@ -510,6 +510,35 @@ private slots:
         QCOMPARE(a.client.asked, (QList<qlonglong>{5000, 5000}));
     }
 
+    // Removing the playing row aborts the preload of the row after it, which
+    // then loads as the playing one. The row after that is still fetched ahead.
+    void anAbortedPreloadIsNotRememberedAsAFailedOne() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        const int heldBefore = m_server.requestsHeld;
+        const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
+
+        a.p().playTracks(contextOf(6000, 3), 0);
+        QVERIFY(a.client.answer(6000, track));
+        QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001}), 5000);
+        QVERIFY(a.client.answer(6001, oneFileAt(m_server.url(QStringLiteral("/held")))));
+        QTRY_COMPARE_WITH_TIMEOUT(m_server.requestsHeld, heldBefore + 1, 5000);
+
+        a.p().removeFromQueue(0);
+        QCOMPARE(currentId(a.p()), 6001);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{6000, 6001, 6001}));
+        QVERIFY(a.client.answer(6001, track));
+        QTRY_VERIFY_WITH_TIMEOUT(!a.mp()->source().isEmpty() && a.loaded(), 10000);
+
+        a.mp()->setPosition(6000);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked,
+                                  (QList<qlonglong>{6000, 6001, 6001, 6002}), 5000);
+    }
+
 private:
     // Why this Qt on this machine cannot run the cases that load audio, or null.
     static const char *obstacle()
