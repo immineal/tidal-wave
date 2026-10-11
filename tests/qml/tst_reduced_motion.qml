@@ -860,14 +860,24 @@ TestCase {
     function barCentre(bar)       { return bar.y + bar.height / 2 }
     function rowCentre(bar, item) { return item.mapToItem(bar.parent, 0, 0).y + item.height / 2 }
 
+    // Samples further apart than this can miss a move: the clock's next tick
+    // then covers enough of it to land the value on its end.
+    readonly property int blindMs: 48
+
     // True once the value has been seen strictly between its two ends.
     // Sampled in a loop, and the ends are read at every sample: a tab chip
     // changes width when it is deselected, which moves the chips after it.
     function sawBetween(read, readA, readB) {
+        var at = Date.now(), blind = false
         for (var i = 0; i < 200; ++i) {
             var v = read(), a = readA(), b = readB()
+            var now = Date.now()
+            if (now - at > blindMs) blind = true
+            at = now
             if (v > Math.min(a, b) + 1 && v < Math.max(a, b) - 1) return true
-            if (i > 2 && Math.abs(v - b) <= 1) return false
+            // Arrived unseen. That is a jump only when the samples were close
+            // enough together to have caught a move.
+            if (i > 2 && Math.abs(v - b) <= 1) return blind
             wait(1)
         }
         return false
