@@ -10,6 +10,8 @@
 #include <QVariantMap>
 #include "player/Player.h"
 
+class MprisManager;
+
 class MprisRoot : public QDBusAbstractAdaptor {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.mpris.MediaPlayer2")
@@ -21,7 +23,7 @@ class MprisRoot : public QDBusAbstractAdaptor {
     Q_PROPERTY(QStringList SupportedUriSchemes READ supportedUriSchemes CONSTANT)
     Q_PROPERTY(QStringList SupportedMimeTypes  READ supportedMimeTypes  CONSTANT)
 public:
-    explicit MprisRoot(QObject *parent);
+    explicit MprisRoot(MprisManager *manager);
     bool        canQuit()             const { return true; }
     bool        canRaise()            const { return true; }
     bool        hasTrackList()        const { return false; }
@@ -33,9 +35,9 @@ public:
     QStringList supportedMimeTypes()  const { return {}; }
 public slots:
     void Quit()  { qApp->quit(); }
-    void Raise() { emit raiseRequested(); }
-signals:
-    void raiseRequested();
+    void Raise();
+private:
+    MprisManager *m_manager;
 };
 
 class MprisPlayer : public QDBusAbstractAdaptor {
@@ -126,6 +128,10 @@ class MprisManager : public QObject {
     Q_OBJECT
 public:
     explicit MprisManager(Player *player, QObject *parent = nullptr);
+signals:
+    // A client asked for the window. A signal here stays off the bus, where
+    // one on the adaptor would be sent as part of the interface.
+    void raiseRequested();
 private:
     MprisRoot   *m_root;
     MprisPlayer *m_mprisPlayer;

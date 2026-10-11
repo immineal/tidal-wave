@@ -315,6 +315,23 @@ private slots:
         QSettings().clear();
     }
 
+    // ── The root interface ──────────────────────────────────────────────────
+
+    // The specification gives org.mpris.MediaPlayer2 no signals, so what
+    // Raise sets off inside the program is nothing a client is shown.
+    void theRootInterfaceHasNoSignals() {
+        Launch a;
+        const QDBusMessage reply = desk().call(
+            QStringLiteral("org.freedesktop.DBus.Introspectable"), QStringLiteral("Introspect"));
+        QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+        const QString xml = reply.arguments().value(0).toString();
+        const qsizetype from = xml.indexOf(QStringLiteral("<interface name=\"org.mpris.MediaPlayer2\">"));
+        QVERIFY2(from >= 0, qPrintable(xml));
+        const QString root = xml.mid(from, xml.indexOf(QStringLiteral("</interface>"), from) - from);
+        QVERIFY(root.contains(QStringLiteral("<method name=\"Raise\"")));
+        QVERIFY2(!root.contains(QStringLiteral("<signal")), qPrintable(root));
+    }
+
     // ── PlaybackStatus ──────────────────────────────────────────────────────
 
     // The specification has three values, and with no track it is Stopped.

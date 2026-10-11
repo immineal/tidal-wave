@@ -688,6 +688,8 @@ int Application::run(int argc, char **argv) {
 #ifdef Q_OS_LINUX
     // MPRIS needs a D-Bus session bus, so Linux only.
     m_mpris  = new MprisManager(m_player, this);
+    // Raise takes the way back that the tray's Show item takes.
+    connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
 #endif
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {

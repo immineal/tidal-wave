@@ -5,9 +5,10 @@
 #include <QDBusMessage>
 #include <QCoreApplication>
 
-MprisRoot::MprisRoot(QObject *parent) : QDBusAbstractAdaptor(parent) {
-    setAutoRelaySignals(true);
-}
+MprisRoot::MprisRoot(MprisManager *manager)
+    : QDBusAbstractAdaptor(manager), m_manager(manager) {}
+
+void MprisRoot::Raise() { emit m_manager->raiseRequested(); }
 
 MprisPlayer::MprisPlayer(Player *player, QObject *parent)
     : QDBusAbstractAdaptor(parent), m_player(player)
