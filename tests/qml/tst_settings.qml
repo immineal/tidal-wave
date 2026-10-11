@@ -86,7 +86,7 @@ TestCase {
         return [
             { id: "",   label: "System default",   isDefault: false },
             { id: "d1", label: "Built-in Analog",  isDefault: false },
-            { id: "d2", label: "Scarlett 2i2 USB", isDefault: true  }
+            { id: "d2", label: "Larkspur 2x2 USB", isDefault: true  }
         ]
     }
 
@@ -1085,7 +1085,7 @@ TestCase {
         var h = openPanel(1280, 1200)
         var note = findByName(h.panel.contentItem, "settingsAudioDefaultNote")
         verify(note && note.visible, "nothing says what \"System default\" resolves to")
-        verify(note.text.indexOf("Scarlett 2i2 USB") !== -1,
+        verify(note.text.indexOf("Larkspur 2x2 USB") !== -1,
                "the note says \"" + note.text + "\"")
         h.panel.close()
     }

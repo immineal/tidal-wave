@@ -41,7 +41,7 @@ TestCase {
         return [
             { id: "",   label: "System default",   isDefault: false },
             { id: "d1", label: "Built-in Analog",  isDefault: false },
-            { id: "d2", label: "Scarlett 2i2 USB", isDefault: true  }
+            { id: "d2", label: "Larkspur 2x2 USB", isDefault: true  }
         ]
     }
 
@@ -190,7 +190,7 @@ TestCase {
 
         var local = collectVisibleByName(body, "outputLocalRow", [])
         compare(labelsOf(local).join(", "),
-                "System default, Built-in Analog, Scarlett 2i2 USB",
+                "System default, Built-in Analog, Larkspur 2x2 USB",
                 "the local half of the menu is wrong")
 
         var remote = collectVisibleByName(body, "outputCastRow", [])
@@ -770,10 +770,10 @@ TestCase {
     function tigerLake() {
         return [
             { id: "",   label: "System default", isDefault: false },
-            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: true },
-            { id: "s2", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
-            { id: "s3", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 2", isDefault: false },
-            { id: "s4", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 3", isDefault: false }
+            { id: "s1", label: "Kestrel Lake HD Audio Controller Speaker", isDefault: true },
+            { id: "s2", label: "Kestrel Lake HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
+            { id: "s3", label: "Kestrel Lake HD Audio Controller HDMI / DisplayPort 2", isDefault: false },
+            { id: "s4", label: "Kestrel Lake HD Audio Controller HDMI / DisplayPort 3", isDefault: false }
         ]
     }
 
@@ -827,7 +827,7 @@ TestCase {
 
         verify(rows[1].label !== rows[1].fullLabel,
                "nothing was folded here, so this case proves nothing")
-        compare(rows[1].fullLabel, "Tiger Lake-H HD Audio Controller Speaker",
+        compare(rows[1].fullLabel, "Kestrel Lake HD Audio Controller Speaker",
                 "the row forgot the name it stands for")
         compare(rows[0].label, "System default",
                 "the sentinel is not hardware and must never be folded")
@@ -840,9 +840,9 @@ TestCase {
     function test_a_device_that_shares_no_prefix_keeps_its_whole_name() {
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
-            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: false },
-            { id: "s2", label: "Tiger Lake-H HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
-            { id: "u1", label: "Scarlett 2i2 USB", isDefault: true }
+            { id: "s1", label: "Kestrel Lake HD Audio Controller Speaker", isDefault: false },
+            { id: "s2", label: "Kestrel Lake HD Audio Controller HDMI / DisplayPort 1", isDefault: false },
+            { id: "u1", label: "Larkspur 2x2 USB", isDefault: true }
         ]
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
@@ -850,7 +850,7 @@ TestCase {
         var rows = collectVisibleByName(body, "outputLocalRow", [])
         compare(rows.length, 4)
 
-        compare(rows[3].label, "Scarlett 2i2 USB",
+        compare(rows[3].label, "Larkspur 2x2 USB",
                 "a device with nothing in common with the others lost part of its name")
         verify(rows[1].label !== rows[1].fullLabel,
                "the two sinks that do share a card name were not folded")
@@ -881,7 +881,7 @@ TestCase {
     function test_a_lone_long_name_loses_its_middle_and_not_its_end() {
         audioStub.devices = [
             { id: "",   label: "System default", isDefault: false },
-            { id: "s1", label: "Tiger Lake-H HD Audio Controller Speaker", isDefault: true }
+            { id: "s1", label: "Kestrel Lake HD Audio Controller Speaker", isDefault: true }
         ]
         var host = showHost(playerBarHost, 1280, 200)
         var picker = barPicker(host)
