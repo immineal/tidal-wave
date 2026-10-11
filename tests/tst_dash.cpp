@@ -18,6 +18,7 @@
 #include <QHash>
 #include <QHostAddress>
 #include <QMediaPlayer>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QTcpServer>
@@ -25,8 +26,10 @@
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QVector>
 #include <cmath>
 #include <memory>
+#include <utility>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -227,6 +230,16 @@ public:
     QHash<QString, QByteArray> files;     // request path, query stripped -> bytes
     QHash<QString, int>        delaysMs;  // path -> ms to wait before answering
     QStringList                requested; // request targets, query and all, in order
+    bool                       holdAnswers = false; // nothing is answered until release()
+
+    // Answers every held request in one go.
+    void release()
+    {
+        holdAnswers = false;
+        const auto held = std::exchange(m_held, {});
+        for (const auto &h : held)
+            if (h.first) answer(h.first, h.second);
+    }
 
     QString base() const
     {
@@ -251,6 +264,7 @@ private:
                 requested << target;
                 const int q = target.indexOf(QLatin1Char('?'));
                 const QString path = q < 0 ? target : target.left(q);
+                if (holdAnswers) { m_held.append({sock, path}); return; }
                 QTimer::singleShot(delaysMs.value(path, 0), sock,
                                    [this, sock, path] { answer(sock, path); });
             });
@@ -271,6 +285,26 @@ private:
         sock->flush();
         sock->disconnectFromHost();
     }
+
+    QVector<std::pair<QPointer<QTcpSocket>, QString>> m_held;
+};
+
+// Counts Qt's complaint about a reply that was handed a second error.
+class DoubleErrorWatch {
+public:
+    DoubleErrorWatch()  { s_count = 0; s_previous = qInstallMessageHandler(handler); }
+    ~DoubleErrorWatch() { qInstallMessageHandler(s_previous); }
+    int count() const { return s_count.loadRelaxed(); }
+
+private:
+    static void handler(QtMsgType type, const QMessageLogContext &ctx, const QString &msg)
+    {
+        if (msg.contains(QLatin1String("must only be called once")))
+            s_count.fetchAndAddRelaxed(1);
+        if (s_previous) s_previous(type, ctx, msg);
+    }
+    static inline QAtomicInt       s_count;
+    static inline QtMessageHandler s_previous = nullptr;
 };
 
 // ── silent decoding ─────────────────────────────────────────────────────────
@@ -755,6 +789,56 @@ private slots:
         QVERIFY2(!reported, "a dropped fetcher called back anyway");
         QVERIFY2(!QFile::exists(tempPath),
                  qPrintable(QStringLiteral("%1 was left behind").arg(tempPath)));
+    }
+
+    // Segments fail together when the connection drops. Each reply that is
+    // then let go already has its own error queued, and Qt before 6.8 logs an
+    // internal problem when such a reply is aborted.
+    void segmentsThatFailTogetherLogNoQtWarning_data()
+    {
+        QTest::addColumn<bool>("dropTheFetcher");
+        QTest::newRow("the join fails")         << false;
+        QTest::newRow("the fetcher is dropped") << true;
+    }
+
+    void segmentsThatFailTogetherLogNoQtWarning()
+    {
+        QFETCH(bool, dropTheFetcher);
+
+        SegmentServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.holdAnswers = true;      // no file is served, so every answer is a 404
+
+        TidalApi api;
+        TidalClient client{&api};
+        auto fetcher = std::make_unique<DashFetcher>(
+            &client, withBase(kPackagerManifest, srv.base()));
+        QVERIFY(fetcher->isValid() && fetcher->openedTempFile());
+        const int parts = fetcher->partCount();
+
+        DoubleErrorWatch watch;
+        bool done = false;
+        fetcher->start([&done](QTemporaryFile *file, const QString &) {
+            done = true;
+            delete file;
+        });
+        QTRY_COMPARE_WITH_TIMEOUT(int(srv.requested.size()), parts, 5000);
+
+        // Every answer leaves at once, and this thread keeps out of its event
+        // loop until Qt's HTTP thread has queued all of them.
+        srv.release();
+        QTest::qSleep(300);
+        if (dropTheFetcher)
+            fetcher.reset();
+        else
+            QTRY_VERIFY_WITH_TIMEOUT(done, 5000);
+        QTest::qWait(300);           // what is still queued for the other replies
+
+        QCOMPARE(done, !dropTheFetcher);
+        QVERIFY2(watch.count() == 0,
+                 qPrintable(QStringLiteral("Qt reported a second error on %1 of the "
+                                           "%2 segment replies")
+                            .arg(watch.count()).arg(parts)));
     }
 };
 

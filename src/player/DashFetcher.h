@@ -60,12 +60,10 @@ public:
 
     ~DashFetcher()
     {
-        // First statement: each abort() below runs the reply's finished handler
-        // synchronously, which calls back into the lambda in fetchAt().
-        // Expiring the guard first makes that a no-op.
+        // First statement: a reply that finishes before it is deleted still
+        // calls the lambda in fetchAt(). The expired guard makes that a no-op.
         m_alive.reset();
-        for (const QPointer<QNetworkReply> &r : std::as_const(m_inFlight))
-            if (!r.isNull()) r->abort();
+        dropReplies();
         if (m_file) { m_file->remove(); delete m_file; }
     }
 
@@ -263,13 +261,19 @@ private:
         m_settled = true;
         m_parts.clear();
         if (!file && m_file) { m_file->remove(); delete m_file; m_file = nullptr; }
-        // Abort the remaining replies before reporting: the callback is where
-        // the owner drops this object.
-        const auto replies = m_inFlight;
-        m_inFlight.clear();
-        for (const QPointer<QNetworkReply> &r : replies)
-            if (!r.isNull()) r->abort();
+        // Before reporting: the callback is where the owner drops this object.
+        dropReplies();
         if (m_done) m_done(file, errorDetail);
+    }
+
+    // Deleting a reply cancels its request. abort() gives it an error first,
+    // and Qt before 6.8 logs an internal problem when the reply's own queued
+    // error then arrives as a second one.
+    void dropReplies()
+    {
+        const auto replies = std::exchange(m_inFlight, {});
+        for (const QPointer<QNetworkReply> &r : replies)
+            if (!r.isNull()) r->deleteLater();
     }
 
     TidalClient *m_client;
