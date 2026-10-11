@@ -103,6 +103,12 @@ echo "=== the entry, as integration tools copy it ==="
 ENTRY="$APPDIR/usr/share/applications/io.github.immineal.TidalWave.desktop"
 sed -i '/^#/d' "$ENTRY"
 echo "X-AppImage-Version=$TW_VERSION" >> "$ENTRY"
+# The copy gets a file name of the tool's choosing, so a shell can match the
+# window through StartupWMClass alone. On Wayland it compares the app id, and
+# AppRun gives the X11 window the same name.
+sed -i 's/^StartupWMClass=.*/StartupWMClass=io.github.immineal.TidalWave/' "$ENTRY"
+grep -qx 'StartupWMClass=io.github.immineal.TidalWave' "$ENTRY" \
+    || { echo "ERROR: the entry has no StartupWMClass line" >&2; exit 1; }
 
 echo "=== deploy Qt ==="
 # LD_LIBRARY_PATH because the installed binary has no RUNPATH yet, so nothing
@@ -265,10 +271,13 @@ echo "=== entry point ==="
 rm -rf "$APPDIR/AppRun" "$APPDIR/AppRun.wrapped" "$APPDIR/apprun-hooks"
 cat > "$APPDIR/AppRun" <<'APPRUN_EOF'
 #!/bin/sh
-# The binary is started by its real path because argv[0] names the X11
-# WM_CLASS that StartupWMClass has to match. XDG_DATA_DIRS is left alone: the
-# tray is drawn by the desktop, which has to find the icon by name itself.
+# argv[0] is the app id: Qt names the X11 WM_CLASS instance after it, and the
+# entry's StartupWMClass has to equal that. Setting argv[0] takes bash.
+# XDG_DATA_DIRS is left alone, so the desktop finds the tray icon by name.
 here="$(dirname "$(readlink -f "$0")")"
+if [ -x /bin/bash ]; then
+    exec /bin/bash -c 'exec -a "$0" "$@"' io.github.immineal.TidalWave "$here/usr/bin/tidal-wave" "$@"
+fi
 exec "$here/usr/bin/tidal-wave" "$@"
 APPRUN_EOF
 chmod +x "$APPDIR/AppRun"

@@ -74,6 +74,10 @@ check "the one entry at the top is $ID.desktop" \
 check "Exec names the bundled binary" \
     [ "$(key Exec)" = tidal-wave -a -x "$ROOT/usr/bin/tidal-wave" ]
 check "Icon is tidal-wave" [ "$(key Icon)" = tidal-wave ]
+# A tool's copy of the entry has a file name of the tool's own, so a shell can
+# match the window through StartupWMClass alone: against the app id on
+# Wayland, and on X11 against the instance name, which is argv[0].
+check "StartupWMClass is the app id" [ "$(key StartupWMClass)" = "$ID" ]
 VERSION="$(key X-AppImage-Version)"
 check "X-AppImage-Version is a version: $VERSION" expr "$VERSION" : '[0-9][0-9.]*$'
 case "$NAME" in
@@ -118,7 +122,19 @@ export HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/home
 mkdir -m 700 "$HOME"
 # There is no FUSE in a container, so the AppImage unpacks itself to run.
 RC=0
-timeout -s TERM 25 /tmp/tidal-wave.AppImage --appimage-extract-and-run >/tmp/out.log 2>&1 || RC=$?
+timeout -s TERM 25 /tmp/tidal-wave.AppImage --appimage-extract-and-run >/tmp/out.log 2>&1 &
+# argv[0] of the running program, read while it is up.
+ARGV0=""
+for _ in $(seq 1 20); do
+    for comm in /proc/[0-9]*/comm; do
+        if [ "$(cat "$comm" 2>/dev/null)" = tidal-wave ]; then
+            ARGV0="$(tr '\0' '\n' < "${comm%comm}cmdline" | head -n 1)"
+        fi
+    done
+    [ -n "$ARGV0" ] && break
+    sleep 1
+done
+wait $! || RC=$?
 echo "--- log, in full ---"
 cat /tmp/out.log
 echo "--- end of log ---"
@@ -129,6 +145,7 @@ if [ "$RC" -eq 124 ]; then
 else
     fail "exited early with status $RC"
 fi
+check "the program runs with the app id as argv[0]: $ARGV0" [ "$ARGV0" = "$ID" ]
 
 echo
 echo "=== 4. scan the log ==="
