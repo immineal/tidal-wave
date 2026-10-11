@@ -468,8 +468,138 @@ private slots:
         QCOMPARE(b.p().queueCount(), 5);
     }
 
+    // ── Seeked ──────────────────────────────────────────────────────────────
+
+    // While a track plays on, a client reckons the position from the clock.
+    // It is told nothing, however often the player reports where it is.
+    void steadyPlaybackSendsNoSeeked() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirstOf(a, 3000));
+        desk().forget();
+
+        QSignalSpy reports(&a.p(), &Player::positionChanged);
+        QTest::qWait(2000);
+        desk().status();
+        QVERIFY2(reports.count() >= 5, qPrintable(QString::number(reports.count())));
+        QCOMPARE(desk().seeked, QList<qlonglong>());
+    }
+
+    // A seek made inside the program is a jump no client can reckon, whether
+    // the track plays or is paused. It is announced once, with where it went.
+    void aSeekInsideTheProgramIsAnnouncedOnce() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirstOf(a, 3000));
+        desk().forget();
+
+        a.p().seek(12000);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().seeked.count(), 1, 5000);
+        QVERIFY2(within(desk().seeked.constFirst(), 12000, 12500),
+                 qPrintable(QString::number(desk().seeked.constFirst())));
+        // The track plays on from there, and nothing more is said about it.
+        QTRY_VERIFY_WITH_TIMEOUT(a.mp()->position() >= 13000, 10000);
+        const qlonglong position = desk().get(QStringLiteral("Position")).toLongLong();
+        QVERIFY2(within(position, 13000, 15000), qPrintable(QString::number(position)));
+        QCOMPARE(desk().seeked.count(), 1);
+
+        a.p().playPause();
+        QTRY_VERIFY_WITH_TIMEOUT(!a.p().playing(), 5000);
+        desk().forget();
+        a.p().seek(20000);
+        QTRY_COMPARE_WITH_TIMEOUT(desk().seeked.count(), 1, 5000);
+        QVERIFY2(within(desk().seeked.constFirst(), 19900, 20100),
+                 qPrintable(QString::number(desk().seeked.constFirst())));
+    }
+
+    // A track picked again starts over under the identity it had. No change
+    // of metadata tells a client so, which leaves it to Seeked.
+    void aTrackThatStartsOverIsAnnounced() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirstOf(a, 3000));
+        a.p().seek(12000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.mp()->position() >= 12300, 5000);
+        desk().forget();
+
+        a.p().jumpToQueue(0);
+        QVERIFY(a.client.answer(3000, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing() && a.mp()->position() > 300, 10000);
+        QTest::qWait(300);
+        desk().status();
+        QVERIFY(!desk().seeked.isEmpty());
+        QVERIFY2(desk().seeked.count() <= 2, qPrintable(QString::number(desk().seeked.count())));
+        for (const qlonglong at : std::as_const(desk().seeked))
+            QVERIFY2(within(at, 0, 500), qPrintable(QString::number(at)));
+        QCOMPARE(desk().announced(QStringLiteral("Metadata")), QVariantList());
+        QCOMPARE(desk().statuses(), QStringList());
+    }
+
+    // The status is Playing while a track loads, and a client's clock runs
+    // for as long. When the track does start, the client is told where.
+    void aTrackThatStartsAfterALongLoadIsAnnounced() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        desk().forget();
+
+        a.p().playTracks(contextOf(3000, 2), 0);
+        QTest::qWait(900);
+        QVERIFY(a.client.answer(3000, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.p().playing() && a.mp()->position() > 300, 10000);
+        QTest::qWait(300);
+        desk().status();
+        // Once when the stream resolves, and again if the download is slow too.
+        QVERIFY(!desk().seeked.isEmpty());
+        QVERIFY2(desk().seeked.count() <= 2, qPrintable(QString::number(desk().seeked.count())));
+        for (const qlonglong at : std::as_const(desk().seeked))
+            QVERIFY2(within(at, 0, 400), qPrintable(QString::number(at)));
+    }
+
+    // A restored track waits at its saved position, which a client reads.
+    // Loading the track moves nothing.
+    void aRestoredTrackLoadsWithoutAJump() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QVERIFY(saveFiveRowSession());
+
+        Launch b;
+        QVERIFY(b.audioUp());
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 12000000LL);
+        desk().forget();
+
+        QVERIFY(b.client.answer(1002, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(b.mp()->position() - 12000) < 250, 5000);
+        QTest::qWait(300);
+        const qlonglong position = desk().get(QStringLiteral("Position")).toLongLong();
+        QVERIFY2(within(position, 11750, 12250), qPrintable(QString::number(position)));
+        QCOMPARE(desk().seeked, QList<qlonglong>());
+    }
+
 private:
     Desktop &desk() { return *m_desk; }
+
+    // Whether a position in microseconds lies between two in milliseconds.
+    static bool within(qlonglong micros, qint64 fromMs, qint64 toMs)
+    {
+        return micros >= fromMs * 1000 && micros <= toMs * 1000;
+    }
+
+    // Starts a two-row context and waits until its first track really plays.
+    bool playFirstOf(Launch &l, qlonglong base)
+    {
+        l.p().playTracks(contextOf(base, 2), 0);
+        if (!l.client.answer(base, track())) return false;
+        return QTest::qWaitFor([&l] { return l.p().playing() && l.mp()->position() > 300; },
+                               10000);
+    }
 
     StreamManifest track() const { return oneFileAt(m_server.url(QStringLiteral("/track"))); }
 

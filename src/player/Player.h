@@ -198,6 +198,9 @@ signals:
     void playingChanged     (bool playing);
     void loadingChanged     (bool loading);
     void positionChanged    (qint64 ms);
+    // The position was moved by seek(). MPRIS announces that and stays
+    // silent about the progress of a track.
+    void seeked             ();
     void durationChanged    (qint64 ms);
     void volumeChanged      (double v);
     void mutedChanged       (bool m);

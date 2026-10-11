@@ -640,6 +640,7 @@ void Player::seek(qint64 ms) {
         if (m_castSession) m_castSession->seek(ms / 1000.0);
         m_castPosition = ms;              // optimistic; device status corrects it
         emit positionChanged(ms);
+        emit seeked();
         return;
     }
 #endif
@@ -647,6 +648,7 @@ void Player::seek(qint64 ms) {
     setPlayerPosition(ms);
     // Nothing is loaded to seek inside yet, so hold it until something is.
     m_pendingSeek = (m_player->duration() > 0) ? 0 : qMax<qint64>(0, ms);
+    emit seeked();
 }
 
 void Player::setPlayerPosition(qint64 ms) {

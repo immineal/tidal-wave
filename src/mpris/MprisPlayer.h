@@ -6,6 +6,7 @@
 #include <QDBusAbstractAdaptor>
 #include <QDBusConnection>
 #include <QDBusObjectPath>
+#include <QElapsedTimer>
 #include <QVariantMap>
 #include "player/Player.h"
 
@@ -99,10 +100,21 @@ private:
     void announce();
     // Once per turn of the loop, so states a change passes through stay unsent.
     void scheduleAnnounce();
+    // Where a client that heard every signal takes the position to be.
+    qint64 reckonedPosition() const;
+
+    // How far the position may be from the reckoned one and go unannounced.
+    static constexpr qint64 kReckoningSlackMs = 500;
 
     Player     *m_player;
     QVariantMap m_announced;
     bool        m_announceQueued = false;
+    // The reckoning starts here, and its clock counts while the status is Playing.
+    qlonglong     m_trackId      = 0;
+    qint64        m_reckonedFrom = 0;
+    QElapsedTimer m_reckonedSince;
+    // The player was asked to seek, which is announced whatever the distance.
+    bool          m_seeked       = false;
 };
 
 class MprisManager : public QObject {

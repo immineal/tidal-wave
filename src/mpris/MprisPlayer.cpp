@@ -17,11 +17,21 @@ MprisPlayer::MprisPlayer(Player *player, QObject *parent)
     connect(m_player, &Player::playingChanged,      this, &MprisPlayer::scheduleAnnounce);
     connect(m_player, &Player::loadingChanged,      this, &MprisPlayer::scheduleAnnounce);
     connect(m_player, &Player::currentTrackChanged, this, &MprisPlayer::scheduleAnnounce);
-    m_announced = announcedProperties();
-
-    connect(m_player, &Player::positionChanged, this, [this](qint64 ms) {
-        emit Seeked(ms * 1000LL);
+    connect(m_player, &Player::seeked, this, [this] {
+        m_seeked = true;
+        scheduleAnnounce();
     });
+
+    m_announced    = announcedProperties();
+    m_trackId      = m_player->currentTrackMap().value(QStringLiteral("id")).toLongLong();
+    m_reckonedFrom = m_player->position();
+    m_reckonedSince.start();
+}
+
+qint64 MprisPlayer::reckonedPosition() const {
+    const bool counting =
+        m_announced.value(QStringLiteral("PlaybackStatus")) == QLatin1String("Playing");
+    return m_reckonedFrom + (counting ? m_reckonedSince.elapsed() : 0);
 }
 
 QVariantMap MprisPlayer::announcedProperties() const {
@@ -43,15 +53,35 @@ void MprisPlayer::announce() {
     QVariantMap changed;
     for (auto it = now.cbegin(); it != now.cend(); ++it)
         if (m_announced.value(it.key()) != it.value()) changed.insert(it.key(), it.value());
-    if (changed.isEmpty()) return;
-    m_announced = now;
 
-    QDBusMessage msg = QDBusMessage::createSignal(
-        "/org/mpris/MediaPlayer2",
-        "org.freedesktop.DBus.Properties",
-        "PropertiesChanged");
-    msg << "org.mpris.MediaPlayer2.Player" << changed << QStringList();
-    QDBusConnection::sessionBus().send(msg);
+    // A client starts a new track at 0, and counts on from where it was only
+    // while the status is Playing.
+    const qlonglong trackId =
+        m_player->currentTrackMap().value(QStringLiteral("id")).toLongLong();
+    if (trackId != m_trackId || changed.contains(QStringLiteral("PlaybackStatus"))) {
+        m_reckonedFrom = trackId != m_trackId ? 0 : reckonedPosition();
+        m_reckonedSince.restart();
+        m_trackId = trackId;
+    }
+
+    if (!changed.isEmpty()) {
+        m_announced = now;
+        QDBusMessage msg = QDBusMessage::createSignal(
+            "/org/mpris/MediaPlayer2",
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged");
+        msg << "org.mpris.MediaPlayer2.Player" << changed << QStringList();
+        QDBusConnection::sessionBus().send(msg);
+    }
+
+    // Seeked is for a position that the client cannot have reckoned.
+    const qint64 at = m_player->position();
+    if (m_seeked || qAbs(at - reckonedPosition()) > kReckoningSlackMs) {
+        m_seeked       = false;
+        m_reckonedFrom = at;
+        m_reckonedSince.restart();
+        emit Seeked(at * 1000LL);
+    }
 }
 
 QString MprisPlayer::playbackStatus() const {
