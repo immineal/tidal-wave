@@ -40,6 +40,10 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) const {
     req.setHeader(QNetworkRequest::UserAgentHeader,
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 KHTML, like Gecko Chrome/131 Safari/537.36");
     if (takesTokens(url)) {
+        // Qt copies the headers onto a redirected request, so one that carries
+        // the tokens is only followed within its origin.
+        req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::SameOriginRedirectPolicy);
         req.setRawHeader("X-Tidal-Token", "fX2JxdmntZWK0ixT");
         if (!m_accessToken.isEmpty())
             req.setRawHeader("Authorization", ("Bearer " + m_accessToken).toUtf8());

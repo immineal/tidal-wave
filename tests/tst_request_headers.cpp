@@ -131,6 +131,25 @@ private slots:
         QVERIFY(!login.hasRawHeader("Authorization") && !login.hasRawHeader("X-Tidal-Token"));
     }
 
+    // Qt copies every header onto the request it sends after a redirect, so a
+    // request that carries the tokens may only be redirected within its origin.
+    void aRequestWithTheTokensStaysOnItsOrigin()
+    {
+        TidalApi api;
+        api.setAccessToken(QString::fromLatin1(kToken));
+        const auto policy = [&api](const char *url) {
+            return api.makeRequest(QUrl(QString::fromLatin1(url)))
+                .attribute(QNetworkRequest::RedirectPolicyAttribute);
+        };
+        for (const char *base : {TidalApi::kApiBase, TidalApi::kApiBaseV2,
+                                 TidalApi::kOpenApiBase}) {
+            QVERIFY2(policy(base).isValid(), base);
+            QCOMPARE(policy(base).toInt(), int(QNetworkRequest::SameOriginRedirectPolicy));
+        }
+        // A media fetch carries no token and follows the CDN's redirects.
+        QVERIFY(!policy("https://sp-ad-fa.audio.tidal.com/mediatracks/x/0.mp4").isValid());
+    }
+
     // What leaves the machine: a media fetch and a GET, both to a host that is
     // on no list.
     void aHostOffTheListReceivesNoToken()
