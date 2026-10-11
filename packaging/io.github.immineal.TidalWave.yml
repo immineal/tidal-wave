@@ -89,7 +89,6 @@ modules:
     sources:
       - type: archive
         url: https://github.com/avahi/avahi/releases/download/v0.8/avahi-0.8.tar.gz
-        # Unverified: check it against the release page before submitting.
         sha256: 060309d7a333d38d951bc27598c677af1796934dbd98e1024e7ad8de798fedda
 
   - name: tidal-wave
@@ -106,7 +105,7 @@ modules:
         # Flathub wants the commit the tag resolved to, so the source cannot
         # move under a re-cut tag: git rev-parse v0.4.0^{commit}. It must be a
         # commit whose metainfo carries <screenshots>.
-        commit: FILL-IN-THE-COMMIT-THE-TAG-ENDS-UP-ON
+        commit: 6ce3b214e9b4e54ac527f0fd1e589e26a8baba19
     post-install:
       # Flatpak exports only files named after the app id, so the icons get a
       # second copy under the id and the desktop entry points at it. The
