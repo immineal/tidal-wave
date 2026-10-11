@@ -50,6 +50,8 @@ TestCase {
         // motion has to be allowed. Another file in this suite turns the
         // preference on, and the stub carries it across files.
         app.setReducedMotionForTest(false)
+        // A case that failed in the middle of a sweep leaves its sampler set.
+        frameSampler = null
         var q = []
         for (var i = 0; i < 6; i++) q.push(makeTrack(i))
         player.setQueueForTest(q, 0)
@@ -186,6 +188,8 @@ TestCase {
             property bool fullScreen: false
             function toggleFullScreen() { fullScreen = !fullScreen }
 
+            onAfterAnimating: testCase.frameAboutToDraw()
+
             property alias page: np
             NowPlayingPage {
                 id: np
@@ -286,6 +290,12 @@ TestCase {
         verify(waitForRendering(host.contentItem), "the window drew no frame")
     }
 
+    // The Now Playing host calls this for each of its frames, after the polish
+    // pass and before the frame is drawn. What a sampler reads here is a
+    // layout that gets shown.
+    property var frameSampler: null
+    function frameAboutToDraw() { if (frameSampler) frameSampler() }
+
     // The size goes in as an initial property. Assigned after creation, the
     // page would be born at the host's declared size and measured part way
     // through its rearrangement: waitForRendering() does not wait for it.
@@ -342,11 +352,7 @@ TestCase {
     // that snapped.
 
     // Everything one frame of the move has to agree about.
-    function samplePage(page) {
-        var cover = findChild(page, "nowPlayingCoverBox")
-        var info  = findChild(page, "nowPlayingInfoColumn")
-        var flick = findChild(page, "nowPlayingScroll")
-        verify(cover && info && flick, "the page's two blocks were not found")
+    function samplePage(page, cover, info, flick) {
         return {
             t:          page.stackness,
             bodyWidth:  cover.parent.width,
@@ -360,7 +366,6 @@ TestCase {
             // Where the bottom of the text column is in the page's own
             // coordinates, which is the figure the page has to be scrollable to.
             infoBottom: info.mapToItem(page, 0, info.height).y,
-            reach:      Math.max(cover.y + cover.height, info.y + info.height),
             // Read here: the samples are looked at once the move is over, so
             // anything the checker read off the page then would be the settled
             // value.
@@ -375,8 +380,7 @@ TestCase {
         }
     }
 
-    // `previous` is the sample before this one, or null for the first.
-    function checkSample(page, s, previous, where) {
+    function checkSample(page, s, where) {
         var reach = Math.max(s.coverY + s.coverSize, s.infoY + s.infoHeight)
         // What the page reserves for the pair is exactly what the pair reaches,
         // on every frame. An average of the two layouts would be less than the
@@ -384,13 +388,11 @@ TestCase {
         verify(Math.abs(s.bodyReserve - reach) <= 1,
                where + ": the page reserves " + s.bodyReserve.toFixed(1)
                + " for blocks that reach " + reach.toFixed(1) + " (t=" + s.t.toFixed(3) + ")")
-        // The container that holds the reservation never runs ahead of them. It
-        // may be one polish behind, because a QQuickLayout answers at polish
-        // time.
-        var had = previous ? Math.max(reach, previous.reach) : reach
-        verify(s.reserved <= had + 1,
+        // The container that holds the reservation is that tall in the frame
+        // as well: the layout has answered by the time a frame is drawn.
+        verify(Math.abs(s.reserved - reach) <= 1,
                where + ": the container is " + s.reserved.toFixed(1)
-               + "px tall for blocks that have only reached " + had.toFixed(1)
+               + "px tall for blocks that reach " + reach.toFixed(1)
                + " (t=" + s.t.toFixed(3) + ")")
         // Neither block hangs out of the page sideways at any point, and the
         // text column's right edge is the page margin at every value of
@@ -410,31 +412,36 @@ TestCase {
                + "overflowed mid-move:\n  " + s.overflow.join("\n  "))
     }
 
-    // Takes the page across the breakpoint and samples it on the way.
+    // Takes the page across the breakpoint and samples every frame drawn at
+    // the new width. The last sample is the page at rest.
     function sweepPage(host, page, from, to) {
+        var cover = findChild(page, "nowPlayingCoverBox")
+        var info  = findChild(page, "nowPlayingInfoColumn")
+        var flick = findChild(page, "nowPlayingScroll")
+        verify(cover && info && flick, "the page's two blocks were not found")
         host.width = from
         tryVerify(function () { return page.stackness === (page.stacked ? 1 : 0) },
                   2000, "the page never settled before the sweep began")
         var rows = []
-        host.width = to
-        // After the frame: the width is a binding and the layout under it
-        // answers at polish time, so sampling in the turn of the write catches
-        // the old layout in the new window.
-        for (var i = 0; i < 15; i++) {
-            wait(16)
-            rows.push(samplePage(page))
+        var before = page.width
+        var asked = Date.now()
+        // In the frame: between two frames the clock can have ticked while
+        // the layout under it still waits for its polish pass.
+        frameSampler = function () {
+            if (page.width === before) return
+            var s = samplePage(page, cover, info, flick)
+            s.ms = Date.now() - asked
+            rows.push(s)
         }
-        tryVerify(function () { return page.stackness === (page.stacked ? 1 : 0) },
-                  2000, "the page never settled after the sweep")
-        rows.push(samplePage(page))
+        host.width = to
+        tryVerify(function () {
+            return page.width !== before
+                && page.stackness === (page.stacked ? 1 : 0)
+        }, 2000, "the page never settled after the sweep")
+        // The frame that shows the page at rest.
+        frame(host)
+        frameSampler = null
         return rows
-    }
-
-    function midFlightCount(rows) {
-        var n = 0
-        for (var i = 0; i < rows.length; i++)
-            if (rows[i].t > 0.001 && rows[i].t < 0.999) n++
-        return n
     }
 
     function test_now_playing_restacks_without_reserving_ahead_data() {
@@ -452,28 +459,37 @@ TestCase {
         var page = host.page
         var rows = sweepPage(host, page, row.from, row.to)
 
-        verify(midFlightCount(rows) >= 3,
-               "the page re-formed without ever being between the two layouts: "
-               + "only " + midFlightCount(rows) + " of " + rows.length
-               + " samples were mid-move, so nothing is being animated")
+        // A page that snapped is on its new layout in the first frame at the
+        // new width. That frame is drawn with the resize, ahead of the clock's
+        // first tick.
+        verify(rows[0].t !== row.end,
+               "the page is on its new layout in the first frame at the new "
+               + "width, so nothing is being animated")
+        compare(rows[rows.length - 1].t, row.end,
+                "the move has to finish on the layout, not near it")
+        // Three frames mid-move and the one it lands in take 64ms at 60Hz, and
+        // a shorter move reads as a jump. Time is asked because the number of
+        // frames drawn falls as the machine gets busy.
+        var landed = 0
+        while (rows[landed].t !== row.end) landed++
+        verify(rows[landed].ms >= 64,
+               "the page was on its new layout " + rows[landed].ms + "ms after "
+               + "the resize was asked for, which is too short a move to see")
 
         for (var i = 0; i < rows.length; i++)
-            checkSample(page, rows[i], i > 0 ? rows[i - 1] : null,
-                        row.tag + " sample " + i)
+            checkSample(page, rows[i], row.tag + " frame " + i)
 
         // One direction, no wandering: the clock only ever runs towards the
         // layout the width asked for.
         for (i = 1; i < rows.length; i++) {
             if (row.end === 1)
                 verify(rows[i].t >= rows[i - 1].t - 0.001,
-                       row.tag + ": stackness went backwards at sample " + i)
+                       row.tag + ": stackness went backwards at frame " + i)
             else
                 verify(rows[i].t <= rows[i - 1].t + 0.001,
-                       row.tag + ": stackness went backwards at sample " + i)
+                       row.tag + ": stackness went backwards at frame " + i)
         }
 
-        compare(rows[rows.length - 1].t, row.end,
-                "the move has to finish on the layout, not near it")
         // Settled, the bottom of the text column can be scrolled to.
         var last = rows[rows.length - 1]
         verify(last.infoBottom + page.pageMargin <= last.contentH + 1,
