@@ -20,6 +20,23 @@
 #include <algorithm>
 #include <numeric>
 #include <QRandomGenerator>
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+#include <QAudioSink>
+#include <QElapsedTimer>
+#include <QMutex>
+#include <QThread>
+#include <QWaitCondition>
+
+struct Player::SinkTrial {
+    QMutex         mutex;
+    QWaitCondition ended;
+    QElapsedTimer  since;
+    bool           done   = false;
+    bool           linked = false;
+
+    bool isDone() { QMutexLocker lock(&mutex); return done; }
+};
+#endif
 
 Player::Player(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
@@ -276,8 +293,9 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
     const AudioState state = captureAudioState();
     m_rebinding = true;
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    // With no device left, Qt 6.4 must not be playing when it gets the output.
-    if (state.playing && device.isNull()) m_player->pause();
+    // Qt 6.4 must not be playing when it gets the output: it opens a sink
+    // for it, and the start that follows asks first whether one can open.
+    if (state.playing) m_player->pause();
 #endif
 
     auto *fresh = new QAudioOutput(device, this);
@@ -764,9 +782,61 @@ void Player::wakeStandingBackend() {
     // backend that was only slow to report its position loses nothing.
     m_seekToggling = true;
     m_player->pause();
-    startBackend();
+    startBackend(true);
     m_seekToggling = false;
     tellPlaying();
+}
+
+void Player::startSinkTrial() {
+    if (m_sinkTrial) return;
+    auto trial = std::make_shared<SinkTrial>();
+    trial->since.start();
+    const QAudioDevice device = m_audioOut ? m_audioOut->device() : QAudioDevice();
+    QThread *thread = QThread::create([trial, device] {
+        // A format with no rate: Qt looks at its link to the sound server
+        // first and at the format second, names the two refusals apart, and
+        // makes no stream for either.
+        QAudioFormat format;
+        format.setChannelCount(2);
+        format.setSampleFormat(QAudioFormat::Int16);
+        bool linked = false;
+        {
+            QAudioSink sink(device, format);
+            sink.start();
+            linked = sink.error() != QAudio::FatalError;
+        }
+        QMutexLocker lock(&trial->mutex);
+        trial->linked = linked;
+        trial->done   = true;
+        trial->ended.wakeAll();
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+    m_sinkTrial = std::move(trial);
+}
+
+bool Player::sinkOpens() {
+    // An answer nobody waited for is old.
+    if (m_sinkTrial && m_sinkTrial->isDone()) m_sinkTrial.reset();
+    startSinkTrial();
+    // One that did not come back in its time is asked again and not waited
+    // for, so a sound server that does not answer costs the wait once.
+    const std::shared_ptr<SinkTrial> trial = m_sinkTrial;
+    QMutexLocker lock(&trial->mutex);
+    while (!trial->done) {
+        const qint64 left = kSinkTrialMs - trial->since.elapsed();
+        if (left <= 0 || !trial->ended.wait(&trial->mutex, QDeadlineTimer(left))) break;
+    }
+    if (!trial->done) return false;
+    m_sinkTrial.reset();
+    return trial->linked;
+}
+
+void Player::refuseStart(const QString &why) {
+    setLoading(false);
+    // Cleared first, so that a repeat is told again.
+    setLoadError(QString());
+    setLoadError(why);
 }
 #endif
 
@@ -1608,22 +1678,33 @@ void Player::beginPlayback() {
     if (m_restorePaused) {
         // A restored session stays paused: opening the app must not play.
         m_restorePaused = false;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        // A paused backend opens its sink too, and none without the sound
+        // server. The trial is also what makes Qt's link to it, on a thread
+        // that ends, away from the render thread.
+        if (!sinkOpens()) return;
+#endif
         m_player->pause();
         return;
     }
     startBackend();
 }
 
-bool Player::startBackend() {
+bool Player::startBackend(bool sinkHeld) {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 writes into the sink it opens for a track without looking
     // whether one opened, and with no device none does.
     if (QMediaDevices::audioOutputs().isEmpty()) {
-        setLoading(false);
-        setLoadError(QString());
-        setLoadError(tr("No audio device was found. Check the sound settings of your system."));
+        refuseStart(tr("No audio device was found. Check the sound settings of your system."));
         return false;
     }
+    // Nor does one open once the sound server went away, back or not.
+    if (!sinkHeld && !sinkOpens()) {
+        refuseStart(tr("The sound output was lost. Restart Tidal Wave to get it back."));
+        return false;
+    }
+#else
+    Q_UNUSED(sinkHeld);
 #endif
     m_player->play();
     return true;

@@ -37,6 +37,8 @@ const char kChildFlag[] = "--plays";
 
 const char kNoDevice[] =
     "No audio device was found. Check the sound settings of your system.";
+const char kSoundLost[] =
+    "The sound output was lost. Restart Tidal Wave to get it back.";
 
 // ── the child ───────────────────────────────────────────────────────────────
 
@@ -113,7 +115,9 @@ public:
             if (!m_player->loadError().isEmpty()) say("error " + m_player->loadError().toUtf8());
         });
 
-        m_stdin.open(stdin, QIODevice::ReadOnly | QIODevice::Unbuffered);
+        // By descriptor: a FILE reads ahead, and a word that came in the same
+        // read as another would wait there for the next one.
+        m_stdin.open(0, QIODevice::ReadOnly | QIODevice::Unbuffered);
         connect(&m_notifier, &QSocketNotifier::activated, this, [this] { hear(); });
 
         // The Player builds its audio objects on the first turn of the loop.
@@ -155,6 +159,8 @@ private:
             m_player->playPause();
         } else if (word == "next") {
             m_player->next();
+        } else if (word == "rebind") {
+            m_player->rebindAudioOutput(QMediaDevices::defaultAudioOutput());
         } else if (word == "status") {
             say("status playing=" + QByteArray::number(int(m_player->playing()))
                 + " backend=" + QByteArray::number(int(mp()->playbackState()))
@@ -296,6 +302,22 @@ public:
         return out;
     }
 
+    // Waits for the backend to play the track and to leave its start.
+    bool playsTrack(qint64 id, int ms = 20000)
+    {
+        QDeadlineTimer deadline(ms);
+        while (!deadline.hasExpired()) {
+            const QHash<QByteArray, qint64> now = status();
+            if (now.isEmpty()) return false;
+            if (now.value("backend") == qint64(QMediaPlayer::PlayingState)
+                && now.value("track") == id && now.value("position") > 0)
+                return true;
+            QTest::qWait(100);
+        }
+        return false;
+    }
+    bool plays() { return playsTrack(1); }
+
     // Empty while the child runs, else how it ended.
     QString fate()
     {
@@ -390,7 +412,87 @@ private slots:
         QCOMPARE(child.leave(), QString());
     }
 
-    void theSentenceHasItsGerman()
+    // Qt 6.4 keeps one connection to the sound server for all its sinks and
+    // never makes it again. A sink asked for after the server came back does
+    // not open, and the backend writes through it all the same.
+    void aStartAfterTheSoundServerCameBackIsRefusedAndTheProgramStaysUp_data()
+    {
+        QTest::addColumn<QByteArray>("start");
+        QTest::newRow("the next track")   << QByteArray("next");
+        QTest::newRow("the paused track") << QByteArray("press");
+    }
+
+    void aStartAfterTheSoundServerCameBackIsRefusedAndTheProgramStaysUp()
+    {
+        QFETCH(QByteArray, start);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("covers Qt below 6.5, whose sinks never reach a sound server that came back");
+#endif
+        if (SoundServer::binary().isEmpty())
+            QSKIP("needs the pulseaudio daemon to take the sound server away and bring it back");
+        SoundServer sound;
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start");
+        Child child;
+        child.start(sound.address());
+        QCOMPARE(child.hear("up"), QByteArray("outputs=1"));
+
+        child.say("tracks");
+        QVERIFY2(child.plays(), "the first track did not start");
+        child.say("press");
+        QCOMPARE(child.status().value("backend"), qint64(QMediaPlayer::PausedState));
+
+        sound.stop();
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start again");
+
+        child.say(start.constData());
+        QByteArray told = child.hear("error");
+        QVERIFY2(child.fate().isEmpty(), qPrintable(child.fate()));
+        QCOMPARE(told, QByteArray(kSoundLost));
+        QHash<QByteArray, qint64> now = child.status();
+        QCOMPARE(now.value("playing"), 0);
+        QVERIFY(now.value("backend") != qint64(QMediaPlayer::PlayingState));
+
+        // A press on play says it again and starts nothing either.
+        child.say("press");
+        told = child.hear("error");
+        QVERIFY2(child.fate().isEmpty(), qPrintable(child.fate()));
+        QCOMPARE(told, QByteArray(kSoundLost));
+        QCOMPARE(child.status().value("playing"), 0);
+
+        QCOMPARE(child.leave(), QString());
+    }
+
+    // Another output is what a user picks when the sound is gone, and the
+    // swap makes the backend open a sink while it plays.
+    void anOutputSwappedAfterTheSoundServerWentIsRefusedAndTheProgramStaysUp()
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("covers Qt below 6.5, whose sinks never reach a sound server that came back");
+#endif
+        if (SoundServer::binary().isEmpty())
+            QSKIP("needs the pulseaudio daemon to take the sound server away");
+        SoundServer sound;
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start");
+        Child child;
+        child.start(sound.address());
+        QCOMPARE(child.hear("up"), QByteArray("outputs=1"));
+
+        // On the second track, whose sinks find the connection as it is.
+        child.say("tracks");
+        QVERIFY2(child.plays(), "the first track did not start");
+        child.say("next");
+        QVERIFY2(child.playsTrack(2), "the second track did not start");
+
+        sound.stop();
+        QTest::qWait(500);
+        child.say("rebind");
+        const QByteArray told = child.hear("error");
+        QVERIFY2(child.fate().isEmpty(), qPrintable(child.fate()));
+        QCOMPARE(told, QByteArray(kSoundLost));
+        QCOMPARE(child.status().value("playing"), 0);
+    }
+
+    void theSentencesHaveTheirGerman()
     {
         QTemporaryDir dir;
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -400,6 +502,7 @@ private slots:
         I18n i18n(&prefs);
         QVERIFY(i18n.isCatalogueLoaded());
         QVERIFY(QCoreApplication::translate("Player", kNoDevice) != QLatin1String(kNoDevice));
+        QVERIFY(QCoreApplication::translate("Player", kSoundLost) != QLatin1String(kSoundLost));
     }
 };
 

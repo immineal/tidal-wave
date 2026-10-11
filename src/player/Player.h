@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <QVariantList>
 #include <QTemporaryFile>
+#include <memory>
 #include "api/TidalClient.h"
 #include "api/Models.h"
 // For TIDALWAVE_HAS_BUFFER_OUTPUT and the analyser type below.
@@ -300,7 +301,8 @@ private:
     // a restored session, which comes back paused where it was left.
     void beginPlayback();
     // Starts the backend, or tells the user why it cannot be started.
-    bool startBackend();
+    // sinkHeld: the backend holds its sink already, so nothing is asked.
+    bool startBackend(bool sinkHeld = false);
     // The chosen device if it is still present, else the system default.
     QAudioDevice resolveAudioDevice() const;
     // Rebinds only when the resolved device differs from the bound one.
@@ -337,6 +339,17 @@ private:
     QTimer              *m_standTimer    = nullptr;
     qint64               m_standPos      = -1;
     int                  m_standWakes    = 0;
+    // Qt 6.4 writes through a sink that did not open, and none opens once
+    // its link to the sound server is gone. A helper thread asks Qt whether
+    // the link stands, and the start waits for the answer.
+    struct SinkTrial;
+    void startSinkTrial();
+    bool sinkOpens();
+    static constexpr int kSinkTrialMs    = 3000;
+    // The trial under way, or the last one if it never came back.
+    std::shared_ptr<SinkTrial> m_sinkTrial;
+    // The start is off: ends the load and says why.
+    void refuseStart(const QString &why);
 #endif
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;

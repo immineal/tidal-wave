@@ -891,6 +891,10 @@
         <translation>Es wurde kein Audiogerät gefunden. Die Toneinstellungen des Systems prüfen.</translation>
     </message>
     <message>
+        <source>The sound output was lost. Restart Tidal Wave to get it back.</source>
+        <translation>Die Tonausgabe ist ausgefallen. Tidal Wave neu starten, um sie wiederherzustellen.</translation>
+    </message>
+    <message>
         <source>This track could not be played. The audio format may not be supported.</source>
         <translation>Dieser Titel konnte nicht abgespielt werden. Das Audioformat wird möglicherweise nicht unterstützt.</translation>
     </message>
