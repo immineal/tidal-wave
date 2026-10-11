@@ -2,7 +2,8 @@
 // release as a guest appearance, and what happens when one does not come back.
 // artists/<id>/albums with no `filter` answers the albums only. EPs and singles
 // need filter=EPSANDSINGLES. filter=COMPILATIONS answers records by other
-// artists that this one appears on. Each run is paged to its end.
+// artists that this one appears on. The artist's own two runs are paged to
+// their end. The appears-on run is one request.
 // FakeApi overrides TidalApi::get, so the cases drive the real TidalClient and
 // can see filters and offsets. Every id, title and cover below is invented.
 
@@ -70,6 +71,9 @@ public:
     // fails the filter outright; a higher number fails it part-way through its
     // paging run.
     QHash<QString, int> errorFromOffset;
+    // filter -> the most items one reply carries, whatever `limit` asks for.
+    // Absent means the server fills the page.
+    QHash<QString, int> pageCap;
 
     void setDeferred(bool on) { m_deferred = on; }
     int  parked() const { return int(m_parked.size()); }
@@ -113,8 +117,9 @@ public:
         }
 
         const QList<QJsonObject> all = catalogue.value(r.filter);
+        const int most = qMin(r.limit, pageCap.value(r.filter, r.limit));
         QJsonArray items;
-        for (int i = r.offset; i < all.size() && items.size() < r.limit; ++i)
+        for (int i = r.offset; i < all.size() && items.size() < most; ++i)
             items.append(all.at(i));
 
         QJsonObject root;
@@ -164,6 +169,14 @@ void start(TidalClient &client, Run &run) {
         run.albums = albums;
         run.err    = err;
     });
+}
+
+// `count` releases of one type, ids counting up from `firstId`.
+QList<QJsonObject> releases(qint64 firstId, int count, const QString &type, int numTracks) {
+    QList<QJsonObject> out;
+    for (int i = 0; i < count; ++i)
+        out << release(firstId + i, QStringLiteral("Nummer %1").arg(i + 1), type, numTracks);
+    return out;
 }
 
 // An artist with one of each: an album, a single, an EP, and one record by
@@ -291,26 +304,60 @@ private slots:
         QCOMPARE(run.featuredIds(), (QList<qint64>{900001004}));
     }
 
-    // The mark holds past the first page of a long appears-on run.
-    void everyPageOfTheAppearsOnRunIsMarked() {
+    // The appears-on run is one request. The row holds that page, in the order
+    // the server sent it, and every card of it is marked.
+    void theAppearsOnRunStopsAfterOnePage() {
         FakeApi api;
         api.catalogue[kNoFilter] = {
             release(900009001, QStringLiteral("Eigenes"), QStringLiteral("ALBUM"), 10) };
-        QList<QJsonObject> many;
-        QList<qint64> guestIds;
-        for (int i = 0; i < 120; ++i) {
-            many << release(900009100 + i, QStringLiteral("Fremdes %1").arg(i + 1),
-                            QStringLiteral("ALBUM"), 12);
-            guestIds << 900009100 + i;
-        }
-        api.catalogue[kAppearsOn] = many;
+        api.catalogue[kAppearsOn] = releases(900009100, 120, QStringLiteral("ALBUM"), 12);
+        QList<qint64> firstPage;
+        for (int i = 0; i < 50; ++i) firstPage << 900009100 + i;
         TidalClient client{&api};
         Run run;
         start(client, run);
 
-        QCOMPARE(api.offsetsAsked(kAppearsOn), (QList<int>{0, 50, 100}));
-        QCOMPARE(run.albums.size(), 121);
-        QCOMPARE(run.featuredIds(), guestIds);
+        QCOMPARE(api.offsetsAsked(kAppearsOn), (QList<int>{0}));
+        QCOMPARE(run.err, QString());
+        QCOMPARE(run.albums.size(), 51);
+        QCOMPARE(run.featuredIds(), firstPage);
+    }
+
+    // One request also when the server cuts the page short of `limit`.
+    void aShortAppearsOnPageStillEndsTheRun() {
+        FakeApi api;
+        api.catalogue[kNoFilter] = {
+            release(900009301, QStringLiteral("Eigenes"), QStringLiteral("ALBUM"), 10) };
+        api.catalogue[kAppearsOn] = releases(900009400, 120, QStringLiteral("ALBUM"), 12);
+        api.pageCap[kAppearsOn] = 30;
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(api.offsetsAsked(kAppearsOn), (QList<int>{0}));
+        QCOMPARE(run.albums.size(), 31);
+        QCOMPARE(run.featuredIds().size(), 30);
+    }
+
+    // A long career: the artist's own two runs page to their end beside an
+    // appears-on run of one request.
+    void aLongCareerCostsOneAppearsOnRequest() {
+        FakeApi api;
+        api.catalogue[kNoFilter]   = releases(900010000, 81, QStringLiteral("ALBUM"), 10);
+        api.catalogue[kEpsSingles] = releases(900011000, 283, QStringLiteral("SINGLE"), 1);
+        api.catalogue[kAppearsOn]  = releases(900020000, 3199, QStringLiteral("COMPILATION"), 20);
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(run.replies, 1);
+        QCOMPARE(api.requests.size(), 9);
+        QCOMPARE(api.offsetsAsked(kNoFilter), (QList<int>{0, 50}));
+        QCOMPARE(api.offsetsAsked(kEpsSingles), (QList<int>{0, 50, 100, 150, 200, 250}));
+        QCOMPARE(api.offsetsAsked(kAppearsOn), (QList<int>{0}));
+        QCOMPARE(run.albums.size(), 81 + 283 + 50);
+        QCOMPARE(run.featuredIds().size(), 50);
+        QVERIFY2(run.has(900011282), "the last page of the singles was dropped");
     }
 
     // The last hop before the page. The QML tests build their own maps, so a
@@ -463,8 +510,8 @@ private slots:
         QCOMPARE(run.ids(), (QList<qint64>{900001001, 900001002, 900001003, 900001004}));
     }
 
-    // Each filter pages to its own end, so a prolific artist is not cut at the
-    // first fifty.
+    // Each of the artist's own filters pages to its end, so a prolific artist
+    // is not cut at the first fifty.
     void aProlificArtistIsPagedToTheEnd() {
         FakeApi api;
         QList<QJsonObject> many;

@@ -425,14 +425,15 @@ QList<Album> TidalClient::mergeAlbumLists(const QList<QList<Album>> &lists) {
 }
 
 void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
-                                       AlbumsCallback cb, int offset, QList<Album> acc)
+                                       AlbumPages pages, AlbumsCallback cb,
+                                       int offset, QList<Album> acc)
 {
     QUrlQuery q;
     if (!filter.isEmpty()) q.addQueryItem("filter", filter);
     q.addQueryItem("limit", QString::number(kArtistAlbumsPageSize));
     q.addQueryItem("offset", QString::number(offset));
     m_api->get(QStringLiteral("artists/%1/albums").arg(artistId), q,
-        [this, artistId, filter, cb, offset, acc](QJsonObject root, QString err) mutable {
+        [this, artistId, filter, pages, cb, offset, acc](QJsonObject root, QString err) mutable {
             if (!err.isEmpty()) {
                 // The earlier pages are still delivered; only an empty run
                 // is an error.
@@ -442,11 +443,12 @@ void TidalClient::fetchArtistAlbumPage(qint64 artistId, const QString &filter,
             const QList<Album> page = parseAlbums(root);
             acc.append(page);
             const int total = root["totalNumberOfItems"].toInt(acc.size());
-            if (page.isEmpty() || acc.size() >= total || acc.size() >= kMaxArtistAlbums) {
+            if (pages == AlbumPages::First || page.isEmpty() || acc.size() >= total
+                || acc.size() >= kMaxArtistAlbums) {
                 cb(acc, {});
                 return;
             }
-            fetchArtistAlbumPage(artistId, filter, cb, offset + int(page.size()), acc);
+            fetchArtistAlbumPage(artistId, filter, pages, cb, offset + int(page.size()), acc);
         });
 }
 
@@ -487,10 +489,12 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
 
     // Each request fills a slot of its own, so the order the replies land in
     // changes nothing.
-    fetchArtistAlbumPage(artistId, QString(), collect(&pending->albums));
-    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterEpsAndSingles),
+    fetchArtistAlbumPage(artistId, QString(), AlbumPages::All, collect(&pending->albums));
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterEpsAndSingles), AlbumPages::All,
                          collect(&pending->epsAndSingles));
-    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterAppearsOn),
+    // A long career answers the appears-on filter with hundreds of
+    // various-artists compilations. The row takes the first page of them.
+    fetchArtistAlbumPage(artistId, QString::fromLatin1(kFilterAppearsOn), AlbumPages::First,
                          collect(&pending->appearsOn));
 }
 

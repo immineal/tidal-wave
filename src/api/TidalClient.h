@@ -243,12 +243,16 @@ private:
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
 
-    // One of fetchArtistAlbums()'s three requests, paged to the end. An empty
-    // `filter` asks for the albums. A failed page delivers what came before
-    // it and reports the error only when nothing did.
+    // How far one of fetchArtistAlbums()'s requests runs: to the end of its
+    // list, or one request whatever that page holds.
+    enum class AlbumPages { All, First };
+
+    // One of fetchArtistAlbums()'s three requests. An empty `filter` asks for
+    // the albums. A failed page delivers what came before it and reports the
+    // error only when nothing did.
     void fetchArtistAlbumPage(qint64 artistId, const QString &filter,
-                              AlbumsCallback cb, int offset = 0,
-                              QList<Album> acc = {});
+                              AlbumPages pages, AlbumsCallback cb,
+                              int offset = 0, QList<Album> acc = {});
 
     // The server's page size for artists/<id>/albums.
     static constexpr int kArtistAlbumsPageSize = 50;
