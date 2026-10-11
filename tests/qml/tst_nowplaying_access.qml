@@ -44,6 +44,8 @@ TestCase {
         // has to be allowed. Another file in this suite turns the preference on
         // and the stub carries it across files.
         app.setReducedMotionForTest(false)
+        // A case that failed in the middle of a resize leaves its sampler set.
+        frameSampler = null
         player.setCurrentTrackForTest(trackWith([{ id: 11, name: "Erika Mustermann" }]))
         player.setAudioQualityForTest("LOSSLESS")
         player.setDurationForTest(215000)
@@ -170,6 +172,8 @@ TestCase {
                 fullScreenToggles++
             }
 
+            onAfterAnimating: testCase.frameAboutToDraw()
+
             property alias page: np
             NowPlayingPage {
                 id: np
@@ -193,6 +197,12 @@ TestCase {
         item.Window.window.update()
         verify(waitForRendering(item), "the window drew no frame")
     }
+
+    // The Now Playing host calls this for each of its frames, after the polish
+    // pass and before the frame is drawn. What a sampler reads here is a
+    // layout that gets shown.
+    property var frameSampler: null
+    function frameAboutToDraw() { if (frameSampler) frameSampler() }
 
     function showHost(component, w, h) {
         var host = createTemporaryObject(component, testCase)
@@ -342,27 +352,40 @@ TestCase {
         var fs = findChild(page, "nowPlayingFullscreen")
         verify(collapse && fs, "the page's own chrome was not found")
 
-        host.width = 900
-        var mid = 0
-        var clicked = false
-        for (var i = 0; i < 14; i++) {
-            wait(16)
-            verify(collapse.visible && fs.visible,
-                   "sample " + i + ": the page's chrome went missing mid-restack")
-            verify(collapse.mapToItem(page, 0, 0).x >= -0.5
-                   && rightEdgeIn(fs, page) <= page.width + 0.5,
-                   "sample " + i + ": the header left the page while it restacked")
-            if (page.stackness > 0.001 && page.stackness < 0.999) {
-                mid++
-                if (mid === 2 && !clicked) {
-                    clicked = true
-                    centerClick(collapse)
-                    compare(host.backCalls, 1,
-                            "the way out did not work while the page was restacking")
-                }
-            }
+        // The header in every frame drawn at the new width.
+        var frames = []
+        frameSampler = function () {
+            if (page.width !== 900) return
+            frames.push({ t: page.stackness,
+                          shown: collapse.visible && fs.visible,
+                          left: collapse.mapToItem(page, 0, 0).x,
+                          right: rightEdgeIn(fs, page) })
         }
-        verify(mid >= 3, "the page restacked without ever being between its two layouts")
+        host.width = 900
+        // Frame by frame until the clock has left the old layout. That is the
+        // page mid-move, unless the machine stood still for the whole of it.
+        for (var n = 0; page.stackness === 0 && n < 200; n++)
+            frame(host.contentItem)
+        centerClick(collapse)
+        compare(host.backCalls, 1,
+                "the way out did not work while the page was restacking")
+
+        tryVerify(function () { return page.stackness === 1 }, 2000,
+                  "the page never settled stacked")
+        frame(host.contentItem)
+        frameSampler = null
+
+        // A page that snapped is stacked in its first frame at the new width.
+        // That frame is drawn with the resize, ahead of the clock's first tick.
+        verify(frames[0].t !== 1,
+               "the page is stacked in its first frame at the new width, so it "
+               + "restacked without ever being between its two layouts")
+        for (var i = 0; i < frames.length; i++) {
+            verify(frames[i].shown,
+                   "frame " + i + ": the page's chrome went missing mid-restack")
+            verify(frames[i].left >= -0.5 && frames[i].right <= 900 + 0.5,
+                   "frame " + i + ": the header left the page while it restacked")
+        }
         compare(host.backCalls, 1, "going back happened once and only once")
         compare(host.navCalls.length, 0, "going back is not a navigation of its own")
     }
