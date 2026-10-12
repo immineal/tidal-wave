@@ -8,6 +8,21 @@
 #include <QStandardPaths>
 #include <QUrlQuery>
 #include <QDateTime>
+#include <algorithm>
+
+namespace {
+
+// QTimer counts in an int of milliseconds, about 24.8 days. A token that
+// lasts longer is refreshed at this bound, which is early and harmless.
+constexpr qint64 kMaxRefreshWaitMs = qint64(24) * 24 * 60 * 60 * 1000;
+
+// Arms the refresh for 60 s before the expiry.
+void armRefresh(QTimer *timer, const QDateTime &expiry) {
+    const qint64 msec = QDateTime::currentDateTime().msecsTo(expiry) - 60000;
+    if (msec > 0) timer->start(int(std::min(msec, kMaxRefreshWaitMs)));
+}
+
+} // namespace
 
 Auth::Auth(TidalApi *api, QObject *parent)
     : QObject(parent), m_api(api)
@@ -130,9 +145,7 @@ void Auth::refreshAccessToken() {
         m_tokenExpiry = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
         saveCredentials();
-        // Next refresh 60 s before expiry.
-        qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
-        if (msec > 0) m_refreshTimer->start(msec);
+        armRefresh(m_refreshTimer, m_tokenExpiry);
 
         if (m_state != State::LoggedIn) {
             fetchSession();
@@ -208,8 +221,7 @@ void Auth::fetchSession() {
 
         saveCredentials();
 
-        qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
-        if (msec > 0) m_refreshTimer->start(msec);
+        armRefresh(m_refreshTimer, m_tokenExpiry);
 
         // Emit before the state flips: QML fetches user-scoped data on the
         // state change, and TidalClient::userId is set by this signal.
@@ -247,8 +259,7 @@ void Auth::loadCredentials() {
         emit loginSucceeded();
         setState(State::LoggedIn);
         fetchSession();
-        qint64 msec = QDateTime::currentDateTime().msecsTo(m_tokenExpiry) - 60000;
-        if (msec > 0) m_refreshTimer->start(msec);
+        armRefresh(m_refreshTimer, m_tokenExpiry);
     }
 }
 
