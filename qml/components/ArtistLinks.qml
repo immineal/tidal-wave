@@ -28,17 +28,16 @@ Item {
     objectName: root.namePrefix + "ArtistLine"
     implicitHeight: Math.max(fallbackLine.implicitHeight, nameRow.implicitHeight)
 
-    FontMetrics { id: fm; font.pixelSize: root.fontPixelSize }
-
-    // Where the i-th name begins, measured on the names in front of it.
-    // A delegate cannot see its siblings' widths, and binding a width to the
-    // x a Row just assigned makes a binding loop.
+    // Where the i-th credit begins: the widths the credits in front of it ask
+    // for. Their implicit widths, because binding a width to the x a Row just
+    // assigned makes a binding loop.
     function startX(i) {
-        if (i <= 0) return 0
-        var before = []
-        for (var k = 0; k < i && k < root.credits.length; k++)
-            before.push(root.credits[k].name)
-        return fm.advanceWidth(before.join(root.separator))
+        var x = 0
+        for (var k = 0; k < i && k < creditRepeater.count; k++) {
+            var before = creditRepeater.itemAt(k)
+            if (before) x += before.fullWidth
+        }
+        return x
     }
 
     // Guarded here rather than at each call site, so a credit with no id is a
@@ -94,6 +93,7 @@ Item {
         spacing: 0
 
         Repeater {
+            id: creditRepeater
             model: root.credits
             delegate: Row {
                 id: credit
@@ -102,11 +102,12 @@ Item {
 
                 readonly property bool linkable: Number(modelData.id) > 0
                 readonly property real sepWidth: index > 0 ? sep.implicitWidth : 0
+                // What this credit takes when nothing has to elide.
+                readonly property real fullWidth: sepWidth + name.implicitWidth
                 // What the line has left once the names in front of this one
-                // have taken theirs. The pixel of slack absorbs the difference
-                // between the measured string and the rendered one.
+                // have taken theirs.
                 readonly property real room:
-                    Math.max(0, nameRow.width - root.startX(index) - sepWidth - 1)
+                    Math.max(0, nameRow.width - root.startX(index) - sepWidth)
                 // Too tight to read is too tight to aim at, so the name goes
                 // rather than leaving a clickable sliver or an unreachable tab
                 // stop behind.
