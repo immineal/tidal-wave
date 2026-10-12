@@ -97,8 +97,8 @@ private slots:
 
         QVERIFY(!p.isPinned(QStringLiteral("album"), QStringLiteral("42")));
 
-        p.pin(QStringLiteral("album"), QStringLiteral("42"), QStringLiteral("Kind of Blue"),
-              QStringLiteral("Miles Davis"), QStringLiteral("http://art/42.jpg"));
+        p.pin(QStringLiteral("album"), QStringLiteral("42"), QStringLiteral("Paper Weather"),
+              QStringLiteral("Vellum Coast"), QStringLiteral("http://art/42.jpg"));
         QCOMPARE(p.items().size(), 1);
         QVERIFY(p.isPinned(QStringLiteral("album"), QStringLiteral("42")));
         QCOMPARE(spy.count(), 1);
@@ -106,8 +106,8 @@ private slots:
         const QVariantMap m = p.items().first().toMap();
         QCOMPARE(m.value(QStringLiteral("kind")).toString(), QStringLiteral("album"));
         QCOMPARE(m.value(QStringLiteral("id")).toString(), QStringLiteral("42"));
-        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
-        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Miles Davis"));
+        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Paper Weather"));
+        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Vellum Coast"));
         QCOMPARE(m.value(QStringLiteral("imageUrl")).toString(), QStringLiteral("http://art/42.jpg"));
 
         p.unpin(QStringLiteral("album"), QStringLiteral("42"));
@@ -119,10 +119,10 @@ private slots:
         p.unpin(QStringLiteral("album"), QStringLiteral("42"));
         QCOMPARE(spy.count(), 2);
 
-        p.toggle(QStringLiteral("artist"), QStringLiteral("7"), QStringLiteral("Portishead"),
+        p.toggle(QStringLiteral("artist"), QStringLiteral("7"), QStringLiteral("Brackwater"),
                  QString(), QString());
         QVERIFY(p.isPinned(QStringLiteral("artist"), QStringLiteral("7")));
-        p.toggle(QStringLiteral("artist"), QStringLiteral("7"), QStringLiteral("Portishead"),
+        p.toggle(QStringLiteral("artist"), QStringLiteral("7"), QStringLiteral("Brackwater"),
                  QString(), QString());
         QVERIFY(!p.isPinned(QStringLiteral("artist"), QStringLiteral("7")));
         QCOMPARE(spy.count(), 4);
@@ -134,11 +134,11 @@ private slots:
         PinStore p;
         p.setUserId(1001);
 
-        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Spirit"),
+        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Salt Lines"),
               QString(), QString());
-        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Spirit"),
+        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Salt Lines"),
               QString(), QString());
-        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Spirit"),
+        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Salt Lines"),
               QString(), QString());
         QCOMPARE(p.items().size(), 1);
 
@@ -149,7 +149,7 @@ private slots:
         QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("album:5"), QStringLiteral("playlist:5")}));
 
         // Re-pinning must not move it either: the order belongs to the user.
-        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Spirit"),
+        p.pin(QStringLiteral("album"), QStringLiteral("5"), QStringLiteral("Salt Lines"),
               QString(), QString());
         QCOMPARE(idsOf(p.items()).first(), QStringLiteral("5"));
         QCOMPARE(p.items().first().toMap().value(QStringLiteral("kind")).toString(),
@@ -351,8 +351,8 @@ private slots:
     void theOtherKindsKeepTheirSubtitle_data() {
         QTest::addColumn<QString>("kind");
         QTest::addColumn<QString>("subtitle");
-        QTest::newRow("album: its artists")  << QStringLiteral("album")  << QStringLiteral("Miles Davis");
-        QTest::newRow("mix: Tidal's own")    << QStringLiteral("mix")    << QStringLiteral("Based on Portishead");
+        QTest::newRow("album: its artists")  << QStringLiteral("album")  << QStringLiteral("Vellum Coast");
+        QTest::newRow("mix: Tidal's own")    << QStringLiteral("mix")    << QStringLiteral("Based on Brackwater");
         QTest::newRow("artist: nothing")     << QStringLiteral("artist") << QString();
     }
 
@@ -379,8 +379,8 @@ private slots:
             QStringLiteral("[{\"kind\":\"playlist\",\"id\":\"uuid-evening\","
                            "\"title\":\"Evening Drive\",\"subtitle\":\"31 Titel\","
                            "\"imageUrl\":\"http://art/evening.jpg\"},"
-                           "{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\","
-                           "\"subtitle\":\"Miles Davis\","
+                           "{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Paper Weather\","
+                           "\"subtitle\":\"Vellum Coast\","
                            "\"imageUrl\":\"http://art/42.jpg\"}]")); }
 
         PinStore p;
@@ -398,8 +398,8 @@ private slots:
 
         // The album row is not touched by any of this.
         const QVariantMap album = p.items().at(1).toMap();
-        QCOMPARE(album.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Miles Davis"));
-        QCOMPARE(album.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
+        QCOMPARE(album.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Vellum Coast"));
+        QCOMPARE(album.value(QStringLiteral("title")).toString(), QStringLiteral("Paper Weather"));
     }
 
     // load() keeps a row that carries fields beyond the five it knows and drops
@@ -407,16 +407,16 @@ private slots:
     // would not survive a run of an older build.
     void anUnknownFieldDoesNotCostTheRow() {
         { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
-            QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\","
-                           "\"subtitle\":\"Miles Davis\",\"imageUrl\":\"http://art/42.jpg\","
+            QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Paper Weather\","
+                           "\"subtitle\":\"Vellum Coast\",\"imageUrl\":\"http://art/42.jpg\","
                            "\"trackCount\":5,\"somethingNewer\":{\"a\":1}}]")); }
 
         PinStore p;
         p.setUserId(1001);
         QCOMPARE(keysOf(p.items()), QStringList({QStringLiteral("album:42")}));
         const QVariantMap m = p.items().first().toMap();
-        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Kind of Blue"));
-        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Miles Davis"));
+        QCOMPARE(m.value(QStringLiteral("title")).toString(), QStringLiteral("Paper Weather"));
+        QCOMPARE(m.value(QStringLiteral("subtitle")).toString(), QStringLiteral("Vellum Coast"));
         QVERIFY2(!m.contains(QStringLiteral("somethingNewer")),
                  "an unknown field is dropped on load - see the comment above");
         QVERIFY(!m.contains(QStringLiteral("trackCount")));
@@ -533,7 +533,7 @@ private slots:
     // asked.
     void anAccountThatAlreadyHasPinsIsLeftAlone() {
         { QSettings s; s.setValue(QStringLiteral("user_1001/pins"),
-            QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Kind of Blue\"}]")); }
+            QStringLiteral("[{\"kind\":\"album\",\"id\":\"42\",\"title\":\"Paper Weather\"}]")); }
 
         DeferredMixes net;
         PinStore p;
@@ -686,7 +686,7 @@ private slots:
         p.setMixSource(net.source());
         p.setUserId(1001);
 
-        p.pin(QStringLiteral("album"), QStringLiteral("42"), QStringLiteral("Kind of Blue"),
+        p.pin(QStringLiteral("album"), QStringLiteral("42"), QStringLiteral("Paper Weather"),
               QString(), QString());
         net.answer(cannedMixes());
 

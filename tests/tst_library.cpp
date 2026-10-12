@@ -226,7 +226,7 @@ private slots:
     void pinnedThenPlayedThenTheRest() {
         PinStore pins;
         pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"),  QStringLiteral("12"), QStringLiteral("The Wall"), QString(), QString());
+        pins.pin(QStringLiteral("album"),  QStringLiteral("12"), QStringLiteral("The Weir"), QString(), QString());
         pins.pin(QStringLiteral("artist"), QStringLiteral("20"), QStringLiteral("Alder Vane"),    QString(), QString());
 
         TestLibrary lib(&pins);
@@ -243,8 +243,8 @@ private slots:
             QStringLiteral("artist:20"),     // pinned, second
             QStringLiteral("album:10"),      // played most recently
             QStringLiteral("playlist:p-zebra"),
-            QStringLiteral("album:11"),      // never played, "Aerzte Live"
-            QStringLiteral("artist:21"),     // "Beatles"
+            QStringLiteral("album:11"),      // never played, "Aermel Live"
+            QStringLiteral("artist:21"),     // "Bexmoor"
             QStringLiteral("mix:m1"),        // "The Cosmos", the article does not count
             QStringLiteral("playlist:p-morning"),
         }));
@@ -256,27 +256,27 @@ private slots:
         QCOMPARE(rowFor(lib.entries(), QStringLiteral("artist:21")).value(QStringLiteral("lastPlayed")).toLongLong(), 0LL);
     }
 
-    // "Ärzte" sorts with the As and case does not matter, which takes QCollator.
+    // "Ärmel" sorts with the As and case does not matter, which takes QCollator.
     void alphabeticalOrderIsCollatedNotByteWise() {
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
         lib.artists = {mkArtist(1, QStringLiteral("alder vane")),
-                       mkArtist(2, QStringLiteral("Ärzte")),
-                       mkArtist(3, QStringLiteral("Beatles")),
-                       mkArtist(4, QStringLiteral("Zero 7")),
+                       mkArtist(2, QStringLiteral("Ärmel")),
+                       mkArtist(3, QStringLiteral("Bexmoor")),
+                       mkArtist(4, QStringLiteral("Zeta 7")),
                        mkArtist(5, QStringLiteral("Örsted"))};
         lib.setUserId(kUser);
         lib.refresh();
         QCOMPARE(titlesOf(lib.entries()), QStringList({
-            QStringLiteral("alder vane"), QStringLiteral("Ärzte"), QStringLiteral("Beatles"),
-            QStringLiteral("Örsted"), QStringLiteral("Zero 7")}));
+            QStringLiteral("alder vane"), QStringLiteral("Ärmel"), QStringLiteral("Bexmoor"),
+            QStringLiteral("Örsted"), QStringLiteral("Zeta 7")}));
     }
 
     // A pinned entry lives in the pinned block and nowhere else.
     void aPinnedEntryAppearsExactlyOnce() {
         PinStore pins;
         pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"), QString(), QString());
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Weir"), QString(), QString());
 
         TestLibrary lib(&pins);
         fillMixedLibrary(lib);
@@ -428,15 +428,15 @@ private slots:
         lib.refresh();
         waitForIndex(lib);
 
-        for (const QString &q : {QStringLiteral("björk"), QStringLiteral("Bjork"),
-                                 QStringLiteral("BJÖRK"), QStringLiteral("bjork")}) {
+        for (const QString &q : {QStringLiteral("bjöld"), QStringLiteral("Bjold"),
+                                 QStringLiteral("BJÖLD"), QStringLiteral("bjold")}) {
             const QVariantList hits = lib.search(q, {});
             QVERIFY2(indexOfKey(hits, QStringLiteral("artist:20")) >= 0, qPrintable(q));
         }
 
         // ...and the same for a song title.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("joga"), {}), QStringLiteral("track:500")) >= 0);
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("JÓGA"), {}), QStringLiteral("track:500")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("jora"), {}), QStringLiteral("track:500")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("JÓRA"), {}), QStringLiteral("track:500")) >= 0);
 
         // A query matching nothing comes back empty rather than matching all.
         QVERIFY(lib.search(QStringLiteral("zzzzz"), {}).isEmpty());
@@ -455,14 +455,14 @@ private slots:
 
         const QVariantList hits = lib.search(QStringLiteral("love"), {});
         const int lovely  = indexOfKey(hits, QStringLiteral("album:102"));    // "Lovely Days"
-        const int supreme = indexOfKey(hits, QStringLiteral("track:505"));    // "Love Supreme"
-        const int endless = indexOfKey(hits, QStringLiteral("track:502"));    // "Endless Love"
+        const int prefixed = indexOfKey(hits, QStringLiteral("track:505"));    // "Love Signals"
+        const int eastern = indexOfKey(hits, QStringLiteral("track:502"));    // "Eastern Love"
         const int clover  = indexOfKey(hits, QStringLiteral("album:103"));    // "Clover Field"
-        QVERIFY(lovely >= 0 && supreme >= 0 && endless >= 0 && clover >= 0);
+        QVERIFY(lovely >= 0 && prefixed >= 0 && eastern >= 0 && clover >= 0);
 
-        QVERIFY2(lovely < endless,  "a prefix match must outrank a word-start match");
-        QVERIFY2(supreme < endless, "a prefix match must outrank a word-start match");
-        QVERIFY2(endless < clover,  "a word-start match must outrank a mid-word match");
+        QVERIFY2(lovely < eastern,  "a prefix match must outrank a word-start match");
+        QVERIFY2(prefixed < eastern, "a prefix match must outrank a word-start match");
+        QVERIFY2(eastern < clover,  "a word-start match must outrank a mid-word match");
 
         // Scores come back with the rows and never increase down the list.
         int previous = INT_MAX;
@@ -513,18 +513,18 @@ private slots:
         lib.refresh();
         waitForIndex(lib);
 
-        // Portishead the artist, and nothing else. "Dummy", "Glory Box" and
-        // "Roads" are all theirs and all saved, and none of them is a match
+        // Porthallow the artist, and nothing else. "Dally", "Gorse Box" and
+        // "Roven" are all theirs and all saved, and none of them is a match
         // for what was typed.
-        const QStringList artistHit = keysOf(lib.search(QStringLiteral("portishead"), {}));
+        const QStringList artistHit = keysOf(lib.search(QStringLiteral("porthallow"), {}));
         QCOMPARE(artistHit, QStringList{QStringLiteral("artist:21")});
 
         // And the other direction: a song does not bring its album along.
-        const QStringList songHit = keysOf(lib.search(QStringLiteral("bachelorette"), {}));
+        const QStringList songHit = keysOf(lib.search(QStringLiteral("birchlantern"), {}));
         QCOMPARE(songHit, QStringList{QStringLiteral("track:503")});
 
         // No row carries an expansion flag.
-        for (const QVariant &v : lib.search(QStringLiteral("glory"), {})) {
+        for (const QVariant &v : lib.search(QStringLiteral("gorse"), {})) {
             const QVariantMap row = v.toMap();
             QVERIFY(!row.contains(QStringLiteral("expanded")));
             QVERIFY(!row.contains(QStringLiteral("expandedFrom")));
@@ -543,14 +543,14 @@ private slots:
         lib.refresh();
         waitForIndex(lib);
 
-        const QStringList hits = keysOf(lib.search(QStringLiteral("moderat"), {}));
-        QCOMPARE(hits, (QStringList{QStringLiteral("artist:40"),      // Moderat
-                                    QStringLiteral("album:300"),      // "Moderat"
-                                    QStringLiteral("playlist:p-mod"), // "Moderat Mixtape"
-                                    QStringLiteral("track:701")}));   // "Moderat Intro"
+        const QStringList hits = keysOf(lib.search(QStringLiteral("molvane"), {}));
+        QCOMPARE(hits, (QStringList{QStringLiteral("artist:40"),      // Molvane
+                                    QStringLiteral("album:300"),      // "Molvane"
+                                    QStringLiteral("playlist:p-mod"), // "Molvane Mixtape"
+                                    QStringLiteral("track:701")}));   // "Molvane Intro"
     }
 
-    // "Sun" is certainly what was meant. "Sun King" probably. "Sunflower
+    // "Sun" is certainly what was meant. "Sun Kiln" probably. "Sunflower
     // Reverie" gives three of its seventeen characters to the query, which is
     // the weakest claim of the three, so it comes last.
     void aShortTitleMatchedInFullBeatsALongOneThatMerelyStartsWithIt() {
@@ -564,7 +564,7 @@ private slots:
         const QStringList hits = titlesOf(lib.search(QStringLiteral("sun"),
                                                      {QStringLiteral("album")}));
         QCOMPARE(hits, (QStringList{QStringLiteral("Sun"),
-                                    QStringLiteral("Sun King"),
+                                    QStringLiteral("Sun Kiln"),
                                     QStringLiteral("Sunflower Reverie")}));
     }
 
@@ -582,12 +582,12 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
         waitForIndex(lib);
-        lib.markPlayed(QStringLiteral("album"), QStringLiteral("311"));   // Blue Train
+        lib.markPlayed(QStringLiteral("album"), QStringLiteral("311"));   // Blue Trail
 
         const QStringList hits = titlesOf(lib.search(QStringLiteral("blue"),
                                                      {QStringLiteral("album")}));
         QCOMPARE(hits.mid(0, 3), (QStringList{QStringLiteral("Blue Grass"),
-                                              QStringLiteral("Blue Train"),
+                                              QStringLiteral("Blue Trail"),
                                               QStringLiteral("Blue Horse")}));
 
         // Only among equals: "Deep Blue" is pinned too and still comes last,
@@ -608,7 +608,7 @@ private slots:
         const QStringList hits = titlesOf(lib.search(QStringLiteral("ocean"),
                                                      {QStringLiteral("track")}));
         QCOMPARE(hits, (QStringList{QStringLiteral("Ocean Choir"),    // liked
-                                    QStringLiteral("Ocean Drive")})); // only indexed
+                                    QStringLiteral("Ocean Drift")})); // only indexed
     }
 
     // ── the lazy album tracklist index ───────────────────────────────────
@@ -625,22 +625,22 @@ private slots:
         QCOMPARE(lib.indexedAlbumCount(), 0);
 
         // Liked songs are cached already, so they answer before any album is
-        // indexed. "Roads" exists only inside album 101's tracklist.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("glory box"), {}), QStringLiteral("track:501")) >= 0);
-        QVERIFY(lib.search(QStringLiteral("roads"), {}).isEmpty());
-        QVERIFY(lib.search(QStringLiteral("bachelorette"), {}).isEmpty());
+        // indexed. "Roven" exists only inside album 101's tracklist.
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("gorse box"), {}), QStringLiteral("track:501")) >= 0);
+        QVERIFY(lib.search(QStringLiteral("roven"), {}).isEmpty());
+        QVERIFY(lib.search(QStringLiteral("birchlantern"), {}).isEmpty());
 
         // One album lands. Its tracks are searchable; the rest still are not.
         lib.deliverOneTracklist();
         QTest::qWait(1);
         QCOMPARE(lib.indexedAlbumCount(), 1);
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("bachelorette"), {}), QStringLiteral("track:503")) >= 0);
-        QVERIFY(lib.search(QStringLiteral("roads"), {}).isEmpty());
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("birchlantern"), {}), QStringLiteral("track:503")) >= 0);
+        QVERIFY(lib.search(QStringLiteral("roven"), {}).isEmpty());
 
         lib.deliverAllTracklists();
         QTRY_VERIFY(!lib.indexing());
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size());
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("roven"), {}), QStringLiteral("track:504")) >= 0);
     }
 
     void cancellingTheIndexStopsItAndKeepsWhatIsDone() {
@@ -667,7 +667,7 @@ private slots:
         QVERIFY(!lib.indexing());
 
         // What was indexed before the cancel is still searchable.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("bachelorette"), {}), QStringLiteral("track:503")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("birchlantern"), {}), QStringLiteral("track:503")) >= 0);
     }
 
     // The point of the disk cache: a second launch does not re-fetch every
@@ -689,7 +689,7 @@ private slots:
         again.refresh();
         waitForIndex(again);
         QCOMPARE(again.tracklistRequests, 0);
-        QVERIFY(indexOfKey(again.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0);
+        QVERIFY(indexOfKey(again.search(QStringLiteral("roven"), {}), QStringLiteral("track:504")) >= 0);
 
         // A different account does not get to read it.
         TestLibrary other(&pins);
@@ -715,14 +715,14 @@ private slots:
         fillSearchLibrary(again);
         for (Album &a : again.albums)
             if (a.id == 101) a.numTracks = 3;
-        again.albumTracks[101] << mkTrack(507, QStringLiteral("Mysterons"),
-                                          again.albums.at(1), {mkArtist(21, QStringLiteral("Portishead"))});
+        again.albumTracks[101] << mkTrack(507, QStringLiteral("Mossbanks"),
+                                          again.albums.at(1), {mkArtist(21, QStringLiteral("Porthallow"))});
         again.setUserId(kUser);
         again.refresh();
         waitForIndex(again);
 
         QCOMPARE(again.tracklistRequests, 1);
-        QVERIFY(indexOfKey(again.search(QStringLiteral("mysterons"), {}), QStringLiteral("track:507")) >= 0);
+        QVERIFY(indexOfKey(again.search(QStringLiteral("mossbanks"), {}), QStringLiteral("track:507")) >= 0);
     }
 
     // ── nothing at all ───────────────────────────────────────────────────
@@ -760,7 +760,7 @@ private slots:
         Playlist theirs = mkPlaylist(QStringLiteral("p-theirs"), QStringLiteral("Theirs"));
         theirs.type = QStringLiteral("EDITORIAL");
         lib.playlists = {mine, theirs};
-        lib.albums = {mkAlbum(10, QStringLiteral("Blue Train"), {mkArtist(99, QStringLiteral("Various"))})};
+        lib.albums = {mkAlbum(10, QStringLiteral("Blue Trail"), {mkArtist(99, QStringLiteral("Various"))})};
         lib.setUserId(kUser);
         lib.refresh();
 
@@ -801,16 +801,16 @@ private slots:
         const int before = lib.albumRequests;
 
         QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
-        lib.addAlbum(mkAlbum(4242, QStringLiteral("Crystallized"),
-                             {mkArtist(98, QStringLiteral("Brakence"))}));
+        lib.addAlbum(mkAlbum(4242, QStringLiteral("Cobblestones"),
+                             {mkArtist(98, QStringLiteral("Brackens"))}));
 
         QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
                  qPrintable(QStringLiteral("the sidebar did not gain album:4242; it holds %1")
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
         QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
-                 QStringLiteral("Crystallized"));
+                 QStringLiteral("Cobblestones"));
         QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("subtitle")).toString(),
-                 QStringLiteral("Brakence"));
+                 QStringLiteral("Brackens"));
         // The sidebar is told, exactly once, and nothing was re-paged for it.
         QCOMPARE(spy.count(), 1);
         QCOMPARE(lib.albumRequests, before);
@@ -823,7 +823,7 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
 
-        const QString key = QStringLiteral("album:11");       // "Ärzte Live"
+        const QString key = QStringLiteral("album:11");       // "Ärmel Live"
         QVERIFY(indexOfKey(lib.entries(), key) >= 0);
         const int was = lib.entries().size();
 
@@ -935,7 +935,7 @@ private slots:
         const QString key = QStringLiteral("artist:30");
         QCOMPARE(indexOfKey(lib.entries(), key), -1);
 
-        lib.addArtist(mkArtist(30, QStringLiteral("Brakence")));
+        lib.addArtist(mkArtist(30, QStringLiteral("Brackens")));
         QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
                  qPrintable(QStringLiteral("the sidebar did not gain artist:30; it holds %1")
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
@@ -956,10 +956,10 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
 
-        const Album host = mkAlbum(4242, QStringLiteral("Crystallized"),
-                                   {mkArtist(98, QStringLiteral("Brakence"))});
-        const Track t = mkTrack(777, QStringLiteral("death rolL"), host,
-                                {mkArtist(98, QStringLiteral("Brakence"))});
+        const Album host = mkAlbum(4242, QStringLiteral("Cobblestones"),
+                                   {mkArtist(98, QStringLiteral("Brackens"))});
+        const Track t = mkTrack(777, QStringLiteral("delta rolL"), host,
+                                {mkArtist(98, QStringLiteral("Brackens"))});
         const QStringList chip{QStringLiteral("track")};
         const QString key = QStringLiteral("track:777");
 
@@ -969,13 +969,13 @@ private slots:
         QVERIFY2(indexOfKey(lib.entriesForKinds(chip), key) >= 0,
                  qPrintable(QStringLiteral("the Tracks chip did not gain track:777; it holds %1")
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("death"), {}), key) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("delta"), {}), key) >= 0);
         // Liking a song off an album that *is* saved adds no row to the library
         // list: the album's own row already leads to it. (Album 10 is "Blue
         // Train", which fillMixedLibrary saves.)
-        const Album saved = mkAlbum(10, QStringLiteral("Blue Train"),
+        const Album saved = mkAlbum(10, QStringLiteral("Blue Trail"),
                                     {mkArtist(99, QStringLiteral("Various"))});
-        lib.addTrack(mkTrack(778, QStringLiteral("Locomotion"), saved,
+        lib.addTrack(mkTrack(778, QStringLiteral("Locksmiths"), saved,
                              {mkArtist(99, QStringLiteral("Various"))}));
         QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:778")) >= 0);
         QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:778")) < 0,
@@ -999,7 +999,7 @@ private slots:
         const int was = lib.entries().size();
         QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
 
-        lib.addAlbum(mkAlbum(10, QStringLiteral("Blue Train"),
+        lib.addAlbum(mkAlbum(10, QStringLiteral("Blue Trail"),
                              {mkArtist(99, QStringLiteral("Various"))}));
         lib.addArtist(mkArtist(20, QStringLiteral("Alder Vane")));
         // Nothing saved under this id, so there is nothing to take out either.
@@ -1011,12 +1011,12 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
-    // A just-saved album is the first row under the pinned block. "Avalon"
-    // collates into the middle, between "Ärzte Live" and "Beatles" in German, so
+    // A just-saved album is the first row under the pinned block. "Avenor"
+    // collates into the middle, between "Ärmel Live" and "Bexmoor" in German, so
     // an alphabetical placement and a newest-first one cannot agree.
     void aJustSavedAlbumIsTheFirstRowUnderThePins() {
         PinStore pins; pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Weir"),
                  QString(), QString());
 
         TestLibrary lib(&pins);
@@ -1024,7 +1024,7 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
 
-        lib.addAlbum(mkAlbum(4242, QStringLiteral("Avalon"),
+        lib.addAlbum(mkAlbum(4242, QStringLiteral("Avenor"),
                              {mkArtist(98, QStringLiteral("Isle Trio"))}));
 
         const QStringList keys = keysOf(lib.entries());
@@ -1035,7 +1035,7 @@ private slots:
                                 .arg(keys.join(QLatin1String(", ")))));
         // And it did not land there alphabetically.
         const QStringList titles = titlesOf(lib.entries());
-        QVERIFY2(titles.indexOf(QStringLiteral("Avalon")) < titles.indexOf(QStringLiteral("Ärzte Live")),
+        QVERIFY2(titles.indexOf(QStringLiteral("Avenor")) < titles.indexOf(QStringLiteral("Ärmel Live")),
                  qPrintable(titles.join(QLatin1String(", "))));
     }
 
@@ -1269,19 +1269,19 @@ private slots:
         waitForIndex(lib);
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size());
 
-        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
-        const Album saved = mkAlbum(200, QStringLiteral("III"), {moderat});
-        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eating Hooks"), saved, {moderat}),
-                                mkTrack(601, QStringLiteral("Reminder"),     saved, {moderat})};
+        const Artist molvane = mkArtist(40, QStringLiteral("Molvane"));
+        const Album saved = mkAlbum(200, QStringLiteral("III"), {molvane});
+        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eaves Hollow"), saved, {molvane}),
+                                mkTrack(601, QStringLiteral("Rainmark"),     saved, {molvane})};
         const int before = lib.tracklistRequests;
-        QVERIFY(lib.search(QStringLiteral("eating hooks"), {}).isEmpty());
+        QVERIFY(lib.search(QStringLiteral("eaves hollow"), {}).isEmpty());
 
         lib.addAlbum(saved);
         QTest::qWait(5);
 
         const QStringList chip{QStringLiteral("track")};
-        QVERIFY2(indexOfKey(lib.search(QStringLiteral("eating hooks"), {}), QStringLiteral("track:600")) >= 0,
-                 qPrintable(QStringLiteral("\"Eating Hooks\" is not searchable; the index holds %1")
+        QVERIFY2(indexOfKey(lib.search(QStringLiteral("eaves hollow"), {}), QStringLiteral("track:600")) >= 0,
+                 qPrintable(QStringLiteral("\"Eaves Hollow\" is not searchable; the index holds %1")
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
         QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:601")) >= 0);
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() + 1);
@@ -1306,9 +1306,9 @@ private slots:
         QCOMPARE(lib.indexedAlbumCount(), 1);
         const int requestsBefore = lib.tracklistRequests;   // 100 done, 101 in flight
 
-        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
-        const Album saved = mkAlbum(200, QStringLiteral("III"), {moderat}, 1);
-        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eating Hooks"), saved, {moderat})};
+        const Artist molvane = mkArtist(40, QStringLiteral("Molvane"));
+        const Album saved = mkAlbum(200, QStringLiteral("III"), {molvane}, 1);
+        lib.albumTracks[200] = {mkTrack(600, QStringLiteral("Eaves Hollow"), saved, {molvane})};
         lib.addAlbum(saved);
 
         QCOMPARE(lib.tracklistRequests, requestsBefore + 1);
@@ -1321,9 +1321,9 @@ private slots:
         // and gone back for it.
         QCOMPARE(lib.tracklistRequests, int(lib.albums.size()) + 1);
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() + 1);
-        QVERIFY2(indexOfKey(lib.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0,
+        QVERIFY2(indexOfKey(lib.search(QStringLiteral("roven"), {}), QStringLiteral("track:504")) >= 0,
                  "album 101's tracklist did not survive the save");
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("eating hooks"), {}), QStringLiteral("track:600")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("eaves hollow"), {}), QStringLiteral("track:600")) >= 0);
     }
 
     // ── and unsaving one has to take them out again ───────────────────────
@@ -1338,16 +1338,16 @@ private slots:
         waitForIndex(lib);
 
         const QStringList chip{QStringLiteral("track")};
-        // Album 101 is "Dummy". "Roads" is only ever found through its
-        // tracklist; "Glory Box" sits on it too but is also a liked song.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0);
+        // Album 101 is "Dally". "Roven" is only ever found through its
+        // tracklist; "Gorse Box" sits on it too but is also a liked song.
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("roven"), {}), QStringLiteral("track:504")) >= 0);
         QVERIFY(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:501")) >= 0);
 
         QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
         lib.removeEntry(QStringLiteral("album"), QStringLiteral("101"));
 
-        QVERIFY2(lib.search(QStringLiteral("roads"), {}).isEmpty(),
-                 qPrintable(QStringLiteral("\"Roads\" still answers a search; the index holds %1")
+        QVERIFY2(lib.search(QStringLiteral("roven"), {}).isEmpty(),
+                 qPrintable(QStringLiteral("\"Roven\" still answers a search; the index holds %1")
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
         QVERIFY2(indexOfKey(lib.entriesForKinds(chip), QStringLiteral("track:504")) < 0,
                  qPrintable(QStringLiteral("track:504 is still under the Tracks chip: %1")
@@ -1358,7 +1358,7 @@ private slots:
                  qPrintable(QStringLiteral("unsaving the album took the liked song with it; left: %1")
                                 .arg(keysOf(lib.entriesForKinds(chip)).join(QLatin1String(", ")))));
         // Every other album keeps its songs.
-        QVERIFY(indexOfKey(lib.search(QStringLiteral("bachelorette"), {}), QStringLiteral("track:503")) >= 0);
+        QVERIFY(indexOfKey(lib.search(QStringLiteral("birchlantern"), {}), QStringLiteral("track:503")) >= 0);
         QCOMPARE(lib.indexedAlbumCount(), lib.albums.size() - 1);
         QCOMPARE(spy.count(), 1);
     }
@@ -1381,7 +1381,7 @@ private slots:
         fillSearchLibrary(again);
         again.setUserId(kUser);          // reads the cache; no refresh() yet
         QCOMPARE(again.entries().size(), 0);
-        QVERIFY2(indexOfKey(again.search(QStringLiteral("roads"), {}), QStringLiteral("track:504")) >= 0,
+        QVERIFY2(indexOfKey(again.search(QStringLiteral("roven"), {}), QStringLiteral("track:504")) >= 0,
                  "the cached tracklists answer nothing before the album list arrives");
     }
 
@@ -1396,14 +1396,14 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
 
-        const Artist brakence = mkArtist(98, QStringLiteral("Brakence"));
-        const Album  orphan   = mkAlbum(4242, QStringLiteral("Hypochondriac"), {brakence});
-        const Album  saved    = mkAlbum(10, QStringLiteral("Blue Train"),
+        const Artist brackens = mkArtist(98, QStringLiteral("Brackens"));
+        const Album  orphan   = mkAlbum(4242, QStringLiteral("Hollowlantern"), {brackens});
+        const Album  saved    = mkAlbum(10, QStringLiteral("Blue Trail"),
                                         {mkArtist(99, QStringLiteral("Various"))});
 
         // One song off an unsaved album, one off a saved one.
-        lib.addTrack(mkTrack(777, QStringLiteral("Deepfake"), orphan, {brakence}));
-        lib.addTrack(mkTrack(778, QStringLiteral("Locomotion"), saved, {brakence}));
+        lib.addTrack(mkTrack(777, QStringLiteral("Deepfall"), orphan, {brackens}));
+        lib.addTrack(mkTrack(778, QStringLiteral("Locksmiths"), saved, {brackens}));
 
         QVERIFY2(indexOfKey(lib.entries(), QStringLiteral("track:777")) >= 0,
                  qPrintable(QStringLiteral("the unreachable song got no row; the list holds %1")
@@ -1433,7 +1433,7 @@ private slots:
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
         // The song is never a row twice, and the Tracks chip is a separate list
         // with no such filter.
-        lib.addTrack(mkTrack(777, QStringLiteral("Deepfake"), orphan, {brakence}));
+        lib.addTrack(mkTrack(777, QStringLiteral("Deepfall"), orphan, {brackens}));
         QCOMPARE(keysOf(lib.entries()).count(QStringLiteral("track:777")), 1);
         QVERIFY(indexOfKey(lib.entriesForKinds({QStringLiteral("track")}),
                            QStringLiteral("track:778")) >= 0);
@@ -1530,10 +1530,10 @@ private slots:
         PinStore pins; pins.setUserId(kUser);
         TestLibrary lib(&pins);
         const Artist various = mkArtist(99, QStringLiteral("Various"));
-        const Album  saved   = mkAlbum(10,  QStringLiteral("Blue Train"), {various}, 2, daysAfterJan(1));
-        const Album  wall    = mkAlbum(11,  QStringLiteral("The Wall"),   {various}, 2, daysAfterJan(2));
+        const Album  saved   = mkAlbum(10,  QStringLiteral("Blue Trail"), {various}, 2, daysAfterJan(1));
+        const Album  weir    = mkAlbum(11,  QStringLiteral("The Weir"),   {various}, 2, daysAfterJan(2));
         const Album  unsaved = mkAlbum(900, QStringLiteral("Host"),       {various});
-        lib.albums = {saved, wall};
+        lib.albums = {saved, weir};
         // 810's album is not saved, so it earns a row of its own in the library
         // list; 811's is, so it only ever appears under the chip.
         lib.favoriteTracks = {mkTrack(810, QStringLiteral("Orphan Song"), unsaved, {various}),
@@ -1735,18 +1735,18 @@ private slots:
         const int before = lib.playlistRequests;
 
         QSignalSpy spy(&lib, &LibraryIndex::entriesChanged);
-        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avenor Mix"), 0));
 
         QVERIFY2(indexOfKey(lib.entries(), key) >= 0,
                  qPrintable(QStringLiteral("the sidebar did not gain playlist:p-new; it holds %1")
                                 .arg(keysOf(lib.entries()).join(QLatin1String(", ")))));
         QCOMPARE(rowFor(lib.entries(), key).value(QStringLiteral("title")).toString(),
-                 QStringLiteral("Avalon Mix"));
+                 QStringLiteral("Avenor Mix"));
         QCOMPARE(spy.count(), 1);
         QCOMPARE(lib.playlistRequests, before);
 
         // A repeat must not double the row.
-        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avalon Mix"), 0));
+        lib.addPlaylist(mkPlaylist(QStringLiteral("p-new"), QStringLiteral("Avenor Mix"), 0));
         QCOMPARE(keysOf(lib.entries()).count(key), 1);
         QCOMPARE(spy.count(), 1);
     }
@@ -1756,7 +1756,7 @@ private slots:
     // sorts last, so collation cannot put the row there.
     void aCreatedPlaylistLeadsTheUnpinnedBlock() {
         PinStore pins; pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Weir"),
                  QString(), QString());
 
         TestLibrary lib(&pins);
@@ -1765,7 +1765,7 @@ private slots:
                                     daysAfterJan(1)),
                          mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Alte Liste"), 10,
                                     daysAfterJan(20))};
-        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Weir"), {various}, 2, daysAfterJan(10))};
         lib.setUserId(kUser);
         lib.refresh();
 
@@ -1845,7 +1845,7 @@ private slots:
     // and the new title sorts first, so a re-stamp or a re-collation shows.
     void renamingAPlaylistDoesNotMoveIt() {
         PinStore pins; pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Weir"),
                  QString(), QString());
 
         TestLibrary lib(&pins);
@@ -1854,7 +1854,7 @@ private slots:
                                     daysAfterJan(1)),
                          mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Zugfahrt"), 10,
                                     daysAfterJan(20))};
-        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Weir"), {various}, 2, daysAfterJan(10))};
         lib.setUserId(kUser);
         lib.refresh();
 
@@ -1962,7 +1962,7 @@ private slots:
     // years old. Copying it into `addedAt` would sink the row.
     void aTrackAddedDoesNotMoveTheSidebarRow() {
         PinStore pins; pins.setUserId(kUser);
-        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Wall"),
+        pins.pin(QStringLiteral("album"), QStringLiteral("12"), QStringLiteral("The Weir"),
                  QString(), QString());
 
         TestLibrary lib(&pins);
@@ -1971,7 +1971,7 @@ private slots:
                                     daysAfterJan(1)),
                          mkPlaylist(QStringLiteral("p-feb"), QStringLiteral("Zugfahrt"), 10,
                                     daysAfterJan(20))};
-        lib.albums = {mkAlbum(12, QStringLiteral("The Wall"), {various}, 2, daysAfterJan(10))};
+        lib.albums = {mkAlbum(12, QStringLiteral("The Weir"), {various}, 2, daysAfterJan(10))};
         lib.setUserId(kUser);
         lib.refresh();
 
@@ -2098,42 +2098,42 @@ private:
         lib.playlists = {mkPlaylist(QStringLiteral("p-zebra"),   QStringLiteral("Zebra Nights")),
                          mkPlaylist(QStringLiteral("p-morning"), QStringLiteral("Morning"))};
         const Artist various = mkArtist(99, QStringLiteral("Various"));
-        lib.albums = {mkAlbum(10, QStringLiteral("Blue Train"),  {various}),
-                      mkAlbum(11, QStringLiteral("Ärzte Live"),  {various}),
-                      mkAlbum(12, QStringLiteral("The Wall"),    {various})};
+        lib.albums = {mkAlbum(10, QStringLiteral("Blue Trail"),  {various}),
+                      mkAlbum(11, QStringLiteral("Ärmel Live"),  {various}),
+                      mkAlbum(12, QStringLiteral("The Weir"),    {various})};
         lib.artists = {mkArtist(20, QStringLiteral("Alder Vane")),
-                       mkArtist(21, QStringLiteral("Beatles"))};
+                       mkArtist(21, QStringLiteral("Bexmoor"))};
         lib.mixes = {mkMix(QStringLiteral("m1"), QStringLiteral("The Cosmos"))};
     }
 
     static void fillSearchLibrary(TestLibrary &lib) {
-        const Artist bjork   = mkArtist(20, QStringLiteral("Björk"));
-        const Artist porti   = mkArtist(21, QStringLiteral("Portishead"));
+        const Artist bjold   = mkArtist(20, QStringLiteral("Bjöld"));
+        const Artist porth   = mkArtist(21, QStringLiteral("Porthallow"));
         const Artist various = mkArtist(99, QStringLiteral("Various"));
 
-        const Album homogenic = mkAlbum(100, QStringLiteral("Homogenic"),   {bjork});
-        const Album dummy     = mkAlbum(101, QStringLiteral("Dummy"),       {porti});
+        const Album hearthway = mkAlbum(100, QStringLiteral("Hearthway"),   {bjold});
+        const Album dally     = mkAlbum(101, QStringLiteral("Dally"),       {porth});
         const Album lovely    = mkAlbum(102, QStringLiteral("Lovely Days"), {various});
         const Album clover    = mkAlbum(103, QStringLiteral("Clover Field"), {various}, 1);
 
-        lib.artists = {bjork, porti};
-        lib.albums  = {homogenic, dummy, lovely, clover};
-        lib.playlists = {mkPlaylist(QStringLiteral("p-love"),  QStringLiteral("Love Letters")),
-                         mkPlaylist(QStringLiteral("p-glory"), QStringLiteral("Morning Glory"))};
+        lib.artists = {bjold, porth};
+        lib.albums  = {hearthway, dally, lovely, clover};
+        lib.playlists = {mkPlaylist(QStringLiteral("p-love"),  QStringLiteral("Love Ladders")),
+                         mkPlaylist(QStringLiteral("p-gorse"), QStringLiteral("Morning Gorse"))};
         lib.mixes = {mkMix(QStringLiteral("m9"), QStringLiteral("Daily Discovery"))};
 
         // Liked songs: cached already, so instant.
-        lib.favoriteTracks = {mkTrack(500, QStringLiteral("Jóga"),        homogenic, {bjork}),
-                              mkTrack(501, QStringLiteral("Glory Box"),   dummy,     {porti}),
-                              mkTrack(502, QStringLiteral("Endless Love"), lovely,   {various})};
+        lib.favoriteTracks = {mkTrack(500, QStringLiteral("Jóra"),        hearthway, {bjold}),
+                              mkTrack(501, QStringLiteral("Gorse Box"),   dally,     {porth}),
+                              mkTrack(502, QStringLiteral("Eastern Love"), lovely,   {various})};
 
         // Saved album tracklists: these are what the background index pulls in.
-        lib.albumTracks[100] = {mkTrack(500, QStringLiteral("Jóga"),         homogenic, {bjork}),
-                                mkTrack(503, QStringLiteral("Bachelorette"), homogenic, {bjork})};
-        lib.albumTracks[101] = {mkTrack(501, QStringLiteral("Glory Box"),    dummy, {porti}),
-                                mkTrack(504, QStringLiteral("Roads"),        dummy, {porti})};
-        lib.albumTracks[102] = {mkTrack(502, QStringLiteral("Endless Love"), lovely, {various}),
-                                mkTrack(505, QStringLiteral("Love Supreme"), lovely, {various})};
+        lib.albumTracks[100] = {mkTrack(500, QStringLiteral("Jóra"),         hearthway, {bjold}),
+                                mkTrack(503, QStringLiteral("Birchlantern"), hearthway, {bjold})};
+        lib.albumTracks[101] = {mkTrack(501, QStringLiteral("Gorse Box"),    dally, {porth}),
+                                mkTrack(504, QStringLiteral("Roven"),        dally, {porth})};
+        lib.albumTracks[102] = {mkTrack(502, QStringLiteral("Eastern Love"), lovely, {various}),
+                                mkTrack(505, QStringLiteral("Love Signals"), lovely, {various})};
         lib.albumTracks[103] = {mkTrack(506, QStringLiteral("Clover Song"),  clover, {various})};
     }
 
@@ -2141,29 +2141,29 @@ private:
     // family of titles differs only in length, and one ties exactly on
     // coverage, so only pinning and play history can decide its order.
     static void fillRankingLibrary(TestLibrary &lib) {
-        const Artist moderat = mkArtist(40, QStringLiteral("Moderat"));
+        const Artist molvane = mkArtist(40, QStringLiteral("Molvane"));
         const Artist various = mkArtist(41, QStringLiteral("Various"));
 
-        const Album selfTitled = mkAlbum(300, QStringLiteral("Moderat"), {moderat}, 1);
+        const Album selfTitled = mkAlbum(300, QStringLiteral("Molvane"), {molvane}, 1);
         const Album sun        = mkAlbum(301, QStringLiteral("Sun"), {various}, 0);
-        const Album sunKing    = mkAlbum(302, QStringLiteral("Sun King"), {various}, 0);
+        const Album sunKiln    = mkAlbum(302, QStringLiteral("Sun Kiln"), {various}, 0);
         const Album sunflower  = mkAlbum(303, QStringLiteral("Sunflower Reverie"), {various}, 0);
         const Album blueGrass  = mkAlbum(310, QStringLiteral("Blue Grass"), {various}, 0);
-        const Album blueTrain  = mkAlbum(311, QStringLiteral("Blue Train"), {various}, 0);
+        const Album blueTrail  = mkAlbum(311, QStringLiteral("Blue Trail"), {various}, 0);
         const Album blueHorse  = mkAlbum(312, QStringLiteral("Blue Horse"), {various}, 0);
         const Album deepBlue   = mkAlbum(313, QStringLiteral("Deep Blue"),  {various}, 0);
         const Album ocean      = mkAlbum(320, QStringLiteral("Ocean Sides"), {various}, 2);
 
-        lib.artists = {moderat, various};
-        lib.albums  = {selfTitled, sun, sunKing, sunflower,
-                       blueGrass, blueTrain, blueHorse, deepBlue, ocean};
-        lib.playlists = {mkPlaylist(QStringLiteral("p-mod"), QStringLiteral("Moderat Mixtape"))};
+        lib.artists = {molvane, various};
+        lib.albums  = {selfTitled, sun, sunKiln, sunflower,
+                       blueGrass, blueTrail, blueHorse, deepBlue, ocean};
+        lib.playlists = {mkPlaylist(QStringLiteral("p-mod"), QStringLiteral("Molvane Mixtape"))};
 
         lib.favoriteTracks = {mkTrack(700, QStringLiteral("Ocean Choir"), ocean, {various})};
 
-        lib.albumTracks[300] = {mkTrack(701, QStringLiteral("Moderat Intro"), selfTitled, {moderat})};
+        lib.albumTracks[300] = {mkTrack(701, QStringLiteral("Molvane Intro"), selfTitled, {molvane})};
         lib.albumTracks[320] = {mkTrack(700, QStringLiteral("Ocean Choir"), ocean, {various}),
-                                mkTrack(702, QStringLiteral("Ocean Drive"), ocean, {various})};
+                                mkTrack(702, QStringLiteral("Ocean Drift"), ocean, {various})};
     }
 
     static void waitForIndex(TestLibrary &lib) {

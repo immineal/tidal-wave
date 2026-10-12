@@ -14,27 +14,27 @@ var coreThemes  = ["sea", "sky", "sand"]
 // lorem, and long enough in places to show elision where elision is the plan.
 function track(i) {
     var titles = [
-        "Everything In Its Right Place",
-        "Weird Fishes / Arpeggi",
+        "A Short Walk Home in the Rain",
+        "Tidewrack / Signal Box",
         "A Title That Runs On Long Enough To Need Eliding Somewhere",
-        "Idioteque",
-        "Pyramid Song",
+        "Postscript",
+        "Pilot Light",
         "15 Step"
     ]
     var secs = [251, 318, 197, 309, 289, 237][i % 6]
     return {
         id:          100000 + i,
         title:       titles[i % titles.length],
-        artists:     (i % 3 === 2) ? "Radiohead, Thom Yorke, Jonny Greenwood"
-                                   : "Radiohead",
+        artists:     (i % 3 === 2) ? "Brackwater, Corin Halvey, Ines Varelund"
+                                   : "Brackwater",
         // PlayerBar draws one clickable link per entry and falls back to the
         // joined string above when the list is missing, so both halves of that
         // are populated here.
         artistList:  (i % 3 === 2)
-                     ? [{ id: 7, name: "Radiohead" }, { id: 8, name: "Thom Yorke" },
-                        { id: 9, name: "Jonny Greenwood" }]
-                     : [{ id: 7, name: "Radiohead" }],
-        albumTitle:  (i % 2 === 0) ? "Kid A" : "In Rainbows (Deluxe Edition)",
+                     ? [{ id: 7, name: "Brackwater" }, { id: 8, name: "Corin Halvey" },
+                        { id: 9, name: "Ines Varelund" }]
+                     : [{ id: 7, name: "Brackwater" }],
+        albumTitle:  (i % 2 === 0) ? "Thaw" : "Salt Lines (Deluxe Edition)",
         albumId:     42 + (i % 7),
         artistId:    7,
         albumCover:  "cover/" + (i % 7),
@@ -55,19 +55,19 @@ function tracks(n) {
 }
 
 function albums(n) {
-    var names = ["Kid A", "In Rainbows", "OK Computer", "Amnesiac",
-                 "Hail To The Thief", "A Moon Shaped Pool"]
+    var names = ["Thaw", "Salt Lines", "Night Buses", "Kindling",
+                 "Under Sodium Lights", "Small Hours, Big Sky"]
     var out = []
     for (var i = 0; i < n; ++i)
         out.push({ id: 200 + i, title: names[i % names.length],
-                   artists: "Radiohead", year: "" + (1997 + (i % 20)),
+                   artists: "Brackwater", year: "" + (1997 + (i % 20)),
                    coverUrl: "cover/album" + i, type: "ALBUM", numTracks: 10 + i })
     return out
 }
 
 function artists(n) {
-    var names = ["Radiohead", "Boards of Canada", "Aphex Twin", "Portishead",
-                 "Massive Attack", "Burial"]
+    var names = ["Brackwater", "Odd Lantern Club", "Lumen Drift", "Vellum Coast",
+                 "Kestrel Arcade", "Slate Meridian"]
     var out = []
     for (var i = 0; i < n; ++i)
         out.push({ id: 300 + i, name: names[i % names.length],
@@ -91,7 +91,7 @@ function mixes(n) {
     var out = []
     for (var i = 0; i < n; ++i)
         out.push({ id: "mix-" + i, title: "My Mix " + (i + 1),
-                   subtitle: "Radiohead, Portishead and more",
+                   subtitle: "Brackwater, Vellum Coast and more",
                    coverUrl: "cover/mix" + i })
     return out
 }
@@ -101,26 +101,26 @@ function mixes(n) {
 function libraryEntries() {
     return [
         { kind: "playlist", id: "p1",  title: "Late Night Drive", subtitle: "",             imageUrl: "cover/pl0",     pinned: true,  trackCount: 24 },
-        { kind: "album",    id: "a1",  title: "In Rainbows",      subtitle: "Radiohead",    imageUrl: "cover/album1",  pinned: true,  trackCount: 10 },
-        { kind: "album",    id: "a2",  title: "Amnesiac",         subtitle: "Radiohead",    imageUrl: "cover/album3",  pinned: false, trackCount: 11 },
-        { kind: "artist",   id: "ar1", title: "Boards of Canada", subtitle: "",             imageUrl: "cover/artist1", pinned: false, trackCount: 0  },
+        { kind: "album",    id: "a1",  title: "Salt Lines",       subtitle: "Brackwater",   imageUrl: "cover/album1",  pinned: true,  trackCount: 10 },
+        { kind: "album",    id: "a2",  title: "Kindling",         subtitle: "Brackwater",   imageUrl: "cover/album3",  pinned: false, trackCount: 11 },
+        { kind: "artist",   id: "ar1", title: "Odd Lantern Club", subtitle: "",             imageUrl: "cover/artist1", pinned: false, trackCount: 0  },
         { kind: "mix",      id: "m1",  title: "Daily Discovery",  subtitle: "Your mix",     imageUrl: "cover/mix0",    pinned: false, trackCount: 0  },
         { kind: "playlist", id: "p2",  title: "Sunday Morning",   subtitle: "",             imageUrl: "cover/pl2",     pinned: false, trackCount: 31 },
-        { kind: "album",    id: "a3",  title: "OK Computer",      subtitle: "Radiohead",    imageUrl: "cover/album2",  pinned: false, trackCount: 12 },
-        { kind: "artist",   id: "ar2", title: "Portishead",       subtitle: "",             imageUrl: "cover/artist3", pinned: false, trackCount: 0  }
+        { kind: "album",    id: "a3",  title: "Night Buses",      subtitle: "Brackwater",   imageUrl: "cover/album2",  pinned: false, trackCount: 12 },
+        { kind: "artist",   id: "ar2", title: "Vellum Coast",     subtitle: "",             imageUrl: "cover/artist3", pinned: false, trackCount: 0  }
     ]
 }
 
 function pinItems() {
     return [
         { kind: "playlist", id: "p1", title: "Late Night Drive", subtitle: "",          imageUrl: "cover/pl0" },
-        { kind: "album",    id: "a1", title: "In Rainbows",      subtitle: "Radiohead", imageUrl: "cover/album1" }
+        { kind: "album",    id: "a1", title: "Salt Lines",       subtitle: "Brackwater", imageUrl: "cover/album1" }
     ]
 }
 
 function albumData() {
     return {
-        title: "In Rainbows", artists: "Radiohead", year: "2007",
+        title: "Salt Lines", artists: "Brackwater", year: "2007",
         numTracks: 10, duration: 2823, quality: "HI_RES_LOSSLESS",
         artistId: 7, coverUrl: "cover/album1", coverUrl640: "cover/album1"
     }
