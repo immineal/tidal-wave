@@ -387,6 +387,20 @@ Decoded decodeSilently(const QString &path, int timeoutMs = 20000)
             QTimer::singleShot(50, &loop, &QEventLoop::quit);
     });
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4's reader thread can sleep through its wake-up, and the player
+    // then plays and stands still. Woken as the app's Player wakes its own.
+    QTimer watch;
+    qint64 stoodAt = -1;
+    QObject::connect(&watch, &QTimer::timeout, [&player, &stoodAt] {
+        if (player.playbackState() != QMediaPlayer::PlayingState) return;
+        const qint64 at = player.position();
+        if (qAbs(at - stoodAt) < 20) { player.pause(); player.play(); }
+        stoodAt = at;
+    });
+    watch.start(500);
+#endif
+
     QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
     player.setSource(QUrl::fromLocalFile(path));
     player.play();
