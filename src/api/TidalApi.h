@@ -27,6 +27,12 @@ public:
     explicit TidalApi(QObject *parent = nullptr);
 
     void setAccessToken(const QString &token);
+    // Asked for a newer token when a request that carried `refused` got a 401
+    // over it. It answers true once setAccessToken() holds one, and the
+    // request is then sent once more. Requests refused together share it.
+    using TokenRenewer =
+        std::function<void(const QString &refused, std::function<void(bool)> done)>;
+    void setTokenRenewer(TokenRenewer renewer);
     void setCountryCode(const QString &cc);
     QString countryCode() const { return m_countryCode; }
 
@@ -74,15 +80,34 @@ public:
     // minutes is safe. Without it a stalled request never calls back.
     static constexpr int kTransferTimeoutMs = 15000;
 
+signals:
+    // A request sent again with a renewed token was refused once more, in
+    // words that name the token or the session.
+    void renewedTokenRefused(const QString &token);
+
 protected:
-    // Where a GET for one of the base URLs above is sent. Virtual as a test
-    // seam only: a subclass points the requests at a local server.
+    // Where a request for one of the base URLs above is sent. Virtual as a
+    // test seam only: a subclass points the requests at a local server.
     virtual QString baseUrl(const QString &base) const { return base; }
+    // Whether a request to `url` carries the tokens. Virtual as a test seam
+    // only: a subclass names its local server.
+    virtual bool takesTokens(const QUrl &url) const;
 
 private:
     QNetworkAccessManager *m_nam;
     QString m_accessToken;
     QString m_countryCode;
+    TokenRenewer m_renewer;
+
+    // Builds one attempt with the token held at that moment and sends it.
+    using Sender = std::function<QNetworkReply *()>;
+    // Gets the finished reply and its body, which can be read only once.
+    using Finisher = std::function<void(QNetworkReply *, const QByteArray &)>;
+    // Every request that may carry the token goes through here.
+    void send(Sender sender, Finisher done, bool resend = false);
+    // What the writes make of an answer. `errorKey` reads {"error": ...} as
+    // a failure.
+    static Finisher writeAnswer(JsonCallback cb, bool errorKey);
 
     void getFrom(const QString &base, const QString &endpoint,
                  const QUrlQuery &params, StatusCallback cb);

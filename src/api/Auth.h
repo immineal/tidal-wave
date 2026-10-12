@@ -53,20 +53,33 @@ signals:
     void sessionExpired();
     void hasSavedCredentialsChanged();
 
+protected:
+    // The wall clock. Virtual as a test seam only: a test moves it.
+    virtual QDateTime now() const;
+
 private slots:
     void pollForToken();
     void refreshAccessToken();
+    // Compares the wall clock with the expiry. The wake-up calls it.
+    void refreshIfDue();
 
 private:
     void setState(State s);
     void fetchSession();
     void saveCredentials();
     void clearCredentials();
+    // A request was refused over `refused`: one refresh answers all of them.
+    void renewRefused(const QString &refused, std::function<void(bool)> done);
+    void answerRefused(bool renewed);
+    // The way a refresh goes that the login host refuses.
+    void endSession();
 
     TidalApi  *m_api;
     QTimer    *m_pollTimer;
-    QTimer    *m_refreshTimer;
+    QTimer    *m_expiryCheck;
     State      m_state = State::LoggedOut;
+    bool       m_refreshing = false;
+    QList<std::function<void(bool)>> m_refused;
 
     QString m_deviceCode;
     QString m_userCode;

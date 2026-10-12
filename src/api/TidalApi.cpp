@@ -4,6 +4,7 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <chrono>
 
 TidalApi::TidalApi(QObject *parent) : QObject(parent) {
@@ -20,10 +21,11 @@ TidalApi::TidalApi(QObject *parent) : QObject(parent) {
 
 void TidalApi::setAccessToken(const QString &token) { m_accessToken = token; }
 void TidalApi::setCountryCode(const QString &cc)    { m_countryCode = cc; }
+void TidalApi::setTokenRenewer(TokenRenewer renewer) { m_renewer = std::move(renewer); }
 
 // The origins that are sent the access token and the client token. Every
 // other host, the audio CDN and the image host among them, gets neither.
-static bool takesTokens(const QUrl &url) {
+bool TidalApi::takesTokens(const QUrl &url) const {
     static const QLatin1String kApiHosts[] = {
         QLatin1String("api.tidal.com"),
         QLatin1String("openapi.tidal.com"),
@@ -51,6 +53,84 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) const {
     return req;
 }
 
+namespace {
+
+// How the body of a 401 reads. Tidal's v1 puts its own code on a refusal,
+// and there a 401 covers more than the token.
+enum class Refusal { Other, Unnamed, Token };
+
+Refusal refusalIn(const QByteArray &body) {
+    const QJsonObject o = QJsonDocument::fromJson(body).object();
+    const int sub = o["subStatus"].toInt();
+    // An invalid session, a token that cannot be verified, an expired one.
+    if (sub == 6001 || sub == 6002 || sub == 11002 || sub == 11003
+        || o["userMessage"].toString().startsWith(QLatin1String("The token has expired")))
+        return Refusal::Token;
+    return sub == 0 ? Refusal::Unnamed : Refusal::Other;
+}
+
+} // namespace
+
+void TidalApi::send(Sender sender, Finisher done, bool resend) {
+    QNetworkReply *reply = sender();
+    connect(reply, &QNetworkReply::finished, this, [this, reply, sender, done, resend]() {
+        const QByteArray body = reply->readAll();
+        const auto finish = [reply, body, done] {
+            reply->deleteLater();
+            done(reply, body);
+        };
+        const QByteArray sent = reply->request().rawHeader("Authorization");
+        const bool refused = !sent.isEmpty()
+            && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401;
+        const Refusal refusal = refused ? refusalIn(body) : Refusal::Other;
+        if (refusal == Refusal::Other) { finish(); return; }
+
+        const QString token = QString::fromUtf8(sent.mid(qstrlen("Bearer ")));
+        if (resend) {
+            // One resend and no more. A refusal that names nothing is too
+            // little to end a session on.
+            if (refusal == Refusal::Token) emit renewedTokenRefused(token);
+            finish();
+            return;
+        }
+        // The token was renewed while this request was on its way.
+        if (!m_accessToken.isEmpty() && token != m_accessToken) {
+            reply->deleteLater();
+            send(sender, done, true);
+            return;
+        }
+        if (!m_renewer) { finish(); return; }
+        m_renewer(token, [self = QPointer<TidalApi>(this), reply, sender, done,
+                          finish](bool renewed) {
+            // The reply went with its manager.
+            if (!self) return;
+            if (!renewed) { finish(); return; }
+            reply->deleteLater();
+            self->send(sender, done, true);
+        });
+    });
+}
+
+TidalApi::Finisher TidalApi::writeAnswer(JsonCallback cb, bool errorKey) {
+    return [cb = std::move(cb), errorKey](QNetworkReply *reply, const QByteArray &data) {
+        if (data.isEmpty()) {
+            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
+            return;
+        }
+        QJsonParseError err;
+        const auto doc = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            cb({}, err.errorString());
+            return;
+        }
+        const auto obj = doc.object();
+        if (errorKey && obj.contains("error"))
+            cb(obj, obj["error_description"].toString(obj["error"].toString()));
+        else
+            cb(obj, {});
+    };
+}
+
 // For the callers that have no use for the HTTP status.
 static TidalApi::StatusCallback withoutStatus(TidalApi::JsonCallback cb) {
     // The body of a refusal is for the callers that ask for the status.
@@ -72,33 +152,14 @@ void TidalApi::getV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
 }
 
 void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
-    QUrl url(kApiBaseV2 + endpoint);
+    QUrl url(baseUrl(QString::fromLatin1(kApiBaseV2)) + endpoint);
     QUrlQuery q = params;
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
 
-    QNetworkRequest req = makeRequest(url);
     // An empty body makes Qt send Content-Length: 0.
-    auto *reply = m_nam->put(req, QByteArray());
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
-        const QByteArray data = reply->readAll();
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
-            return;
-        }
-        QJsonParseError err;
-        const auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
-            return;
-        }
-        const auto obj = doc.object();
-        if (obj.contains("error"))
-            cb(obj, obj["error_description"].toString(obj["error"].toString()));
-        else
-            cb(obj, {});
-    });
+    send([this, url] { return m_nam->put(makeRequest(url), QByteArray()); },
+         writeAnswer(std::move(cb), true));
 }
 
 void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
@@ -133,20 +194,19 @@ void TidalApi::getDoc(const QString &base, const QString &endpoint,
     if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
     url.setQuery(q);
 
-    auto *reply = m_nam->get(makeRequest(url));
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
+    send([this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](QNetworkReply *reply, const QByteArray &body) {
         // Invalid, and so 0, when the request ended without an answer.
         const int httpStatus =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError) {
             // The body of a refusal holds Tidal's own code for it. One that
             // is no JSON reads as an empty document.
-            cb(QJsonDocument::fromJson(reply->readAll()), reply->errorString(), httpStatus);
+            cb(QJsonDocument::fromJson(body), reply->errorString(), httpStatus);
             return;
         }
         QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(reply->readAll(), &err);
+        auto doc = QJsonDocument::fromJson(body, &err);
         if (err.error != QJsonParseError::NoError) {
             cb({}, err.errorString(), httpStatus);
             return;
@@ -157,7 +217,7 @@ void TidalApi::getDoc(const QString &base, const QString &endpoint,
 
 void TidalApi::post(const QString &endpoint, const QByteArray &body,
                     const QMap<QString,QString> &extraHeaders, JsonCallback cb) {
-    QUrl url(kAuthBase + endpoint);
+    QUrl url(baseUrl(QString::fromLatin1(kAuthBase)) + endpoint);
     // Auth endpoints must not receive X-Tidal-Token or Authorization headers.
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader,
@@ -189,66 +249,22 @@ void TidalApi::postForm(const QString &endpoint, const QUrlQuery &form, JsonCall
 }
 
 void TidalApi::postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb) {
-    QUrl url(kApiBase + endpoint);
-    QNetworkRequest req = makeRequest(url);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-
-    auto *reply = m_nam->post(req, form.toString(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
-        QByteArray data = reply->readAll();
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
-            return;
-        }
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
-            return;
-        }
-        auto obj = doc.object();
-        if (obj.contains("error"))
-            cb(obj, obj["error_description"].toString(obj["error"].toString()));
-        else
-            cb(obj, {});
-    });
+    postApiFormEtag(endpoint, form, {}, std::move(cb));
 }
 
 void TidalApi::deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
-    QUrl url(kApiBase + endpoint);
-    if (!params.isEmpty()) {
-        url.setQuery(params);
-    }
-    QNetworkRequest req = makeRequest(url);
-    auto *reply = m_nam->deleteResource(req);
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
-        QByteArray data = reply->readAll();
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
-            return;
-        }
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
-            return;
-        }
-        cb(doc.object(), {});
-    });
+    deleteApiEtag(endpoint, params, {}, std::move(cb));
 }
 
 void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QString)> cb) {
-    QUrl url(kApiBase + endpoint);
+    QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     if (!m_countryCode.isEmpty()) {
         QUrlQuery q;
         q.addQueryItem("countryCode", m_countryCode);
         url.setQuery(q);
     }
-    auto *reply = m_nam->get(makeRequest(url));
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
+    send([this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](QNetworkReply *reply, const QByteArray &) {
         if (reply->error() != QNetworkReply::NoError) {
             cb({}, reply->errorString());
             return;
@@ -259,49 +275,26 @@ void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QStr
 }
 
 void TidalApi::deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb) {
-    QUrl url(kApiBase + endpoint);
+    QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     if (!params.isEmpty()) url.setQuery(params);
-    QNetworkRequest req = makeRequest(url);
-    if (!etag.isEmpty())
-        req.setRawHeader("If-None-Match", etag.toLatin1());
-    auto *reply = m_nam->deleteResource(req);
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
-        QByteArray data = reply->readAll();
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
-            return;
-        }
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
-        cb(doc.object(), {});
-    });
+    send([this, url, etag] {
+        QNetworkRequest req = makeRequest(url);
+        if (!etag.isEmpty())
+            req.setRawHeader("If-None-Match", etag.toLatin1());
+        return m_nam->deleteResource(req);
+    }, writeAnswer(std::move(cb), false));
 }
 
 void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb) {
-    QUrl url(kApiBase + endpoint);
-    QNetworkRequest req = makeRequest(url);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    if (!etag.isEmpty())
-        req.setRawHeader("If-None-Match", etag.toLatin1());
-    auto *reply = m_nam->post(req, form.toString(QUrl::FullyEncoded).toUtf8());
-    connect(reply, &QNetworkReply::finished, this, [reply, cb]() {
-        reply->deleteLater();
-        QByteArray data = reply->readAll();
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
-            return;
-        }
-        QJsonParseError err;
-        auto doc = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) { cb({}, err.errorString()); return; }
-        auto obj = doc.object();
-        if (obj.contains("error"))
-            cb(obj, obj["error_description"].toString(obj["error"].toString()));
-        else
-            cb(obj, {});
-    });
+    const QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
+    const QByteArray body = form.toString(QUrl::FullyEncoded).toUtf8();
+    send([this, url, body, etag] {
+        QNetworkRequest req = makeRequest(url);
+        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+        if (!etag.isEmpty())
+            req.setRawHeader("If-None-Match", etag.toLatin1());
+        return m_nam->post(req, body);
+    }, writeAnswer(std::move(cb), true));
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {

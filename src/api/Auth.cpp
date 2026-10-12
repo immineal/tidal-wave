@@ -8,19 +8,17 @@
 #include <QStandardPaths>
 #include <QUrlQuery>
 #include <QDateTime>
-#include <algorithm>
+#include <QPointer>
+#include <utility>
 
 namespace {
 
-// QTimer counts in an int of milliseconds, about 24.8 days. A token that
-// lasts longer is refreshed at this bound, which is early and harmless.
-constexpr qint64 kMaxRefreshWaitMs = qint64(24) * 24 * 60 * 60 * 1000;
+// The token is replaced this long before it runs out.
+constexpr qint64 kRefreshAheadMs = 60000;
 
-// Arms the refresh for 60 s before the expiry.
-void armRefresh(QTimer *timer, const QDateTime &expiry) {
-    const qint64 msec = QDateTime::currentDateTime().msecsTo(expiry) - 60000;
-    if (msec > 0) timer->start(int(std::min(msec, kMaxRefreshWaitMs)));
-}
+// How often the clock is compared with the expiry. No timer is given the
+// whole wait: a timer's clock can stand still while the machine sleeps.
+constexpr int kExpiryCheckMs = 30000;
 
 } // namespace
 
@@ -31,9 +29,51 @@ Auth::Auth(TidalApi *api, QObject *parent)
     m_pollTimer->setSingleShot(false);
     connect(m_pollTimer, &QTimer::timeout, this, &Auth::pollForToken);
 
-    m_refreshTimer = new QTimer(this);
-    m_refreshTimer->setSingleShot(true);
-    connect(m_refreshTimer, &QTimer::timeout, this, &Auth::refreshAccessToken);
+    m_expiryCheck = new QTimer(this);
+    m_expiryCheck->setTimerType(Qt::VeryCoarseTimer);
+    m_expiryCheck->setInterval(kExpiryCheckMs);
+    connect(m_expiryCheck, &QTimer::timeout, this, &Auth::refreshIfDue);
+
+    m_api->setTokenRenewer([self = QPointer<Auth>(this)](const QString &refused,
+                                                         std::function<void(bool)> done) {
+        if (self) self->renewRefused(refused, std::move(done));
+        else done(false);
+    });
+    connect(m_api, &TidalApi::renewedTokenRefused, this, [this](const QString &token) {
+        if (token == m_accessToken) endSession();
+    });
+}
+
+// UTC, so the expiry held in memory names one instant in every timezone.
+QDateTime Auth::now() const { return QDateTime::currentDateTimeUtc(); }
+
+void Auth::refreshIfDue() {
+    if (now().msecsTo(m_tokenExpiry) <= kRefreshAheadMs) refreshAccessToken();
+}
+
+void Auth::renewRefused(const QString &refused, std::function<void(bool)> done) {
+    if (m_refreshToken.isEmpty() || refused != m_accessToken) {
+        done(false);
+        return;
+    }
+    m_refused << std::move(done);
+    refreshAccessToken();
+}
+
+void Auth::answerRefused(bool renewed) {
+    const auto waiting = std::exchange(m_refused, {});
+    for (const auto &done : waiting) done(renewed);
+}
+
+void Auth::endSession() {
+    m_expiryCheck->stop();
+    // No later request carries the dead token and asks for a refresh.
+    m_accessToken.clear();
+    m_api->setAccessToken({});
+    clearCredentials();
+    answerRefused(false);
+    emit sessionExpired();
+    setState(State::LoggedOut);
 }
 
 void Auth::setState(State s) {
@@ -104,13 +144,16 @@ void Auth::pollForToken() {
         m_accessToken  = obj["access_token"].toString();
         m_refreshToken = obj["refresh_token"].toString();
         emit hasSavedCredentialsChanged();
-        m_tokenExpiry  = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
+        m_tokenExpiry  = now().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
+        m_expiryCheck->start();
         fetchSession();
     });
 }
 
 void Auth::refreshAccessToken() {
+    // One at a time: whoever asks meanwhile is answered by the one under way.
+    if (m_refreshing) return;
     if (m_refreshToken.isEmpty()) {
         emit sessionExpired();
         setState(State::LoggedOut);
@@ -122,18 +165,22 @@ void Auth::refreshAccessToken() {
     form.addQueryItem("client_id", kClientId);
     form.addQueryItem("client_secret", kClientSecret);
 
-    m_api->postForm("oauth2/token", form, [this](QJsonObject obj, QString err) {
+    m_refreshing = true;
+    m_api->postForm("oauth2/token", form,
+                    [this, asked = m_refreshToken](QJsonObject obj, QString err) {
+        m_refreshing = false;
+        // Signed out while this was on its way: the answer is for no session.
+        if (asked != m_refreshToken) return;
         if (!err.isEmpty()) {
             if (obj.contains("error")) {
-                clearCredentials();
-                emit sessionExpired();
-                setState(State::LoggedOut);
+                endSession();
             } else {
                 // No error body means the network failed, e.g. right after
                 // boot. Retry and keep the saved session.
-                if (m_state != State::LoggedIn && !m_refreshToken.isEmpty()) {
+                if (m_state != State::LoggedIn) {
                     QTimer::singleShot(5000, this, &Auth::refreshAccessToken);
                 }
+                answerRefused(false);
             }
             return;
         }
@@ -142,10 +189,11 @@ void Auth::refreshAccessToken() {
             m_refreshToken = obj["refresh_token"].toString();
             emit hasSavedCredentialsChanged();
         }
-        m_tokenExpiry = QDateTime::currentDateTime().addSecs(obj["expires_in"].toInt(3600));
+        m_tokenExpiry = now().addSecs(obj["expires_in"].toInt(3600));
         m_api->setAccessToken(m_accessToken);
         saveCredentials();
-        armRefresh(m_refreshTimer, m_tokenExpiry);
+        m_expiryCheck->start();
+        answerRefused(true);
 
         if (m_state != State::LoggedIn) {
             fetchSession();
@@ -184,24 +232,18 @@ QDateTime Auth::expiryFromString(const QString &stored) {
 
 void Auth::fetchSession() {
     m_api->get("sessions", {}, [this](QJsonObject obj, QString err) {
+        // The session ended while this was on its way.
+        if (m_accessToken.isEmpty()) return;
         if (!err.isEmpty()) {
-            if (obj.contains("error") || obj["status"].toInt() == 401) {
-                if (!m_refreshToken.isEmpty()) {
-                    refreshAccessToken();
-                    return;
-                }
+            // A refusal over the token was answered inside TidalApi. What is
+            // left is the network: keep a saved session signed in.
+            if (m_state != State::LoggedIn && m_userId > 0) {
+                emit loginSucceeded();
+                setState(State::LoggedIn);
+                QTimer::singleShot(5000, this, &Auth::fetchSession);
+            } else if (m_state != State::LoggedIn) {
                 emit loginFailed(err);
                 setState(State::LoggedOut);
-            } else {
-                // Network error: don't log out if we have saved user credentials
-                if (m_state != State::LoggedIn && m_userId > 0) {
-                    emit loginSucceeded();
-                    setState(State::LoggedIn);
-                    QTimer::singleShot(5000, this, &Auth::fetchSession);
-                } else if (m_state != State::LoggedIn) {
-                    emit loginFailed(err);
-                    setState(State::LoggedOut);
-                }
             }
             return;
         }
@@ -221,8 +263,6 @@ void Auth::fetchSession() {
 
         saveCredentials();
 
-        armRefresh(m_refreshTimer, m_tokenExpiry);
-
         // Emit before the state flips: QML fetches user-scoped data on the
         // state change, and TidalClient::userId is set by this signal.
         emit loginSucceeded();
@@ -239,7 +279,7 @@ void Auth::loadCredentials() {
     auto obj = doc.object();
     m_accessToken  = obj["access_token"].toString();
     m_refreshToken = obj["refresh_token"].toString();
-    m_tokenExpiry  = expiryFromString(obj["expires_at"].toString());
+    m_tokenExpiry  = expiryFromString(obj["expires_at"].toString()).toUTC();
     m_userId       = obj["user_id"].toVariant().toLongLong();
     m_countryCode  = obj["country_code"].toString();
     m_username     = obj["username"].toString();
@@ -252,14 +292,18 @@ void Auth::loadCredentials() {
     m_api->setAccessToken(m_accessToken);
     m_api->setCountryCode(m_countryCode);
 
-    if (QDateTime::currentDateTime() >= m_tokenExpiry) {
+    m_expiryCheck->start();
+
+    // An expiry that cannot be read counts as past.
+    if (now().msecsTo(m_tokenExpiry) <= 0) {
         refreshAccessToken();
     } else {
         // A valid token logs in at once; the session is validated behind it.
         emit loginSucceeded();
         setState(State::LoggedIn);
         fetchSession();
-        armRefresh(m_refreshTimer, m_tokenExpiry);
+        // In its last minute it is replaced now.
+        refreshIfDue();
     }
 }
 
@@ -291,7 +335,7 @@ void Auth::clearCredentials() {
 
 void Auth::logout() {
     m_pollTimer->stop();
-    m_refreshTimer->stop();
+    m_expiryCheck->stop();
     m_accessToken.clear();
     m_refreshToken.clear();
     m_deviceCode.clear();
@@ -300,5 +344,6 @@ void Auth::logout() {
     m_userId = 0;
     m_api->setAccessToken({});
     clearCredentials();
+    answerRefused(false);
     setState(State::LoggedOut);
 }
