@@ -6,7 +6,7 @@ a question rather than a regression.
 
 The repository is public, so start by cloning the release:
 
-    git clone --branch v0.4.0 https://github.com/immineal/tidal-wave.git
+    git clone --branch v0.4.1 https://github.com/immineal/tidal-wave.git
     cd tidal-wave
 
 ## What is already known to be absent
