@@ -47,7 +47,8 @@ QStringList I18n::systemDisplayLanguages() {
     // Qt's list is the user's preferred languages, which Windows keeps apart.
     ULONG count = 0, size = 0;
     if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, nullptr, &size) && size > 0) {
-        QVarLengthArray<wchar_t, 128> names(qsizetype(size));
+        const qsizetype length = size;
+        QVarLengthArray<wchar_t, 128> names(length);
         if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, names.data(), &size)) {
             for (const wchar_t *name = names.constData(); *name; name += std::wcslen(name) + 1)
                 languages << QString::fromWCharArray(name);
