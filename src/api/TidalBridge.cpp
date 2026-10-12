@@ -303,6 +303,13 @@ void TidalBridge::fetchArtistAlbums(qlonglong artistId, QJSValue cb) {
     });
 }
 
+void TidalBridge::fetchAlbumOtherVersions(qlonglong albumId, QJSValue cb) {
+    m_client->fetchAlbumOtherVersions(albumId, [this, cb](QList<Album> albums, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(albumsToList(albums)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
 void TidalBridge::fetchArtistTopTracks(qlonglong artistId, QJSValue cb) {
     m_client->fetchArtistTopTracks(artistId, [this, cb](QList<Track> tracks, QString err) mutable {
         call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),

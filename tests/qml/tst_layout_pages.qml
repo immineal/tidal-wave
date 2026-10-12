@@ -244,6 +244,42 @@ TestCase {
         }
     }
 
+    // The same page with its row of other versions below the tracks. Eight
+    // cards, so the row scrolls at every width, as the audited rows of the
+    // artist page do.
+    function test_album_page_with_other_versions_fits() {
+        for (var i = 0; i < widths.length; ++i) {
+            var w = widths[i]
+            var page = makePane(albumC, w)
+            page.albumId = 42
+            page.albumData = {
+                title: "Ein ziemlich langer Albumtitel mit Zusatz (Deluxe Edition)",
+                artists: "Erster Interpret, Zweiter Interpret, Dritter Interpret",
+                year: "2019", numTracks: 14, duration: 3842, explicit_: true,
+                quality: "LOW", audioModes: ["DOLBY_ATMOS"], mediaTags: ["DOLBY_ATMOS"],
+                artistId: 7, coverUrl: "", coverUrl640: ""
+            }
+            page.tracks = makeTracks(8)
+            var versions = makeAlbums(8)
+            for (var v = 0; v < versions.length; ++v) {
+                versions[v].explicit_  = v % 2 === 0
+                versions[v].quality    = "LOSSLESS"
+                versions[v].audioModes = ["STEREO"]
+                versions[v].mediaTags  = ["LOSSLESS", "HIRES_LOSSLESS"]
+            }
+            page.otherVersions = versions
+            settle(page)
+
+            var row = findByName(page, "albumOtherVersions")
+            verify(row && row.visible && row.items.length === 8,
+                   "@" + w + ": the row of other versions is not on the page to be audited")
+            var list = findByName(page, "albumTracksList")
+            list.positionViewAtEnd()
+            settle(page)
+            audit(page, "AlbumPage with other versions @" + w)
+        }
+    }
+
     function test_playlist_page_fits() {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]

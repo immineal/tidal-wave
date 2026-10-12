@@ -111,8 +111,63 @@ Rectangle {
         root.unsaveDone = false
         root.unsaveRefused = false
         loadAlbum()
+        loadOtherVersions()
         updateSavedState()
         readSavedAlbum()
+    }
+
+    // The other products of this record, as Tidal's own album page names
+    // them. Empty until the answer is in, and when it names none.
+    property var otherVersions: []
+
+    function loadOtherVersions() {
+        var requested = root.albumId
+        root.otherVersions = []
+        bridge.fetchAlbumOtherVersions(requested, function (versions, err) {
+            // A reply for an album the page has left says nothing about the
+            // one on it, and a failure leaves the page without the row.
+            if (requested !== root.albumId || err) return
+            root.otherVersions = versions || []
+        })
+    }
+
+    function listHas(list, value) {
+        for (var i = 0; list && i < list.length; ++i)
+            if (list[i] === value) return true
+        return false
+    }
+
+    // A product with Dolby Atmos and no stereo mode. Tidal lists it as low
+    // quality, and answers a request for its stream with the stereo version.
+    function atmosOnly(a) {
+        return listHas(a.audioModes, "DOLBY_ATMOS") && !listHas(a.audioModes, "STEREO")
+    }
+
+    // What a product sounds like, in the names of the quality settings. Hi-res
+    // is a tag: the listed quality of such a product says LOSSLESS.
+    function soundOf(a) {
+        if (atmosOnly(a)) return qsTr("Dolby Atmos")
+        if (listHas(a.mediaTags, "HIRES_LOSSLESS")) return player.qualityLabel("HI_RES_LOSSLESS")
+        return a.quality ? player.qualityLabel(a.quality) : ""
+    }
+
+    // The cards of the row. Under each title stands what tells that version
+    // apart: explicit or clean where the versions differ in that, then its
+    // sound. The album on the page is one of the versions compared.
+    readonly property var versionCards: {
+        var all = root.otherVersions.concat(
+            root.albumData.explicit_ !== undefined ? [root.albumData] : [])
+        var explicitOnes = all.filter(function (a) { return a.explicit_ }).length
+        var differ = explicitOnes > 0 && explicitOnes < all.length
+        return root.otherVersions.map(function (a) {
+            var parts = []
+            if (differ) parts.push(a.explicit_
+                    ? qsTr("Explicit", "a version of an album with its lyrics as recorded")
+                    : qsTr("Clean", "a version of an album with its lyrics edited"))
+            parts.push(root.soundOf(a))
+            return { id: a.id, title: a.title, coverUrl: a.coverUrl,
+                     subtitle: parts.filter(function (p) { return p.length > 0 }).join(" • ") }
+        })
     }
 
     Connections {
@@ -257,6 +312,7 @@ Rectangle {
                         }
 
                         Text {
+                            objectName: "albumFacts"
                             text: {
                                 // Bullet-separated facts, each a complete qsTr unit.
                                 var parts = []
@@ -268,7 +324,8 @@ Rectangle {
                                 if (albumData.numTracks) parts.push(qsTr("%n track(s)", "", albumData.numTracks))
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
-                                if (albumData.quality) parts.push(player.qualityLabel(albumData.quality))
+                                if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
+                                else if (albumData.quality) parts.push(player.qualityLabel(albumData.quality))
                                 // qualityLabel echoes a code it does not know, and an
                                 // unknown code can be empty, which otherwise leaves the
                                 // line ending in a dangling separator.
@@ -367,7 +424,53 @@ Rectangle {
             onPlayRequested: root.playFrom(root.tracks, index)
         }
 
-        footer: Item { height: 32; width: tracksList.width }
+        footer: Column {
+            width: tracksList.width
+
+            Item { width: parent.width; height: 24; visible: versionsRow.visible }
+
+            HorizontalSection {
+                id: versionsRow
+                objectName: "albumOtherVersions"
+                width: parent.width
+                visible: root.versionCards.length > 0
+                title: qsTr("Other versions")
+                showViewAll: false
+                mediaType: "album"
+                items: root.versionCards
+                onItemClicked: function (i, item) { root.navigateTo("album", { albumId: item.id }) }
+                // Declares the source, so the player bar records the play.
+                onItemPlayClicked: function (i, item) {
+                    bridge.fetchAlbumTracks(item.id, function (tracks, err) {
+                        if (err || tracks.length === 0) return
+                        player.setPlaybackSource("album", "" + item.id, item.title || "")
+                        player.playTracks(tracks, 0)
+                    })
+                }
+
+                // HorizontalSection scrolls the page for a vertical wheel, counted
+                // from 0. This list counts from originY, so the page takes that
+                // wheel first. No buttons and no hover: the cards keep theirs.
+                MouseArea {
+                    anchors.fill: parent
+                    z: 1
+                    acceptedButtons: Qt.NoButton
+                    onWheel: function (wheel) {
+                        var dx = wheel.angleDelta.x, dy = wheel.angleDelta.y
+                        // The wheel that moves the cards stays the row's.
+                        if (Math.abs(dx) > Math.abs(dy) || (wheel.modifiers & Qt.ShiftModifier)) {
+                            wheel.accepted = false
+                            return
+                        }
+                        var top = tracksList.originY
+                        var end = top + Math.max(0, tracksList.contentHeight - tracksList.height)
+                        tracksList.contentY = Math.max(top, Math.min(end, tracksList.contentY - dy))
+                    }
+                }
+            }
+
+            Item { width: parent.width; height: 32 }
+        }
 
         ScrollBar.vertical: ScrollBar {
             active: true

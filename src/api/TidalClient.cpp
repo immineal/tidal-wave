@@ -501,6 +501,39 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
                          collect(&pending->appearsOn));
 }
 
+// ─── The other versions of a record ────────────────
+
+QList<Album> TidalClient::parseAlbumOtherVersions(const QJsonObject &root, qint64 albumId) {
+    const QLatin1String wanted(kOtherVersionsTitle);
+    for (const auto &row : root["rows"].toArray())
+        for (const auto &module : row.toObject()["modules"].toArray()) {
+            const QJsonObject mod = module.toObject();
+            if (mod["type"].toString() != QLatin1String("ALBUM_LIST")) continue;
+            if (mod["title"].toString().trimmed().compare(wanted, Qt::CaseInsensitive) != 0)
+                continue;
+            QList<Album> versions;
+            QSet<qint64> seen{albumId};
+            for (const Album &a : parseAlbums(mod["pagedList"].toObject())) {
+                if (a.id == 0 || seen.contains(a.id)) continue;
+                seen.insert(a.id);
+                versions.append(a);
+            }
+            return versions;
+        }
+    return {};
+}
+
+void TidalClient::fetchAlbumOtherVersions(qint64 albumId, AlbumsCallback cb) {
+    QUrlQuery q;
+    q.addQueryItem("albumId", QString::number(albumId));
+    q.addQueryItem("deviceType", "BROWSER");
+    q.addQueryItem("locale", QString::fromLatin1(kAlbumPageLocale));
+    m_api->get(QStringLiteral("pages/album"), q, [cb, albumId](QJsonObject root, QString err) {
+        if (!err.isEmpty()) { cb({}, err); return; }
+        cb(parseAlbumOtherVersions(root, albumId), {});
+    });
+}
+
 void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {
     QUrlQuery q;
     q.addQueryItem("limit", "10");

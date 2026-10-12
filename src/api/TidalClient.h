@@ -203,6 +203,18 @@ public:
     // whole record, Album::featured included.
     static QList<Album> mergeAlbumLists(const QList<QList<Album>> &lists);
 
+    // ── the other versions of a record ──────────────────────────────────
+    // Tidal's own album page names them: `pages/album` has an ALBUM_LIST
+    // module titled "Other versions". Empty where the page names none.
+    void fetchAlbumOtherVersions(qint64 albumId, AlbumsCallback cb);
+
+    // The albums of that module, without `albumId` itself and without
+    // repeats. The page holds two more album lists and the title alone tells
+    // them apart, so the page is asked for in kAlbumPageLocale.
+    static QList<Album> parseAlbumOtherVersions(const QJsonObject &root, qint64 albumId);
+    static constexpr auto kAlbumPageLocale    = "en_US";
+    static constexpr auto kOtherVersionsTitle = "Other versions";
+
     // The `filter` values artists/<id>/albums takes. With no filter it
     // answers the albums only; EPs with singles need a request of their own.
     static constexpr auto kFilterEpsAndSingles = "EPSANDSINGLES";

@@ -257,6 +257,57 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+
+    // ── the other versions of an album ───────────────────────────────────
+    // function(albums, error): what setOtherVersionsForTest() stored, and an
+    // empty list beside an error, as the real bridge answers. The replies
+    // have a queue of their own, so one can land after the page moved on.
+    Q_INVOKABLE void fetchAlbumOtherVersions(qlonglong albumId, QJSValue cb) {
+        m_lastOtherVersionsFetched = albumId;
+        m_otherVersionsFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        const QVariantList albums =
+            m_otherVersionsError.isEmpty() ? m_otherVersions : QVariantList();
+        QJSValueList args;
+        args << (e ? e->toScriptValue(albums) : emptyArray())
+             << QJSValue(m_otherVersionsError);
+        if (m_deferOtherVersions) { m_pendingOtherVersions.append({cb, args}); return; }
+        cb.call(args);
+    }
+    Q_INVOKABLE void setOtherVersionsForTest(const QVariantList &albums,
+                                             const QString &error = QString()) {
+        m_otherVersions      = albums;
+        m_otherVersionsError = error;
+    }
+    Q_INVOKABLE void setDeferOtherVersionsForTest(bool on) { m_deferOtherVersions = on; }
+    Q_INVOKABLE int  pendingOtherVersionsForTest() const { return int(m_pendingOtherVersions.size()); }
+    Q_INVOKABLE void flushOtherVersionsForTest() {
+        QList<std::pair<QJSValue, QJSValueList>> pending;
+        pending.swap(m_pendingOtherVersions);
+        for (auto &p : pending)
+            if (p.first.isCallable()) p.first.call(p.second);
+    }
+    Q_INVOKABLE int       otherVersionsFetchesForTest() const { return m_otherVersionsFetches; }
+    Q_INVOKABLE qlonglong lastOtherVersionsFetchedForTest() const { return m_lastOtherVersionsFetched; }
+    // Not part of resetForTest(): a test that stores versions clears them.
+    Q_INVOKABLE void resetOtherVersionsForTest() {
+        m_otherVersions.clear();
+        m_otherVersionsError.clear();
+        m_deferOtherVersions = false;
+        m_pendingOtherVersions.clear();
+        m_otherVersionsFetches = 0;
+        m_lastOtherVersionsFetched = 0;
+    }
+private:
+    QVariantList m_otherVersions;
+    QString      m_otherVersionsError;
+    bool         m_deferOtherVersions = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingOtherVersions;
+    int          m_otherVersionsFetches = 0;
+    qlonglong    m_lastOtherVersionsFetched = 0;
+public:
+
     // The three artist fetches, which ArtistPage opens together. They answer
     // what setArtistForTest() stored plus m_headerError, through deliver(), so a
     // reply for an artist the user already left can land after the next one.

@@ -61,6 +61,9 @@ public:
     Q_INVOKABLE void fetchArtistDetail    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistAlbums    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistTopTracks (qlonglong artistId,     QJSValue cb);
+    // function(albums, error): the other versions of the album's record, as
+    // album maps. An empty list where Tidal names none.
+    Q_INVOKABLE void fetchAlbumOtherVersions(qlonglong albumId,    QJSValue cb);
 
     // `offset` is the row to start at, per kind. The reply carries a total
     // beside each list, so the caller can tell a short page from the last one.

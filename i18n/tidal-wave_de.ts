@@ -70,6 +70,28 @@
         <source>Removing…</source>
         <translation>Wird entfernt…</translation>
     </message>
+    <message>
+        <source>Other versions</source>
+        <translation>Weitere Versionen</translation>
+    </message>
+    <message>
+        <source>Explicit</source>
+        <comment>a version of an album with its lyrics as recorded</comment>
+        <translation>Explizit</translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <comment>a version of an album with its lyrics edited</comment>
+        <translation>Clean</translation>
+    </message>
+    <message>
+        <source>Dolby Atmos</source>
+        <translation>Dolby Atmos</translation>
+    </message>
+    <message>
+        <source>Dolby Atmos, plays in stereo</source>
+        <translation>Dolby Atmos, Wiedergabe in Stereo</translation>
+    </message>
 </context>
 <context>
     <name>Application</name>

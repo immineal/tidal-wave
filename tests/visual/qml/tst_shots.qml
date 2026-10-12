@@ -531,6 +531,39 @@ TestCase {
         win.destroy()
     }
 
+    // A Dolby Atmos only album with the row of its other versions: the facts
+    // line and the second line of each card are what this shot is for.
+    function test_08_albumVersions_data() { return test_02_sidebar_data() }
+    function test_08_albumVersions(row) {
+        prefs.theme = row.theme
+        function version(id, title, explicit_, quality, modes, tags) {
+            return { id: id, title: title, artists: "Brackwater", year: "2007",
+                     coverUrl: "cover/album1", quality: quality, explicit_: explicit_,
+                     audioModes: modes, mediaTags: tags }
+        }
+        bridge.setOtherVersionsForTest([
+            version(301, "Salt Lines", true, "LOSSLESS", ["STEREO"],
+                    ["LOSSLESS", "HIRES_LOSSLESS"]),
+            version(302, "Salt Lines", false, "LOSSLESS", ["STEREO"], ["LOSSLESS"]),
+            version(303, "Salt Lines", false, "LOW", ["DOLBY_ATMOS"], ["DOLBY_ATMOS"]),
+            version(304, "Salt Lines (Deluxe Edition)", true, "HIGH", ["STEREO"], [])
+        ])
+        var win = albumC.createObject(testCase)
+        verify(win)
+        win.page.albumId = 300
+        var album = S.albumData()
+        album.quality = "LOW"
+        album.explicit_ = true
+        album.audioModes = ["DOLBY_ATMOS"]
+        album.mediaTags = ["DOLBY_ATMOS"]
+        win.page.albumData = album
+        win.page.tracks = S.tracks(5)
+        settle(win.contentItem, 500)
+        shot(win.page, "album_versions_" + row.theme)
+        win.destroy()
+        bridge.resetOtherVersionsForTest()
+    }
+
     function test_09_nowPlaying_data() { return test_02_sidebar_data() }
     function test_09_nowPlaying(row) {
         prefs.theme = row.theme
