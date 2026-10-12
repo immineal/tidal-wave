@@ -665,10 +665,6 @@ void TidalClient::removeMixFavorite(const QString &mixId, std::function<void(boo
 
 // ─── Streaming ─────────────────────────────────────
 
-void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
-    fetchStreamManifest(trackId, m_quality, std::move(cb));
-}
-
 // Maps the manifest's delivery format to the tier strings that
 // Player::audioQuality() and Downloader::srcTier compare
 // StreamManifest::codec against.
@@ -770,16 +766,20 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     return m;
 }
 
+// True when a JSON:API refusal, {errors: [{code}]}, names this code.
+static bool refusalHasCode(const QJsonObject &body, QLatin1String code) {
+    const QJsonArray errors = body["errors"].toArray();
+    for (const QJsonValue &e : errors)
+        if (e.toObject()["code"].toString() == code) return true;
+    return false;
+}
+
 StreamManifest::Reason TidalClient::refusalReason(bool openApi, int httpStatus,
                                                   const QJsonObject &body) {
     if (httpStatus == 404 || httpStatus == 410) return StreamManifest::Gone;
     if (openApi) {
-        // JSON:API: {errors: [{code}]}.
-        if (httpStatus != 403) return StreamManifest::Unknown;
-        const QJsonArray errors = body["errors"].toArray();
-        for (const QJsonValue &e : errors)
-            if (e.toObject()["code"].toString() == QLatin1String("GEO_RESTRICTED"))
-                return StreamManifest::NotForAccount;
+        if (httpStatus == 403 && refusalHasCode(body, QLatin1String("GEO_RESTRICTED")))
+            return StreamManifest::NotForAccount;
         return StreamManifest::Unknown;
     }
     // "Asset is not ready for playback", the v1 answer for a track that
@@ -795,31 +795,67 @@ static StreamManifest refusedManifest(StreamManifest::Reason reason) {
     return m;
 }
 
+// What follows when Tidal has a track in none of the formats asked for.
+enum class NoSuchFormat { Refused, AskedForWithAac };
+
+// Tidal's refusal of a request for FLAC when the track exists only in AAC.
+static bool hasNoneOfTheFormats(int httpStatus, const QJsonObject &body) {
+    return httpStatus == 403 && refusalHasCode(body, QLatin1String("CLIENT_NOT_ENTITLED"));
+}
+
+// The lossy formats beside FLAC. Tidal answers with the best the track has.
+static QStringList formatsWithAac() {
+    return {QStringLiteral("HEAACV1"), QStringLiteral("AACLC"), QStringLiteral("FLAC")};
+}
+
+static void requestTrackManifest(TidalApi *api, qint64 trackId, const QStringList &formats,
+                                 NoSuchFormat then, TidalClient::StreamCb cb) {
+    QUrlQuery q;
+    for (const QString &format : formats)
+        q.addQueryItem("formats", format);
+    q.addQueryItem("manifestType", "MPEG_DASH");
+    q.addQueryItem("uriScheme",    "DATA");
+    // One Representation: DashFetcher ignores any after the first.
+    q.addQueryItem("adaptive",     "false");
+    q.addQueryItem("usage",        "PLAYBACK");
+
+    api->getOpenApiWithStatus(QStringLiteral("trackManifests/%1").arg(trackId), q,
+        [api, trackId, then, cb](QJsonObject root, QString err, int httpStatus) {
+            if (!err.isEmpty()) {
+                // Asked once more, and the answer to that is final.
+                if (then == NoSuchFormat::AskedForWithAac
+                    && hasNoneOfTheFormats(httpStatus, root)) {
+                    requestTrackManifest(api, trackId, formatsWithAac(),
+                                         NoSuchFormat::Refused, cb);
+                    return;
+                }
+                cb(refusedManifest(TidalClient::refusalReason(true, httpStatus, root)), err);
+                return;
+            }
+            QString parseErr;
+            const StreamManifest m = TidalClient::parseTrackManifests(root, &parseErr);
+            // With an error the manifest holds the reason and nothing else.
+            cb(m, parseErr);
+        });
+}
+
+void TidalClient::fetchStreamManifest(qint64 trackId, StreamCb cb) {
+    // Playback takes AAC where Tidal has no FLAC of a track.
+    if (usesTrackManifests(m_quality)) {
+        requestTrackManifest(m_api, trackId, manifestFormats(m_quality),
+                             NoSuchFormat::AskedForWithAac, std::move(cb));
+        return;
+    }
+    fetchStreamManifest(trackId, m_quality, std::move(cb));
+}
+
 void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb) {
     // tracks/<id>/playbackinfopostpaywall answers a LOSSLESS request with
     // 320 kbps AAC for this client id, so the FLAC tiers go to
     // v2/trackManifests. The lossy tiers stay: they come as one BTS file.
     if (usesTrackManifests(quality)) {
-        QUrlQuery q;
-        for (const QString &format : manifestFormats(quality))
-            q.addQueryItem("formats", format);
-        q.addQueryItem("manifestType", "MPEG_DASH");
-        q.addQueryItem("uriScheme",    "DATA");
-        // One Representation: DashFetcher ignores any after the first.
-        q.addQueryItem("adaptive",     "false");
-        q.addQueryItem("usage",        "PLAYBACK");
-
-        m_api->getOpenApiWithStatus(QStringLiteral("trackManifests/%1").arg(trackId), q,
-            [cb](QJsonObject root, QString err, int httpStatus) {
-                if (!err.isEmpty()) {
-                    cb(refusedManifest(refusalReason(true, httpStatus, root)), err);
-                    return;
-                }
-                QString parseErr;
-                const StreamManifest m = parseTrackManifests(root, &parseErr);
-                // With an error the manifest holds the reason and nothing else.
-                cb(m, parseErr);
-            });
+        requestTrackManifest(m_api, trackId, manifestFormats(quality),
+                             NoSuchFormat::Refused, std::move(cb));
         return;
     }
 

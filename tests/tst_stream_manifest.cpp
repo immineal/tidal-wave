@@ -10,10 +10,12 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QList>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <memory>
+#include <utility>
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 
@@ -112,11 +114,15 @@ public:
                     const QByteArray line = buf->left(buf->indexOf("\r\n"));
                     buf->clear();
                     QString target = QString::fromUtf8(line.split(' ').value(1));
-                    paths << target.left(target.indexOf(QLatin1Char('?')));
-                    sock->write("HTTP/1.0 " + QByteArray::number(status) + " Answer\r\n"
+                    const qsizetype mark = target.indexOf(QLatin1Char('?'));
+                    paths << target.left(mark);
+                    queries << (mark < 0 ? QString() : target.mid(mark + 1));
+                    const Answer answer = first.isEmpty() ? Answer{status, body}
+                                                          : first.takeFirst();
+                    sock->write("HTTP/1.0 " + QByteArray::number(answer.first) + " Answer\r\n"
                                 "Content-Type: application/json\r\n"
-                                "Content-Length: " + QByteArray::number(body.size())
-                                + "\r\n\r\n" + body);
+                                "Content-Length: " + QByteArray::number(answer.second.size())
+                                + "\r\n\r\n" + answer.second);
                     sock->flush();
                     sock->disconnectFromHost();
                 });
@@ -125,19 +131,39 @@ public:
         });
     }
 
+    using Answer = std::pair<int, QByteArray>;
+
     int         status = 200;
     QByteArray  body   = "{}";
+    // Given out one per request, before the answer above.
+    QList<Answer> first;
     QStringList paths;
+    QStringList queries;
 };
 
 // The real TidalApi with every GET sent to a local server.
 class LocalApi : public TidalApi {
 public:
     QString local;
+    // Requests made, answered or not.
+    mutable int asked = 0;
 
 protected:
-    QString baseUrl(const QString &) const override { return local; }
+    QString baseUrl(const QString &) const override { ++asked; return local; }
 };
+
+QByteArray json(const QJsonObject &body) { return QJsonDocument(body).toJson(); }
+
+// What trackManifests is asked with, after the formats.
+const QString kManifestQuery =
+    QStringLiteral("&manifestType=MPEG_DASH&uriScheme=DATA&adaptive=false&usage=PLAYBACK");
+
+// The answer for a track that exists only in AAC, as captured: one
+// Representation with the bare id.
+QJsonObject aacAnswer()
+{
+    return envelope(mpdWith("AACLC", "mp4a.40.2"), QStringLiteral("AACLC"));
+}
 
 } // namespace
 
@@ -513,6 +539,242 @@ private slots:
         QCOMPARE(int(got.type), type);
         QVERIFY(!got.url.isEmpty());
         QCOMPARE(got.reason, StreamManifest::Unknown);
+    }
+
+    // ── a track Tidal has only in AAC ────────────────────────────────────────
+
+    // Asked for FLAC alone, Tidal refuses such a track with its own code.
+    // Playback then asks once more with the lossy formats beside FLAC. The
+    // refusal's body is assumed to have the shape of the endpoint's others.
+    void playbackTakesAacWhereTidalHasNoFlac_data()
+    {
+        QTest::addColumn<int>("quality");
+        QTest::addColumn<QString>("firstFormats");
+        QTest::newRow("LOSSLESS")
+            << int(AudioQuality::Lossless) << QStringLiteral("formats=FLAC");
+        QTest::newRow("HI_RES_LOSSLESS")
+            << int(AudioQuality::HiResLossless) << QStringLiteral("formats=FLAC&formats=FLAC_HIRES");
+    }
+
+    void playbackTakesAacWhereTidalHasNoFlac()
+    {
+        QFETCH(int, quality);
+        QFETCH(QString, firstFormats);
+
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.first  = {{403, json(coded("CLIENT_NOT_ENTITLED"))}, {200, json(aacAnswer())}};
+        srv.status = 500;
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        TidalClient client{&api};
+        client.setAudioQuality(AudioQuality(quality));
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QCOMPARE(err, QString());
+        QCOMPARE(got.type, StreamManifest::MPD);
+        QCOMPARE(got.mimeType, QStringLiteral("application/dash+xml"));
+        // What the player shows as the quality of the track.
+        QCOMPARE(got.codec, QStringLiteral("HIGH"));
+        QVERIFY(got.url.contains(QStringLiteral("<Representation id=\"AACLC\"")));
+        QCOMPARE(got.reason, StreamManifest::Unknown);
+
+        const QString asked = QStringLiteral("/trackManifests/100000001");
+        QCOMPARE(srv.paths, (QStringList{asked, asked}));
+        QCOMPARE(api.asked, 2);
+        // The first request is the one every track is asked for with.
+        QCOMPARE(srv.queries.value(0), firstFormats + kManifestQuery);
+        QCOMPARE(srv.queries.value(1),
+                 QStringLiteral("formats=HEAACV1&formats=AACLC&formats=FLAC") + kManifestQuery);
+    }
+
+    // The second answer is the last one, and its reason is the one handed up.
+    void theSecondAnswerIsTheLastOne_data()
+    {
+        QTest::addColumn<int>("status");
+        QTest::addColumn<QJsonObject>("body");
+        QTest::addColumn<int>("reason");
+        QTest::newRow("403, blocked by region")
+            << 403 << coded("GEO_RESTRICTED") << int(StreamManifest::NotForAccount);
+        QTest::newRow("403, the same code again")
+            << 403 << coded("CLIENT_NOT_ENTITLED") << int(StreamManifest::Unknown);
+        QTest::newRow("404")
+            << 404 << coded("CONTENT_NOT_FOUND") << int(StreamManifest::Gone);
+        QTest::newRow("500") << 500 << QJsonObject{} << int(StreamManifest::Unknown);
+        QTest::newRow("a preview")
+            << 200 << envelope(mpdWith("AACLC", "mp4a.40.2"), QStringLiteral("AACLC"),
+                               QStringLiteral("PREVIEW"))
+            << int(StreamManifest::NotForAccount);
+    }
+
+    void theSecondAnswerIsTheLastOne()
+    {
+        QFETCH(int, status);
+        QFETCH(QJsonObject, body);
+        QFETCH(int, reason);
+
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.first  = {{403, json(coded("CLIENT_NOT_ENTITLED"))}};
+        srv.status = status;
+        srv.body   = json(body);
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        TidalClient client{&api};
+        client.setAudioQuality(AudioQuality::Lossless);
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QVERIFY2(!err.isEmpty(), "a track refused twice came back without an error");
+        QCOMPARE(got.url, QString());
+        QCOMPARE(int(got.reason), reason);
+        QCOMPARE(api.asked, 2);
+        QCOMPARE(srv.paths.size(), 2);
+    }
+
+    // Every other refusal is final at once, and so is every answer at the
+    // lossy settings, which go to the endpoint that serves AAC.
+    void anyOtherRefusalIsAskedAboutOnce_data()
+    {
+        QTest::addColumn<int>("quality");
+        QTest::addColumn<int>("status");        // 0: nothing listens on the port
+        QTest::addColumn<QJsonObject>("body");
+        QTest::addColumn<int>("reason");
+
+        const int lossless = int(AudioQuality::Lossless);
+        const int unknown = StreamManifest::Unknown, gone = StreamManifest::Gone,
+                  notForAccount = StreamManifest::NotForAccount;
+        const QJsonObject none;
+        const QJsonObject noFlac = coded("CLIENT_NOT_ENTITLED");
+
+        QTest::newRow("403, blocked by region")
+            << lossless << 403 << coded("GEO_RESTRICTED") << notForAccount;
+        QTest::newRow("403, another code") << lossless << 403 << coded("FORBIDDEN") << unknown;
+        QTest::newRow("403, no body") << lossless << 403 << none << unknown;
+        QTest::newRow("404") << lossless << 404 << coded("CONTENT_NOT_FOUND") << gone;
+        QTest::newRow("404, with the code of the 403") << lossless << 404 << noFlac << gone;
+        QTest::newRow("401, with the code of the 403") << lossless << 401 << noFlac << unknown;
+        QTest::newRow("500, with the code of the 403") << lossless << 500 << noFlac << unknown;
+        QTest::newRow("no answer") << lossless << 0 << none << unknown;
+        QTest::newRow("a preview")
+            << lossless << 200
+            << envelope(mpdWith("FLAC,44100,16", "flac"), QStringLiteral("FLAC"),
+                        QStringLiteral("PREVIEW"))
+            << notForAccount;
+        QTest::newRow("hi-res, 403, blocked by region")
+            << int(AudioQuality::HiResLossless) << 403 << coded("GEO_RESTRICTED") << notForAccount;
+        QTest::newRow("LOW, the other endpoint's code")
+            << int(AudioQuality::Low96k) << 403 << noFlac << unknown;
+        QTest::newRow("HIGH, the other endpoint's code")
+            << int(AudioQuality::Low320k) << 403 << noFlac << unknown;
+    }
+
+    void anyOtherRefusalIsAskedAboutOnce()
+    {
+        QFETCH(int, quality);
+        QFETCH(int, status);
+        QFETCH(QJsonObject, body);
+        QFETCH(int, reason);
+
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        // A second request would be answered with a track.
+        srv.first = {{status, json(body)}};
+        srv.body  = json(aacAnswer());
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+        if (status == 0) srv.close();
+
+        TidalClient client{&api};
+        client.setAudioQuality(AudioQuality(quality));
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QVERIFY2(!err.isEmpty(), "a refused stream request came back without an error");
+        QCOMPARE(got.url, QString());
+        QCOMPARE(int(got.reason), reason);
+        QCOMPARE(api.asked, 1);
+        if (status != 0) QCOMPARE(srv.paths.size(), 1);
+    }
+
+    // The lossy settings ask what they asked before.
+    void theLossySettingsAskTheirOwnEndpoint_data()
+    {
+        QTest::addColumn<int>("quality");
+        QTest::addColumn<QString>("tier");
+        QTest::newRow("LOW")  << int(AudioQuality::Low96k)  << QStringLiteral("LOW");
+        QTest::newRow("HIGH") << int(AudioQuality::Low320k) << QStringLiteral("HIGH");
+    }
+
+    void theLossySettingsAskTheirOwnEndpoint()
+    {
+        QFETCH(int, quality);
+        QFETCH(QString, tier);
+
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.body = json(btsAnswer());
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        TidalClient client{&api};
+        client.setAudioQuality(AudioQuality(quality));
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QCOMPARE(err, QString());
+        QCOMPARE(got.type, StreamManifest::BTS);
+        QCOMPARE(api.asked, 1);
+        QCOMPARE(srv.paths, QStringList{QStringLiteral("/tracks/100000001/playbackinfopostpaywall")});
+        QCOMPARE(srv.queries.value(0),
+                 QStringLiteral("playbackmode=STREAM&assetpresentation=FULL&audioquality=%1"
+                                "&prefetch=false").arg(tier));
+    }
+
+    // A download and a cast name their quality and turn the answer into FLAC.
+    // AAC is of no use to them, so their refusal stands.
+    void aRequestThatNamesItsQualityIsRefusedAtOnce()
+    {
+        OneAnswerServer srv;
+        QVERIFY(srv.listen(QHostAddress::LocalHost));
+        srv.first = {{403, json(coded("CLIENT_NOT_ENTITLED"))}};
+        srv.body  = json(aacAnswer());
+        LocalApi api;
+        api.local = QStringLiteral("http://127.0.0.1:%1/").arg(srv.serverPort());
+
+        TidalClient client{&api};
+        bool answered = false;
+        StreamManifest got;
+        QString err;
+        client.fetchStreamManifest(100000001, AudioQuality::HiResLossless,
+            [&](StreamManifest m, QString e) { answered = true; got = m; err = e; });
+        QTRY_VERIFY_WITH_TIMEOUT(answered, 10000);
+
+        QVERIFY2(!err.isEmpty(), "a request for FLAC was answered with AAC");
+        QCOMPARE(got.url, QString());
+        QCOMPARE(got.reason, StreamManifest::Unknown);
+        QCOMPARE(api.asked, 1);
+        QCOMPARE(srv.queries.value(0),
+                 QStringLiteral("formats=FLAC&formats=FLAC_HIRES") + kManifestQuery);
     }
 };
 

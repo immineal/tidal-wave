@@ -125,9 +125,12 @@ public:
     virtual void removeMixFavorite (const QString &mixId, std::function<void(bool)> cb);
 
     // Streaming
+    // For playback, at the user's setting. At a lossless setting a track that
+    // Tidal has only in AAC is asked for once more and comes as AAC.
     virtual void fetchStreamManifest(qint64 trackId, StreamCb cb);
     // Request a specific quality (e.g. HiResLossless for downloads) without
-    // touching the persisted playback preference m_quality.
+    // touching the persisted playback preference m_quality. A track Tidal
+    // does not have in a format of that quality is refused.
     void fetchStreamManifest(qint64 trackId, AudioQuality quality, StreamCb cb);
     QNetworkReply* fetchRaw(const QUrl &url, std::function<void(QByteArray, QString)> cb);
 
