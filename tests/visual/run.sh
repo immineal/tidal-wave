@@ -21,6 +21,11 @@
 #   DWELL=12 tests/visual/run.sh         seconds to let each app launch live
 #   TIDALWAVE_BIN=/path/to/tidal-wave tests/visual/run.sh
 #   TW_VISUAL_BUILD=/path tests/visual/run.sh   where the shot runner is built
+#   tests/visual/run.sh --qt=/path/to/Qt/6.x/gcc_64   the Qt to build it against
+#   QT_QPA_PLATFORM=offscreen tests/visual/run.sh shots   without an X server
+#
+# The Qt prefix is --qt, else CMAKE_PREFIX_PATH, else the one build-t in this
+# checkout was configured with, else whatever cmake finds by itself.
 #
 # PNGs land in tests/visual/out/, which carries a .gitignore so they are never
 # committed. Exit status is 0 only if every part that ran succeeded. A part
@@ -56,6 +61,7 @@ HARNESS_BUILD=${TW_VISUAL_BUILD:-/tmp/tw-vis-build}
 DWELL=${DWELL:-10}
 KEEP=0
 CLEAN=0
+QT_PREFIX=''
 WANTED=()
 
 # The six palette names in src/ui/ThemePalette.cpp: three dark, then three light.
@@ -69,11 +75,17 @@ for arg in "$@"; do
     case $arg in
         --keep)  KEEP=1 ;;
         --clean) CLEAN=1 ;;
-        -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+        --qt=*)  QT_PREFIX=${arg#--qt=} ;;
+        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)  WANTED+=("$arg") ;;
     esac
 done
+
+# Qt's offscreen platform, when the caller asks for it. Only the component
+# shots can do without an X server.
+OFFSCREEN=0
+[ "${QT_QPA_PLATFORM:-}" = offscreen ] && OFFSCREEN=1
 
 wanted() {
     [ ${#WANTED[@]} -eq 0 ] && return 0
@@ -277,7 +289,9 @@ seed_theme() {
 if wanted login; then
     head2 "login page, real binary, ${SHOT_W}x${SHOT_H}"
 
-    if [ ! -x "$APP" ]; then
+    if [ "$OFFSCREEN" -eq 1 ]; then
+        skip login "the window is captured off an X display, and QT_QPA_PLATFORM=offscreen was asked for"
+    elif [ ! -x "$APP" ]; then
         skip login "no binary at $APP (build with: cmake --build build-t --parallel 4)"
     elif ! command -v Xvfb >/dev/null 2>&1; then
         skip login "Xvfb is not installed, and using the real display would touch the developer's session"
@@ -353,22 +367,55 @@ build_runner() {
     if ! command -v cmake >/dev/null 2>&1; then
         skip "$1" "cmake is not installed"
         return 1
-    elif ! command -v Xvfb >/dev/null 2>&1; then
+    elif [ "$OFFSCREEN" -eq 0 ] && ! command -v Xvfb >/dev/null 2>&1; then
         skip "$1" "Xvfb is not installed, and using the real display would touch the developer's session"
         return 1
     fi
 
-    # Qt may be off the default search path, so take the prefix build-t was
-    # configured with.
-    prefix=$(grep -m1 '^CMAKE_PREFIX_PATH:' "$REPO_ROOT/build-t/CMakeCache.txt" 2>/dev/null \
+    # Qt may be off the default search path. A checkout without build-t has
+    # no cache to read the prefix from, so the caller's word comes first.
+    local prefix=$QT_PREFIX from="--qt"
+    if [ -z "$prefix" ]; then
+        prefix=${CMAKE_PREFIX_PATH:-}; from="CMAKE_PREFIX_PATH"
+    fi
+    if [ -z "$prefix" ]; then
+        prefix=$(grep -m1 '^CMAKE_PREFIX_PATH:' "$REPO_ROOT/build-t/CMakeCache.txt" 2>/dev/null \
+                 | cut -d= -f2-)
+        from="build-t/CMakeCache.txt"
+    fi
+    case $prefix in
+        ''|*[';:']*) ;;
+        *)  if [ ! -d "$prefix" ]; then
+                fail "$1" "the Qt prefix from $from, $prefix, is not a directory"
+                return 1
+            fi ;;
+    esac
+
+    # cmake refuses a build directory that another checkout configured.
+    local cached
+    cached=$(grep -m1 '^CMAKE_HOME_DIRECTORY:' "$HARNESS_BUILD/CMakeCache.txt" 2>/dev/null \
              | cut -d= -f2-)
+    if [ -n "$cached" ] && [ "$cached" != "$SELF_DIR" ]; then
+        fail "$1" "$HARNESS_BUILD was configured for $cached; set TW_VISUAL_BUILD to a directory of this checkout's own, or pass --clean to rebuild this one"
+        return 1
+    fi
+
     cfg_args=(-B "$HARNESS_BUILD" -S "$SELF_DIR" -DCMAKE_BUILD_TYPE=Debug)
-    [ -n "$prefix" ] && cfg_args+=(-DCMAKE_PREFIX_PATH="$prefix")
+    if [ -n "$prefix" ]; then
+        cfg_args+=(-DCMAKE_PREFIX_PATH="$prefix")
+        info "Qt prefix from $from: $prefix"
+    else
+        info "no Qt prefix given; cmake looks for Qt by itself"
+    fi
 
     info "configuring and building the shot runner in $HARNESS_BUILD"
     if ! cmake "${cfg_args[@]}" >"$SCRATCH/cmake-configure.log" 2>&1; then
         fail "$1" "cmake configure failed; see $SCRATCH/cmake-configure.log"
-        tail -20 "$SCRATCH/cmake-configure.log" | sed 's/^/         /'
+        if [ -z "$prefix" ]; then
+            info "No Qt prefix was given: this checkout has no build-t/CMakeCache.txt,"
+            info "CMAKE_PREFIX_PATH is not set and --qt=<prefix> was not passed."
+        fi
+        grep -aE 'Could NOT find|CMake Error' "$SCRATCH/cmake-configure.log" | head -8 | sed 's/^/         /'
         return 1
     elif ! cmake --build "$HARNESS_BUILD" --parallel 4 >"$SCRATCH/cmake-build.log" 2>&1; then
         fail "$1" "cmake build failed; see $SCRATCH/cmake-build.log"
@@ -384,15 +431,22 @@ if wanted shots; then
     head2 "components, against tests/TestStubs.h"
 
     if build_runner shots; then
-        if ! start_xvfb 1700 1400; then
-            skip shots "no free X display between :90 and :99, or Xvfb never came up"
-        else
+        shot_env=()
+        if [ "$OFFSCREEN" -eq 1 ]; then
+            shot_env=(QT_QPA_PLATFORM=offscreen)
+            info "Qt's offscreen platform, no X server"
+        elif start_xvfb 1700 1400; then
             # Bigger than any scene, because grabToImage renders the item's own
             # subtree and the window only has to be somewhere to render it in.
+            shot_env=(DISPLAY="$DISP")
             info "private display $DISP (pid $XVFB_PID) at 1700x1400"
+        else
+            skip shots "no free X display between :90 and :99, or Xvfb never came up"
+        fi
+        if [ ${#shot_env[@]} -gt 0 ]; then
             sandbox shots
             log=$BOX/logs/shots.log
-            env -i "${BOX_ENV[@]}" DISPLAY="$DISP" TW_SHOT_OUT="$OUT" \
+            env -i "${BOX_ENV[@]}" "${shot_env[@]}" TW_SHOT_OUT="$OUT" \
                 timeout -s TERM 900 "$HARNESS_BUILD/tst_shots" \
                 -input "$SELF_DIR/qml" >"$log" 2>&1
             status=$?
@@ -417,7 +471,9 @@ STORE_SHOTS=(home collection album nowplaying search)
 if wanted store; then
     head2 "store screenshots, Main.qml on the invented library"
 
-    if build_runner store; then
+    if [ "$OFFSCREEN" -eq 1 ]; then
+        skip store "drawn at 2x on an X display, and QT_QPA_PLATFORM=offscreen was asked for"
+    elif build_runner store; then
         # The 1280x800 window is drawn at 2x in the top half. The bottom half
         # is where a new X server parks its pointer, clear of anything hoverable.
         if ! start_xvfb 2600 3300; then
