@@ -335,17 +335,18 @@ QString statusName(QMediaPlayer::MediaStatus s)
     return QStringLiteral("?");
 }
 
-// Plays a local file through a QMediaPlayer with no audio output at all, so it
-// is silent by construction rather than by a volume someone can change.
+// Plays a local file through a QMediaPlayer whose only output is a tap on
+// the decoded audio, or a muted one where Qt has no such tap.
 Decoded decodeSilently(const QString &path, int timeoutMs = 20000)
 {
     Decoded out;
     QMediaPlayer player;
     QEventLoop loop;
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-    // Qt 6.4's GStreamer backend only links the decoded audio when an output is
-    // attached, and reports InvalidMedia without one. Muted at zero volume.
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+    // Below Qt 6.8 nothing taps the decoded audio, and a player with no output
+    // at all never reaches the end of a file (6.5 to 6.7) or calls it invalid
+    // (the GStreamer backend of 6.4). Muted at zero volume.
     QAudioOutput muted;
     muted.setMuted(true);
     muted.setVolume(0.0f);
