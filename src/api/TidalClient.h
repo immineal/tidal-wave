@@ -100,6 +100,8 @@ public:
     // `playlists/<uuid>/tracks` answers tracks and nothing else.
     virtual void fetchPlaylist(const QString &uuid,  std::function<void(Playlist,QString)> cb);
     void fetchArtistDetail (qint64 artistId,       std::function<void(ArtistDetail,QString)> cb);
+    // Albums, EPs with singles and the first page of guest appearances as one
+    // list, with one entry per record: see RecordVersions.h.
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
     void fetchAlbum        (qint64 albumId,        std::function<void(Album,QString)>  cb);

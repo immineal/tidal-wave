@@ -49,6 +49,7 @@ set(SOURCES
     src/api/TidalApi.cpp
     src/api/Auth.cpp
     src/api/TidalClient.cpp
+    src/api/RecordVersions.cpp
     src/api/TidalBridge.cpp
     src/player/Player.cpp
     src/player/SpectrumAnalyzer.cpp
@@ -74,6 +75,7 @@ set(HEADERS
     src/api/TidalApi.h
     src/api/Auth.h
     src/api/TidalClient.h
+    src/api/RecordVersions.h
     src/api/TidalBridge.h
     src/player/Player.h
     src/player/SpectrumAnalyzer.h

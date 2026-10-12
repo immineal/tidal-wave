@@ -78,6 +78,18 @@ struct Album {
     // it: TidalClient::fetchArtistAlbums() sets it from the request that
     // answered, and it is false everywhere else.
     bool    featured = false;
+    // What tells the products of one record apart. Tidal lists each of them
+    // under its own id: see RecordVersions.h.
+    QString     version;
+    bool        explicit_  = false;
+    QStringList audioModes;     // STEREO, DOLBY_ATMOS
+    QStringList mediaTags;      // LOSSLESS, HIRES_LOSSLESS, DOLBY_ATMOS
+    int         numVideos  = 0; // Album::duration counts them
+    int         popularity = 0;
+    // True where the response says nothing: an album nested in a track
+    // carries neither.
+    bool        allowStreaming = true;
+    bool        streamReady    = true;
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};
@@ -103,6 +115,16 @@ struct Album {
         for (const auto &v : j["artists"].toArray())
             a.artists.append(Artist::fromJson(v.toObject()));
         a.addedAt = isoToMSecs(wrapper["created"].toString());
+        a.version      = j["version"].toString();
+        a.explicit_    = j["explicit"].toBool();
+        for (const auto &v : j["audioModes"].toArray())
+            a.audioModes.append(v.toString());
+        for (const auto &v : j["mediaMetadata"]["tags"].toArray())
+            a.mediaTags.append(v.toString());
+        a.numVideos      = j["numberOfVideos"].toInt();
+        a.popularity     = j["popularity"].toInt();
+        a.allowStreaming = j["allowStreaming"].toBool(true);
+        a.streamReady    = j["streamReady"].toBool(true);
         return a;
     }
 

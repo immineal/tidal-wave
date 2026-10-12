@@ -71,7 +71,8 @@ TestCase {
                 year:      "2019",
                 coverUrl:  "",
                 type:      "ALBUM",
-                numTracks: 12
+                numTracks: 12,
+                section:   "a"
             })
         }
         return out
@@ -79,15 +80,17 @@ TestCase {
 
     // An artist's whole discography: albums, singles, and records by others
     // that the artist guests on, so each of the page's three rows has cards.
+    // `section` is the row, as the bridge names it on every album it hands over.
     function makeDiscography(n) {
         var out = makeAlbums(n)
         for (var i = 0; i < n; ++i) {
             out.push({ id: 500 + i, title: "Eine ziemlich lange Single Nummer " + (i + 1),
                        artists: "Erster Interpret und noch ein zweiter", year: "2021",
-                       coverUrl: "", type: "SINGLE", numTracks: 1 })
+                       coverUrl: "", type: "SINGLE", numTracks: 1, section: "s" })
             out.push({ id: 600 + i, title: "Ein ziemlich langes fremdes Album " + (i + 1),
                        artists: "Ein ganz anderer Interpret", year: "2020",
-                       coverUrl: "", type: "ALBUM", numTracks: 12, featured: true })
+                       coverUrl: "", type: "ALBUM", numTracks: 12, featured: true,
+                       section: "f" })
         }
         return out
     }

@@ -1,9 +1,7 @@
-// ArtistPage's three release rows: which release lands in which, and what the
-// edition collapse may drop. Albums and Singles & EPs split by type, with the
-// track count as a fallback. `featured` outranks both and sends a release to
-// Appears on. dedupeEditions() keys on the row as well as on artwork and title.
-// The request side, and where `featured` is set, is in
-// tests/tst_artist_discography.cpp. Every id, title and cover is invented.
+// ArtistPage's three release rows: which release lands in which, and that a
+// record with several products is one card. The stub bridge answers through
+// the app's own rule (api/RecordVersions.h), whose cases are in
+// tests/tst_record_versions.cpp. Every id, title and cover is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -78,6 +76,45 @@ TestCase {
         verify(out.albums,    "the page has no Albums section at all")
         verify(out.singles,   "the page has no Singles & EPs section at all")
         verify(out.appearsOn, "the page has no Appears on section at all")
+        return out
+    }
+
+    // One product of a record, with the keys TidalBridge::albumToMap writes
+    // and a cover of its own.
+    function product(id, title, type, numTracks, explicit_, modes, tags) {
+        var r = rel(id, title, type, numTracks, "cover-" + id)
+        r.explicit_  = explicit_
+        r.audioModes = modes
+        r.mediaTags  = tags
+        r.duration   = 220 * numTracks
+        return r
+    }
+
+    // Explicit and clean, each as 16-bit stereo, hi-res stereo and Dolby Atmos
+    // only. The explicit hi-res stereo one is firstId + 4.
+    function sixProducts(firstId, title, type, numTracks) {
+        var atmos = ["DOLBY_ATMOS"], stereo = ["STEREO"]
+        var lossless = ["LOSSLESS"], hiRes = ["LOSSLESS", "HIRES_LOSSLESS"]
+        return [
+            product(firstId,     title, type, numTracks, true,  atmos,  atmos),
+            product(firstId + 1, title, type, numTracks, false, stereo, lossless),
+            product(firstId + 2, title, type, numTracks, false, stereo, hiRes),
+            product(firstId + 3, title, type, numTracks, true,  stereo, lossless),
+            product(firstId + 4, title, type, numTracks, true,  stereo, hiRes),
+            product(firstId + 5, title, type, numTracks, false, atmos,  atmos)
+        ]
+    }
+
+    // What the cards of a row read, left to right.
+    function cardTitles(section) {
+        var list = findChild(section, "sectionList")
+        verify(list, "the row has no list of cards")
+        var out = []
+        for (var i = 0; i < list.count; ++i) {
+            var card = list.itemAtIndex(i)
+            verify(card, "card " + i + " of the row was not drawn")
+            out.push(findChild(card, "cardTitle").text)
+        }
         return out
     }
 
@@ -281,84 +318,104 @@ TestCase {
         }
     }
 
-    // ── the edition collapse ─────────────────────────────────────────────────
+    // ── one card per record ──────────────────────────────────────────────────
 
-    // A lead single often carries its album's artwork and title, so a collapse
-    // on artwork and title alone would drop whichever came second.
-    function test_a_single_sharing_its_album_artwork_and_title_is_kept() {
-        var sharedArt = "99999999-0000-0000-0000-000000000000"
-        var s = openWith([
-            rel(900014001, "Nachtfahrt", "ALBUM",  10, sharedArt),
-            rel(900014002, "Nachtfahrt", "SINGLE",  1, sharedArt)
-        ])
+    // Tidal lists the six products of a record under six ids. The page shows
+    // the record once, and the card opens the explicit hi-res stereo product.
+    function test_the_products_of_one_record_are_one_card() {
+        var s = openWith(sixProducts(900015000, "Nachtfahrt", "ALBUM", 12).concat([
+            rel(900015100, "Morgenrot", "ALBUM", 9, "cover-900015100")
+        ]))
 
-        compare(idsOf(s.albums), [900014001],
-                "the album was collapsed into its own lead single")
-        compare(idsOf(s.singles), [900014002],
+        compare(cardTitles(s.albums), ["Nachtfahrt", "Morgenrot"],
+                "the Albums row does not show each record once")
+        compare(idsOf(s.albums), [900015004, 900015100],
+                "the card of the record does not open its explicit hi-res stereo product")
+    }
+
+    function test_the_products_of_one_single_are_one_card() {
+        var s = openWith(sixProducts(900016000, "Nachtfahrt", "SINGLE", 1))
+
+        compare(cardTitles(s.singles), ["Nachtfahrt"],
+                "the Singles & EPs row does not show the single once")
+        compare(idsOf(s.singles), [900016004])
+    }
+
+    function test_the_products_of_one_guest_appearance_are_one_card() {
+        var products = sixProducts(900023000, "Sammlung", "COMPILATION", 20)
+        for (var i = 0; i < products.length; ++i) products[i].featured = true
+        var s = openWith(products)
+
+        compare(cardTitles(s.appearsOn), ["Sammlung"],
+                "the Appears on row does not show the record once")
+        compare(idsOf(s.appearsOn), [900023004])
+        compare(s.albums.visible, false,
+                "a record by somebody else landed among the artist's own")
+    }
+
+    // A lead single often carries its album's title, and so does the record
+    // by somebody else it was licensed onto. Each stays in its own row.
+    function test_one_title_in_three_rows_is_three_cards() {
+        var guests = sixProducts(900014200, "Nachtfahrt", "ALBUM", 12)
+        for (var i = 0; i < guests.length; ++i) guests[i].featured = true
+        var s = openWith(sixProducts(900014000, "Nachtfahrt", "ALBUM", 12)
+                         .concat(sixProducts(900014100, "Nachtfahrt", "SINGLE", 1))
+                         .concat(guests))
+
+        compare(cardTitles(s.albums), ["Nachtfahrt"])
+        compare(idsOf(s.albums), [900014004],
+                "the album was collapsed into its lead single or into a guest appearance")
+        compare(cardTitles(s.singles), ["Nachtfahrt"])
+        compare(idsOf(s.singles), [900014104],
                 "the lead single was collapsed into its album and is unreachable")
-    }
-
-    // What the collapse is for: Tidal lists every edition of a release under
-    // its own id, and they are the same record.
-    function test_editions_of_one_album_still_collapse() {
-        var art = "88888888-0000-0000-0000-000000000000"
-        var s = openWith([
-            rel(900015001, "Nachtfahrt",                    "ALBUM", 10, art),
-            rel(900015002, "Nachtfahrt (Deluxe Edition)",    "ALBUM", 14, art),
-            rel(900015003, "Nachtfahrt (Deluxe) [Explicit]", "ALBUM", 14, art)
-        ])
-
-        compare(idsOf(s.albums), [900015001],
-                "the editions of one album stopped collapsing into one row")
-    }
-
-    function test_editions_of_one_single_still_collapse() {
-        var art = "77777777-0000-0000-0000-000000000000"
-        var s = openWith([
-            rel(900016001, "Nachtfahrt",            "SINGLE", 1, art),
-            rel(900016002, "Nachtfahrt (Radio Edit)", "SINGLE", 1, art)
-        ])
-
-        compare(idsOf(s.singles), [900016001],
-                "the editions of one single stopped collapsing into one row")
-    }
-
-    // A compilation often reuses the sleeve and title of the single licensed
-    // onto it. Both stay reachable, each in its own row.
-    function test_a_guest_appearance_sharing_artwork_and_title_is_kept() {
-        var sharedArt = "aaaaaaaa-0000-0000-0000-000000000000"
-        var s = openWith([
-            rel(900022001, "Nachtfahrt", "ALBUM", 10, sharedArt),
-            guest(900022002, "Nachtfahrt", "ALBUM", 10, sharedArt)
-        ])
-
-        compare(idsOf(s.albums), [900022001],
-                "the artist's own album was collapsed into a record they only guest on")
-        compare(idsOf(s.appearsOn), [900022002],
+        compare(cardTitles(s.appearsOn), ["Nachtfahrt"])
+        compare(idsOf(s.appearsOn), [900014204],
                 "the guest appearance was collapsed into the artist's own album and is unreachable")
     }
 
-    function test_editions_of_one_guest_appearance_still_collapse() {
-        var art = "bbbbbbbb-0000-0000-0000-000000000000"
+    // Another title or another track count is another record, whatever the
+    // artwork says.
+    function test_an_edition_with_its_own_title_or_length_keeps_its_card() {
+        var art = "88888888-0000-0000-0000-000000000000"
         var s = openWith([
-            guest(900023001, "Sammlung",            "COMPILATION", 20, art),
-            guest(900023002, "Sammlung (Explicit)", "COMPILATION", 20, art)
+            rel(900017001, "Nachtfahrt",          "ALBUM", 10, art),
+            rel(900017002, "Nachtfahrt (Deluxe)", "ALBUM", 14, art),
+            rel(900017003, "Nachtfahrt",          "ALBUM", 14, art)
         ])
 
-        compare(idsOf(s.appearsOn), [900023001],
-                "the editions of one guest appearance stopped collapsing into one row")
+        compare(cardTitles(s.albums), ["Nachtfahrt", "Nachtfahrt (Deluxe)", "Nachtfahrt"],
+                "an edition with its own title or track count lost its card")
+        compare(idsOf(s.albums), [900017001, 900017002, 900017003])
     }
 
-    // Different artwork is a different release, whatever the title says.
-    function test_a_re_recording_with_its_own_artwork_still_shows() {
-        var s = openWith([
-            rel(900017001, "Nachtfahrt", "ALBUM", 10,
-                "11111111-0000-0000-0000-000000000000"),
-            rel(900017002, "Nachtfahrt (Neuaufnahme)", "ALBUM", 10,
-                "22222222-0000-0000-0000-000000000000")
-        ])
+    // The page works no row out itself: it files each entry where the bridge
+    // says, whatever the type and the track count would suggest.
+    function test_the_page_files_by_the_row_the_bridge_names() {
+        var page = makePage()
+        page.albums = [
+            { id: 900026001, title: "Nach oben",  section: "s", type: "ALBUM",  numTracks: 12 },
+            { id: 900026002, title: "Nach unten", section: "f", type: "SINGLE", numTracks: 1 },
+            { id: 900026003, title: "Zur Seite",  section: "a", type: "SINGLE", numTracks: 1,
+              featured: true }
+        ]
+        settle(page)
 
-        compare(idsOf(s.albums), [900017001, 900017002],
-                "a re-recording with its own artwork was collapsed into the original")
+        compare(idsOf(findChild(page, "artistSinglesSection")), [900026001])
+        compare(idsOf(findChild(page, "artistAppearsOnSection")), [900026002])
+        compare(idsOf(findChild(page, "artistAlbumsSection")), [900026003])
+    }
+
+    // An entry that names no row is not dropped from the page.
+    function test_an_entry_that_names_no_row_stays_with_the_albums() {
+        var page = makePage()
+        page.albums = [
+            { id: 900027001, title: "Ohne Reihe", type: "SINGLE", numTracks: 1 }
+        ]
+        settle(page)
+
+        compare(idsOf(findChild(page, "artistAlbumsSection")), [900027001],
+                "an entry without a row is on no row of the page")
+        compare(findChild(page, "artistSinglesSection").visible, false)
     }
 }
+

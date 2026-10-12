@@ -84,55 +84,17 @@ Rectangle {
             root.loading = false
             if (err) { root.noteLoadError(err); return }
             // TidalClient::fetchArtistAlbums merges its three requests, so this
-            // callback is the only place that clears `loading`. Tidal lists
-            // every edition of a release under its own id: collapse them.
-            root.albums = root.dedupeEditions(a)
+            // callback is the only place that clears `loading`. The list
+            // arrives with one entry per record.
+            root.albums = a
         })
     }
 
-    // Title without trailing edition qualifiers: "1989 (Deluxe Edition)
-    // [Explicit]" becomes "1989". Only trailing parenthesised or bracketed
-    // suffixes are stripped.
-    function baseTitle(t) {
-        var s = ("" + (t || "")).toLowerCase().trim()
-        for (var k = 0; k < 2; k++)
-            s = s.replace(/\s*[\(\[][^\(\)\[\]]*[\)\]]\s*$/, "").trim()
-        return s
-    }
-
-    // True for a single or an EP, false for an album. Tidal's `type` is the
-    // rule and the track count only a fallback for a response that omits it.
-    function isSingleOrEp(a) {
-        var t = a.type || ""
-        if (t === "SINGLE" || t === "EP") return true
-        if (t === "ALBUM" || t === "COMPILATION") return false
-        return (a.numTracks || 1) <= 3
-    }
-
     // The row a release belongs in: "a" Albums, "s" Singles & EPs, "f" Appears
-    // on. `featured` outranks the type: a guest spot on somebody else's single
-    // is still somebody else's record. dedupeEditions() keys on this answer.
+    // on. The bridge names it, by the rule that also says which entries are
+    // one record. An entry that names none stays on the page, with the albums.
     function sectionOf(a) {
-        if (a.featured) return "f"
-        return root.isSingleOrEp(a) ? "s" : "a"
-    }
-
-    // Collapses editions of one release, keyed on artwork and base title. The
-    // row is part of the key: a lead single often carries its album's artwork
-    // and title, as does a compilation a single was licensed onto.
-    function dedupeEditions(list) {
-        var seen = ({})
-        var out = []
-        for (var i = 0; i < list.length; i++) {
-            var a = list[i]
-            var cover = a.coverUrl || ("id:" + a.id)
-            var key = root.sectionOf(a) + ""
-                      + cover + "" + root.baseTitle(a.title)
-            if (seen[key]) continue
-            seen[key] = true
-            out.push(a)
-        }
-        return out
+        return a.section || "a"
     }
 
     ScrollView {

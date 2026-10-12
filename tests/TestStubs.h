@@ -24,6 +24,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include "api/RecordVersions.h"
 #include "api/TidalBridge.h"   // withRecentSearch / kRecentSearchCap
 #include "ui/Application.h"
 #include "ui/ThemePalette.h"
@@ -269,13 +270,14 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+    // Answers as the app does: one entry per record, each naming its row.
     Q_INVOKABLE void fetchArtistAlbums(qlonglong artistId, QJSValue cb) {
         m_lastArtistAlbumsFetched = artistId;
         m_artistAlbumsFetches++;
         if (!cb.isCallable()) return;
         QJSEngine *e = jsEngine();
         QJSValueList args;
-        args << (e ? e->toScriptValue(m_artistAlbums) : emptyArray())
+        args << (e ? e->toScriptValue(asTheBridgeHandsAlbumsOver(m_artistAlbums)) : emptyArray())
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
@@ -1043,6 +1045,37 @@ private:
     void deliver(QJSValue &cb, const QJSValueList &args) {
         if (m_deferHeaders) { m_pendingHeaders.append({cb, args}); return; }
         cb.call(args);
+    }
+
+    // What TidalClient::fetchArtistAlbums() and albumToMap() make of a
+    // discography, by the app's own rule: one entry per record, and the row
+    // of each under `section`. Reads the keys albumToMap() writes.
+    static QVariantList asTheBridgeHandsAlbumsOver(const QVariantList &maps) {
+        QList<Tidal::Album> albums;
+        QHash<qint64, QVariantMap> byId;
+        for (const QVariant &v : maps) {
+            const QVariantMap m = v.toMap();
+            Tidal::Album a;
+            a.id         = m.value(QStringLiteral("id")).toLongLong();
+            a.title      = m.value(QStringLiteral("title")).toString();
+            a.type       = m.value(QStringLiteral("type")).toString();
+            a.numTracks  = m.value(QStringLiteral("numTracks")).toInt();
+            a.duration   = m.value(QStringLiteral("duration")).toInt();
+            a.featured   = m.value(QStringLiteral("featured")).toBool();
+            a.explicit_  = m.value(QStringLiteral("explicit_")).toBool();
+            a.audioModes = m.value(QStringLiteral("audioModes")).toStringList();
+            a.mediaTags  = m.value(QStringLiteral("mediaTags")).toStringList();
+            albums.append(a);
+            if (!byId.contains(a.id)) byId.insert(a.id, m);
+        }
+        QVariantList out;
+        const QList<Tidal::Album> entries = Tidal::oneEntryPerRecord(albums);
+        for (const Tidal::Album &a : entries) {
+            QVariantMap m = byId.value(a.id);
+            m.insert(QStringLiteral("section"), Tidal::recordSectionKey(a));
+            out.append(m);
+        }
+        return out;
     }
 
     // ── the header re-read, as TidalBridge::refreshPlaylistMeta behaves ──────

@@ -3,7 +3,8 @@
 // artists/<id>/albums with no `filter` answers the albums only. EPs and singles
 // need filter=EPSANDSINGLES. filter=COMPILATIONS answers records by other
 // artists that this one appears on. The artist's own two runs are paged to
-// their end. The appears-on run is one request.
+// their end. The appears-on run is one request. What comes out holds one entry
+// per record: the rule for that is tested in tests/tst_record_versions.cpp.
 // FakeApi overrides TidalApi::get, so the cases drive the real TidalClient and
 // can see filters and offsets. Every id, title and cover below is invented.
 
@@ -25,6 +26,7 @@
 #include "api/TidalBridge.h"
 #include "api/TidalClient.h"
 #include "api/Models.h"
+#include "api/RecordVersions.h"
 
 using namespace Tidal;
 
@@ -46,6 +48,48 @@ QJsonObject release(qint64 id, const QString &title, const QString &type,
     o["numberOfTracks"] = numTracks;
     o["cover"]          = cover;
     return o;
+}
+
+const QStringList kStereo   = {QStringLiteral("STEREO")};
+const QStringList kAtmos    = {QStringLiteral("DOLBY_ATMOS")};
+const QStringList kLossless = {QStringLiteral("LOSSLESS")};
+const QStringList kHiRes    = {QStringLiteral("LOSSLESS"), QStringLiteral("HIRES_LOSSLESS")};
+
+// One product of a record as the server lists it, with a cover of its own.
+// `tags` is mediaMetadata.tags.
+QJsonObject product(qint64 id, const QString &title, const QString &type, int numTracks,
+                    int duration, bool isExplicit, const QStringList &modes,
+                    const QStringList &tags, int popularity = 0)
+{
+    QJsonObject o = release(id, title, type, numTracks,
+                            QStringLiteral("%1-0000-0000-0000-000000000000")
+                                .arg(id % 100000000, 8, 10, QLatin1Char('0')));
+    o["duration"]       = duration;
+    o["explicit"]       = isExplicit;
+    o["audioQuality"]   = modes == kAtmos ? QStringLiteral("LOW") : QStringLiteral("LOSSLESS");
+    o["audioModes"]     = QJsonArray::fromStringList(modes);
+    o["mediaMetadata"]  = QJsonObject{{QStringLiteral("tags"), QJsonArray::fromStringList(tags)}};
+    o["numberOfVideos"] = 0;
+    o["popularity"]     = popularity;
+    o["allowStreaming"] = true;
+    o["streamReady"]    = true;
+    return o;
+}
+
+// The six products of one record: explicit and clean, each as 16-bit stereo,
+// hi-res stereo and Dolby Atmos only. The explicit hi-res stereo one is
+// `firstId + 4`. A Dolby Atmos one leads and is the most played.
+QList<QJsonObject> sixProducts(qint64 firstId, const QString &title, const QString &type,
+                               int numTracks, int duration)
+{
+    return {
+        product(firstId,     title, type, numTracks, duration + 4, true,  kAtmos,  kAtmos,    80),
+        product(firstId + 1, title, type, numTracks, duration - 1, false, kStereo, kLossless, 40),
+        product(firstId + 2, title, type, numTracks, duration - 1, false, kStereo, kHiRes,    45),
+        product(firstId + 3, title, type, numTracks, duration,     true,  kStereo, kLossless, 60),
+        product(firstId + 4, title, type, numTracks, duration,     true,  kStereo, kHiRes,    70),
+        product(firstId + 5, title, type, numTracks, duration + 3, false, kAtmos,  kAtmos,    30),
+    };
 }
 
 // A TidalApi whose GETs are answered out of a per-filter catalogue, paged as
@@ -244,9 +288,9 @@ private slots:
         QVERIFY2(run.has(900001001), "the album is missing from the discography");
     }
 
-    // ArtistPage splits the list on `type` and falls back to the track count
-    // only when there is none. Album::type has to survive the parse, or a
-    // 4-track EP is filed as an album.
+    // The row of a release comes from `type`, and from the track count only
+    // when there is none. Album::type has to survive the parse, or a 4-track
+    // EP is filed as an album.
     void theReleaseTypeSurvivesTheParse() {
         FakeApi api;
         seedOneOfEach(api);
@@ -268,9 +312,8 @@ private slots:
         QCOMPARE(ep->numTracks, 4);
     }
 
-    // The last hop before the page: ArtistPage reads `type` off the map
-    // TidalBridge::albumToMap builds. The QML tests run on a stub bridge and
-    // cannot see it.
+    // The last hop before a page: the map TidalBridge::albumToMap builds. The
+    // QML tests run on a stub bridge and cannot see it.
     void theReleaseTypeSurvivesTheHopToQml() {
         Album a;
         a.id        = 900008001;
@@ -281,6 +324,8 @@ private slots:
         const QVariantMap m = TidalBridge::albumToMap(a);
         QCOMPARE(m.value(QStringLiteral("type")).toString(), QStringLiteral("EP"));
         QCOMPARE(m.value(QStringLiteral("numTracks")).toInt(), 4);
+        // The type decides: four tracks alone would say Albums.
+        QCOMPARE(m.value(QStringLiteral("section")).toString(), QStringLiteral("s"));
     }
 
     // ── whose record it is ───────────────────────────────────────────────────
@@ -377,10 +422,12 @@ private slots:
         const QVariantMap guestMap = TidalBridge::albumToMap(guest);
 
         QVERIFY2(guestMap.contains(QStringLiteral("featured")),
-                 "albumToMap() hands QML no `featured` key, so ArtistPage reads "
-                 "undefined and files every guest appearance under Albums");
+                 "albumToMap() hands QML no `featured` key");
         QCOMPARE(guestMap.value(QStringLiteral("featured")).toBool(), true);
         QCOMPARE(ownMap.value(QStringLiteral("featured")).toBool(), false);
+        // The mark is what sends the record to Appears on.
+        QCOMPARE(guestMap.value(QStringLiteral("section")).toString(), QStringLiteral("f"));
+        QCOMPARE(ownMap.value(QStringLiteral("section")).toString(), QStringLiteral("a"));
     }
 
     // ── one of three failing ─────────────────────────────────────────────────
@@ -585,6 +632,128 @@ private slots:
         QCOMPARE(run.ids(), (QList<qint64>{900001001, 900001002, 900001003, 900001004}));
         // The appears-on reply landed first here and is still the only marked one.
         QCOMPARE(run.featuredIds(), (QList<qint64>{900001004}));
+    }
+
+    // ── one entry per record ─────────────────────────────────────────────────
+
+    // Three lists in, one entry per record out. The album, the single and the
+    // record by somebody else share a title, and the first and the last a
+    // track count and a length as well.
+    void theProductsOfOneRecordReachTheCallerAsOneEntry() {
+        FakeApi api;
+        const QString t = QStringLiteral("Nachtfahrt");
+        api.catalogue[kNoFilter]   = sixProducts(900030000, t, QStringLiteral("ALBUM"), 12, 2710);
+        api.catalogue[kNoFilter]  << product(900030100, QStringLiteral("Morgenrot"),
+                                             QStringLiteral("ALBUM"), 9, 2400, false, kStereo, kLossless);
+        api.catalogue[kEpsSingles] = sixProducts(900031000, t, QStringLiteral("SINGLE"), 1, 215);
+        api.catalogue[kAppearsOn]  = sixProducts(900032000, t, QStringLiteral("ALBUM"), 12, 2710);
+        api.catalogue[kAppearsOn] << product(900032100, QStringLiteral("Sammlung"),
+                                             QStringLiteral("COMPILATION"), 20, 4800, false, kStereo, kLossless);
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(run.err, QString());
+        QVERIFY2(run.albums.size() == 5,
+                 qPrintable(QStringLiteral("20 products of 5 records came out as %1 entries")
+                            .arg(run.albums.size())));
+        // Each record where its first product stood, and the explicit hi-res
+        // stereo product standing for it.
+        QCOMPARE(run.ids(), (QList<qint64>{900030004, 900030100, 900031004, 900032004, 900032100}));
+        QCOMPARE(run.featuredIds(), (QList<qint64>{900032004, 900032100}));
+        const Album *album = run.find(900030004);
+        QVERIFY(album);
+        QVERIFY(album->explicit_);
+        QCOMPARE(album->audioModes, kStereo);
+        QCOMPARE(album->mediaTags, kHiRes);
+    }
+
+    // The fields that tell the products of a record apart. The rule reads
+    // them off Album, so each has to survive the parse.
+    void whatTellsVersionsApartSurvivesTheParse() {
+        FakeApi api;
+        QJsonObject o = product(900033001, QStringLiteral("Nachtfahrt (Live)"), QStringLiteral("ALBUM"),
+                                12, 2713, true, kAtmos, kAtmos, 61);
+        o["version"]        = QStringLiteral("Live");
+        o["numberOfVideos"] = 2;
+        o["streamReady"]    = false;
+        api.catalogue[kNoFilter] = { o };
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        const Album *a = run.find(900033001);
+        QVERIFY(a);
+        QCOMPARE(a->version, QStringLiteral("Live"));
+        QCOMPARE(a->explicit_, true);
+        QCOMPARE(a->audioModes, kAtmos);
+        QCOMPARE(a->mediaTags, kAtmos);
+        QCOMPARE(a->numVideos, 2);
+        QCOMPARE(a->popularity, 61);
+        QCOMPARE(a->allowStreaming, true);
+        QCOMPARE(a->streamReady, false);
+        QCOMPARE(a->duration, 2713);
+    }
+
+    // An album nested in a track says nothing about streaming and counts as
+    // streamable. Only a stated refusal makes it otherwise.
+    void anAlbumThatSaysNothingAboutStreamingCountsAsStreamable() {
+        const Album silent = Album::fromJson(release(900034001, QStringLiteral("Stilles"),
+                                                     QStringLiteral("ALBUM"), 10));
+        QVERIFY(silent.allowStreaming);
+        QVERIFY(silent.streamReady);
+        QVERIFY(!silent.explicit_);
+        QVERIFY(silent.audioModes.isEmpty());
+        QVERIFY(silent.mediaTags.isEmpty());
+
+        QJsonObject refused = release(900034002, QStringLiteral("Gesperrtes"),
+                                      QStringLiteral("ALBUM"), 10);
+        refused["allowStreaming"] = false;
+        QVERIFY(!Album::fromJson(refused).allowStreaming);
+    }
+
+    // The last hop before a page: what it needs to name a version.
+    void whatNamesAVersionSurvivesTheHopToQml() {
+        Album a;
+        a.id         = 900035001;
+        a.title      = QStringLiteral("Nachtfahrt");
+        a.explicit_  = true;
+        a.audioModes = kAtmos;
+        a.mediaTags  = kAtmos;
+
+        const QVariantMap m = TidalBridge::albumToMap(a);
+        QVERIFY2(m.contains(QStringLiteral("explicit_")), "albumToMap() hands QML no `explicit_` key");
+        QCOMPARE(m.value(QStringLiteral("explicit_")).toBool(), true);
+        QCOMPARE(m.value(QStringLiteral("audioModes")).toStringList(), kAtmos);
+        QCOMPARE(m.value(QStringLiteral("mediaTags")).toStringList(), kAtmos);
+
+        const QVariantMap plain = TidalBridge::albumToMap(Album());
+        QCOMPARE(plain.value(QStringLiteral("explicit_")).toBool(), false);
+        QVERIFY(plain.contains(QStringLiteral("audioModes")));
+        QVERIFY(plain.contains(QStringLiteral("mediaTags")));
+    }
+
+    // ArtistPage files a release by the `section` key and works nothing out
+    // itself, so the key has to say what the rule says.
+    void theRowSurvivesTheHopToQml() {
+        Album album;
+        album.type      = QStringLiteral("ALBUM");
+        album.numTracks = 11;
+        Album ep = album;
+        ep.type      = QStringLiteral("EP");
+        ep.numTracks = 4;
+        Album guest = album;
+        guest.featured = true;
+
+        QCOMPARE(TidalBridge::albumToMap(album).value(QStringLiteral("section")).toString(),
+                 QStringLiteral("a"));
+        QCOMPARE(TidalBridge::albumToMap(ep).value(QStringLiteral("section")).toString(),
+                 QStringLiteral("s"));
+        QCOMPARE(TidalBridge::albumToMap(guest).value(QStringLiteral("section")).toString(),
+                 QStringLiteral("f"));
+        for (const Album &a : {album, ep, guest})
+            QCOMPARE(TidalBridge::albumToMap(a).value(QStringLiteral("section")).toString(),
+                     recordSectionKey(a));
     }
 
     // ── the merge on its own ─────────────────────────────────────────────────

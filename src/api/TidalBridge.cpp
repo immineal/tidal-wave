@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include "TidalBridge.h"
+#include "RecordVersions.h"
 #include <QJSEngine>
 #include <QSettings>
 #include <QJsonArray>
@@ -133,8 +134,14 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["duration"]    = a.duration;
     m["quality"]     = a.audioQuality;
     m["type"]        = a.type;
-    // ArtistPage files a release under Appears on by this.
     m["featured"]    = a.featured;
+    // The artist page's row: "a" Albums, "s" Singles & EPs, "f" Appears on.
+    // ArtistPage files a release by this and works nothing out itself.
+    m["section"]     = recordSectionKey(a);
+    // What a page needs to name a version of a record.
+    m["explicit_"]   = a.explicit_;
+    m["audioModes"]  = a.audioModes;
+    m["mediaTags"]   = a.mediaTags;
     m["year"]        = a.releaseDate.left(4);
     return m;
 }

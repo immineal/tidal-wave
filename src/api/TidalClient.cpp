@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "TidalClient.h"
+#include "RecordVersions.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QByteArray>
@@ -471,8 +472,9 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         for (Album &a : pending->appearsOn) a.featured = true;
         // The artist's own lists go first: a record of theirs that the
         // appears-on filter also answers keeps its place and stays unmarked.
-        const QList<Album> all = mergeAlbumLists(
-            {pending->albums, pending->epsAndSingles, pending->appearsOn});
+        // Then one entry per record, which reads the mark for the row.
+        const QList<Album> all = oneEntryPerRecord(mergeAlbumLists(
+            {pending->albums, pending->epsAndSingles, pending->appearsOn}));
         // One filter failing must not empty the page. The error is reported
         // only when none of the three yielded anything.
         if (all.isEmpty() && !pending->err.isEmpty()) { cb({}, pending->err); return; }
