@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs a command with a private PulseAudio server that has one null sink, so
-# tests that open an audio device find one and nothing reaches a speaker.
+# Runs a command with a private PulseAudio server that has two null sinks, so
+# tests that open or switch an audio device find them and nothing reaches a
+# speaker.
 # For containers and CI, where no sound server runs.
 #   tests/with-null-sink.sh ctest --test-dir build
 set -eu
@@ -12,5 +13,6 @@ trap 'HOME="$XDG_RUNTIME_DIR" pulseaudio --kill 2>/dev/null || true; rm -rf "$XD
 HOME="$XDG_RUNTIME_DIR" pulseaudio -n --daemonize=yes --exit-idle-time=-1 \
     --load="module-native-protocol-unix auth-anonymous=1" \
     --load="module-null-sink sink_name=tests_null" \
+    --load="module-null-sink sink_name=tests_null_2" \
     --load=module-always-sink
 "$@"

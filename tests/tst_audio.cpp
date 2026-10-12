@@ -78,6 +78,11 @@ private slots:
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QVERIFY(m_dir.isValid());
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        // The backend the app selects on this Qt.
+        if (qEnvironmentVariableIsEmpty("QT_MEDIA_BACKEND"))
+            qputenv("QT_MEDIA_BACKEND", QByteArrayLiteral("ffmpeg"));
+#endif
         if (QMediaDevices::audioOutputs().isEmpty())
             qInfo("no audio output devices on this box; the playback tests will skip");
     }
