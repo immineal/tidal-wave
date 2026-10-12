@@ -148,6 +148,148 @@ jobs:
           # The session bus test guards the media keys. It must not be among them.
           ! grep -q TestSessionBus skipped.txt
 
+  # The distributions' own Qt, one job per minor version they carry, each with
+  # that distribution's FFmpeg, fonts and packaging of the media backends.
+  # Fedora and Arch move their Qt, so a job prints the version it found.
+  test-distribution:
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    timeout-minutes: 60
+    # A known failure stays in the matrix and shows red without blocking.
+    continue-on-error: ${{ matrix.known_failure == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Debian 12's Qt with a newer FFmpeg: where the .deb is installed most.
+          - name: Ubuntu 24.04, its own Qt 6.4
+            image: ubuntu:24.04
+            git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+          # Both fail in some runs in tst_qml, NowPlayingAccess::
+          # test_hover_underlines_only_the_name_under_the_pointer: from Qt 6.6
+          # to 6.10 the underline goes one frame after the pointer has left.
+          - name: Debian 13, Qt 6.8
+            image: debian:trixie
+            git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+            known_failure: true
+          - name: Ubuntu 26.04, Qt 6.10
+            image: ubuntu:26.04
+            git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
+            known_failure: true
+          # Fails in tst_qml, PlayerLayout::
+          # test_sleep_timer_pill_does_not_jitter_while_counting, with Fedora's
+          # default font.
+          - name: Fedora 44, Qt 6.11
+            image: fedora:44
+            git: dnf install -y git-core
+            known_failure: true
+          # Rolling: where a new Qt or FFmpeg meets the PKGBUILD first.
+          - name: Arch Linux, Qt 6.12
+            image: archlinux:base-devel
+            git: pacman -Syu --noconfirm git
+
+    steps:
+      # Before the checkout, for the reason given in the Debian 12 job.
+      - name: Install git
+        run: ${{ matrix.git }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install build and test dependencies
+        run: packaging/ci/install-test-deps.sh
+
+      - name: Show the Qt version
+        run: qmake6 -query QT_VERSION
+
+      - name: Configure
+        run: cmake -B build-distro -S . -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
+
+      - name: Build
+        run: cmake --build build-distro --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          # The count first, as in the Debian 12 job.
+          n=$(ctest --test-dir build-distro -N | sed -n 's/^Total Tests: //p')
+          echo "ctest sees ${n:-0} tests"
+          test "${n:-0}" -ge 1
+          tests/with-null-sink.sh ctest --test-dir build-distro --output-on-failure
+
+      - name: List skipped test cases
+        if: always()
+        run: |
+          tests/list-skipped.sh build-distro | tee skipped.txt
+          # The session bus test guards the media keys. It must not be among them.
+          ! grep -q TestSessionBus skipped.txt
+
+  # Qt from the Qt installer on both sides of the version switches in the code
+  # (6.5, 6.7, 6.8), and the newest minor below the one the release ships.
+  # Each bundles its own FFmpeg. Steps as in the Qt 6.12 job.
+  test-installer-qt:
+    name: Tests (Ubuntu 24.04, Qt ${{ matrix.qt }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.known_failure == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Fails in tst_seek (theEndOfTheLastTrackIsReportedOnce), tst_firstrun
+          # and tst_qml UpdatePrompt (a binding loop on the prompt's height),
+          # tst_qml Search (two paging cases), and in the two named for 6.7.
+          - qt: '6.5.3'
+            known_failure: true
+          # Fails in tst_dash (four cases whose player has no output on 6.5 to
+          # 6.7) and tst_qml ReducedMotion::test_search_tab_pill_travels.
+          - qt: '6.7.3'
+            known_failure: true
+          # Fails in some runs in the hover case named in the job above, as
+          # 6.7.3 does.
+          - qt: '6.8.3'
+            known_failure: true
+          - qt: '6.11.3'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt }}
+          modules: 'qtmultimedia'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libavahi-client-dev
+
+      - name: Configure
+        run: cmake -B build-tests -S . -DCMAKE_BUILD_TYPE=Debug -DTIDALWAVE_BUILD_TESTS=ON -DTIDALWAVE_REQUIRE_TRANSLATIONS=ON
+
+      - name: Build
+        run: cmake --build build-tests --parallel 4
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          n=$(ctest --test-dir build-tests -N | sed -n 's/^Total Tests: //p')
+          echo "ctest sees ${n:-0} tests"
+          test "${n:-0}" -ge 1
+          ctest --test-dir build-tests --output-on-failure
+
+      - name: List skipped test cases
+        if: always()
+        run: |
+          tests/list-skipped.sh build-tests | tee skipped.txt
+          # The session bus test guards the media keys. It must not be among them.
+          ! grep -q TestSessionBus skipped.txt
+
   # Catches a private address before anything slow runs. An allowlist, so the
   # address it keeps out never has to be written down here.
   addresses:
