@@ -1314,6 +1314,73 @@ TestCase {
         h.panel.close()
     }
 
+    // ── how far the panel scrolls ────────────────────────────────────────
+
+    // Turns the wheel over the panel until it says it is at its end.
+    function wheelToTheEnd(flick) {
+        for (var turn = 0; turn < 100 && !flick.atYEnd; ++turn) {
+            mouseWheel(flick, flick.width / 2, flick.height / 2, 0, -360)
+            tryVerify(function() { return !flick.moving }, 2000,
+                      "the panel did not come to rest after a turn of the wheel")
+        }
+        verify(flick.atYEnd, "a hundred turns of the wheel did not reach the end of the panel")
+    }
+
+    // The end of the travel is the last row at the bottom edge of the panel.
+    function test_the_panel_ends_where_its_last_row_ends() {
+        var h = openPanel(minWindowW, minWindowH)
+        var flick = scrollerOf(h.panel)
+        var column = flick.contentItem.children[0]
+        verify(column.height > flick.height,
+               "the panel's rows fit its viewport, so this case has nothing to scroll")
+
+        wheelToTheEnd(flick)
+        settle(h.panel.contentItem)
+
+        var end = column.mapToItem(flick, 0, column.height).y
+        fuzzyCompare(end, flick.height, 0.5,
+                     "with the wheel at the end of the panel its last row ends "
+                     + (flick.height - end).toFixed(0) + "px above the panel's bottom edge")
+        var fade = findByName(h.panel.contentItem, "settingsBottomFade")
+        verify(fade && !fade.moreBelow, "the bottom fade says there is more below the last row")
+        h.panel.close()
+    }
+
+    // The wheel and the scroll bar reach as far as the scroller's content
+    // height, which has to follow the rows as they come and go.
+    function test_the_scroll_range_follows_the_rows() {
+        var h = openPanel(minWindowW, minWindowH)
+        var flick = scrollerOf(h.panel)
+        var column = flick.contentItem.children[0]
+
+        function check(when) {
+            fuzzyCompare(flick.contentHeight, column.height, 0.5,
+                         when + " the scroller ends at " + flick.contentHeight.toFixed(0)
+                         + "px and the rows at " + column.height.toFixed(0) + "px")
+        }
+        check("as opened")
+        var dark = column.height
+
+        // A light theme hides the pure-black switch and its note.
+        scrollToEnd(h.panel)
+        prefs.theme = "sky"
+        settle(h.panel.contentItem)
+        verify(column.height < dark, "the light theme took no row away")
+        check("with a row gone")
+        fuzzyCompare(column.mapToItem(flick, 0, column.height).y, flick.height, 0.5,
+                     "a row left and the panel did not follow its rows up")
+
+        prefs.theme = "sea"
+        settle(h.panel.contentItem)
+        compare(column.height, dark, "the dark theme did not bring the row back")
+        check("with the row back")
+
+        h.host.height = 1200
+        settle(h.panel.contentItem)
+        check("in a taller window")
+        h.panel.close()
+    }
+
     // ── the order of the panel ───────────────────────────────────────────
 
     // Top to bottom, by where the sections land. The shortcuts sit above the

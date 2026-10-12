@@ -193,6 +193,9 @@ Popup {
             left: parent.left; right: parent.right; bottom: parent.bottom
         }
         contentWidth: availableWidth
+        // Stated, because a ScrollView on Qt 6.5 works its content height out
+        // once, while the panel is built, and does not follow the column after.
+        contentHeight: sectionsColumn.implicitHeight
         clip: true
 
         // The bar gets a gutter of its own rather than being laid over the
@@ -238,6 +241,7 @@ Popup {
         }
 
         ColumnLayout {
+            id: sectionsColumn
             width: scroller.availableWidth
             spacing: 0
 
