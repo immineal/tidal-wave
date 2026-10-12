@@ -46,6 +46,8 @@ TestCase {
     }
 
     function init() {
+        // A loop leaves a binding on the value it had, so no case may raise one.
+        failOnWarning(/Binding loop detected/)
         // Two cases below measure a transition rather than a resting layout, so
         // motion has to be allowed. Another file in this suite turns the
         // preference on, and the stub carries it across files.
@@ -527,6 +529,93 @@ TestCase {
         verify(faults.length === 0, reportFor("Now Playing overflows", row, faults))
         faults = collectClipped(page, "NowPlayingPage", [])
         verify(faults.length === 0, reportFor("Now Playing text clipped", row, faults))
+    }
+
+    // ── crossing it without motion ───────────────────────────────────────
+    // With motion reduced the page lands on its other layout in one step, and
+    // the text column changes height and place in that step.
+
+    // Resizes the window and waits for the page to be drawn at its new width.
+    function resizePage(host, page, pageWidth) {
+        host.width = pageWidth + sidebarWidth
+        tryVerify(function () { return page.width === pageWidth }, 2000,
+                  "the page never became " + pageWidth + "px wide")
+        frame(host)
+    }
+
+    function test_the_text_stays_centred_on_the_artwork_after_a_restack_without_motion_data() {
+        return [
+            { tag: "page 1050x700", w: 1050, h: 700 },
+            { tag: "page 1280x900", w: 1280, h: 900 }
+        ]
+    }
+
+    function test_the_text_stays_centred_on_the_artwork_after_a_restack_without_motion(row) {
+        app.setReducedMotionForTest(true)
+        // The last track of the queue: with nothing up next the text column
+        // is shorter than the artwork, and its place is the middle of it.
+        player.setQueueForTest([makeTrack(0)], 0)
+        var host = showHost(nowPlayingHost, row.w + sidebarWidth, row.h)
+        var page = host.page
+        var cover = findChild(page, "nowPlayingCoverBox")
+        var info  = findChild(page, "nowPlayingInfoColumn")
+        verify(cover && info, "the page's two blocks were not found")
+        // Each block is rounded to a pixel on its own, so within one.
+        function belowCentre() {
+            return (info.y + info.height / 2) - (cover.y + cover.height / 2)
+        }
+        verify(!page.stacked, row.tag + " should put the artwork beside the text")
+        verify(Math.abs(belowCentre()) <= 1,
+               row.tag + ": the text column starts out " + belowCentre().toFixed(1)
+               + "px below the middle of the artwork")
+
+        resizePage(host, page, 900)
+        compare(page.stackness, 1, "the page did not stack in one step")
+        resizePage(host, page, row.w)
+        compare(page.stackness, 0, "the page did not come back side by side in one step")
+
+        verify(Math.abs(belowCentre()) <= 1,
+               row.tag + ": back side by side the middle of the text column is "
+               + belowCentre().toFixed(1) + "px below the middle of the artwork")
+    }
+
+    // init() fails a case on a binding loop. This one goes through what
+    // rearranges the page: the breakpoint, a panel, the reading view.
+    function test_the_page_rearranges_without_a_binding_loop_data() {
+        return [
+            { tag: "reduced",  reduced: true  },
+            { tag: "animated", reduced: false }
+        ]
+    }
+
+    function test_the_page_rearranges_without_a_binding_loop(row) {
+        app.setReducedMotionForTest(row.reduced)
+        var host = showHost(nowPlayingHost, 1050 + sidebarWidth, 700)
+        var page = host.page
+
+        function rest(what) {
+            tryVerify(function () {
+                return page.stackness === (page.stackedLayout ? 1 : 0)
+                    && page.lyricsness === (page.showLyrics ? 1 : 0)
+                    && page.creditsness === (page.showCredits ? 1 : 0)
+                    && page.readingness === (page.readingView ? 1 : 0)
+            }, 2000, "the page never came to rest after " + what)
+            frame(host)
+        }
+
+        resizePage(host, page, 900);   rest("stacking")
+        resizePage(host, page, 1050);  rest("unstacking")
+        page.showLyrics = true;        rest("opening the lyrics")
+        host.fullScreen = true;        rest("entering the reading view")
+        host.fullScreen = false;       rest("leaving the reading view")
+        page.showLyrics = false
+        page.showCredits = true;       rest("swapping the lyrics for the credits")
+        page.showCredits = false;      rest("closing the credits")
+        host.height = 600
+        tryVerify(function () { return page.height === 600 }, 2000,
+                  "the page never became 600px tall")
+        rest("a shorter window")
+        resizePage(host, page, 1280);  rest("a wider window")
     }
 
     // ── player bar ───────────────────────────────────────────────────────

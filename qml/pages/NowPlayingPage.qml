@@ -1014,11 +1014,21 @@ Rectangle {
                     }
                 }
 
-                ColumnLayout {
-                    id: infoColumn
+                // Places the text column. The layout itself is never moved: on
+                // Qt 6.5 and 6.6 a moved layout publishes its implicit height
+                // inside the move, which infoY is worked out from.
+                Item {
+                    id: infoBox
                     objectName: "nowPlayingInfoColumn"
                     x: root.infoX
                     y: root.infoY
+                    width: root.infoWidth
+                    height: root.infoHeight
+                }
+
+                ColumnLayout {
+                    id: infoColumn
+                    parent: infoBox
                     width: root.infoWidth
                     spacing: 24
 
