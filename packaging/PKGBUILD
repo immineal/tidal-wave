@@ -6,7 +6,7 @@
 # Build from a checkout with: cd packaging && makepkg -si
 
 pkgname=tidal-wave
-pkgver=0.4.1
+pkgver=0.4.2
 pkgrel=1
 pkgdesc='A native desktop client for Tidal'
 arch=('x86_64')
