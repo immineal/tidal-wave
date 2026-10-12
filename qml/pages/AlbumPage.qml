@@ -330,7 +330,7 @@ Rectangle {
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
                                 if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
-                                else if (albumData.quality) parts.push(player.qualityLabel(albumData.quality))
+                                else parts.push(root.soundOf(albumData))
                                 // qualityLabel echoes a code it does not know, and an
                                 // unknown code can be empty, which otherwise leaves the
                                 // line ending in a dangling separator.

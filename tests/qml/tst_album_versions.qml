@@ -506,6 +506,16 @@ TestCase {
                "the facts line calls a Dolby Atmos album low quality: " + factsOf(page))
     }
 
+    // Hi-res is a tag: the listed quality of such an album says LOSSLESS. The
+    // facts line names it as the album's card on another version's page does.
+    function test_a_hi_res_album_is_named_by_its_tag() {
+        var page = openExplicitHiRes()
+
+        var facts = factsOf(page).split(" • ")
+        compare(facts[facts.length - 1], player.qualityLabel("HI_RES_LOSSLESS"),
+                "the facts line of a hi-res album: " + factsOf(page))
+    }
+
     function test_a_stereo_album_names_its_quality_as_before_data() {
         return [
             { tag: "lossless",  quality: "LOSSLESS", modes: ["STEREO"] },
