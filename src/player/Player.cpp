@@ -826,7 +826,21 @@ bool Player::sinkOpens() {
     }
     if (!trial->done) return false;
     m_sinkTrial.reset();
-    return trial->linked;
+    if (!trial->linked) return false;
+    lock.unlock();
+    followOutputs();
+    return true;
+}
+
+void Player::followOutputs() {
+    if (m_rebinding || !m_audioOut) return;
+    const QList<QAudioDevice> outputs = QMediaDevices::audioOutputs();
+    const QByteArray bound = m_audioOut->device().id();
+    const bool listed = std::any_of(outputs.cbegin(), outputs.cend(),
+        [&bound](const QAudioDevice &output) { return output.id() == bound; });
+    // Qt 6.4 waits for good on a stream to an output the server no longer
+    // has, and no signal tells of a change of outputs on this Qt.
+    if (!outputs.isEmpty() && !listed) rebindAudioOutput(resolveAudioDevice());
 }
 
 void Player::refuseStart(const QString &why) {

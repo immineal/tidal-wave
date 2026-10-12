@@ -345,6 +345,8 @@ private:
     struct SinkTrial;
     void startSinkTrial();
     bool sinkOpens();
+    // Rebinds to an output the server has once the bound one left its list.
+    void followOutputs();
     static constexpr int kSinkTrialMs    = 3000;
     // The trial under way, or the last one if it never came back.
     std::shared_ptr<SinkTrial> m_sinkTrial;
