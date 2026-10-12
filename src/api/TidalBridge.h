@@ -183,9 +183,10 @@ private:
     void loadNextFavoriteArtistsPage(int offset);
     void loadNextUserPlaylistsPage(int offset);
 
-    static QVariantMap  trackToMap  (const Track &t);
 public:
-    // Public and static so a test can reach it.
+    // Public and static: the player makes a queue row out of a track, and a
+    // test can reach both.
+    static QVariantMap  trackToMap  (const Track &t);
     static QVariantMap  albumToMap (const Album &a);
 private:
     static QVariantMap  artistToMap (const Artist &a);

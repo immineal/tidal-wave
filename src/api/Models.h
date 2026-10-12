@@ -150,6 +150,11 @@ struct Track {
     // normal case: a listing endpoint may omit `mixes`, and TrackRow then
     // falls back to RadioPage.
     QString trackMixId;
+    // The recording's code: the same under every id Tidal has it as.
+    QString isrc;
+    // False where Tidal lists the track and does not stream it. An answer
+    // that says nothing about it is about a track that is streamed.
+    bool    streamable = true;
 
     static Track fromJson(const QJsonObject &j) {
         Track t;
@@ -163,6 +168,9 @@ struct Track {
         t.audioQuality = j["audioQuality"].toString();
         // A hex string, unlike a numeric track id. A missing `mixes` yields "".
         t.trackMixId   = j["mixes"].toObject()[MixTypes::TrackMix].toString();
+        t.isrc         = j["isrc"].toString();
+        // Either flag as an explicit false. A missing one reads as true.
+        t.streamable   = j["allowStreaming"].toBool(true) && j["streamReady"].toBool(true);
         if (j.contains("album"))
             t.album    = Album::fromJson(j["album"].toObject());
         for (const auto &v : j["artists"].toArray())

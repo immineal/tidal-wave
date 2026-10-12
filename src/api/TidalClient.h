@@ -152,6 +152,14 @@ public:
     // Three GETs behind one call. See TrackCredits in Models.h.
     void fetchTrackCredits(qint64 trackId,
                            std::function<void(TrackCredits, QString /*error*/)> cb);
+    // Another id Tidal streams the recording of `of` under, found by its
+    // ISRC. Answers a track with no id where there is none, and the error of
+    // a request that failed.
+    void fetchTwin(const Track &of, std::function<void(Track, QString /*error*/)> cb);
+    // The twin of `of` in a `tracks?isrc=` answer: a streamed track of that
+    // ISRC with another id. Of several, the one on an album of the same
+    // title, then one in hi-res, then the more popular, then the lower id.
+    static Track pickTwin(const QJsonObject &root, const Track &of);
 
     // Recently played
     void fetchRecentlyPlayed(TracksCallback cb);

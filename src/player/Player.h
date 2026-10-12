@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <QVariantList>
 #include <QTemporaryFile>
+#include <functional>
 #include <memory>
 #include "api/TidalClient.h"
 #include "api/Models.h"
@@ -259,6 +260,20 @@ private:
     void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
     // The load itself. Only the restore calls it directly, to stay in force.
     void startLoad(int index);
+    // Asks for the current track's stream on behalf of the load numbered
+    // `serial`. twinSought: this load has looked for the track's twin.
+    void requestStream(quint64 serial, bool twinSought);
+    // Tidal turned the request down, or it failed: the row is passed over or
+    // the user is told why.
+    void streamRefused(const StreamManifest &manifest, const QString &err);
+    // Looks for another id of the current track's recording. Found, the row
+    // becomes that track and its stream is asked for. Else noTwin runs.
+    void seekTwin(quint64 serial, std::function<void()> noTwin);
+    // Puts the twin in the place of the row at `index`. The row keeps the id
+    // it came with as standsForId, which the list it came from still shows.
+    void adoptTwin(int index, const Track &twin);
+    // Moves a track to the head of the recently played ones and saves them.
+    void noteRecentlyPlayed(const QVariantMap &track);
     // The load ended with nothing to play: reports why, and owes the track
     // another load on the next press on play.
     void failLoad(const QString &msg);
@@ -289,6 +304,13 @@ private:
     // A preload attempt for the row at `next` gave up. Clears the in-progress
     // index and records the row so the trigger does not retry it.
     void preloadGaveUp(int next);
+    // The row ahead still holds this track and is not the playing one.
+    bool rowAheadIs(int next, qlonglong trackId) const;
+    // The stream request of a preload, and what a refusal does to the row.
+    void requestPreload(int next, qlonglong trackId, bool twinSought);
+    void preloadRefused(int next, qlonglong trackId, StreamManifest::Reason reason);
+    // seekTwin() for the row ahead, which holds `of`.
+    void seekTwinAhead(int next, const Track &of, std::function<void()> noTwin);
     // Moves the cursor to target and puts the manual queue directly after it.
     // Returns true if the list itself changed.
     bool relocateTo(int target);

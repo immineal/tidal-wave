@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QMediaDevices>
 #include <QSet>
+#include "api/TidalBridge.h"
 #include "cast/CastSession.h"
 #include "player/DashFetcher.h"
 #include "ui/Prefs.h"
@@ -1044,6 +1045,9 @@ Track Player::trackFromMap(const QVariantMap &m) const {
     t.album.title = m["albumTitle"].toString();
     t.album.id    = m["albumId"].toLongLong();
     t.album.cover = m["albumCover"].toString();
+    t.isrc        = m["isrc"].toString();
+    // A row from an older session has no such key and is streamed.
+    t.streamable  = m.value("streamable", true).toBool();
     // The joined artists string becomes a single Artist.
     Artist a;
     a.name = m["artists"].toString();
@@ -1131,27 +1135,7 @@ void Player::startLoad(int index) {
     m_currentTrack = trackFromMap(m_queue[index].track);
     emit currentTrackChanged();
 
-    // Track recently played (max 20 unique entries)
-    QVariantMap trackMap = m_queue[index].track;
-    qlonglong trackId = trackMap.value("id").toLongLong();
-    for (int i = m_recentlyPlayed.count() - 1; i >= 0; --i) {
-        if (m_recentlyPlayed.at(i).value("id").toLongLong() == trackId)
-            m_recentlyPlayed.removeAt(i);
-    }
-    m_recentlyPlayed.prepend(trackMap);
-    if (m_recentlyPlayed.count() > 20)
-        m_recentlyPlayed = m_recentlyPlayed.mid(0, 20);
-    emit recentlyPlayedChanged();
-
-    qint64 uid = m_client->userId();
-    if (uid > 0) {
-        QVariantList saveList;
-        for (const auto &m : m_recentlyPlayed) {
-            saveList.append(m);
-        }
-        QSettings settings;
-        settings.setValue(QStringLiteral("user_%1/playback/recentlyPlayed").arg(uid), saveList);
-    }
+    noteRecentlyPlayed(m_queue[index].track);
 
     // While casting, hand the current track to the cast device; CastManager
     // prepares and LOADs it.
@@ -1185,37 +1169,114 @@ void Player::startLoad(int index) {
 
     cancelPreload();
 
+    // Tidal lists this row as not streamed, so its twin is looked for first.
+    if (!m_currentTrack.streamable && !m_currentTrack.isrc.isEmpty()) {
+        seekTwin(serial, [this, serial] { requestStream(serial, true); });
+        return;
+    }
+    requestStream(serial, false);
+}
+
+void Player::noteRecentlyPlayed(const QVariantMap &track) {
+    // At most 20, each track once.
+    const qlonglong trackId = track.value("id").toLongLong();
+    for (int i = m_recentlyPlayed.count() - 1; i >= 0; --i) {
+        if (m_recentlyPlayed.at(i).value("id").toLongLong() == trackId)
+            m_recentlyPlayed.removeAt(i);
+    }
+    m_recentlyPlayed.prepend(track);
+    if (m_recentlyPlayed.count() > 20)
+        m_recentlyPlayed = m_recentlyPlayed.mid(0, 20);
+    emit recentlyPlayedChanged();
+
+    qint64 uid = m_client->userId();
+    if (uid > 0) {
+        QVariantList saveList;
+        for (const auto &m : m_recentlyPlayed) {
+            saveList.append(m);
+        }
+        QSettings settings;
+        settings.setValue(QStringLiteral("user_%1/playback/recentlyPlayed").arg(uid), saveList);
+    }
+}
+
+void Player::seekTwin(quint64 serial, std::function<void()> noTwin) {
+    const qlonglong forId = m_currentTrack.id;
+    m_client->fetchTwin(m_currentTrack, [this, serial, forId, noTwin](Track twin, QString) {
+        // The stream request's own guard: a newer load has taken over.
+        if (serial != m_loadSerial || m_currentTrack.id != forId) return;
+        // A lookup that failed comes back with no track and is no verdict.
+        if (twin.id == 0) { noTwin(); return; }
+        adoptTwin(m_index, twin);
+        requestStream(serial, true);
+    });
+}
+
+void Player::adoptTwin(int index, const Track &twin) {
+    if (index < 0 || index >= m_queue.count()) return;
+    const QVariantMap was = m_queue.at(index).track;
+    const qlonglong wasId = was.value(QStringLiteral("id")).toLongLong();
+    QVariantMap now = TidalBridge::trackToMap(twin);
+    // A twin of a twin still stands for the id the row first had.
+    now[QStringLiteral("standsForId")] =
+        was.value(QStringLiteral("standsForId"), wasId).toLongLong();
+    m_queue[index].track = now;
+
+    if (index == m_index) {
+        m_currentTrack = trackFromMap(now);
+        // The load put the row it started from at the head of the list.
+        if (!m_recentlyPlayed.isEmpty()
+            && m_recentlyPlayed.constFirst().value(QStringLiteral("id")).toLongLong() == wasId)
+            m_recentlyPlayed.removeFirst();
+        noteRecentlyPlayed(now);
+        emit currentTrackChanged();
+    }
+    emit queueChanged();
+    schedulePersist();
+}
+
+void Player::streamRefused(const StreamManifest &manifest, const QString &err) {
+    // A restore and a queue on its way pass over a track Tidal has ruled
+    // out. The loading flag stays up for the row that follows.
+    if (manifest.reason != StreamManifest::Unknown
+        && (m_restoreSkips || m_travel != Travel::Picked)) {
+        passOverTrack(manifest.reason);
+        return;
+    }
+    setLoading(false);
+    // Nothing is loaded behind this track, so the next play asks again.
+    m_loadOwed = true;
+    if (m_restoreSkips) {
+        // The request failed, as it does with no network. That is no
+        // verdict on the track, so the restore ends with the queue whole.
+        m_restorePaused = false;
+        m_restoreSkips  = false;
+        return;
+    }
+    qWarning() << "Stream request failed:" << err;
+    setLoadError(
+        manifest.reason == StreamManifest::Gone
+            ? tr("This track is no longer available on Tidal.")
+        : manifest.reason == StreamManifest::NotForAccount
+            ? tr("This track is not available for your account or region.")
+            : tr("Could not load this track for playback."));
+}
+
+void Player::requestStream(quint64 serial, bool twinSought) {
     qlonglong loadingTrackId = m_currentTrack.id;
     m_client->fetchStreamManifest(loadingTrackId,
-        [this, loadingTrackId, serial](StreamManifest manifest, QString err) {
+        [this, loadingTrackId, serial, twinSought](StreamManifest manifest, QString err) {
             if (serial != m_loadSerial || m_currentTrack.id != loadingTrackId) {
                 return;
             }
             if (!err.isEmpty()) {
-                // A restore and a queue on its way pass over a track Tidal has
-                // ruled out. The loading flag stays up for the row that follows.
-                if (manifest.reason != StreamManifest::Unknown
-                    && (m_restoreSkips || m_travel != Travel::Picked)) {
-                    passOverTrack(manifest.reason);
+                // Tidal ruled this id out. The recording may play under another.
+                if (!twinSought && manifest.reason != StreamManifest::Unknown
+                    && !m_currentTrack.isrc.isEmpty()) {
+                    seekTwin(serial, [this, manifest, err] { streamRefused(manifest, err); });
                     return;
                 }
-                setLoading(false);
-                // Nothing is loaded behind this track, so the next play asks again.
-                m_loadOwed = true;
-                if (m_restoreSkips) {
-                    // The request failed, as it does with no network. That is no
-                    // verdict on the track, so the restore ends with the queue whole.
-                    m_restorePaused = false;
-                    m_restoreSkips  = false;
-                    return;
-                }
-                qWarning() << "Stream request failed:" << err;
-                setLoadError(
-                    manifest.reason == StreamManifest::Gone
-                        ? tr("This track is no longer available on Tidal.")
-                    : manifest.reason == StreamManifest::NotForAccount
-                        ? tr("This track is not available for your account or region.")
-                        : tr("Could not load this track for playback."));
+                streamRefused(manifest, err);
                 return;
             }
             // Something resolved: the restore is over, later failures are reported.
@@ -1398,26 +1459,62 @@ void Player::preloadNext() {
     cancelPreload();
     m_preloadIndex = next;
 
-    qlonglong trackId = m_queue[next].track.value("id").toLongLong();
+    // As in startLoad(): the twin of a row listed as not streamed comes first.
+    const Track ahead = trackFromMap(m_queue[next].track);
+    if (!ahead.streamable && !ahead.isrc.isEmpty()) {
+        seekTwinAhead(next, ahead,
+                      [this, next, id = ahead.id] { requestPreload(next, id, true); });
+        return;
+    }
+    requestPreload(next, ahead.id, false);
+}
 
-    m_client->fetchStreamManifest(trackId, [this, next, trackId](StreamManifest manifest, QString err) {
+bool Player::rowAheadIs(int next, qlonglong trackId) const {
+    return next < m_queue.count() && next != m_index
+        && m_queue.at(next).track.value("id").toLongLong() == trackId;
+}
+
+void Player::seekTwinAhead(int next, const Track &of, std::function<void()> noTwin) {
+    m_client->fetchTwin(of, [this, next, forId = of.id, noTwin](Track twin, QString) {
+        if (m_preloadIndex != next) return;
+        // The queue may have been edited while the lookup was out.
+        if (twin.id == 0 || !rowAheadIs(next, forId)) { noTwin(); return; }
+        adoptTwin(next, twin);
+        requestPreload(next, twin.id, true);
+    });
+}
+
+void Player::preloadRefused(int next, qlonglong trackId, StreamManifest::Reason reason) {
+    // Tidal no longer has the row ahead. Dropped now, it is never where the
+    // change at the end of this track lands. A row that is kept is passed
+    // over once the queue reaches it.
+    const bool runGoesOn = m_droppedRun + m_keptRun < kMaxPassedOver;
+    if (reason == StreamManifest::Gone && rowAheadIs(next, trackId) && runGoesOn) {
+        const QString title = m_queue.at(next).track.value("title").toString();
+        m_preloadIndex = -1;
+        removeFromQueue(next);
+        ++m_droppedRun;
+        notePassedOver(title);
+        return;
+    }
+    preloadGaveUp(next);
+}
+
+void Player::requestPreload(int next, qlonglong trackId, bool twinSought) {
+    m_client->fetchStreamManifest(trackId, [this, next, trackId, twinSought](StreamManifest manifest, QString err) {
         if (m_preloadIndex != next) return;
         if (!err.isEmpty()) {
-            // Tidal no longer has the row ahead. Dropped now, it is never
-            // where the change at the end of this track lands. A row that is
-            // kept is passed over once the queue reaches it.
-            const bool sameRow = next < m_queue.count() && next != m_index
-                && m_queue.at(next).track.value("id").toLongLong() == trackId;
-            const bool runGoesOn = m_droppedRun + m_keptRun < kMaxPassedOver;
-            if (manifest.reason == StreamManifest::Gone && sameRow && runGoesOn) {
-                const QString title = m_queue.at(next).track.value("title").toString();
-                m_preloadIndex = -1;
-                removeFromQueue(next);
-                ++m_droppedRun;
-                notePassedOver(title);
-                return;
-            }
-            preloadGaveUp(next);
+            const StreamManifest::Reason reason = manifest.reason;
+            const auto refused = [this, next, trackId, reason] {
+                preloadRefused(next, trackId, reason);
+            };
+            // Tidal ruled this id out. The recording may play under another.
+            const Track ahead = rowAheadIs(next, trackId) ? trackFromMap(m_queue.at(next).track)
+                                                          : Track{};
+            if (!twinSought && reason != StreamManifest::Unknown && !ahead.isrc.isEmpty())
+                seekTwinAhead(next, ahead, refused);
+            else
+                refused();
             return;
         }
 
