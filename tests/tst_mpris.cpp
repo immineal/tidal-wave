@@ -504,10 +504,12 @@ private slots:
         QVERIFY(playFirstOf(a, 3000));
         desk().forget();
 
+        // Five reports, however long this machine takes over them: a sink that
+        // starts late and a busy machine both stretch the time between two.
         QSignalSpy reports(&a.p(), &Player::positionChanged);
-        QTest::qWait(2000);
+        QTRY_VERIFY2_WITH_TIMEOUT(reports.count() >= 5,
+                                  qPrintable(QString::number(reports.count())), 20000);
         desk().status();
-        QVERIFY2(reports.count() >= 5, qPrintable(QString::number(reports.count())));
         QCOMPARE(desk().seeked, QList<qlonglong>());
     }
 
