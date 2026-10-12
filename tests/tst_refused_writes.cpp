@@ -507,6 +507,11 @@ private slots:
             row("refused, 412 with Tidal's body", 412, refusal(412));
             row("refused, 502 with a body that is no JSON", 502, "<html>Bad Gateway</html>");
             row("refused, 403 with no body", 403, {});
+            if (name != QLatin1String("create a playlist")) continue;
+            // Two more failures that come without a sentence of Tidal's.
+            row("refused, 400 with a body that has no userMessage", 400,
+                R"({"errors":[{"code":"BAD_REQUEST"}]})");
+            row("nothing answers", 0, {});
         }
     }
 
@@ -525,8 +530,9 @@ private slots:
         if (QTest::currentTestFailed()) return;
         QCOMPARE(rig.shown(), before);
 
-        if (status >= 400) rig.tidal.write = {status, body};
-        else               rig.serverTakes(action);
+        if (status == 0)        rig.tidal.close();
+        else if (status >= 400) rig.tidal.write = {status, body};
+        else                    rig.serverTakes(action);
         rig.said.clear();
         const Rig::Told told = rig.slot();
         rig.act(action, told.fn);
@@ -546,9 +552,10 @@ private slots:
         QCOMPARE(rig.shown(), before);
         QCOMPARE(rig.said.join(QLatin1String(", ")), QString());
         if (action != QLatin1String("create a playlist")) return;
-        // The one write whose page shows the reason.
-        if (QJsonDocument::fromJson(body).isObject()) QCOMPARE(told.message(), kSaid);
-        else QVERIFY2(told.message().contains(kPhrase), qPrintable(told.message()));
+        // The one write whose page shows the reason: Tidal's sentence or none.
+        // What the network layer says holds the request URL.
+        const QJsonObject sent = QJsonDocument::fromJson(body).object();
+        QCOMPARE(told.message(), sent[QLatin1String("userMessage")].toString());
     }
 };
 

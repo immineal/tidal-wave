@@ -880,7 +880,10 @@ void TidalClient::createPlaylist(const QString &title,
     form.addQueryItem("description", "");
     m_api->postApiForm(QStringLiteral("users/%1/playlists").arg(m_userId), form,
         [cb](QJsonObject root, QString err) {
-            if (!err.isEmpty()) { cb({}, err); return; }
+            // The dialog shows this string, so it is Tidal's own sentence or
+            // empty: the network layer's holds the request URL. The playlist
+            // without a uuid is what says it failed.
+            if (!err.isEmpty()) { cb({}, root["userMessage"].toString()); return; }
             cb(Playlist::fromJson(root), {});
         });
 }
