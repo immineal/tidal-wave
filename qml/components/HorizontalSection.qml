@@ -137,6 +137,7 @@ Item {
                     coverUrl:  modelData.coverUrl  || ""
                     title:     modelData.title     || ""
                     subtitle:  modelData.subtitle  || ""
+                    storedSubtitle: modelData.pinSubtitle
                     mediaType: root.mediaType
                     // What a right-click pins. Playlists are keyed by uuid,
                     // everything else by id.

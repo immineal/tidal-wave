@@ -22,7 +22,10 @@ Item {
     // An artist's or a playlist's subtitle is a translated label, and a pin
     // outlives the session it was made in, so those two kinds store none.
     readonly property string pinSubtitle:
-        (mediaType === "artist" || mediaType === "playlist") ? "" : subtitle
+        storedSubtitle !== undefined ? "" + storedSubtitle
+        : (mediaType === "artist" || mediaType === "playlist") ? "" : subtitle
+    // Set by a host whose subtitle is a translated label for another kind.
+    property var storedSubtitle: undefined
 
     readonly property alias pinMenu: cardMenu
 

@@ -166,7 +166,9 @@ Rectangle {
                     : qsTr("Clean", "a version of an album with its lyrics edited"))
             parts.push(root.soundOf(a))
             return { id: a.id, title: a.title, coverUrl: a.coverUrl,
-                     subtitle: parts.filter(function (p) { return p.length > 0 }).join(" • ") }
+                     subtitle: parts.filter(function (p) { return p.length > 0 }).join(" • "),
+                     // The subtitle is translated words, so a pin stores this.
+                     pinSubtitle: a.artists || "" }
         })
     }
 

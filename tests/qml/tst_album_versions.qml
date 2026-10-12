@@ -301,6 +301,19 @@ TestCase {
         compare(win.navCalls[0].params.albumId, testCase.atmosId)
     }
 
+    // The second line of these cards is made of translated words, and a pin
+    // outlives the language it was made in. A pin stores the artists.
+    function test_a_pin_of_a_version_stores_its_artists() {
+        bridge.setOtherVersionsForTest(theOtherThree())
+        var page = openExplicitHiRes()
+
+        var cards = cardsOf(rowOf(page))
+        compare(cards.length, 3)
+        for (var i = 0; i < cards.length; ++i)
+            compare(cards[i].pinSubtitle, "Marit Solvang",
+                    "what a pin of card " + i + " would store as its second line")
+    }
+
     // A card's play button plays that version and says where it plays from.
     function test_playing_a_card_plays_that_version() {
         bridge.setOtherVersionsForTest(theOtherThree())
