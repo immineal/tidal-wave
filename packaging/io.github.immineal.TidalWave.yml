@@ -101,11 +101,11 @@ modules:
     sources:
       - type: git
         url: https://github.com/immineal/tidal-wave.git
-        tag: v0.4.0
+        tag: v0.4.1
         # Flathub wants the commit the tag resolved to, so the source cannot
-        # move under a re-cut tag: git rev-parse v0.4.0^{commit}. It must be a
+        # move under a re-cut tag: git rev-parse v0.4.1^{commit}. It must be a
         # commit whose metainfo carries <screenshots>.
-        commit: 6ce3b214e9b4e54ac527f0fd1e589e26a8baba19
+        commit: ba92a87fc1edde1543dc11f0a85f0d5254d65bba
     post-install:
       # Flatpak exports only files named after the app id, so the icons get a
       # second copy under the id and the desktop entry points at it. The
