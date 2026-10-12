@@ -731,7 +731,7 @@ if wanted offline; then
             info "did not hang on a dead network; it was still running when the timeout fired"
         fi
     else
-        skip offline "unprivileged network namespaces are unavailable, and the app ignores http_proxy (it never calls QNetworkProxyFactory::setUseSystemConfiguration), so a proxy-based simulation would prove nothing"
+        skip offline "unprivileged network namespaces are unavailable. A dead http_proxy is no stand-in: the app follows the system proxy for the requests it sends through Qt, while playback and device discovery do their own networking and would still get out"
     fi
 fi
 
