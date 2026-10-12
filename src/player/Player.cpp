@@ -775,6 +775,9 @@ void Player::wakeStandingBackend() {
     if (m_player->playbackState() != QMediaPlayer::PlayingState) return;
     if (!backendStands() || m_standWakes >= kStandWakes) return;
     ++m_standWakes;
+    // For a report: how often it happens on a machine is not known.
+    qInfo("Player: the backend stood still at %lld ms while playing and is woken",
+          qlonglong(m_standPos));
     // A pause and a resume call the reader again. Nothing is flushed, so a
     // backend that was only slow to report its position loses nothing.
     m_seekToggling = true;
