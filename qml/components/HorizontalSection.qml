@@ -177,8 +177,11 @@ Item {
                             p = p.parent
                         }
                         if (scrollParent) {
-                            var maxY = Math.max(0, scrollParent.contentHeight - scrollParent.height)
-                            scrollParent.contentY = Math.max(0, Math.min(maxY, scrollParent.contentY - vDelta))
+                            // From originY: a ListView with a header starts
+                            // above 0.
+                            var minY = scrollParent.originY
+                            var maxY = minY + Math.max(0, scrollParent.contentHeight - scrollParent.height)
+                            scrollParent.contentY = Math.max(minY, Math.min(maxY, scrollParent.contentY - vDelta))
                             event.accepted = true
                         } else {
                             event.accepted = false

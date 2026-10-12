@@ -452,26 +452,6 @@ Rectangle {
                         player.playTracks(tracks, 0)
                     })
                 }
-
-                // HorizontalSection scrolls the page for a vertical wheel, counted
-                // from 0. This list counts from originY, so the page takes that
-                // wheel first. No buttons and no hover: the cards keep theirs.
-                MouseArea {
-                    anchors.fill: parent
-                    z: 1
-                    acceptedButtons: Qt.NoButton
-                    onWheel: function (wheel) {
-                        var dx = wheel.angleDelta.x, dy = wheel.angleDelta.y
-                        // The wheel that moves the cards stays the row's.
-                        if (Math.abs(dx) > Math.abs(dy) || (wheel.modifiers & Qt.ShiftModifier)) {
-                            wheel.accepted = false
-                            return
-                        }
-                        var top = tracksList.originY
-                        var end = top + Math.max(0, tracksList.contentHeight - tracksList.height)
-                        tracksList.contentY = Math.max(top, Math.min(end, tracksList.contentY - dy))
-                    }
-                }
             }
 
             Item { width: parent.width; height: 32 }

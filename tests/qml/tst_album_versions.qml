@@ -467,8 +467,8 @@ TestCase {
         compare(list.contentY, end, "the page moved with the cards")
     }
 
-    // The page's own wheel handling lies over the cards and must not take
-    // their hover: it is what shows a card's play button.
+    // Nothing may lie over the cards and take their hover: it is what shows
+    // a card's play button.
     function test_a_card_of_the_row_still_hovers() {
         bridge.setOtherVersionsForTest(theOtherThree())
         var page = openExplicitHiRes()
