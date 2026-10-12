@@ -130,8 +130,22 @@
 
   <releases>
     <!-- date= is the release date and cannot be derived, so it is the one thing
-         here that has to be touched by hand when v@PROJECT_VERSION@ is tagged. -->
-    <release version="@PROJECT_VERSION@" date="2026-10-11">
+         here that has to be touched by hand when v@PROJECT_VERSION@ is tagged.
+         Only the newest release takes its version from project(). -->
+    <release version="@PROJECT_VERSION@" date="2026-10-12">
+      <description>
+        <p>Fixes for the sign-in after a suspend, for lost sound on Debian 12 and Ubuntu 24.04, and for the desktop media controls.</p>
+        <ul>
+          <li>The sign-in token is renewed by the clock. The timer 0.4.0 used stands still while the computer is suspended</li>
+          <li>On Debian 12 and Ubuntu 24.04 a missing, restarted or unplugged sound output no longer crashes or freezes the program</li>
+          <li>A track that cannot be loaded says why at the play button, and the queue passes over a track that Tidal reports as gone</li>
+          <li>A like, a save or a playlist edit that Tidal refuses is reported as refused</li>
+          <li>Media keys and desktop widgets get the right playback status, Next and Previous leave a paused player paused, and Raise shows the window</li>
+          <li>The AppImage carries its version and update information for Gear Lever and AppImageLauncher</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.4.0" date="2026-10-11">
       <description>
         <p>Six themes, a sidebar for the whole library, and lossless that is actually lossless.</p>
         <ul>

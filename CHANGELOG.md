@@ -5,6 +5,138 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
+## [0.4.1] - 2026-10-12
+
+### Added
+
+- The AppImage carries its version and its update information, and a release
+  has a `.zsync` file beside it.
+  [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) and
+  [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) read
+  both when they add the file to the application menu. With the 0.4.0 file
+  Gear Lever showed no version and no update source. The README names the two
+  tools.
+
+### Changed
+
+- An artist page has a row of its own, Appears On, for the records the artist
+  is only a guest on, with up to fifty of them. In 0.4.0 they sat under Albums
+  among the artist's own records.
+- When the queue reaches a track that Tidal reports as gone, or that the
+  account or region may not play, the program names the track and goes on to
+  the next one. After five such tracks in a row it stops and says so. In 0.4.0
+  playback stopped at the first one without a word.
+- Next and Previous from a media key or a desktop widget leave a paused player
+  paused, as MPRIS asks. In 0.4.0 they started playback. The program's own
+  buttons and shortcuts start the track as before.
+- The AppImage leaves out the Qt modules, styles and translations the program
+  never loads. The 0.4.0 file, repacked the same way, went from 61 MB to
+  52 MB.
+- CI runs the tests on the Qt of Ubuntu 24.04, Debian 13, Ubuntu 26.04,
+  Fedora 44 and Arch, and on Qt 6.5, 6.7, 6.8 and 6.11 from the Qt installer.
+  For 0.4.0 they ran on Qt 6.4 and 6.12 only.
+
+### Fixed
+
+- A suspended computer could leave the program with a dead sign-in token.
+  0.4.0 renewed the token with a single timer, and that timer stands still
+  while the machine sleeps. After a sleep longer than the token had left,
+  nothing loaded until the late renewal or a restart. The program now compares
+  the token's expiry with the clock every 30 seconds, and it repeats a request
+  that Tidal refuses for its token once, with a new token. The tests move the
+  clock against a local server. No real suspend was tried.
+- A start in the last minute of a token's life left the program signed in with
+  a token that it never renewed. Signing out while a renewal was under way
+  signed the program in again.
+- The sign-in token goes to Tidal's two API hosts only. 0.4.0 also sent it
+  with every audio file it fetched and with the cover of a download, to
+  whichever host served them. The program no longer follows a redirect to
+  another host with a request that carries the token.
+- Four faults on Debian 12 and Ubuntu 24.04, which ship Qt 6.4. The fixes ran
+  with PulseAudio in a container and on two virtual machines.
+  - Starting a track with no audio device crashed the program. It now refuses
+    the start with a message.
+  - After a restart of the sound server the next track crashed the program.
+    It now says that the sound output was lost and asks to be restarted.
+  - When the sound server went away under a playing track, the track stood
+    still and was shown as playing, and a quit could leave the process behind.
+    The program now says that the sound output was lost, pauses the track, and
+    ends when it is quit.
+  - After the headphones or the USB device a track played on were unplugged,
+    the next track could freeze the program. It now plays on an output that is
+    still there.
+- A track that could not be loaded said nothing, and the play button went from
+  loading back to play. A short message at the play button now says why: the
+  track could not be loaded, Tidal no longer has it, or it is not available
+  for the account or region. Pressing play again asks for the track again. In
+  0.4.0 that did nothing after a failed download.
+- A press on play or pause while a track was still loading was lost. It now
+  decides whether the track plays once it has loaded. A track picked at
+  startup, while the track of the last session was still loading, came up
+  paused. It plays.
+- A like, a save, a follow or a playlist edit that Tidal refused could be
+  shown as done. The heart filled, the playlist took its new name or the track
+  left the list, and the next load took it all back. 0.4.0 read Tidal's usual
+  error answer as a yes. The program now reports it as a refusal.
+- Media keys and desktop media widgets (MPRIS):
+  - The status is Playing, Paused or Stopped. 0.4.0 said "Loading" while a
+    track loaded, which MPRIS does not have, and Paused with an empty queue.
+  - The position is announced after a seek. 0.4.0 announced every position
+    report as a seek, several hundred a minute.
+  - A widget learns which controls work. With an empty queue none do, and the
+    last track of a queue that does not repeat has no Next. 0.4.0 offered all
+    five at all times.
+  - Changes of repeat, shuffle and volume made in the program are announced.
+    A position set for another track, or for a place outside the track, is
+    dropped.
+  - Raise brings the window back, from the tray as well. It did nothing.
+  - Each artist of a track is listed on its own. A track without a cover, an
+    album or a track number leaves that field out. 0.4.0 sent all the names
+    as one string, and an empty value or a 0.
+- Faults with Qt 6.5 and 6.6. None of the tested distributions ships these
+  versions, so they concern a build from source with the Qt installer. The
+  fixes ran in containers, with wheel input from the test library only.
+  - On Qt 6.5 the rows below the window on Home and on an artist page could
+    not be scrolled to, the search results did not scroll, and Settings
+    scrolled far past its last row.
+  - On Qt 6.5 Play did nothing after the queue had ended.
+  - On Qt 6.5 and 6.6 the update prompt was 14 px too short for its text. With
+    reduced motion, Now Playing kept the title and the controls 30 px below
+    the middle of the artwork after the window was narrowed and widened again.
+- On Fedora, whose default font is Noto Sans, the sleep timer changed its
+  width by a pixel while it counted, and a long artist line could run up to
+  three pixels past its end.
+- A window of the AppImage that Gear Lever or AppImageLauncher added to the
+  menu is matched to its menu entry on Wayland. With the 0.4.0 file GNOME
+  showed it as an application of its own with a generic icon, and Plasma did
+  not group it under a pinned entry.
+- A radio started from a row of a radio page left the first radio on screen.
+  The new one replaces it.
+- A search tab loads more results when the window grows past the end of its
+  list. In 0.4.0 the rest could not be reached until the tab was switched.
+  Search also asked for pages of results that nobody had scrolled to.
+- With the language set to System, the program starts in the system's display
+  language. 0.4.0 asked the regional format first, which is a separate setting
+  on Windows, so a German Windows with an English format started in English.
+  This comes from reading Qt's source. Nobody tried it on Windows.
+- Quitting printed about ninety QML errors to the terminal. It prints none.
+- When a new playlist could not be created, the dialog could show the address
+  of the request, which holds the user id. It shows Tidal's reason or none.
+- A double click on a track could fetch it twice. The track then started over
+  when the second copy arrived, and one file stayed behind in the temp
+  directory.
+- A track that did not fit on the disk could play cut short. The program now
+  reports it.
+
+### Known issues
+
+- On Qt 6.4 with `QT_MEDIA_BACKEND=gstreamer` set by hand, a seek can leave
+  the rest of a track silent. The cause is in Qt's GStreamer backend. Left
+  alone, the program uses the FFmpeg backend on Qt 6.4.
+- On Qt 6.4, when the sound server ends the stream of a playing track while
+  the server itself keeps running, the next track, a change of output or a
+  quit can still freeze or end the program.
+
 ## [0.4.0] - 2026-10-11
 
 ### Added
@@ -143,4 +275,5 @@ and are fixed in the set published on 11 October.
 0.3.1 and everything before it predate this file. See the
 [releases page](https://github.com/immineal/tidal-wave/releases) and `git log`.
 
+[0.4.1]: https://github.com/immineal/tidal-wave/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/immineal/tidal-wave/compare/v0.3.1...v0.4.0
