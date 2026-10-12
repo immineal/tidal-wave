@@ -53,12 +53,20 @@ qlonglong currentId(const Player &p) {
     return p.currentTrackMap().value(QStringLiteral("id")).toLongLong();
 }
 
+// Sends nothing. A started track asks for its stream, and the request must
+// stay in the process: the answer is never needed here.
+class SilentClient : public TidalClient {
+public:
+    using TidalClient::TidalClient;
+    void fetchStreamManifest(qint64, StreamCb) override {}
+};
+
 // Player defers its audio init to the event loop (a PipeWire deadlock guard),
 // and next()/previous() do nothing until that has run.
 struct Rig {
-    TidalApi    api;
-    TidalClient client{&api};
-    Player      player{&client};
+    TidalApi     api;
+    SilentClient client{&api};
+    Player       player{&client};
     Rig() { QTest::qWait(30); }
 };
 

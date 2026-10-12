@@ -110,6 +110,14 @@ private:
     QList<QPointer<QTcpSocket>> m_held;
 };
 
+// Sends nothing: the stream request of the first test must not complete and
+// must not leave the process either.
+class SilentClient : public TidalClient {
+public:
+    using TidalClient::TidalClient;
+    void fetchStreamManifest(qint64, StreamCb) override {}
+};
+
 } // namespace
 
 class TestPlayerLoading : public QObject {
@@ -131,9 +139,9 @@ private slots:
     }
 
     void startingATrackStaysLoadingUntilSomethingSaysOtherwise() {
-        TidalApi    api;
-        TidalClient client{&api};
-        Player      player{&client};
+        TidalApi     api;
+        SilentClient client{&api};
+        Player       player{&client};
         // Player defers its audio init to the event loop (a PipeWire deadlock
         // guard), so the QMediaPlayer does not exist until that has run.
         QTest::qWait(30);
