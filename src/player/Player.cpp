@@ -334,7 +334,7 @@ qint64 Player::position() const {
     // A position owed to media that is not loaded yet: a restored session,
     // or a seek that raced the stream fetch.
     if (m_pendingSeek > 0) return m_pendingSeek;
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
     // The queue ended and the backend stayed at its end. Play starts over.
     if (m_player && m_player->mediaStatus() == QMediaPlayer::EndOfMedia) return 0;
 #endif
@@ -1233,10 +1233,10 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         break;
     case QMediaPlayer::EndOfMedia:
         setLoading(false);
-#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
-        // Qt 6.4 reports one end many times over, and a stop between two
-        // reports makes the second a new end. The last track of a queue is
-        // left at its end, where position() answers with the start.
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
+        // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
+        // track over once it was stopped at its end. The last track of a queue
+        // is left there, where position() answers with the start.
         if (nextIndex() < 0) { emit positionChanged(0); break; }
 #endif
         next();
