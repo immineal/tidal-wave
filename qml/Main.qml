@@ -266,7 +266,7 @@ ApplicationWindow {
         if (page === "search") return searchLoader
         if (page === "collection") return collectionLoader
         if (page === "nowplaying") return nowPlayingLoader
-        if (["album", "artist", "playlist", "mix"].indexOf(page) !== -1) return detailLoader
+        if (["album", "artist", "playlist", "mix", "radio"].indexOf(page) !== -1) return detailLoader
         return null
     }
 

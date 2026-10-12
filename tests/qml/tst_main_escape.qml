@@ -284,6 +284,30 @@ TestCase {
         compare(win.currentPage, "home", "Escape at home navigated somewhere")
     }
 
+    // A row of a radio page starts a radio of its own. The page on screen has
+    // to become that station, and back has to return to the first.
+    function test_a_second_radio_replaces_the_first() {
+        var win = showApp()
+        win.navigate("radio", { trackId: 5151, radioTitle: "First" })
+        tryVerify(function () {
+            var page = findByType(win.contentItem, "RadioPage")
+            return page && page.trackId === 5151
+        }, 2000, "the first radio never opened")
+
+        win.navigate("radio", { trackId: 5152, radioTitle: "Second" })
+        tryVerify(function () {
+            var page = findByType(win.contentItem, "RadioPage")
+            return page && page.trackId === 5152 && page.radioTitle === "Second"
+        }, 2000, "a second radio was opened and the page still shows the first")
+
+        keyClick(Qt.Key_Escape)
+        compare(win.currentPage, "radio", "Escape left the radio pages altogether")
+        tryVerify(function () {
+            var page = findByType(win.contentItem, "RadioPage")
+            return page && page.trackId === 5151
+        }, 2000, "back did not return to the radio the user came from")
+    }
+
     // A chain of links never has to touch a top-level page, so the stack has a
     // ceiling and drops its oldest entry at it. An array that only ever grows
     // is a leak in a process that lives in the tray for days.
