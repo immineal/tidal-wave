@@ -80,11 +80,6 @@ public:
     // minutes is safe. Without it a stalled request never calls back.
     static constexpr int kTransferTimeoutMs = 15000;
 
-signals:
-    // A request sent again with a renewed token was refused once more, in
-    // words that name the token or the session.
-    void renewedTokenRefused(const QString &token);
-
 protected:
     // Where a request for one of the base URLs above is sent. Virtual as a
     // test seam only: a subclass points the requests at a local server.

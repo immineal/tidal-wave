@@ -16,6 +16,11 @@ namespace {
 // The token is replaced this long before it runs out.
 constexpr qint64 kRefreshAheadMs = 60000;
 
+// A token issued less than this ago is not replaced because a request was
+// refused: that refusal is about something else, and every further one would
+// send the login host another question.
+constexpr qint64 kRenewGapMs = 60000;
+
 // How often the clock is compared with the expiry. No timer is given the
 // whole wait: a timer's clock can stand still while the machine sleeps.
 constexpr int kExpiryCheckMs = 30000;
@@ -39,9 +44,6 @@ Auth::Auth(TidalApi *api, QObject *parent)
         if (self) self->renewRefused(refused, std::move(done));
         else done(false);
     });
-    connect(m_api, &TidalApi::renewedTokenRefused, this, [this](const QString &token) {
-        if (token == m_accessToken) endSession();
-    });
 }
 
 // UTC, so the expiry held in memory names one instant in every timezone.
@@ -52,7 +54,9 @@ void Auth::refreshIfDue() {
 }
 
 void Auth::renewRefused(const QString &refused, std::function<void(bool)> done) {
-    if (m_refreshToken.isEmpty() || refused != m_accessToken) {
+    const bool justIssued = !m_refreshing && m_issued.isValid()
+                            && m_issued.elapsed() < kRenewGapMs;
+    if (m_refreshToken.isEmpty() || refused != m_accessToken || justIssued) {
         done(false);
         return;
     }
@@ -67,6 +71,7 @@ void Auth::answerRefused(bool renewed) {
 
 void Auth::endSession() {
     m_expiryCheck->stop();
+    m_issued.invalidate();
     // No later request carries the dead token and asks for a refresh.
     m_accessToken.clear();
     m_api->setAccessToken({});
@@ -145,6 +150,7 @@ void Auth::pollForToken() {
         m_refreshToken = obj["refresh_token"].toString();
         emit hasSavedCredentialsChanged();
         m_tokenExpiry  = now().addSecs(obj["expires_in"].toInt(3600));
+        m_issued.start();
         m_api->setAccessToken(m_accessToken);
         m_expiryCheck->start();
         fetchSession();
@@ -190,6 +196,7 @@ void Auth::refreshAccessToken() {
             emit hasSavedCredentialsChanged();
         }
         m_tokenExpiry = now().addSecs(obj["expires_in"].toInt(3600));
+        m_issued.start();
         m_api->setAccessToken(m_accessToken);
         saveCredentials();
         m_expiryCheck->start();
@@ -336,6 +343,7 @@ void Auth::clearCredentials() {
 void Auth::logout() {
     m_pollTimer->stop();
     m_expiryCheck->stop();
+    m_issued.invalidate();
     m_accessToken.clear();
     m_refreshToken.clear();
     m_deviceCode.clear();

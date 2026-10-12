@@ -55,18 +55,16 @@ QNetworkRequest TidalApi::makeRequest(const QUrl &url) const {
 
 namespace {
 
-// How the body of a 401 reads. Tidal's v1 puts its own code on a refusal,
-// and there a 401 covers more than the token.
-enum class Refusal { Other, Unnamed, Token };
-
-Refusal refusalIn(const QByteArray &body) {
+// Whether the body of a 401 can be about the token. Tidal's v1 puts its own
+// code on a refusal, and there a 401 covers more than the token. A refusal
+// with no code is taken for it.
+bool mayBeAboutTheToken(const QByteArray &body) {
     const QJsonObject o = QJsonDocument::fromJson(body).object();
     const int sub = o["subStatus"].toInt();
-    // An invalid session, a token that cannot be verified, an expired one.
-    if (sub == 6001 || sub == 6002 || sub == 11002 || sub == 11003
-        || o["userMessage"].toString().startsWith(QLatin1String("The token has expired")))
-        return Refusal::Token;
-    return sub == 0 ? Refusal::Unnamed : Refusal::Other;
+    // No code, an invalid session, a token that cannot be verified, an
+    // expired one.
+    return sub == 0 || sub == 6001 || sub == 6002 || sub == 11002 || sub == 11003
+        || o["userMessage"].toString().startsWith(QLatin1String("The token has expired"));
 }
 
 } // namespace
@@ -82,17 +80,11 @@ void TidalApi::send(Sender sender, Finisher done, bool resend) {
         const QByteArray sent = reply->request().rawHeader("Authorization");
         const bool refused = !sent.isEmpty()
             && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401;
-        const Refusal refusal = refused ? refusalIn(body) : Refusal::Other;
-        if (refusal == Refusal::Other) { finish(); return; }
+        // One resend and no more. No request ends a session, whatever the
+        // refusal says: the login host's answer to a refresh does that.
+        if (!refused || resend || !mayBeAboutTheToken(body)) { finish(); return; }
 
         const QString token = QString::fromUtf8(sent.mid(qstrlen("Bearer ")));
-        if (resend) {
-            // One resend and no more. A refusal that names nothing is too
-            // little to end a session on.
-            if (refusal == Refusal::Token) emit renewedTokenRefused(token);
-            finish();
-            return;
-        }
         // The token was renewed while this request was on its way.
         if (!m_accessToken.isEmpty() && token != m_accessToken) {
             reply->deleteLater();

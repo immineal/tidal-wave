@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QTimer>
 #include "TidalApi.h"
 
@@ -79,6 +80,8 @@ private:
     QTimer    *m_expiryCheck;
     State      m_state = State::LoggedOut;
     bool       m_refreshing = false;
+    // Runs since the token in hand was issued to this process.
+    QElapsedTimer m_issued;
     QList<std::function<void(bool)>> m_refused;
 
     QString m_deviceCode;

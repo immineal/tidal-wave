@@ -555,7 +555,10 @@ private slots:
     }
 
     // ── the session's real end ──────────────────────────────────────────
-    void aNewTokenRefusedAsExpiredEndsTheSession()
+
+    // A request cannot end a session, whatever the refusal says: ending one
+    // removes the saved sign-in. Only the login host's own no does that.
+    void aNewTokenRefusedAsExpiredIsAnOrdinaryError()
     {
         Rig rig;
         signIn(rig);
@@ -571,21 +574,38 @@ private slots:
         QTest::qWait(100);
 
         QVERIFY(!errors.at(0).isEmpty() && !errors.at(1).isEmpty());
-        QCOMPARE(expired.count(), 1);
-        QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
-        QVERIFY(!rig.auth.hasSavedCredentials());
-        QVERIFY(!QFile::exists(credsPath()));
+        QCOMPARE(expired.count(), 0);
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
+        QVERIFY(rig.auth.hasSavedCredentials());
+        QCOMPARE(savedCreds()[QStringLiteral("refresh_token")].toString(), QStringLiteral("refresh-1"));
         // One refresh and one resend each, and then nothing more.
         QCOMPARE(rig.tidal.tokenRequests, 1);
         QCOMPARE(rig.tidal.api.size(), 4);
-        QVERIFY(!nextTimer(rig.auth));
+    }
 
-        // Signed out, the API is asked without a token.
+    // A token issued a moment ago and refused all the same is refused for
+    // something else. The next request must not ask the login host again.
+    void aTokenJustIssuedAndRefusedAsksForNoSecondRefresh()
+    {
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        rig.tidal.goodTokens.clear();
+        rig.tidal.issuedTokensAreGood = false;
+        rig.tidal.refusal = R"({"errors":[{"code":"UNAUTHORIZED"}]})";
+
+        QStringList errors;
         rig.send(QStringLiteral("get"), [&errors](QString e) { errors << e; });
-        QTRY_COMPARE_WITH_TIMEOUT(errors.size(), 3, 5000);
-        QCOMPARE(rig.tidal.api.last().bearer, QByteArray());
+        QTRY_COMPARE_WITH_TIMEOUT(errors.size(), 1, 5000);
         QCOMPARE(rig.tidal.tokenRequests, 1);
-        QCOMPARE(expired.count(), 1);
+
+        for (int i = 0; i < 3; ++i)
+            rig.send(QStringLiteral("get"), [&errors](QString e) { errors << e; });
+        QTRY_COMPARE_WITH_TIMEOUT(errors.size(), 4, 5000);
+        QTest::qWait(100);
+        QVERIFY(!errors.at(3).isEmpty());
+        QCOMPARE(rig.tidal.tokenRequests, 1);
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
     }
 
     // A refusal that names nothing is taken for the token once. It is too
