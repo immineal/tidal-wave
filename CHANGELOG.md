@@ -118,7 +118,9 @@ milestones and not a semver promise about an API.
 - With the language set to System, the program starts in the system's display
   language. 0.4.0 asked the regional format first, which is a separate setting
   on Windows, so a German Windows with an English format started in English.
-  This comes from reading Qt's source. Nobody tried it on Windows.
+  On Windows the program now asks Windows which language it displays. On a
+  Windows 11 machine with the German display language and English formats,
+  0.4.0 started in English and 0.4.1 starts in German.
 - Quitting printed about ninety QML errors to the terminal. It prints none.
 - When a new playlist could not be created, the dialog could show the address
   of the request, which holds the user id. It shows Tidal's reason or none.
