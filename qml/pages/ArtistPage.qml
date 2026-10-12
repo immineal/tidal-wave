@@ -65,9 +65,9 @@ Rectangle {
     function loadArtist() {
         loading = true
         loadError = ""
-        // Which artist these three replies are about. Main.qml reuses this page
-        // item when one artist navigates to another, so a reply for the artist
-        // just left must not touch the one on screen. Checked before the error.
+        // Which artist these three replies are about. artistId can change while
+        // they are in flight, and a reply for the artist just left must not
+        // touch the one on screen. Checked before the error.
         var requested = artistId
         bridge.fetchArtistDetail(artistId, function(d, err) {
             if (requested !== root.artistId) return

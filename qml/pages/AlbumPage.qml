@@ -46,8 +46,8 @@ Rectangle {
         root.unsaving = true
         root.unsaveRefused = false
         bridge.removeAlbumFavorite(asked, function (ok) {
-            // The page is reused for the next album, so a reply for the one on
-            // screen at the press says nothing about the one on screen now.
+            // albumId can change before the reply lands, and a reply for the
+            // album on screen at the press says nothing about the one there now.
             if (asked !== root.albumId) return
             root.unsaving = false
             // Only an explicit true counts as accepted, as in
@@ -76,7 +76,7 @@ Rectangle {
 
     // The release day in the reader's own date order and language: the locale's
     // long format without the weekday. Anything that is not a full ISO date
-    // comes back untouched. NowPlayingPage.qml has the same function.
+    // comes back untouched. NowPlayingPage.releaseDateText() is the same.
     function releaseText(iso) {
         if (!iso) return ""
         if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso

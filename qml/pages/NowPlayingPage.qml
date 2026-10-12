@@ -461,7 +461,7 @@ Rectangle {
 
     // "2017-09-22" in the reader's own date order and language: the locale's
     // long format without the weekday. Anything that is not a full ISO date
-    // comes back untouched. AlbumPage.qml has the same function.
+    // comes back untouched. AlbumPage.releaseText() is the same.
     function releaseDateText(iso) {
         if (!iso) return ""
         if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso

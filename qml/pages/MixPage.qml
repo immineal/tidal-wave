@@ -85,9 +85,9 @@ Rectangle {
     function loadMix() {
         loading = true
         loadError = ""
-        // Which mix this reply is about. The loader is reused when one mix
-        // navigates to another, so a slow reply for the mix just left would
-        // otherwise retitle the one now on screen.
+        // Which mix this reply is about. mixId can change while it is in
+        // flight, and a slow reply for the mix just left would otherwise
+        // retitle the one now on screen.
         var requested = mixId
         bridge.fetchMixPage(requested, function (header, t, err) {
             // Kept apart from the error check below: a reply for a mix already

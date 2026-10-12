@@ -7,7 +7,7 @@ import TidalWave
 // A track's radio as a plain list, with no identity on it. This is the fallback
 // viewer: `tracks/<id>/radio` answers tracks and no mix id, so a station opened
 // here cannot be saved. MixPage is the viewer whenever the track names its mix.
-// TrackRow.startRadio() is the only route in.
+// TrackRow.startRadio() opens it; NowPlayingPage.sourceNav() returns to it.
 Rectangle {
     id: root
     color: Theme.bg
@@ -37,8 +37,9 @@ Rectangle {
         loading = true
         loadError = ""
         tracks  = []
-        // Which track this reply is about. The page item is reused, so a reply
-        // for a station already left must not touch the one now on screen.
+        // Which track this reply is about. trackId can change while it is in
+        // flight, and a reply for a station already left must not touch the
+        // one now on screen.
         var requested = trackId
         bridge.fetchTrackRadio(trackId, function(t, err) {
             if (requested !== root.trackId) return
