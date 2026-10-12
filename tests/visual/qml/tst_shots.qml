@@ -44,7 +44,7 @@ TestCase {
         player.setPositionForTest(96000)
         player.setPlayingForTest(true)
         player.setVolume(0.72)
-        player.setPlaybackSource("album", "42", "In Rainbows")
+        player.setPlaybackSource("album", "42", "Salt Lines")
         player.setRecentlyPlayedForTest(S.tracks(4))
 
         bridge.setTrackFavoriteForTest(q[1].id, true)

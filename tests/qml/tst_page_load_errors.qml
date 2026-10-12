@@ -171,9 +171,9 @@ TestCase {
                 "the failure panel was shown for an answer that carried no failure")
     }
 
-    // Related Artists links one artist page to another, and Main.qml reuses
-    // the page item, so a refusal for the artist just left arrives into the
-    // page now showing a different one. Staleness is checked before the error.
+    // artistId can change while a reply is in flight, so a refusal for the
+    // artist just left arrives into the page now showing a different one.
+    // Staleness is checked before the error.
     function test_a_failed_reply_for_the_artist_just_left_does_not_condemn_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setHeaderErrorForTest("server replied: Not Found")
@@ -260,8 +260,8 @@ TestCase {
                 "the failure message was shown for an answer that carried no failure")
     }
 
-    // The radio entry is on every row, including the rows of a station, so
-    // one station opens another in the same reused page item.
+    // trackId can change while a reply is in flight, so a refusal for the
+    // station just left arrives into the page now showing a different one.
     function test_a_failed_reply_for_the_station_just_left_does_not_condemn_the_one_now_open() {
         bridge.setDeferHeaderRepliesForTest(true)
         bridge.setHeaderErrorForTest("server replied: Not Found")

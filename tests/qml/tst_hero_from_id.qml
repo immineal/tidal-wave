@@ -234,9 +234,9 @@ TestCase {
         compare(page.loading, false, "a failed request left the page loading for ever")
     }
 
-    // Main.qml reuses the loaded page when one mix navigates to another, so
-    // the slow reply for the mix just left arrives into the page now showing a
-    // different one. It must not retitle it.
+    // mixId can change while a reply is in flight, so the slow reply for the
+    // mix just left arrives into the page now showing a different one. It must
+    // not retitle it.
     function test_a_reply_for_the_mix_just_left_does_not_retitle_the_one_now_open() {
         // The first request is held while the second is let through at once. A
         // stale reply that lands before the good one is harmless, because the
