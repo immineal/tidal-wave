@@ -297,6 +297,108 @@ TestCase {
         }
     }
 
+    // ── ArtistPage in a window shorter than its rows ────────────────────────
+
+    // What the three fetches bring. Set after the page was built, as it is
+    // from the network.
+    function fillArtist(page) {
+        page.artistId = 7
+        page.artistData = {
+            name: "Ein ausgesprochen langer Interpretenname",
+            bio: "Eine kurze Biografie mit mehreren Sätzen, damit der Textblock "
+               + "wirklich umbricht und nicht aus der Seite läuft.",
+            coverUrl750: "",
+            similarArtists: makeArtists(8)
+        }
+        page.topTracks = makeTracks(8)
+        page.albums = makeDiscography(12)
+        settle(page)
+    }
+
+    function artistScroller(page) {
+        var sv = findByName(page, "artistContent")
+        verify(sv, "the page has no scroll view")
+        return sv.contentItem
+    }
+
+    // Turns the wheel over the page until the page says it is at its end.
+    function wheelToTheEnd(flick) {
+        for (var turn = 0; turn < 100 && !flick.atYEnd; ++turn) {
+            mouseWheel(flick, flick.width / 2, flick.height / 2, 0, -360)
+            tryVerify(function() { return !flick.moving }, 2000,
+                      "the page did not come to rest after a turn of the wheel")
+        }
+        verify(flick.atYEnd, "a hundred turns of the wheel did not reach the end of the page")
+    }
+
+    function test_the_last_row_of_an_artist_page_can_be_scrolled_into_view() {
+        var page = makePane(artistC, 960)
+        fillArtist(page)
+        var flick = artistScroller(page)
+        var column = flick.contentItem.children[0]
+        // Related Artists, the last row on the page.
+        var last = null
+        for (var i = 0; i < column.children.length; ++i) {
+            var c = column.children[i]
+            if (c.mediaType === "artist" && c.visible) last = c
+        }
+        verify(last, "the page shows no Related Artists row")
+        verify(last.mapToItem(flick, 0, last.height).y > flick.height,
+               "the page fits a " + paneHeight + "px window, so this case has nothing to scroll")
+
+        wheelToTheEnd(flick)
+        settle(page)
+
+        var bottom = last.mapToItem(flick, 0, last.height).y
+        verify(bottom <= flick.height + 0.5,
+               "with the wheel at the end of the page the \"" + last.title + "\" row ends "
+               + (bottom - flick.height).toFixed(0) + "px below the window")
+    }
+
+    // The wheel and the scroll bar reach as far as the scroller's content
+    // height, which has to follow the rows as they come, go and reflow.
+    function test_an_artist_page_ends_where_its_rows_end() {
+        var page = makePane(artistC, 960)
+        var flick = artistScroller(page)
+        var column = flick.contentItem.children[0]
+
+        function check(when) {
+            fuzzyCompare(flick.contentHeight, column.height, 0.5,
+                         when + " the scroller ends at " + flick.contentHeight.toFixed(0)
+                         + "px and the rows at " + column.height.toFixed(0) + "px")
+        }
+        check("before the artist has answered")
+
+        fillArtist(page)
+        verify(column.height > flick.height,
+               "the page fits a " + paneHeight + "px window, so this case has nothing to scroll")
+        check("with every row")
+
+        page.showAllTracks = true
+        settle(page)
+        check("with all eight tracks shown")
+
+        // At the end, so the page has to come back up when rows leave.
+        flick.contentY = flick.contentHeight - flick.height
+        settle(page)
+        page.showAllTracks = false
+        page.albums = []
+        settle(page)
+        check("with the release rows gone")
+        fuzzyCompare(column.mapToItem(flick, 0, column.height).y, flick.height, 0.5,
+                     "rows left and the page did not follow its rows up")
+
+        // Narrow, where the biography and the name wrap onto more lines.
+        page.parent.width = 400
+        settle(page)
+        check("at 400px wide")
+        page.parent.width = 960
+        page.parent.height = 3000
+        settle(page)
+        check("in a window taller than the rows")
+        compare(flick.contentY, 0, "the page is scrolled in a window that shows all of it")
+    }
+
     // ── CollectionPage, all five tabs ───────────────────────────────────────
 
     function fillCollection(page, tab) {

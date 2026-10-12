@@ -140,12 +140,16 @@ Rectangle {
         anchors.fill: parent
         rightPadding: 14
         contentWidth: availableWidth
+        // Stated, because a ScrollView on Qt 6.5 works its content height
+        // out once and does not follow the column as rows arrive.
+        contentHeight: rowsColumn.implicitHeight
         // Hidden, not covered: behind the error panel the Play and Follow pills
         // would still be hit targets and tab stops for an artist the API will
         // not answer for.
         visible: !root.loadFailed
 
         ColumnLayout {
+            id: rowsColumn
             width: parent.width
             spacing: 0
 
