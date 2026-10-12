@@ -773,13 +773,14 @@ private slots:
 
         // Tidal goes on answering the same for both rows.
         a.p().seek(29000);
-        QTest::qWaitFor([&] {
+        const bool arrived = QTest::qWaitFor([&] {
             while (a.client.answer(8001, ruledOut(), kGone)) {}
             while (a.client.answer(8002, track)) {}
             return currentId(a.p()) == 8002 && a.started();
         }, 15000);
 
         QCOMPARE(currentId(a.p()), 8002);
+        QVERIFY2(arrived, "the third row was reached and did not start");
         QVERIFY(a.p().playing());
         QCOMPARE(a.p().queueCount(), 2);
         QCOMPARE(errorSpy.count(), 1);
