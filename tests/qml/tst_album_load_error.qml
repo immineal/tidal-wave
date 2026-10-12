@@ -160,6 +160,68 @@ TestCase {
                 "the failure panel was shown for an answer that carried no failure")
     }
 
+    // ── a reply for the album the page has left ─────────────────────────
+    // The stub holds the first album's two replies and lets the second
+    // album's through, so the first ones land on a page that shows the second.
+
+    function oneTrack(id, title) {
+        return { id: id, title: title, artists: "Eine Band", albumTitle: "",
+                 durationStr: "3:21", coverUrl: "", coverUrl80: "",
+                 albumId: testCase.liveAlbumId, artistId: 3 }
+    }
+
+    function test_a_refusal_for_the_album_just_left_leaves_the_one_now_open() {
+        bridge.setDeferHeaderRepliesForTest(true)
+        bridge.setHeaderErrorForTest("server replied: Not Found")
+        var page = openAlbum(testCase.deadAlbumId)
+        compare(bridge.pendingHeaderRepliesForTest(), 2,
+                "the two replies for the first album were not held")
+
+        bridge.setDeferHeaderRepliesForTest(false)
+        bridge.setHeaderErrorForTest("")
+        bridge.setAlbumForTest({ title: "Abendrunde", artists: "Eine Band",
+                                 coverUrl: "cdn/alb.jpg", numTracks: 1 },
+                               [oneTrack(7001, "Erstes Stück")])
+        page.albumId = testCase.liveAlbumId
+        frame(page)
+        compare(page.albumData.title, "Abendrunde", "the second album never arrived")
+
+        bridge.flushHeaderRepliesForTest()
+        frame(page)
+
+        compare(page.loadError, "",
+                "the refusal for the album left was laid on the one now open")
+        compare(page.tracks.length, 1,
+                "the empty tracklist of the album left replaced the one on the page")
+    }
+
+    function test_an_answer_for_the_album_just_left_does_not_replace_the_one_now_open() {
+        bridge.setDeferHeaderRepliesForTest(true)
+        bridge.setAlbumForTest({ title: "Erste Platte", artists: "Eine Band",
+                                 coverUrl: "cdn/one.jpg", numTracks: 3 },
+                               [oneTrack(7101, "Eins"), oneTrack(7102, "Zwei"),
+                                oneTrack(7103, "Drei")])
+        var page = openAlbum(testCase.deadAlbumId)
+        compare(bridge.pendingHeaderRepliesForTest(), 2,
+                "the two replies for the first album were not held")
+
+        bridge.setDeferHeaderRepliesForTest(false)
+        bridge.setAlbumForTest({ title: "Zweite Platte", artists: "Eine Band",
+                                 coverUrl: "cdn/two.jpg", numTracks: 1 },
+                               [oneTrack(7201, "Allein")])
+        page.albumId = testCase.liveAlbumId
+        frame(page)
+        compare(page.albumData.title, "Zweite Platte", "the second album never arrived")
+
+        bridge.flushHeaderRepliesForTest()
+        frame(page)
+
+        compare(page.albumData.title, "Zweite Platte",
+                "the header of the album left retitled the one now open")
+        compare(page.tracks.length, 1,
+                "the tracks of the album left replaced the ones on the page")
+    }
+
     // ── what the panel offers to do about it ────────────────────────────
     // The panel carries two buttons: the title handed to Search, where the
     // live edition turns up under another id, and the removal. The title comes

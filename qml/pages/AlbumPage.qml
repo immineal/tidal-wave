@@ -192,13 +192,18 @@ Rectangle {
     }
 
     function loadAlbum() {
+        // albumId can change while the replies are out. One for the album the
+        // page has left belongs to no album on it.
+        var requested = root.albumId
         loading = true
         loadError = ""
-        bridge.fetchAlbum(albumId, function(album, err) {
+        bridge.fetchAlbum(requested, function(album, err) {
+            if (requested !== root.albumId) return
             if (err) { root.loadError = err; return }
             root.albumData = album
         })
-        bridge.fetchAlbumTracks(albumId, function(t, err) {
+        bridge.fetchAlbumTracks(requested, function(t, err) {
+            if (requested !== root.albumId) return
             root.loading = false
             // The header's reason first where there is one: both calls fail
             // together on a dead album, and the two strings say the same thing.
