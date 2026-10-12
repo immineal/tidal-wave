@@ -77,6 +77,11 @@ void Player::initAudio() {
             this, &Player::onErrorOccurred);
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
         if (m_rebinding) return;   // a swap's transient positions are not seeks
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
+        // A queue that ended is at its start for all who ask position(). The
+        // backend's reports from before the end can still arrive after it.
+        if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && nextIndex() < 0) return;
+#endif
         qint64 dur = m_player->duration();
         if (dur > 0 && pos >= kPreloadAfterMs)
             preloadNext();
