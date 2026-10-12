@@ -134,6 +134,18 @@
          Only the newest release takes its version from project(). -->
     <release version="@PROJECT_VERSION@" date="2026-10-12">
       <description>
+        <p>An artist page shows each record once, an album page lists the record's other versions, and two kinds of track that did not play now play.</p>
+        <ul>
+          <li>An artist page shows each album, EP and single once. 0.4.1 showed a card for every version Tidal lists, which can be six for one album</li>
+          <li>An album page ends with a row of the record's other versions: explicit or clean, Dolby Atmos, another quality</li>
+          <li>A playlist track that Tidal no longer streams under its old id is played from another release of the same recording, where there is one</li>
+          <li>A track that Tidal has only in AAC plays at the Lossless and Hi-Res settings</li>
+          <li>Under an album's title, a Dolby Atmos album is named as one and a hi-res album as Max. 0.4.1 said Low and Lossless</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.4.1" date="2026-10-12">
+      <description>
         <p>Fixes for the sign-in after a suspend, for lost sound on Debian 12 and Ubuntu 24.04, and for the desktop media controls.</p>
         <ul>
           <li>The sign-in token is renewed by the clock. The timer 0.4.0 used stands still while the computer is suspended</li>

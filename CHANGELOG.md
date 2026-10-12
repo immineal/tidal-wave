@@ -5,6 +5,67 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
+## [0.4.2] - 2026-10-12
+
+### Added
+
+- An album page ends with a row, Other versions, when Tidal's own album page
+  names other versions of the record. Under each card stands what tells that
+  version apart: explicit or clean, and Dolby Atmos or the quality. A card
+  opens the version, and its play button plays it.
+
+### Changed
+
+- An artist page shows each album, EP and single once. Tidal lists the
+  explicit and the clean version of a record as entries of their own, and each
+  of the two again in 16-bit, in hi-res and in Dolby Atmos. 0.4.1 showed a
+  card for every entry, so an album that exists in all six stood on the page
+  six times.
+- The one card of a record opens its explicit version in hi-res stereo where
+  there is one, and the album page leads to the others. Entries count as one
+  record when they have the same title, the same number of tracks and nearly
+  the same length, so a deluxe edition keeps a card of its own. For six
+  artists looked at, the 1140 entries of their own releases became 605 cards.
+- A playlist keeps the id a track had when it was added, and Tidal stops
+  streaming some of these ids while the recording stays on another release.
+  - Such a track is now played from the other release, which the program
+    finds by the recording's code (ISRC). It does so when the track is picked
+    and when the queue reaches it.
+  - In 0.4.1 a picked track gave the message "This track is no longer
+    available on Tidal." at the Low and High settings, and "This track is not
+    available for your account or region." at Lossless and Hi-Res. A running
+    queue passed it over.
+  - The row in the list is shown as playing. The player names the release the
+    track is played from, so its album and cover can differ from the row's.
+  - Of twenty such tracks looked at, sixteen had another release. A track
+    without one is reported and passed over as before.
+
+### Fixed
+
+- A track that Tidal has only in AAC plays at the Lossless and Hi-Res
+  settings. It plays in AAC, and the player shows it as High. In 0.4.1 it
+  ended with "Could not load this track for playback." at these two settings,
+  and a running queue stopped on it.
+- The line under an album's title called a Dolby Atmos album "Low", which is
+  how Tidal lists it, and a hi-res album "Lossless". It now says "Dolby Atmos,
+  plays in stereo" for the first and "Max" for the second, the name the player
+  uses for hi-res.
+
+### Known issues
+
+- Dolby Atmos is not played. A Dolby Atmos version of an album plays in
+  stereo.
+- Search results list every version of a record, as before.
+- The Other versions row can hold fewer versions than exist. For one album
+  with five other versions, Tidal's page named three.
+- Two different records with the same title, the same number of tracks and
+  nearly the same length share one card on an artist page.
+- A track with no other release of the same recording still cannot be played.
+  Casting a track that Tidal no longer streams under its id still fails, and
+  so does a download from its row.
+- A download of a track that Tidal has only in AAC is refused, as in 0.4.1.
+- The two issues listed under 0.4.1 for Qt 6.4 are unchanged.
+
 ## [0.4.1] - 2026-10-12
 
 ### Added
@@ -277,5 +338,6 @@ and are fixed in the set published on 11 October.
 0.3.1 and everything before it predate this file. See the
 [releases page](https://github.com/immineal/tidal-wave/releases) and `git log`.
 
+[0.4.2]: https://github.com/immineal/tidal-wave/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/immineal/tidal-wave/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/immineal/tidal-wave/compare/v0.3.1...v0.4.0
