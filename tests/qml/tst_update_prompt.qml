@@ -94,6 +94,8 @@ TestCase {
         updateStub.resetForTest()
         app.resetForTest()
         prefs.setAppVersionForTest(runningVersion)
+        // A size the engine refused to settle is a fault in every case here.
+        failOnWarning(/Binding loop detected/)
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -373,5 +375,31 @@ TestCase {
         var faults = collectOverflow(p.contentItem, [])
         verify(faults.length === 0,
                "the dialog overflows itself at " + row.tag + ":\n  " + faults.join("\n  "))
+    }
+
+    // The app's window cannot get this short. It stands for a dialog taller
+    // than the window has room for, which a large font can make.
+    function test_keeps_its_margins_when_the_window_is_too_short() {
+        var shortH = 150
+        var host = showHost(minWindowW, shortH)
+        updateStub.offerForTest(newVersion, newUrl)
+        openPrompt(host)
+
+        var p = host.prompt
+        verify(p.implicitHeight > shortH - 64,
+               "the dialog fits a " + shortH + "px window, so this case measured nothing")
+        verify(p.y >= 32 - 0.5 && p.y + p.height <= shortH - 32 + 0.5,
+               "the dialog covers " + p.y + ".." + (p.y + p.height) + " of a "
+               + shortH + "px window")
+
+        // The room comes back, and so does the height the content needs.
+        host.height = minWindowH
+        frame(host.contentItem)
+        verify(p.contentItem.implicitHeight <= p.availableHeight + 0.5,
+               "the content needs " + p.contentItem.implicitHeight
+               + "px but only " + p.availableHeight + "px is left for it")
+        verify(p.y >= 32 - 0.5 && p.y + p.height <= minWindowH - 32 + 0.5,
+               "the dialog covers " + p.y + ".." + (p.y + p.height) + " of a "
+               + minWindowH + "px window")
     }
 }

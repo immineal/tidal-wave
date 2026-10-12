@@ -66,7 +66,10 @@ Popup {
     // is, so the dialog fits the 640x600 minimum window. `parent` here is
     // Overlay.overlay, courtesy of anchors.centerIn.
     width:  Math.min(440, (parent ? parent.width  : 440) - 64)
-    height: Math.min(implicitHeight, (parent ? parent.height : 600) - 64)
+    // No height: the dialog is as tall as its content and the margins hold
+    // it inside the window. A height bound to implicitHeight is a binding
+    // loop, because a resize is what makes a layout publish that height.
+    margins: 32
     modal: true
     focus: true
     // No CloseOnPressOutside: there are three explicit answers and a click
