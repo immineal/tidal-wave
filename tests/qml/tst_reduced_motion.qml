@@ -1068,9 +1068,12 @@ TestCase {
             if (!sameColor(inkLabel.color, Theme.accentInk))
                 return "chip " + i + "'s accent copy is " + inkLabel.color + ", not the accent's ink"
             if (!ink.visible || ink.width <= 0 || ink.height <= 0) continue
-            var o = chip.mapToItem(pill.parent, ink.x, ink.y)
-            var x0 = o.x, x1 = o.x + ink.width
-            var y0 = o.y, y1 = o.y + ink.height
+            // The chip's origin is mapped and the ink's offset added to it:
+            // Qt 6.5 to 6.7 drop the fraction of a point given to
+            // mapToItem(item, x, y), and the ink starts between pixels.
+            var o = chip.mapToItem(pill.parent, 0, 0)
+            var x0 = o.x + ink.x, x1 = x0 + ink.width
+            var y0 = o.y + ink.y, y1 = y0 + ink.height
             if (x0 < pill.x - 0.5 || x1 > pill.x + pill.width + 0.5
                 || y0 < pill.y - 0.5 || y1 > pill.y + pill.height + 0.5)
                 return "chip " + i + "'s accent ink covers " + x0.toFixed(1) + ".." + x1.toFixed(1)
