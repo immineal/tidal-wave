@@ -454,10 +454,7 @@ void Player::insertManual(const QVariantList &tracks, int at) {
     if (tracks.isEmpty()) return;
     const int base = m_index + 1 + qBound(0, at, m_manualCount);
     for (int i = 0; i < tracks.count(); ++i) {
-        QVariantMap t = tracks.at(i).toMap();
-        // Legacy marker: the old Queue panel styles a row by reading this.
-        t[QStringLiteral("_userQueued")] = true;
-        m_queue.insert(base + i, Entry{ t, true, -1 });
+        m_queue.insert(base + i, Entry{ tracks.at(i).toMap(), true, -1 });
     }
     setManualCount(m_manualCount + tracks.count());
     emit queueChanged();
@@ -935,7 +932,6 @@ void Player::normalizeManualSpan() {
         // context row, or it would form a second, invisible manual queue.
         m_queue[i].manual  = false;
         m_queue[i].natural = (i > 0) ? m_queue.at(i - 1).natural : -1;
-        m_queue[i].track.remove(QStringLiteral("_userQueued"));
     }
     setManualCount(n);
 }

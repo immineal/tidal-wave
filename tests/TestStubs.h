@@ -1481,9 +1481,7 @@ public:
             m_queue.removeAt(m_index + 1);
         const int base = qBound(0, m_index + 1, int(m_queue.size()));
         for (int i = 0; i < tracks.size(); ++i) {
-            QVariantMap t = tracks.at(i).toMap();
-            t[QStringLiteral("_userQueued")] = true;
-            m_queue.insert(base + i, t);
+            m_queue.insert(base + i, tracks.at(i).toMap());
         }
         setManualCount(int(tracks.size()));
         emit queueChanged();
@@ -1599,10 +1597,7 @@ private:
         const int base = qBound(0, m_index + 1 + qBound(0, at, m_manualCount),
                                 int(m_queue.size()));
         for (int i = 0; i < tracks.size(); ++i) {
-            QVariantMap t = tracks.at(i).toMap();
-            // The marker the real Player puts on rows queued by hand.
-            t[QStringLiteral("_userQueued")] = true;
-            m_queue.insert(base + i, t);
+            m_queue.insert(base + i, tracks.at(i).toMap());
         }
         setManualCount(m_manualCount + int(tracks.size()));
         emit queueChanged();

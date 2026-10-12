@@ -723,6 +723,25 @@ private slots:
         QCOMPARE(b.p().queueCount(), 4);
     }
 
+    // A row queued by hand is the track that was handed in, with no key of
+    // the Player's own, in the queue and in the session it saves.
+    void aTrackQueuedByHandCarriesNoKeyOfThePlayers() {
+        const QVariantMap track = trackOf(9001, QStringLiteral("T9001"));
+        {
+            Launch a;
+            QVERIFY(a.settle());
+            a.p().playTracks(contextOf(1000, 3), 0);
+            a.p().addToQueue(QVariantList{ track });
+            QCOMPARE(a.p().queueManual().value(0).toMap().keys(), track.keys());
+            a.p().savePlaybackState();
+        }
+
+        Launch b;
+        QVERIFY(b.settle());
+        QCOMPARE(ids(b.p().queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(b.p().queueManual().value(0).toMap().keys(), track.keys());
+    }
+
 private:
     QTemporaryDir m_settingsDir;
 };
