@@ -132,7 +132,7 @@ protected:
     }
 };
 
-const char *const kWrites[] = {"postApiForm", "postApiFormEtag", "deleteApi", "deleteApiEtag",
+const char *const kWrites[] = {"postApiForm", "postApiFormEtag", "deleteApiEtag",
                                "deleteApiWithStatus", "putV2"};
 
 // `done` gets -1 for the status from a kind that hands none on.
@@ -145,7 +145,6 @@ void sendWrite(TidalApi &api, const QString &kind, TidalApi::StatusCallback done
     const QString x = QStringLiteral("x");
     if (kind == QLatin1String("postApiForm")) api.postApiForm(x, form, cb);
     else if (kind == QLatin1String("postApiFormEtag")) api.postApiFormEtag(x, form, etag, cb);
-    else if (kind == QLatin1String("deleteApi")) api.deleteApi(x, form, cb);
     else if (kind == QLatin1String("deleteApiEtag")) api.deleteApiEtag(x, form, etag, cb);
     else if (kind == QLatin1String("deleteApiWithStatus")) api.deleteApiWithStatus(x, form, done);
     else if (kind == QLatin1String("putV2")) api.putV2(x, form, cb);

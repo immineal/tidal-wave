@@ -60,8 +60,7 @@ public:
     void postForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
     // POST against the authenticated API host.
     void postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
-    void deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
-    // deleteApi() with the HTTP status handed on.
+    // DELETE against the authenticated API host, with the HTTP status handed on.
     void deleteApiWithStatus(const QString &endpoint, const QUrlQuery &params, StatusCallback cb);
     void getEtag(const QString &endpoint, std::function<void(QString /*etag*/, QString /*error*/)> cb);
     void deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb);

@@ -259,10 +259,6 @@ void TidalApi::postApiForm(const QString &endpoint, const QUrlQuery &form, JsonC
     postApiFormEtag(endpoint, form, {}, std::move(cb));
 }
 
-void TidalApi::deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
-    deleteApiEtag(endpoint, params, {}, std::move(cb));
-}
-
 void TidalApi::deleteApiWithStatus(const QString &endpoint, const QUrlQuery &params,
                                    StatusCallback cb) {
     sendDelete(endpoint, params, {}, std::move(cb));

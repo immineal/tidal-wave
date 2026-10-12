@@ -226,7 +226,9 @@ struct Rig {
         else if (kind == QLatin1String("putV2")) api.putV2(QStringLiteral("x"), form, json);
         else if (kind == QLatin1String("postApiForm")) api.postApiForm(QStringLiteral("x"), form, json);
         else if (kind == QLatin1String("postApiFormEtag")) api.postApiFormEtag(QStringLiteral("x"), form, etag, json);
-        else if (kind == QLatin1String("deleteApi")) api.deleteApi(QStringLiteral("x"), form, json);
+        else if (kind == QLatin1String("deleteApiWithStatus"))
+            api.deleteApiWithStatus(QStringLiteral("x"), form,
+                                    [json](QJsonObject o, QString e, int) { json(o, e); });
         else if (kind == QLatin1String("deleteApiEtag")) api.deleteApiEtag(QStringLiteral("x"), form, etag, json);
         else qFatal("unknown kind of request");
     }
@@ -350,7 +352,7 @@ private slots:
         QTest::newRow("putV2")           << QByteArray("PUT");
         QTest::newRow("postApiForm")     << QByteArray("POST");
         QTest::newRow("postApiFormEtag") << QByteArray("POST");
-        QTest::newRow("deleteApi")       << QByteArray("DELETE");
+        QTest::newRow("deleteApiWithStatus") << QByteArray("DELETE");
         QTest::newRow("deleteApiEtag")   << QByteArray("DELETE");
     }
 
@@ -393,7 +395,7 @@ private slots:
         rig.tidal.tokenAnswer = FakeTidal::Hold;
 
         QStringList errors;
-        for (const char *kind : {"get", "getV2", "getArray", "postApiForm", "deleteApi"})
+        for (const char *kind : {"get", "getV2", "getArray", "postApiForm", "deleteApiWithStatus"})
             rig.send(QString::fromLatin1(kind), [&errors](QString e) { errors << e; });
         // All five are refused while the one refresh is still on its way.
         QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.refused, 5, 5000);
