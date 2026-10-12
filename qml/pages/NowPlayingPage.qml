@@ -1260,9 +1260,21 @@ Rectangle {
                             Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
                             Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
 
-                            // Measures the widest clock the countdown can show,
-                            // in the font it shows it in.
-                            FontMetrics { id: sleepFm; font.pixelSize: 11; font.bold: true }
+                            // Never drawn. One clock per digit, a line each, so its
+                            // width is the widest clock as a Text lays it out. A
+                            // summed advance leaves out the last glyph's overhang.
+                            Text {
+                                id: sleepClockRuler
+                                visible: false
+                                font: sleepLabel.font
+                                textFormat: Text.PlainText
+                                text: {
+                                    var lines = []
+                                    for (var d = 0; d < 10; ++d)
+                                        lines.push(sleepLabel.clockShape.replace(/0/g, d))
+                                    return lines.join("\n")
+                                }
+                            }
 
                             RowLayout {
                                 id: sleepTimerRow
@@ -1291,6 +1303,7 @@ Rectangle {
                                 }
 
                                 Text {
+                                    id: sleepLabel
                                     objectName: "nowPlayingSleepTimerLabel"
                                     text: root.sleepTimerActive ?
                                           (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) :
@@ -1298,13 +1311,12 @@ Rectangle {
                                     // The pill is sized from this label. While
                                     // counting it holds the widest clock of its
                                     // shape, "mm:ss" or "h:mm:ss".
-                                    readonly property string widestClock:
+                                    readonly property string clockShape:
                                         text.indexOf(":") !== text.lastIndexOf(":")
                                             ? "0:00:00" : "00:00"
                                     Layout.preferredWidth:
                                         (root.sleepTimerActive && !root.sleepStopAtEndOfTrack)
-                                            ? Math.max(implicitWidth,
-                                                       sleepFm.advanceWidth(widestClock))
+                                            ? Math.ceil(sleepClockRuler.implicitWidth)
                                             : implicitWidth
                                     horizontalAlignment: Text.AlignHCenter
                                     color: root.sleepTimerActive ? Theme.accent : Theme.textSec

@@ -2408,7 +2408,10 @@ TestCase {
         var pill = findChild(host.page, "nowPlayingSleepTimerButton")
         verify(pill, "the sleep timer pill was not found")
 
-        var seconds = [600, 599, 61, 60, 59, 10, 9, 1, 0]
+        // Every digit ends a clock in this list: a font may draw its last
+        // glyph past the advance, and by a different amount for each digit.
+        var seconds = [600, 599, 598, 597, 596, 595, 594, 593, 592, 591,
+                       61, 60, 59, 10, 9, 1, 0]
         var label = findChild(host.page, "nowPlayingSleepTimerLabel")
         verify(label, "the countdown label was not found")
 
@@ -2438,6 +2441,27 @@ TestCase {
             compare(pill.width, first,
                     "the pill resized at \"" + label.text + "\": "
                     + pill.width.toFixed(1) + " against " + first.toFixed(1))
+            verify(label.implicitWidth <= label.width + 0.5,
+                   "\"" + label.text + "\" is " + label.implicitWidth.toFixed(1)
+                   + "px wide in a label of " + label.width.toFixed(1) + "px")
+        }
+
+        // An hour on the clock is a second shape, with one width of its own.
+        var hours = [7200, 7199, 3661, 3600]
+        host.sleepTimeLeft = hours[0]
+        frame(host)
+        var wide = pill.width
+        verify(wide > first, "the pill did not grow for the hours: " + wide.toFixed(1)
+               + " against " + first.toFixed(1))
+        for (var j = 0; j < hours.length; j++) {
+            host.sleepTimeLeft = hours[j]
+            frame(host)
+            compare(pill.width, wide,
+                    "the pill resized at \"" + label.text + "\": "
+                    + pill.width.toFixed(1) + " against " + wide.toFixed(1))
+            verify(label.implicitWidth <= label.width + 0.5,
+                   "\"" + label.text + "\" is " + label.implicitWidth.toFixed(1)
+                   + "px wide in a label of " + label.width.toFixed(1) + "px")
         }
     }
 
