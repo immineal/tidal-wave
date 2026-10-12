@@ -103,7 +103,7 @@ void TidalApi::send(Sender sender, Finisher done, bool resend) {
     });
 }
 
-TidalApi::Finisher TidalApi::writeAnswer(JsonCallback cb, bool errorKey) {
+TidalApi::Finisher TidalApi::writeAnswer(StatusCallback cb, bool errorKey) {
     return [cb = std::move(cb), errorKey](QNetworkReply *reply, const QByteArray &data) {
         QJsonParseError err;
         const auto obj = QJsonDocument::fromJson(data, &err).object();
@@ -114,22 +114,28 @@ TidalApi::Finisher TidalApi::writeAnswer(JsonCallback cb, bool errorKey) {
             QString said = obj["userMessage"].toString();
             if (said.isEmpty() && errorKey)
                 said = obj["error_description"].toString(obj["error"].toString());
-            cb(obj, said.isEmpty() ? reply->errorString() : said);
+            cb(obj, said.isEmpty() ? reply->errorString() : said, httpStatus);
             return;
         }
         if (data.isEmpty()) {
-            cb({}, {});
+            cb({}, {}, httpStatus);
             return;
         }
         if (err.error != QJsonParseError::NoError) {
-            cb({}, err.errorString());
+            cb({}, err.errorString(), httpStatus);
             return;
         }
         if (errorKey && obj.contains("error"))
-            cb(obj, obj["error_description"].toString(obj["error"].toString()));
+            cb(obj, obj["error_description"].toString(obj["error"].toString()), httpStatus);
         else
-            cb(obj, {});
+            cb(obj, {}, httpStatus);
     };
+}
+
+// For the writes whose callers have no use for the HTTP status. The body of
+// a refusal goes on with the error.
+static TidalApi::StatusCallback writeWithoutStatus(TidalApi::JsonCallback cb) {
+    return [cb = std::move(cb)](QJsonObject obj, QString err, int) { cb(obj, err); };
 }
 
 // For the callers that have no use for the HTTP status.
@@ -160,7 +166,7 @@ void TidalApi::putV2(const QString &endpoint, const QUrlQuery &params, JsonCallb
 
     // An empty body makes Qt send Content-Length: 0.
     send([this, url] { return m_nam->put(makeRequest(url), QByteArray()); },
-         writeAnswer(std::move(cb), true));
+         writeAnswer(writeWithoutStatus(std::move(cb)), true));
 }
 
 void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb) {
@@ -257,6 +263,11 @@ void TidalApi::deleteApi(const QString &endpoint, const QUrlQuery &params, JsonC
     deleteApiEtag(endpoint, params, {}, std::move(cb));
 }
 
+void TidalApi::deleteApiWithStatus(const QString &endpoint, const QUrlQuery &params,
+                                   StatusCallback cb) {
+    sendDelete(endpoint, params, {}, std::move(cb));
+}
+
 void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QString)> cb) {
     QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     if (!m_countryCode.isEmpty()) {
@@ -276,6 +287,11 @@ void TidalApi::getEtag(const QString &endpoint, std::function<void(QString, QStr
 }
 
 void TidalApi::deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb) {
+    sendDelete(endpoint, params, etag, writeWithoutStatus(std::move(cb)));
+}
+
+void TidalApi::sendDelete(const QString &endpoint, const QUrlQuery &params, const QString &etag,
+                          StatusCallback cb) {
     QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
     if (!params.isEmpty()) url.setQuery(params);
     send([this, url, etag] {
@@ -295,7 +311,7 @@ void TidalApi::postApiFormEtag(const QString &endpoint, const QUrlQuery &form, c
         if (!etag.isEmpty())
             req.setRawHeader("If-None-Match", etag.toLatin1());
         return m_nam->post(req, body);
-    }, writeAnswer(std::move(cb), true));
+    }, writeAnswer(writeWithoutStatus(std::move(cb)), true));
 }
 
 QNetworkReply* TidalApi::getRaw(const QUrl &url, RawCallback cb) {

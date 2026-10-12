@@ -558,6 +558,14 @@ void TidalClient::search(const QString &query, SearchCb cb, int limit, int offse
 
 // ─── Favorites management ──────────────────────────
 
+// A favourite that is gone already is what its removal asked for, so a 404
+// to the DELETE counts as removed.
+static TidalApi::StatusCallback removedOrGone(std::function<void(bool)> cb) {
+    return [cb = std::move(cb)](QJsonObject, QString err, int httpStatus) {
+        cb(err.isEmpty() || httpStatus == 404);
+    };
+}
+
 void TidalClient::addTrackFavorite(qint64 trackId, std::function<void(bool)> cb) {
     QUrlQuery form;
     form.addQueryItem("trackIds", QString::number(trackId));
@@ -569,8 +577,9 @@ void TidalClient::addTrackFavorite(qint64 trackId, std::function<void(bool)> cb)
 void TidalClient::removeTrackFavorite(qint64 trackId, std::function<void(bool)> cb) {
     QUrlQuery params;
     params.addQueryItem("countryCode", m_api->countryCode());
-    m_api->deleteApi(QStringLiteral("users/%1/favorites/tracks/%2").arg(m_userId).arg(trackId), params,
-        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
+    m_api->deleteApiWithStatus(
+        QStringLiteral("users/%1/favorites/tracks/%2").arg(m_userId).arg(trackId), params,
+        removedOrGone(std::move(cb)));
 }
 
 void TidalClient::addAlbumFavorite(qint64 albumId, std::function<void(bool)> cb) {
@@ -584,8 +593,9 @@ void TidalClient::addAlbumFavorite(qint64 albumId, std::function<void(bool)> cb)
 void TidalClient::removeAlbumFavorite(qint64 albumId, std::function<void(bool)> cb) {
     QUrlQuery params;
     params.addQueryItem("countryCode", m_api->countryCode());
-    m_api->deleteApi(QStringLiteral("users/%1/favorites/albums/%2").arg(m_userId).arg(albumId), params,
-        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
+    m_api->deleteApiWithStatus(
+        QStringLiteral("users/%1/favorites/albums/%2").arg(m_userId).arg(albumId), params,
+        removedOrGone(std::move(cb)));
 }
 
 void TidalClient::addArtistFavorite(qint64 artistId, std::function<void(bool)> cb) {
@@ -599,8 +609,9 @@ void TidalClient::addArtistFavorite(qint64 artistId, std::function<void(bool)> c
 void TidalClient::removeArtistFavorite(qint64 artistId, std::function<void(bool)> cb) {
     QUrlQuery params;
     params.addQueryItem("countryCode", m_api->countryCode());
-    m_api->deleteApi(QStringLiteral("users/%1/favorites/artists/%2").arg(m_userId).arg(artistId), params,
-        [cb](QJsonObject, QString err) { cb(err.isEmpty()); });
+    m_api->deleteApiWithStatus(
+        QStringLiteral("users/%1/favorites/artists/%2").arg(m_userId).arg(artistId), params,
+        removedOrGone(std::move(cb)));
 }
 
 // ─── Favourite mixes (v2) ──────────────────────────

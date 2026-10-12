@@ -61,6 +61,8 @@ public:
     // POST against the authenticated API host.
     void postApiForm(const QString &endpoint, const QUrlQuery &form, JsonCallback cb);
     void deleteApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
+    // deleteApi() with the HTTP status handed on.
+    void deleteApiWithStatus(const QString &endpoint, const QUrlQuery &params, StatusCallback cb);
     void getEtag(const QString &endpoint, std::function<void(QString /*etag*/, QString /*error*/)> cb);
     void deleteApiEtag(const QString &endpoint, const QUrlQuery &params, const QString &etag, JsonCallback cb);
     void postApiFormEtag(const QString &endpoint, const QUrlQuery &form, const QString &etag, JsonCallback cb);
@@ -103,7 +105,10 @@ private:
     // What the writes make of an answer. A status of 400 or above is a
     // failure whose body still reaches `cb`. `errorKey` reads {"error": ...}
     // as one too.
-    static Finisher writeAnswer(JsonCallback cb, bool errorKey);
+    static Finisher writeAnswer(StatusCallback cb, bool errorKey);
+    // What the three deletes share. An empty `etag` sends no If-None-Match.
+    void sendDelete(const QString &endpoint, const QUrlQuery &params, const QString &etag,
+                    StatusCallback cb);
 
     void getFrom(const QString &base, const QString &endpoint,
                  const QUrlQuery &params, StatusCallback cb);

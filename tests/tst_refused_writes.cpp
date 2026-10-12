@@ -133,10 +133,12 @@ protected:
 };
 
 const char *const kWrites[] = {"postApiForm", "postApiFormEtag", "deleteApi", "deleteApiEtag",
-                               "putV2"};
+                               "deleteApiWithStatus", "putV2"};
 
-void sendWrite(TidalApi &api, const QString &kind, TidalApi::JsonCallback cb)
+// `done` gets -1 for the status from a kind that hands none on.
+void sendWrite(TidalApi &api, const QString &kind, TidalApi::StatusCallback done)
 {
+    const TidalApi::JsonCallback cb = [done](QJsonObject o, QString e) { done(o, e, -1); };
     QUrlQuery form;
     form.addQueryItem(QStringLiteral("trackIds"), QStringLiteral("41"));
     const QString etag = QStringLiteral("\"e1\"");
@@ -145,6 +147,7 @@ void sendWrite(TidalApi &api, const QString &kind, TidalApi::JsonCallback cb)
     else if (kind == QLatin1String("postApiFormEtag")) api.postApiFormEtag(x, form, etag, cb);
     else if (kind == QLatin1String("deleteApi")) api.deleteApi(x, form, cb);
     else if (kind == QLatin1String("deleteApiEtag")) api.deleteApiEtag(x, form, etag, cb);
+    else if (kind == QLatin1String("deleteApiWithStatus")) api.deleteApiWithStatus(x, form, done);
     else if (kind == QLatin1String("putV2")) api.putV2(x, form, cb);
     else qFatal("unknown kind of write");
 }
@@ -373,13 +376,16 @@ private slots:
         api.local = tidal.base();
         tidal.write = {status, body};
 
-        int answers = 0;
+        int answers = 0, handed = 0;
         QString err;
         QJsonObject got;
-        sendWrite(api, kind, [&](QJsonObject o, QString e) { ++answers; got = o; err = e; });
+        sendWrite(api, kind, [&](QJsonObject o, QString e, int s) {
+            ++answers; got = o; err = e; handed = s;
+        });
         QTRY_VERIFY_WITH_TIMEOUT(answers > 0 && api.idle(), 5000);
         QCOMPARE(answers, 1);
         QCOMPARE(tidal.writes(), 1);
+        if (kind.endsWith(QLatin1String("WithStatus"))) QCOMPARE(handed, status);
 
         const QJsonObject sent = QJsonDocument::fromJson(body).object();
         if (status < 400) {
@@ -426,7 +432,7 @@ private slots:
 
         int answers = 0;
         QString err;
-        sendWrite(api, kind, [&](QJsonObject, QString e) { ++answers; err = e; });
+        sendWrite(api, kind, [&](QJsonObject, QString e, int) { ++answers; err = e; });
         QTRY_VERIFY_WITH_TIMEOUT(answers > 0 && api.idle(), 5000);
         QCOMPARE(answers, 1);
         QCOMPARE(renewals, 1);
@@ -434,6 +440,26 @@ private slots:
         QCOMPARE(tidal.seen.at(0).bearer, QByteArray("first"));
         QCOMPARE(tidal.seen.at(1).bearer, QByteArray("second"));
         QCOMPARE(err, kSaid);
+    }
+
+    // The status is 0 when no answer came.
+    void aDeleteThatNothingAnswersHasNoStatus()
+    {
+        Loopback tidal;
+        QVERIFY(tidal.listen(QHostAddress::LocalHost));
+        LocalApi api;
+        api.local = tidal.base();
+        tidal.close();
+
+        int answers = 0, handed = -1;
+        QString err;
+        api.deleteApiWithStatus(QStringLiteral("x"), {}, [&](QJsonObject, QString e, int s) {
+            ++answers; err = e; handed = s;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(answers > 0 && api.idle(), 5000);
+        QCOMPARE(answers, 1);
+        QVERIFY(!err.isEmpty());
+        QCOMPARE(handed, 0);
     }
 
     // ── what the user did, through the real client and bridge ───────────
@@ -444,15 +470,17 @@ private slots:
         QTest::addColumn<QByteArray>("body");
         QTest::addColumn<QString>("before");
         QTest::addColumn<QString>("after");
+        QTest::addColumn<bool>("taken");
 
-        struct Action { const char *name, *before, *after; };
+        // `goneIsRemoved`: a removal of a favourite. A 404 says it is gone already.
+        struct Action { const char *name, *before, *after; bool goneIsRemoved = false; };
         const Action actions[] = {
             {"like a song",        "", "song liked"},
-            {"unlike a song",      "song liked", ""},
+            {"unlike a song",      "song liked", "", true},
             {"save an album",      "", "album saved"},
-            {"unsave an album",    "album saved", ""},
+            {"unsave an album",    "album saved", "", true},
             {"follow an artist",   "", "artist followed"},
-            {"unfollow an artist", "artist followed", ""},
+            {"unfollow an artist", "artist followed", "", true},
             {"save a mix",         "", "mix saved"},
             {"unsave a mix",       "mix saved", ""},
             {"create a playlist",  "", "playlist Tape () of 0"},
@@ -462,13 +490,19 @@ private slots:
         };
         for (const Action &a : actions) {
             const QString name = QLatin1String(a.name);
-            const auto row = [&](const char *how, int status, const QByteArray &body) {
+            const auto row = [&](const char *how, int status, const QByteArray &body,
+                                 bool taken = false) {
                 QTest::newRow(qPrintable(name + QLatin1String(": ") + QLatin1String(how)))
                     << name << status << body << QString::fromLatin1(a.before)
-                    << QString::fromLatin1(a.after);
+                    << QString::fromLatin1(a.after) << taken;
             };
-            row("the server takes it", 200, {});
-            row("refused, 404 with Tidal's body", 404, refusal(404));
+            row("the server takes it", 200, {}, true);
+            if (a.goneIsRemoved) {
+                row("gone already, 404 with Tidal's body", 404, refusal(404), true);
+                row("gone already, 404 with no body", 404, {}, true);
+            } else {
+                row("refused, 404 with Tidal's body", 404, refusal(404));
+            }
             // What a playlist edit gets when its ETag is stale.
             row("refused, 412 with Tidal's body", 412, refusal(412));
             row("refused, 502 with a body that is no JSON", 502, "<html>Bad Gateway</html>");
@@ -483,7 +517,7 @@ private slots:
         QFETCH(QByteArray, body);
         QFETCH(QString, before);
         QFETCH(QString, after);
-        const bool refused = status >= 400;
+        QFETCH(bool, taken);
 
         Rig rig;
         QTRY_VERIFY_WITH_TIMEOUT(rig.api.idle(), 5000);
@@ -491,17 +525,21 @@ private slots:
         if (QTest::currentTestFailed()) return;
         QCOMPARE(rig.shown(), before);
 
-        if (refused) rig.tidal.write = {status, body};
-        else         rig.serverTakes(action);
+        if (status >= 400) rig.tidal.write = {status, body};
+        else               rig.serverTakes(action);
         rig.said.clear();
         const Rig::Told told = rig.slot();
         rig.act(action, told.fn);
         QTRY_VERIFY_WITH_TIMEOUT(told.calls() > 0 && rig.api.idle(), 5000);
         QCOMPARE(told.calls(), 1);
 
-        if (!refused) {
-            QVERIFY2(told.ok(), qPrintable(told.message()));
+        if (taken) {
+            QVERIFY2(told.ok(), "the page was told that the server refused it");
             QCOMPARE(rig.shown(), after);
+            // The signal on which LibraryIndex drops a favourite.
+            if (action.startsWith(QLatin1String("un")))
+                QVERIFY2(rig.said.contains(QLatin1String("favoriteRemoved")),
+                         qPrintable(rig.said.join(QLatin1String(", "))));
             return;
         }
         QVERIFY2(!told.ok(), "the page was told that the server took it");
