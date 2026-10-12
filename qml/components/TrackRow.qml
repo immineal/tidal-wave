@@ -120,6 +120,12 @@ Item {
         return isFinite(n) ? n : 0
     }
 
+    // A track Tidal does not stream is played from its twin, which has
+    // another id and names this row's as the one it stands for.
+    readonly property bool playsNow: root.isPlaying
+        || (root.trackId > 0 && player.playing
+            && Number(player.currentTrack.standsForId) === root.trackId)
+
     property bool   isLiked: trackId > 0 ? bridge.isTrackFavorite(trackId) : false
     // Playlist context: set when TrackRow is inside a PlaylistPage
     property string playlistUuid: ""
@@ -199,7 +205,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 2
         radius: Theme.radiusRow
-        color: isPlaying ? Theme.accentSoft
+        color: root.playsNow ? Theme.accentSoft
                : hov.hovered ? Theme.surfaceHov : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
@@ -235,7 +241,7 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     anchors.centerIn: parent
-                    visible: !isPlaying && !hov.hovered
+                    visible: !root.playsNow && !hov.hovered
                     text: root.trackNum
                     color: Theme.textDim
                     font.pixelSize: 13
@@ -243,7 +249,7 @@ Item {
                 VectorIcon.PlayingIndicator {
                     objectName: "trackRowPlayingIndicator"
                     anchors.centerIn: parent
-                    visible: isPlaying && !hov.hovered
+                    visible: root.playsNow && !hov.hovered
                     animate: player.playing
                     width: 14
                     height: 14
@@ -254,7 +260,7 @@ Item {
                     objectName: "trackRowHoverPlay"
                     anchors.centerIn: parent
                     visible: hov.hovered
-                    name: isPlaying ? "pause" : "play"
+                    name: root.playsNow ? "pause" : "play"
                     color: Theme.textPrimary
                     width: 18
                     height: 18
@@ -288,7 +294,7 @@ Item {
                     objectName: "trackTitle"
                     Layout.fillWidth: true
                     text: root.titleText
-                    color: isPlaying ? Theme.accent : Theme.textPrimary
+                    color: root.playsNow ? Theme.accent : Theme.textPrimary
                     font.pixelSize: 14
                     elide: Text.ElideRight
                 }
