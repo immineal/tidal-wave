@@ -148,14 +148,24 @@ X11 does the same job through two properties instead, and neither is
 - `_KDE_NET_WM_DESKTOP_FILE` and `_GTK_APPLICATION_ID` carry
   `setDesktopFileName()` verbatim, so Plasma and GTK resolve the entry on X11
   exactly the way KWin does on Wayland.
-- `StartupWMClass=tidal-wave` is the fallback for everything else, and it tracks
-  the **binary** name, not the app id. Measured with `xprop` against a real
-  window on a headless Xvfb, `WM_CLASS` is `"tidal-wave", "Tidal Wave"`: Qt's
-  xcb plugin builds the instance half from the `argv[0]` basename (or
-  `$RESOURCE_NAME`) and the class half from `applicationName()`, and never reads
-  `desktopFileName()` for it. Moving `StartupWMClass` to the app id alongside
-  the filename would therefore have broken X11 matching, which is why it did
-  not move. `tests/firstrun/run.sh` re-measures both properties on every run.
+- `StartupWMClass=tidal-wave` is the fallback for everything else, and in an
+  installed package it tracks the **binary** name, not the app id. Measured with
+  `xprop` against a real window on a headless Xvfb, `WM_CLASS` is
+  `"tidal-wave", "Tidal Wave"`: Qt's xcb plugin builds the instance half from
+  the `argv[0]` basename (or `$RESOURCE_NAME`) and the class half from
+  `applicationName()`, and never reads `desktopFileName()` for it. Moving
+  `StartupWMClass` to the app id alongside the filename would therefore have
+  broken X11 matching for a package, which is why it did not move there.
+  `tests/firstrun/run.sh` re-measures both properties on every run.
+
+The AppImage differs. A tool that puts it into the menu writes the entry under
+a name of its own (`tidal_wave.desktop`, `appimagekit_<md5>-Tidal_Wave.desktop`),
+so no shell can match the window by file name, on Wayland either, and
+`StartupWMClass` is all that is left. One value then has to serve both sessions.
+The bundle's copy of the entry says `StartupWMClass=io.github.immineal.TidalWave`
+and its `AppRun` starts the binary with that string as `argv[0]`, so the X11
+instance name and the Wayland app id are the same string.
+`packaging/verify-appimage.sh` checks both.
 
 ## The caches, and the command for each
 
