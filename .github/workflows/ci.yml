@@ -156,8 +156,6 @@ jobs:
     runs-on: ubuntu-24.04
     container: ${{ matrix.image }}
     timeout-minutes: 60
-    # A known failure stays in the matrix and shows red without blocking.
-    continue-on-error: ${{ matrix.known_failure == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -166,24 +164,16 @@ jobs:
           - name: Ubuntu 24.04, its own Qt 6.4
             image: ubuntu:24.04
             git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
-          # Both fail in some runs in tst_qml, NowPlayingAccess::
-          # test_hover_underlines_only_the_name_under_the_pointer: from Qt 6.6
-          # to 6.10 the underline goes one frame after the pointer has left.
           - name: Debian 13, Qt 6.8
             image: debian:trixie
             git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
-            known_failure: true
           - name: Ubuntu 26.04, Qt 6.10
             image: ubuntu:26.04
             git: apt-get update && apt-get install -y --no-install-recommends git ca-certificates
-            known_failure: true
-          # Fails in tst_qml, PlayerLayout::
-          # test_sleep_timer_pill_does_not_jitter_while_counting, with Fedora's
-          # default font.
+          # Its default font is a variable one, which lays text out differently.
           - name: Fedora 44, Qt 6.11
             image: fedora:44
             git: dnf install -y git-core
-            known_failure: true
           # Rolling: where a new Qt or FFmpeg meets the PKGBUILD first.
           - name: Arch Linux, Qt 6.12
             image: archlinux:base-devel
@@ -233,25 +223,10 @@ jobs:
     name: Tests (Ubuntu 24.04, Qt ${{ matrix.qt }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    continue-on-error: ${{ matrix.known_failure == true }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Fails in tst_seek (theEndOfTheLastTrackIsReportedOnce), tst_firstrun
-          # and tst_qml UpdatePrompt (a binding loop on the prompt's height),
-          # tst_qml Search (two paging cases), and in the two named for 6.7.
-          - qt: '6.5.3'
-            known_failure: true
-          # Fails in tst_dash (four cases whose player has no output on 6.5 to
-          # 6.7) and tst_qml ReducedMotion::test_search_tab_pill_travels.
-          - qt: '6.7.3'
-            known_failure: true
-          # Fails in some runs in the hover case named in the job above, as
-          # 6.7.3 does.
-          - qt: '6.8.3'
-            known_failure: true
-          - qt: '6.11.3'
+        qt: ['6.5.3', '6.7.3', '6.8.3', '6.11.3']
 
     steps:
       - name: Checkout repository
