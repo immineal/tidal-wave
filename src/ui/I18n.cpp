@@ -8,6 +8,12 @@
 #include <QLocale>
 #include <QQmlEngine>
 
+#ifdef Q_OS_WIN
+#include <QVarLengthArray>
+#include <cwchar>
+#include <qt_windows.h>
+#endif
+
 namespace {
 // The source language, the one the strings are written in.
 const QLatin1String kSource("en");
@@ -35,9 +41,23 @@ QStringList I18n::supportedLanguages() {
 }
 
 QStringList I18n::systemDisplayLanguages() {
+    QStringList languages;
+#ifdef Q_OS_WIN
+    // The languages Windows draws its own interface in, asked of Windows.
+    // Qt's list is the user's preferred languages, which Windows keeps apart.
+    ULONG count = 0, size = 0;
+    if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, nullptr, &size) && size > 0) {
+        QVarLengthArray<wchar_t, 128> names(qsizetype(size));
+        if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &count, names.data(), &size)) {
+            for (const wchar_t *name = names.constData(); *name; name += std::wcslen(name) + 1)
+                languages << QString::fromWCharArray(name);
+        }
+    }
+#endif
     // On Windows and macOS, Qt below 6.10 puts the regional format's locale
     // first in this list when the list does not contain it.
-    return QLocale::system().uiLanguages();
+    languages << QLocale::system().uiLanguages();
+    return languages;
 }
 
 QString I18n::resolveLanguage(const QString &pref, const QStringList &displayLanguages,
