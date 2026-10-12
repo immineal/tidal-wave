@@ -105,17 +105,26 @@ void TidalApi::send(Sender sender, Finisher done, bool resend) {
 
 TidalApi::Finisher TidalApi::writeAnswer(JsonCallback cb, bool errorKey) {
     return [cb = std::move(cb), errorKey](QNetworkReply *reply, const QByteArray &data) {
-        if (data.isEmpty()) {
-            cb({}, reply->error() == QNetworkReply::NoError ? QString() : reply->errorString());
+        QJsonParseError err;
+        const auto obj = QJsonDocument::fromJson(data, &err).object();
+        const int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (httpStatus >= 400 || reply->error() != QNetworkReply::NoError) {
+            // Tidal's v1 words a refusal in userMessage and has no "error" key.
+            // A body that is no JSON reads as an empty object.
+            QString said = obj["userMessage"].toString();
+            if (said.isEmpty() && errorKey)
+                said = obj["error_description"].toString(obj["error"].toString());
+            cb(obj, said.isEmpty() ? reply->errorString() : said);
             return;
         }
-        QJsonParseError err;
-        const auto doc = QJsonDocument::fromJson(data, &err);
+        if (data.isEmpty()) {
+            cb({}, {});
+            return;
+        }
         if (err.error != QJsonParseError::NoError) {
             cb({}, err.errorString());
             return;
         }
-        const auto obj = doc.object();
         if (errorKey && obj.contains("error"))
             cb(obj, obj["error_description"].toString(obj["error"].toString()));
         else

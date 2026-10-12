@@ -100,8 +100,9 @@ private:
     using Finisher = std::function<void(QNetworkReply *, const QByteArray &)>;
     // Every request that may carry the token goes through here.
     void send(Sender sender, Finisher done, bool resend = false);
-    // What the writes make of an answer. `errorKey` reads {"error": ...} as
-    // a failure.
+    // What the writes make of an answer. A status of 400 or above is a
+    // failure whose body still reaches `cb`. `errorKey` reads {"error": ...}
+    // as one too.
     static Finisher writeAnswer(JsonCallback cb, bool errorKey);
 
     void getFrom(const QString &base, const QString &endpoint,
