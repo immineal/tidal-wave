@@ -992,6 +992,32 @@ private slots:
                      .value(QStringLiteral("mpris:artUrl")).toString(), cover);
     }
 
+    // An empty xesam:album and a xesam:trackNumber of 0 are claims a widget
+    // shows. A row that has neither goes without the keys.
+    void theAlbumAndTheTrackNumberAreNamedOnlyWhereThereAreSome() {
+        QVariantMap bareRow = trackOf(3000);
+        bareRow.remove(QStringLiteral("albumTitle"));
+        QVariantMap fullRow = trackOf(3001);
+        fullRow[QStringLiteral("trackNumber")] = 5;
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().playTracks({ bareRow, fullRow }, 0);
+        const QVariantMap bare = desk().get(QStringLiteral("Metadata")).toMap();
+        QCOMPARE(bare.value(QStringLiteral("xesam:title")).toString(), QStringLiteral("T3000"));
+        QVERIFY2(!bare.contains(QStringLiteral("xesam:album")),
+                 qPrintable(QStringLiteral("xesam:album is \"%1\"")
+                                .arg(bare.value(QStringLiteral("xesam:album")).toString())));
+        QVERIFY2(!bare.contains(QStringLiteral("xesam:trackNumber")),
+                 qPrintable(QStringLiteral("xesam:trackNumber is %1")
+                                .arg(bare.value(QStringLiteral("xesam:trackNumber")).toInt())));
+
+        a.p().next();
+        const QVariantMap full = desk().get(QStringLiteral("Metadata")).toMap();
+        QCOMPARE(full.value(QStringLiteral("xesam:album")).toString(), QStringLiteral("Album"));
+        QCOMPARE(full.value(QStringLiteral("xesam:trackNumber")).toInt(), 5);
+    }
+
     // ── What a client can do ────────────────────────────────────────────────
 
     // With no track there is nothing to play, pause, seek in or step from.

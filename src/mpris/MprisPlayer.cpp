@@ -164,8 +164,11 @@ QVariantMap MprisPlayer::metadata() const {
     m["xesam:title"]      = track["title"].toString();
     const QStringList artists = artistNames(track);
     if (!artists.isEmpty()) m["xesam:artist"] = artists;
-    m["xesam:album"]      = track["albumTitle"].toString();
-    m["xesam:trackNumber"]= track["trackNumber"].toInt();
+    // An empty album or a number of 0 would be a claim, so each is left out.
+    const QString album = track["albumTitle"].toString();
+    if (!album.isEmpty()) m["xesam:album"] = album;
+    const int number = track["trackNumber"].toInt();
+    if (number > 0) m["xesam:trackNumber"] = number;
     return m;
 }
 

@@ -79,9 +79,9 @@ void TidalBridge::call(QJSValue &cb, const QJSValueList &args) {
 
 // ─── Converters ────────────────────────────────────
 
-// Every artist, so a credit line can make each name its own link. The joined
-// `artists` string and the single `artistId` stay beside it: MPRIS reads the
-// string and Player::trackFromMap reads the first id.
+// Every artist, so a credit line can make each name its own link and MPRIS
+// can name each one. The joined `artists` string and the single `artistId`
+// stay beside it: Player::trackFromMap reads both.
 static QVariantList artistsToVariantList(const QList<Artist> &artists) {
     QVariantList out;
     for (const Artist &a : artists) {
