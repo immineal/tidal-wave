@@ -534,10 +534,14 @@ Rectangle {
             Layout.fillHeight: true
             rightPadding: 14
             contentWidth: availableWidth
+            // Stated, because a ScrollView on Qt 6.5 works its content height
+            // out once and does not follow the column as rows arrive.
+            contentHeight: resultsColumn.implicitHeight
             visible: root.query.length >= 2
             opacity: root.resultsIn
 
             ColumnLayout {
+                id: resultsColumn
                 objectName: "searchResults"
                 width: parent.width
                 spacing: 0

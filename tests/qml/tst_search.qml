@@ -634,6 +634,25 @@ TestCase {
                 + "the page asked for 20")
     }
 
+    // The wheel and the scroll bar reach as far as the scroller's content
+    // height, so that has to be the height of the rows.
+    function test_the_results_scroll_as_far_as_the_rows_reach() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
+        search(win, query)
+        win.page.activeTab = 1
+        frame(win.contentItem)
+
+        var f = scrollerIn(win.page)
+        var rows = findByName(win.page, "searchResults")
+        verify(rows, "the page has no results column")
+        verify(rows.height > f.height,
+               "a page of tracks fits the window, so this case has nothing to scroll")
+        fuzzyCompare(f.contentHeight, rows.height, 0.5,
+                     "the scroller ends at " + f.contentHeight + "px and the rows at "
+                     + rows.height + "px")
+    }
+
     function test_the_bottom_of_a_type_tab_asks_for_the_next_page() {
         var win = showPage()
         bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
