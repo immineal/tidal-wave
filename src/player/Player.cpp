@@ -26,6 +26,8 @@
 #include <QMutex>
 #include <QThread>
 #include <QWaitCondition>
+#include <cstdio>
+#include <cstdlib>
 
 struct Player::SinkTrial {
     QMutex         mutex;
@@ -117,6 +119,9 @@ Player::~Player() {
         delete m_mpdTempFile;
         m_mpdTempFile = nullptr;
     }
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    leaveAheadOfALostSoundEngine();
+#endif
     // Detach and delete the output here: one destroyed after its player, by
     // QObject's child cleanup, calls back into an object that is already gone.
     if (m_player) m_player->setAudioOutput(nullptr);
@@ -817,6 +822,7 @@ void Player::judgeStandstill() {
 }
 
 void Player::startSinkTrial() {
+    m_sinkAsked = true;
     if (m_sinkTrial) return;
     auto trial = std::make_shared<SinkTrial>();
     trial->since.start();
@@ -844,7 +850,7 @@ void Player::startSinkTrial() {
     m_sinkTrial = std::move(trial);
 }
 
-bool Player::sinkOpens() {
+bool Player::linkStands() {
     // An answer nobody waited for is old.
     if (m_sinkTrial && m_sinkTrial->isDone()) m_sinkTrial.reset();
     startSinkTrial();
@@ -858,10 +864,37 @@ bool Player::sinkOpens() {
     }
     if (!trial->done) return false;
     m_sinkTrial.reset();
-    if (!trial->linked) return false;
-    lock.unlock();
+    return trial->linked;
+}
+
+bool Player::sinkOpens() {
+    if (!linkStands()) return false;
     followOutputs();
     return true;
+}
+
+void Player::leaveAheadOfALostSoundEngine() {
+    // With no sink ever asked for, Qt has made no sound engine to end.
+    if (!m_player || !m_sinkAsked) return;
+    // Paused first: only a write that fails keeps the engine's lock, and
+    // after the pause none follows that the answer below has not seen.
+    {
+        const QSignalBlocker quiet(m_player);
+        if (m_player->playbackState() == QMediaPlayer::PlayingState) m_player->pause();
+    }
+    if (linkStands()) return;
+    // Qt ends that engine after main() and waits there for good, so the
+    // process leaves ahead of the static destructors, with its status.
+    static bool armed = false;
+    if (armed) return;
+    armed = true;
+    qInfo("Player: Qt's link to the sound server is gone or gives no answer, "
+          "so the process leaves ahead of Qt's sound engine");
+#ifdef __GLIBC__
+    on_exit([](int status, void *) { std::fflush(nullptr); std::_Exit(status); }, nullptr);
+#else
+    std::atexit([] { std::fflush(nullptr); std::_Exit(EXIT_SUCCESS); });
+#endif
 }
 
 void Player::followOutputs() {

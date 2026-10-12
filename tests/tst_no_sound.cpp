@@ -29,6 +29,7 @@
 #include "ui/I18n.h"
 #include "ui/Prefs.h"
 
+#include <csignal>
 #include <cstdio>
 #include <memory>
 
@@ -186,6 +187,10 @@ private:
             m_server.track = silentWav(6);
         } else if (word == "last") {
             m_player->playTracks(QVariantList{ track(1), track(2), track(3) }, 2);
+        } else if (word == "signin") {
+            m_client.setUserId(7);
+        } else if (word == "shuffle") {
+            m_player->setShuffle(true);
         } else if (word == "slow") {
             m_server.holdMs = 8000;
         } else if (word == "outputs") {
@@ -298,6 +303,9 @@ public:
         qWarning("no module holds the sink %s", name);
         return false;
     }
+
+    // The daemon keeps its socket and answers nobody.
+    bool freeze() { return ::kill(pid_t(m_proc.processId()), SIGSTOP) == 0; }
 
     // A suspended sink takes nothing, and its streams stand until it is back.
     bool suspend(bool on)
@@ -474,17 +482,26 @@ public:
             : QStringLiteral("the program left with status %1").arg(m_proc.exitCode());
     }
 
-    // Asks the child to leave. Empty when it left in order.
-    QString leave()
+    // Asks the child to leave. Empty when it left in order and in time.
+    QString leave(int ms = 20000)
     {
         if (m_proc.state() != QProcess::NotRunning) say("quit");
-        if (!m_proc.waitForFinished(20000)) {
+        if (!m_proc.waitForFinished(ms)) {
             m_proc.kill();
             m_proc.waitForFinished(5000);
-            return QStringLiteral("the program did not leave when asked to quit");
+            return QStringLiteral("the program was still there %1 s after it was asked to quit")
+                .arg(ms / 1000);
         }
         if (m_proc.exitStatus() == QProcess::NormalExit && m_proc.exitCode() == 0) return {};
         return fate();
+    }
+
+    // What the child's settings file holds under a key.
+    QVariant saved(const QString &key) const
+    {
+        const QSettings file(m_dir.filePath(QStringLiteral("TidalWaveTest/tst_no_sound.ini")),
+                             QSettings::IniFormat);
+        return file.value(key);
     }
 
     ~Child()
@@ -855,6 +872,56 @@ private slots:
             QCOMPARE(child.status().value("playing"), 1);
         }
         QCOMPARE(child.leave(), QString());
+    }
+
+    // Qt 6.4 ends its sound engine after main(), and waits there for good on
+    // a lock that a write into the lost stream kept.
+    void aQuitAfterSoundWasLostEndsWithTheSessionSaved_data()
+    {
+        QTest::addColumn<QByteArray>("when");
+        QTest::newRow("after the loss was said")          << QByteArray("said");
+        QTest::newRow("a second after the loss")          << QByteArray("a second");
+        QTest::newRow("at the moment of the loss")        << QByteArray("at once");
+        QTest::newRow("after the track was paused")       << QByteArray("paused");
+        QTest::newRow("after a start that got no answer") << QByteArray("no answer");
+    }
+
+    void aQuitAfterSoundWasLostEndsWithTheSessionSaved()
+    {
+        QFETCH(QByteArray, when);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("covers Qt below 6.5, whose sound engine does not end once the sound server went");
+#endif
+        if (SoundServer::binary().isEmpty())
+            QSKIP("needs the pulseaudio daemon to take the sound server away");
+        SoundServer sound;
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start");
+        Child child;
+        child.start(sound.address());
+        QCOMPARE(child.hear("up"), QByteArray("outputs=1"));
+
+        child.say("signin");
+        if (when == "no answer") {
+            QVERIFY2(sound.freeze(), "the pulseaudio daemon was not stopped");
+            child.say("tracks");
+            QCOMPARE(child.hear("error"), QByteArray(kSoundLost));
+        } else {
+            child.say("tracks");
+            QVERIFY2(child.plays(), "the first track did not start");
+            sound.stop();
+            if (when == "said") QCOMPARE(child.hear("error"), QByteArray(kSoundLost));
+            if (when == "a second" || when == "paused") QTest::qWait(1000);
+            if (when == "paused") {
+                child.say("press");
+                QCOMPARE(child.status().value("backend"), qint64(QMediaPlayer::PausedState));
+            }
+        }
+
+        // Changed last, so that only the save at the quit can hold it.
+        child.say("shuffle");
+        QCOMPARE(child.leave(5000), QString());
+        QCOMPARE(child.saved(QStringLiteral("user_7/playback/shuffle")).toBool(), true);
+        QVERIFY(!child.saved(QStringLiteral("user_7/playback/queue")).toByteArray().isEmpty());
     }
 
     void theSentencesHaveTheirGerman()

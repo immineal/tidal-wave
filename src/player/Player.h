@@ -350,6 +350,8 @@ private:
     // the link stands, and the start waits for the answer.
     struct SinkTrial;
     void startSinkTrial();
+    // Whether that link stands. Waits for the answer, up to kSinkTrialMs.
+    bool linkStands();
     bool sinkOpens();
     // Rebinds to an output the server has once the bound one left its list.
     void followOutputs();
@@ -358,6 +360,11 @@ private:
     std::shared_ptr<SinkTrial> m_sinkTrial;
     // The start is off: ends the load and says why.
     void refuseStart(const QString &why);
+    // Qt's sound engine ends after main() and hangs there once the link is
+    // gone. Called by the destructor, after it saved the session.
+    void leaveAheadOfALostSoundEngine();
+    // Whether a sink was asked for in this run, so that Qt has that engine.
+    bool m_sinkAsked = false;
 #endif
     double               m_pendingVolume = 0.7;
     bool                 m_pendingMuted  = false;
