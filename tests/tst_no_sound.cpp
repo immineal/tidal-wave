@@ -41,6 +41,21 @@ const char kNoDevice[] =
 const char kSoundLost[] =
     "The sound output was lost. Restart Tidal Wave to get it back.";
 
+// What the Player's watch writes to the log, counted for the parent: a wake
+// of a backend that stands, and its verdict on one that stood through them.
+const char kWokenLine[]  = "Player: the backend stood still";
+const char kJudgedLine[] = "Player: the backend still stands";
+int g_woken  = 0;
+int g_judged = 0;
+QtMessageHandler g_printed = nullptr;
+
+void countWatchLines(QtMsgType type, const QMessageLogContext &context, const QString &line)
+{
+    if (line.startsWith(QLatin1String(kWokenLine)))  ++g_woken;
+    if (line.startsWith(QLatin1String(kJudgedLine))) ++g_judged;
+    g_printed(type, context, line);
+}
+
 // ── the child ───────────────────────────────────────────────────────────────
 
 QByteArray silentWav(int seconds) {
@@ -74,14 +89,17 @@ public:
                 connect(sock, &QTcpSocket::readyRead, sock, [this, sock] {
                     if (!sock->canReadLine()) return;
                     QObject::disconnect(sock, &QTcpSocket::readyRead, nullptr, nullptr);
-                    sock->write("HTTP/1.0 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: "
-                                + QByteArray::number(track.size()) + "\r\n\r\n" + track);
-                    sock->disconnectFromHost();
+                    QTimer::singleShot(holdMs, sock, [this, sock] {
+                        sock->write("HTTP/1.0 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: "
+                                    + QByteArray::number(track.size()) + "\r\n\r\n" + track);
+                        sock->disconnectFromHost();
+                    });
                 });
             }
         });
     }
     QByteArray track;
+    int        holdMs = 0;   // how long a request waits for its answer
 };
 
 // Answers every stream request with one file, as Tidal does for a lossy tier.
@@ -166,6 +184,10 @@ private:
             m_player->rebindAudioOutput(QMediaDevices::defaultAudioOutput());
         } else if (word == "short") {
             m_server.track = silentWav(6);
+        } else if (word == "last") {
+            m_player->playTracks(QVariantList{ track(1), track(2), track(3) }, 2);
+        } else if (word == "slow") {
+            m_server.holdMs = 8000;
         } else if (word == "outputs") {
             QByteArrayList ids;
             const QList<QAudioDevice> outs = QMediaDevices::audioOutputs();
@@ -180,6 +202,8 @@ private:
                 + " backend=" + QByteArray::number(int(mp()->playbackState()))
                 + " position=" + QByteArray::number(mp()->position())
                 + " loading=" + QByteArray::number(int(m_player->loading()))
+                + " woken=" + QByteArray::number(g_woken)
+                + " judged=" + QByteArray::number(g_judged)
                 + " track=" + QByteArray::number(m_player->currentTrackMap()
                                                      .value(QStringLiteral("id")).toLongLong()));
         } else if (word == "quit" || word.isEmpty()) {
@@ -205,6 +229,7 @@ int playAsChild(QGuiApplication &app, const QString &home)
     QCoreApplication::setApplicationName(QStringLiteral("tst_no_sound"));
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, home);
+    g_printed = qInstallMessageHandler(countWatchLines);
     int rc = 0;
     {
         Stage stage;
@@ -272,6 +297,13 @@ public:
         }
         qWarning("no module holds the sink %s", name);
         return false;
+    }
+
+    // A suspended sink takes nothing, and its streams stand until it is back.
+    bool suspend(bool on)
+    {
+        return !pactl({ QStringLiteral("suspend-sink"), QStringLiteral("tests_null"),
+                        QString::number(int(on)) }).isNull();
     }
 
     ~SoundServer() { stop(); }
@@ -381,6 +413,9 @@ public:
         return false;
     }
     bool plays() { return playsTrack(1); }
+
+    // Whether nothing is said for this long and the child is still there.
+    bool quiet(int ms) { return hear("error", ms).isNull() && fate().isEmpty(); }
 
     // Whether the child answers a question: its main thread is free.
     bool answers(int ms = 5000)
@@ -676,6 +711,149 @@ private slots:
         QVERIFY2(child.answers(), "the program did not answer within 5 s");
         QCOMPARE(child.boundOutput(), QByteArray("other"));
         QCOMPARE(child.status().value("playing"), 1);
+        QCOMPARE(child.leave(), QString());
+    }
+
+    // Qt 6.4 goes on reporting that it plays once the sound server is gone,
+    // with a position that stands.
+    void soundLostWhileATrackPlaysIsSaidAndTheTrackIsPaused_data()
+    {
+        QTest::addColumn<bool>("back");
+        QTest::newRow("the server stays away") << false;
+        QTest::newRow("the server comes back") << true;
+    }
+
+    void soundLostWhileATrackPlaysIsSaidAndTheTrackIsPaused()
+    {
+        QFETCH(bool, back);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("covers Qt below 6.5, which plays on in silence when the sound server goes");
+#endif
+        if (SoundServer::binary().isEmpty())
+            QSKIP("needs the pulseaudio daemon to take the sound server away");
+        SoundServer sound;
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start");
+        Child child;
+        child.start(sound.address());
+        QCOMPARE(child.hear("up"), QByteArray("outputs=1"));
+
+        child.say("tracks");
+        QVERIFY2(child.plays(), "the first track did not start");
+        sound.stop();
+        if (back) QVERIFY2(sound.start(true), "the pulseaudio daemon did not start again");
+
+        // Nobody presses anything.
+        QByteArray told = child.hear("error");
+        QVERIFY2(child.fate().isEmpty(), qPrintable(child.fate()));
+        QCOMPARE(told, QByteArray(kSoundLost));
+        const QHash<QByteArray, qint64> now = child.status();
+        QCOMPARE(now.value("playing"), 0);
+        QCOMPARE(now.value("backend"), qint64(QMediaPlayer::PausedState));
+        QCOMPARE(now.value("track"), 1);
+
+        // A press on play and the next track say it again.
+        for (const char *word : { "press", "next" }) {
+            child.say(word);
+            told = child.hear("error");
+            QVERIFY2(child.fate().isEmpty(), qPrintable(child.fate()));
+            QCOMPARE(told, QByteArray(kSoundLost));
+            QCOMPARE(child.status().value("playing"), 0);
+        }
+        QVERIFY2(child.answers(), "the program did not answer within 5 s");
+    }
+
+    // A track stands for other reasons than a lost sound server, and then
+    // nothing is said and nothing is paused.
+    void aTrackThatStandsWithItsSoundServerThereIsLeftAlone_data()
+    {
+        QTest::addColumn<QByteArray>("what");
+        QTest::newRow("a track that plays")                   << QByteArray("plays");
+        QTest::newRow("a paused track")                       << QByteArray("paused");
+        QTest::newRow("a load under way")                     << QByteArray("loads");
+        QTest::newRow("the end of the queue")                 << QByteArray("ends");
+        QTest::newRow("an output that stands and comes back") << QByteArray("suspended");
+    }
+
+    void aTrackThatStandsWithItsSoundServerThereIsLeftAlone()
+    {
+        QFETCH(QByteArray, what);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QSKIP("covers Qt below 6.5, where the Player watches a backend that stands");
+#endif
+        if (SoundServer::binary().isEmpty() || SoundServer::pactlBinary().isEmpty())
+            QSKIP("needs the pulseaudio daemon and pactl to make an output stand");
+        SoundServer sound;
+        QVERIFY2(sound.start(true), "the pulseaudio daemon did not start");
+        Child child;
+        child.start(sound.address());
+        QCOMPARE(child.hear("up"), QByteArray("outputs=1"));
+
+        if (what == "plays") {
+            // Sound starts late on a null sink, and the position stands until then.
+            child.say("tracks");
+            QVERIFY2(child.plays(), "the first track did not start");
+            QVERIFY2(child.quiet(8000), "an error was said");
+            const QHash<QByteArray, qint64> now = child.status();
+            QCOMPARE(now.value("playing"), 1);
+            QVERIFY2(now.value("position") > 4000, QByteArray::number(now.value("position")));
+        } else if (what == "paused") {
+            child.say("tracks");
+            QVERIFY2(child.plays(), "the first track did not start");
+            child.say("press");
+            const QHash<QByteArray, qint64> paused = child.status();
+            QCOMPARE(paused.value("backend"), qint64(QMediaPlayer::PausedState));
+            QVERIFY2(child.quiet(8000), "an error was said");
+            const QHash<QByteArray, qint64> later = child.status();
+            QCOMPARE(later.value("backend"), qint64(QMediaPlayer::PausedState));
+            QCOMPARE(later.value("woken"), paused.value("woken"));
+            QCOMPARE(later.value("judged"), paused.value("judged"));
+            child.say("press");
+            QVERIFY2(QTest::qWaitFor([&] {
+                return child.status().value("position") > paused.value("position") + 500;
+            }, 15000), "the track did not go on after play was pressed");
+        } else if (what == "loads") {
+            child.say("slow");
+            child.say("tracks");
+            QCOMPARE(child.status().value("loading"), 1);
+            QVERIFY2(child.quiet(6000), "an error was said");
+            QCOMPARE(child.status().value("loading"), 1);
+            QCOMPARE(child.startOf(1), QString());
+        } else if (what == "ends") {
+            child.say("short");
+            child.say("last");
+            QCOMPARE(child.startOf(3), QString());
+            QVERIFY2(QTest::qWaitFor([&] { return child.status().value("playing", 1) == 0; }, 30000),
+                     "the last track did not end");
+            const QHash<QByteArray, qint64> ended = child.status();
+            QVERIFY2(child.quiet(8000), "an error was said");
+            const QHash<QByteArray, qint64> later = child.status();
+            QCOMPARE(later.value("playing"), 0);
+            QCOMPARE(later.value("woken"), ended.value("woken"));
+            QCOMPARE(later.value("judged"), ended.value("judged"));
+        } else {
+            child.say("tracks");
+            QVERIFY2(child.plays(), "the first track did not start");
+            QVERIFY2(QTest::qWaitFor([&] { return child.status().value("position") > 2500; }, 15000),
+                     "the first track did not get going");
+            const qint64 judgedBefore = child.status().value("judged");
+            // The position runs on while the output is suspended, and stands
+            // for about as long once it is back.
+            QVERIFY2(sound.suspend(true), "the output was not suspended");
+            QVERIFY2(child.quiet(8000), "an error was said while the output stood");
+            QVERIFY2(sound.suspend(false), "the output was not resumed");
+            QVERIFY2(QTest::qWaitFor([&] {
+                return child.status().value("judged", judgedBefore + 1) > judgedBefore;
+            }, 20000), "the watch did not come to its question");
+            const QHash<QByteArray, qint64> stood = child.status();
+            QCOMPARE(stood.value("playing"), 1);
+            QCOMPARE(stood.value("backend"), qint64(QMediaPlayer::PlayingState));
+            QVERIFY2(QTest::qWaitFor([&] {
+                return child.status().value("position", stood.value("position") + 1001)
+                       > stood.value("position") + 1000;
+            }, 20000), "the track did not go on once the output was back");
+            QVERIFY2(child.quiet(1000), "an error was said");
+            QCOMPARE(child.status().value("playing"), 1);
+        }
         QCOMPARE(child.leave(), QString());
     }
 

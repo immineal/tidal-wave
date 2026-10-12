@@ -336,6 +336,12 @@ private:
     static constexpr qint64 kStandMovedMs = 20;
     // Wakes spent on one standstill. Past that it has another cause.
     static constexpr int    kStandWakes   = 5;
+    // Past its wakes a standstill is put to Qt once: a sound server that
+    // went away is said, anything else is left alone. The count of wakes
+    // goes on to say how far that question has come.
+    void judgeStandstill();
+    static constexpr int    kStandAsked   = kStandWakes + 1;
+    static constexpr int    kStandJudged  = kStandWakes + 2;
     QTimer              *m_standTimer    = nullptr;
     qint64               m_standPos      = -1;
     int                  m_standWakes    = 0;

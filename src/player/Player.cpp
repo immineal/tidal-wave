@@ -773,7 +773,8 @@ bool Player::backendStands() {
 
 void Player::wakeStandingBackend() {
     if (m_player->playbackState() != QMediaPlayer::PlayingState) return;
-    if (!backendStands() || m_standWakes >= kStandWakes) return;
+    if (!backendStands()) return;
+    if (m_standWakes >= kStandWakes) { judgeStandstill(); return; }
     ++m_standWakes;
     // For a report: how often it happens on a machine is not known.
     qInfo("Player: the backend stood still at %lld ms while playing and is woken",
@@ -785,6 +786,34 @@ void Player::wakeStandingBackend() {
     startBackend(true);
     m_seekToggling = false;
     tellPlaying();
+}
+
+void Player::judgeStandstill() {
+    if (m_standWakes >= kStandJudged) return;
+    if (m_standWakes == kStandWakes) {
+        // Asked on one look and read on a later one, so that the answer is
+        // never waited for here.
+        if (m_sinkTrial && m_sinkTrial->isDone()) m_sinkTrial.reset();
+        startSinkTrial();
+        m_standWakes = kStandAsked;
+        return;
+    }
+    // A start in between took the answer with it.
+    if (!m_sinkTrial) { m_standWakes = kStandWakes; return; }
+    bool linked = false;
+    {
+        QMutexLocker lock(&m_sinkTrial->mutex);
+        if (!m_sinkTrial->done) return;
+        linked = m_sinkTrial->linked;
+    }
+    m_sinkTrial.reset();
+    m_standWakes = kStandJudged;
+    qInfo("Player: the backend still stands after %d wakes, and Qt's link to the sound server %s",
+          kStandWakes, linked ? "stands" : "is gone");
+    if (linked) return;
+    // Qt 6.4 never makes that link again, so the track cannot go on.
+    m_player->pause();
+    refuseStart(tr("The sound output was lost. Restart Tidal Wave to get it back."));
 }
 
 void Player::startSinkTrial() {
