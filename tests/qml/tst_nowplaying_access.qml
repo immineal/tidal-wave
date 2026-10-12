@@ -102,9 +102,12 @@ TestCase {
         mouseClick(item, Math.round(item.width / 2), Math.round(item.height / 2))
     }
 
+    // The pointer moves and the window draws the frame that shows it. Qt 6.6
+    // to 6.10 take a name's hover away in the frame after the pointer went
+    // onto a button, and a turn of the event loop ends before that frame.
     function hover(item) {
         mouseMove(item, Math.round(item.width / 2), Math.round(item.height / 2))
-        wait(0)
+        frame(item)
     }
 
     function rightEdgeIn(item, container) {
