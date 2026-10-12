@@ -90,8 +90,9 @@ TestCase {
         frame(item)
     }
 
-    function makeHome(props) {
-        var holder = createTemporaryObject(holderC, testCase, { width: paneWidth, height: paneHeight })
+    function makeHome(props, height) {
+        var holder = createTemporaryObject(holderC, testCase,
+                                           { width: paneWidth, height: height || paneHeight })
         verify(holder, "the holder was not created")
         var page = createTemporaryObject(homeC, holder, {})
         verify(page, "HomePage was not created")
@@ -322,5 +323,105 @@ TestCase {
         for (var i = 0; i < gaps.length; ++i)
             verify(Math.abs(gaps[i] - rowGap) <= 0.5,
                    "a refreshed row left the gaps wrong: " + gapReport(page))
+    }
+
+    // ── a window shorter than the rows ──────────────────────────────────────
+
+    // A window height the four rows do not fit.
+    readonly property int shortPane: 700
+
+    // The Flickable the page's scroll view keeps its rows in.
+    function scrollerOf(page) {
+        var kids = page.children
+        for (var i = 0; i < kids.length; ++i) {
+            var f = kids[i].contentItem
+            if (f && f.contentY !== undefined && f.atYEnd !== undefined) return f
+        }
+        return null
+    }
+
+    // Turns the wheel over the page until the page says it is at its end.
+    function wheelToTheEnd(flick) {
+        for (var turn = 0; turn < 100 && !flick.atYEnd; ++turn) {
+            mouseWheel(flick, flick.width / 2, flick.height / 2, 0, -360)
+            tryVerify(function() { return !flick.moving }, 2000,
+                      "the page did not come to rest after a turn of the wheel")
+        }
+        verify(flick.atYEnd, "a hundred turns of the wheel did not reach the end of the page")
+    }
+
+    // Where the page's rows end, measured from the top of the viewport.
+    function endOfRows(flick) {
+        var column = flick.contentItem.children[0]
+        return column.mapToItem(flick, 0, column.height).y
+    }
+
+    // The rows arrive after the page was built, as they do from the network.
+    function test_the_last_row_can_be_scrolled_into_view() {
+        var page = makeHome({ mixes: makeMixes(5), recentAlbums: makeAlbums(6, 200),
+                              playlists: makePlaylists(5), artists: makeArtists(5) },
+                            shortPane)
+        var flick = scrollerOf(page)
+        verify(flick, "the page has no scroller")
+        var rows = visibleRows(page)
+        compare(rows.length, 4, "this case needs all four rows on the page")
+        var last = rows[rows.length - 1]
+        verify(last.mapToItem(flick, 0, last.height).y > flick.height,
+               "the four rows fit a " + shortPane + "px page, so this case has nothing to scroll")
+
+        wheelToTheEnd(flick)
+        settle(page)
+
+        var bottom = last.mapToItem(flick, 0, last.height).y
+        verify(bottom <= flick.height + 0.5,
+               "with the wheel at the end of the page the \"" + last.title + "\" row ends "
+               + (bottom - flick.height).toFixed(0) + "px below the window")
+    }
+
+    // The wheel and the scroll bar reach as far as the scroller's content
+    // height, which has to follow the rows as they come, go and move.
+    function test_the_page_ends_where_its_rows_end() {
+        var page = makeHome({ mixes: makeMixes(5) }, shortPane)
+        var flick = scrollerOf(page)
+        verify(flick, "the page has no scroller")
+        var column = flick.contentItem.children[0]
+
+        function check(when) {
+            fuzzyCompare(flick.contentHeight, column.height, 0.5,
+                         when + " the scroller ends at " + flick.contentHeight.toFixed(0)
+                         + "px and the rows at " + column.height.toFixed(0) + "px")
+        }
+        check("with one row")
+
+        bridge.setFavoriteAlbumsForTest(makeAlbums(6, 200))
+        bridge.setUserPlaylistsForTest(makePlaylists(5))
+        bridge.setFavoriteArtistsForTest(makeArtists(5))
+        tryVerify(function() { return page.artists.length === 5 }, 2000,
+                  "the Favorite Artists row never picked up the artists")
+        settle(page)
+        verify(column.height > flick.height, "four rows fit a " + shortPane + "px page")
+        check("with four rows")
+
+        // At the end, so the page has to come back up when a row leaves.
+        flick.contentY = flick.contentHeight - flick.height
+        settle(page)
+        fuzzyCompare(endOfRows(flick), flick.height, 0.5,
+                     "the end of the page is not the end of the rows")
+
+        bridge.setUserPlaylistsForTest([])
+        tryVerify(function() { return page.playlists.length === 0 }, 2000,
+                  "the Your Playlists row never emptied")
+        settle(page)
+        check("with a row gone")
+        fuzzyCompare(endOfRows(flick), flick.height, 0.5,
+                     "a row left and the page did not follow its rows up")
+
+        page.parent.height = 500
+        settle(page)
+        check("in a shorter window")
+        page.parent.height = 2000
+        settle(page)
+        check("in a window taller than the rows")
+        compare(flick.contentY, 0, "the page is scrolled in a window that shows all of it")
     }
 }
