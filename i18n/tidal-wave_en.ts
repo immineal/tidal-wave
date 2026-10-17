@@ -89,6 +89,25 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 hr %2 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s)</source>
+        <translation>
+            <numerusform>%n track</numerusform>
+            <numerusform>%n tracks</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Dolby Atmos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Following</source>
         <translation type="unfinished"></translation>
     </message>

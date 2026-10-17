@@ -97,6 +97,51 @@ Rectangle {
         return a.section || "a"
     }
 
+    // Worded as AlbumPage.durationText().
+    function durationText(seconds) {
+        var loc  = Qt.locale()
+        var hrs  = Math.floor(seconds / 3600)
+        var mins = Math.floor((seconds % 3600) / 60)
+        return hrs > 0
+            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
+            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    }
+
+    // Dolby Atmos and no stereo mode, as AlbumPage.atmosOnly() reads it.
+    function atmosOnly(a) {
+        var atmos = false, stereo = false
+        for (var i = 0; a.audioModes && i < a.audioModes.length; ++i) {
+            if (a.audioModes[i] === "DOLBY_ATMOS") atmos = true
+            if (a.audioModes[i] === "STEREO") stereo = true
+        }
+        return atmos && !stereo
+    }
+
+    // A card's second line. Where the row has the title more than once, it
+    // says what tells the cards apart. A card is 160 px wide, so a Dolby
+    // Atmos only one gives up its year.
+    function secondLine(a, withLength) {
+        if (!a.titleShared) return a.year
+        var tracks = a.numTracks > 0 ? qsTr("%n track(s)", "", a.numTracks) : ""
+        var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
+        if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
+        return parts.filter(function (p) { return p.length > 0 }).join(" • ")
+    }
+
+    // The cards of a row. Two that would still read the same add their length.
+    function releaseCards(list) {
+        var lines = list.map(function (a) { return root.secondLine(a, false) })
+        return list.map(function (a, i) {
+            var alike = a.titleShared && list.some(function (b, j) {
+                return j !== i && b.title === a.title && lines[j] === lines[i]
+            })
+            return { id: a.id, title: a.title, coverUrl: a.coverUrl,
+                     subtitle: alike ? root.secondLine(a, true) : lines[i],
+                     // The line can hold translated words, so a pin stores this.
+                     pinSubtitle: a.year }
+        })
+    }
+
     ScrollView {
         objectName: "artistContent"
         anchors.fill: parent
@@ -260,9 +305,7 @@ Rectangle {
                 title: singlesSection.singles.length > 0 ? qsTr("Albums") : qsTr("Discography")
                 showViewAll: false
                 mediaType: "album"
-                items: mainAlbums.map(function(a) {
-                    return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
-                })
+                items: root.releaseCards(mainAlbums)
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
                 // Declares the source, so the player bar records the play.
                 onItemPlayClicked: function(i, item) {
@@ -285,9 +328,7 @@ Rectangle {
                 title: qsTr("Singles & EPs")
                 showViewAll: false
                 mediaType: "album"
-                items: singles.map(function(a) {
-                    return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
-                })
+                items: root.releaseCards(singles)
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
                 onItemPlayClicked: function(i, item) {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {
@@ -311,9 +352,7 @@ Rectangle {
                 title: qsTr("Appears On")
                 showViewAll: false
                 mediaType: "album"
-                items: appearances.map(function(a) {
-                    return { id: a.id, title: a.title, subtitle: a.year, coverUrl: a.coverUrl }
-                })
+                items: root.releaseCards(appearances)
                 onItemClicked: function(i, item) { navigateTo("album", { albumId: item.id }) }
                 onItemPlayClicked: function(i, item) {
                     bridge.fetchAlbumTracks(item.id, function(tracks, err) {

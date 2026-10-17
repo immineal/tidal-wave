@@ -124,8 +124,35 @@ TestCase {
         return out
     }
 
+    function cardsOf(section) {
+        var list = findChild(section, "sectionList")
+        verify(list, "the row has no list of cards")
+        var out = []
+        for (var i = 0; i < list.count; ++i) {
+            var card = list.itemAtIndex(i)
+            verify(card, "card " + i + " of the row was not drawn")
+            out.push(card)
+        }
+        return out
+    }
+
+    // The second line of each card of a row, left to right.
+    function cardLines(section) {
+        return cardsOf(section).map(function (card) {
+            return findChild(card, "cardSubtitle").text
+        })
+    }
+
+    // As the program runs in `language`. English reads its plurals from a
+    // catalogue as well.
+    function speak(language) {
+        verify(bridge.useCatalogueForTest(language),
+               "the catalogue for \"" + language + "\" did not load")
+    }
+
     function cleanup() {
         bridge.resetHeadersForTest()
+        bridge.useCatalogueForTest("")
     }
 
     // ── the split ────────────────────────────────────────────────────────────
@@ -416,6 +443,106 @@ TestCase {
         compare(idsOf(findChild(page, "artistAlbumsSection")), [900027001],
                 "an entry without a row is on no row of the page")
         compare(findChild(page, "artistSinglesSection").visible, false)
+    }
+
+    // ── cards that share a title ─────────────────────────────────────────────
+
+    // One title three times under Albums: the stereo record and two Dolby
+    // Atmos only ones whose track lists differ. Then a title of its own.
+    function oneTitleThreeTimes() {
+        var stereo = ["STEREO"], atmos = ["DOLBY_ATMOS"]
+        var out = [
+            product(900040001, "Nachtfahrt", "ALBUM", 14, true,  stereo, ["LOSSLESS"]),
+            product(900040002, "Nachtfahrt", "ALBUM", 13, true,  atmos,  atmos),
+            product(900040003, "Nachtfahrt", "ALBUM", 12, true,  atmos,  atmos),
+            product(900040004, "Morgenrot",  "ALBUM", 9,  false, stereo, ["LOSSLESS"])
+        ]
+        for (var i = 0; i < 3; ++i) out[i].year = "2012"
+        return out
+    }
+
+    // Two stereo records of one title, year and track count, apart in length
+    // alone, and a Dolby Atmos only one beside them.
+    function oneTitleOneCount() {
+        var stereo = ["STEREO"], atmos = ["DOLBY_ATMOS"]
+        var out = [
+            product(900042001, "Abendrot", "ALBUM", 14, true,  stereo, ["LOSSLESS"]),
+            product(900042002, "Abendrot", "ALBUM", 14, false, stereo, ["LOSSLESS"]),
+            product(900042003, "Abendrot", "ALBUM", 13, true,  atmos,  atmos)
+        ]
+        out[0].duration = 3080
+        out[1].duration = 3500
+        return out
+    }
+
+    function test_cards_of_one_title_say_what_tells_them_apart() {
+        speak("en")
+        var s = openWith(oneTitleThreeTimes())
+
+        compare(cardTitles(s.albums), ["Nachtfahrt", "Nachtfahrt", "Nachtfahrt", "Morgenrot"])
+        compare(cardLines(s.albums),
+                ["2012 • 14 tracks", "13 tracks • Dolby Atmos", "12 tracks • Dolby Atmos", "2021"],
+                "what the cards of one title read under it")
+    }
+
+    // The rows are apart on the page, so each card reads its year.
+    function test_a_title_in_two_rows_reads_the_year() {
+        speak("en")
+        var single = product(900041002, "Nachtfahrt", "SINGLE", 1, true, ["STEREO"], ["LOSSLESS"])
+        single.year = "2011"
+        var s = openWith([
+            product(900041001, "Nachtfahrt", "ALBUM", 12, true, ["STEREO"], ["LOSSLESS"]),
+            single
+        ])
+
+        compare(cardLines(s.albums), ["2021"])
+        compare(cardLines(s.singles), ["2011"])
+    }
+
+    function test_cards_that_would_still_read_the_same_add_their_length() {
+        speak("en")
+        var s = openWith(oneTitleOneCount())
+
+        compare(cardLines(s.albums),
+                ["2021 • 14 tracks • 51 min", "2021 • 14 tracks • 58 min", "13 tracks • Dolby Atmos"])
+    }
+
+    function test_no_second_line_is_cut_data() {
+        return [
+            { tag: "English", language: "en", atmosLine: "13 tracks • Dolby Atmos",
+              lengthLine: "2021 • 14 tracks • 51 min" },
+            { tag: "German",  language: "de", atmosLine: "13 Titel • Dolby Atmos",
+              lengthLine: "2021 • 14 Titel • 51 Min." }
+        ]
+    }
+
+    // A card is 160 px wide and cuts its second line with an ellipsis.
+    function test_no_second_line_is_cut(row) {
+        speak(row.language)
+        // Wide enough that every card of the row is drawn.
+        var s = openWith(oneTitleThreeTimes().concat(oneTitleOneCount()), 1600)
+
+        var lines = cardLines(s.albums)
+        compare(lines[1], row.atmosLine)
+        compare(lines[4], row.lengthLine)
+        var cards = cardsOf(s.albums)
+        for (var i = 0; i < cards.length; ++i) {
+            var line = findChild(cards[i], "cardSubtitle")
+            verify(!line.truncated, "the second line \"" + line.text + "\" is cut at "
+                   + line.width + " px")
+        }
+    }
+
+    // The second line is translated words, so a pin stores the year.
+    function test_a_pin_of_a_card_of_a_shared_title_stores_its_year() {
+        speak("en")
+        var s = openWith(oneTitleThreeTimes())
+
+        var cards = cardsOf(s.albums)
+        compare(cards.length, 4)
+        for (var i = 0; i < cards.length; ++i)
+            compare(cards[i].pinSubtitle, i < 3 ? "2012" : "2021",
+                    "what a pin of card " + i + " would store as its second line")
     }
 }
 

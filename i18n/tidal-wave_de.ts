@@ -132,6 +132,25 @@
         <translation>Abspielen</translation>
     </message>
     <message>
+        <source>%1 hr %2 min</source>
+        <translation>%1 Std. %2 Min.</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 Min.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n track(s)</source>
+        <translation>
+            <numerusform>%n Titel</numerusform>
+            <numerusform>%n Titel</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Dolby Atmos</source>
+        <translation>Dolby Atmos</translation>
+    </message>
+    <message>
         <source>Following</source>
         <translation>Folge ich</translation>
     </message>

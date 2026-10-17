@@ -7,6 +7,7 @@
 // error string, never undefined: pages read .length on both.
 // Members named ...ForTest are test hooks the real objects do not have.
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QImage>
 #include <QJSEngine>
@@ -21,6 +22,7 @@
 #include <functional>
 #include <utility>
 #include <QStringList>
+#include <QTranslator>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -793,6 +795,18 @@ public:
         m_artistTopTracks = topTracks;
         m_artistAlbums    = albums;
     }
+    // The page in `language` through the catalogue the program ships, or in
+    // the source language for "". A test that switches switches back.
+    Q_INVOKABLE bool useCatalogueForTest(const QString &language) {
+        QCoreApplication::removeTranslator(&m_catalogue);
+        bool ok = true;
+        if (!language.isEmpty()) {
+            ok = m_catalogue.load(QStringLiteral(":/i18n/tidal-wave_%1.qm").arg(language));
+            if (ok) QCoreApplication::installTranslator(&m_catalogue);
+        }
+        if (auto *engine = qobject_cast<QQmlEngine *>(jsEngine())) engine->retranslate();
+        return ok;
+    }
     Q_INVOKABLE qlonglong lastArtistFetchedForTest() const { return m_lastArtistFetched; }
     Q_INVOKABLE qlonglong lastArtistTopTracksFetchedForTest() const { return m_lastArtistTopTracksFetched; }
     Q_INVOKABLE qlonglong lastArtistAlbumsFetchedForTest() const { return m_lastArtistAlbumsFetched; }
@@ -1091,6 +1105,7 @@ private:
     QList<std::pair<QJSValue, QJSValueList>> m_pendingHeaders;
     bool         m_deferTracks = false;
     QList<std::pair<QJSValue, QJSValueList>> m_pendingTracks;
+    QTranslator  m_catalogue;
 
     // Answer now, or hold the reply for flushHeaderRepliesForTest().
     void deliver(QJSValue &cb, const QJSValueList &args) {
@@ -1124,6 +1139,7 @@ private:
         for (const Tidal::Album &a : entries) {
             QVariantMap m = byId.value(a.id);
             m.insert(QStringLiteral("section"), Tidal::recordSectionKey(a));
+            m.insert(QStringLiteral("titleShared"), a.titleShared);
             out.append(m);
         }
         return out;
