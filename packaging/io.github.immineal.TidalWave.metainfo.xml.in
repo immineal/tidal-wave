@@ -132,7 +132,7 @@
     <!-- date= is the release date and cannot be derived, so it is the one thing
          here that has to be touched by hand when v@PROJECT_VERSION@ is tagged.
          Only the newest release takes its version from project(). -->
-    <release version="@PROJECT_VERSION@" date="2026-10-12">
+    <release version="@PROJECT_VERSION@" date="2026-10-17">
       <description>
         <p>An artist page shows each record once, an album page lists the record's other versions, and two kinds of track that did not play now play.</p>
         <ul>
@@ -141,6 +141,9 @@
           <li>A playlist track that Tidal no longer streams under its old id is played from another release of the same recording, where there is one</li>
           <li>A track that Tidal has only in AAC plays at the Lossless and Hi-Res settings</li>
           <li>Under an album's title, a Dolby Atmos album is named as one and a hi-res album as Max. 0.4.1 said Low and Lossless</li>
+          <li>Cards of one title on an artist page say what tells them apart, such as the number of tracks or Dolby Atmos</li>
+          <li>After a seek, a pause or a play no longer leaves the play button showing a load. This affected systems with Qt 6.6 to 6.11</li>
+          <li>An album page's title bar comes in as the top of the page leaves, and no track shows through it</li>
         </ul>
       </description>
     </release>

@@ -1,6 +1,6 @@
 // The rule of api/RecordVersions.h: which entries of an artist's lists are one
 // record, which member stands for it, and where it sits. The request side is
-// in tests/tst_artist_discography.cpp. Every id, title and number is invented.
+// in tests/tst_artist_discography.cpp. Every id and title is invented.
 
 #include <QTest>
 #include <QList>

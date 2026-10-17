@@ -5,7 +5,7 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
-## [0.4.2] - 2026-10-12
+## [0.4.2] - 2026-10-17
 
 ### Added
 
@@ -26,6 +26,11 @@ milestones and not a semver promise about an API.
   record when they have the same title, the same number of tracks and nearly
   the same length, so a deluxe edition keeps a card of its own. For six
   artists looked at, the 1140 entries of their own releases became 604 cards.
+- Cards of one title in one row of an artist page say what tells them apart:
+  the year and the number of tracks, or the number of tracks and Dolby Atmos
+  for a release Tidal has in Dolby Atmos only, and the length where these
+  agree as well. Tidal keeps such records apart too, for instance a Dolby
+  Atmos version with a track list of its own. 0.4.1 showed the year alone.
 - A playlist keeps the id a track had when it was added, and Tidal stops
   streaming some of these ids while the recording stays on another release.
   - Such a track is now played from the other release, which the program
