@@ -186,6 +186,17 @@ private slots:
         QCOMPARE(ids(out), (QList<qint64>{900108001}));
     }
 
+    // A hi-res product can run 40 seconds longer than the 16-bit one over the
+    // same six tracks.
+    void lengthsWithinFivePercentAreOneRecord() {
+        const QString t = QStringLiteral("Winterlieder");
+        const QList<Album> out = oneEntryPerRecord({
+            product(900109001, t, 6, 1147),
+            hiRes(product(900109002, t, 6, 1187)),
+        });
+        QCOMPARE(ids(out), (QList<qint64>{900109002}));
+    }
+
     // ── what is not ──────────────────────────────────────────────────────────
 
     // One title, three track counts: three records. The lengths are near
@@ -231,6 +242,16 @@ private slots:
             single(product(900113002, t, 1, 263)),
         });
         QCOMPARE(out.size(), 2);
+    }
+
+    // Seven per cent apart over one title and track count: two records.
+    void lengthsSevenPercentApartStayApart() {
+        const QString t = QStringLiteral("Winterlieder");
+        const QList<Album> out = oneEntryPerRecord({
+            product(900126001, t, 6, 1100),
+            hiRes(product(900126002, t, 6, 1183)),
+        });
+        QCOMPARE(ids(out), (QList<qint64>{900126001, 900126002}));
     }
 
     // The album's duration counts its videos, so a product that carries them
@@ -350,16 +371,16 @@ private slots:
         QCOMPARE(ids(groups.at(1)), (QList<qint64>{900122004}));
     }
 
-    // ── "within 3 %" is not transitive ───────────────────────────────────────
+    // ── "within 5 %" is not transitive ───────────────────────────────────────
 
-    // 1000, 1025 and 1050 seconds: each neighbour is near, the ends are far.
+    // 1000, 1040 and 1080 seconds: each neighbour is near, the ends are far.
     // The best member is the measure, so the answer does not hang on the order
     // the entries came in.
     void aChainOfNearDurationsIsCutAtTheBestMember() {
         const QString t = QStringLiteral("Nachtfahrt");
         const Album best = hiRes(explicitOne(product(900123001, t, 12, 1000)));
-        const Album mid  = product(900123002, t, 12, 1025);
-        const Album far  = product(900123003, t, 12, 1050);
+        const Album mid  = product(900123002, t, 12, 1040);
+        const Album far  = product(900123003, t, 12, 1080);
         const QList<QList<qint64>> want = {{900123001, 900123002}, {900123003}};
 
         const QList<QList<Album>> orders = {
@@ -381,8 +402,8 @@ private slots:
         const QString t = QStringLiteral("Nachtfahrt");
         const QList<Album> out = oneEntryPerRecord({
             product(900124001, t, 12, 1000),
-            hiRes(explicitOne(product(900124002, t, 12, 1025))),
-            product(900124003, t, 12, 1050),
+            hiRes(explicitOne(product(900124002, t, 12, 1040))),
+            product(900124003, t, 12, 1080),
         });
         QCOMPARE(ids(out), (QList<qint64>{900124002}));
     }

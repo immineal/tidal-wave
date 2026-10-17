@@ -33,9 +33,9 @@ bool standsBefore(const Album &a, const Album &b) {
     return a.id < b.id;
 }
 
-// Within 3 % of the longer one.
+// Within 5 % of the longer one.
 bool near(int a, int b) {
-    return 100 * qAbs(qint64(a) - b) <= 3 * qint64(qMax(a, b));
+    return 100 * qAbs(qint64(a) - b) <= 5 * qint64(qMax(a, b));
 }
 
 // Case and spacing say nothing about which record a title names.
@@ -85,7 +85,7 @@ QList<QList<Album>> recordVersions(const QList<Album> &albums) {
     QList<QList<qsizetype>> records;
     for (QList<qsizetype> &bucket : buckets) {
         // Best first, so what comes out depends on the entries alone and on
-        // no order they arrived in: "within 3 %" is not transitive.
+        // no order they arrived in: "within 5 %" is not transitive.
         std::stable_sort(bucket.begin(), bucket.end(), [&albums](qsizetype x, qsizetype y) {
             return standsBefore(albums.at(x), albums.at(y));
         });

@@ -25,7 +25,7 @@ milestones and not a semver promise about an API.
   there is one, and the album page leads to the others. Entries count as one
   record when they have the same title, the same number of tracks and nearly
   the same length, so a deluxe edition keeps a card of its own. For six
-  artists looked at, the 1140 entries of their own releases became 605 cards.
+  artists looked at, the 1140 entries of their own releases became 604 cards.
 - A playlist keeps the id a track had when it was added, and Tidal stops
   streaming some of these ids while the recording stays on another release.
   - Such a track is now played from the other release, which the program
