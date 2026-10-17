@@ -9,6 +9,7 @@
 #include <QDataStream>
 #include <QDir>
 #include <QMediaDevices>
+#include <QScopedValueRollback>
 #include <QSet>
 #include "api/TidalBridge.h"
 #include "cast/CastSession.h"
@@ -756,6 +757,7 @@ void Player::seek(qint64 ms) {
 }
 
 void Player::setPlayerPosition(qint64 ms) {
+    const QScopedValueRollback<bool> seeking(m_seeking, true);
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4 stops reading a file once it has read to its end, and a seek
     // while playing does not start it again. Resuming from a pause does.
@@ -1360,9 +1362,20 @@ void Player::failLoad(const QString &msg) {
 }
 
 void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
+    const QMediaPlayer::PlaybackState state =
+        m_player ? m_player->playbackState() : QMediaPlayer::StoppedState;
+    // Qt from 6.6.2 on answers a seek in a running track with a loaded status.
+    // Qt 6.4 reports one late at a start as well, so only a seek's own counts.
+    if (status != QMediaPlayer::BufferingMedia)
+        m_seekedLoaded = m_seeking && status == QMediaPlayer::LoadedMedia
+                      && state != QMediaPlayer::StoppedState;
     switch (status) {
     case QMediaPlayer::LoadingMedia:
+        setLoading(true); break;
     case QMediaPlayer::BufferingMedia:
+        // Qt reports this on the pause or the start that follows a seek, and
+        // before 6.11.2 nothing after it. A paused track waits for no buffer.
+        if (m_seekedLoaded || state == QMediaPlayer::PausedState) break;
         setLoading(true); break;
     case QMediaPlayer::BufferedMedia:
     case QMediaPlayer::LoadedMedia:
@@ -1394,6 +1407,8 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 }
 
 void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
+    // A stopped backend fills its buffer anew when it starts.
+    if (state == QMediaPlayer::StoppedState) m_seekedLoaded = false;
     if (m_rebinding) return;   // rebindAudioOutput() reports the settled state
     if (m_seekToggling) return;   // the state a seek started in is the one it ends in
     // Audio is coming out, so the load is over even if a media status was

@@ -55,6 +55,11 @@ milestones and not a semver promise about an API.
   half drawn, and an album whose page ended there kept it so. The bar now
   comes in as the top of the page leaves and is whole when the first track
   reaches it.
+- After a seek, a pause or the play that followed it showed the track as
+  loading: the play button turned into three dots and stayed so, while the
+  track was paused and while it played. This happened with Qt 6.6.2 to
+  6.11.1, which the .deb packages for Debian 13, Ubuntu 25.10 and 26.04 and
+  the Windows zip of 0.4.1 use.
 
 ### Known issues
 

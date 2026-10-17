@@ -348,6 +348,11 @@ private:
     bool                 m_rebinding     = false;
     // Set while a seek or a wake pauses and resumes the backend itself.
     bool                 m_seekToggling  = false;
+    // Set while the backend is given a new position.
+    bool                 m_seeking       = false;
+    // A seek moved the track while the backend ran, and the backend answered
+    // that the track is loaded. Buffering it reports after that is no load.
+    bool                 m_seekedLoaded  = false;
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     // Qt 6.4's reader thread can sleep through the call that resumes it. The
     // backend then plays and stands still until its state changes again.
