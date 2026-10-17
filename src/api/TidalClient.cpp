@@ -473,7 +473,8 @@ void TidalClient::fetchArtistAlbums(qint64 artistId, AlbumsCallback cb) {
         for (Album &a : pending->appearsOn) a.featured = true;
         // The artist's own lists go first: a record of theirs that the
         // appears-on filter also answers keeps its place and stays unmarked.
-        // Then one entry per record, which reads the mark for the row.
+        // Then one entry per record, which reads the mark for the row and
+        // marks the titles a row shows more than once.
         const QList<Album> all = oneEntryPerRecord(mergeAlbumLists(
             {pending->albums, pending->epsAndSingles, pending->appearsOn}));
         // One filter failing must not empty the page. The error is reported

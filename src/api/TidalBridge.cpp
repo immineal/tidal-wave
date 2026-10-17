@@ -146,6 +146,9 @@ QVariantMap TidalBridge::albumToMap(const Album &a) {
     m["audioModes"]  = a.audioModes;
     m["mediaTags"]   = a.mediaTags;
     m["year"]        = a.releaseDate.left(4);
+    // Another card of the artist page's row has this title. The page words
+    // what tells them apart and works nothing out about titles itself.
+    m["titleShared"] = a.titleShared;
     return m;
 }
 

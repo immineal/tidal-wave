@@ -69,6 +69,13 @@ QList<QList<qint64>> membership(const QList<QList<Album>> &groups) {
     return out;
 }
 
+QList<qint64> markedIds(const QList<Album> &albums) {
+    QList<qint64> out;
+    for (const Album &a : albums)
+        if (a.titleShared) out << a.id;
+    return out;
+}
+
 } // namespace
 
 class TestRecordVersions : public QObject {
@@ -391,6 +398,84 @@ private slots:
 
         QVERIFY(membership(recordVersions({longOne, shortOne, videos})) == want);
         QVERIFY(membership(recordVersions({videos, shortOne, longOne})) == want);
+    }
+
+    // ── a title that several entries of a row share ──────────────────────────
+
+    // One stereo record and two Dolby Atmos only ones that differ in their
+    // track lists: three entries of one title, each marked.
+    void entriesOfOneTitleInOneRowAreMarked() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> out = oneEntryPerRecord({
+            product(900110001, t, 14, 3400),
+            atmos(product(900110002, t, 13, 3150)),
+            product(900110003, QStringLiteral("Morgenrot"), 9, 2400),
+            atmos(product(900110004, t, 12, 2900)),
+        });
+        QCOMPARE(ids(out), (QList<qint64>{900110001, 900110002, 900110003, 900110004}));
+        QCOMPARE(markedIds(out), (QList<qint64>{900110001, 900110002, 900110004}));
+    }
+
+    // The rows are apart on the page, so a title in each of them is no clash.
+    void oneTitleInThreeRowsMarksNone() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> out = oneEntryPerRecord({
+            product(900111001, t, 12, 2710),
+            single(product(900111002, t, 1, 215)),
+            guest(product(900111003, t, 12, 2710)),
+        });
+        QCOMPARE(out.size(), 3);
+        QCOMPARE(markedIds(out), QList<qint64>());
+    }
+
+    void caseAndSpacingDoNotMakeATitleOfItsOwn() {
+        const QList<Album> out = oneEntryPerRecord({
+            product(900112001, QStringLiteral("Die Nachtfahrt"), 12, 2710),
+            product(900112002, QStringLiteral(" die  NACHTFAHRT "), 15, 3300),
+        });
+        QCOMPARE(markedIds(out), (QList<qint64>{900112001, 900112002}));
+    }
+
+    void aRecordAloneIsNotMarked() {
+        const QList<Album> out = oneEntryPerRecord({
+            product(900113001, QStringLiteral("Nachtfahrt"), 12, 2710),
+            product(900113002, QStringLiteral("Morgenrot"), 12, 2710),
+        });
+        QCOMPARE(out.size(), 2);
+        QCOMPARE(markedIds(out), QList<qint64>());
+    }
+
+    // The products folded into one entry are not on the page, so they share
+    // nothing with it. Beside a second record they count once.
+    void productsFoldedIntoOneEntryMarkNothing() {
+        const QString t = QStringLiteral("Nachtfahrt");
+        const QList<Album> folded = oneEntryPerRecord({
+            product(900114001, t, 12, 2709),
+            hiRes(explicitOne(product(900114002, t, 12, 2710))),
+            atmos(explicitOne(product(900114003, t, 12, 2714))),
+        });
+        QCOMPARE(ids(folded), (QList<qint64>{900114002}));
+        QCOMPARE(markedIds(folded), QList<qint64>());
+
+        const QList<Album> beside = oneEntryPerRecord({
+            product(900114001, t, 12, 2709),
+            hiRes(explicitOne(product(900114002, t, 12, 2710))),
+            atmos(explicitOne(product(900114003, t, 12, 2714))),
+            product(900114004, t, 17, 3900),
+        });
+        QCOMPARE(ids(beside), (QList<qint64>{900114002, 900114004}));
+        QCOMPARE(markedIds(beside), (QList<qint64>{900114002, 900114004}));
+    }
+
+    // An entry without a title is a candidate for no record, and for no
+    // shared title either.
+    void entriesWithoutATitleAreNotMarked() {
+        const QList<Album> out = oneEntryPerRecord({
+            product(900115001, QString(), 12, 2710),
+            product(900115002, QStringLiteral("  "), 12, 2710),
+        });
+        QCOMPARE(out.size(), 2);
+        QCOMPARE(markedIds(out), QList<qint64>());
     }
 
     // ── the three rows ───────────────────────────────────────────────────────

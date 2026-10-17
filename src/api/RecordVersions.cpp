@@ -130,6 +130,21 @@ QList<Album> oneEntryPerRecord(const QList<Album> &albums) {
     QList<Album> out;
     out.reserve(records.size());
     for (const QList<Album> &record : records) out.append(record.first());
+
+    // Counted over the entries shown, so the products folded into one count once.
+    const auto shownKey = [](const Album &a) {
+        const QString title = titleKey(a.title);
+        return title.isEmpty() ? QString() : recordSectionKey(a) + QLatin1Char('/') + title;
+    };
+    QHash<QString, int> entriesOf;
+    for (const Album &a : std::as_const(out)) {
+        const QString key = shownKey(a);
+        if (!key.isEmpty()) ++entriesOf[key];
+    }
+    for (Album &a : out) {
+        const QString key = shownKey(a);
+        a.titleShared = !key.isEmpty() && entriesOf.value(key) > 1;
+    }
     return out;
 }
 

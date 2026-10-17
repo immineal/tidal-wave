@@ -90,6 +90,9 @@ struct Album {
     // carries neither.
     bool        allowStreaming = true;
     bool        streamReady    = true;
+    // Another entry of the artist page's row has this title. No response
+    // carries it: oneEntryPerRecord() sets it, and it is false everywhere else.
+    bool        titleShared    = false;
 
     QString coverUrl(int size = 320) const {
         if (cover.isEmpty()) return {};

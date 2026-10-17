@@ -24,6 +24,7 @@ QString recordSectionKey(const Album &a);
 QList<QList<Album>> recordVersions(const QList<Album> &albums);
 
 // One entry per record: the best member of each group of recordVersions().
+// Sets Album::titleShared on each entry whose row shows another of its title.
 QList<Album> oneEntryPerRecord(const QList<Album> &albums);
 
 } // namespace Tidal

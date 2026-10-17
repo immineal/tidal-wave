@@ -205,6 +205,11 @@ struct Run {
         for (const Album &a : albums) if (a.featured) out << a.id;
         return out;
     }
+    QList<qint64> titleSharedIds() const {
+        QList<qint64> out;
+        for (const Album &a : albums) if (a.titleShared) out << a.id;
+        return out;
+    }
 };
 
 void start(TidalClient &client, Run &run) {
@@ -754,6 +759,37 @@ private slots:
         for (const Album &a : {album, ep, guest})
             QCOMPARE(TidalBridge::albumToMap(a).value(QStringLiteral("section")).toString(),
                      recordSectionKey(a));
+    }
+
+    // Records of one title reach the caller marked, each record once, and the
+    // same title in another row marks nothing there.
+    void entriesThatShareATitleReachTheCallerMarked() {
+        FakeApi api;
+        const QString t = QStringLiteral("Nachtfahrt");
+        api.catalogue[kNoFilter]  = sixProducts(900036000, t, QStringLiteral("ALBUM"), 14, 3400);
+        api.catalogue[kNoFilter] << product(900036100, t, QStringLiteral("ALBUM"), 13, 3150,
+                                            true, kAtmos, kAtmos);
+        api.catalogue[kAppearsOn] = { product(900036200, t, QStringLiteral("ALBUM"), 14, 3400,
+                                              false, kStereo, kLossless) };
+        TidalClient client{&api};
+        Run run;
+        start(client, run);
+
+        QCOMPARE(run.ids(), (QList<qint64>{900036004, 900036100, 900036200}));
+        QCOMPARE(run.titleSharedIds(), (QList<qint64>{900036004, 900036100}));
+    }
+
+    // ArtistPage words a card by this and works nothing out about titles.
+    void aSharedTitleSurvivesTheHopToQml() {
+        Album a;
+        a.title       = QStringLiteral("Nachtfahrt");
+        a.titleShared = true;
+        const QVariantMap m = TidalBridge::albumToMap(a);
+        QVERIFY2(m.contains(QStringLiteral("titleShared")),
+                 "albumToMap() hands QML no `titleShared` key");
+        QCOMPARE(m.value(QStringLiteral("titleShared")).toBool(), true);
+        QCOMPARE(TidalBridge::albumToMap(Album()).value(QStringLiteral("titleShared")).toBool(),
+                 false);
     }
 
     // ── the merge on its own ─────────────────────────────────────────────────
