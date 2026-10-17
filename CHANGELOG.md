@@ -50,6 +50,11 @@ milestones and not a semver promise about an API.
   how Tidal lists it, and a hi-res album "Lossless". It now says "Dolby Atmos,
   plays in stereo" for the first and "Max" for the second, the name the player
   uses for hi-res.
+- On an album page the bar with the album's title came in only after the
+  first tracks had passed under it, so rows showed through a bar that was
+  half drawn, and an album whose page ended there kept it so. The bar now
+  comes in as the top of the page leaves and is whole when the first track
+  reaches it.
 
 ### Known issues
 

@@ -567,12 +567,17 @@ Rectangle {
     // the hero scrolls out.
     Rectangle {
         id: stickyHeader
+        objectName: "albumStickyHeader"
         anchors { top: parent.top; left: parent.left; right: parent.right }
         height: 52
         // How far the header has come in: 0 while the hero is still on screen,
-        // 1 once it has scrolled away.
-        readonly property real reveal:
-            Math.min(1, Math.max(0, (tracksList.contentY - 200) / 80))
+        // 1 from where the first row reaches the bar. The list counts from
+        // originY, which is minus the hero's height.
+        readonly property real reveal: {
+            var hero = tracksList.headerItem ? tracksList.headerItem.height : 280
+            var scrolled = tracksList.contentY - tracksList.originY
+            return Math.min(1, Math.max(0, (scrolled - (hero - height - 80)) / 80))
+        }
         color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Math.min(0.95, reveal))
 
         BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
