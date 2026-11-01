@@ -94,6 +94,7 @@ set(HEADERS
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
     src/api/LibraryIndex.h
+    src/api/PageEverything.h
 )
 
 if(UNIX AND NOT APPLE)

@@ -32,6 +32,8 @@ class TidalBridge : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the bridge context property")
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
+    // True until the newest liked songs have arrived after a sign-in.
+    Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
 public:
     explicit TidalBridge(TidalClient *client, QObject *parent = nullptr);
 
@@ -46,6 +48,12 @@ public:
     // function(mix, tracks, error): the mix's header beside its tracks, for a
     // page opened with nothing but an id.
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
+
+    bool favoritesLoading() const { return m_favoritesLoading; }
+
+    // Tidal tells a client nothing about changes made on another device. This
+    // asks one small request per list and reloads the lists that moved.
+    void syncFavorites();
 
     Q_INVOKABLE void fetchFavoriteTracks  (QJSValue cb, int limit = 50, int offset = 0);
     Q_INVOKABLE void fetchFavoriteAlbums  (QJSValue cb, int limit = 50, int offset = 0);
@@ -169,6 +177,10 @@ signals:
     // LibraryIndex spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
 
+    // syncFavorites() found a change made on another device. The bridge's own
+    // caches and signals are already up to date.
+    void favoritesChangedElsewhere();
+
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     // Re-reads one playlist's header and merges what a contents change moves
@@ -178,6 +190,12 @@ private:
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);
     void loadFavoriteTrackIds();
+    void resetFavoriteSync();
+    void favoriteChangedHere(TidalClient::FavoriteKind kind);
+    void reloadFavorites(TidalClient::FavoriteKind kind, const FavoritesHead &head);
+    template <typename T, typename Fetch, typename KeyOf, typename Apply>
+    void reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead &head, int limit,
+                    const QList<T> &cache, Fetch fetch, KeyOf keyOf, Apply apply);
     // Loaded eagerly at sign-in, so MixPage knows the save state without a
     // round trip per page.
     void loadFavoriteMixIds();
@@ -209,10 +227,19 @@ private:
     // a superseded load compare against it and bail, so two overlapping
     // chains cannot both append page 0.
     int             m_favTracksLoadGen = 0;
-    // Whether m_favoriteTracks is in its final, newest-first order. It is
-    // built oldest first and reversed when the last page lands, so the end a
-    // newly liked song belongs at depends on this.
-    bool            m_favTracksSettled = false;
+    bool            m_favoritesLoading = false;
+    // The four sign-in paging chains still running.
+    int             m_favLoadsPending = 0;
+
+    // One per FavoriteKind. A reload lands whole or not at all, and a change
+    // made here during one bumps `gen`, because its pages may predate that.
+    struct FavoriteSync {
+        int           gen = 0;
+        bool          reloading = false;
+        FavoritesHead head;     // what the list on hand was reloaded against
+    };
+    FavoriteSync    m_favSync[4];
+    int             m_favMixesSyncGen = 0;
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;

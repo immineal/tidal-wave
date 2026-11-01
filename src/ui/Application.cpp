@@ -39,7 +39,11 @@
 #include <utility>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QTimer>
 #include <QWindow>
+#include <chrono>
+
+using namespace std::chrono_literals;
 #include <QMenu>
 #include <QAction>
 #include <QProcess>
@@ -674,6 +678,7 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteMixAdded,    m_library, &LibraryIndex::addMix);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
+    connect(m_bridge, &TidalBridge::favoritesChangedElsewhere, m_library, &LibraryIndex::refresh);
     // Not through addPlaylist: that stamps addedAt and would lift a renamed
     // playlist to the top of the sidebar.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
@@ -699,7 +704,19 @@ int Application::run(int argc, char **argv) {
         m_pins->setUserId(m_auth->userId());
         m_library->setUserId(m_auth->userId());
         m_library->refresh();
+        m_sinceFavoritesCheck.start();
     });
+
+    // Likes made on another device show up when the window is used again, or
+    // within a few minutes while it stays up. A window in the tray asks nothing.
+    auto *favoritesCheck = new QTimer(this);
+    favoritesCheck->setInterval(5min);
+    connect(favoritesCheck, &QTimer::timeout, this, [this]() { checkFavorites(0); });
+    favoritesCheck->start();
+    connect(qApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+                if (state == Qt::ApplicationActive) checkFavorites(60'000);
+            });
 
     connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
         // Do not keep indexing against an account that just signed out.
@@ -880,6 +897,16 @@ bool Application::eventFilter(QObject *watched, QEvent *event) {
     return QObject::eventFilter(watched, event);
 }
 #endif // Q_OS_MACOS
+
+void Application::checkFavorites(qint64 minGapMs) {
+    if (!m_engine || !m_sinceFavoritesCheck.isValid()) return;
+    if (m_sinceFavoritesCheck.elapsed() < minGapMs) return;
+    const auto rootObjs = m_engine->rootObjects();
+    const auto *window = rootObjs.isEmpty() ? nullptr : qobject_cast<QWindow *>(rootObjs.first());
+    if (!window || !window->isVisible()) return;
+    m_sinceFavoritesCheck.restart();
+    m_bridge->syncFavorites();
+}
 
 void Application::showWindow() {
     if (m_engine) {

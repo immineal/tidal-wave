@@ -183,6 +183,7 @@ public:
     }
 
     // Favourites / playlists (paged in the real bridge; defaults kept identical)
+    Q_PROPERTY(bool favoritesLoading MEMBER m_favoritesLoading CONSTANT)
     Q_INVOKABLE void fetchFavoriteTracks(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
@@ -302,6 +303,7 @@ public:
         m_lastOtherVersionsFetched = 0;
     }
 private:
+    bool m_favoritesLoading = false;
     QVariantList m_otherVersions;
     QString      m_otherVersionsError;
     bool         m_deferOtherVersions = false;

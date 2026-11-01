@@ -34,9 +34,10 @@ public:
 
     // Tidal caps a favourites response at 100 items whatever `limit` asks for.
     static constexpr int pageSize = 50;
+    static constexpr int trackPageSize = 100;
     // A backstop on paging for an API that sends neither a short page nor a
-    // repeated one.
-    static constexpr int maxPages = 100;
+    // repeated one. Liked songs arrive oldest first, so a low cap loses the newest.
+    static constexpr int maxPages = 2000;
 
     QVariantList entries() const;
     bool loading() const;
@@ -198,6 +199,8 @@ private:
     static void  finishEntry(Entry &e);
     // One row as QML reads it. `score` is zero outside a search result.
     static QVariantMap toRow(const Entry &e, int score);
+    template <typename T>
+    void land(QList<T> &list, const QList<T> &all, bool whole);
 
     TidalClient *m_client = nullptr;
     PinStore    *m_pins   = nullptr;
@@ -226,4 +229,8 @@ private:
     int  m_loadGen   = 0;
     int  m_indexGen  = 0;
     int  m_pending   = 0;
+    // Whether every page of the run in flight arrived.
+    bool m_loadWhole = true;
+    // A row changed here during a run, whose lists may be older than that.
+    bool m_refreshAgain = false;
 };

@@ -11,6 +11,7 @@
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include <QSystemTrayIcon>
+#include <QElapsedTimer>
 #include <QIcon>
 
 class QQmlApplicationEngine;
@@ -182,6 +183,7 @@ private:
     // Called at startup when a tray exists, and again from the D-Bus watcher
     // if one turns up later.
     void createTrayIcon(const QIcon &icon);
+    void checkFavorites(qint64 minGapMs);
 
     Prefs       *m_prefs  = nullptr;
     I18n        *m_i18n   = nullptr;
@@ -198,6 +200,7 @@ private:
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
+    QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;
 
     bool         m_reallyQuit = false;

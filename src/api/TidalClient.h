@@ -59,9 +59,21 @@ private:
 };
 
 // ──────────── High-level API client ────────────
+// How to tell, in one request, whether a list of favourites has changed: any
+// add moves `newest` and any removal alone moves `total`.
+struct FavoritesHead {
+    int     total = -1;
+    QString newest;
+    bool operator==(const FavoritesHead &o) const {
+        return total == o.total && newest == o.newest;
+    }
+};
+
 class TidalClient : public QObject {
     Q_OBJECT
 public:
+    enum class FavoriteKind { Tracks, Albums, Artists, Playlists };
+    using HeadCallback     = std::function<void(FavoritesHead,  QString)>;
     using TracksCallback   = std::function<void(QList<Track>,   QString)>;
     using AlbumsCallback   = std::function<void(QList<Album>,   QString)>;
     using ArtistsCallback  = std::function<void(QList<Artist>,  QString)>;
@@ -89,9 +101,11 @@ public:
 
     // My collection
     void fetchFavoriteTracks  (TracksCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteAlbums  (AlbumsCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteArtists (ArtistsCallback   cb, int limit=50, int offset=0);
-    void fetchUserPlaylists   (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset);
+    virtual void fetchFavoriteAlbums (AlbumsCallback    cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteArtists(ArtistsCallback   cb, int limit=50, int offset=0);
+    virtual void fetchUserPlaylists  (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb);
 
     // Content
     void fetchAlbumTracks  (qint64 albumId,        TracksCallback    cb);
@@ -112,7 +126,7 @@ public:
     void search(const QString &query, SearchCb cb, int limit = 20, int offset = 0);
 
     // Favorites management
-    void addTrackFavorite   (qint64 trackId,    std::function<void(bool)> cb);
+    virtual void addTrackFavorite(qint64 trackId, std::function<void(bool)> cb);
     void removeTrackFavorite(qint64 trackId,    std::function<void(bool)> cb);
     void addAlbumFavorite    (qint64 albumId,    std::function<void(bool)> cb);
     void removeAlbumFavorite (qint64 albumId,    std::function<void(bool)> cb);

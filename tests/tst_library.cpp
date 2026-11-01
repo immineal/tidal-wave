@@ -15,6 +15,7 @@
 #include <QTemporaryDir>
 
 #include <climits>
+#include <utility>
 
 #include "api/LibraryIndex.h"
 #include "ui/PinStore.h"
@@ -116,6 +117,10 @@ public:
     // Pretend the API never advances: every page comes back as the first one.
     // That is the shape that would spin forever without a guard.
     bool repeatFirstPage = false;
+    // The liked-songs page at this offset answers an error.
+    int  failTracksAt = -1;
+    // Runs once a liked-songs reply is written and before it is delivered.
+    std::function<void()> duringTrackPage;
     // Hold tracklist replies so a test can decide how much of the background
     // index has finished by the time it searches.
     bool deferTracklists = false;
@@ -154,7 +159,11 @@ protected:
         cb(slice(artists, offset, limit), QString());
     }
     void fetchTrackPage(int offset, int limit, TracksCb cb) override {
-        cb(slice(favoriteTracks, offset, limit), QString());
+        if (offset == failTracksAt) { cb({}, QStringLiteral("offline")); return; }
+        // Sliced first: this reply is older than what the hook changes.
+        const QList<Track> page = slice(favoriteTracks, offset, limit);
+        if (const auto run = std::exchange(duringTrackPage, nullptr)) run();
+        cb(page, QString());
     }
     void fetchMixList(MixesCb cb) override {
         cb(mixes, QString());
@@ -217,6 +226,74 @@ private slots:
         QSettings().clear();
         QSettings().sync();
         QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).removeRecursively();
+    }
+
+    // ── a second load ────────────────────────────────────────────────────
+    void aFailedPageLeavesAWholeListAlone() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 120; ++i)
+            lib.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        lib.setUserId(kUser);
+        lib.refresh();
+        lib.markTrackPlayed(QStringLiteral("5110"));
+        QCOMPARE(lib.search(QStringLiteral("Song 110"), {QStringLiteral("track")}).size(), 1);
+
+        // Page two fails: the song on it stays findable and keeps its play.
+        lib.failTracksAt = 100;
+        lib.refresh();
+        QCOMPARE(lib.search(QStringLiteral("Song 110"), {QStringLiteral("track")}).size(), 1);
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:5110")));
+    }
+
+    void aFailedFirstLoadKeepsThePlaysOfSongsItDidNotReach() {
+        PinStore pins; pins.setUserId(kUser);
+        {
+            TestLibrary lib(&pins);
+            const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+            for (int i = 0; i < 120; ++i)
+                lib.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+            lib.setUserId(kUser);
+            lib.refresh();
+            lib.markTrackPlayed(QStringLiteral("5110"));
+        }
+        TestLibrary again(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 120; ++i)
+            again.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        again.failTracksAt = 100;
+        again.setUserId(kUser);
+        again.refresh();
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:5110")));
+    }
+
+    // The list arrives oldest first: a cap on paging would cost the newest likes.
+    void theNewestOfALargeCollectionOfLikesArrives() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 6000; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(lib.search(QStringLiteral("Song 5999"), {QStringLiteral("track")}).size(), 1);
+    }
+
+    // The load's lists may predate a song liked while it ran, so it runs again.
+    void aLikeDuringALoadIsNotLost() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        const Track song = mkTrack(6000, QStringLiteral("Fresh"), album, {});
+        lib.setUserId(kUser);
+        lib.duringTrackPage = [&]() {
+            lib.addTrack(song);
+            lib.favoriteTracks << song;    // the server has it from here on
+        };
+        lib.refresh();
+        QVERIFY(!lib.loading());
+        QCOMPARE(lib.search(QStringLiteral("Fresh"), {QStringLiteral("track")}).size(), 1);
     }
 
     // ── one list, newest first, under the pinned block ───────────────────

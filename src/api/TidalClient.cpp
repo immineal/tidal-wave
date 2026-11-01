@@ -278,6 +278,57 @@ void TidalClient::fetchFavoriteTracks(TracksCallback cb, int limit, int offset) 
             cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
 }
 
+void TidalClient::fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset) {
+    QUrlQuery q;
+    q.addQueryItem("limit",  QString::number(limit));
+    q.addQueryItem("offset", QString::number(offset));
+    q.addQueryItem("order",  "DATE");
+    q.addQueryItem("orderDirection", "DESC");
+    m_api->get(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
+        [this, cb](QJsonObject root, QString err) {
+            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
+}
+
+void TidalClient::fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) {
+    QUrlQuery q;
+    q.addQueryItem("limit",  QStringLiteral("1"));
+    q.addQueryItem("offset", QStringLiteral("0"));
+    QString path;
+    if (kind == FavoriteKind::Playlists) {
+        path = QStringLiteral("users/%1/playlistsAndFavoritePlaylists").arg(m_userId);
+    } else {
+        const char *name = kind == FavoriteKind::Tracks ? "tracks"
+                         : kind == FavoriteKind::Albums ? "albums" : "artists";
+        path = QStringLiteral("users/%1/favorites/%2").arg(m_userId).arg(QLatin1String(name));
+        q.addQueryItem("order",  "DATE");
+        q.addQueryItem("orderDirection", "DESC");
+    }
+    m_api->get(path, q, [this, kind, cb](QJsonObject root, QString err) {
+        if (!err.isEmpty()) { cb({}, err); return; }
+        FavoritesHead head;
+        head.total = root["totalNumberOfItems"].toInt(-1);
+        switch (kind) {
+        case FavoriteKind::Tracks:
+            if (const auto l = parseTracks(root); !l.isEmpty())
+                head.newest = QString::number(l.first().id);
+            break;
+        case FavoriteKind::Albums:
+            if (const auto l = parseAlbums(root); !l.isEmpty())
+                head.newest = QString::number(l.first().id);
+            break;
+        case FavoriteKind::Artists:
+            if (const auto l = parseArtists(root); !l.isEmpty())
+                head.newest = QString::number(l.first().id);
+            break;
+        case FavoriteKind::Playlists:
+            if (const auto l = parsePlaylists(root); !l.isEmpty())
+                head.newest = l.first().uuid;
+            break;
+        }
+        cb(head, {});
+    });
+}
+
 void TidalClient::fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) {
     QUrlQuery q;
     q.addQueryItem("limit",  QString::number(limit));
