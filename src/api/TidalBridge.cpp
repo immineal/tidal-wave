@@ -5,6 +5,7 @@
 #include "TidalBridge.h"
 #include "PageEverything.h"
 #include "RecordVersions.h"
+#include "LyricsFinder.h"
 #include <QJSEngine>
 #include <QSettings>
 #include <QJsonArray>
@@ -723,6 +724,33 @@ void TidalBridge::fetchLyrics(qlonglong trackId, QJSValue cb) {
         QVariantMap result;
         result["text"]  = text;
         result["timed"] = timed;
+        call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
+void TidalBridge::findLyrics(const QVariantMap &track, QJSValue cb) {
+    if (!m_lyricsFinder) {
+        call(cb, { qjsEngine(this)->toScriptValue(QVariantMap()),
+                   qjsEngine(this)->toScriptValue(QStringLiteral("off")) });
+        return;
+    }
+    LyricsQuery q;
+    q.trackId  = track.value(QStringLiteral("id")).toLongLong();
+    q.title    = track.value(QStringLiteral("title")).toString();
+    q.album    = track.value(QStringLiteral("albumTitle")).toString();
+    q.duration = track.value(QStringLiteral("duration")).toInt();
+    for (const QVariant &a : track.value(QStringLiteral("artistList")).toList()) {
+        const QString name = a.toMap().value(QStringLiteral("name")).toString();
+        if (!name.isEmpty()) q.artists << name;
+    }
+    if (q.artists.isEmpty() && !track.value(QStringLiteral("artists")).toString().isEmpty())
+        q.artists << track.value(QStringLiteral("artists")).toString();
+    m_lyricsFinder->find(q, [this, cb](const LyricsResult &r, const QString &err) mutable {
+        QVariantMap result;
+        result["text"]   = r.text;
+        result["timed"]  = r.timed;
+        result["source"] = r.source;
+        result["url"]    = r.url.toString();
         call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
     });
 }

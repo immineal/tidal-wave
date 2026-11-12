@@ -1126,6 +1126,30 @@ TestCase {
         h.panel.close()
     }
 
+    // Off on a fresh install, and the line under it names the sites and what
+    // they are sent.
+    function test_external_lyrics_switch() {
+        prefs.externalLyrics = false
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsExternalLyricsToggle")
+        verify(toggle, "there is no switch for lyrics from other sites")
+        verify(!toggle.checked, "lyrics from other sites should start off")
+        var note = findByName(h.panel.contentItem, "settingsExternalLyricsNote")
+        verify(note && note.visible, "the switch has no line saying what it sends")
+        var mustSay = ["lrclib.net", "genius.com", "artist", "title", "album", "length"]
+        for (var i = 0; i < mustSay.length; i++)
+            verify(note.text.indexOf(mustSay[i]) !== -1,
+                   "the note never says \"" + mustSay[i] + "\"")
+
+        scrollTo(h.panel, toggle)
+        clickItem(h.panel, toggle)
+        compare(prefs.externalLyrics, true, "the switch did not turn it on")
+        verify(toggle.checked)
+        clickItem(h.panel, toggle)
+        compare(prefs.externalLyrics, false)
+        h.panel.close()
+    }
+
     // Qt picks the scene graph backend once at startup, so the note is always
     // visible in the panel.
     function test_restart_note_is_always_visible() {
@@ -1387,7 +1411,7 @@ TestCase {
     // privacy notice, which is long prose and the natural end of the panel.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,window,playback,performance,updates,feedback,shortcuts,privacy"
+        "account,appearance,window,playback,performance,updates,feedback,shortcuts,experimental,privacy"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -1700,7 +1724,8 @@ TestCase {
 
         var mustSay = ["no analytics", "no telemetry", "auth.tidal.com", "api.tidal.com",
                        "resources.tidal.com", "mDNS", "api.github.com", "IP address",
-                       "tokens", "switched off above", "release page", "README"]
+                       "tokens", "switched off above", "release page", "README",
+                       "lrclib.net", "genius.com", "Experimental"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy text never mentions \"" + mustSay[j] + "\"")

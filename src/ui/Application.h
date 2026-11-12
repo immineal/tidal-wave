@@ -6,6 +6,7 @@
 #include "api/Auth.h"
 #include "api/TidalClient.h"
 #include "api/TidalBridge.h"
+#include "api/LyricsFinder.h"
 #include "player/Player.h"
 #include "player/Downloader.h"
 #include "mpris/MprisPlayer.h"
@@ -192,6 +193,7 @@ private:
     Auth        *m_auth   = nullptr;
     TidalClient *m_client = nullptr;
     TidalBridge *m_bridge = nullptr;
+    LyricsFinder *m_lyricsFinder = nullptr;
     Player      *m_player = nullptr;
     Downloader  *m_downloader = nullptr;
     CastManager *m_cast   = nullptr;

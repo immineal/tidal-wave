@@ -233,10 +233,6 @@
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
     </message>
     <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
-    </message>
-    <message>
         <source>ffmpeg was not found on PATH. Install ffmpeg to cast this track.</source>
         <translation>ffmpeg wurde im PATH nicht gefunden. ffmpeg installieren, um diesen Titel zu übertragen.</translation>
     </message>
@@ -494,10 +490,6 @@
     <message>
         <source>Could not read the lossless stream details for this track.</source>
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
         <source>Could not start ffmpeg. Check that it is installed and that you have permission to run it.</source>
@@ -819,6 +811,11 @@
         <translation>Sync</translation>
     </message>
     <message>
+        <source>Lyrics from %1</source>
+        <comment>%1 is a lyrics website</comment>
+        <translation>Songtext von %1</translation>
+    </message>
+    <message>
         <source>Loading…</source>
         <translation>Wird geladen…</translation>
     </message>
@@ -922,10 +919,6 @@
     <message>
         <source>Could not read the lossless stream details for this track.</source>
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
         <source>No audio device was found. Check the sound settings of your system.</source>
@@ -1315,6 +1308,14 @@
         <translation>Version %1</translation>
     </message>
     <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details only with the switch for them on, see below.</source>
+        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest. Songtext-Seiten erhalten Angaben zu einem Titel nur, wenn der Schalter dafür an ist, siehe unten.</translation>
+    </message>
+    <message>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.</source>
+        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Mediathek; und Songtexte, die auf anderen Seiten gefunden wurden.</translation>
+    </message>
+    <message>
         <source>Log out</source>
         <translation>Abmelden</translation>
     </message>
@@ -1401,6 +1402,18 @@
         <translation>Das Issue-Formular öffnet sich mit deiner Version, deinem System und beiden Qt-Versionen bereits darin. Die E-Mail öffnet sich adressiert an %1. Gesendet wird beides erst, wenn du es selbst sendest.</translation>
     </message>
     <message>
+        <source>Experimental</source>
+        <translation>Experimentell</translation>
+    </message>
+    <message>
+        <source>Find lyrics on other sites</source>
+        <translation>Songtexte auf anderen Seiten suchen</translation>
+    </message>
+    <message>
+        <source>When Tidal has no lyrics for the playing track, its artist, title, album and length are sent to lrclib.net and genius.com to look for them there.</source>
+        <translation>Hat Tidal keinen Songtext zum laufenden Titel, werden Interpret, Titel, Album und Länge an lrclib.net und genius.com geschickt, um dort danach zu suchen.</translation>
+    </message>
+    <message>
         <source>Privacy</source>
         <translation>Datenschutz</translation>
     </message>
@@ -1476,12 +1489,8 @@
         <translation>Höchstens einmal täglich, über die Releases-Seite auf GitHub.</translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
-        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest.</translation>
-    </message>
-    <message>
-        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>
-        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; und ein zwischengespeicherter Index deiner Mediathek.</translation>
+        <source>Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for: lrclib.net gets that track&apos;s artist, title, album and length, genius.com its artist and title, and both see your IP address and the app&apos;s name and version. Whatever they find is kept on this machine, so a song is not looked up twice.</source>
+        <translation>Songtexte von anderen Seiten, nur wenn der Schalter unter Experimentell an ist, und nur für einen Titel, zu dem Tidal keinen Songtext hat: lrclib.net erhält Interpret, Titel, Album und Länge dieses Titels, genius.com Interpret und Titel, und beide sehen deine IP-Adresse sowie Name und Version der App. Was sie finden, wird auf diesem Rechner gespeichert, damit ein Lied nicht zweimal nachgeschlagen wird.</translation>
     </message>
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>

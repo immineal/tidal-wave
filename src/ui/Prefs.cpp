@@ -17,6 +17,7 @@ constexpr auto kUiScale    = "ui/scaleFactor";
 constexpr auto kQuitOnClose = "ui/quitOnClose";
 constexpr auto kCoverGradient = "ui/coverGradient";
 constexpr auto kSpectrumBars = "ui/spectrumBars";
+constexpr auto kExternalLyrics = "lyrics/externalSources";
 }
 
 Prefs::Prefs(QObject *parent)
@@ -35,6 +36,7 @@ Prefs::Prefs(QObject *parent)
     , m_coverGradient(m_settings.value(kCoverGradient, true).toBool())
     // Opt in: a missing key means off.
     , m_spectrumBars(m_settings.value(kSpectrumBars, false).toBool())
+    , m_externalLyrics(m_settings.value(kExternalLyrics, false).toBool())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
@@ -130,6 +132,13 @@ void Prefs::setSpectrumBars(bool v) {
     m_spectrumBars = v;
     m_settings.setValue(kSpectrumBars, v);
     emit spectrumBarsChanged();
+}
+
+void Prefs::setExternalLyrics(bool v) {
+    if (v == m_externalLyrics) return;
+    m_externalLyrics = v;
+    m_settings.setValue(kExternalLyrics, v);
+    emit externalLyricsChanged();
 }
 
 QString Prefs::appVersion() const {

@@ -616,15 +616,48 @@ public:
         m_lastTrackMixFetched  = 0;
     }
 
-    // NowPlayingPage reads .text and .timed off the result.
+    // NowPlayingPage reads .text and .timed off the result. Empty unless a
+    // test stored lyrics with setLyricsForTest().
     Q_INVOKABLE void fetchLyrics(qlonglong trackId, QJSValue cb) {
         Q_UNUSED(trackId);
         QJSValue res = emptyObject();
         if (res.isObject()) {
-            res.setProperty(QStringLiteral("text"), QJSValue(QString()));
-            res.setProperty(QStringLiteral("timed"), QJSValue(false));
+            res.setProperty(QStringLiteral("text"), QJSValue(m_lyricsText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_lyricsTimed));
         }
         resolve(cb, res);
+    }
+    Q_INVOKABLE void setLyricsForTest(const QString &text, bool timed) {
+        m_lyricsText = text;
+        m_lyricsTimed = timed;
+    }
+    // Mirrors TidalBridge::findLyrics. Answers what setFoundLyricsForTest()
+    // stored, or nothing found; "off" when the stub prefs say so.
+    Q_INVOKABLE void findLyrics(const QVariantMap &track, QJSValue cb) {
+        m_findLyricsCalls++;
+        m_lastFindLyricsTrack = track;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("text"), QJSValue(m_foundText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_foundTimed));
+            res.setProperty(QStringLiteral("source"), QJSValue(m_foundSource));
+            res.setProperty(QStringLiteral("url"), QJSValue(m_foundUrl));
+        }
+        if (!cb.isCallable()) return;
+        QJSValueList args;
+        args << res << QJSValue(QString());
+        cb.call(args);
+    }
+    Q_INVOKABLE void setFoundLyricsForTest(const QString &text, bool timed,
+                                           const QString &source, const QString &url) {
+        m_foundText = text; m_foundTimed = timed; m_foundSource = source; m_foundUrl = url;
+    }
+    Q_INVOKABLE int         findLyricsCallsForTest() const { return m_findLyricsCalls; }
+    Q_INVOKABLE QVariantMap lastFindLyricsTrackForTest() const { return m_lastFindLyricsTrack; }
+    Q_INVOKABLE void resetLyricsForTest() {
+        m_lyricsText.clear(); m_lyricsTimed = false;
+        m_foundText.clear(); m_foundTimed = false; m_foundSource.clear(); m_foundUrl.clear();
+        m_findLyricsCalls = 0; m_lastFindLyricsTrack.clear();
     }
     // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
     // off the result. Answered empty, so the credits panel shows "unavailable".
@@ -1056,6 +1089,14 @@ private:
     QHash<qlonglong, bool> m_favoriteArtists;
     QHash<QString, bool>   m_favoriteMixes;
     // What fetchTrackMix() answers, and what it was asked.
+    QString     m_lyricsText;
+    bool        m_lyricsTimed = false;
+    QString     m_foundText;
+    bool        m_foundTimed = false;
+    QString     m_foundSource;
+    QString     m_foundUrl;
+    int         m_findLyricsCalls = 0;
+    QVariantMap m_lastFindLyricsTrack;
     QString   m_trackMixId;
     QString   m_trackMixError;
     int       m_trackMixFetches     = 0;
@@ -1931,6 +1972,8 @@ class StubPrefs : public QObject {
     // real Prefs. SpectrumAnalyzer reads the property by name, so this stub is a
     // complete substitute for Prefs there.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
+    // Off, as in the real Prefs.
+    Q_PROPERTY(bool externalLyrics READ externalLyrics WRITE setExternalLyrics NOTIFY externalLyricsChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -1957,6 +2000,7 @@ public:
     bool    quitOnClose() const       { return m_quitOnClose; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
+    bool    externalLyrics() const    { return m_externalLyrics; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -2009,6 +2053,11 @@ public:
         m_spectrumBars = v;
         emit spectrumBarsChanged();
     }
+    void setExternalLyrics(bool v) {
+        if (v == m_externalLyrics) return;
+        m_externalLyrics = v;
+        emit externalLyricsChanged();
+    }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
@@ -2033,6 +2082,7 @@ signals:
     void quitOnCloseChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
+    void externalLyricsChanged();
 
 private:
     QString m_theme    = QStringLiteral("sea");
@@ -2050,6 +2100,7 @@ private:
     bool    m_quitOnClose = false;
     bool    m_coverGradient = true;
     bool    m_spectrumBars = false;
+    bool    m_externalLyrics = false;
     QString m_version = QStringLiteral("0.4.0");
 };
 

@@ -45,6 +45,9 @@ class Prefs : public QObject {
     // The now-playing bars show a coarse spectrum of the audio. Needs Qt 6.8
     // (QAudioBufferOutput); below that the switch does nothing.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
+    // Look for lyrics on other sites when Tidal has none. Opt in, because it
+    // sends the track's artist, title, album and length to those sites.
+    Q_PROPERTY(bool externalLyrics READ externalLyrics WRITE setExternalLyrics NOTIFY externalLyricsChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -69,6 +72,7 @@ public:
     bool    quitOnClose() const       { return m_quitOnClose; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
+    bool    externalLyrics() const    { return m_externalLyrics; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -81,6 +85,7 @@ public:
     void setQuitOnClose(bool v);
     void setCoverGradient(bool v);
     void setSpectrumBars(bool v);
+    void setExternalLyrics(bool v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -102,6 +107,7 @@ signals:
     void quitOnCloseChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
+    void externalLyricsChanged();
 
 private:
     QSettings m_settings;
@@ -116,4 +122,5 @@ private:
     bool      m_quitOnClose;
     bool      m_coverGradient;
     bool      m_spectrumBars;
+    bool      m_externalLyrics;
 };

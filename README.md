@@ -296,6 +296,18 @@ named.
     does send a `User-Agent` of `tidal-wave/<version>
     (+https://github.com/immineal/tidal-wave)`, so GitHub sees your IP address and which
     version you run. The reply is a version number and a link.
+*   **LRCLIB and Genius, for lyrics, only if you switch it on.** Off until you turn on
+    Settings -> Experimental -> "Find lyrics on other sites". With it on, and only for a
+    track Tidal has no lyrics for, the app asks `https://lrclib.net/api/get` (and
+    `/api/search` if that finds nothing) with the track's artist, title, album and length,
+    then `https://genius.com/api/search/song` with its artist and title and the Genius song
+    page that search names (`src/api/LyricsProviders.cpp`, `src/api/LyricsFinder.cpp`).
+    No Tidal token or id is sent. Both sites see your IP address and a `User-Agent` of
+    `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup starts once
+    a track has been playing for three seconds, a site gets at most one request every two
+    seconds, and a site that refuses (HTTP 429, 403, 503 or a bot check) is left alone for
+    the time it asks for, or 15 minutes and doubling. Switching it off stops a lookup that
+    is under way, and no `QNetworkAccessManager` for it exists until the first lookup.
 *   **Nothing, for feedback.** The two buttons in Settings -> Feedback open a URL and stop
     there. "Open a GitHub issue" builds
     `https://github.com/immineal/tidal-wave/issues/new?title=...&body=...`, "Send an email"
@@ -316,14 +328,18 @@ named.
     the refresh token is enough to use your account. Logging out deletes it. Note the
     lowercase directory name: this is not the same place as the settings below.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
-    language, sidebar width, audio output device and software rendering flag
-    (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
+    language, sidebar width, audio output device, software rendering flag and the
+    switch for lyrics from other sites (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
     download folder (`src/player/Downloader.cpp`), your pinned items and recently played
     list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), and the
     update check's state (`src/ui/UpdateCheck.cpp`).
 *   **`~/.local/share/TidalWave/Tidal Wave/`** (`QStandardPaths::AppDataLocation`) holds
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
     that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`).
+*   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
+    lyrics found on another site, or a note that none were found, so that a song is looked
+    up once. A "none found" note is retried after 30 days (`src/api/LyricsFinder.cpp`).
+    Nothing is written there while the lyrics switch is off.
 *   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
     **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so
     the tray, taskbar and launcher can resolve it by name. The app writes a copy itself only

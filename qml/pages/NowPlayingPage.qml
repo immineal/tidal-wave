@@ -276,6 +276,9 @@ Rectangle {
     property int    currentLyricLine: -1
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
+    // Set when the words came from another site: its name and the page.
+    property string lyricsSource: ""
+    property string lyricsSourceUrl: ""
 
     // The band at the bottom of the open panel that belongs to the chips.
     // Nothing scrolls through it, so a tap on a chip cannot also hit a lyric.
@@ -366,26 +369,52 @@ Rectangle {
     function loadLyrics() {
         if (!hasTrack || track.id <= 0) return
         lyricsState = "loading"
+        lyricsSource = ""
+        lyricsSourceUrl = ""
+        var forId = track.id
         bridge.fetchLyrics(track.id, function(result, err) {
-            if (err) { lyricsState = "unavailable"; return }
-            var rawText = result.text || ""
-            var timed   = result.timed || false
-            if (rawText.length === 0) { lyricsState = "unavailable"; return }
-            lyricsIsTimed = timed
-            if (timed) {
-                lyricsData = parseLrc(rawText)
-            } else {
-                var plain = rawText.split('\n')
-                var arr = []
-                for (var i = 0; i < plain.length; i++) {
-                    var t = plain[i].trim()
-                    if (t.length > 0) arr.push({ ms: 0, text: t })
-                }
-                lyricsData = arr
-            }
-            lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
-            currentLyricLine = 0
+            if (!root.hasTrack || root.track.id !== forId) return
+            var rawText = err ? "" : (result.text || "")
+            if (rawText.length === 0) { root.findLyricsElsewhere(forId); return }
+            root.showLyricsText(rawText, result.timed || false)
         })
+    }
+
+    // Only with the switch on, and only for a track Tidal has none for.
+    function findLyricsElsewhere(forId) {
+        if (!prefs.externalLyrics) { lyricsState = "unavailable"; return }
+        bridge.findLyrics(root.track, function(result, err) {
+            if (!root.hasTrack || root.track.id !== forId) return
+            var text = err ? "" : (result.text || "")
+            if (text.length === 0) { root.lyricsState = "unavailable"; return }
+            root.lyricsSource    = result.source || ""
+            root.lyricsSourceUrl = result.url || ""
+            root.showLyricsText(text, result.timed || false)
+        })
+    }
+
+    function showLyricsText(rawText, timed) {
+        lyricsIsTimed = timed
+        if (timed) {
+            lyricsData = parseLrc(rawText)
+        } else {
+            var plain = rawText.split('\n')
+            var arr = []
+            for (var i = 0; i < plain.length; i++) {
+                var t = plain[i].trim()
+                if (t.length > 0) arr.push({ ms: 0, text: t })
+            }
+            lyricsData = arr
+        }
+        lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
+        currentLyricLine = 0
+    }
+
+    Connections {
+        target: prefs
+        function onExternalLyricsChanged() {
+            if (prefs.externalLyrics && root.lyricsState === "unavailable") root.loadLyrics()
+        }
     }
 
     // ─── Credits ───────────────────────────────────────
@@ -797,6 +826,36 @@ Rectangle {
                                 }
                             }
                         }
+
+                        // Where the words came from, when it was not Tidal.
+                        // Bottom left, clear of the chips in the other corner.
+                        Text {
+                            objectName: "nowPlayingLyricsSource"
+                            readonly property string sourceUrl: root.lyricsSourceUrl
+                            visible: root.lyricsState === "ready" && root.lyricsSource.length > 0
+                                     && !(root.userScrolled && root.lyricsIsTimed)
+                            anchors.left: parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: 16
+                            anchors.bottomMargin: 10
+                            height: 26
+                            width: Math.min(implicitWidth,
+                                            Math.max(0, parent.width - panelChips.width - 46))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Lyrics from %1", "%1 is a lyrics website").arg(root.lyricsSource)
+                            color: Theme.textDim; font.pixelSize: 11
+                            font.underline: sourceHover.hovered && sourceUrl.length > 0
+                            HoverHandler {
+                                id: sourceHover
+                                cursorShape: parent.sourceUrl.length > 0 ? Qt.PointingHandCursor
+                                                                         : Qt.ArrowCursor
+                            }
+                            TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
+                                onTapped: if (parent.sourceUrl.length > 0) app.openUrl(parent.sourceUrl)
+                            }
+                        }
                     }
 
                     // Credits panel. The other tab over the same slot, built
@@ -975,6 +1034,7 @@ Rectangle {
                     // Lyrics in the corner. The Row skips a hidden chip, so
                     // with no lyrics Credits takes the corner.
                     Row {
+                        id: panelChips
                         objectName: "nowPlayingPanelChips"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right

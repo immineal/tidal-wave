@@ -772,6 +772,40 @@ Popup {
             }
 
 
+            // ── experimental ─────────────────────────────────────────────
+            Section {
+                heading: qsTr("Experimental")
+                key: "experimental"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: qsTr("Find lyrics on other sites")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsExternalLyricsNote"
+                            text: qsTr("When Tidal has no lyrics for the playing track, its artist, title, album and length are sent to lrclib.net and genius.com to look for them there.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsExternalLyricsToggle"
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: prefs.externalLyrics
+                        onToggled: prefs.externalLyrics = !prefs.externalLyrics
+                    }
+                }
+            }
+
+
             // ── privacy ──────────────────────────────────────────────────
             // Last on purpose: a wall of prose reads as the end of the panel,
             // and tst_settings pins the order. One translatable string per
@@ -784,10 +818,13 @@ Popup {
                     text: qsTr("Tidal Wave has no analytics and no telemetry.")
                 }
                 PrivacyLine {
-                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.")
+                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details only with the switch for them on, see below.")
                 }
                 PrivacyLine {
-                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.")
+                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.")
+                }
+                PrivacyLine {
+                    text: qsTr("Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for: lrclib.net gets that track's artist, title, album and length, genius.com its artist and title, and both see your IP address and the app's name and version. Whatever they find is kept on this machine, so a song is not looked up twice.")
                 }
                 PrivacyLine {
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")

@@ -135,6 +135,27 @@ private slots:
         QVERIFY(!p3.quitOnClose());
     }
 
+    // Opt in: a fresh install sends nothing to the lyrics sites.
+    void externalLyricsIsOffUntilSwitchedOn() {
+        {
+            Prefs p;
+            QVERIFY(!p.externalLyrics());
+            QSignalSpy spy(&p, &Prefs::externalLyricsChanged);
+            p.setExternalLyrics(true);
+            p.setExternalLyrics(true);
+            QCOMPARE(spy.count(), 1);
+        }
+        {
+            QSettings s;
+            QCOMPARE(s.value(QStringLiteral("lyrics/externalSources")).toBool(), true);
+        }
+        Prefs p2;
+        QVERIFY(p2.externalLyrics());
+        p2.setExternalLyrics(false);
+        Prefs p3;
+        QVERIFY(!p3.externalLyrics());
+    }
+
     // The key is written out for the same reason as quitOnClose's: a rename
     // would silently put everyone back on the default.
     void tintedGreysIsStoredUnderItsOwnKey() {

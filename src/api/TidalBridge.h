@@ -10,6 +10,8 @@
 #include <QStringList>
 #include "TidalClient.h"
 
+class LyricsFinder;
+
 // Sorts by max(local last-played time, Playlist::addedAt), descending.
 // `playtimes` maps playlist uuid to ms since epoch. Stable, so playlists with
 // equal keys keep the order the API returned.
@@ -129,6 +131,10 @@ public:
     // `tracks/<id>` is the one endpoint known to carry it.
     Q_INVOKABLE void fetchTrackMix (qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
+    // Lyrics from other sites for a track map, when the switch for it is on:
+    // function({text, timed, source, url}, error), error "off" when it is off.
+    Q_INVOKABLE void findLyrics     (const QVariantMap &track, QJSValue cb);
+    void setLyricsFinder(LyricsFinder *f) { m_lyricsFinder = f; }
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
     //           releaseDate, upc } and an error string.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
@@ -221,6 +227,7 @@ private:
     QVariantList mixesList     (const QList<Mix>      &v) const;
 
     TidalClient  *m_client;
+    LyricsFinder *m_lyricsFinder = nullptr;
     QQmlEngine   *m_engine = nullptr;
     QSet<qlonglong> m_favoriteTrackIds;
     // Bumped each time loadFavoriteTrackIds() restarts paging. Callbacks from

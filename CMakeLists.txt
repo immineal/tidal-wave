@@ -51,6 +51,8 @@ set(SOURCES
     src/api/TidalClient.cpp
     src/api/RecordVersions.cpp
     src/api/TidalBridge.cpp
+    src/api/LyricsProviders.cpp
+    src/api/LyricsFinder.cpp
     src/player/Player.cpp
     src/player/SpectrumAnalyzer.cpp
     src/player/Downloader.cpp
@@ -77,6 +79,8 @@ set(HEADERS
     src/api/TidalClient.h
     src/api/RecordVersions.h
     src/api/TidalBridge.h
+    src/api/LyricsProviders.h
+    src/api/LyricsFinder.h
     src/player/Player.h
     src/player/SpectrumAnalyzer.h
     src/player/Downloader.h

@@ -659,6 +659,12 @@ int Application::run(int argc, char **argv) {
     m_auth   = new Auth(m_api, this);
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
+    m_lyricsFinder = new LyricsFinder(this);
+    m_lyricsFinder->setEnabledSource([prefs = m_prefs] { return prefs->externalLyrics(); });
+    connect(m_prefs, &Prefs::externalLyricsChanged, m_lyricsFinder, [this] {
+        if (!m_prefs->externalLyrics()) m_lyricsFinder->cancel();
+    });
+    m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
