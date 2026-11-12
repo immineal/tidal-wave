@@ -751,6 +751,7 @@ void TidalBridge::findLyrics(const QVariantMap &track, QJSValue cb) {
         result["timed"]  = r.timed;
         result["source"] = r.source;
         result["url"]    = r.url.toString();
+        result["instrumental"] = r.instrumental;
         call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
     });
 }

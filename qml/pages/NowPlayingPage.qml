@@ -269,7 +269,8 @@ Rectangle {
         return Window.window ? Window.window.formatSleepTime(seconds) : ""
     }
 
-    // Lyrics state: "none", "loading", "ready", "unavailable"
+    // Lyrics state: "none", "loading", "ready", "unavailable", and
+    // "instrumental" when another site knows the track has no words.
     property string lyricsState: "none"
     property var    lyricsData:  []   // [{ms, text}] for timed; [{ms: 0, text}] for plain
     property bool   lyricsIsTimed: false
@@ -385,6 +386,7 @@ Rectangle {
         if (!prefs.externalLyrics) { lyricsState = "unavailable"; return }
         bridge.findLyrics(root.track, function(result, err) {
             if (!root.hasTrack || root.track.id !== forId) return
+            if (!err && result.instrumental) { root.lyricsState = "instrumental"; return }
             var text = err ? "" : (result.text || "")
             if (text.length === 0) { root.lyricsState = "unavailable"; return }
             root.lyricsSource    = result.source || ""
@@ -793,6 +795,13 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: root.lyricsState === "unavailable"
                                 text: qsTr("No lyrics available")
+                                color: Theme.textDim; font.pixelSize: 14
+                            }
+                            Text {
+                                objectName: "nowPlayingLyricsInstrumental"
+                                anchors.centerIn: parent
+                                visible: root.lyricsState === "instrumental"
+                                text: qsTr("Instrumental", "a track with no words")
                                 color: Theme.textDim; font.pixelSize: 14
                             }
                         }

@@ -11,12 +11,14 @@ milestones and not a semver promise about an API.
 
 - Settings has an Experimental section with one switch, Find lyrics on other
   sites, off unless you turn it on. With it on, a track Tidal has no lyrics
-  for is looked up on LRCLIB, then on Genius, and the lyrics show as Tidal's
-  do: timed ones follow the song. A line under them names the site and links
-  to it. Each site is asked at most once every two seconds and is left alone
-  for a while after it refuses; what is found is kept on disk, so a song is
-  looked up once. The privacy notice and the README say what the two sites
-  receive.
+  for is looked up on LRCLIB, NetEase Cloud Music, KuGou and Genius, in that
+  order, and the lyrics show as Tidal's do: timed ones follow the song. A line
+  under them names the site and links to it. A track one of the sites knows
+  as an instrumental says Instrumental instead of No lyrics available. Each
+  site is asked at most once a second and is left alone for a while after it
+  refuses; what is found is kept on disk, so a song is looked up once. The
+  privacy notice and the README say what each site receives, and that two of
+  them are servers in China.
 
 ## [0.4.2] - 2026-10-17
 

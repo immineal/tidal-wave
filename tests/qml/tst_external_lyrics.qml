@@ -118,6 +118,24 @@ TestCase {
         compare(page.lyricsState, "unavailable")
     }
 
+    // A site that knows the song says it has no words: the panel says so,
+    // rather than that there are no lyrics.
+    function test_instrumental_is_said() {
+        prefs.externalLyrics = true
+        bridge.setFoundInstrumentalForTest(true)
+        var page = openPage(509)
+        compare(page.lyricsState, "instrumental")
+        var chip = findChild(page, "nowPlayingLyricsToggle")
+        verify(chip.visible, "the lyrics chip hid itself for an instrumental")
+        page.showLyrics = true
+        tryVerify(function () { return page.lyricsness === 1 }, 3000)
+        var note = findChild(page, "nowPlayingLyricsInstrumental")
+        verify(note, "there is no instrumental note")
+        verify(note.visible, "the instrumental note is hidden")
+        compare(note.text, "Instrumental")
+        verify(!findChild(page, "nowPlayingLyricsSource").visible)
+    }
+
     function test_switching_on_looks_again() {
         var page = openPage(506)
         compare(page.lyricsState, "unavailable")

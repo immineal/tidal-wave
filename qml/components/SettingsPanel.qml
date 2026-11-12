@@ -791,7 +791,7 @@ Popup {
                         }
                         Text {
                             objectName: "settingsExternalLyricsNote"
-                            text: qsTr("When Tidal has no lyrics for the playing track, its artist, title, album and length are sent to lrclib.net and genius.com to look for them there.")
+                            text: qsTr("When Tidal has no lyrics for the playing track, other sites are asked: lrclib.net gets its artist, title, album and length; music.163.com its artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.")
                             color: Theme.textDim; font.pixelSize: 11
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -824,7 +824,7 @@ Popup {
                     text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.")
                 }
                 PrivacyLine {
-                    text: qsTr("Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for: lrclib.net gets that track's artist, title, album and length, genius.com its artist and title, and both see your IP address and the app's name and version. Whatever they find is kept on this machine, so a song is not looked up twice.")
+                    text: qsTr("Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for. The sites are asked in this order, and the asking stops at the first that knows the track: lrclib.net gets its artist, title, album and length; music.163.com (NetEase Cloud Music) its artist and title; lyrics.kugou.com (KuGou) its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China. Each site asked sees your IP address and the app's name and version. Whatever they find is kept on this machine, so a song is not looked up twice.")
                 }
                 PrivacyLine {
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")

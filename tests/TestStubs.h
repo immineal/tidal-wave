@@ -642,6 +642,7 @@ public:
             res.setProperty(QStringLiteral("timed"), QJSValue(m_foundTimed));
             res.setProperty(QStringLiteral("source"), QJSValue(m_foundSource));
             res.setProperty(QStringLiteral("url"), QJSValue(m_foundUrl));
+            res.setProperty(QStringLiteral("instrumental"), QJSValue(m_foundInstrumental));
         }
         if (!cb.isCallable()) return;
         QJSValueList args;
@@ -652,11 +653,13 @@ public:
                                            const QString &source, const QString &url) {
         m_foundText = text; m_foundTimed = timed; m_foundSource = source; m_foundUrl = url;
     }
+    Q_INVOKABLE void setFoundInstrumentalForTest(bool on) { m_foundInstrumental = on; }
     Q_INVOKABLE int         findLyricsCallsForTest() const { return m_findLyricsCalls; }
     Q_INVOKABLE QVariantMap lastFindLyricsTrackForTest() const { return m_lastFindLyricsTrack; }
     Q_INVOKABLE void resetLyricsForTest() {
         m_lyricsText.clear(); m_lyricsTimed = false;
         m_foundText.clear(); m_foundTimed = false; m_foundSource.clear(); m_foundUrl.clear();
+        m_foundInstrumental = false;
         m_findLyricsCalls = 0; m_lastFindLyricsTrack.clear();
     }
     // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
@@ -1093,6 +1096,7 @@ private:
     bool        m_lyricsTimed = false;
     QString     m_foundText;
     bool        m_foundTimed = false;
+    bool        m_foundInstrumental = false;
     QString     m_foundSource;
     QString     m_foundUrl;
     int         m_findLyricsCalls = 0;

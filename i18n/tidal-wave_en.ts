@@ -779,6 +779,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Instrumental</source>
+        <comment>a track with no words</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Resync</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1308,11 +1313,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>When Tidal has no lyrics for the playing track, other sites are asked: lrclib.net gets its artist, title, album and length; music.163.com its artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details only with the switch for them on, see below.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for. The sites are asked in this order, and the asking stops at the first that knows the track: lrclib.net gets its artist, title, album and length; music.163.com (NetEase Cloud Music) its artist and title; lyrics.kugou.com (KuGou) its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China. Each site asked sees your IP address and the app&apos;s name and version. Whatever they find is kept on this machine, so a song is not looked up twice.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1443,10 +1456,6 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>When Tidal has no lyrics for the playing track, its artist, title, album and length are sent to lrclib.net and genius.com to look for them there.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Privacy</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1486,10 +1495,6 @@
     </message>
     <message>
         <source>At most once a day, using the GitHub releases page.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for: lrclib.net gets that track&apos;s artist, title, album and length, genius.com its artist and title, and both see your IP address and the app&apos;s name and version. Whatever they find is kept on this machine, so a song is not looked up twice.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

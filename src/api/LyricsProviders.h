@@ -25,6 +25,7 @@ struct LyricsResult {
     bool    timed = false;
     QString source;         // display name, e.g. "LRCLIB"
     QUrl    url;            // page the lyrics came from
+    bool    instrumental = false;   // a source said the track has no words
 };
 
 struct LyricsReply {
@@ -34,7 +35,9 @@ struct LyricsReply {
 };
 
 struct LyricsStep {
-    enum Kind { Request, Found, Miss, Failed };
+    // Instrumental ends the chain like Found: a source knows the song and
+    // says it has no words.
+    enum Kind { Request, Found, Miss, Failed, Instrumental };
     Kind         kind = Miss;
     QUrl         url;       // Request
     int          stage = 0; // Request: handed back to next()
@@ -47,6 +50,7 @@ struct LyricsStep {
     static LyricsStep found(const LyricsResult &r) { LyricsStep s; s.kind = Found; s.result = r; return s; }
     static LyricsStep miss()   { return LyricsStep{}; }
     static LyricsStep failed() { LyricsStep s; s.kind = Failed; return s; }
+    static LyricsStep instrumental() { LyricsStep s; s.kind = Instrumental; return s; }
 };
 
 class LyricsProvider {
@@ -67,7 +71,12 @@ QString normaliseArtist(const QString &artist);
 bool    titleMatches(const QString &wanted, const QString &got);
 bool    artistMatches(const QStringList &wanted, const QString &got);
 // A source that gives no duration passes with got <= 0.
-bool    durationMatches(int wanted, double got);
+bool    durationMatches(int wanted, double got, double tolerance = 3.0);
+// The title without bracketed or dashed version parts, case kept.
+QString searchTitle(const QString &title);
+// Drops credit lines ("作词 : ...", "Lyrics by: ...") and LRC header tags.
+QString stripCreditLines(const QString &lyrics);
+bool    hasTimestamps(const QString &lyrics);
 
 // A body that is an anti-bot interstitial rather than the page asked for.
 bool    looksLikeChallenge(const QByteArray &body);
@@ -88,18 +97,39 @@ public:
     LyricsStep next(const LyricsQuery &q, const LyricsStep &prev,
                     const LyricsReply &reply) const override;
 
-    // Public for tests: the result one LRCLIB record makes, if it fits.
-    static bool fromRecord(const LyricsQuery &q, const QVariantMap &rec, LyricsResult *out);
+    // Public for tests: Found, Instrumental or Miss for one record.
+    static LyricsStep fromRecord(const LyricsQuery &q, const QVariantMap &rec, double tolerance);
 };
 
+class NeteaseProvider : public LyricsProvider {
+public:
+    enum Stage { Search = 0, Lyric = 1 };
+    QString    name() const override { return QStringLiteral("NetEase Cloud Music"); }
+    LyricsStep start(const LyricsQuery &q) const override;
+    LyricsStep next(const LyricsQuery &q, const LyricsStep &prev,
+                    const LyricsReply &reply) const override;
+};
+
+class KugouProvider : public LyricsProvider {
+public:
+    enum Stage { Search = 0, Download = 1 };
+    QString    name() const override { return QStringLiteral("KuGou"); }
+    LyricsStep start(const LyricsQuery &q) const override;
+    LyricsStep next(const LyricsQuery &q, const LyricsStep &prev,
+                    const LyricsReply &reply) const override;
+};
+
+// Asks for the song page by its address only: robots.txt allows the pages
+// and disallows the search API.
 class GeniusProvider : public LyricsProvider {
 public:
-    enum Stage { Search = 0, Page = 1 };
     QString    name() const override { return QStringLiteral("Genius"); }
     LyricsStep start(const LyricsQuery &q) const override;
     LyricsStep next(const LyricsQuery &q, const LyricsStep &prev,
                     const LyricsReply &reply) const override;
 
-    // Public for tests: the song page of the first search hit that fits.
-    static QUrl pickHit(const LyricsQuery &q, const QByteArray &searchJson);
+    // Empty when artist and title fold to nothing in ASCII.
+    static QUrl pageUrl(const LyricsQuery &q);
+    // Whether the page's <title> reads "Artist – Title Lyrics" for this song.
+    static bool pageIsFor(const LyricsQuery &q, const QByteArray &html);
 };

@@ -811,6 +811,11 @@
         <translation>Sync</translation>
     </message>
     <message>
+        <source>Instrumental</source>
+        <comment>a track with no words</comment>
+        <translation>Instrumental</translation>
+    </message>
+    <message>
         <source>Lyrics from %1</source>
         <comment>%1 is a lyrics website</comment>
         <translation>Songtext von %1</translation>
@@ -1308,12 +1313,20 @@
         <translation>Version %1</translation>
     </message>
     <message>
+        <source>When Tidal has no lyrics for the playing track, other sites are asked: lrclib.net gets its artist, title, album and length; music.163.com its artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
+        <translation>Hat Tidal keinen Songtext zum laufenden Titel, werden andere Seiten gefragt: lrclib.net erhält Interpret, Titel, Album und Länge; music.163.com Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
+    </message>
+    <message>
         <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details only with the switch for them on, see below.</source>
         <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest. Songtext-Seiten erhalten Angaben zu einem Titel nur, wenn der Schalter dafür an ist, siehe unten.</translation>
     </message>
     <message>
         <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.</source>
         <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Mediathek; und Songtexte, die auf anderen Seiten gefunden wurden.</translation>
+    </message>
+    <message>
+        <source>Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for. The sites are asked in this order, and the asking stops at the first that knows the track: lrclib.net gets its artist, title, album and length; music.163.com (NetEase Cloud Music) its artist and title; lyrics.kugou.com (KuGou) its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China. Each site asked sees your IP address and the app&apos;s name and version. Whatever they find is kept on this machine, so a song is not looked up twice.</source>
+        <translation>Songtexte von anderen Seiten, nur wenn der Schalter unter Experimentell an ist, und nur für einen Titel, zu dem Tidal keinen Songtext hat. Die Seiten werden in dieser Reihenfolge gefragt, und die Suche endet bei der ersten, die den Titel kennt: lrclib.net erhält Interpret, Titel, Album und Länge; music.163.com (NetEase Cloud Music) Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Was sie finden, wird auf diesem Rechner gespeichert, damit ein Lied nicht zweimal nachgeschlagen wird.</translation>
     </message>
     <message>
         <source>Log out</source>
@@ -1410,10 +1423,6 @@
         <translation>Songtexte auf anderen Seiten suchen</translation>
     </message>
     <message>
-        <source>When Tidal has no lyrics for the playing track, its artist, title, album and length are sent to lrclib.net and genius.com to look for them there.</source>
-        <translation>Hat Tidal keinen Songtext zum laufenden Titel, werden Interpret, Titel, Album und Länge an lrclib.net und genius.com geschickt, um dort danach zu suchen.</translation>
-    </message>
-    <message>
         <source>Privacy</source>
         <translation>Datenschutz</translation>
     </message>
@@ -1487,10 +1496,6 @@
     <message>
         <source>At most once a day, using the GitHub releases page.</source>
         <translation>Höchstens einmal täglich, über die Releases-Seite auf GitHub.</translation>
-    </message>
-    <message>
-        <source>Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for: lrclib.net gets that track&apos;s artist, title, album and length, genius.com its artist and title, and both see your IP address and the app&apos;s name and version. Whatever they find is kept on this machine, so a song is not looked up twice.</source>
-        <translation>Songtexte von anderen Seiten, nur wenn der Schalter unter Experimentell an ist, und nur für einen Titel, zu dem Tidal keinen Songtext hat: lrclib.net erhält Interpret, Titel, Album und Länge dieses Titels, genius.com Interpret und Titel, und beide sehen deine IP-Adresse sowie Name und Version der App. Was sie finden, wird auf diesem Rechner gespeichert, damit ein Lied nicht zweimal nachgeschlagen wird.</translation>
     </message>
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>

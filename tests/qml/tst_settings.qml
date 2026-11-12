@@ -1136,7 +1136,8 @@ TestCase {
         verify(!toggle.checked, "lyrics from other sites should start off")
         var note = findByName(h.panel.contentItem, "settingsExternalLyricsNote")
         verify(note && note.visible, "the switch has no line saying what it sends")
-        var mustSay = ["lrclib.net", "genius.com", "artist", "title", "album", "length"]
+        var mustSay = ["lrclib.net", "music.163.com", "lyrics.kugou.com", "genius.com",
+                       "artist", "title", "album", "length", "China"]
         for (var i = 0; i < mustSay.length; i++)
             verify(note.text.indexOf(mustSay[i]) !== -1,
                    "the note never says \"" + mustSay[i] + "\"")
@@ -1725,7 +1726,8 @@ TestCase {
         var mustSay = ["no analytics", "no telemetry", "auth.tidal.com", "api.tidal.com",
                        "resources.tidal.com", "mDNS", "api.github.com", "IP address",
                        "tokens", "switched off above", "release page", "README",
-                       "lrclib.net", "genius.com", "Experimental"]
+                       "lrclib.net", "music.163.com", "lyrics.kugou.com", "genius.com",
+                       "China", "Experimental"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy text never mentions \"" + mustSay[j] + "\"")

@@ -296,18 +296,28 @@ named.
     does send a `User-Agent` of `tidal-wave/<version>
     (+https://github.com/immineal/tidal-wave)`, so GitHub sees your IP address and which
     version you run. The reply is a version number and a link.
-*   **LRCLIB and Genius, for lyrics, only if you switch it on.** Off until you turn on
+*   **Four lyrics sites, only if you switch it on.** Off until you turn on
     Settings -> Experimental -> "Find lyrics on other sites". With it on, and only for a
-    track Tidal has no lyrics for, the app asks `https://lrclib.net/api/get` (and
-    `/api/search` if that finds nothing) with the track's artist, title, album and length,
-    then `https://genius.com/api/search/song` with its artist and title and the Genius song
-    page that search names (`src/api/LyricsProviders.cpp`, `src/api/LyricsFinder.cpp`).
-    No Tidal token or id is sent. Both sites see your IP address and a `User-Agent` of
+    track Tidal has no lyrics for, the sites below are asked in this order, and the asking
+    stops at the first that has lyrics for the track or says it is an instrumental
+    (`src/api/LyricsProviders.cpp`, `src/api/LyricsFinder.cpp`):
+    1.  `https://lrclib.net/api/get`, and `/api/search` if that finds nothing: the
+        track's artist, title, album and length.
+    2.  `https://music.163.com/api/search/get` (NetEase Cloud Music): the artist and
+        title; then `/api/song/lyric` with the id of the song it found.
+    3.  `https://lyrics.kugou.com/search` (KuGou): the artist, title and length; then
+        `/download` with the id and access key of the lyrics it found.
+    4.  `https://genius.com/<Artist>-<title>-lyrics`, the song page whose address is
+        built from the artist and title. Genius's search API is not used.
+
+    music.163.com and lyrics.kugou.com are servers in China. No Tidal token or id is
+    sent. Each site asked sees your IP address and a `User-Agent` of
     `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup starts once
-    a track has been playing for three seconds, a site gets at most one request every two
-    seconds, and a site that refuses (HTTP 429, 403, 503 or a bot check) is left alone for
-    the time it asks for, or 15 minutes and doubling. Switching it off stops a lookup that
-    is under way, and no `QNetworkAccessManager` for it exists until the first lookup.
+    a track has been playing for three seconds, a site gets at most one request a second
+    and never two at once, and a site that refuses (HTTP 429, 403, 503 or a bot check) is
+    left alone for the time it asks for, or 15 minutes and doubling, plus up to 30 %.
+    Switching it off stops a lookup that is under way, and no `QNetworkAccessManager` for
+    it exists until the first lookup.
 *   **Nothing, for feedback.** The two buttons in Settings -> Feedback open a URL and stop
     there. "Open a GitHub issue" builds
     `https://github.com/immineal/tidal-wave/issues/new?title=...&body=...`, "Send an email"
@@ -337,8 +347,9 @@ named.
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
     that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`).
 *   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
-    lyrics found on another site, or a note that none were found, so that a song is looked
-    up once. A "none found" note is retried after 30 days (`src/api/LyricsFinder.cpp`).
+    lyrics found on another site, a note that a site called it an instrumental, or a note
+    that none were found, so that a song is looked up once. A "none found" note is
+    retried after 30 days (`src/api/LyricsFinder.cpp`).
     Nothing is written there while the lyrics switch is off.
 *   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
     **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so

@@ -12,6 +12,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSaveFile>
+#include <QRandomGenerator>
 #include <QStandardPaths>
 #include <algorithm>
 
@@ -89,6 +90,8 @@ void HostPacing::refused(const QString &host, qint64 now, const QByteArray &retr
     }
     if (pause < 0) pause = kFirstBackoffMs << std::min(h.strikes, 6);
     ++h.strikes;
+    const double j = m_jitter ? m_jitter() : QRandomGenerator::global()->generateDouble();
+    pause += qint64(double(pause) * kMaxJitter * std::clamp(j, 0.0, 1.0));
     h.blockedUntil = now + std::min(pause, kMaxBackoffMs);
 }
 
@@ -112,6 +115,10 @@ LyricsCache::Hit LyricsCache::lookup(qint64 trackId, qint64 now, LyricsResult *o
     if (!f.open(QIODevice::ReadOnly)) return Hit::None;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
     if (o.isEmpty()) return Hit::None;
+    if (o.value(QStringLiteral("instrumental")).toBool()) {
+        out->instrumental = true;
+        return Hit::Instrumental;
+    }
     if (!o.value(QStringLiteral("found")).toBool()) {
         const qint64 at = qint64(o.value(QStringLiteral("at")).toDouble());
         return (at <= now && now - at < kMissTtlMs) ? Hit::Miss : Hit::None;
@@ -135,6 +142,12 @@ void LyricsCache::storeFound(qint64 trackId, const LyricsResult &r, qint64 now) 
     QJsonObject o{{QStringLiteral("found"), true}, {QStringLiteral("text"), r.text},
                   {QStringLiteral("timed"), r.timed}, {QStringLiteral("source"), r.source},
                   {QStringLiteral("url"), r.url.toString()}, {QStringLiteral("at"), double(now)}};
+    write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+void LyricsCache::storeInstrumental(qint64 trackId, qint64 now) const {
+    QJsonObject o{{QStringLiteral("found"), false}, {QStringLiteral("instrumental"), true},
+                  {QStringLiteral("at"), double(now)}};
     write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
@@ -174,7 +187,8 @@ void LyricsFinder::find(const LyricsQuery &q, Done done) {
 
     LyricsResult cached;
     switch (cache().lookup(q.trackId, m_now(), &cached)) {
-    case LyricsCache::Hit::Found: done(cached, {}); return;
+    case LyricsCache::Hit::Found:
+    case LyricsCache::Hit::Instrumental: done(cached, {}); return;
     case LyricsCache::Hit::Miss:  done({}, {}); return;
     case LyricsCache::Hit::None:  break;
     }
@@ -267,6 +281,14 @@ void LyricsFinder::onReply(quint64 gen, const LyricsReply &reply) {
         cache().storeFound(m_query.trackId, step.result, m_now());
         finish(step.result, {}, false);
         return;
+    case LyricsStep::Instrumental: {
+        cache().storeInstrumental(m_query.trackId, m_now());
+        LyricsResult r;
+        r.instrumental = true;
+        r.source = m_providers.at(m_providerIdx)->name();
+        finish(r, {}, false);
+        return;
+    }
     case LyricsStep::Failed:
         m_incomplete = true;
         [[fallthrough]];

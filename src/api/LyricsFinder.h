@@ -41,7 +41,8 @@ private:
 // Per host: a minimum gap between requests, and a pause after a refusal.
 class HostPacing {
 public:
-    static constexpr qint64 kMinIntervalMs  = 2000;
+    static constexpr qint64 kMinIntervalMs  = 1000;
+    static constexpr double kMaxJitter      = 0.3;
     static constexpr qint64 kFirstBackoffMs = 15 * 60 * 1000;
     static constexpr qint64 kMaxBackoffMs   = 24 * 60 * 60 * 1000;
 
@@ -52,11 +53,15 @@ public:
     void   sent(const QString &host, qint64 now);
     void   answered(const QString &host);
     // Retry-After is honoured, as seconds or an HTTP date. Without one the
-    // pause doubles from kFirstBackoffMs with each refusal.
+    // pause doubles from kFirstBackoffMs with each refusal. Either way up to
+    // kMaxJitter of it is added, so clients do not come back in step.
     void   refused(const QString &host, qint64 now, const QByteArray &retryAfter);
     qint64 blockedUntil(const QString &host) const;
+    // Returns [0, 1). Replaced in tests.
+    void   setJitter(std::function<double()> j) { m_jitter = std::move(j); }
 
 private:
+    std::function<double()> m_jitter;
     struct Host { qint64 lastSent = -1; qint64 blockedUntil = 0; int strikes = 0; bool busy = false; };
     QHash<QString, Host> m_hosts;
 };
@@ -65,7 +70,7 @@ private:
 class LyricsCache {
 public:
     static constexpr qint64 kMissTtlMs = 30LL * 24 * 60 * 60 * 1000;
-    enum class Hit { None, Found, Miss };
+    enum class Hit { None, Found, Miss, Instrumental };
 
     explicit LyricsCache(const QString &dir) : m_dir(dir) {}
     static QString defaultDir();
@@ -73,6 +78,7 @@ public:
     Hit  lookup(qint64 trackId, qint64 now, LyricsResult *out) const;
     void storeFound(qint64 trackId, const LyricsResult &r, qint64 now) const;
     void storeMiss(qint64 trackId, qint64 now) const;
+    void storeInstrumental(qint64 trackId, qint64 now) const;
 
 private:
     QString path(qint64 trackId) const;
@@ -97,6 +103,7 @@ public:
     void setCacheDir(const QString &dir) { m_cache = std::make_unique<LyricsCache>(dir); }
     void setClock(std::function<qint64()> now) { m_now = std::move(now); }
     void setSettleMs(int ms) { m_settleMs = ms; }
+    void setJitter(std::function<double()> j) { m_pacing.setJitter(std::move(j)); }
 
     // A newer find() drops the older one, whose `done` is then never called.
     void find(const LyricsQuery &q, Done done);

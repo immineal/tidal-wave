@@ -67,6 +67,7 @@ class TestLyrics : public QObject {
         f->setCacheDir(m_dir.path() + QStringLiteral("/c") + QString::number(++m_cacheN));
         f->setClock([this] { return m_now; });
         f->setSettleMs(LyricsFinder::kSettleMs);
+        f->setJitter([] { return 0.0; });
         return f;
     }
     int m_cacheN = 0;
@@ -88,6 +89,9 @@ private slots:
         QTest::newRow("part kept") << "Song (Part 2)" << "Song" << false;
         QTest::newRow("other song") << "Song" << "Another Song" << false;
         QTest::newRow("dash title kept") << "Here - There" << "Here" << false;
+        QTest::newRow("cjk kept") << "夜の街 (feat. X)" << "夜の街" << true;
+        QTest::newRow("cjk differs") << "夜の街" << "朝の街" << false;
+        QTest::newRow("cyrillic") << "Песня" << "песня" << true;
     }
     void normalisedTitles() {
         QFETCH(QString, a);
@@ -104,6 +108,10 @@ private slots:
                                       QStringLiteral("Simon and Garfunkel")));
         QVERIFY(!lyrics::artistMatches(want, QStringLiteral("Paper Boats")));
         QVERIFY(!lyrics::artistMatches(want, QString()));
+        QVERIFY(lyrics::artistMatches({QStringLiteral("宇多田ヒカル")},
+                                      QStringLiteral("宇多田ヒカル")));
+        QVERIFY(!lyrics::artistMatches({QStringLiteral("宇多田ヒカル")},
+                                       QStringLiteral("横山克")));
     }
 
     void durations() {
@@ -111,6 +119,8 @@ private slots:
         QVERIFY(!lyrics::durationMatches(200, 203.5));
         QVERIFY(lyrics::durationMatches(200, 0));     // the source gave none
         QVERIFY(lyrics::durationMatches(0, 500));
+        QVERIFY(lyrics::durationMatches(200, 202, 2));
+        QVERIFY(!lyrics::durationMatches(200, 202.5, 2));
     }
 
     // ── LRCLIB ───────────────────────────────────────────────────────────
@@ -147,6 +157,8 @@ private slots:
 
         QJsonArray arr;
         arr.append(QJsonDocument::fromJson(lrclibRecord("Harbour Lights", "Paper Lanterns", 260, "[00:01.00]long", "")).object());
+        // 2.5 s off: the search keeps only records within 2 s.
+        arr.append(QJsonDocument::fromJson(lrclibRecord("Harbour Lights", "Paper Lanterns", 203.5, "[00:01.00]near", "")).object());
         arr.append(QJsonDocument::fromJson(lrclibRecord("Harbour Lights", "Paper Lanterns", 200, "", "plain")).object());
         arr.append(QJsonDocument::fromJson(lrclibRecord("Harbour Lights", "Someone Unrelated", 201, "[00:01.00]x", "")).object());
         const LyricsStep r = p.next(q, search, {200, QJsonDocument(arr).toJson(), {}});
@@ -158,12 +170,119 @@ private slots:
         QCOMPARE(p.next(q, get, {500, {}, {}}).kind, LyricsStep::Failed);
     }
 
-    void lrclibSkipsInstrumentals() {
-        LyricsResult r;
+    void lrclibInstrumentalIsAnAnswer() {
+        LrclibProvider p;
+        const LyricsQuery q = query();
         QVariantMap rec = QJsonDocument::fromJson(
-            lrclibRecord("Harbour Lights", "Paper Lanterns", 201, "", "x")).object().toVariantMap();
+            lrclibRecord("Harbour Lights", "Paper Lanterns", 201, "", "")).object().toVariantMap();
         rec["instrumental"] = true;
-        QVERIFY(!LrclibProvider::fromRecord(query(), rec, &r));
+        const LyricsStep r = p.next(q, p.start(q), {200, QJsonDocument::fromVariant(rec).toJson(), {}});
+        QCOMPARE(r.kind, LyricsStep::Instrumental);
+        // An instrumental of another song is no answer.
+        rec["artistName"] = QStringLiteral("Someone Unrelated");
+        QCOMPARE(p.next(q, p.start(q), {200, QJsonDocument::fromVariant(rec).toJson(), {}}).kind,
+                 LyricsStep::Request);
+    }
+
+    // ── NetEase ──────────────────────────────────────────────────────────
+
+    static QByteArray neteaseSearch() {
+        auto song = [](qint64 id, const QString &name, const QString &artist, int ms) {
+            return QJsonObject{{"id", id}, {"name", name}, {"duration", ms},
+                               {"artists", QJsonArray{QJsonObject{{"name", artist}}}}};
+        };
+        return QJsonDocument(QJsonObject{{"result", QJsonObject{{"songs", QJsonArray{
+            song(11, "Harbour Lights", "Paper Lanterns", 260000),
+            song(12, "Harbour Lights", "Other Band", 201000),
+            song(13, "Harbour Lights", "Paper Lanterns", 200500)}}}}}).toJson();
+    }
+
+    void neteaseSearchThenLyric() {
+        NeteaseProvider p;
+        const LyricsQuery q = query();
+        const LyricsStep s = p.start(q);
+        QCOMPARE(s.url.host(), QStringLiteral("music.163.com"));
+        QCOMPARE(s.url.path(), QStringLiteral("/api/search/get"));
+        const QUrlQuery sq(s.url);
+        QCOMPARE(sq.queryItemValue("s", QUrl::FullyDecoded), QStringLiteral("Paper Lanterns Harbour Lights"));
+        QCOMPARE(sq.queryItemValue("type"), QStringLiteral("1"));
+
+        const LyricsStep lyric = p.next(q, s, {200, neteaseSearch(), {}});
+        QCOMPARE(lyric.kind, LyricsStep::Request);
+        QCOMPARE(lyric.url.path(), QStringLiteral("/api/song/lyric"));
+        QCOMPARE(QUrlQuery(lyric.url).queryItemValue("id"), QStringLiteral("13"));
+
+        const QString lrc = QStringLiteral(
+            "[00:00.00] 作词 : Someone\n[00:00.50] 作曲 : Someone\n"
+            "[00:01.00]Lanterns on the water\n[00:04.20]Nobody: nothing but the tide\n");
+        const QByteArray body = QJsonDocument(QJsonObject{{"lrc", QJsonObject{{"lyric", lrc}}}}).toJson();
+        const LyricsStep r = p.next(q, lyric, {200, body, {}});
+        QCOMPARE(r.kind, LyricsStep::Found);
+        QVERIFY(r.result.timed);
+        QCOMPARE(r.result.text, QStringLiteral(
+            "[00:01.00]Lanterns on the water\n[00:04.20]Nobody: nothing but the tide"));
+        QCOMPARE(r.result.source, QStringLiteral("NetEase Cloud Music"));
+        QCOMPARE(r.result.url, QUrl("https://music.163.com/#/song?id=13"));
+
+        QCOMPARE(p.next(q, lyric, {200, "{\"nolyric\":true}", {}}).kind, LyricsStep::Instrumental);
+        QCOMPARE(p.next(q, lyric, {200, "{\"pureMusic\":true,\"lrc\":{\"lyric\":\"[00:01.00]x\"}}", {}}).kind,
+                 LyricsStep::Instrumental);
+        QCOMPARE(p.next(q, lyric, {200, "{\"lrc\":{\"lyric\":\"[00:00.00] 作词 : A\"}}", {}}).kind,
+                 LyricsStep::Miss);
+        QCOMPARE(p.next(q, s, {200, "{\"result\":{}}", {}}).kind, LyricsStep::Miss);
+    }
+
+    // ── KuGou ────────────────────────────────────────────────────────────
+
+    void kugouSearchThenDownload() {
+        KugouProvider p;
+        const LyricsQuery q = query();
+        const LyricsStep s = p.start(q);
+        QCOMPARE(s.url.host(), QStringLiteral("lyrics.kugou.com"));
+        QCOMPARE(s.url.path(), QStringLiteral("/search"));
+        const QUrlQuery sq(s.url);
+        QCOMPARE(sq.queryItemValue("keyword", QUrl::FullyDecoded), QStringLiteral("Paper Lanterns - Harbour Lights"));
+        QCOMPARE(sq.queryItemValue("duration"), QStringLiteral("201000"));
+
+        auto cand = [](const QString &id, const QString &song, const QString &singer, int ms) {
+            return QJsonObject{{"id", id}, {"accesskey", "K" + id}, {"song", song},
+                               {"singer", singer}, {"duration", ms}};
+        };
+        const QByteArray search = QJsonDocument(QJsonObject{{"candidates", QJsonArray{
+            cand("1", "Harbour Lights", "Other Band", 201000),
+            cand("2", "Harbour Lights", "Paper Lanterns", 202000)}}}).toJson();
+        const LyricsStep dl = p.next(q, s, {200, search, {}});
+        QCOMPARE(dl.kind, LyricsStep::Request);
+        QCOMPARE(dl.url.path(), QStringLiteral("/download"));
+        const QUrlQuery dq(dl.url);
+        QCOMPARE(dq.queryItemValue("id"), QStringLiteral("2"));
+        QCOMPARE(dq.queryItemValue("accesskey"), QStringLiteral("K2"));
+        QCOMPARE(dq.queryItemValue("fmt"), QStringLiteral("lrc"));
+
+        const QByteArray lrc = QStringLiteral(
+            "[ar:Paper Lanterns]\n[ti:Harbour Lights]\n[00:00.10]作曲：Someone\n"
+            "[00:01.00]First lantern\n[00:03.00]Second lantern\n[00:05.00]Third lantern\n"
+            "[00:07.00]Fourth lantern\n").toUtf8();
+        const QByteArray body = QJsonDocument(QJsonObject{{"content", QString::fromLatin1(lrc.toBase64())}}).toJson();
+        const LyricsStep r = p.next(q, dl, {200, body, {}});
+        QCOMPARE(r.kind, LyricsStep::Found);
+        QVERIFY(r.result.timed);
+        QVERIFY(r.result.text.startsWith(QStringLiteral("[00:01.00]First lantern")));
+        QVERIFY(!r.result.text.contains(QStringLiteral("作曲")));
+        QCOMPARE(r.result.source, QStringLiteral("KuGou"));
+        QCOMPARE(p.next(q, s, {200, "{\"candidates\":[]}", {}}).kind, LyricsStep::Miss);
+    }
+
+    void creditLines() {
+        QCOMPARE(lyrics::stripCreditLines(QStringLiteral(
+                     "[00:00.00]编曲：X\n[00:00.10]Lyrics by: X\n[00:01.00]Time: it waits\n")),
+                 QStringLiteral("[00:01.00]Time: it waits"));
+    }
+
+    void defaultChainOrder() {
+        QStringList names;
+        for (const auto &p : lyrics::defaultProviders()) names << p->name();
+        QCOMPARE(names, (QStringList{"LRCLIB", "NetEase Cloud Music", "KuGou", "Genius"}));
     }
 
     // ── Genius ───────────────────────────────────────────────────────────
@@ -190,27 +309,38 @@ private slots:
         QCOMPARE(lyrics::geniusLyricsFromHtml("<div>nothing here</div>"), QString());
     }
 
-    void geniusSearchPicksTheMatchingHit() {
-        auto hit = [](const QString &title, const QString &artist, const QString &url) {
-            return QJsonObject{{"type", "song"}, {"result", QJsonObject{
-                {"title", title}, {"primary_artist", QJsonObject{{"name", artist}}},
-                {"artist_names", artist}, {"url", url}, {"lyrics_state", "complete"}}}};
-        };
-        QJsonArray hits{hit("Harbour Lights (Translation)", "Genius Translations", "https://genius.com/a"),
-                        hit("Harbour Lights", "Other Band", "https://genius.com/b"),
-                        hit("Harbour Lights", "Paper Lanterns", "https://genius.com/c")};
-        const QJsonObject root{{"response", QJsonObject{{"sections", QJsonArray{
-            QJsonObject{{"type", "song"}, {"hits", hits}}}}}}};
-        const QByteArray json = QJsonDocument(root).toJson();
-        QCOMPARE(GeniusProvider::pickHit(query(), json), QUrl("https://genius.com/c"));
+    void geniusPageAddress() {
+        QCOMPARE(GeniusProvider::pageUrl(query()),
+                 QUrl("https://genius.com/Paper-lanterns-harbour-lights-lyrics"));
+        LyricsQuery q = query();
+        q.artists = {QStringLiteral("Sigur Rós & Friends")};
+        q.title = QStringLiteral("Ára bátur (Live)");
+        QCOMPARE(GeniusProvider::pageUrl(q), QUrl("https://genius.com/Sigur-ros-and-friends-ara-batur-lyrics"));
+        // Nothing left after folding to ASCII: Genius is not asked at all.
+        q.artists = {QStringLiteral("宇多田ヒカル")};
+        q.title = QStringLiteral("花束を君に");
+        QCOMPARE(GeniusProvider().start(q).kind, LyricsStep::Miss);
+    }
 
+    void geniusPageMustNameTheSong() {
+        QFile f(QStringLiteral(TW_FIXTURE_DIR "/genius_song.html"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QByteArray html = f.readAll();
         GeniusProvider p;
         const LyricsStep s = p.start(query());
+        QCOMPARE(s.kind, LyricsStep::Request);
         QCOMPARE(s.url.host(), QStringLiteral("genius.com"));
-        const LyricsStep page = p.next(query(), s, {200, json, {}});
-        QCOMPARE(page.kind, LyricsStep::Request);
-        QCOMPARE(page.url, QUrl("https://genius.com/c"));
-        QCOMPARE(p.next(query(), page, {200, "<html></html>", {}}).kind, LyricsStep::Miss);
+        const LyricsStep r = p.next(query(), s, {200, html, {}});
+        QCOMPARE(r.kind, LyricsStep::Found);
+        QCOMPARE(r.result.source, QStringLiteral("Genius"));
+        QCOMPARE(r.result.url, s.url);
+        QVERIFY(r.result.text.startsWith(QStringLiteral("[Verse 1]")));
+
+        QByteArray other = html;
+        other.replace("Paper Lanterns \xe2\x80\x93 Harbour Lights Lyrics", "Other Band \xe2\x80\x93 Harbour Lights Lyrics");
+        QVERIFY(other != html);
+        QCOMPARE(p.next(query(), s, {200, other, {}}).kind, LyricsStep::Miss);
+        QCOMPARE(p.next(query(), s, {404, {}, {}}).kind, LyricsStep::Miss);
     }
 
     void challengePages() {
@@ -236,6 +366,7 @@ private slots:
 
     void pacingBackoff() {
         HostPacing p;
+        p.setJitter([] { return 0.0; });
         const QString h = QStringLiteral("a.example");
         p.refused(h, 0, {});
         QVERIFY(p.blocked(h, HostPacing::kFirstBackoffMs - 1));
@@ -249,6 +380,23 @@ private slots:
         // 1'000'000'000'000 ms is Sun, 09 Sep 2001 01:46:40 GMT.
         p.refused(h, 1'000'000'000'000, "Sun, 09 Sep 2001 01:51:40 GMT");
         QCOMPARE(p.blockedUntil(h), 1'000'000'000'000 + 300'000);
+    }
+
+    // Up to 30 % on top of the pause, whichever way it was worked out.
+    void pacingJitter() {
+        HostPacing p;
+        const QString h = QStringLiteral("a.example");
+        p.setJitter([] { return 0.5; });
+        p.refused(h, 0, {});
+        QCOMPARE(p.blockedUntil(h), HostPacing::kFirstBackoffMs + HostPacing::kFirstBackoffMs * 15 / 100);
+        p.refused(h, 0, "100");
+        QCOMPARE(p.blockedUntil(h), 115'000);
+        HostPacing real;
+        for (int i = 0; i < 20; ++i) {
+            real.refused(h, 0, "100");
+            QVERIFY(real.blockedUntil(h) >= 100'000);
+            QVERIFY(real.blockedUntil(h) <= 130'000);
+        }
     }
 
     // ── cache ────────────────────────────────────────────────────────────
@@ -267,6 +415,11 @@ private slots:
         QVERIFY(out.timed);
         QCOMPARE(out.source, r.source);
         QCOMPARE(out.url, r.url);
+
+        c.storeInstrumental(3, 1000);
+        LyricsResult instr;
+        QCOMPARE(c.lookup(3, 1000 + 100 * LyricsCache::kMissTtlMs, &instr), LyricsCache::Hit::Instrumental);
+        QVERIFY(instr.instrumental);
     }
 
     // ── the finder ───────────────────────────────────────────────────────
@@ -306,6 +459,7 @@ private slots:
         FakeTransport t;
         bool on = true;
         LyricsFinder *f = makeFinder(&t, &on);
+        f->setProviders({std::make_shared<LrclibProvider>(), std::make_shared<GeniusProvider>()});
         LyricsResult got;
         int calls = 0;
         auto done = [&](const LyricsResult &r, const QString &) { got = r; ++calls; };
@@ -321,19 +475,11 @@ private slots:
         QCOMPARE(t.calls.size(), 2);
         QCOMPARE(t.calls[1].url.path(), QStringLiteral("/api/search"));
         t.answer(1, 200, "[]");
-        // Genius is another host, so no wait.
+        // Genius is another host, so no wait, and one request: the page.
         QTRY_COMPARE(t.calls.size(), 3);
-        QCOMPARE(t.calls[2].url.host(), QStringLiteral("genius.com"));
-        const QJsonObject res{{"response", QJsonObject{{"sections", QJsonArray{QJsonObject{{"hits", QJsonArray{
-            QJsonObject{{"result", QJsonObject{{"title", "Harbour Lights"},
-                {"primary_artist", QJsonObject{{"name", "Paper Lanterns"}}},
-                {"url", "https://genius.com/Paper-lanterns-harbour-lights-lyrics"}}}}}}}}}}}};
-        t.answer(2, 200, QJsonDocument(res).toJson());
-        QVERIFY(QTest::qWaitFor([&] { return f->timerActiveForTest(); }));
-        m_now += HostPacing::kMinIntervalMs;
-        f->fireTimerForTest();
-        QCOMPARE(t.calls.size(), 4);
-        t.answer(3, 200, "<div data-lyrics-container=\"true\">la<br>la</div>");
+        QCOMPARE(t.calls[2].url, QUrl("https://genius.com/Paper-lanterns-harbour-lights-lyrics"));
+        t.answer(2, 200, "<title>Paper Lanterns \xe2\x80\x93 Harbour Lights Lyrics | Genius Lyrics</title>"
+                         "<div data-lyrics-container=\"true\">la<br>la</div>");
         QTRY_COMPARE(calls, 1);
         QCOMPARE(got.text, QStringLiteral("la\nla"));
         QCOMPARE(got.source, QStringLiteral("Genius"));
@@ -342,7 +488,34 @@ private slots:
         // Asked again, it answers from the cache without a request.
         f->find(query(), done);
         QCOMPARE(calls, 2);
-        QCOMPARE(t.calls.size(), 4);
+        QCOMPARE(t.calls.size(), 3);
+        delete f;
+    }
+
+    void instrumentalStopsTheChainAndIsCached() {
+        FakeTransport t;
+        bool on = true;
+        LyricsFinder *f = makeFinder(&t, &on);
+        LyricsResult got;
+        int calls = 0;
+        auto done = [&](const LyricsResult &r, const QString &) { got = r; ++calls; };
+        f->find(query(), done);
+        f->fireTimerForTest();
+        QVariantMap rec = QJsonDocument::fromJson(
+            lrclibRecord("Harbour Lights", "Paper Lanterns", 201, "", "")).object().toVariantMap();
+        rec["instrumental"] = true;
+        t.answer(0, 200, QJsonDocument::fromVariant(rec).toJson());
+        QTRY_COMPARE(calls, 1);
+        QVERIFY(got.instrumental);
+        QVERIFY(got.text.isEmpty());
+        QCOMPARE(t.calls.size(), 1);
+        QVERIFY(!f->timerActiveForTest());
+
+        got = {};
+        f->find(query(), done);
+        QCOMPARE(calls, 2);
+        QVERIFY(got.instrumental);
+        QCOMPARE(t.calls.size(), 1);
         delete f;
     }
 
@@ -474,6 +647,20 @@ private slots:
         QCOMPARE(got.value(2).toString(), QStringLiteral("LRCLIB"));
         QCOMPARE(got.value(3).toString(), QStringLiteral("https://lrclib.net/"));
         QCOMPARE(got.value(4).toString(), QString());
+
+        // An instrumental reaches the page as such.
+        QVariantMap rec = QJsonDocument::fromJson(
+            lrclibRecord("Harbour Lights", "Paper Lanterns", 201, "", "")).object().toVariantMap();
+        rec["instrumental"] = true;
+        engine.evaluate(QStringLiteral(
+            "got = null; bridge.findLyrics({id: 10, title: 'Harbour Lights', "
+            "artistList: [{id: 1, name: 'Paper Lanterns'}], duration: 201}, "
+            "function(r, e) { got = r.instrumental })"));
+        m_now += HostPacing::kMinIntervalMs;
+        f->fireTimerForTest();
+        t.answer(1, 200, QJsonDocument::fromVariant(rec).toJson());
+        QTRY_VERIFY(engine.globalObject().property("got").isBool());
+        QVERIFY(engine.globalObject().property("got").toBool());
         delete f;
     }
 

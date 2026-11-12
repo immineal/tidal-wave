@@ -166,9 +166,44 @@ bool artistMatches(const QStringList &wanted, const QString &got) {
     return false;
 }
 
-bool durationMatches(int wanted, double got) {
+bool durationMatches(int wanted, double got, double tolerance) {
     if (wanted <= 0 || got <= 0) return true;
-    return std::abs(got - wanted) <= 3.0;
+    return std::abs(got - wanted) <= tolerance;
+}
+
+QString searchTitle(const QString &title) { return stripVersionParts(title); }
+
+QString stripCreditLines(const QString &text) {
+    static const QRegularExpression stamps(QStringLiteral("^(\\s*\\[[^\\]]*\\])*"));
+    static const QRegularExpression credit(
+        QStringLiteral("^\\s*(\\p{Han}{1,6}|lyrics by|lyricist|written by|composer|composed by|"
+                       "producer|produced by|arranger|arranged by|mixed by|mastered by)\\s*[:\uff1a]"),
+        QRegularExpression::CaseInsensitiveOption);
+    // LRC header tags such as [ar:...] and [ti:...].
+    static const QRegularExpression tagOnly(QStringLiteral("^\\s*\\[[A-Za-z]+:[^\\]]*\\]\\s*$"));
+    QStringList out;
+    for (const QString &line : text.split(u'\n')) {
+        const QString words = QString(line).remove(stamps);
+        if (credit.match(words).hasMatch() || tagOnly.match(line).hasMatch()) continue;
+        out << line;
+    }
+    while (!out.isEmpty() && out.last().trimmed().isEmpty()) out.removeLast();
+    return out.join(u'\n');
+}
+
+bool hasTimestamps(const QString &text) {
+    static const QRegularExpression stamp(QStringLiteral("^\\[\\d{1,2}:\\d{2}[.:]\\d{2,3}\\]"),
+                                          QRegularExpression::MultilineOption);
+    return stamp.match(text).hasMatch();
+}
+
+// Lines that carry words once the timestamps and tags are taken off.
+int wordLines(const QString &text) {
+    static const QRegularExpression tags(QStringLiteral("\\[[^\\]]*\\]"));
+    int n = 0;
+    for (const QString &line : text.split(u'\n'))
+        if (!QString(line).remove(tags).trimmed().isEmpty()) ++n;
+    return n;
 }
 
 bool looksLikeChallenge(const QByteArray &body) {
@@ -225,26 +260,30 @@ QString geniusLyricsFromHtml(const QByteArray &bytes) {
 }
 
 QList<std::shared_ptr<const LyricsProvider>> defaultProviders() {
-    return { std::make_shared<LrclibProvider>(), std::make_shared<GeniusProvider>() };
+    // Genius last, so it is asked least.
+    return { std::make_shared<LrclibProvider>(), std::make_shared<NeteaseProvider>(),
+             std::make_shared<KugouProvider>(), std::make_shared<GeniusProvider>() };
 }
 
 } // namespace lyrics
 
 // ── LRCLIB ──────────────────────────────────────────────────────────────────
 
-bool LrclibProvider::fromRecord(const LyricsQuery &q, const QVariantMap &rec, LyricsResult *out) {
-    if (rec.value(QStringLiteral("instrumental")).toBool()) return false;
-    if (!lyrics::titleMatches(q.title, rec.value(QStringLiteral("trackName")).toString())) return false;
-    if (!lyrics::artistMatches(q.artists, rec.value(QStringLiteral("artistName")).toString())) return false;
-    if (!lyrics::durationMatches(q.duration, rec.value(QStringLiteral("duration")).toDouble())) return false;
+LyricsStep LrclibProvider::fromRecord(const LyricsQuery &q, const QVariantMap &rec, double tolerance) {
+    if (!lyrics::titleMatches(q.title, rec.value(QStringLiteral("trackName")).toString())
+        || !lyrics::artistMatches(q.artists, rec.value(QStringLiteral("artistName")).toString())
+        || !lyrics::durationMatches(q.duration, rec.value(QStringLiteral("duration")).toDouble(), tolerance))
+        return LyricsStep::miss();
+    if (rec.value(QStringLiteral("instrumental")).toBool()) return LyricsStep::instrumental();
     const QString synced = rec.value(QStringLiteral("syncedLyrics")).toString().trimmed();
     const QString plain = rec.value(QStringLiteral("plainLyrics")).toString().trimmed();
-    if (synced.isEmpty() && plain.isEmpty()) return false;
-    out->timed = !synced.isEmpty();
-    out->text = out->timed ? synced : plain;
-    out->source = QStringLiteral("LRCLIB");
-    out->url = QUrl(QStringLiteral("https://lrclib.net/"));
-    return true;
+    if (synced.isEmpty() && plain.isEmpty()) return LyricsStep::miss();
+    LyricsResult r;
+    r.timed = !synced.isEmpty();
+    r.text = r.timed ? synced : plain;
+    r.source = QStringLiteral("LRCLIB");
+    r.url = QUrl(QStringLiteral("https://lrclib.net/"));
+    return LyricsStep::found(r);
 }
 
 LyricsStep LrclibProvider::start(const LyricsQuery &q) const {
@@ -262,9 +301,9 @@ LyricsStep LrclibProvider::next(const LyricsQuery &q, const LyricsStep &prev,
                                 const LyricsReply &reply) const {
     if (prev.stage == Get) {
         if (reply.status == 200) {
-            LyricsResult r;
             const QVariantMap rec = QJsonDocument::fromJson(reply.body).object().toVariantMap();
-            if (fromRecord(q, rec, &r)) return LyricsStep::found(r);
+            const LyricsStep r = fromRecord(q, rec, 3.0);
+            if (r.kind != LyricsStep::Miss) return r;
         } else if (reply.status != 404) {
             return LyricsStep::failed();
         }
@@ -278,72 +317,194 @@ LyricsStep LrclibProvider::next(const LyricsQuery &q, const LyricsStep &prev,
 
     if (reply.status == 404) return LyricsStep::miss();
     if (reply.status != 200) return LyricsStep::failed();
-    LyricsResult best;
+    LyricsStep best = LyricsStep::miss();
     double bestOff = 1e9;
-    bool have = false;
     for (const QJsonValue &v : QJsonDocument::fromJson(reply.body).array()) {
         const QVariantMap rec = v.toObject().toVariantMap();
-        LyricsResult r;
-        if (!fromRecord(q, rec, &r)) continue;
+        const LyricsStep r = fromRecord(q, rec, 2.0);
+        if (r.kind == LyricsStep::Miss) continue;
         const double off = q.duration > 0
             ? std::abs(rec.value(QStringLiteral("duration")).toDouble() - q.duration) : 0;
-        // Synced beats plain, then the closer length wins.
-        if (!have || (r.timed && !best.timed) || (r.timed == best.timed && off < bestOff)) {
-            best = r; bestOff = off; have = true;
+        // Words beat an instrumental, synced beats plain, then the closer length.
+        auto rank = [](const LyricsStep &x) {
+            return x.kind == LyricsStep::Miss ? 0 : x.kind == LyricsStep::Instrumental ? 1
+                 : x.result.timed ? 3 : 2;
+        };
+        if (rank(r) > rank(best) || (rank(r) == rank(best) && off < bestOff)) {
+            best = r; bestOff = off;
         }
     }
-    return have ? LyricsStep::found(best) : LyricsStep::miss();
+    return best;
 }
 
-// ── Genius ──────────────────────────────────────────────────────────────────
+// ── NetEase ─────────────────────────────────────────────────────────────────
 
-QUrl GeniusProvider::pickHit(const LyricsQuery &q, const QByteArray &searchJson) {
-    const QJsonObject resp = QJsonDocument::fromJson(searchJson).object()
-                                 .value(QStringLiteral("response")).toObject();
-    QJsonArray hits;
-    for (const QJsonValue &s : resp.value(QStringLiteral("sections")).toArray())
-        for (const QJsonValue &h : s.toObject().value(QStringLiteral("hits")).toArray())
-            hits.append(h);
-    for (const QJsonValue &h : resp.value(QStringLiteral("hits")).toArray()) hits.append(h);
-
-    for (const QJsonValue &h : hits) {
-        const QJsonObject r = h.toObject().value(QStringLiteral("result")).toObject();
-        if (r.value(QStringLiteral("instrumental")).toBool()) continue;
-        const QString state = r.value(QStringLiteral("lyrics_state")).toString();
-        if (!state.isEmpty() && state != QLatin1String("complete")) continue;
-        const bool titleOk =
-            lyrics::titleMatches(q.title, r.value(QStringLiteral("title")).toString())
-            || lyrics::titleMatches(q.title, r.value(QStringLiteral("title_with_featured")).toString());
-        const bool artistOk =
-            lyrics::artistMatches(q.artists, r.value(QStringLiteral("primary_artist")).toObject()
-                                                 .value(QStringLiteral("name")).toString())
-            || lyrics::artistMatches(q.artists, r.value(QStringLiteral("artist_names")).toString());
-        if (!titleOk || !artistOk) continue;
-        const QUrl url(r.value(QStringLiteral("url")).toString());
-        if (url.scheme() == QLatin1String("https") && url.host() == QLatin1String("genius.com"))
-            return url;
-    }
-    return {};
-}
-
-LyricsStep GeniusProvider::start(const LyricsQuery &q) const {
-    QUrl u(QStringLiteral("https://genius.com/api/search/song"));
+LyricsStep NeteaseProvider::start(const LyricsQuery &q) const {
+    QUrl u(QStringLiteral("https://music.163.com/api/search/get"));
     QUrlQuery qq;
-    qq.addQueryItem(QStringLiteral("q"), firstArtist(q) + u' ' + stripVersionParts(q.title));
-    qq.addQueryItem(QStringLiteral("per_page"), QStringLiteral("5"));
+    qq.addQueryItem(QStringLiteral("s"), firstArtist(q) + u' ' + stripVersionParts(q.title));
+    qq.addQueryItem(QStringLiteral("type"), QStringLiteral("1"));
+    qq.addQueryItem(QStringLiteral("limit"), QStringLiteral("10"));
+    qq.addQueryItem(QStringLiteral("offset"), QStringLiteral("0"));
     u.setQuery(qq);
     return LyricsStep::request(u, Search);
 }
 
+LyricsStep NeteaseProvider::next(const LyricsQuery &q, const LyricsStep &prev,
+                                 const LyricsReply &reply) const {
+    if (reply.status != 200) return LyricsStep::failed();
+    const QJsonObject root = QJsonDocument::fromJson(reply.body).object();
+    if (prev.stage == Search) {
+        const QJsonArray songs = root.value(QStringLiteral("result")).toObject()
+                                     .value(QStringLiteral("songs")).toArray();
+        for (const QJsonValue &v : songs) {
+            const QJsonObject song = v.toObject();
+            QStringList names;
+            for (const QJsonValue &a : song.value(QStringLiteral("artists")).toArray())
+                names << a.toObject().value(QStringLiteral("name")).toString();
+            double ms = song.value(QStringLiteral("duration")).toDouble();
+            if (ms <= 0) ms = song.value(QStringLiteral("dt")).toDouble();
+            if (!lyrics::titleMatches(q.title, song.value(QStringLiteral("name")).toString())
+                || !lyrics::artistMatches(q.artists, names.join(QStringLiteral(", ")))
+                || !lyrics::durationMatches(q.duration, ms / 1000.0))
+                continue;
+            const qint64 id = qint64(song.value(QStringLiteral("id")).toDouble());
+            QUrl u(QStringLiteral("https://music.163.com/api/song/lyric"));
+            u.setQuery(QStringLiteral("id=%1&lv=-1&kv=-1&tv=-1").arg(id));
+            return LyricsStep::request(u, Lyric, id);
+        }
+        return LyricsStep::miss();
+    }
+
+    if (root.value(QStringLiteral("nolyric")).toBool() || root.value(QStringLiteral("pureMusic")).toBool())
+        return LyricsStep::instrumental();
+    const QString text = lyrics::stripCreditLines(
+        root.value(QStringLiteral("lrc")).toObject().value(QStringLiteral("lyric")).toString()).trimmed();
+    if (lyrics::wordLines(text) == 0) return LyricsStep::miss();
+    LyricsResult r;
+    r.text = text;
+    r.timed = lyrics::hasTimestamps(text);
+    r.source = QStringLiteral("NetEase Cloud Music");
+    r.url = QUrl(QStringLiteral("https://music.163.com/#/song?id=%1").arg(prev.context.toLongLong()));
+    return LyricsStep::found(r);
+}
+
+// ── KuGou ───────────────────────────────────────────────────────────────────
+
+LyricsStep KugouProvider::start(const LyricsQuery &q) const {
+    QUrl u(QStringLiteral("https://lyrics.kugou.com/search"));
+    QUrlQuery qq;
+    qq.addQueryItem(QStringLiteral("ver"), QStringLiteral("1"));
+    qq.addQueryItem(QStringLiteral("man"), QStringLiteral("yes"));
+    qq.addQueryItem(QStringLiteral("client"), QStringLiteral("pc"));
+    qq.addQueryItem(QStringLiteral("keyword"), firstArtist(q) + QStringLiteral(" - ") + stripVersionParts(q.title));
+    qq.addQueryItem(QStringLiteral("duration"), QString::number(qint64(q.duration) * 1000));
+    qq.addQueryItem(QStringLiteral("hash"), QString());
+    u.setQuery(qq);
+    return LyricsStep::request(u, Search);
+}
+
+LyricsStep KugouProvider::next(const LyricsQuery &q, const LyricsStep &prev,
+                               const LyricsReply &reply) const {
+    if (reply.status != 200) return LyricsStep::failed();
+    const QJsonObject root = QJsonDocument::fromJson(reply.body).object();
+    if (prev.stage == Search) {
+        for (const QJsonValue &v : root.value(QStringLiteral("candidates")).toArray()) {
+            const QJsonObject c = v.toObject();
+            if (!lyrics::titleMatches(q.title, c.value(QStringLiteral("song")).toString())
+                || !lyrics::artistMatches(q.artists, c.value(QStringLiteral("singer")).toString())
+                || !lyrics::durationMatches(q.duration, c.value(QStringLiteral("duration")).toDouble() / 1000.0))
+                continue;
+            QUrl u(QStringLiteral("https://lyrics.kugou.com/download"));
+            QUrlQuery qq;
+            qq.addQueryItem(QStringLiteral("ver"), QStringLiteral("1"));
+            qq.addQueryItem(QStringLiteral("client"), QStringLiteral("pc"));
+            qq.addQueryItem(QStringLiteral("id"), c.value(QStringLiteral("id")).toVariant().toString());
+            qq.addQueryItem(QStringLiteral("accesskey"), c.value(QStringLiteral("accesskey")).toString());
+            qq.addQueryItem(QStringLiteral("fmt"), QStringLiteral("lrc"));
+            qq.addQueryItem(QStringLiteral("charset"), QStringLiteral("utf8"));
+            u.setQuery(qq);
+            return LyricsStep::request(u, Download);
+        }
+        return LyricsStep::miss();
+    }
+
+    const QByteArray lrc = QByteArray::fromBase64(root.value(QStringLiteral("content")).toString().toLatin1());
+    const QString text = lyrics::stripCreditLines(QString::fromUtf8(lrc)).trimmed();
+    // A handful of lines is a placeholder ("pure music, enjoy"), not lyrics.
+    if (lyrics::wordLines(text) <= 3) return LyricsStep::miss();
+    LyricsResult r;
+    r.text = text;
+    r.timed = lyrics::hasTimestamps(text);
+    r.source = QStringLiteral("KuGou");
+    r.url = QUrl(QStringLiteral("https://www.kugou.com/"));
+    return LyricsStep::found(r);
+}
+
+// ── Genius ──────────────────────────────────────────────────────────────────
+
+namespace {
+
+QString geniusSlugPart(const QString &in) {
+    QString out;
+    for (const QChar c : in.normalized(QString::NormalizationForm_KD)) {
+        if (c == u'&') { out += QStringLiteral(" and "); continue; }
+        if (c.unicode() > 127) continue;
+        if (c.isLetterOrNumber() || c == u' ' || c == u'-') out += c;
+    }
+    static const QRegularExpression gaps(QStringLiteral("[\\s-]+"));
+    out.replace(gaps, QStringLiteral("-"));
+    while (out.startsWith(u'-')) out.remove(0, 1);
+    while (out.endsWith(u'-')) out.chop(1);
+    return out.toLower();
+}
+
+QString geniusTitle(const QString &title) {
+    static const QRegularExpression brackets(QStringLiteral("\\s*[\\(\\[][^\\)\\]]*[\\)\\]]"));
+    QString t = QString(title).remove(brackets);
+    const qsizetype dash = t.indexOf(QStringLiteral(" - "));
+    if (dash > 0) t.truncate(dash);
+    return t.trimmed();
+}
+
+} // namespace
+
+QUrl GeniusProvider::pageUrl(const LyricsQuery &q) {
+    const QString artist = geniusSlugPart(firstArtist(q));
+    const QString title = geniusSlugPart(geniusTitle(q.title));
+    if (artist.isEmpty() || title.isEmpty()) return {};
+    QString slug = artist + u'-' + title;
+    slug[0] = slug.at(0).toUpper();
+    return QUrl(QStringLiteral("https://genius.com/") + slug + QStringLiteral("-lyrics"));
+}
+
+bool GeniusProvider::pageIsFor(const LyricsQuery &q, const QByteArray &bytes) {
+    static const QRegularExpression titleTag(QStringLiteral("<title[^>]*>(.*?)</title>"),
+                                             QRegularExpression::DotMatchesEverythingOption
+                                             | QRegularExpression::CaseInsensitiveOption);
+    const auto m = titleTag.match(QString::fromUtf8(bytes.left(256 * 1024)));
+    if (!m.hasMatch()) return false;
+    QString t = decodeEntities(m.captured(1)).simplified();
+    static const QRegularExpression tail(QStringLiteral("\\s*\\|\\s*Genius Lyrics$"));
+    static const QRegularExpression lyricsWord(QStringLiteral("\\s+Lyrics$"));
+    t.remove(tail);
+    t.remove(lyricsWord);
+    const qsizetype dash = t.indexOf(QStringLiteral(" \u2013 "));
+    if (dash <= 0) return false;
+    return lyrics::artistMatches(q.artists, t.left(dash))
+        && lyrics::titleMatches(q.title, t.mid(dash + 3));
+}
+
+LyricsStep GeniusProvider::start(const LyricsQuery &q) const {
+    const QUrl u = pageUrl(q);
+    return u.isValid() && !u.isEmpty() ? LyricsStep::request(u, 0) : LyricsStep::miss();
+}
+
 LyricsStep GeniusProvider::next(const LyricsQuery &q, const LyricsStep &prev,
                                 const LyricsReply &reply) const {
-    if (prev.stage == Search) {
-        if (reply.status != 200) return LyricsStep::failed();
-        const QUrl page = pickHit(q, reply.body);
-        return page.isValid() ? LyricsStep::request(page, Page) : LyricsStep::miss();
-    }
     if (reply.status == 404) return LyricsStep::miss();
     if (reply.status != 200) return LyricsStep::failed();
+    if (!pageIsFor(q, reply.body)) return LyricsStep::miss();
     LyricsResult r;
     r.text = lyrics::geniusLyricsFromHtml(reply.body);
     if (r.text.isEmpty()) return LyricsStep::miss();
