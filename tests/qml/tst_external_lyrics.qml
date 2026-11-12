@@ -3,6 +3,7 @@
 
 import QtQuick
 import QtQuick.Window
+import QtQuick.Controls
 import QtTest
 import TidalWave
 
@@ -134,6 +135,59 @@ TestCase {
         verify(note.visible, "the instrumental note is hidden")
         compare(note.text, "Instrumental")
         verify(!findChild(page, "nowPlayingLyricsSource").visible)
+    }
+
+    function manyLines(timed) {
+        var out = []
+        for (var i = 0; i < 60; i++) {
+            var t = "Line " + i + " of an invented song"
+            out.push(timed ? "[00:" + (i < 10 ? "0" : "") + i + ".00]" + t : t)
+        }
+        return out.join("\n")
+    }
+
+    function openPanel(page) {
+        page.showLyrics = true
+        tryVerify(function () { return page.lyricsness === 1 }, 3000)
+        waitForRendering(page)
+    }
+
+    // Long plain lyrics get a bar to drag; dragging it is the user scrolling.
+    function test_plain_lyrics_have_a_scroll_bar() {
+        prefs.externalLyrics = true
+        bridge.setFoundLyricsForTest(manyLines(false), false, "Genius", "https://genius.com/x")
+        var page = openPage(510)
+        openPanel(page)
+        var bar = findChild(page, "nowPlayingLyricsScrollBar")
+        verify(bar, "the lyrics panel has no scroll bar")
+        verify(bar.visible, "plain lyrics show no scroll bar")
+        compare(bar.policy, ScrollBar.AlwaysOn)
+        verify(bar.height > 40, "the bar is " + bar.height + " px tall")
+        var chips = findChild(page, "nowPlayingPanelChips")
+        var barBottom = bar.mapToItem(page, 0, bar.height).y
+        verify(barBottom <= chips.mapToItem(page, 0, 0).y + 1,
+               "the bar runs down into the chips")
+
+        var view = findChild(page, "nowPlayingLyricsView")
+        var before = view.contentY
+        var h = bar.contentItem
+        mousePress(h, h.width / 2, 4)
+        mouseMove(h, h.width / 2, 4 + bar.height / 2)
+        mouseRelease(h, h.width / 2, 4 + bar.height / 2)
+        verify(view.contentY > before + 50,
+               "dragging the bar moved the lyrics from " + before + " to " + view.contentY)
+        verify(page.userScrolled, "a dragged bar did not count as the user scrolling")
+    }
+
+    function test_timed_lyrics_have_none() {
+        prefs.externalLyrics = true
+        bridge.setFoundLyricsForTest(manyLines(true), true, "LRCLIB", "https://lrclib.net/")
+        var page = openPage(511)
+        openPanel(page)
+        compare(page.lyricsIsTimed, true)
+        var bar = findChild(page, "nowPlayingLyricsScrollBar")
+        verify(bar, "the lyrics panel has no scroll bar")
+        verify(!bar.visible, "synced lyrics, which follow the song, show a scroll bar")
     }
 
     function test_switching_on_looks_again() {

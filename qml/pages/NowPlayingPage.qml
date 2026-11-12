@@ -732,6 +732,34 @@ Rectangle {
 
                             onMovingChanged: if (moving) root.userScrolled = true
 
+                            // Plain lyrics only: synced ones follow the song.
+                            // In the right margin, from the top corner down to
+                            // the chips' band, so it never sits over a chip.
+                            ScrollBar.vertical: ScrollBar {
+                                id: lyricsBar
+                                objectName: "nowPlayingLyricsScrollBar"
+                                parent: lyricsPanel
+                                x: lyricsPanel.width - width - 3
+                                y: 12
+                                height: Math.max(0, lyricsPanel.height - y - root.lyricsFooterRoom)
+                                policy: !root.lyricsIsTimed && root.lyricsState === "ready"
+                                        && lyricsView.visibleArea.heightRatio < 1
+                                        ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                visible: policy === ScrollBar.AlwaysOn
+                                padding: 3
+                                // Set straight on contentY, which never starts
+                                // the view moving, so say it here.
+                                onPressedChanged: if (pressed) root.userScrolled = true
+
+                                contentItem: Rectangle {
+                                    implicitWidth: 4
+                                    radius: width / 2
+                                    color: lyricsBar.pressed || lyricsBar.hovered ? Theme.textSec : Theme.textDim
+                                    Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
+                                }
+                                background: Rectangle { implicitWidth: 10; color: "transparent" }
+                            }
+
                             // Every resize is a re-wrap, which moves the
                             // centred line. Deferred so the delegates are laid
                             // out first, and coalesced to once a frame.
