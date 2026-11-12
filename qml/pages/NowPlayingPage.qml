@@ -1662,7 +1662,9 @@ Rectangle {
                                 // the hit target, and an anchored MouseArea
                                 // inside a layout is undefined behaviour.
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                // Exclusive on press, as in SettingsPanel's buttons.
                                 TapHandler {
+                                    gesturePolicy: TapHandler.ReleaseWithinBounds
                                     onTapped: {
                                         if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
                                     }
