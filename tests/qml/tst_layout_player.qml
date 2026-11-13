@@ -2446,6 +2446,62 @@ TestCase {
         compare(page.currentLyricLine, 20, "Resync is not a seek")
     }
 
+    // Scrolling back by hand to where the panel would put the line is a
+    // resync of its own: no button needed.
+    function test_lyrics_scrolling_back_resumes_following() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = openLyrics(host, 40)
+        var view = findChild(page, "nowPlayingLyricsView")
+        player.setPositionForTest(20 * 5000)
+        tryVerify(function () { return page.currentLyricLine === 20 }, 3000,
+                  "the sync timer never reached line 20")
+        tryVerify(function () {
+            var it = view.itemAtIndex(20)
+            return it && Math.abs(it.mapToItem(view, 0, it.height / 2).y - view.height / 2) <= 2
+        }, 3000, "line 20 never came to the middle")
+        var home = view.contentY
+
+        page.userScrolled = true
+        view.contentY = home + 400
+        view.movementEnded()
+        verify(page.userScrolled, "a scroll away from the line resumed following")
+
+        view.contentY = home + 6
+        view.movementEnded()
+        verify(!page.userScrolled, "scrolling back onto the line did not resume following")
+        verify(!findChild(page, "nowPlayingLyricsResync").visible,
+               "Resync is still offered with the line back in the middle")
+    }
+
+    // Before the first line's time nothing is lit; the first line lights when
+    // it starts.
+    function test_lyrics_first_line_waits_for_its_time() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = host.page
+        settlePage(page)
+        var lines = []
+        for (var i = 0; i < 10; i++)
+            lines.push({ ms: 30000 + i * 5000, text: "Line " + i + " of a lyric" })
+        page.lyricsIsTimed = true
+        page.lyricsData = lines
+        page.lyricsState = "ready"
+        page.userScrolled = false
+        page.currentLyricLine = -1
+        page.showLyrics = true
+        settlePage(page)
+        frame(host)
+
+        player.setPositionForTest(10000)
+        wait(900)       // two ticks of the 400 ms sync timer
+        compare(page.currentLyricLine, -1, "a line was lit during the intro")
+        var view = findChild(page, "nowPlayingLyricsView")
+        verify(!view.itemAtIndex(0).active, "the first line is lit before it is sung")
+
+        player.setPositionForTest(30500)
+        tryVerify(function () { return page.currentLyricLine === 0 }, 2000,
+                  "the first line did not light when it started")
+    }
+
     // ── the sleep timer pill ─────────────────────────────────────────────
     // The two ends of this pill are padded differently on purpose. The
     // leading side lines the glyph up with the cap. The trailing side ends in

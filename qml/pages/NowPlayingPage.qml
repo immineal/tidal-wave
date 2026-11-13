@@ -274,6 +274,8 @@ Rectangle {
     property string lyricsState: "none"
     property var    lyricsData:  []   // [{ms, text}] for timed; [{ms: 0, text}] for plain
     property bool   lyricsIsTimed: false
+    // -1 before the first timed line starts: nothing is lit, and the view
+    // holds line 0 (followLine).
     property int    currentLyricLine: -1
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
@@ -293,10 +295,29 @@ Rectangle {
     // offset, not its centred item.
     function recentreLyrics() {
         if (!root.showLyrics || root.userScrolled) return
-        if (root.currentLyricLine < 0 || root.lyricsData.length === 0) return
+        if (root.lyricsData.length === 0) return
         // Instant: a re-wrap is a correction, and a correction that travels
         // reads as the words drifting on their own.
-        centreLyricLine(root.currentLyricLine, false)
+        centreLyricLine(root.followLine(), false)
+    }
+
+    // The line the view keeps centred: the one being sung, or the first.
+    function followLine() { return Math.max(root.currentLyricLine, 0) }
+
+    // A scroll that ends with the followed line back where centring puts it
+    // is a resync, so following resumes without the button.
+    function resumeIfCentred() {
+        if (!root.userScrolled || !root.lyricsIsTimed) return
+        var line = root.followLine()
+        var item = lyricsView.itemAtIndex(line)
+        if (!item) return
+        var was = lyricsView.contentY
+        lyricsView.positionViewAtIndex(line, ListView.Center)
+        var want = lyricsView.contentY
+        lyricsView.contentY = was
+        if (Math.abs(want - was) > Math.max(24, item.height / 2)) return
+        root.userScrolled = false
+        root.centreLyricLine(line, true)
     }
 
     // Puts one line in the middle of the panel, animated when the song moved
@@ -409,7 +430,7 @@ Rectangle {
             lyricsData = arr
         }
         lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
-        currentLyricLine = 0
+        currentLyricLine = -1
     }
 
     Connections {
@@ -512,7 +533,7 @@ Rectangle {
         onTriggered: {
             if (root.ignoreLyricsSync) return
             var pos = player.position
-            var found = 0
+            var found = -1
             for (var i = 0; i < root.lyricsData.length; i++) {
                 if (root.lyricsData[i].ms <= pos) found = i
                 else break
@@ -520,7 +541,7 @@ Rectangle {
             if (found !== root.currentLyricLine) {
                 root.currentLyricLine = found
                 if (!root.userScrolled)
-                    root.centreLyricLine(found, true)
+                    root.centreLyricLine(root.followLine(), true)
             }
         }
     }
@@ -731,6 +752,7 @@ Rectangle {
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
+                            onMovementEnded: root.resumeIfCentred()
 
                             // Plain lyrics only: synced ones follow the song.
                             // In the right margin, from the top corner down to
@@ -837,7 +859,7 @@ Rectangle {
                         // Resync button
                         Rectangle {
                             objectName: "nowPlayingLyricsResync"
-                            visible: root.userScrolled && root.lyricsIsTimed && root.currentLyricLine >= 0
+                            visible: root.userScrolled && root.lyricsIsTimed && root.lyricsData.length > 0
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottomMargin: 10
@@ -858,8 +880,7 @@ Rectangle {
                                 gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     root.userScrolled = false
-                                    if (root.currentLyricLine >= 0)
-                                        root.centreLyricLine(root.currentLyricLine, true)
+                                    root.centreLyricLine(root.followLine(), true)
                                 }
                             }
                         }
