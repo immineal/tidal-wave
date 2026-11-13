@@ -163,7 +163,8 @@ Popup {
                          : Theme.textSec
                 }
                 HoverHandler { id: dialogCloseHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.close() }
+                // Exclusive on press, as in SettingsPanel's buttons.
+                TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
             }
         }
 

@@ -177,7 +177,7 @@ Popup {
                     strokeWidth: 1.8
                 }
                 HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: root.close() }
+                TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.close() }
             }
         }
     }
@@ -1019,7 +1019,9 @@ Popup {
             }
         }
         HoverHandler { id: btnHov; cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: btn.activated() }
+        // Exclusive on press: a passive TapHandler in a scrolled Flickable inside
+        // a modal Popup lets the press through to the page beneath (Qt 6.4-6.12).
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: btn.activated() }
     }
 
     // An on/off switch; Qt Quick Controls' Switch brings a style of its own.
@@ -1090,7 +1092,7 @@ Popup {
             }
         }
         HoverHandler { cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: tg.toggled() }
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: tg.toggled() }
     }
 
     // One column of the picker: the dark palettes or the light ones, in table
@@ -1218,7 +1220,7 @@ Popup {
         }
 
         HoverHandler { id: tileHov; cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: prefs.theme = tile.themeName }
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: prefs.theme = tile.themeName }
     }
 
     // The panel's one drop-down, styled once instead of per picker. `options`
