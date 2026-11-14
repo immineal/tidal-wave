@@ -11,6 +11,7 @@
 #include "TidalClient.h"
 
 class LyricsFinder;
+namespace lyricsync { class AutoSync; }
 
 // Sorts by max(local last-played time, Playlist::addedAt), descending.
 // `playtimes` maps playlist uuid to ms since epoch. Stable, so playlists with
@@ -135,6 +136,13 @@ public:
     // function({text, timed, source, url}, error), error "off" when it is off.
     Q_INVOKABLE void findLyrics     (const QVariantMap &track, QJSValue cb);
     void setLyricsFinder(LyricsFinder *f) { m_lyricsFinder = f; }
+    // Times plain lyrics against the track's audio, here on this machine:
+    // function({ok, kept, confidence, lrc}, error), error "off" when the
+    // switch is off. A newer call drops the older one's answer.
+    Q_INVOKABLE void autoSyncLyrics (qlonglong trackId, const QString &text, QJSValue cb);
+    // Whether the next track's audio is analysed ahead, while lyrics are on screen.
+    Q_INVOKABLE void setLyricsLookAhead(bool on);
+    void setAutoSync(lyricsync::AutoSync *a) { m_autoSync = a; }
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
     //           releaseDate, upc } and an error string.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
@@ -228,6 +236,7 @@ private:
 
     TidalClient  *m_client;
     LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     QQmlEngine   *m_engine = nullptr;
     QSet<qlonglong> m_favoriteTrackIds;
     // Bumped each time loadFavoriteTrackIds() restarts paging. Callbacks from

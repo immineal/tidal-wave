@@ -1126,28 +1126,41 @@ TestCase {
         h.panel.close()
     }
 
-    // Off on a fresh install, and the line under it names the sites and what
-    // they are sent.
-    function test_external_lyrics_switch() {
-        prefs.externalLyrics = false
+    // LRCLIB and auto-sync start on, the other sites off; each line says
+    // what its switch sends, or that it sends nothing.
+    function test_lyrics_switches_data() {
+        return [
+            { tag: "lrclib", key: "lyricsLrclib", toggle: "settingsLrclibToggle",
+              note: "settingsLrclibNote", fresh: true,
+              mustSay: ["lrclib.net", "artist", "title", "album", "length"] },
+            { tag: "other sites", key: "lyricsOtherSites", toggle: "settingsOtherLyricsToggle",
+              note: "settingsOtherLyricsNote", fresh: false,
+              mustSay: ["music.163.com", "lyrics.kugou.com", "genius.com", "artist", "title",
+                        "length", "China"] },
+            { tag: "auto-sync", key: "lyricsAutoSync", toggle: "settingsAutoSyncToggle",
+              note: "settingsAutoSyncNote", fresh: true,
+              mustSay: ["audio", "this machine", "nothing is sent", "unsure"] }
+        ]
+    }
+
+    function test_lyrics_switches(data) {
+        prefs[data.key] = data.fresh
         var h = openPanel(1280, 1200)
-        var toggle = findByName(h.panel.contentItem, "settingsExternalLyricsToggle")
-        verify(toggle, "there is no switch for lyrics from other sites")
-        verify(!toggle.checked, "lyrics from other sites should start off")
-        var note = findByName(h.panel.contentItem, "settingsExternalLyricsNote")
-        verify(note && note.visible, "the switch has no line saying what it sends")
-        var mustSay = ["lrclib.net", "music.163.com", "lyrics.kugou.com", "genius.com",
-                       "artist", "title", "album", "length", "China"]
-        for (var i = 0; i < mustSay.length; i++)
-            verify(note.text.indexOf(mustSay[i]) !== -1,
-                   "the note never says \"" + mustSay[i] + "\"")
+        var toggle = findByName(h.panel.contentItem, data.toggle)
+        verify(toggle, "there is no switch " + data.toggle)
+        compare(toggle.checked, data.fresh)
+        var note = findByName(h.panel.contentItem, data.note)
+        verify(note && note.visible, "the switch has no line saying what it does")
+        for (var i = 0; i < data.mustSay.length; i++)
+            verify(note.text.indexOf(data.mustSay[i]) !== -1,
+                   "the note never says \"" + data.mustSay[i] + "\"")
 
         scrollTo(h.panel, toggle)
         clickItem(h.panel, toggle)
-        compare(prefs.externalLyrics, true, "the switch did not turn it on")
-        verify(toggle.checked)
+        compare(prefs[data.key], !data.fresh, "the switch did not change the setting")
+        compare(toggle.checked, !data.fresh)
         clickItem(h.panel, toggle)
-        compare(prefs.externalLyrics, false)
+        compare(prefs[data.key], data.fresh)
         h.panel.close()
     }
 
@@ -1727,7 +1740,7 @@ TestCase {
                        "resources.tidal.com", "mDNS", "api.github.com", "IP address",
                        "tokens", "switched off above", "release page", "README",
                        "lrclib.net", "music.163.com", "lyrics.kugou.com", "genius.com",
-                       "China", "Experimental"]
+                       "China", "Experimental", "synced lyrics", "analysed here"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy text never mentions \"" + mustSay[j] + "\"")

@@ -45,9 +45,13 @@ class Prefs : public QObject {
     // The now-playing bars show a coarse spectrum of the audio. Needs Qt 6.8
     // (QAudioBufferOutput); below that the switch does nothing.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
-    // Look for lyrics on other sites when Tidal has none. Opt in, because it
-    // sends the track's artist, title, album and length to those sites.
-    Q_PROPERTY(bool externalLyrics READ externalLyrics WRITE setExternalLyrics NOTIFY externalLyricsChanged)
+    // Ask lrclib.net for synced lyrics when Tidal has none. On by default; it
+    // sends the track's artist, title, album and length.
+    Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
+    // Also ask NetEase, KuGou and Genius. Opt in.
+    Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
+    // Time plain lyrics against the track's audio, on this machine. On by default.
+    Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -72,7 +76,9 @@ public:
     bool    quitOnClose() const       { return m_quitOnClose; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
-    bool    externalLyrics() const    { return m_externalLyrics; }
+    bool    lyricsLrclib() const      { return m_lyricsLrclib; }
+    bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
+    bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -85,7 +91,9 @@ public:
     void setQuitOnClose(bool v);
     void setCoverGradient(bool v);
     void setSpectrumBars(bool v);
-    void setExternalLyrics(bool v);
+    void setLyricsLrclib(bool v);
+    void setLyricsOtherSites(bool v);
+    void setLyricsAutoSync(bool v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -107,7 +115,9 @@ signals:
     void quitOnCloseChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
-    void externalLyricsChanged();
+    void lyricsLrclibChanged();
+    void lyricsOtherSitesChanged();
+    void lyricsAutoSyncChanged();
 
 private:
     QSettings m_settings;
@@ -122,5 +132,7 @@ private:
     bool      m_quitOnClose;
     bool      m_coverGradient;
     bool      m_spectrumBars;
-    bool      m_externalLyrics;
+    bool      m_lyricsLrclib;
+    bool      m_lyricsOtherSites;
+    bool      m_lyricsAutoSync;
 };

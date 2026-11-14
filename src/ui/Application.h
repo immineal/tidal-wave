@@ -7,6 +7,7 @@
 #include "api/TidalClient.h"
 #include "api/TidalBridge.h"
 #include "api/LyricsFinder.h"
+#include "lyricsync/AutoSync.h"
 #include "player/Player.h"
 #include "player/Downloader.h"
 #include "mpris/MprisPlayer.h"
@@ -194,6 +195,7 @@ private:
     TidalClient *m_client = nullptr;
     TidalBridge *m_bridge = nullptr;
     LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     Player      *m_player = nullptr;
     Downloader  *m_downloader = nullptr;
     CastManager *m_cast   = nullptr;

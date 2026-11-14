@@ -57,6 +57,10 @@ you happen to use.
 - A system tray icon, so playback carries on with the window closed.
 - Album, artist, playlist and mix pages. Biographies are parsed as rich text
   with every name a link.
+- Plain lyrics are timed against the track's audio on your own machine, by a
+  small aligner in plain C++ that ships with the app (`src/lyricsync/`). Only
+  timings it is confident of are shown, marked "Synced automatically, may be
+  off". Real timings, from Tidal or a lyrics site, always come first.
 - A sleep timer on the Now Playing page, with presets, a custom slider, an
   optional fade-out and a mode that stops at the end of the track.
 - The Qt scene graph can be moved onto the CPU for machines where the GPU path
@@ -296,11 +300,13 @@ named.
     does send a `User-Agent` of `tidal-wave/<version>
     (+https://github.com/immineal/tidal-wave)`, so GitHub sees your IP address and which
     version you run. The reply is a version number and a link.
-*   **Four lyrics sites, only if you switch it on.** Off until you turn on
-    Settings -> Experimental -> "Find lyrics on other sites". With it on, and only for a
-    track Tidal has no lyrics for, the sites below are asked in this order, and the asking
-    stops at the first that has lyrics for the track or says it is an instrumental
-    (`src/api/LyricsProviders.cpp`, `src/api/LyricsFinder.cpp`):
+*   **Lyrics sites, for a track Tidal has no synced lyrics for.** Settings ->
+    Experimental has a switch for each: "Synced lyrics from LRCLIB" is on by default,
+    "Lyrics from more sites" (NetEase, KuGou, Genius) is off until you turn it on. The
+    sites switched on are asked in this order, and the asking stops at the first that
+    has synced lyrics for the track or says it is an instrumental; plain lyrics a site
+    has are kept while the rest are asked (`src/api/LyricsProviders.cpp`,
+    `src/api/LyricsFinder.cpp`):
     1.  `https://lrclib.net/api/get`, and `/api/search` if that finds nothing: the
         track's artist, title, album and length.
     2.  `https://music.163.com/api/search/get` (NetEase Cloud Music): the artist and
@@ -310,14 +316,20 @@ named.
     4.  `https://genius.com/<Artist>-<title>-lyrics`, the song page whose address is
         built from the artist and title. Genius's search API is not used.
 
+    So with the defaults, lrclib.net gets the artist, title, album and length of each
+    track you play that Tidal has no synced lyrics for, and nothing else is asked.
     music.163.com and lyrics.kugou.com are servers in China. No Tidal token or id is
     sent. Each site asked sees your IP address and a `User-Agent` of
     `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup starts once
     a track has been playing for three seconds, a site gets at most one request a second
     and never two at once, and a site that refuses (HTTP 429, 403, 503 or a bot check) is
     left alone for the time it asks for, or 15 minutes and doubling, plus up to 30 %.
-    Switching it off stops a lookup that is under way, and no `QNetworkAccessManager` for
-    it exists until the first lookup.
+    Switching both off stops a lookup that is under way, and no `QNetworkAccessManager`
+    for it exists until the first lookup.
+*   **Nothing, for timing plain lyrics.** "Sync plain lyrics automatically" (on by
+    default) analyses the track's audio file, which the player has downloaded to play it
+    anyway, on a low-priority thread of the app (`src/lyricsync/AutoSync.cpp`). It makes
+    no request of its own, to Tidal or anyone else.
 *   **Nothing, for feedback.** The two buttons in Settings -> Feedback open a URL and stop
     there. "Open a GitHub issue" builds
     `https://github.com/immineal/tidal-wave/issues/new?title=...&body=...`, "Send an email"
@@ -339,7 +351,7 @@ named.
     lowercase directory name: this is not the same place as the settings below.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
     language, sidebar width, audio output device, software rendering flag and the
-    switch for lyrics from other sites (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
+    three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
     download folder (`src/player/Downloader.cpp`), your pinned items and recently played
     list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), and the
     update check's state (`src/ui/UpdateCheck.cpp`).
@@ -349,8 +361,11 @@ named.
 *   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
     lyrics found on another site, a note that a site called it an instrumental, or a note
     that none were found, so that a song is looked up once. A "none found" note is
-    retried after 30 days (`src/api/LyricsFinder.cpp`).
-    Nothing is written there while the lyrics switch is off.
+    retried after 30 days, and so are plain lyrics, in case a site has synced ones by then
+    (`src/api/LyricsFinder.cpp`). Next to them, `<id>.sync.json` holds the timings made
+    here for a track's plain lyrics, with a hash of the words they belong to
+    (`src/lyricsync/AutoSync.cpp`). Nothing is written there while all three lyrics
+    switches are off.
 *   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
     **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so
     the tray, taskbar and launcher can resolve it by name. The app writes a copy itself only
@@ -379,3 +394,16 @@ return immediately and no `QNetworkAccessManager` is ever created.
 
 GNU General Public License, version 3 or later (`GPL-3.0-or-later`). The full
 text of GPLv3 is in `LICENSE`.
+
+### Credits for the lyrics aligner
+
+The aligner's letter net, `assets/lyricsync/ctc.f16.bin`, was trained in part on speech from
+LibriSpeech (V. Panayotov, G. Chen, D. Povey and S. Khudanpur, "LibriSpeech: an
+ASR corpus based on public domain audio books", ICASSP 2015;
+<https://www.openslr.org/12>), which is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The net is a
+derived work; no LibriSpeech audio ships with the app.
+
+`assets/lyricsync/translit.bin`, the table that turns letters of other scripts
+into a to z, is generated from the data of Unidecode (Tomaz Solc, after Sean M.
+Burke's Text::Unidecode), GPL-2.0-or-later; `tools/lyricsync_export.py` writes it.

@@ -550,6 +550,8 @@ Application::~Application() {
     // and would re-evaluate against null as each of them is destroyed.
     // The member is cleared first, so nothing reaches a half-destroyed engine.
     delete std::exchange(m_engine, nullptr);
+    // Before the player: its worker may still read the player's temp files.
+    delete std::exchange(m_autoSync, nullptr);
 }
 
 int Application::run(int argc, char **argv) {
@@ -660,12 +662,27 @@ int Application::run(int argc, char **argv) {
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
     m_lyricsFinder = new LyricsFinder(this);
-    m_lyricsFinder->setEnabledSource([prefs = m_prefs] { return prefs->externalLyrics(); });
-    connect(m_prefs, &Prefs::externalLyricsChanged, m_lyricsFinder, [this] {
-        if (!m_prefs->externalLyrics()) m_lyricsFinder->cancel();
+    m_lyricsFinder->setProviderEnabled([prefs = m_prefs](const QString &provider) {
+        return provider == LrclibProvider().name() ? prefs->lyricsLrclib() : prefs->lyricsOtherSites();
     });
+    for (auto sig : {&Prefs::lyricsLrclibChanged, &Prefs::lyricsOtherSitesChanged})
+        connect(m_prefs, sig, m_lyricsFinder, [this] {
+            if (!m_lyricsFinder->anyEnabled()) m_lyricsFinder->cancel();
+        });
     m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
+    // Plain lyrics timed against the audio the player already has on disk.
+    m_autoSync = new lyricsync::AutoSync(this);
+    m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });
+    m_autoSync->setCacheDir(LyricsCache::defaultDir());
+    m_autoSync->setAudioSource([player = m_player](qint64 id) { return player->audioFileFor(id); });
+    m_autoSync->setFileHold([player = m_player](const QString &p) { player->holdAudioFile(p); },
+                            [player = m_player](const QString &p) { player->releaseAudioFile(p); });
+    connect(m_player, &Player::audioFileReady, m_autoSync, &lyricsync::AutoSync::audioReady);
+    connect(m_prefs, &Prefs::lyricsAutoSyncChanged, m_autoSync, [this] {
+        if (!m_prefs->lyricsAutoSync()) m_autoSync->cancel();
+    });
+    m_bridge->setAutoSync(m_autoSync);
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
     // LibraryIndex asks PinStore where each row belongs, so the store is

@@ -17,7 +17,23 @@ constexpr auto kUiScale    = "ui/scaleFactor";
 constexpr auto kQuitOnClose = "ui/quitOnClose";
 constexpr auto kCoverGradient = "ui/coverGradient";
 constexpr auto kSpectrumBars = "ui/spectrumBars";
+// The one switch for all lyrics sites before they were split.
 constexpr auto kExternalLyrics = "lyrics/externalSources";
+constexpr auto kLyricsLrclib = "lyrics/lrclib";
+constexpr auto kLyricsOtherSites = "lyrics/otherSites";
+constexpr auto kLyricsAutoSync = "lyrics/autoSync";
+
+// A choice made with the old switch holds for both new ones; written back
+// at once so it is not applied again over a later change.
+QSettings &migrateLyricsSwitch(QSettings &s) {
+    if (s.contains(kExternalLyrics)) {
+        const bool on = s.value(kExternalLyrics).toBool();
+        if (!s.contains(kLyricsLrclib)) s.setValue(kLyricsLrclib, on);
+        if (!s.contains(kLyricsOtherSites)) s.setValue(kLyricsOtherSites, on);
+        s.remove(kExternalLyrics);
+    }
+    return s;
+}
 }
 
 Prefs::Prefs(QObject *parent)
@@ -36,7 +52,9 @@ Prefs::Prefs(QObject *parent)
     , m_coverGradient(m_settings.value(kCoverGradient, true).toBool())
     // Opt in: a missing key means off.
     , m_spectrumBars(m_settings.value(kSpectrumBars, false).toBool())
-    , m_externalLyrics(m_settings.value(kExternalLyrics, false).toBool())
+    , m_lyricsLrclib(migrateLyricsSwitch(m_settings).value(kLyricsLrclib, true).toBool())
+    , m_lyricsOtherSites(m_settings.value(kLyricsOtherSites, false).toBool())
+    , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
@@ -134,11 +152,25 @@ void Prefs::setSpectrumBars(bool v) {
     emit spectrumBarsChanged();
 }
 
-void Prefs::setExternalLyrics(bool v) {
-    if (v == m_externalLyrics) return;
-    m_externalLyrics = v;
-    m_settings.setValue(kExternalLyrics, v);
-    emit externalLyricsChanged();
+void Prefs::setLyricsLrclib(bool v) {
+    if (v == m_lyricsLrclib) return;
+    m_lyricsLrclib = v;
+    m_settings.setValue(kLyricsLrclib, v);
+    emit lyricsLrclibChanged();
+}
+
+void Prefs::setLyricsOtherSites(bool v) {
+    if (v == m_lyricsOtherSites) return;
+    m_lyricsOtherSites = v;
+    m_settings.setValue(kLyricsOtherSites, v);
+    emit lyricsOtherSitesChanged();
+}
+
+void Prefs::setLyricsAutoSync(bool v) {
+    if (v == m_lyricsAutoSync) return;
+    m_lyricsAutoSync = v;
+    m_settings.setValue(kLyricsAutoSync, v);
+    emit lyricsAutoSyncChanged();
 }
 
 QString Prefs::appVersion() const {

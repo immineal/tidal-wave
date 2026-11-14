@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -110,7 +111,7 @@ QString LyricsCache::path(qint64 trackId) const {
     return m_dir + u'/' + QString::number(trackId) + QStringLiteral(".json");
 }
 
-LyricsCache::Hit LyricsCache::lookup(qint64 trackId, qint64 now, LyricsResult *out) const {
+LyricsCache::Hit LyricsCache::lookup(qint64 trackId, qint64 now, LyricsResult *out, QStringList *asked) const {
     QFile f(path(trackId));
     if (!f.open(QIODevice::ReadOnly)) return Hit::None;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
@@ -119,14 +120,18 @@ LyricsCache::Hit LyricsCache::lookup(qint64 trackId, qint64 now, LyricsResult *o
         out->instrumental = true;
         return Hit::Instrumental;
     }
-    if (!o.value(QStringLiteral("found")).toBool()) {
-        const qint64 at = qint64(o.value(QStringLiteral("at")).toDouble());
-        return (at <= now && now - at < kMissTtlMs) ? Hit::Miss : Hit::None;
+    const qint64 at = qint64(o.value(QStringLiteral("at")).toDouble());
+    const bool fresh = at <= now && now - at < kMissTtlMs;
+    if (asked) {
+        const QJsonValue a = o.value(QStringLiteral("asked"));
+        *asked = a.isArray() ? a.toVariant().toStringList() : QStringList{QStringLiteral("*")};
     }
+    if (!o.value(QStringLiteral("found")).toBool()) return fresh ? Hit::Miss : Hit::None;
     out->text = o.value(QStringLiteral("text")).toString();
     out->timed = o.value(QStringLiteral("timed")).toBool();
     out->source = o.value(QStringLiteral("source")).toString();
     out->url = QUrl(o.value(QStringLiteral("url")).toString());
+    if (asked && !out->timed && !fresh) asked->clear();
     return out->text.isEmpty() ? Hit::None : Hit::Found;
 }
 
@@ -138,10 +143,11 @@ void LyricsCache::write(qint64 trackId, const QByteArray &json) const {
     f.commit();
 }
 
-void LyricsCache::storeFound(qint64 trackId, const LyricsResult &r, qint64 now) const {
+void LyricsCache::storeFound(qint64 trackId, const LyricsResult &r, qint64 now, const QStringList &asked) const {
     QJsonObject o{{QStringLiteral("found"), true}, {QStringLiteral("text"), r.text},
                   {QStringLiteral("timed"), r.timed}, {QStringLiteral("source"), r.source},
-                  {QStringLiteral("url"), r.url.toString()}, {QStringLiteral("at"), double(now)}};
+                  {QStringLiteral("url"), r.url.toString()}, {QStringLiteral("at"), double(now)},
+                  {QStringLiteral("asked"), QJsonArray::fromStringList(asked)}};
     write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
@@ -151,8 +157,9 @@ void LyricsCache::storeInstrumental(qint64 trackId, qint64 now) const {
     write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
-void LyricsCache::storeMiss(qint64 trackId, qint64 now) const {
-    QJsonObject o{{QStringLiteral("found"), false}, {QStringLiteral("at"), double(now)}};
+void LyricsCache::storeMiss(qint64 trackId, qint64 now, const QStringList &asked) const {
+    QJsonObject o{{QStringLiteral("found"), false}, {QStringLiteral("at"), double(now)},
+                  {QStringLiteral("asked"), QJsonArray::fromStringList(asked)}};
     write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
@@ -160,7 +167,7 @@ void LyricsCache::storeMiss(qint64 trackId, qint64 now) const {
 
 LyricsFinder::LyricsFinder(QObject *parent)
     : QObject(parent)
-    , m_enabled([] { return false; })
+    , m_enabled([](const QString &) { return false; })
     , m_now([] { return QDateTime::currentMSecsSinceEpoch(); })
     , m_providers(lyrics::defaultProviders())
 {
@@ -180,18 +187,39 @@ LyricsCache &LyricsFinder::cache() {
     return *m_cache;
 }
 
+bool LyricsFinder::anyEnabled() const {
+    for (const auto &p : m_providers)
+        if (m_enabled(p->name())) return true;
+    return false;
+}
+
+bool LyricsFinder::mayAsk(const QString &provider) const {
+    return m_enabled(provider) && !m_asked.contains(provider) && !m_asked.contains(QStringLiteral("*"));
+}
+
 void LyricsFinder::find(const LyricsQuery &q, Done done) {
     cancel();
-    if (!m_enabled()) { done({}, QStringLiteral("off")); return; }
+    if (!anyEnabled()) { done({}, QStringLiteral("off")); return; }
     if (q.trackId <= 0 || q.title.isEmpty() || q.artists.isEmpty()) { done({}, {}); return; }
 
+    // What the cache holds stands for the sites it names; only the others
+    // are asked, so a site switched on later still gets its turn.
     LyricsResult cached;
-    switch (cache().lookup(q.trackId, m_now(), &cached)) {
+    QStringList asked;
+    m_plain = {};
+    switch (cache().lookup(q.trackId, m_now(), &cached, &asked)) {
     case LyricsCache::Hit::Found:
+        if (cached.timed) { done(cached, {}); return; }
+        m_plain = cached;
+        break;
     case LyricsCache::Hit::Instrumental: done(cached, {}); return;
-    case LyricsCache::Hit::Miss:  done({}, {}); return;
-    case LyricsCache::Hit::None:  break;
+    case LyricsCache::Hit::Miss: break;
+    case LyricsCache::Hit::None: asked.clear(); break;
     }
+    m_asked = asked;
+    const bool anyLeft = std::any_of(m_providers.cbegin(), m_providers.cend(),
+                                     [this](const auto &p) { return mayAsk(p->name()); });
+    if (!anyLeft) { done(m_plain, {}); return; }
 
     m_active = true;
     m_settled = false;
@@ -228,10 +256,11 @@ void LyricsFinder::nextProvider() {
 
 void LyricsFinder::advance() {
     if (!m_active || !m_settled || m_handle >= 0) return;
-    if (!m_enabled()) { finish({}, QStringLiteral("off"), false); return; }
+    if (!anyEnabled()) { finish({}, QStringLiteral("off"), false); return; }
     for (;;) {
         if (m_step.kind != LyricsStep::Request) {
-            if (m_providerIdx >= m_providers.size()) { finish({}, {}, !m_incomplete); return; }
+            if (m_providerIdx >= m_providers.size()) { finishChain(); return; }
+            if (!mayAsk(m_providers.at(m_providerIdx)->name())) { nextProvider(); continue; }
             m_step = m_providers.at(m_providerIdx)->start(m_query);
             if (m_step.kind != LyricsStep::Request) { nextProvider(); continue; }
         }
@@ -275,12 +304,19 @@ void LyricsFinder::onReply(quint64 gen, const LyricsReply &reply) {
         advance();
         return;
     }
+    const QString name = m_providers.at(m_providerIdx)->name();
     const LyricsStep step = m_providers.at(m_providerIdx)->next(m_query, m_step, reply);
     switch (step.kind) {
     case LyricsStep::Found:
-        cache().storeFound(m_query.trackId, step.result, m_now());
-        finish(step.result, {}, false);
-        return;
+        m_asked << name;
+        if (step.result.timed) {
+            cache().storeFound(m_query.trackId, step.result, m_now(), m_asked);
+            finish(step.result, {}, false);
+            return;
+        }
+        if (m_plain.text.isEmpty()) m_plain = step.result;
+        nextProvider();
+        break;
     case LyricsStep::Instrumental: {
         cache().storeInstrumental(m_query.trackId, m_now());
         LyricsResult r;
@@ -291,8 +327,10 @@ void LyricsFinder::onReply(quint64 gen, const LyricsReply &reply) {
     }
     case LyricsStep::Failed:
         m_incomplete = true;
-        [[fallthrough]];
+        nextProvider();
+        break;
     case LyricsStep::Miss:
+        m_asked << name;
         nextProvider();
         break;
     case LyricsStep::Request:
@@ -302,8 +340,20 @@ void LyricsFinder::onReply(quint64 gen, const LyricsReply &reply) {
     advance();
 }
 
+// Every site has been asked or passed over. Sites that did not answer are
+// left out of `asked`, so they are tried again next time.
+void LyricsFinder::finishChain() {
+    m_asked.removeDuplicates();
+    if (!m_plain.text.isEmpty()) {
+        cache().storeFound(m_query.trackId, m_plain, m_now(), m_asked);
+        finish(m_plain, {}, false);
+        return;
+    }
+    finish({}, {}, !m_incomplete);
+}
+
 void LyricsFinder::finish(const LyricsResult &r, const QString &err, bool cacheMiss) {
-    if (cacheMiss) cache().storeMiss(m_query.trackId, m_now());
+    if (cacheMiss) cache().storeMiss(m_query.trackId, m_now(), m_asked);
     Done done = std::move(m_done);
     m_active = false;
     m_done = nullptr;

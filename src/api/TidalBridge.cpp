@@ -6,6 +6,7 @@
 #include "PageEverything.h"
 #include "RecordVersions.h"
 #include "LyricsFinder.h"
+#include "lyricsync/AutoSync.h"
 #include <QJSEngine>
 #include <QSettings>
 #include <QJsonArray>
@@ -754,6 +755,26 @@ void TidalBridge::findLyrics(const QVariantMap &track, QJSValue cb) {
         result["instrumental"] = r.instrumental;
         call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(err) });
     });
+}
+
+void TidalBridge::autoSyncLyrics(qlonglong trackId, const QString &text, QJSValue cb) {
+    if (!m_autoSync) {
+        call(cb, { qjsEngine(this)->toScriptValue(QVariantMap()),
+                   qjsEngine(this)->toScriptValue(QStringLiteral("off")) });
+        return;
+    }
+    m_autoSync->sync(trackId, text, [this, cb](const lyricsync::AutoSync::Result &r) mutable {
+        QVariantMap result;
+        result["ok"]         = r.ok;
+        result["kept"]       = r.kept;
+        result["confidence"] = r.confidence;
+        result["lrc"]        = r.lrc;
+        call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(r.error) });
+    });
+}
+
+void TidalBridge::setLyricsLookAhead(bool on) {
+    if (m_autoSync) m_autoSync->setLookAhead(on);
 }
 
 void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {

@@ -281,6 +281,10 @@ Rectangle {
     property bool   ignoreLyricsSync: false
     // Set when the words came from another site: its name and the page.
     property string lyricsSource: ""
+    // The timings were made here from plain lyrics, and may be off.
+    property bool   lyricsAutoSynced: false
+    // Bumped by every loadLyrics(), so an answer for an earlier one is dropped.
+    property int    lyricsSerial: 0
     property string lyricsSourceUrl: ""
 
     // The band at the bottom of the open panel that belongs to the chips.
@@ -390,29 +394,64 @@ Rectangle {
 
     function loadLyrics() {
         if (!hasTrack || track.id <= 0) return
+        var serial = ++lyricsSerial
         lyricsState = "loading"
         lyricsSource = ""
         lyricsSourceUrl = ""
+        lyricsAutoSynced = false
         var forId = track.id
         bridge.fetchLyrics(track.id, function(result, err) {
-            if (!root.hasTrack || root.track.id !== forId) return
+            if (!root.lyricsCurrent(forId, serial)) return
             var rawText = err ? "" : (result.text || "")
-            if (rawText.length === 0) { root.findLyricsElsewhere(forId); return }
-            root.showLyricsText(rawText, result.timed || false)
+            if (rawText.length > 0 && result.timed) { root.showLyricsText(rawText, true); return }
+            // Tidal's plain words show at once; the sites are still asked for synced ones.
+            if (rawText.length > 0) {
+                root.showLyricsText(rawText, false)
+                root.autoSyncLyrics(forId, serial, rawText)
+            }
+            root.findLyricsElsewhere(forId, serial, rawText.length > 0)
         })
     }
 
-    // Only with the switch on, and only for a track Tidal has none for.
-    function findLyricsElsewhere(forId) {
-        if (!prefs.externalLyrics) { lyricsState = "unavailable"; return }
+    function lyricsCurrent(forId, serial) {
+        return serial === root.lyricsSerial && root.hasTrack && root.track.id === forId
+    }
+
+    function lyricsSitesOn() { return prefs.lyricsLrclib || prefs.lyricsOtherSites }
+
+    // Synced lyrics from a site beat Tidal's plain ones and auto-synced ones;
+    // plain lyrics from a site are used only when Tidal has none.
+    function findLyricsElsewhere(forId, serial, havePlain) {
+        if (!lyricsSitesOn()) { if (!havePlain) lyricsState = "unavailable"; return }
         bridge.findLyrics(root.track, function(result, err) {
-            if (!root.hasTrack || root.track.id !== forId) return
-            if (!err && result.instrumental) { root.lyricsState = "instrumental"; return }
+            if (!root.lyricsCurrent(forId, serial)) return
             var text = err ? "" : (result.text || "")
+            if (text.length > 0 && result.timed) {
+                root.lyricsSource    = result.source || ""
+                root.lyricsSourceUrl = result.url || ""
+                root.lyricsAutoSynced = false
+                root.showLyricsText(text, true)
+                return
+            }
+            if (havePlain) return
+            if (!err && result.instrumental) { root.lyricsState = "instrumental"; return }
             if (text.length === 0) { root.lyricsState = "unavailable"; return }
             root.lyricsSource    = result.source || ""
             root.lyricsSourceUrl = result.url || ""
-            root.showLyricsText(text, result.timed || false)
+            root.showLyricsText(text, false)
+            root.autoSyncLyrics(forId, serial, text)
+        })
+    }
+
+    // Plain lyrics timed against the audio, here. Shown only when the aligner
+    // trusts its result, and never over real timings that came meanwhile.
+    function autoSyncLyrics(forId, serial, text) {
+        if (!prefs.lyricsAutoSync) return
+        bridge.autoSyncLyrics(forId, text, function(result, err) {
+            if (!root.lyricsCurrent(forId, serial)) return
+            if (err || !result.kept || !result.lrc || root.lyricsIsTimed) return
+            root.showLyricsText(result.lrc, true)
+            root.lyricsAutoSynced = true
         })
     }
 
@@ -433,12 +472,23 @@ Rectangle {
         currentLyricLine = -1
     }
 
+    // A site switched on may have what is missing; auto-sync switched off
+    // takes its timings away, switched on may add them.
+    function lyricsSwitchChanged() {
+        var plainShown = lyricsState === "ready" && (!lyricsIsTimed || lyricsAutoSynced)
+        if (lyricsState === "unavailable" || plainShown) loadLyrics()
+    }
     Connections {
         target: prefs
-        function onExternalLyricsChanged() {
-            if (prefs.externalLyrics && root.lyricsState === "unavailable") root.loadLyrics()
-        }
+        function onLyricsLrclibChanged()     { if (prefs.lyricsLrclib) root.lyricsSwitchChanged() }
+        function onLyricsOtherSitesChanged() { if (prefs.lyricsOtherSites) root.lyricsSwitchChanged() }
+        function onLyricsAutoSyncChanged()   { root.lyricsSwitchChanged() }
     }
+
+    // The next track's audio is analysed ahead only while lyrics are on screen.
+    readonly property bool lyricsLookAhead: showLyrics && prefs.lyricsAutoSync
+    onLyricsLookAheadChanged: bridge.setLyricsLookAhead(lyricsLookAhead)
+    Component.onDestruction: bridge.setLyricsLookAhead(false)
 
     // ─── Credits ───────────────────────────────────────
     // The same four states the lyrics have: "none", "loading", "ready",
@@ -888,6 +938,7 @@ Rectangle {
                         // Where the words came from, when it was not Tidal.
                         // Bottom left, clear of the chips in the other corner.
                         Text {
+                            id: lyricsSourceText
                             objectName: "nowPlayingLyricsSource"
                             readonly property string sourceUrl: root.lyricsSourceUrl
                             visible: root.lyricsState === "ready" && root.lyricsSource.length > 0
@@ -913,6 +964,25 @@ Rectangle {
                                 gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: if (parent.sourceUrl.length > 0) app.openUrl(parent.sourceUrl)
                             }
+                        }
+
+                        // Timings made here, from plain lyrics. Beside the source
+                        // when there is one, and hidden with it during a scroll.
+                        Text {
+                            objectName: "nowPlayingLyricsAutoSynced"
+                            visible: root.lyricsState === "ready" && root.lyricsAutoSynced
+                                     && !root.userScrolled
+                            anchors.left: lyricsSourceText.visible ? lyricsSourceText.right : parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: lyricsSourceText.visible ? 10 : 16
+                            anchors.bottomMargin: 10
+                            height: 26
+                            width: Math.min(implicitWidth, Math.max(0, parent.width - panelChips.width - 46
+                                       - (lyricsSourceText.visible ? lyricsSourceText.width + 10 : 0)))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Synced automatically, may be off")
+                            color: Theme.textDim; font.pixelSize: 11
                         }
                     }
 

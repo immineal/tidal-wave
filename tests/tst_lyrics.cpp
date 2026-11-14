@@ -52,6 +52,27 @@ QByteArray lrclibRecord(const QString &title, const QString &artist, double dur,
     return QJsonDocument(o).toJson();
 }
 
+// A site that answers every request with one fixed step: "synced", "plain" or "miss".
+class StubProvider : public LyricsProvider {
+public:
+    StubProvider(QString name, QString host, QString answer)
+        : m_name(std::move(name)), m_host(std::move(host)), m_answer(std::move(answer)) {}
+    QString name() const override { return m_name; }
+    LyricsStep start(const LyricsQuery &) const override {
+        return LyricsStep::request(QUrl(QStringLiteral("https://") + m_host + QStringLiteral("/x")), 0);
+    }
+    LyricsStep next(const LyricsQuery &, const LyricsStep &, const LyricsReply &) const override {
+        if (m_answer == QLatin1String("miss")) return LyricsStep::miss();
+        LyricsResult r;
+        r.timed = m_answer == QLatin1String("synced");
+        r.text = r.timed ? QStringLiteral("[00:01.00]") + m_name : m_name;
+        r.source = m_name;
+        return LyricsStep::found(r);
+    }
+private:
+    QString m_name, m_host, m_answer;
+};
+
 } // namespace
 
 class TestLyrics : public QObject {
@@ -62,7 +83,7 @@ class TestLyrics : public QObject {
 
     LyricsFinder *makeFinder(FakeTransport *t, bool *enabled) {
         auto *f = new LyricsFinder(this);
-        f->setEnabledSource([enabled] { return *enabled; });
+        f->setProviderEnabled([enabled](const QString &) { return *enabled; });
         f->setTransport(t);
         f->setCacheDir(m_dir.path() + QStringLiteral("/c") + QString::number(++m_cacheN));
         f->setClock([this] { return m_now; });
@@ -609,6 +630,133 @@ private slots:
         f->fireTimerForTest();
         QCOMPARE(t.calls.size(), 0);
         QCOMPARE(err, QStringLiteral("off"));
+        delete f;
+    }
+
+    // ── plain and synced, site by site ───────────────────────────────────
+
+    // Runs one lookup to its end, answering every request with 200.
+    LyricsResult lookUp(LyricsFinder *f, FakeTransport &t, QString *err = nullptr) {
+        LyricsResult got;
+        bool done = false;
+        f->find(query(), [&](const LyricsResult &r, const QString &e) { got = r; done = true; if (err) *err = e; });
+        if (done) return got;
+        f->fireTimerForTest();
+        for (int i = 0; i < 20 && !done; ++i) {
+            for (int c = 0; c < t.calls.size(); ++c)
+                if (t.calls[c].done && !t.calls[c].aborted) {
+                    auto d = std::move(t.calls[c].done);
+                    t.calls[c].done = nullptr;
+                    d(LyricsReply{200, "x", {}});
+                }
+            QTest::qWait(1);
+        }
+        return got;
+    }
+
+    QStringList hostsAsked(const FakeTransport &t, int from = 0) {
+        QStringList h;
+        for (int i = from; i < t.calls.size(); ++i) h << t.calls[i].url.host();
+        return h;
+    }
+
+    void plainKeepsLookingForSynced() {
+        FakeTransport t;
+        bool on = true;
+        LyricsFinder *f = makeFinder(&t, &on);
+        f->setProviders({std::make_shared<StubProvider>("A", "a.test", "plain"),
+                         std::make_shared<StubProvider>("B", "b.test", "synced")});
+        const LyricsResult r = lookUp(f, t);
+        QVERIFY(r.timed);
+        QCOMPARE(r.source, QStringLiteral("B"));
+        QCOMPARE(hostsAsked(t), (QStringList{"a.test", "b.test"}));
+        // Synced lyrics are final: from the cache, nothing asked.
+        QVERIFY(lookUp(f, t).timed);
+        QCOMPARE(t.calls.size(), 2);
+        delete f;
+    }
+
+    void plainIsTheAnswerWhenNoSiteHasSynced() {
+        FakeTransport t;
+        bool on = true;
+        LyricsFinder *f = makeFinder(&t, &on);
+        f->setProviders({std::make_shared<StubProvider>("A", "a.test", "plain"),
+                         std::make_shared<StubProvider>("B", "b.test", "miss"),
+                         std::make_shared<StubProvider>("C", "c.test", "plain")});
+        LyricsResult r = lookUp(f, t);
+        QVERIFY(!r.timed);
+        QCOMPARE(r.source, QStringLiteral("A"));   // the first plain, the better ranked
+        QCOMPARE(t.calls.size(), 3);
+        r = lookUp(f, t);
+        QCOMPARE(r.source, QStringLiteral("A"));
+        QCOMPARE(t.calls.size(), 3);
+        // Plain lyrics are asked about again once they are as old as a miss may be.
+        m_now += LyricsCache::kMissTtlMs;
+        r = lookUp(f, t);
+        QCOMPARE(r.source, QStringLiteral("A"));
+        QCOMPARE(t.calls.size(), 6);
+        delete f;
+    }
+
+    // A site switched on later is asked, and only it.
+    void siteSwitchedOnLaterIsAsked() {
+        FakeTransport t;
+        bool bOn = false;
+        auto *f = new LyricsFinder(this);
+        f->setProviderEnabled([&bOn](const QString &p) { return p == QLatin1String("A") || bOn; });
+        f->setTransport(&t);
+        f->setCacheDir(m_dir.path() + QStringLiteral("/later"));
+        f->setClock([this] { return m_now; });
+        f->setProviders({std::make_shared<StubProvider>("A", "a.test", "plain"),
+                         std::make_shared<StubProvider>("B", "b.test", "synced")});
+        QCOMPARE(lookUp(f, t).source, QStringLiteral("A"));
+        QCOMPARE(hostsAsked(t), QStringList{"a.test"});
+        QCOMPARE(lookUp(f, t).source, QStringLiteral("A"));
+        QCOMPARE(t.calls.size(), 1);
+        bOn = true;
+        const LyricsResult r = lookUp(f, t);
+        QVERIFY(r.timed);
+        QCOMPARE(hostsAsked(t, 1), QStringList{"b.test"});
+        delete f;
+    }
+
+    // A site that did not answer is not taken as having said no.
+    void unansweredSiteIsAskedAgain() {
+        bool on = true;
+        // A refusal: the plain lyrics come back, B is tried again after its pause.
+        FakeTransport t2;
+        LyricsFinder *g = makeFinder(&t2, &on);
+        g->setProviders({std::make_shared<StubProvider>("A", "a.test", "plain"),
+                         std::make_shared<StubProvider>("B", "b.test", "synced")});
+        LyricsResult r;
+        g->find(query(), [&](const LyricsResult &x, const QString &) { r = x; });
+        g->fireTimerForTest();
+        t2.answer(0, 200, "x");
+        QTRY_COMPARE(t2.calls.size(), 2);
+        t2.answer(1, 429, {}, "60");
+        QTRY_COMPARE(r.source, QStringLiteral("A"));
+        m_now += 60'000;
+        const LyricsResult again = lookUp(g, t2);
+        QVERIFY(again.timed);
+        QCOMPARE(hostsAsked(t2, 2), QStringList{"b.test"});
+        delete g;
+    }
+
+    // Entries written before sites were switched one by one stand for all sites.
+    void entryFromAnOlderBuildIsKept() {
+        const QString dir = m_dir.path() + QStringLiteral("/older");
+        QDir().mkpath(dir);
+        QFile file(dir + QStringLiteral("/7.json"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QJsonDocument(QJsonObject{{"found", true}, {"text", "old words"}, {"timed", false},
+                                             {"source", "Genius"}, {"at", double(m_now)}}).toJson());
+        file.close();
+        FakeTransport t;
+        bool on = true;
+        LyricsFinder *f = makeFinder(&t, &on);
+        f->setCacheDir(dir);
+        QCOMPARE(lookUp(f, t).text, QStringLiteral("old words"));
+        QCOMPARE(t.calls.size(), 0);
         delete f;
     }
 

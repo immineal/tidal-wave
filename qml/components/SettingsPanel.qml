@@ -777,31 +777,32 @@ Popup {
                 heading: qsTr("Experimental")
                 key: "experimental"
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 12
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            text: qsTr("Find lyrics on other sites")
-                            color: Theme.textPrimary; font.pixelSize: 14
-                            wrapMode: Text.Wrap; Layout.fillWidth: true
-                        }
-                        Text {
-                            objectName: "settingsExternalLyricsNote"
-                            text: qsTr("When Tidal has no lyrics for the playing track, other sites are asked: lrclib.net gets its artist, title, album and length; music.163.com its artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.")
-                            color: Theme.textDim; font.pixelSize: 11
-                            wrapMode: Text.Wrap; Layout.fillWidth: true
-                        }
-                    }
-                    Toggle {
-                        objectName: "settingsExternalLyricsToggle"
-                        Layout.alignment: Qt.AlignVCenter
-                        checked: prefs.externalLyrics
-                        onToggled: prefs.externalLyrics = !prefs.externalLyrics
-                    }
+                LyricsSwitch {
+                    objectName: "settingsLrclibRow"
+                    toggleName: "settingsLrclibToggle"
+                    noteName: "settingsLrclibNote"
+                    title: qsTr("Synced lyrics from LRCLIB")
+                    note: qsTr("When Tidal has no synced lyrics for the playing track, lrclib.net is asked and gets its artist, title, album and length.")
+                    checked: prefs.lyricsLrclib
+                    onToggled: prefs.lyricsLrclib = !prefs.lyricsLrclib
+                }
+                LyricsSwitch {
+                    objectName: "settingsOtherLyricsRow"
+                    toggleName: "settingsOtherLyricsToggle"
+                    noteName: "settingsOtherLyricsNote"
+                    title: qsTr("Lyrics from more sites")
+                    note: qsTr("Asked after lrclib.net, in this order: music.163.com gets the track's artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.")
+                    checked: prefs.lyricsOtherSites
+                    onToggled: prefs.lyricsOtherSites = !prefs.lyricsOtherSites
+                }
+                LyricsSwitch {
+                    objectName: "settingsAutoSyncRow"
+                    toggleName: "settingsAutoSyncToggle"
+                    noteName: "settingsAutoSyncNote"
+                    title: qsTr("Sync plain lyrics automatically")
+                    note: qsTr("Lyrics without timings are timed against the track's audio, here on this machine; nothing is sent for it. Timings it is unsure of are not shown, and the ones shown are marked as made here.")
+                    checked: prefs.lyricsAutoSync
+                    onToggled: prefs.lyricsAutoSync = !prefs.lyricsAutoSync
                 }
             }
 
@@ -818,13 +819,16 @@ Popup {
                     text: qsTr("Tidal Wave has no analytics and no telemetry.")
                 }
                 PrivacyLine {
-                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details only with the switch for them on, see below.")
+                    text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.")
                 }
                 PrivacyLine {
-                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; and lyrics found on other sites.")
+                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.")
                 }
                 PrivacyLine {
-                    text: qsTr("Lyrics from other sites, only with the switch under Experimental on, and only for a track Tidal has no lyrics for. The sites are asked in this order, and the asking stops at the first that knows the track: lrclib.net gets its artist, title, album and length; music.163.com (NetEase Cloud Music) its artist and title; lyrics.kugou.com (KuGou) its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China. Each site asked sees your IP address and the app's name and version. Whatever they find is kept on this machine, so a song is not looked up twice.")
+                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Whatever they find is kept on this machine, so a song is not looked up twice.")
+                }
+                PrivacyLine {
+                    text: qsTr("Syncing plain lyrics, on by default, happens on this machine: the track's audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.")
                 }
                 PrivacyLine {
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
@@ -956,6 +960,40 @@ Popup {
 
     // One paragraph of the privacy notice. Wraps, never elides: a privacy
     // notice with its tail cut off is worse than none.
+    // One switch under Experimental: a title, a line on what it sends, a toggle.
+    component LyricsSwitch : RowLayout {
+        id: lyricsSwitch
+        property string title
+        property string note
+        property string toggleName
+        property string noteName
+        property bool checked
+        signal toggled()
+        Layout.fillWidth: true
+        spacing: 12
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            Text {
+                text: lyricsSwitch.title
+                color: Theme.textPrimary; font.pixelSize: 14
+                wrapMode: Text.Wrap; Layout.fillWidth: true
+            }
+            Text {
+                objectName: lyricsSwitch.noteName
+                text: lyricsSwitch.note
+                color: Theme.textDim; font.pixelSize: 11
+                wrapMode: Text.Wrap; Layout.fillWidth: true
+            }
+        }
+        Toggle {
+            objectName: lyricsSwitch.toggleName
+            Layout.alignment: Qt.AlignVCenter
+            checked: lyricsSwitch.checked
+            onToggled: lyricsSwitch.toggled()
+        }
+    }
+
     component PrivacyLine : Text {
         objectName: "settingsPrivacyText"
         color: Theme.textSec

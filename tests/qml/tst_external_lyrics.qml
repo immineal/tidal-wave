@@ -1,5 +1,6 @@
-// Lyrics from other sites on the Now Playing page: asked for only with the
-// switch on and only when Tidal has none, and credited to where they came from.
+// Lyrics from other sites on the Now Playing page: asked for only with a
+// switch on and only when Tidal has no synced ones, credited to where they
+// came from; and plain lyrics timed here, marked as such.
 
 import QtQuick
 import QtQuick.Window
@@ -22,12 +23,17 @@ TestCase {
     function init() {
         app.setReducedMotionForTest(true)
         bridge.resetLyricsForTest()
-        prefs.externalLyrics = false
+        prefs.lyricsLrclib = false
+        prefs.lyricsOtherSites = false
+        prefs.lyricsAutoSync = false
     }
 
+    // Back to what a fresh install has.
     function cleanup() {
         bridge.resetLyricsForTest()
-        prefs.externalLyrics = false
+        prefs.lyricsLrclib = true
+        prefs.lyricsOtherSites = false
+        prefs.lyricsAutoSync = true
         app.setReducedMotionForTest(false)
     }
 
@@ -64,21 +70,46 @@ TestCase {
         var page = openPage(501)
         compare(page.lyricsState, "unavailable")
         compare(bridge.findLyricsCallsForTest(), 0,
-                "with the switch off, another site was asked for lyrics")
+                "with the switches off, another site was asked for lyrics")
     }
 
-    function test_tidal_lyrics_win() {
-        prefs.externalLyrics = true
-        bridge.setLyricsForTest("one\ntwo", false)
+    function test_tidal_synced_lyrics_win() {
+        prefs.lyricsLrclib = true
+        prefs.lyricsOtherSites = true
+        bridge.setLyricsForTest("[00:01.00]one\n[00:02.00]two", true)
         var page = openPage(502)
         compare(page.lyricsState, "ready")
+        compare(page.lyricsIsTimed, true)
         compare(bridge.findLyricsCallsForTest(), 0,
-                "Tidal had lyrics and another site was still asked")
+                "Tidal had synced lyrics and another site was still asked")
+        compare(page.lyricsSource, "")
+    }
+
+    // Tidal's plain words show at once; synced ones from a site replace them.
+    function test_tidal_plain_lyrics_give_way_to_synced() {
+        prefs.lyricsLrclib = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setFoundLyricsForTest("[00:01.00]one\n[00:05.00]two", true, "LRCLIB", "https://lrclib.net/")
+        var page = openPage(512)
+        compare(bridge.findLyricsCallsForTest(), 1)
+        compare(page.lyricsIsTimed, true)
+        compare(page.lyricsData[1].ms, 5000)
+        compare(page.lyricsSource, "LRCLIB")
+    }
+
+    function test_tidal_plain_lyrics_beat_plain_from_a_site() {
+        prefs.lyricsLrclib = true
+        bridge.setLyricsForTest("tidal one\ntidal two", false)
+        bridge.setFoundLyricsForTest("site one", false, "Genius", "https://genius.com/x")
+        var page = openPage(513)
+        compare(bridge.findLyricsCallsForTest(), 1)
+        compare(page.lyricsIsTimed, false)
+        compare(page.lyricsData[0].text, "tidal one")
         compare(page.lyricsSource, "")
     }
 
     function test_found_elsewhere_and_credited() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundLyricsForTest("first line\nsecond line", false, "Genius",
                                      "https://genius.com/Paper-lanterns-harbour-lights-lyrics")
         var page = openPage(503)
@@ -102,7 +133,7 @@ TestCase {
     }
 
     function test_timed_lyrics_from_elsewhere_are_timed() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundLyricsForTest("[00:01.00]one\n[00:05.00]two", true, "LRCLIB",
                                      "https://lrclib.net/")
         var page = openPage(504)
@@ -113,7 +144,7 @@ TestCase {
     }
 
     function test_nothing_found_is_unavailable() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         var page = openPage(505)
         compare(bridge.findLyricsCallsForTest(), 1)
         compare(page.lyricsState, "unavailable")
@@ -122,7 +153,7 @@ TestCase {
     // A site that knows the song says it has no words: the panel says so,
     // rather than that there are no lyrics.
     function test_instrumental_is_said() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundInstrumentalForTest(true)
         var page = openPage(509)
         compare(page.lyricsState, "instrumental")
@@ -154,7 +185,7 @@ TestCase {
 
     // Long plain lyrics get a bar to drag; dragging it is the user scrolling.
     function test_plain_lyrics_have_a_scroll_bar() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundLyricsForTest(manyLines(false), false, "Genius", "https://genius.com/x")
         var page = openPage(510)
         openPanel(page)
@@ -180,7 +211,7 @@ TestCase {
     }
 
     function test_timed_lyrics_have_none() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundLyricsForTest(manyLines(true), true, "LRCLIB", "https://lrclib.net/")
         var page = openPage(511)
         openPanel(page)
@@ -190,17 +221,21 @@ TestCase {
         verify(!bar.visible, "synced lyrics, which follow the song, show a scroll bar")
     }
 
-    function test_switching_on_looks_again() {
+    function test_switching_on_looks_again_data() {
+        return [{ tag: "lrclib", key: "lyricsLrclib" }, { tag: "other sites", key: "lyricsOtherSites" }]
+    }
+
+    function test_switching_on_looks_again(data) {
         var page = openPage(506)
         compare(page.lyricsState, "unavailable")
         bridge.setFoundLyricsForTest("now found", false, "Genius", "https://genius.com/x")
-        prefs.externalLyrics = true
+        prefs[data.key] = true
         compare(bridge.findLyricsCallsForTest(), 1)
         compare(page.lyricsState, "ready")
     }
 
     function test_credit_cleared_on_next_track() {
-        prefs.externalLyrics = true
+        prefs.lyricsLrclib = true
         bridge.setFoundLyricsForTest("words", false, "Genius", "https://genius.com/x")
         var page = openPage(507)
         compare(page.lyricsSource, "Genius")
@@ -209,5 +244,122 @@ TestCase {
         player.setCurrentTrackForTest(makeTrack(508))
         compare(page.lyricsState, "ready")
         compare(page.lyricsSource, "", "the next track kept the other site's credit")
+    }
+
+    // ── auto-sync ────────────────────────────────────────────────────────
+
+    readonly property string autoLrc: "[00:01.00]one\n[00:04.00]two"
+
+    function test_plain_lyrics_are_synced_here() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        var page = openPage(520)
+        compare(bridge.autoSyncCallsForTest(), 1)
+        compare(bridge.lastAutoSyncTextForTest(), "one\ntwo")
+        compare(page.lyricsIsTimed, true)
+        compare(page.lyricsData[1].ms, 4000)
+        verify(page.lyricsAutoSynced)
+        openPanel(page)
+        var note = findChild(page, "nowPlayingLyricsAutoSynced")
+        verify(note, "auto-synced lyrics carry no note")
+        verify(note.visible, "the auto-sync note is hidden")
+        compare(note.text, "Synced automatically, may be off")
+    }
+
+    function test_unsure_timings_are_not_shown() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(false, autoLrc)
+        var page = openPage(521)
+        compare(bridge.autoSyncCallsForTest(), 1)
+        compare(page.lyricsIsTimed, false)
+        verify(!page.lyricsAutoSynced)
+        openPanel(page)
+        verify(!findChild(page, "nowPlayingLyricsAutoSynced").visible)
+    }
+
+    function test_switched_off_nothing_is_synced() {
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        var page = openPage(522)
+        compare(bridge.autoSyncCallsForTest(), 0)
+        compare(page.lyricsIsTimed, false)
+    }
+
+    // Real timings from a site replace auto-synced ones, and auto-synced ones
+    // that come late do not replace real ones.
+    function test_real_timings_win_over_auto_sync() {
+        prefs.lyricsAutoSync = true
+        prefs.lyricsLrclib = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        bridge.setFoundLyricsForTest("[00:02.00]one\n[00:07.00]two", true, "LRCLIB", "https://lrclib.net/")
+        var page = openPage(523)
+        compare(page.lyricsData[1].ms, 7000)
+        verify(!page.lyricsAutoSynced)
+
+        bridge.holdAutoSyncForTest(true)
+        player.setCurrentTrackForTest(makeTrack(524))
+        compare(page.lyricsData[1].ms, 7000)
+        bridge.releaseAutoSyncForTest()
+        compare(page.lyricsData[1].ms, 7000, "a late auto-sync replaced real timings")
+        verify(!page.lyricsAutoSynced)
+    }
+
+    // Plain lyrics from a site are synced too, and the note sits beside the credit.
+    function test_plain_from_a_site_is_synced() {
+        prefs.lyricsAutoSync = true
+        prefs.lyricsLrclib = true
+        bridge.setFoundLyricsForTest("one\ntwo", false, "Genius", "https://genius.com/x")
+        bridge.setAutoSyncForTest(true, autoLrc)
+        var page = openPage(525)
+        compare(bridge.lastAutoSyncTextForTest(), "one\ntwo")
+        verify(page.lyricsAutoSynced)
+        openPanel(page)
+        var credit = findChild(page, "nowPlayingLyricsSource")
+        var note = findChild(page, "nowPlayingLyricsAutoSynced")
+        verify(credit.visible && note.visible)
+        verify(note.x >= credit.x + credit.width, "the note overlaps the credit")
+    }
+
+    // An answer for the track before is dropped.
+    function test_late_answer_for_another_track_is_dropped() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        bridge.holdAutoSyncForTest(true)
+        var page = openPage(526)
+        bridge.setLyricsForTest("three\nfour", false)
+        bridge.holdAutoSyncForTest(false)
+        bridge.setAutoSyncForTest(false, "")
+        player.setCurrentTrackForTest(makeTrack(527))
+        compare(page.lyricsData[0].text, "three")
+        verify(!page.lyricsIsTimed)
+    }
+
+    function test_switching_auto_sync_off_takes_the_timings_away() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        var page = openPage(528)
+        verify(page.lyricsAutoSynced)
+        prefs.lyricsAutoSync = false
+        verify(!page.lyricsAutoSynced)
+        compare(page.lyricsIsTimed, false)
+        prefs.lyricsAutoSync = true
+        verify(page.lyricsAutoSynced, "switched back on, the lyrics were not synced again")
+    }
+
+    // The next track is analysed ahead only while lyrics are on screen.
+    function test_look_ahead_follows_the_panel() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        var page = openPage(529)
+        verify(!bridge.lyricsLookAheadForTest())
+        openPanel(page)
+        verify(bridge.lyricsLookAheadForTest())
+        prefs.lyricsAutoSync = false
+        verify(!bridge.lyricsLookAheadForTest())
     }
 }

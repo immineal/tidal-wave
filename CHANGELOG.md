@@ -9,16 +9,23 @@ milestones and not a semver promise about an API.
 
 ### Added
 
-- Settings has an Experimental section with one switch, Find lyrics on other
-  sites, off unless you turn it on. With it on, a track Tidal has no lyrics
-  for is looked up on LRCLIB, NetEase Cloud Music, KuGou and Genius, in that
-  order, and the lyrics show as Tidal's do: timed ones follow the song. A line
-  under them names the site and links to it. A track one of the sites knows
-  as an instrumental says Instrumental instead of No lyrics available. Each
-  site is asked at most once a second and is left alone for a while after it
-  refuses; what is found is kept on disk, so a song is looked up once. The
-  privacy notice and the README say what each site receives, and that two of
-  them are servers in China.
+- Settings has an Experimental section with three switches for lyrics.
+  Synced lyrics from LRCLIB, on by default: a track Tidal has no synced
+  lyrics for is looked up on lrclib.net. Lyrics from more sites, off unless
+  you turn it on: NetEase Cloud Music, KuGou and Genius are asked after
+  LRCLIB, in that order. The asking stops at the first site with synced
+  lyrics, and the lyrics show as Tidal's do: timed ones follow the song. A
+  line under them names the site and links to it. A track one of the sites
+  knows as an instrumental says Instrumental instead of No lyrics available.
+  Each site is asked at most once a second and is left alone for a while
+  after it refuses; what is found is kept on disk, so a song is looked up
+  once. The privacy notice and the README say what each site receives, and
+  that two of them are servers in China.
+- Sync plain lyrics automatically, the third switch, on by default: lyrics
+  without timings are timed against the track's audio on this machine, with
+  nothing sent anywhere. Timings it is unsure of are not shown; the ones
+  shown say "Synced automatically, may be off". The timings are kept on disk
+  next to the lyrics.
 
 ## [0.4.2] - 2026-10-17
 

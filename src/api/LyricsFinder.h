@@ -66,7 +66,9 @@ private:
     QHash<QString, Host> m_hosts;
 };
 
-// One JSON file per Tidal track id. A hit is kept, a miss expires.
+// One JSON file per Tidal track id. Synced lyrics are kept; a miss, and
+// plain lyrics that synced ones may yet replace, expire. `asked` lists the
+// sites whose answer the entry holds; "*" for an entry from an older build.
 class LyricsCache {
 public:
     static constexpr qint64 kMissTtlMs = 30LL * 24 * 60 * 60 * 1000;
@@ -75,9 +77,10 @@ public:
     explicit LyricsCache(const QString &dir) : m_dir(dir) {}
     static QString defaultDir();
 
-    Hit  lookup(qint64 trackId, qint64 now, LyricsResult *out) const;
-    void storeFound(qint64 trackId, const LyricsResult &r, qint64 now) const;
-    void storeMiss(qint64 trackId, qint64 now) const;
+    // Plain lyrics past kMissTtlMs come back Found with `asked` empty.
+    Hit  lookup(qint64 trackId, qint64 now, LyricsResult *out, QStringList *asked = nullptr) const;
+    void storeFound(qint64 trackId, const LyricsResult &r, qint64 now, const QStringList &asked = {}) const;
+    void storeMiss(qint64 trackId, qint64 now, const QStringList &asked = {}) const;
     void storeInstrumental(qint64 trackId, qint64 now) const;
 
 private:
@@ -90,13 +93,16 @@ class LyricsFinder : public QObject {
     Q_OBJECT
 public:
     static constexpr int kSettleMs = 3000;
-    // An empty text with an empty error means no site had them.
+    // An empty text with an empty error means no site had them. Synced
+    // lyrics end the search; plain ones are kept while the rest are asked.
     using Done = std::function<void(const LyricsResult &, const QString &err)>;
 
     explicit LyricsFinder(QObject *parent = nullptr);
     ~LyricsFinder() override;
 
-    void setEnabledSource(std::function<bool()> enabled) { m_enabled = std::move(enabled); }
+    // Whether the site of that provider name may be asked. All off by default.
+    void setProviderEnabled(std::function<bool(const QString &)> on) { m_enabled = std::move(on); }
+    bool anyEnabled() const;
     void setProviders(QList<std::shared_ptr<const LyricsProvider>> p) { m_providers = std::move(p); }
     // Not owned. Without one, a NetworkLyricsTransport is made on first need.
     void setTransport(LyricsTransport *t) { m_transport = t; }
@@ -121,10 +127,12 @@ private:
     void nextProvider();
     void onReply(quint64 gen, const LyricsReply &reply);
     void finish(const LyricsResult &r, const QString &err, bool cacheMiss);
+    void finishChain();
+    bool mayAsk(const QString &provider) const;
     LyricsTransport *transport();
     LyricsCache     &cache();
 
-    std::function<bool()>   m_enabled;
+    std::function<bool(const QString &)> m_enabled;
     std::function<qint64()> m_now;
     QList<std::shared_ptr<const LyricsProvider>> m_providers;
     LyricsTransport *m_transport = nullptr;
@@ -143,4 +151,6 @@ private:
     LyricsQuery m_query;
     LyricsStep  m_step;
     Done        m_done;
+    QStringList  m_asked;       // sites that answered, from the cache and this search
+    LyricsResult m_plain;       // the first plain lyrics found, while synced are sought
 };
