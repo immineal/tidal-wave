@@ -73,6 +73,24 @@ private:
     QString m_name, m_host, m_answer;
 };
 
+// A site that needs two requests to the same host, like LRCLIB's get then search.
+class TwoStepProvider : public LyricsProvider {
+public:
+    TwoStepProvider(QString name, QString host) : m_name(std::move(name)), m_host(std::move(host)) {}
+    QString name() const override { return m_name; }
+    LyricsStep start(const LyricsQuery &) const override { return LyricsStep::request(url(1), 0); }
+    LyricsStep next(const LyricsQuery &, const LyricsStep &step, const LyricsReply &) const override {
+        if (step.url == url(1)) return LyricsStep::request(url(2), 1);
+        LyricsResult r;
+        r.text = m_name;
+        r.source = m_name;
+        return LyricsStep::found(r);
+    }
+private:
+    QUrl url(int n) const { return QUrl(QStringLiteral("https://%1/%2").arg(m_host).arg(n)); }
+    QString m_name, m_host;
+};
+
 } // namespace
 
 class TestLyrics : public QObject {
@@ -629,6 +647,68 @@ private slots:
         on = false;
         f->fireTimerForTest();
         QCOMPARE(t.calls.size(), 0);
+        QCOMPARE(err, QStringLiteral("off"));
+        delete f;
+    }
+
+    // A site switched off between its first request and its follow-up gets
+    // no follow-up, whether that is sent at once or waits on the pacing.
+    void switchedOffSiteGetsNoFollowUp_data() {
+        QTest::addColumn<bool>("offWhilePaced");
+        QTest::newRow("off before the reply") << false;
+        QTest::newRow("off while the follow-up waits") << true;
+    }
+    void switchedOffSiteGetsNoFollowUp() {
+        QFETCH(bool, offWhilePaced);
+        FakeTransport t;
+        bool aOn = true;
+        auto *f = new LyricsFinder(this);
+        f->setProviderEnabled([&aOn](const QString &p) { return p != QLatin1String("A") || aOn; });
+        f->setTransport(&t);
+        f->setCacheDir(m_dir.path() + QStringLiteral("/fu") + QString::number(++m_cacheN));
+        f->setClock([this] { return m_now; });
+        f->setJitter([] { return 0.0; });
+        f->setProviders({std::make_shared<TwoStepProvider>("A", "a.test"),
+                         std::make_shared<StubProvider>("B", "b.test", "synced")});
+        f->find(query(), [](const LyricsResult &, const QString &) {});
+        f->fireTimerForTest();
+        QCOMPARE(hostsAsked(t), QStringList{"a.test"});
+        if (!offWhilePaced) aOn = false;
+        t.answer(0, 404);
+        QTest::qWait(1);
+        if (offWhilePaced) {
+            QVERIFY(f->timerActiveForTest());       // the follow-up waits on a.test's pacing
+            aOn = false;
+        }
+        if (f->timerActiveForTest()) f->fireTimerForTest();
+        QCOMPARE(hostsAsked(t), (QStringList{"a.test", "b.test"}));
+        delete f;
+    }
+
+    // A request in flight to a site switched off is aborted and the chain
+    // moves on; with every site off the lookup answers "off".
+    void switchingASiteOffAbortsItsRequest() {
+        FakeTransport t;
+        bool aOn = true, bOn = true;
+        auto *f = new LyricsFinder(this);
+        f->setProviderEnabled([&](const QString &p) { return p == QLatin1String("A") ? aOn : bOn; });
+        f->setTransport(&t);
+        f->setCacheDir(m_dir.path() + QStringLiteral("/ab") + QString::number(++m_cacheN));
+        f->setClock([this] { return m_now; });
+        f->setProviders({std::make_shared<StubProvider>("A", "a.test", "plain"),
+                         std::make_shared<StubProvider>("B", "b.test", "synced")});
+        QString err = QStringLiteral("none");
+        f->find(query(), [&](const LyricsResult &, const QString &e) { err = e; });
+        f->fireTimerForTest();
+        QCOMPARE(hostsAsked(t), QStringList{"a.test"});
+        aOn = false;
+        f->switchesChanged();
+        QVERIFY(t.calls[0].aborted);
+        QVERIFY(!f->pacing().busy(QStringLiteral("a.test")));
+        QCOMPARE(hostsAsked(t), (QStringList{"a.test", "b.test"}));
+        bOn = false;
+        f->switchesChanged();
+        QVERIFY(t.calls[1].aborted);
         QCOMPARE(err, QStringLiteral("off"));
         delete f;
     }

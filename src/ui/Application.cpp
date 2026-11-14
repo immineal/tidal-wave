@@ -666,9 +666,7 @@ int Application::run(int argc, char **argv) {
         return provider == LrclibProvider().name() ? prefs->lyricsLrclib() : prefs->lyricsOtherSites();
     });
     for (auto sig : {&Prefs::lyricsLrclibChanged, &Prefs::lyricsOtherSitesChanged})
-        connect(m_prefs, sig, m_lyricsFinder, [this] {
-            if (!m_lyricsFinder->anyEnabled()) m_lyricsFinder->cancel();
-        });
+        connect(m_prefs, sig, m_lyricsFinder, &LyricsFinder::switchesChanged);
     m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
     // Plain lyrics timed against the audio the player already has on disk.

@@ -114,6 +114,9 @@ public:
     // A newer find() drops the older one, whose `done` is then never called.
     void find(const LyricsQuery &q, Done done);
     void cancel();
+    // After a switch changed: a request to a site now off is aborted and the
+    // chain moves on; with every site off the lookup answers "off".
+    void switchesChanged();
 
     const HostPacing &pacing() const { return m_pacing; }
     bool hasTransportForTest() const { return m_transport != nullptr; }

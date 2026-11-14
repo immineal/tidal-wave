@@ -243,6 +243,23 @@ void LyricsFinder::cancel() {
     m_done = nullptr;
 }
 
+void LyricsFinder::switchesChanged() {
+    if (!m_active) return;
+    const bool siteOff = m_providerIdx < m_providers.size()
+                         && !m_enabled(m_providers.at(m_providerIdx)->name());
+    if (m_handle >= 0 && (siteOff || !anyEnabled())) {
+        if (m_transport) m_transport->abort(m_handle);
+        m_pacing.answered(m_host);
+        m_handle = -1;
+        ++m_gen;                  // a reply already queued is dropped
+    }
+    if (!anyEnabled()) { finish({}, QStringLiteral("off"), false); return; }
+    if (siteOff) {
+        nextProvider();
+        advance();
+    }
+}
+
 void LyricsFinder::onTimer() {
     if (!m_active) return;
     m_settled = true;
@@ -258,9 +275,11 @@ void LyricsFinder::advance() {
     if (!m_active || !m_settled || m_handle >= 0) return;
     if (!anyEnabled()) { finish({}, QStringLiteral("off"), false); return; }
     for (;;) {
+        if (m_providerIdx >= m_providers.size()) { finishChain(); return; }
+        // Before every request, follow-ups and paced ones too: a site switched
+        // off meanwhile gets nothing more.
+        if (!mayAsk(m_providers.at(m_providerIdx)->name())) { nextProvider(); continue; }
         if (m_step.kind != LyricsStep::Request) {
-            if (m_providerIdx >= m_providers.size()) { finishChain(); return; }
-            if (!mayAsk(m_providers.at(m_providerIdx)->name())) { nextProvider(); continue; }
             m_step = m_providers.at(m_providerIdx)->start(m_query);
             if (m_step.kind != LyricsStep::Request) { nextProvider(); continue; }
         }

@@ -324,8 +324,10 @@ named.
     a track has been playing for three seconds, a site gets at most one request a second
     and never two at once, and a site that refuses (HTTP 429, 403, 503 or a bot check) is
     left alone for the time it asks for, or 15 minutes and doubling, plus up to 30 %.
-    Switching both off stops a lookup that is under way, and no `QNetworkAccessManager`
-    for it exists until the first lookup.
+    Every request, a site's follow-up requests too, is checked against that site's
+    switch just before it goes out; switching a site off aborts its request under way,
+    and switching both off ends the lookup. No `QNetworkAccessManager` for it exists
+    until the first lookup.
 *   **Nothing, for timing plain lyrics.** "Sync plain lyrics automatically" (on by
     default) analyses the track's audio file, which the player has downloaded to play it
     anyway, on a low-priority thread of the app (`src/lyricsync/AutoSync.cpp`). It makes
