@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Runs the lyrics aligner on one file:
-//     lyricsync-cli <audio> <lyrics.txt> <out.lrc> [--dump <dir>]
+//     lyricsync-cli <audio> <lyrics.txt> <out.lrc> [--dump <dir>] [--stop-after <ms>]
 // An <audio> ending in .f32 is read as raw interleaved stereo float at 44.1 kHz.
 // Writes <out.lrc> and <out.lrc>.json (confidence, kept, seconds per stage),
 // the same files as the reference predict.py. --dump writes each stage's
-// output as raw float32 for comparison with the reference.
+// output as raw float32 for comparison with the reference. --stop-after raises
+// the stop flag that many ms into the analysis and prints how long it took to stop.
 
 #include "lyricsync/Aligner.h"
 #include "lyricsync/AudioFeed.h"
@@ -18,7 +19,9 @@
 #include <QTextStream>
 #include <chrono>
 #include <ctime>
+#include <atomic>
 #include <memory>
+#include <thread>
 
 using namespace lyricsync;
 
@@ -31,9 +34,15 @@ int main(int argc, char **argv) {
         dumpDir = args.at(di + 1);
         args.remove(di, 2);
     }
+    int stopAfter = -1;
+    const qsizetype si = args.indexOf(QStringLiteral("--stop-after"));
+    if (si >= 0 && si + 1 < args.size()) {
+        stopAfter = args.at(si + 1).toInt();
+        args.remove(si, 2);
+    }
     QTextStream err(stderr);
     if (args.size() != 3) {
-        err << "usage: lyricsync-cli <audio> <lyrics.txt> <out.lrc> [--dump <dir>]\n";
+        err << "usage: lyricsync-cli <audio> <lyrics.txt> <out.lrc> [--dump <dir>] [--stop-after <ms>]\n";
         return 2;
     }
     QString why;
@@ -76,9 +85,30 @@ int main(int argc, char **argv) {
         };
     }
     Timing t;
+    std::atomic<bool> stop{false};
+    std::chrono::steady_clock::time_point raised;
+    std::thread stopper;
+    if (stopAfter >= 0) {
+        fe.setStop(&stop);
+        stopper = std::thread([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(stopAfter));
+            raised = std::chrono::steady_clock::now();
+            stop.store(true);
+        });
+    }
     const std::clock_t c1 = std::clock();
-    const Analysis a = fe.finish(*models, &t, dump);
-    const Alignment al = align(a, lyrics, *models, &t);
+    Analysis a = fe.finish(*models, &t, dump);
+    // Without --stop-after, the stages run on the whole analysis as before.
+    const Alignment al = align(a, lyrics, *models, &t, stopAfter >= 0 ? &stop : nullptr);
+    if (stopper.joinable()) {
+        const auto end = std::chrono::steady_clock::now();
+        stopper.join();
+        if (stop.load())
+            QTextStream(stdout) << "stopped " << QString::number(std::chrono::duration<double>(end - raised).count(), 'f', 3)
+                                << " s after the flag\n";
+        else
+            QTextStream(stdout) << "finished before the flag\n";
+    }
     const double alignCpu = double(std::clock() - c1) / CLOCKS_PER_SEC;
 
     QFile out(args.at(2));

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 
 namespace lyricsync {
 
@@ -220,10 +221,12 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
 
     // The detector's input: the five band blocks at grid rate, then the grid features.
     const std::vector<float> grid = gridBase(fe);
+    if (stopped()) return out;
     if (dump) dump("grid46", grid, 46);
     constexpr int kIn = 5 * kMel + 46;
     std::vector<float> xi(size_t(G) * kIn);
     for (int k = 0; k < 5; ++k) {
+        if (stopped()) return out;
         const std::vector<double> g = normalise(toGrid(fe.band[k], T, kMel), G, kMel);
         for (int r = 0; r < G; ++r)
             for (int c = 0; c < kMel; ++c)
@@ -235,13 +238,14 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
     if (dump) dump("xi", xi, kIn);
     double t2 = now();
     if (stopped()) return out;
-    m.detector.forward(xi.data(), G, out.vocal, out.start);
+    if (!m.detector.forward(xi.data(), G, out.vocal, out.start, d->stop)) return Analysis{};
     if (dump) { dump("v", out.vocal, 1); dump("o", out.start, 1); }
     double t3 = now();
 
     // The CTC net's input: the five band blocks per frame, per-song normalised.
     std::vector<float> h(size_t(T) * 5 * kMel);
     for (int k = 0; k < 5; ++k) {
+        if (stopped()) return Analysis{};
         const std::vector<double> g = normalise(fe.band[k], T, kMel);
         for (int r = 0; r < T; ++r)
             for (int c = 0; c < kMel; ++c)
@@ -264,7 +268,8 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
 
 // ── alignment ──────────────────────────────────────────────────────────────
 
-Alignment align(const Analysis &a, const QString &plainText, const Models &models, Timing *timing) {
+Alignment align(const Analysis &a, const QString &plainText, const Models &models, Timing *timing,
+                const std::atomic<bool> *stop) {
     const double t0 = now();
     const Models::Impl &m = models.impl();
     Alignment out;
@@ -278,7 +283,7 @@ Alignment align(const Analysis &a, const QString &plainText, const Models &model
     const double dur = a.frames / kFps;
     Decoded dd;
     if (a.frames > 0 && !out.lines.isEmpty())
-        dd = decodeSong(a.lp, a.frames, kFps, a.start, a.vocal, targets, m.dec);
+        dd = decodeSong(a.lp, a.frames, kFps, a.start, a.vocal, targets, m.dec, stop);
     if (!dd.ok) {
         out.times = fillTimes(std::vector<double>(size_t(out.lines.size()), std::nan("")), dur);
     } else {

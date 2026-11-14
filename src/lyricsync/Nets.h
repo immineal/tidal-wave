@@ -34,7 +34,9 @@ public:
     bool load(const QByteArray &data, QString *err);
     int inputs() const { return m_nin; }
     // x: T x inputs. vocal, start: T logits each.
-    void forward(const float *x, int T, std::vector<float> &vocal, std::vector<float> &start) const;
+    // False when the stop flag was raised.
+    bool forward(const float *x, int T, std::vector<float> &vocal, std::vector<float> &start,
+                 const std::atomic<bool> *stop = nullptr) const;
 
 private:
     struct Net { std::vector<float> wi, bi, wo, bo; std::vector<std::vector<float>> wb, bb; };

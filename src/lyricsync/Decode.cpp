@@ -25,7 +25,7 @@ struct Bonus {
 // ctcalign.viterbi(), comparison for comparison.
 bool viterbi(const std::vector<float> &lp, int T, int V, const std::vector<int> &tg, const Bonus *bonus,
              const std::vector<double> *pen, const std::vector<char> &inl, std::vector<long long> &first,
-             double &total) {
+             double &total, const std::atomic<bool> *stop) {
     const int L = int(tg.size());
     const int S = 2 * L + 1;
     if (double(T) * S > kMaxStates) return false;
@@ -40,6 +40,7 @@ bool viterbi(const std::vector<float> &lp, int T, int V, const std::vector<int> 
     sc[1] = lpAt(0, tg[0]) + (useB && bonus->rows[0] ? double(bonus->rows[0][0]) : 0.0)
           - (useP ? (*pen)[0] : 0.0);
     for (int t = 1; t < T; ++t) {
+        if (stop && (t & 1023) == 0 && stop->load(std::memory_order_relaxed)) return false;
         const double blank = lpAt(t, 0);
         const double pt = useP ? (*pen)[t] : 0.0;
         const size_t row = size_t(t) * S;
@@ -85,10 +86,10 @@ std::vector<char> inlineStates(const std::vector<int> &first, int L) {
 }
 
 bool align(const std::vector<float> &lp, int T, int V, double fps, const LineTargets &lines,
-           const Bonus *bonus, const std::vector<double> *pen, Path &out) {
+           const Bonus *bonus, const std::vector<double> *pen, Path &out, const std::atomic<bool> *stop) {
     const std::vector<int> &tg = lines.tokens;
     if (tg.empty() || 2 * tg.size() >= size_t(T)) return false;
-    if (!viterbi(lp, T, V, tg, bonus, pen, inlineStates(lines.first, int(tg.size())), out.tf, out.total))
+    if (!viterbi(lp, T, V, tg, bonus, pen, inlineStates(lines.first, int(tg.size())), out.tf, out.total, stop))
         return false;
     out.t.assign(lines.first.size(), kNan);
     for (size_t i = 0; i < lines.first.size(); ++i)
@@ -250,7 +251,8 @@ std::vector<double> fillTimes(const std::vector<double> &t, double dur) {
 }
 
 Decoded decodeSong(const std::vector<float> &lp, int T, double fps, const std::vector<float> &start,
-                   const std::vector<float> &vocal, const LineTargets &lines, const DecodeParams &p) {
+                   const std::vector<float> &vocal, const LineTargets &lines, const DecodeParams &p,
+                   const std::atomic<bool> *stop) {
     Decoded out;
     const int V = T > 0 ? int(lp.size() / size_t(T)) : 0;
     if (T <= 0 || V <= 0 || start.empty() || vocal.empty()) return out;
@@ -272,7 +274,7 @@ Decoded decodeSong(const std::vector<float> &lp, int T, double fps, const std::v
         if (f >= 0) bonus.rows[size_t(f)] = bonusRow.data();
 
     Path a;
-    if (!align(lp, T, V, fps, lines, &bonus, nullptr, a)) return out;
+    if (!align(lp, T, V, fps, lines, &bonus, nullptr, a, stop)) return out;
     bool sw = false;
     double lmax = 0.0;
     if (p.gam > 0) {
@@ -280,7 +282,7 @@ Decoded decodeSong(const std::vector<float> &lp, int T, double fps, const std::v
         lmax = longestLow(a, lines, pen, fps);
         if (lmax > p.switchS) {
             Path a2;
-            if (align(lp, T, V, fps, lines, &bonus, &pen, a2)) {
+            if (align(lp, T, V, fps, lines, &bonus, &pen, a2, stop)) {
                 a = std::move(a2);
                 sw = true;
                 lmax = longestLow(a, lines, pen, fps);
@@ -291,7 +293,8 @@ Decoded decodeSong(const std::vector<float> &lp, int T, double fps, const std::v
     out.f["gap_lmax"] = std::log1p(lmax);
     out.f["switched"] = sw ? 1.0 : 0.0;
     Path a0;
-    if (!align(lp, T, V, fps, lines, nullptr, nullptr, a0)) return out;
+    if (stop && stop->load(std::memory_order_relaxed)) return out;
+    if (!align(lp, T, V, fps, lines, nullptr, nullptr, a0, stop)) return out;
     const double dur = double(T) / fps;
     const std::vector<double> t0 = fillTimes(a0.t, dur), t1 = fillTimes(a.t, dur);
     double agree = 0;

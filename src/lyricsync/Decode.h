@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include <atomic>
 #include <map>
 #include <string>
 #include <vector>
@@ -34,7 +35,8 @@ struct Decoded {
 
 // lp: T x 27 log-probs; start, vocal: detector logits per grid step.
 Decoded decodeSong(const std::vector<float> &lp, int T, double fps, const std::vector<float> &start,
-                   const std::vector<float> &vocal, const LineTargets &lines, const DecodeParams &p);
+                   const std::vector<float> &vocal, const LineTargets &lines, const DecodeParams &p,
+                   const std::atomic<bool> *stop = nullptr);
 
 // numpy.interp over the lines with no time, or an even spread when none has one.
 std::vector<double> fillTimes(const std::vector<double> &t, double dur);

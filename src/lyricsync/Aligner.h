@@ -54,7 +54,9 @@ struct Alignment {
     bool kept = false;              // confidence at or above the threshold
 };
 
-Alignment align(const Analysis &a, const QString &plainText, const Models &m, Timing *timing = nullptr);
+// A raised stop flag gives up between Viterbi steps; the result is then not aligned.
+Alignment align(const Analysis &a, const QString &plainText, const Models &m, Timing *timing = nullptr,
+                const std::atomic<bool> *stop = nullptr);
 // [mm:ss.xx]line per sung line, as predict.py writes it.
 QString toLrc(const Alignment &a);
 

@@ -3,6 +3,7 @@
 // here is synthetic.
 
 #include <QBuffer>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTest>
 #include <cmath>
@@ -12,6 +13,7 @@
 #include "lyricsync/AudioFeed.h"
 #include "lyricsync/Decode.h"
 #include "lyricsync/Dsp.h"
+#include "lyricsync/Nets.h"
 #include "lyricsync/Text.h"
 
 #include "aac_fixture.inc"
@@ -225,6 +227,31 @@ private slots:
         QVERIFY(al.times[0] <= al.times[1] && al.times[1] <= al.times[2]);
         QVERIFY(std::isfinite(al.confidence));
         QVERIFY(toLrc(al).startsWith(QLatin1String("[00:")));
+    }
+
+    // A raised stop flag ends the analysis and the alignment early.
+    void stopFlagEndsEveryStage() {
+        const std::vector<float> lr = synth(16.0);
+        std::atomic<bool> stop{true};
+        FrontEnd stopped;
+        stopped.setStop(&stop);
+        stopped.push(lr.data(), lr.size() / 2);
+        QCOMPARE(stopped.finish(*m_models).frames, 0);
+        FrontEnd fe;
+        fe.push(lr.data(), lr.size() / 2);
+        const Analysis a = fe.finish(*m_models);
+        QVERIFY(a.frames > 0);
+        const QString text = QStringLiteral("La la la\nOh na na na\nHey hey yeah\n");
+        QVERIFY(align(a, text, *m_models).aligned);
+        QVERIFY(!align(a, text, *m_models, nullptr, &stop).aligned);
+        QFile df(QStringLiteral(":/lyricsync/detector.f16.bin"));
+        QVERIFY(df.open(QIODevice::ReadOnly));
+        Detector det;
+        QString err;
+        QVERIFY2(det.load(df.readAll(), &err), qPrintable(err));
+        std::vector<float> v, o, x(size_t(det.inputs()) * 64, 0.f);
+        QVERIFY(det.forward(x.data(), 64, v, o));
+        QVERIFY(!det.forward(x.data(), 64, v, o, &stop));
     }
 
     void decodesBothAacProfiles_data() {

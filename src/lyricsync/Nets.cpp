@@ -90,7 +90,9 @@ bool CtcNet::forward(const float *x, int T, float *out, const std::atomic<bool> 
     const int C = m_C;
     std::vector<float> h(size_t(T) * C), d(size_t(T) * C), acc(static_cast<size_t>(C));
     const int p0 = m_kin / 2;
+    auto stopped = [stop] { return stop && stop->load(std::memory_order_relaxed); };
     for (int t = 0; t < T; ++t) {
+        if ((t & 255) == 0 && stopped()) return false;
         float *ht = &h[size_t(t) * C];
         for (int o = 0; o < C; ++o) ht[o] = m_inb[o];
         for (int j = 0; j < m_kin; ++j) {
@@ -106,10 +108,11 @@ bool CtcNet::forward(const float *x, int T, float *out, const std::atomic<bool> 
         for (int o = 0; o < C; ++o) ht[o] = ht[o] > 0 ? ht[o] : 0;
     }
     for (int b = 0; b < m_nb; ++b) {
-        if (stop && stop->load(std::memory_order_relaxed)) return false;
+        if (stopped()) return false;
         const int dl = m_dil[b], pk = m_k / 2;
         const float *dw = m_dww[b].data();
         for (int t = 0; t < T; ++t) {
+            if ((t & 1023) == 0 && stopped()) return false;
             float *dt = &d[size_t(t) * C];
             for (int c = 0; c < C; ++c) dt[c] = m_dwb[b][c];
             for (int j = 0; j < m_k; ++j) {
@@ -120,6 +123,7 @@ bool CtcNet::forward(const float *x, int T, float *out, const std::atomic<bool> 
             }
         }
         for (int t = 0; t < T; ++t) {
+            if ((t & 1023) == 0 && stopped()) return false;
             const float *dt = &d[size_t(t) * C];
             for (int o = 0; o < C; ++o) acc[o] = m_pwb[b][o];
             for (int i = 0; i < C; ++i) {
@@ -211,10 +215,12 @@ void conv(const float *x, int ci, int T, const float *w, const float *b, int co,
 }
 } // namespace
 
-void Detector::forward(const float *xin, int T, std::vector<float> &vocal, std::vector<float> &start) const {
+bool Detector::forward(const float *xin, int T, std::vector<float> &vocal, std::vector<float> &start,
+                       const std::atomic<bool> *stop) const {
     vocal.assign(size_t(T), 0.f);
     start.assign(size_t(T), 0.f);
-    if (T <= 0) return;
+    if (T <= 0) return true;
+    auto stopped = [stop] { return stop && stop->load(std::memory_order_relaxed); };
     const size_t C = size_t(m_C);
     std::vector<float> x(size_t(m_nin) * T);
     for (int t = 0; t < T; ++t)
@@ -225,6 +231,7 @@ void Detector::forward(const float *xin, int T, std::vector<float> &vocal, std::
         conv(x.data(), m_nin, T, n.wi.data(), n.bi.data(), m_C, 1, 1, h.data());
         for (float &v : h) v = v > 0 ? v : 0;
         for (size_t k = 0; k < m_dil.size(); ++k) {
+            if (stopped()) return false;
             conv(h.data(), m_C, T, n.wb[k].data(), n.bb[k].data(), m_C, 3, m_dil[k], r.data());
             for (size_t i = 0; i < h.size(); ++i) h[i] += r[i] > 0 ? r[i] : 0;
         }
@@ -236,6 +243,7 @@ void Detector::forward(const float *xin, int T, std::vector<float> &vocal, std::
         vocal[t] = sum[t] / k;
         start[t] = sum[size_t(T) + t] / k;
     }
+    return true;
 }
 
 } // namespace lyricsync
