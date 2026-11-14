@@ -8,6 +8,7 @@
 class QAudioDecoder;
 class QAudioBuffer;
 class QIODevice;
+class QTimer;
 
 namespace lyricsync {
 
@@ -26,6 +27,9 @@ public:
     void cancel();
     // Past this many input frames decoding stops and fails; 0 for no limit.
     void setMaxFrames(size_t frames) { m_maxFrames = frames; }
+    // A decoder that sends nothing for this long counts as failed. Some
+    // backends neither decode nor report an error on a file they cannot read.
+    static constexpr int kStallMs = 20000;
 
     // Folds one buffer into 44.1 kHz stereo float; false when its rate or
     // format cannot be used. Public for the tests.
@@ -45,6 +49,7 @@ private:
     QAudioDecoder *m_decoder = nullptr;
     std::unique_ptr<QIODevice> m_device;
     FrontEnd *m_into = nullptr;
+    QTimer *m_watch = nullptr;
     size_t m_maxFrames = 0;
     bool m_done = false;
 };

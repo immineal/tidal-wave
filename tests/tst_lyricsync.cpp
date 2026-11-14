@@ -241,8 +241,10 @@ private slots:
         if (!feed.start(bufferOf(b64.constData()), &fe)) QSKIP("no audio decoder");
         QVERIFY(done.wait(20000));
         QVERIFY2(done.at(0).at(0).toBool(), qPrintable(done.at(0).at(1).toString()));
+        // FFmpeg versions differ in how much HE-AAC priming they drop: Qt 6.4's
+        // on Debian 12 drops about 4100 frames more than Qt 6.12's.
         const qint64 expect = qint64(kAacDurationMs) * 44100 / 1000;
-        QVERIFY2(std::abs(qint64(fe.framesIn()) - expect) < 4096, qPrintable(QString::number(fe.framesIn())));
+        QVERIFY2(std::abs(qint64(fe.framesIn()) - expect) < 8192, qPrintable(QString::number(fe.framesIn())));
     }
 
     void undecodableAudioFails() {
@@ -253,7 +255,8 @@ private slots:
         b->setData(QByteArray(4096, 'x'));
         b->open(QIODevice::ReadOnly);
         if (!feed.start(std::move(b), &fe)) QSKIP("no audio decoder");
-        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, 20000);
+        // Qt 6.4 neither decodes nor reports this: the stall watchdog ends it.
+        QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, AudioFeed::kStallMs + 10000);
         QVERIFY(!done.at(0).at(0).toBool());
     }
 

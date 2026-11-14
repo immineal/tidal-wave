@@ -7,6 +7,7 @@
 #include <QAudioDecoder>
 #include <QAudioFormat>
 #include <QIODevice>
+#include <QTimer>
 #include <vector>
 
 namespace lyricsync {
@@ -17,6 +18,7 @@ AudioFeed::~AudioFeed() { closeSource(); }
 
 // The decoder goes before the device it reads.
 void AudioFeed::closeSource() {
+    if (m_watch) m_watch->stop();
     if (m_decoder) {
         m_decoder->disconnect(this);
         m_decoder->stop();
@@ -47,6 +49,14 @@ bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
     connect(m_decoder, &QAudioDecoder::finished, this, &AudioFeed::onFinished, Qt::QueuedConnection);
     connect(m_decoder, qOverload<QAudioDecoder::Error>(&QAudioDecoder::error), this,
             [this](QAudioDecoder::Error) { fail(m_decoder->errorString()); }, Qt::QueuedConnection);
+    m_watch = new QTimer(this);
+    m_watch->setSingleShot(true);
+    // A starved thread may see the timer before buffers that are waiting.
+    connect(m_watch, &QTimer::timeout, this, [this] {
+        if (m_decoder && m_decoder->bufferAvailable()) onBuffer();
+        else fail(QStringLiteral("the decoder stalled"));
+    });
+    m_watch->start(kStallMs);
     m_decoder->start();
     return true;
 }
@@ -54,6 +64,7 @@ bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
 void AudioFeed::cancel() { fail(QStringLiteral("cancelled")); }
 
 void AudioFeed::onBuffer() {
+    if (!m_done && m_watch) m_watch->start(kStallMs);
     while (!m_done && m_decoder->bufferAvailable()) {
         QString err;
         if (!appendBuffer(m_decoder->read(), m_into, &err)) { fail(err); return; }
@@ -75,6 +86,7 @@ void AudioFeed::onFinished() {
 void AudioFeed::fail(const QString &err) {
     if (m_done) return;
     m_done = true;
+    if (m_watch) m_watch->stop();
     if (m_decoder) m_decoder->stop();
     QMetaObject::invokeMethod(this, [this, err] {
         closeSource();
