@@ -230,6 +230,10 @@ void LibraryIndex::refresh() {
     m_refreshAgain = false;
     setLoading(true);
 
+    // The favourites lists drop unavailable rows after slicing a page, so a
+    // short page can come mid-list. They are paged to the empty page.
+    constexpr bool kShortPageEnds = false;
+
     pageEverything<Playlist>(
         [this](int offset, int limit, PlaylistsCb cb) { fetchPlaylistPage(offset, limit, std::move(cb)); },
         [](const Playlist &p) { return p.uuid; },
@@ -248,7 +252,7 @@ void LibraryIndex::refresh() {
             land(m_albums, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages);
+        pageSize, maxPages, kShortPageEnds);
 
     pageEverything<Artist>(
         [this](int offset, int limit, ArtistsCb cb) { fetchArtistPage(offset, limit, std::move(cb)); },
@@ -258,7 +262,7 @@ void LibraryIndex::refresh() {
             land(m_artists, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages);
+        pageSize, maxPages, kShortPageEnds);
 
     pageEverything<Track>(
         [this](int offset, int limit, TracksCb cb) { fetchTrackPage(offset, limit, std::move(cb)); },
@@ -268,7 +272,7 @@ void LibraryIndex::refresh() {
             land(m_favoriteTracks, all, whole);
             partFinished(gen);
         },
-        trackPageSize, maxPages);
+        trackPageSize, maxPages, kShortPageEnds);
 
     fetchMixList([this, gen](QList<Mix> mixes, QString err) {
         if (gen != m_loadGen) return;

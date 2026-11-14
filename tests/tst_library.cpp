@@ -121,6 +121,9 @@ public:
     int  failTracksAt = -1;
     // Runs once a liked-songs reply is written and before it is delivered.
     std::function<void()> duringTrackPage;
+    // Ids the server leaves out of a page after slicing it, as Tidal does
+    // with rows unavailable in the country: that page comes back short.
+    QSet<qint64> unavailable;
     // Hold tracklist replies so a test can decide how much of the background
     // index has finished by the time it searches.
     bool deferTracklists = false;
@@ -153,15 +156,15 @@ protected:
     }
     void fetchAlbumPage(int offset, int limit, AlbumsCb cb) override {
         ++albumRequests;
-        cb(slice(albums, offset, limit), QString());
+        cb(available(slice(albums, offset, limit)), QString());
     }
     void fetchArtistPage(int offset, int limit, ArtistsCb cb) override {
-        cb(slice(artists, offset, limit), QString());
+        cb(available(slice(artists, offset, limit)), QString());
     }
     void fetchTrackPage(int offset, int limit, TracksCb cb) override {
         if (offset == failTracksAt) { cb({}, QStringLiteral("offline")); return; }
         // Sliced first: this reply is older than what the hook changes.
-        const QList<Track> page = slice(favoriteTracks, offset, limit);
+        const QList<Track> page = available(slice(favoriteTracks, offset, limit));
         if (const auto run = std::exchange(duringTrackPage, nullptr)) run();
         cb(page, QString());
     }
@@ -179,6 +182,12 @@ private:
     QList<T> slice(const QList<T> &all, int offset, int limit) const {
         if (repeatFirstPage) return all.mid(0, limit);
         return all.mid(offset, limit);
+    }
+
+    template <typename T>
+    QList<T> available(QList<T> page) const {
+        page.removeIf([this](const T &x) { return unavailable.contains(x.id); });
+        return page;
     }
 
     struct Parked { qint64 albumId; TracksCb cb; };
@@ -278,6 +287,27 @@ private slots:
         lib.setUserId(kUser);
         lib.refresh();
         QCOMPARE(lib.search(QStringLiteral("Song 5999"), {QStringLiteral("track")}).size(), 1);
+    }
+
+    // One unavailable row on the first page makes it short. The rest of the
+    // list must still arrive, for liked songs, saved albums and artists.
+    void aShortPageMidListDoesNotEndTheRun() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 250; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        for (int i = 0; i < 120; ++i) {
+            lib.albums << mkAlbum(20000 + i, QStringLiteral("Record %1").arg(i), {});
+            lib.artists << mkArtist(30000 + i, QStringLiteral("Singer %1").arg(i));
+        }
+        lib.unavailable = {10003, 20003, 30003};
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(lib.search(QStringLiteral("Song 249"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Record 119"), {QStringLiteral("album")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Singer 119"), {QStringLiteral("artist")}).size(), 1);
     }
 
     // The load's lists may predate a song liked while it ran, so it runs again.
