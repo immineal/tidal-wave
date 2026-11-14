@@ -236,8 +236,11 @@ FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<fl
             // Both channels came through one complex transform.
             const double lr = (a + c) / 2, li = (bb - d) / 2;
             const double rr = (bb + d) / 2, ri = -(a - c) / 2;
-            const float m = float(std::hypot((lr + rr) * 0.5, (li + ri) * 0.5));
-            const float sm = float(std::hypot((lr - rr) * 0.5, (li - ri) * 0.5));
+            // sqrt, not hypot: hypot needs glibc 2.35, the AppImage runs on 2.34.
+            const double mr = (lr + rr) * 0.5, mi = (li + ri) * 0.5;
+            const double sr = (lr - rr) * 0.5, si = (li - ri) * 0.5;
+            const float m = float(std::sqrt(mr * mr + mi * mi));
+            const float sm = float(std::sqrt(sr * sr + si * si));
             mg[b] = m;
             pm[b] = m * m;
             ps[b] = sm * sm;

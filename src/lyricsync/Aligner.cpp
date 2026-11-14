@@ -304,7 +304,7 @@ QString toLrc(const Alignment &a) {
         const double s = std::max(0.0, i < qsizetype(a.times.size()) ? a.times[size_t(i)] : 0.0);
         const int mm = int(std::floor(s / 60));
         char stamp[32];
-        std::snprintf(stamp, sizeof stamp, "[%02d:%05.2f]", mm, std::fmod(s, 60.0));
+        std::snprintf(stamp, sizeof stamp, "[%02d:%05.2f]", mm, s - 60.0 * mm);
         out += QLatin1String(stamp) + a.lines.at(i) + u'\n';
     }
     return out;
