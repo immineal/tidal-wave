@@ -6,9 +6,10 @@
 #include <QJsonDocument>
 #include <QByteArray>
 #include <QDebug>
-#include <QFuture>
+#include <QCoreApplication>
 #include <QHash>
-#include <QPromise>
+#include <QMetaObject>
+#include <QPointer>
 #include <QThreadPool>
 #include <QSet>
 #include <algorithm>
@@ -278,19 +279,18 @@ void TidalClient::getListOffThread(const QString &endpoint, const QUrlQuery &par
     using Parsed = std::pair<QList<T>, QString>;
     m_api->getBody(endpoint, params, [this, parse, cb](QByteArray body, QString err) {
         if (!err.isEmpty()) { cb({}, err); return; }
-        auto promise = std::make_shared<QPromise<Parsed>>();
-        QFuture<Parsed> future = promise->future();
-        promise->start();
-        QThreadPool::globalInstance()->start([promise, body, parse] {
+        // Not QFuture::then(this): Qt before 6.6 asserts when that context is gone.
+        QPointer<TidalClient> guard(this);
+        QThreadPool::globalInstance()->start([guard, body, parse, cb] {
             QJsonParseError perr;
             const QJsonDocument doc = QJsonDocument::fromJson(body, &perr);
-            promise->addResult(perr.error == QJsonParseError::NoError
-                                   ? Parsed{parse(doc.object()), QString()}
-                                   : Parsed{QList<T>{}, perr.errorString()});
-            promise->finish();
+            Parsed parsed = perr.error == QJsonParseError::NoError
+                                ? Parsed{parse(doc.object()), QString()}
+                                : Parsed{QList<T>{}, perr.errorString()};
+            QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, cb, parsed] {
+                if (guard) cb(parsed.first, parsed.second);
+            }, Qt::QueuedConnection);
         });
-        // Bound to this object: the continuation is dropped once it is gone.
-        future.then(this, [cb](Parsed parsed) { cb(parsed.first, parsed.second); });
     });
 }
 
