@@ -5,27 +5,76 @@ Notable changes to Tidal Wave, newest first. The format follows
 application rather than a library, so the version numbers are release
 milestones and not a semver promise about an API.
 
-## [Unreleased]
+## [0.4.3] - 2026-11-14
 
 ### Added
 
-- Settings has an Experimental section with three switches for lyrics.
-  Synced lyrics from LRCLIB, on by default: a track Tidal has no synced
-  lyrics for is looked up on lrclib.net. Lyrics from more sites, off unless
-  you turn it on: NetEase Cloud Music, KuGou and Genius are asked after
-  LRCLIB, in that order. The asking stops at the first site with synced
-  lyrics, and the lyrics show as Tidal's do: timed ones follow the song. A
-  line under them names the site and links to it. A track one of the sites
-  knows as an instrumental says Instrumental instead of No lyrics available.
-  Each site is asked at most once a second and is left alone for a while
-  after it refuses; what is found is kept on disk, so a song is looked up
-  once. The privacy notice and the README say what each site receives, and
-  that two of them are servers in China.
-- Sync plain lyrics automatically, the third switch, on by default: lyrics
-  without timings are timed against the track's audio on this machine, with
-  nothing sent anywhere. Timings it is unsure of are not shown; the ones
-  shown say "Synced automatically, may be off". The timings are kept on disk
-  next to the lyrics.
+- Settings has a new section, Experimental, above Privacy. It holds three
+  switches for lyrics.
+- Synced lyrics from LRCLIB, on by default. While the Now Playing page is
+  open, a track that Tidal has no synced lyrics for is looked up on
+  lrclib.net. Lyrics from more sites, off unless you turn it on, asks
+  NetEase Cloud Music, KuGou and Genius after LRCLIB, in that order.
+  - The asking stops at the first site with synced lyrics, and these follow
+    the song as Tidal's do. Plain lyrics from Tidal stay on screen while the
+    sites are asked.
+  - A line at the foot of the lyrics names the site, and a click on it opens
+    the site. A track that LRCLIB or NetEase knows as an instrumental says
+    Instrumental.
+  - Each site gets at most one request a second and is left alone for a
+    while after it refuses one. Synced lyrics that are found are kept on
+    disk, so the song is not looked up again. A track with plain lyrics only,
+    or none, is looked up again after 30 days.
+  - The privacy notice in Settings and the README say what each site
+    receives, and that two of them are servers in China.
+- Sync plain lyrics automatically, on by default. Lyrics without timings,
+  from Tidal or from a site, are timed against the track's audio on this
+  machine, and nothing is sent anywhere for it. It uses the audio the app
+  has already downloaded to play the track, and runs at low priority in the
+  background. While the lyrics are open, the next track is analysed ahead.
+  - Timings it is unsure of are not shown. The ones shown follow the song
+    and say "Synced automatically, may be off" under the lyrics. Synced
+    lyrics from Tidal or a site are always preferred to them.
+  - The timings are kept on disk next to the lyrics.
+- Plain lyrics that are longer than the Now Playing panel have a scroll bar
+  in its right margin, which can be dragged. 0.4.2 showed none.
+
+### Changed
+
+- Synced lyrics that you scrolled follow the song again on their own when
+  the scroll ends with the sung line back in the middle of the panel. 0.4.2
+  kept them still until Resync, a click on a line or the next track.
+
+### Fixed
+
+- Changes made to your collection on another device reach a running app:
+  liked songs, albums and artists, playlists and saved mixes. 0.4.2 read the
+  collection only at sign-in, so such a change showed after a restart. The
+  app now checks when its window gets the focus again, at most once a
+  minute, and every five minutes while the window is open. A window closed
+  to the tray checks nothing. A check is one small request per list, and
+  only a list that changed is loaded again.
+- Liked songs are loaded newest first. 0.4.2 loaded them oldest first and
+  showed the first 100 at once, so with more than 100 liked songs the
+  Collection page showed the oldest ones until the last of them had
+  arrived. Until the newest are in, the page shows a spinner where 0.4.2
+  said "No saved tracks".
+- With more than 5000 liked songs, the newest ones were missing from the
+  sidebar's library and its search. All of them are there now. If a page of
+  liked songs failed to load, the sidebar also forgot when the songs on that
+  page were last played, and its Tracks list is sorted by that.
+- A click on a button, a switch or a theme tile in the Settings panel, once
+  the panel was scrolled, also reached the page beneath it. With the albums
+  of the Collection page behind Settings, a click on Check now could open an
+  album.
+- Synced lyrics lit their first line from the start of the track, through
+  the whole intro. No line is lit now until the first one is sung.
+- Lyrics that Tidal sent late for the track before no longer replace those
+  of the track now playing.
+
+### Known issues
+
+- The known issues listed under 0.4.2 are unchanged.
 
 ## [0.4.2] - 2026-10-17
 
@@ -375,6 +424,7 @@ and are fixed in the set published on 11 October.
 0.3.1 and everything before it predate this file. See the
 [releases page](https://github.com/immineal/tidal-wave/releases) and `git log`.
 
+[0.4.3]: https://github.com/immineal/tidal-wave/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/immineal/tidal-wave/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/immineal/tidal-wave/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/immineal/tidal-wave/compare/v0.3.1...v0.4.0

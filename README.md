@@ -316,12 +316,13 @@ named.
     4.  `https://genius.com/<Artist>-<title>-lyrics`, the song page whose address is
         built from the artist and title. Genius's search API is not used.
 
+    Lyrics are looked up only for the track playing while the Now Playing page is open.
     So with the defaults, lrclib.net gets the artist, title, album and length of each
-    track you play that Tidal has no synced lyrics for, and nothing else is asked.
+    such track that Tidal has no synced lyrics for, and nothing else is asked.
     music.163.com and lyrics.kugou.com are servers in China. No Tidal token or id is
     sent. Each site asked sees your IP address and a `User-Agent` of
-    `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup starts once
-    a track has been playing for three seconds, a site gets at most one request a second
+    `tidal-wave/<version> (+https://github.com/immineal/tidal-wave)`. A lookup waits three
+    seconds before its first request, a site gets at most one request a second
     and never two at once, and a site that refuses (HTTP 429, 403, 503 or a bot check) is
     left alone for the time it asks for, or 15 minutes and doubling, plus up to 30 %.
     Every request, a site's follow-up requests too, is checked against that site's

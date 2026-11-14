@@ -132,7 +132,22 @@
     <!-- date= is the release date and cannot be derived, so it is the one thing
          here that has to be touched by hand when v@PROJECT_VERSION@ is tagged.
          Only the newest release takes its version from project(). -->
-    <release version="@PROJECT_VERSION@" date="2026-10-17">
+    <release version="@PROJECT_VERSION@" date="2026-11-14">
+      <description>
+        <p>Synced lyrics from other sites, plain lyrics timed on your own machine, and favourites that follow changes made on another device.</p>
+        <ul>
+          <li>Settings has a new Experimental section with three switches for lyrics</li>
+          <li>A track that Tidal has no synced lyrics for is looked up on lrclib.net, on by default. NetEase Cloud Music, KuGou and Genius can be switched on as well</li>
+          <li>Plain lyrics are timed against the track's audio on this machine, on by default. Timings it is unsure of are not shown, and the ones shown are marked</li>
+          <li>Plain lyrics that do not fit the panel have a scroll bar</li>
+          <li>Synced lyrics follow the song again when a scroll ends on the sung line, and no line is lit before the first one is sung</li>
+          <li>Likes, saved albums and artists, playlists and saved mixes changed on another device reach a running app. 0.4.2 read them only at sign-in</li>
+          <li>Liked songs load newest first, and with more than 5000 of them the newest are no longer missing from the sidebar</li>
+          <li>A click in a scrolled Settings panel no longer also reaches the page beneath it</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.4.2" date="2026-10-17">
       <description>
         <p>An artist page shows each record once, an album page lists the record's other versions, and two kinds of track that did not play now play.</p>
         <ul>
