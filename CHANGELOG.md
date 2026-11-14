@@ -54,15 +54,23 @@ milestones and not a semver promise about an API.
   minute, and every five minutes while the window is open. A window closed
   to the tray checks nothing. A check is one small request per list, and
   only a list that changed is loaded again.
-- Liked songs are loaded newest first. 0.4.2 loaded them oldest first and
+- Liked songs, albums and artists are read in one request per list, and
+  none go missing. 0.4.2 read them in pages, and Tidal reorders items
+  saved at the same moment from one page to the next, so some were skipped
+  on every load. A skipped song was missing from the Collection page and
+  showed an empty heart. The hearts now come from Tidal's list of liked
+  ids, which also covers songs Tidal no longer lists.
+- Liked songs are listed newest first. 0.4.2 loaded them oldest first and
   showed the first 100 at once, so with more than 100 liked songs the
   Collection page showed the oldest ones until the last of them had
-  arrived. Until the newest are in, the page shows a spinner where 0.4.2
-  said "No saved tracks".
-- With more than 5000 liked songs, the newest ones were missing from the
-  sidebar's library and its search. All of them are there now. If a page of
-  liked songs failed to load, the sidebar also forgot when the songs on that
-  page were last played, and its Tracks list is sorted by that.
+  arrived. While the list loads, the page shows a spinner where 0.4.2 said
+  "No saved tracks".
+- The sidebar's library and its search stopped reading liked songs, albums
+  and artists at the first page that came back short. Tidal leaves songs
+  that can no longer be played out of a page, so the sidebar often knew
+  only the first few dozen liked songs. It also stopped after 5000. When
+  the sidebar knew only part of the list, it forgot when the songs past
+  that point were last played, and its Tracks list is sorted by that.
 - A click on a button, a switch or a theme tile in the Settings panel, once
   the panel was scrolled, also reached the page beneath it. With the albums
   of the Collection page behind Settings, a click on Check now could open an

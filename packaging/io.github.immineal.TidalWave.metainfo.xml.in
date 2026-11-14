@@ -142,7 +142,8 @@
           <li>Plain lyrics that do not fit the panel have a scroll bar</li>
           <li>Synced lyrics follow the song again when a scroll ends on the sung line, and no line is lit before the first one is sung</li>
           <li>Likes, saved albums and artists, playlists and saved mixes changed on another device reach a running app. 0.4.2 read them only at sign-in</li>
-          <li>Liked songs load newest first, and with more than 5000 of them the newest are no longer missing from the sidebar</li>
+          <li>Liked songs, albums and artists are read in one request per list, so none are skipped any more and every liked song shows its heart</li>
+          <li>Liked songs load newest first, and the sidebar and its search know all of them. 0.4.2's sidebar often stopped after the first few dozen</li>
           <li>A click in a scrolled Settings panel no longer also reaches the page beneath it</li>
         </ul>
       </description>
