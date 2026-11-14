@@ -6,7 +6,10 @@
 #include <QJsonDocument>
 #include <QByteArray>
 #include <QDebug>
+#include <QFuture>
 #include <QHash>
+#include <QPromise>
+#include <QThreadPool>
 #include <QSet>
 #include <algorithm>
 #include <memory>
@@ -268,14 +271,36 @@ void TidalClient::fetchMixTracks(const QString &mixId, TracksCallback cb) {
 
 // ─── Favorites ─────────────────────────────────────
 
+template <typename T>
+void TidalClient::getListOffThread(const QString &endpoint, const QUrlQuery &params,
+                                   QList<T> (*parse)(const QJsonObject &),
+                                   std::function<void(QList<T>, QString)> cb) {
+    using Parsed = std::pair<QList<T>, QString>;
+    m_api->getBody(endpoint, params, [this, parse, cb](QByteArray body, QString err) {
+        if (!err.isEmpty()) { cb({}, err); return; }
+        auto promise = std::make_shared<QPromise<Parsed>>();
+        QFuture<Parsed> future = promise->future();
+        promise->start();
+        QThreadPool::globalInstance()->start([promise, body, parse] {
+            QJsonParseError perr;
+            const QJsonDocument doc = QJsonDocument::fromJson(body, &perr);
+            promise->addResult(perr.error == QJsonParseError::NoError
+                                   ? Parsed{parse(doc.object()), QString()}
+                                   : Parsed{QList<T>{}, perr.errorString()});
+            promise->finish();
+        });
+        // Bound to this object: the continuation is dropped once it is gone.
+        future.then(this, [cb](Parsed parsed) { cb(parsed.first, parsed.second); });
+    });
+}
+
 void TidalClient::fetchFavoriteTracks(TracksCallback cb, int limit, int offset) {
     QUrlQuery q;
     q.addQueryItem("limit",  QString::number(limit));
     q.addQueryItem("offset", QString::number(offset));
     q.addQueryItem("order",  "DATE");
-    m_api->get(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
+    getListOffThread<Track>(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
+                            &TidalClient::parseTracks, std::move(cb));
 }
 
 void TidalClient::fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset) {
@@ -284,9 +309,45 @@ void TidalClient::fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, i
     q.addQueryItem("offset", QString::number(offset));
     q.addQueryItem("order",  "DATE");
     q.addQueryItem("orderDirection", "DESC");
-    m_api->get(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
-        [this, cb](QJsonObject root, QString err) {
-            cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
+    getListOffThread<Track>(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
+                            &TidalClient::parseTracks, std::move(cb));
+}
+
+void TidalClient::fetchFavoriteTracksByIndex(TracksCallback cb, int limit, int offset,
+                                             bool newestFirst) {
+    QUrlQuery q;
+    q.addQueryItem("limit",  QString::number(limit));
+    q.addQueryItem("offset", QString::number(offset));
+    q.addQueryItem("order",  "INDEX");
+    q.addQueryItem("orderDirection", newestFirst ? "DESC" : "ASC");
+    getListOffThread<Track>(QStringLiteral("users/%1/favorites/tracks").arg(m_userId), q,
+                            &TidalClient::parseTracks,
+        [this, cb, limit, offset, newestFirst](QList<Track> tracks, QString err) {
+            if (err.isEmpty()) { cb(tracks, err); return; }
+            qWarning("TidalClient: liked songs by index failed (%s); retrying by date",
+                     qPrintable(err));
+            if (newestFirst) fetchFavoriteTracksNewestFirst(cb, limit, offset);
+            else             fetchFavoriteTracks(cb, limit, offset);
+        });
+}
+
+FavoriteIds TidalClient::parseFavoriteIds(const QJsonObject &root) {
+    // The ids come as strings, and a playlist's as a uuid.
+    const auto ids = [&root](const char *key) {
+        QSet<qint64> out;
+        for (const QJsonValue &v : root[QLatin1String(key)].toArray()) {
+            const qint64 id = v.isString() ? v.toString().toLongLong() : v.toInteger();
+            if (id > 0) out.insert(id);
+        }
+        return out;
+    };
+    return {ids("TRACK"), ids("ALBUM"), ids("ARTIST")};
+}
+
+void TidalClient::fetchFavoriteIds(FavoriteIdsCallback cb) {
+    m_api->get(QStringLiteral("users/%1/favorites/ids").arg(m_userId), {},
+        [cb](QJsonObject root, QString err) {
+            cb(err.isEmpty() ? parseFavoriteIds(root) : FavoriteIds{}, err); });
 }
 
 void TidalClient::fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) {
@@ -344,13 +405,13 @@ void TidalClient::fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) 
     plain.addQueryItem("limit",  QString::number(limit));
     plain.addQueryItem("offset", QString::number(offset));
 
-    m_api->get(path, q, [this, cb, path, plain](QJsonObject root, QString err) mutable {
-        if (err.isEmpty()) { cb(parseAlbums(root), err); return; }
-        qWarning("TidalClient: favourites by date failed (%s); retrying unordered",
-                 qPrintable(err));
-        m_api->get(path, plain, [this, cb](QJsonObject root2, QString err2) {
-            cb(err2.isEmpty() ? parseAlbums(root2) : QList<Album>{}, err2); });
-    });
+    getListOffThread<Album>(path, q, &TidalClient::parseAlbums,
+        [this, cb, path, plain](QList<Album> albums, QString err) {
+            if (err.isEmpty()) { cb(albums, err); return; }
+            qWarning("TidalClient: favourites by date failed (%s); retrying unordered",
+                     qPrintable(err));
+            getListOffThread<Album>(path, plain, &TidalClient::parseAlbums, cb);
+        });
 }
 
 void TidalClient::fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset) {
@@ -366,13 +427,13 @@ void TidalClient::fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset
     plain.addQueryItem("limit",  QString::number(limit));
     plain.addQueryItem("offset", QString::number(offset));
 
-    m_api->get(path, q, [this, cb, path, plain](QJsonObject root, QString err) mutable {
-        if (err.isEmpty()) { cb(parseArtists(root), err); return; }
-        qWarning("TidalClient: followed artists by date failed (%s); retrying unordered",
-                 qPrintable(err));
-        m_api->get(path, plain, [this, cb](QJsonObject root2, QString err2) {
-            cb(err2.isEmpty() ? parseArtists(root2) : QList<Artist>{}, err2); });
-    });
+    getListOffThread<Artist>(path, q, &TidalClient::parseArtists,
+        [this, cb, path, plain](QList<Artist> artists, QString err) {
+            if (err.isEmpty()) { cb(artists, err); return; }
+            qWarning("TidalClient: followed artists by date failed (%s); retrying unordered",
+                     qPrintable(err));
+            getListOffThread<Artist>(path, plain, &TidalClient::parseArtists, cb);
+        });
 }
 
 void TidalClient::fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) {

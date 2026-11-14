@@ -177,6 +177,19 @@ void TidalApi::getArray(const QString &endpoint, const QUrlQuery &params, ArrayC
         });
 }
 
+void TidalApi::getBody(const QString &endpoint, const QUrlQuery &params, RawCallback cb) {
+    QUrl url(baseUrl(QString::fromLatin1(kApiBase)) + endpoint);
+    QUrlQuery q = params;
+    if (!m_countryCode.isEmpty()) q.addQueryItem("countryCode", m_countryCode);
+    url.setQuery(q);
+
+    send([this, url] { return m_nam->get(makeRequest(url)); },
+         [cb](QNetworkReply *reply, const QByteArray &body) {
+        if (reply->error() != QNetworkReply::NoError) { cb(body, reply->errorString()); return; }
+        cb(body, {});
+    });
+}
+
 void TidalApi::getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb) {
     getFrom(QString::fromLatin1(kOpenApiBase), endpoint, params, withoutStatus(std::move(cb)));
 }

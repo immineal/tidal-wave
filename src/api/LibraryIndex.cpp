@@ -213,6 +213,11 @@ void LibraryIndex::fetchTrackPage(int offset, int limit, TracksCb cb) {
     m_client->fetchFavoriteTracks(std::move(cb), limit, offset);
 }
 
+void LibraryIndex::fetchTrackIndexPage(int offset, int limit, TracksCb cb) {
+    if (!m_client) { cb({}, QStringLiteral("no client")); return; }
+    m_client->fetchFavoriteTracksByIndex(std::move(cb), limit, offset, false);
+}
+
 void LibraryIndex::fetchMixList(MixesCb cb) {
     if (!m_client) { cb({}, QStringLiteral("no client")); return; }
     m_client->fetchHomeMixes(std::move(cb));
@@ -230,9 +235,9 @@ void LibraryIndex::refresh() {
     m_refreshAgain = false;
     setLoading(true);
 
-    // The favourites lists drop unavailable rows after slicing a page, so a
-    // short page can come mid-list. They are paged to the empty page.
-    constexpr bool kShortPageEnds = false;
+    // The favourites lists come in one page each. They drop unavailable rows
+    // after slicing, so a short page proves nothing and they read on.
+    constexpr int kBig = TidalClient::kFavoritesPageMax;
 
     pageEverything<Playlist>(
         [this](int offset, int limit, PlaylistsCb cb) { fetchPlaylistPage(offset, limit, std::move(cb)); },
@@ -244,35 +249,38 @@ void LibraryIndex::refresh() {
         },
         pageSize, maxPages);
 
-    pageEverything<Album>(
-        [this](int offset, int limit, AlbumsCb cb) { fetchAlbumPage(offset, limit, std::move(cb)); },
+    const auto albumPage = [this](int offset, int limit, AlbumsCb cb) {
+        fetchAlbumPage(offset, limit, std::move(cb)); };
+    pageFavorites<Album>(albumPage, albumPage,
         [](const Album &a) { return QString::number(a.id); },
-        [this, gen](const QList<Album> &all, bool whole) {
+        [this, gen](const QList<Album> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
             land(m_albums, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages, kShortPageEnds);
+        kBig, pageSize, maxPages, "saved albums", true);
 
-    pageEverything<Artist>(
-        [this](int offset, int limit, ArtistsCb cb) { fetchArtistPage(offset, limit, std::move(cb)); },
+    const auto artistPage = [this](int offset, int limit, ArtistsCb cb) {
+        fetchArtistPage(offset, limit, std::move(cb)); };
+    pageFavorites<Artist>(artistPage, artistPage,
         [](const Artist &a) { return QString::number(a.id); },
-        [this, gen](const QList<Artist> &all, bool whole) {
+        [this, gen](const QList<Artist> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
             land(m_artists, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages, kShortPageEnds);
+        kBig, pageSize, maxPages, "followed artists", true);
 
-    pageEverything<Track>(
+    pageFavorites<Track>(
         [this](int offset, int limit, TracksCb cb) { fetchTrackPage(offset, limit, std::move(cb)); },
+        [this](int offset, int limit, TracksCb cb) { fetchTrackIndexPage(offset, limit, std::move(cb)); },
         [](const Track &t) { return QString::number(t.id); },
-        [this, gen](const QList<Track> &all, bool whole) {
+        [this, gen](const QList<Track> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
             land(m_favoriteTracks, all, whole);
             partFinished(gen);
         },
-        trackPageSize, maxPages, kShortPageEnds);
+        kBig, trackPageSize, maxPages, "liked songs", false);
 
     fetchMixList([this, gen](QList<Mix> mixes, QString err) {
         if (gen != m_loadGen) return;

@@ -116,7 +116,33 @@ public:
     std::function<void()> parkedPage;
     bool    addTrackOk = true;
 
+    // A page larger than this answers an error, as Tidal does above 10000.
+    int        refuseAbove = -1;
+    QList<int> trackLimits;
+    int        indexPageReads = 0;
+    // Liked, but in no listing: what favorites/ids holds beyond the pages.
+    QSet<qint64> unlistedLikes;
+    int        idReads = 0;
+
+    // Parks each ids reply, as the server had it when asked.
+    bool holdIds = false;
+    QList<std::function<void()>> parkedIds;
+
+    void fetchFavoriteIds(FavoriteIdsCallback cb) override {
+        ++idReads;
+        FavoriteIds ids;
+        for (const Track &t : likes) ids.tracks.insert(t.id);
+        ids.tracks.unite(unlistedLikes);
+        if (holdIds) { parkedIds << [cb, ids] { cb(ids, QString()); }; return; }
+        cb(ids, QString());
+    }
+    void fetchFavoriteTracksByIndex(TracksCallback cb, int limit, int offset, bool) override {
+        ++indexPageReads;
+        fetchFavoriteTracksNewestFirst(cb, limit, offset);
+    }
     void fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset) override {
+        trackLimits << limit;
+        if (refuseAbove >= 0 && limit > refuseAbove) { cb({}, QStringLiteral("400")); return; }
         const int page = trackPageReads++;
         const auto answer = [this, cb, limit, offset]() { cb(likes.mid(offset, limit), QString()); };
         if (page == holdAfterPages) {
@@ -142,6 +168,11 @@ public:
     void addTrackFavorite(qint64 id, std::function<void(bool)> cb) override {
         Q_UNUSED(id);
         cb(addTrackOk);
+    }
+    bool removeTrackOk = true;
+    void removeTrackFavorite(qint64 id, std::function<void(bool)> cb) override {
+        Q_UNUSED(id);
+        cb(removeTrackOk);
     }
 
     void deliverPage() {
@@ -239,21 +270,79 @@ private slots:
     }
 
     // ── liked songs ─────────────────────────────────────────────────────────
-    // Two pages of likes: the songs on screen while the second page is out are
-    // the newest, not the oldest the server would answer by default.
-    void theFirstPageOnScreenIsTheNewestLikes() {
+    // One page holds every like, newest first; the collection waits for it.
+    void theLikesArriveInOnePage() {
         Harness h;
         h.client.likes = mkLikes(150);
         h.client.holdAfterPages = 1;
         h.client.setUserId(kUid);
 
-        QCOMPARE(firstLiked(h), 1000LL);
-        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 100);
-        QVERIFY(!h.bridge.favoritesLoading());
-
+        QCOMPARE(h.client.trackLimits.value(0), 10000);
+        QVERIFY(h.bridge.favoritesLoading());
         h.client.deliverPage();
+        QVERIFY(!h.bridge.favoritesLoading());
         QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 150);
         QCOMPARE(firstLiked(h), 1000LL);
+    }
+
+    // Tidal refusing the one page: the likes are paged at 100, by INDEX.
+    void aRefusedPageIsPagedByIndex() {
+        Harness h;
+        h.client.likes = mkLikes(250);
+        h.client.refuseAbove = 100;
+        h.client.setUserId(kUid);
+
+        QVERIFY(h.client.indexPageReads >= 3);
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 250);
+        QCOMPARE(firstLiked(h), 1000LL);
+    }
+
+    // A song the listings leave out, unavailable here, is still liked.
+    void aLikeOnlyTheIdsListHoldsHasItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+
+        QVERIFY(h.bridge.isTrackFavorite(4242));
+        QVERIFY(h.bridge.isTrackFavorite(1000));
+        QCOMPARE(h.bridge.searchFavoriteTracks(QString()).size(), 3);
+    }
+
+    // Unliked on the phone: the next reload takes that heart away too.
+    void anIdsOnlyLikeRemovedElsewhereLosesItsHeart() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+        h.bridge.syncFavorites();
+
+        h.client.unlistedLikes.clear();
+        h.client.likes.removeAt(1);       // moves the head, so the list reloads
+        h.bridge.syncFavorites();
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        QVERIFY(!h.bridge.isTrackFavorite(999));
+    }
+
+    // Unliked here: an ids answer from before that cannot bring it back.
+    void anUnlikeHereIsNotUndoneByTheIdsList() {
+        Harness h;
+        h.client.likes = mkLikes(3);
+        h.client.unlistedLikes = {4242};
+        h.client.setUserId(kUid);
+        QVERIFY(h.bridge.isTrackFavorite(4242));
+
+        h.client.holdIds = true;
+        h.client.likes.prepend(mkLike(2000));    // moves the head: a reload
+        h.bridge.syncFavorites();
+        QCOMPARE(h.client.parkedIds.size(), 1);  // still says 4242 is liked
+
+        h.client.unlistedLikes.clear();
+        h.bridge.removeTrackFavorite(4242, QJSValue());
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        while (!h.client.parkedIds.isEmpty()) h.client.parkedIds.takeFirst()();
+        QVERIFY(!h.bridge.isTrackFavorite(4242));
+        QVERIFY(h.bridge.isTrackFavorite(2000));
     }
 
     void theCollectionWaitsForTheFirstPage() {

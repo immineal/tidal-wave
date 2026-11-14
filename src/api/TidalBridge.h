@@ -209,15 +209,20 @@ private:
     void resetFavoriteSync();
     void favoriteChangedHere(TidalClient::FavoriteKind kind);
     void reloadFavorites(TidalClient::FavoriteKind kind, const FavoritesHead &head);
-    template <typename T, typename Fetch, typename KeyOf, typename Apply>
+    // `paged` lists the same rows page by page, for when one page is refused.
+    template <typename T, typename Fetch, typename Paged, typename KeyOf, typename Apply>
     void reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead &head, int limit,
-                    const QList<T> &cache, Fetch fetch, KeyOf keyOf, Apply apply);
+                    const QList<T> &cache, Fetch fetch, Paged paged, KeyOf keyOf,
+                    Apply apply);
     // Loaded eagerly at sign-in, so MixPage knows the save state without a
     // round trip per page.
     void loadFavoriteMixIds();
-    void loadNextFavoriteTracksPage(int offset);
-    void loadNextFavoriteAlbumsPage(int offset);
-    void loadNextFavoriteArtistsPage(int offset);
+    void loadFavoriteTracks();
+    void loadFavoriteAlbums();
+    void loadFavoriteArtists();
+    void refreshLikedTrackIds();
+    void applyLikedTrackIds();
+    void reportPagedLikes();
     void loadNextUserPlaylistsPage(int offset);
 
 public:
@@ -240,7 +245,14 @@ private:
     LyricsFinder *m_lyricsFinder = nullptr;
     lyricsync::AutoSync *m_autoSync = nullptr;
     QQmlEngine   *m_engine = nullptr;
+    // The hearts: every listed song and every id favorites/ids answered.
     QSet<qlonglong> m_favoriteTrackIds;
+    // The last favorites/ids answer for songs, kept in step with likes here.
+    QSet<qlonglong> m_likedTrackIds;
+    int             m_likedIdsGen = 0;
+    bool            m_likedIdsInFlight = false;
+    // The liked-songs listing on hand was paged because one page was refused.
+    bool            m_tracksFellBack = false;
     // Bumped each time loadFavoriteTrackIds() restarts paging. Callbacks from
     // a superseded load compare against it and bail, so two overlapping
     // chains cannot both append page 0.

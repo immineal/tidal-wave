@@ -48,6 +48,9 @@ public:
     void putV2(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);
     // The same v1 GET, for a body that is an array at the top level.
     void getArray(const QString &endpoint, const QUrlQuery &params, ArrayCallback cb);
+    // The same v1 GET with the body left unparsed, so a caller can parse a
+    // large one off the GUI thread. Virtual as a test seam only.
+    virtual void getBody(const QString &endpoint, const QUrlQuery &params, RawCallback cb);
     // A GET against the track-manifest host, the only one that serves a FLAC
     // manifest. The body is JSON:API: {data: {attributes: {...}}}.
     void getOpenApi(const QString &endpoint, const QUrlQuery &params, JsonCallback cb);

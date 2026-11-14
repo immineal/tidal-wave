@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QList>
+#include <QtGlobal>
 #include <QSet>
 #include <QString>
 
@@ -57,4 +58,26 @@ void pageEverything(Fetch fetch, KeyOf keyOf, Done done, int limit, int maxPages
         });
     };
     run->step();
+}
+
+// Lists a favourites list in one page of `bigLimit`, read on to the empty page
+// like any other run. Only when Tidal refuses that page does it page at
+// `smallLimit` with `paged`. `pagedLoses` says its order has ties, which offset
+// paging repeats and skips. `done` gets the list, whether it is whole and
+// whether it fell back.
+template <typename T, typename Fetch, typename Paged, typename KeyOf, typename Done>
+void pageFavorites(Fetch fetch, Paged paged, KeyOf keyOf, Done done, int bigLimit,
+                   int smallLimit, int maxPages, const char *what, bool pagedLoses) {
+    const auto big = [paged, keyOf, done, smallLimit, maxPages, what, pagedLoses](
+                         const QList<T> &all, bool whole) {
+        if (whole || !all.isEmpty()) { done(all, whole, false); return; }
+        qWarning("favourites: one page of %s failed; paging at %d%s", what, smallLimit,
+                 pagedLoses ? ", which can lose rows that share a save date" : "");
+        pageEverything<T>(paged, keyOf,
+                          [done](const QList<T> &list, bool listWhole) {
+                              done(list, listWhole, true);
+                          },
+                          smallLimit, maxPages, false);
+    };
+    pageEverything<T>(fetch, keyOf, big, bigLimit, maxPages, false);
 }
