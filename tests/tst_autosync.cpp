@@ -14,6 +14,7 @@
 #include <cmath>
 
 #include "lyricsync/Aligner.h"
+#include "lyricsync/AudioFeed.h"
 #include "lyricsync/AutoSync.h"
 
 using namespace lyricsync;
@@ -177,7 +178,9 @@ private slots:
         QVERIFY(m_held.isEmpty());
     }
 
-    void badAudioFailsOnce() {
+    // A file the decoder cannot read fails; asked again, the track waits for
+    // its next audio instead of being decoded again at once.
+    void badAudioWaitsForTheNextPlay() {
         QObject owner;
         AutoSync *a = make(&owner);
         QSignalSpy analysed(a, &AutoSync::analysed);
@@ -185,14 +188,120 @@ private slots:
         AutoSync::Result got;
         bool done = false;
         a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(done, 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(done, AudioFeed::kStallMs + 10000);
         QVERIFY(!got.ok);
         QVERIFY(!got.error.isEmpty());
         QCOMPARE(m_released, QStringList{m_junk});
         done = false;
         a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
-        QTRY_VERIFY(done);
+        QTest::qWait(200);
+        QVERIFY(!done);
         QCOMPARE(analysed.count(), 1);
+        a->cancel();
+    }
+
+    // No file yet is a passing failure: tried again on the track's next
+    // audio, up to kMaxTries times, then answered at once.
+    void passingFailureIsRetriedOnTheNextAudio() {
+        QObject owner;
+        AutoSync *a = make(&owner);
+        QSignalSpy analysed(a, &AutoSync::analysed);
+        const QString later = m_dir.filePath(QStringLiteral("later.wav"));
+        QFile::remove(later);
+        m_paths[13] = later;
+        AutoSync::Result got;
+        int answers = 0;
+        auto ask = [&] { a->sync(13, kText, [&](const AutoSync::Result &r) { got = r; ++answers; }); };
+        ask();
+        QTRY_COMPARE(answers, 1);
+        QCOMPARE(got.error, QStringLiteral("cannot open the audio"));
+        ask();
+        QTest::qWait(100);
+        QCOMPARE(answers, 1);                        // waits for the next audio
+        QVERIFY(writeWav(later, 16));
+        a->audioReady(13, false);
+        QTRY_COMPARE_WITH_TIMEOUT(answers, 2, 30000);
+        QVERIFY2(got.ok, qPrintable(got.error));
+
+        m_paths[14] = later + QStringLiteral(".gone");
+        answers = 0;
+        a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
+        QTRY_COMPARE(answers, 1);
+        for (int i = 1; i < AutoSync::kMaxTries; ++i) {
+            a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
+            a->audioReady(14, false);
+            QTRY_COMPARE(answers, i + 1);
+        }
+        a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
+        QTRY_COMPARE(answers, AutoSync::kMaxTries + 1);   // given up: at once
+    }
+
+    // Audio over the cap is refused once and remembered on disk.
+    void tooLongIsRemembered() {
+        QObject owner;
+        AutoSync *a = make(&owner);
+        a->setMaxSecondsForTest(5);
+        m_paths[15] = m_wav;
+        AutoSync::Result got;
+        bool done = false;
+        a->sync(15, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 30000);
+        QCOMPARE(got.error, QStringLiteral("too long"));
+        QCOMPARE(m_held.size(), 1);
+
+        AutoSync *b = make(&owner);
+        b->setMaxSecondsForTest(5);
+        done = false;
+        b->sync(15, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
+        QTRY_VERIFY(done);
+        QCOMPARE(got.error, QStringLiteral("too long"));
+        QCOMPARE(m_held.size(), 1);                   // not decoded again
+    }
+
+    // Cancelling stops the analysis of the track asked for, and it can be
+    // asked for again.
+    void cancelStopsTheAnalysis() {
+        QObject owner;
+        AutoSync *a = make(&owner);
+        QSignalSpy analysed(a, &AutoSync::analysed);
+        m_paths[16] = m_long;
+        a->sync(16, kText, [](const AutoSync::Result &) {});
+        QTRY_VERIFY_WITH_TIMEOUT(!m_held.isEmpty(), 5000);
+        QTest::qWait(300);
+        QElapsedTimer t;
+        t.start();
+        a->cancel();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_released.isEmpty(), 5000);
+        QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
+        QCOMPARE(analysed.count(), 0);
+        QVERIFY(!a->hasAnalysisForTest(16));
+        a->sync(16, kText, [](const AutoSync::Result &) {});
+        QTRY_COMPARE_WITH_TIMEOUT(m_held.size(), 2, 5000);
+        a->cancel();
+        QTRY_COMPARE_WITH_TIMEOUT(m_released.size(), 2, 5000);
+    }
+
+    // A track with real timings, or with a result already, is not analysed ahead.
+    void lookAheadSkipsTracksWithTimings() {
+        QObject owner;
+        AutoSync *a = make(&owner);
+        a->setHasTimings([](qint64 id) { return id == 17; });
+        QSignalSpy analysed(a, &AutoSync::analysed);
+        a->setLookAhead(true);
+        m_paths[17] = m_paths[18] = m_paths[19] = m_paths[20] = m_wav;
+        a->noteRealTimings(18);
+        QDir().mkpath(m_dir.path() + QStringLiteral("/cache"));
+        QFile c(a->cacheFile(19));
+        QVERIFY(c.open(QIODevice::WriteOnly));
+        c.write(QJsonDocument(QJsonObject{{QStringLiteral("v"), Models::kVersion},
+                                          {QStringLiteral("text"), QStringLiteral("x")}}).toJson());
+        c.close();
+        for (qint64 id : {17, 18, 19}) a->audioReady(id, true);
+        QTest::qWait(300);
+        QCOMPARE(analysed.count(), 0);
+        a->audioReady(20, true);
+        QTRY_COMPARE_WITH_TIMEOUT(analysed.count(), 1, 30000);
+        QVERIFY(a->hasAnalysisForTest(20));
     }
 
     // The next track is analysed ahead only with look-ahead on.
@@ -209,17 +318,23 @@ private slots:
         QVERIFY(a->hasAnalysisForTest(11));
     }
 
-    // Quitting does not wait for a long analysis to finish.
+    // Quitting does not wait for a long analysis to finish, in whichever
+    // stage it is: decoding, the features, the two nets.
+    void destroyedMidAnalysisQuickly_data() {
+        QTest::addColumn<int>("afterMs");
+        for (int ms : {300, 1000, 2000, 3000, 4000, 5000}) QTest::addRow("%d ms", ms) << ms;
+    }
     void destroyedMidAnalysisQuickly() {
+        QFETCH(int, afterMs);
         auto *a = make(nullptr);
         m_paths[12] = m_long;
         a->sync(12, kText, [](const AutoSync::Result &) {});
         QTRY_VERIFY_WITH_TIMEOUT(!m_held.isEmpty(), 5000);
-        QTest::qWait(300);
+        QTest::qWait(afterMs);
         QElapsedTimer t;
         t.start();
         delete a;
-        QVERIFY2(t.elapsed() < 3000, qPrintable(QString::number(t.elapsed())));
+        QVERIFY2(t.elapsed() < 1000, qPrintable(QString::number(t.elapsed())));
     }
 };
 

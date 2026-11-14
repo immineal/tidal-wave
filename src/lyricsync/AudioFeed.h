@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <atomic>
 #include <memory>
 
 class QAudioDecoder;
@@ -30,6 +31,12 @@ public:
     // A decoder that sends nothing for this long counts as failed. Some
     // backends neither decode nor report an error on a file they cannot read.
     static constexpr int kStallMs = 20000;
+    // Checked at every buffer; raised, the decode ends as cancelled.
+    void setStop(const std::atomic<bool> *stop) { m_stop = stop; }
+
+    // Why the decode failed, once finished(false) has come.
+    enum class Failure { None, Cancelled, TooLong, Stalled, Decoder, Format, Empty };
+    Failure failure() const { return m_failure; }
 
     // Folds one buffer into 44.1 kHz stereo float; false when its rate or
     // format cannot be used. Public for the tests.
@@ -43,7 +50,7 @@ signals:
 private:
     void onBuffer();
     void onFinished();
-    void fail(const QString &err);
+    void fail(const QString &err, Failure why);
     void closeSource();
 
     QAudioDecoder *m_decoder = nullptr;
@@ -52,6 +59,8 @@ private:
     QTimer *m_watch = nullptr;
     size_t m_maxFrames = 0;
     bool m_done = false;
+    const std::atomic<bool> *m_stop = nullptr;
+    Failure m_failure = Failure::None;
 };
 
 } // namespace lyricsync

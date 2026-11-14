@@ -673,6 +673,12 @@ int Application::run(int argc, char **argv) {
     m_autoSync = new lyricsync::AutoSync(this);
     m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });
     m_autoSync->setCacheDir(LyricsCache::defaultDir());
+    // A track a lyrics site had synced lyrics for, or knows as instrumental.
+    m_autoSync->setHasTimings([](qint64 id) {
+        LyricsResult r;
+        const LyricsCache::Hit hit = LyricsCache(LyricsCache::defaultDir()).lookup(id, QDateTime::currentMSecsSinceEpoch(), &r);
+        return hit == LyricsCache::Hit::Instrumental || (hit == LyricsCache::Hit::Found && r.timed);
+    });
     m_autoSync->setAudioSource([player = m_player](qint64 id) { return player->audioFileFor(id); });
     m_autoSync->setFileHold([player = m_player](const QString &p) { player->holdAudioFile(p); },
                             [player = m_player](const QString &p) { player->releaseAudioFile(p); });

@@ -427,6 +427,8 @@ Rectangle {
             if (!root.lyricsCurrent(forId, serial)) return
             var text = err ? "" : (result.text || "")
             if (text.length > 0 && result.timed) {
+                // Real timings: the plain lyrics need no syncing any more.
+                if (havePlain && prefs.lyricsAutoSync) bridge.cancelAutoSync()
                 root.lyricsSource    = result.source || ""
                 root.lyricsSourceUrl = result.url || ""
                 root.lyricsAutoSynced = false

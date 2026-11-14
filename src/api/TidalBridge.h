@@ -141,6 +141,8 @@ public:
     // switch is off. A newer call drops the older one's answer.
     Q_INVOKABLE void autoSyncLyrics (qlonglong trackId, const QString &text, QJSValue cb);
     // Whether the next track's audio is analysed ahead, while lyrics are on screen.
+    // Drops the auto-sync asked for, and stops its analysis unless the next track needs it.
+    Q_INVOKABLE void cancelAutoSync();
     Q_INVOKABLE void setLyricsLookAhead(bool on);
     void setAutoSync(lyricsync::AutoSync *a) { m_autoSync = a; }
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,

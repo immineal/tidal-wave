@@ -48,27 +48,34 @@ bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
     // Queued: some backends report the end or a bad file from inside start().
     connect(m_decoder, &QAudioDecoder::finished, this, &AudioFeed::onFinished, Qt::QueuedConnection);
     connect(m_decoder, qOverload<QAudioDecoder::Error>(&QAudioDecoder::error), this,
-            [this](QAudioDecoder::Error) { fail(m_decoder->errorString()); }, Qt::QueuedConnection);
+            [this](QAudioDecoder::Error) {
+                // Queued: may arrive after onFinished() has let the decoder go.
+                if (!m_done && m_decoder) fail(m_decoder->errorString(), Failure::Decoder);
+            }, Qt::QueuedConnection);
     m_watch = new QTimer(this);
     m_watch->setSingleShot(true);
     // A starved thread may see the timer before buffers that are waiting.
     connect(m_watch, &QTimer::timeout, this, [this] {
         if (m_decoder && m_decoder->bufferAvailable()) onBuffer();
-        else fail(QStringLiteral("the decoder stalled"));
+        else fail(QStringLiteral("the decoder stalled"), Failure::Stalled);
     });
     m_watch->start(kStallMs);
     m_decoder->start();
     return true;
 }
 
-void AudioFeed::cancel() { fail(QStringLiteral("cancelled")); }
+void AudioFeed::cancel() { fail(QStringLiteral("cancelled"), Failure::Cancelled); }
 
 void AudioFeed::onBuffer() {
+    if (m_stop && m_stop->load(std::memory_order_relaxed)) { cancel(); return; }
     if (!m_done && m_watch) m_watch->start(kStallMs);
     while (!m_done && m_decoder->bufferAvailable()) {
         QString err;
-        if (!appendBuffer(m_decoder->read(), m_into, &err)) { fail(err); return; }
-        if (m_maxFrames && m_into->framesIn() > m_maxFrames) { fail(QStringLiteral("too long")); return; }
+        if (!appendBuffer(m_decoder->read(), m_into, &err)) { fail(err, Failure::Format); return; }
+        if (m_maxFrames && m_into->framesIn() > m_maxFrames) {
+            fail(QStringLiteral("too long"), Failure::TooLong);
+            return;
+        }
     }
 }
 
@@ -79,13 +86,16 @@ void AudioFeed::onFinished() {
     if (m_done) return;
     m_done = true;
     closeSource();
-    emit finished(m_into->framesIn() > 0, m_into->framesIn() > 0 ? QString() : QStringLiteral("no audio"));
+    const bool any = m_into->framesIn() > 0;
+    if (!any) m_failure = Failure::Empty;
+    emit finished(any, any ? QString() : QStringLiteral("no audio"));
 }
 
 // May run inside a decoder signal, so the decoder is let go of a turn later.
-void AudioFeed::fail(const QString &err) {
+void AudioFeed::fail(const QString &err, Failure why) {
     if (m_done) return;
     m_done = true;
+    m_failure = why;
     if (m_watch) m_watch->stop();
     if (m_decoder) m_decoder->stop();
     QMetaObject::invokeMethod(this, [this, err] {

@@ -2,6 +2,7 @@
 // Expected values come from the reference run on the same input; all audio
 // here is synthetic.
 
+#include <QAudioDecoder>
 #include <QBuffer>
 #include <QFile>
 #include <QSignalSpy>
@@ -285,6 +286,21 @@ private slots:
         // Qt 6.4 neither decodes nor reports this: the stall watchdog ends it.
         QTRY_COMPARE_WITH_TIMEOUT(done.count(), 1, AudioFeed::kStallMs + 10000);
         QVERIFY(!done.at(0).at(0).toBool());
+    }
+
+    // An error the decoder posted before it was let go arrives after the end.
+    void errorAfterTheEndIsIgnored() {
+        FrontEnd fe;
+        AudioFeed feed;
+        QSignalSpy done(&feed, &AudioFeed::finished);
+        if (!feed.start(bufferOf(kAacLcB64), &fe)) QSKIP("no audio decoder");
+        auto *dec = feed.findChild<QAudioDecoder *>();
+        QVERIFY(dec);
+        emit dec->finished();
+        emit dec->error(QAudioDecoder::ResourceError);
+        QTRY_COMPARE(done.count(), 1);
+        QTest::qWait(50);
+        QCOMPARE(done.count(), 1);
     }
 
 private:

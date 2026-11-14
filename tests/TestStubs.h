@@ -662,22 +662,29 @@ public:
         m_foundInstrumental = false;
         m_findLyricsCalls = 0; m_lastFindLyricsTrack.clear();
         m_autoSyncCalls = 0; m_autoSyncText.clear(); m_autoSyncKept = false; m_autoSyncLrc.clear();
-        m_autoSyncHold = false; m_autoSyncHeld = QJSValue(); m_lookAhead = false;
+        m_autoSyncHold = false; m_autoSyncHeld.clear(); m_autoSyncCancels = 0; m_lookAhead = false;
     }
     // Mirrors TidalBridge::autoSyncLyrics: answers what setAutoSyncForTest()
-    // stored, at once or, held, on releaseAutoSyncForTest().
+    // stored, at once or, held, on a release. Every held call is kept, so a
+    // stale one can be answered after a newer one was made.
     Q_INVOKABLE void autoSyncLyrics(qlonglong trackId, const QString &text, QJSValue cb) {
         Q_UNUSED(trackId);
         m_autoSyncCalls++;
         m_autoSyncText = text;
-        m_autoSyncHeld = cb;
+        m_autoSyncHeld.append(cb);
         if (!m_autoSyncHold) releaseAutoSyncForTest();
     }
+    Q_INVOKABLE void cancelAutoSync() { m_autoSyncCancels++; }
+    Q_INVOKABLE int  autoSyncCancelsForTest() const { return m_autoSyncCancels; }
     Q_INVOKABLE void setAutoSyncForTest(bool kept, const QString &lrc) { m_autoSyncKept = kept; m_autoSyncLrc = lrc; }
     Q_INVOKABLE void holdAutoSyncForTest(bool hold) { m_autoSyncHold = hold; }
+    // Answers every held call, oldest first.
     Q_INVOKABLE void releaseAutoSyncForTest() {
-        QJSValue cb = m_autoSyncHeld;
-        m_autoSyncHeld = QJSValue();
+        while (!m_autoSyncHeld.isEmpty()) releaseOldestAutoSyncForTest();
+    }
+    Q_INVOKABLE void releaseOldestAutoSyncForTest() {
+        if (m_autoSyncHeld.isEmpty()) return;
+        QJSValue cb = m_autoSyncHeld.takeFirst();
         if (!cb.isCallable()) return;
         QJSValue res = emptyObject();
         if (res.isObject()) {
@@ -1136,7 +1143,8 @@ private:
     bool        m_autoSyncKept = false;
     QString     m_autoSyncLrc;
     bool        m_autoSyncHold = false;
-    QJSValue    m_autoSyncHeld;
+    QList<QJSValue> m_autoSyncHeld;
+    int         m_autoSyncCancels = 0;
     bool        m_lookAhead = false;
     QString   m_trackMixId;
     QString   m_trackMixError;

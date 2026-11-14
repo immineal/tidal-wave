@@ -721,7 +721,9 @@ void TidalBridge::fetchTrackMix(qlonglong trackId, QJSValue cb) {
 }
 
 void TidalBridge::fetchLyrics(qlonglong trackId, QJSValue cb) {
-    m_client->fetchLyrics(trackId, [this, cb](QString text, bool timed, QString err) mutable {
+    m_client->fetchLyrics(trackId, [this, cb, trackId](QString text, bool timed, QString err) mutable {
+        // Remembered, so a replay of this track is not analysed ahead for nothing.
+        if (timed && m_autoSync) m_autoSync->noteRealTimings(trackId);
         QVariantMap result;
         result["text"]  = text;
         result["timed"] = timed;
@@ -771,6 +773,10 @@ void TidalBridge::autoSyncLyrics(qlonglong trackId, const QString &text, QJSValu
         result["lrc"]        = r.lrc;
         call(cb, { qjsEngine(this)->toScriptValue(result), qjsEngine(this)->toScriptValue(r.error) });
     });
+}
+
+void TidalBridge::cancelAutoSync() {
+    if (m_autoSync) m_autoSync->cancel();
 }
 
 void TidalBridge::setLyricsLookAhead(bool on) {

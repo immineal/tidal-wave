@@ -298,6 +298,7 @@ TestCase {
         var page = openPage(523)
         compare(page.lyricsData[1].ms, 7000)
         verify(!page.lyricsAutoSynced)
+        compare(bridge.autoSyncCancelsForTest(), 1, "the auto-sync for plain lyrics now replaced went on")
 
         bridge.holdAutoSyncForTest(true)
         player.setCurrentTrackForTest(makeTrack(524))
@@ -331,11 +332,26 @@ TestCase {
         bridge.holdAutoSyncForTest(true)
         var page = openPage(526)
         bridge.setLyricsForTest("three\nfour", false)
-        bridge.holdAutoSyncForTest(false)
-        bridge.setAutoSyncForTest(false, "")
         player.setCurrentTrackForTest(makeTrack(527))
+        compare(bridge.autoSyncCallsForTest(), 2)
+        bridge.releaseOldestAutoSyncForTest()        // 526's
         compare(page.lyricsData[0].text, "three")
-        verify(!page.lyricsIsTimed)
+        verify(!page.lyricsIsTimed, "526's timings landed on 527")
+    }
+
+    // An answer for an earlier load of the same track is dropped: here the
+    // one asked for before auto-sync was switched off.
+    function test_late_answer_after_switching_off_is_dropped() {
+        prefs.lyricsAutoSync = true
+        bridge.setLyricsForTest("one\ntwo", false)
+        bridge.setAutoSyncForTest(true, autoLrc)
+        bridge.holdAutoSyncForTest(true)
+        var page = openPage(530)
+        prefs.lyricsAutoSync = false
+        compare(page.lyricsState, "ready")
+        bridge.releaseAutoSyncForTest()
+        verify(!page.lyricsIsTimed, "timings asked for before the switch went off were shown")
+        verify(!page.lyricsAutoSynced)
     }
 
     function test_switching_auto_sync_off_takes_the_timings_away() {

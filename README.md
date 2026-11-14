@@ -365,8 +365,8 @@ named.
     that none were found, so that a song is looked up once. A "none found" note is
     retried after 30 days, and so are plain lyrics, in case a site has synced ones by then
     (`src/api/LyricsFinder.cpp`). Next to them, `<id>.sync.json` holds the timings made
-    here for a track's plain lyrics, with a hash of the words they belong to
-    (`src/lyricsync/AutoSync.cpp`). Nothing is written there while all three lyrics
+    here for a track's plain lyrics, with a hash of the words they belong to, or a note
+    that the track is too long to analyse (`src/lyricsync/AutoSync.cpp`). Nothing is written there while all three lyrics
     switches are off.
 *   **`~/.local/share/icons/hicolor/scalable/apps/tidal-wave.svg`** and
     **`128x128/apps/tidal-wave.png`** are the app icon, installed by `cmake --install` so

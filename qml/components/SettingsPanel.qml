@@ -958,8 +958,6 @@ Popup {
         ]
     }
 
-    // One paragraph of the privacy notice. Wraps, never elides: a privacy
-    // notice with its tail cut off is worse than none.
     // One switch under Experimental: a title, a line on what it sends, a toggle.
     component LyricsSwitch : RowLayout {
         id: lyricsSwitch
@@ -994,6 +992,8 @@ Popup {
         }
     }
 
+    // One paragraph of the privacy notice. Wraps, never elides: a privacy
+    // notice with its tail cut off is worse than none.
     component PrivacyLine : Text {
         objectName: "settingsPrivacyText"
         color: Theme.textSec

@@ -39,6 +39,7 @@ AutoSync::AutoSync(QObject *parent)
 AutoSync::~AutoSync() {
     // An analysis under way stops at its next check, so quitting does not wait on it.
     m_stop->store(true);
+    if (m_jobStop) m_jobStop->store(true);
     m_thread.quit();
     m_thread.wait();
 }
@@ -54,6 +55,41 @@ void AutoSync::setModels(std::shared_ptr<const Models> m) {
 
 QString AutoSync::cacheFile(qint64 trackId) const {
     return m_cacheDir + u'/' + QString::number(trackId) + QStringLiteral(".sync.json");
+}
+
+// Any entry of this aligner version, for whatever words.
+bool AutoSync::cachedSync(qint64 trackId) const {
+    if (m_cacheDir.isEmpty()) return false;
+    QFile f(cacheFile(trackId));
+    return f.open(QIODevice::ReadOnly)
+        && QJsonDocument::fromJson(f.readAll()).object().value(QStringLiteral("v")).toInt() == Models::kVersion;
+}
+
+// Kept on disk, so a long mix is not decoded up to the cap on every run.
+void AutoSync::writeTooLong(qint64 trackId) const {
+    if (m_cacheDir.isEmpty()) return;
+    QDir().mkpath(m_cacheDir);
+    QSaveFile f(cacheFile(trackId));
+    const QJsonObject o{{QStringLiteral("v"), Models::kVersion}, {QStringLiteral("tooLong"), true}};
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+        f.commit();
+    }
+}
+
+bool AutoSync::blocked(qint64 trackId) const {
+    const auto it = m_failed.constFind(trackId);
+    return it != m_failed.cend() && (it->permanent || !it->armed);
+}
+
+// Real timings or a result are there already: no need to analyse it ahead.
+bool AutoSync::skipAhead(qint64 trackId) const {
+    return m_realTimings.contains(trackId) || (m_hasTimings && m_hasTimings(trackId)) || cachedSync(trackId);
+}
+
+void AutoSync::noteRealTimings(qint64 trackId) {
+    m_realTimings.insert(trackId);
+    if (trackId == m_aheadId) m_aheadSkip = true;
 }
 
 bool AutoSync::hasAnalysisForTest(qint64 trackId) const {
@@ -77,9 +113,13 @@ bool AutoSync::readCache(qint64 trackId, const QString &text, Result *out) const
     if (!f.open(QIODevice::ReadOnly)) return false;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
     // An entry from another aligner version, or for other words, is not used.
-    if (o.value(QStringLiteral("v")).toInt() != Models::kVersion
-        || o.value(QStringLiteral("text")).toString() != textHash(text))
-        return false;
+    if (o.value(QStringLiteral("v")).toInt() != Models::kVersion) return false;
+    if (o.value(QStringLiteral("tooLong")).toBool()) {
+        out->ok = false;
+        out->error = QStringLiteral("too long");
+        return true;
+    }
+    if (o.value(QStringLiteral("text")).toString() != textHash(text)) return false;
     out->ok = true;
     out->kept = o.value(QStringLiteral("kept")).toBool();
     out->confidence = o.value(QStringLiteral("confidence")).toDouble();
@@ -87,8 +127,17 @@ bool AutoSync::readCache(qint64 trackId, const QString &text, Result *out) const
     return true;
 }
 
+// The track asked for is no longer wanted: its analysis stops, unless it is
+// the next track's, wanted ahead.
+void AutoSync::dropPending() {
+    const qint64 was = m_pending.trackId;
+    m_pending = {};
+    if (was && m_analysing == was && !(m_lookAhead && m_aheadId == was) && m_jobStop) m_jobStop->store(true);
+}
+
 void AutoSync::sync(qint64 trackId, const QString &plainText, Done done) {
     const quint64 gen = ++m_gen;
+    if (m_pending.trackId != trackId) dropPending();
     m_pending = {};
     auto answer = [this, gen, done](const Result &r) {
         QMetaObject::invokeMethod(this, [this, gen, done, r] { if (gen == m_gen) done(r); }, Qt::QueuedConnection);
@@ -97,14 +146,19 @@ void AutoSync::sync(qint64 trackId, const QString &plainText, Done done) {
     if (m_enabled && !m_enabled()) { r.error = QStringLiteral("off"); answer(r); return; }
     if (trackId <= 0 || plainLines(plainText).isEmpty()) { r.error = QStringLiteral("no lyrics"); answer(r); return; }
     if (readCache(trackId, plainText, &r)) { answer(r); return; }
-    if (m_failed.contains(trackId)) { r.error = QStringLiteral("no audio"); answer(r); return; }
+    // A failure that may pass waits for the track's next audio; others answer now.
+    if (const auto it = m_failed.constFind(trackId); it != m_failed.cend() && it->permanent) {
+        r.error = it->error;
+        answer(r);
+        return;
+    }
     m_pending = {trackId, plainText, std::move(done), gen};
     pump();
 }
 
 void AutoSync::cancel() {
     ++m_gen;
-    m_pending = {};
+    dropPending();
 }
 
 void AutoSync::setLookAhead(bool on) {
@@ -114,7 +168,11 @@ void AutoSync::setLookAhead(bool on) {
 }
 
 void AutoSync::audioReady(qint64 trackId, bool ahead) {
-    if (ahead) m_aheadId = trackId;
+    if (auto it = m_failed.find(trackId); it != m_failed.end() && !it->permanent) it->armed = true;
+    if (ahead && trackId != m_aheadId) {
+        m_aheadId = trackId;
+        m_aheadSkip = skipAhead(trackId);
+    }
     pump();
 }
 
@@ -126,8 +184,8 @@ void AutoSync::pump() {
             const quint64 gen = m_pending.gen;
             const QString text = m_pending.text, file = m_cacheDir.isEmpty() ? QString() : cacheFile(m_pending.trackId);
             QPointer<AutoSync> self(this);
-            QMetaObject::invokeMethod(m_worker, [self, models = m_models, a, text, file, gen] {
-                const Alignment al = align(*a, text, **models);
+            QMetaObject::invokeMethod(m_worker, [self, models = m_models, stop = m_stop, a, text, file, gen] {
+                const Alignment al = align(*a, text, **models, nullptr, stop.get());
                 Result r;
                 r.ok = al.aligned;
                 r.kept = al.kept;
@@ -152,8 +210,9 @@ void AutoSync::pump() {
     }
     if (m_analysing) return;
     // The track waiting for its words first, then the next one in the queue.
-    for (const qint64 id : {m_pending.done ? m_pending.trackId : 0, m_lookAhead ? m_aheadId : 0}) {
-        if (id <= 0 || m_failed.contains(id) || hasAnalysisForTest(id)) continue;
+    const qint64 ahead = m_lookAhead && !m_aheadSkip ? m_aheadId : 0;
+    for (const qint64 id : {m_pending.done ? m_pending.trackId : 0, ahead}) {
+        if (id <= 0 || blocked(id) || hasAnalysisForTest(id)) continue;
         const QString path = m_pathFor ? m_pathFor(id) : QString();
         if (path.isEmpty()) continue;
         startAnalysis(id, path);
@@ -163,46 +222,71 @@ void AutoSync::pump() {
 
 void AutoSync::startAnalysis(qint64 trackId, const QString &path) {
     m_analysing = trackId;
+    m_jobStop = std::make_shared<std::atomic<bool>>(false);
     if (m_hold) m_hold(path);
     QPointer<AutoSync> self(this);
-    QMetaObject::invokeMethod(m_worker, [self, worker = m_worker, stop = m_stop, models = m_models, trackId, path] {
-        auto back = [self, trackId, path](std::shared_ptr<const Analysis> a, const QString &err) {
-            QMetaObject::invokeMethod(self, [self, trackId, path, a, err] {
-                if (self) self->onAnalysed(trackId, path, a, err);
+    const size_t maxFrames = size_t(m_maxSeconds) * 44100;
+    QMetaObject::invokeMethod(m_worker, [self, worker = m_worker, stop = m_jobStop, models = m_models, trackId, path,
+                                         maxFrames] {
+        auto back = [self, trackId, path](std::shared_ptr<const Analysis> a, const QString &err, Outcome o) {
+            QMetaObject::invokeMethod(self, [self, trackId, path, a, err, o] {
+                if (self) self->onAnalysed(trackId, path, a, err, o);
             }, Qt::QueuedConnection);
         };
+        if (stop->load()) { back(nullptr, QStringLiteral("cancelled"), Outcome::Cancelled); return; }
         QString why;
         if (!*models) *models = Models::builtin(&why);
-        if (!*models) { back(nullptr, why.isEmpty() ? QStringLiteral("no models") : why); return; }
+        if (!*models) { back(nullptr, why.isEmpty() ? QStringLiteral("no models") : why, Outcome::Permanent); return; }
         auto file = std::make_unique<QFile>(path);
-        if (!file->open(QIODevice::ReadOnly)) { back(nullptr, QStringLiteral("cannot open the audio")); return; }
+        if (!file->open(QIODevice::ReadOnly)) {
+            back(nullptr, QStringLiteral("cannot open the audio"), Outcome::Transient);
+            return;
+        }
         auto fe = std::make_shared<FrontEnd>();
         fe->setStop(stop.get());
         auto *feed = new AudioFeed(worker);
-        feed->setMaxFrames(size_t(kMaxSeconds) * 44100);
-        QObject::connect(feed, &AudioFeed::finished, worker, [feed, fe, models, back](bool ok, const QString &err) {
+        feed->setMaxFrames(maxFrames);
+        feed->setStop(stop.get());
+        QObject::connect(feed, &AudioFeed::finished, worker, [feed, fe, models, stop, back](bool ok, const QString &err) {
             feed->deleteLater();
-            if (!ok) { back(nullptr, err); return; }
+            if (!ok) {
+                switch (feed->failure()) {
+                case AudioFeed::Failure::Cancelled: back(nullptr, err, Outcome::Cancelled); return;
+                case AudioFeed::Failure::TooLong:   back(nullptr, err, Outcome::TooLong); return;
+                case AudioFeed::Failure::Format:    back(nullptr, err, Outcome::Permanent); return;
+                default:                            back(nullptr, err, Outcome::Transient); return;
+                }
+            }
             auto a = std::make_shared<Analysis>(fe->finish(**models));
-            if (a->frames <= 0) { back(nullptr, QStringLiteral("too short")); return; }
-            back(a, {});
+            if (stop->load()) { back(nullptr, QStringLiteral("cancelled"), Outcome::Cancelled); return; }
+            if (a->frames <= 0) { back(nullptr, QStringLiteral("too short"), Outcome::Permanent); return; }
+            back(a, {}, Outcome::Ok);
         });
         if (!feed->start(std::move(file), fe.get())) {
             delete feed;
-            back(nullptr, QStringLiteral("no audio decoder"));
+            back(nullptr, QStringLiteral("no audio decoder"), Outcome::Permanent);
         }
     }, Qt::QueuedConnection);
 }
 
-void AutoSync::onAnalysed(qint64 trackId, const QString &path, std::shared_ptr<const Analysis> a, const QString &err) {
+void AutoSync::onAnalysed(qint64 trackId, const QString &path, std::shared_ptr<const Analysis> a, const QString &err,
+                          Outcome outcome) {
     m_analysing = 0;
+    m_jobStop.reset();
     if (m_release) m_release(path);
-    const bool ok = a != nullptr;
+    if (outcome == Outcome::Cancelled) { pump(); return; }
+    const bool ok = outcome == Outcome::Ok;
     if (ok) {
         m_kept.push_front({trackId, std::move(a)});
         while (int(m_kept.size()) > kKeptAnalyses) m_kept.pop_back();
+        m_failed.remove(trackId);
     } else {
-        m_failed.insert(trackId);
+        Failure &f = m_failed[trackId];
+        f.error = err;
+        f.armed = false;
+        ++f.tries;
+        f.permanent = outcome != Outcome::Transient || f.tries >= kMaxTries;
+        if (outcome == Outcome::TooLong) writeTooLong(trackId);
         if (m_pending.done && m_pending.trackId == trackId) {
             Result r;
             r.error = err;
