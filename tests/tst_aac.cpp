@@ -4,6 +4,7 @@
 
 #include <QTest>
 #include <QByteArray>
+#include <QFileInfo>
 #include <QHash>
 #include <QMediaDevices>
 #include <QMediaPlayer>
@@ -186,6 +187,50 @@ private slots:
         QVERIFY2(watch.furthest >= kAacDurationMs - kSlackMs,
                  qPrintable(QStringLiteral("the track ended at %1 ms").arg(watch.furthest)));
         QVERIFY2(errorSpy.isEmpty(), qPrintable(errorSpy.value(0).value(0).toString()));
+    }
+
+    // The lyrics aligner reads the downloaded file. While it holds the file,
+    // moving on to another track leaves it on disk until the hold is let go.
+    void theAudioFileIsAnnouncedAndHeld()
+    {
+        TidalApi      api;
+        OneFileClient client{&api};
+        client.manifest.type     = StreamManifest::BTS;
+        client.manifest.url      = m_server.url(QStringLiteral("/lc.mp4"));
+        client.manifest.mimeType = QStringLiteral("audio/mp4");
+        client.manifest.codec    = QStringLiteral("HIGH");
+
+        Player player{&client};
+        player.setMuted(true);
+        player.setVolume(0.0);
+        QTRY_VERIFY_WITH_TIMEOUT(player.findChild<QMediaPlayer *>(), 10000);
+        QSignalSpy ready(&player, &Player::audioFileReady);
+
+        player.playTracks(QVariantList{ oneTrack() }, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 10000);
+        QCOMPARE(ready.at(0).at(0).toLongLong(), qlonglong(1));
+        QCOMPARE(ready.at(0).at(1).toBool(), false);
+        const QString path = player.audioFileFor(1);
+        QVERIFY(!path.isEmpty());
+        QVERIFY(QFileInfo::exists(path));
+        QVERIFY(player.audioFileFor(2).isEmpty());
+
+        player.holdAudioFile(path);
+        QVariantMap other = oneTrack();
+        other[QStringLiteral("id")] = qlonglong(2);
+        player.playTracks(QVariantList{ other }, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 2, 10000);
+        QVERIFY(player.audioFileFor(1).isEmpty());
+        QVERIFY2(QFileInfo::exists(path), "a held file was deleted");
+        player.releaseAudioFile(path);
+        QVERIFY2(!QFileInfo::exists(path), "the released file stayed on disk");
+
+        // Unheld, a file goes with its track as before.
+        const QString second = player.audioFileFor(2);
+        QVERIFY(QFileInfo::exists(second));
+        player.playTracks(QVariantList{ oneTrack() }, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 3, 10000);
+        QVERIFY(!QFileInfo::exists(second));
     }
 
 private:

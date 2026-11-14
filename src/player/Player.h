@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <QVariantMap>
 #include <QVariantList>
+#include <QHash>
 #include <QTemporaryFile>
 #include <functional>
 #include <memory>
@@ -101,6 +102,13 @@ public:
     // ── Audio output routing ────────────────────────────────────────────
     // Watches prefs->audioDevice(). Empty means follow the system default.
     void setPrefs(Prefs *prefs);
+
+    // The track's audio file on disk: the playing track's or the preloaded
+    // next one's; "" when there is none. For the lyrics aligner.
+    QString audioFileFor(qlonglong trackId) const;
+    // While a file is held, dropping it waits for the last release.
+    void holdAudioFile(const QString &path);
+    void releaseAudioFile(const QString &path);
 
     // For the Settings picker: [{id, label, isDefault}], the system default
     // row first with an empty id and never marked isDefault.
@@ -230,6 +238,9 @@ signals:
     // onAudioOutputsChanged(), never straight from the backend callback.
     void audioDevicesChanged ();
     void error               (const QString &msg);
+    // A whole audio file is on disk: the playing track's, or with `ahead`
+    // the next one's.
+    void audioFileReady      (qlonglong trackId, bool ahead);
 
 private slots:
     void initAudio();
@@ -485,6 +496,10 @@ private:
     bool                 m_preloadReady    = false;
     QString              m_preloadQuality;
     QTemporaryFile      *m_preloadTempFile = nullptr;
+    // Held paths and their counts; dropped files that wait for a release.
+    QHash<QString, int>    m_heldFiles;
+    QList<QTemporaryFile *> m_heldDropped;
+    void dropAudioFile(QTemporaryFile *&f);
     QNetworkReply       *m_preloadDownload = nullptr;
     DashFetcher         *m_preloadDash     = nullptr;
 };
