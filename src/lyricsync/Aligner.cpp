@@ -192,13 +192,14 @@ std::shared_ptr<const Models> Models::builtin(QString *err) {
 
 // ── front end ──────────────────────────────────────────────────────────────
 
-struct FrontEnd::Impl { Decimator dec; };
+struct FrontEnd::Impl { Decimator dec; const std::atomic<bool> *stop = nullptr; };
 
 FrontEnd::FrontEnd() : d(std::make_unique<Impl>()) {}
 FrontEnd::~FrontEnd() = default;
 
 void FrontEnd::push(const float *x, size_t frames) { d->dec.push(x, frames); }
 size_t FrontEnd::framesIn() const { return d->dec.inputFrames(); }
+void FrontEnd::setStop(const std::atomic<bool> *stop) { d->stop = stop; }
 
 Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &dump) {
     const Models::Impl &m = models.impl();
@@ -207,10 +208,11 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
     d->dec.finish();
     if (dump) { dump("dec_l", d->dec.left(), 1); dump("dec_r", d->dec.right(), 1); }
     double t1 = now();
-    const FrameFeatures fe = frameFeatures(d->dec.left(), d->dec.right());
+    const FrameFeatures fe = frameFeatures(d->dec.left(), d->dec.right(), d->stop);
     d->dec.release();
+    auto stopped = [this] { return d->stop && d->stop->load(std::memory_order_relaxed); };
     const int T = fe.frames, G = T / kGrid;
-    if (T < 8 * kGrid) return out;
+    if (T < 8 * kGrid || stopped()) return out;
     if (dump) {
         static const char *names[5] = {"fe_mid", "fe_side", "fe_harm", "fe_vib", "fe_cen"};
         for (int k = 0; k < 5; ++k) dump(names[k], fe.band[k], kMel);
@@ -232,6 +234,7 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
             xi[size_t(r) * kIn + 5 * kMel + c] = roundHalf(float(clip8(double(grid[size_t(r) * 46 + c]))));
     if (dump) dump("xi", xi, kIn);
     double t2 = now();
+    if (stopped()) return out;
     m.detector.forward(xi.data(), G, out.vocal, out.start);
     if (dump) { dump("v", out.vocal, 1); dump("o", out.start, 1); }
     double t3 = now();
@@ -246,7 +249,7 @@ Analysis FrontEnd::finish(const Models &models, Timing *timing, const DumpFn &du
     }
     if (dump) dump("h", h, 5 * kMel);
     out.lp.resize(size_t(T) * kVocab);
-    m.ctc.forward(h.data(), T, out.lp.data());
+    if (!m.ctc.forward(h.data(), T, out.lp.data(), d->stop)) return Analysis{};
     if (dump) dump("lp", out.lp, kVocab);
     out.frames = T;
     double t4 = now();

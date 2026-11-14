@@ -13,11 +13,17 @@ namespace lyricsync {
 
 AudioFeed::AudioFeed(QObject *parent) : QObject(parent) {}
 
-AudioFeed::~AudioFeed() {
+AudioFeed::~AudioFeed() { closeSource(); }
+
+// The decoder goes before the device it reads.
+void AudioFeed::closeSource() {
     if (m_decoder) {
         m_decoder->disconnect(this);
         m_decoder->stop();
+        delete m_decoder;
+        m_decoder = nullptr;
     }
+    m_device.reset();
 }
 
 bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
@@ -45,11 +51,7 @@ bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
     return true;
 }
 
-void AudioFeed::cancel() {
-    if (m_done) return;
-    m_done = true;
-    if (m_decoder) m_decoder->stop();
-}
+void AudioFeed::cancel() { fail(QStringLiteral("cancelled")); }
 
 void AudioFeed::onBuffer() {
     while (!m_done && m_decoder->bufferAvailable()) {
@@ -59,19 +61,25 @@ void AudioFeed::onBuffer() {
     }
 }
 
+// Queued from the decoder, so it may be deleted here.
 void AudioFeed::onFinished() {
     if (m_done) return;
     onBuffer();
     if (m_done) return;
     m_done = true;
+    closeSource();
     emit finished(m_into->framesIn() > 0, m_into->framesIn() > 0 ? QString() : QStringLiteral("no audio"));
 }
 
+// May run inside a decoder signal, so the decoder is let go of a turn later.
 void AudioFeed::fail(const QString &err) {
     if (m_done) return;
     m_done = true;
     if (m_decoder) m_decoder->stop();
-    emit finished(false, err.isEmpty() ? QStringLiteral("decoding failed") : err);
+    QMetaObject::invokeMethod(this, [this, err] {
+        closeSource();
+        emit finished(false, err.isEmpty() ? QStringLiteral("decoding failed") : err);
+    }, Qt::QueuedConnection);
 }
 
 bool AudioFeed::appendBuffer(const QAudioBuffer &b, FrontEnd *into, QString *err) {

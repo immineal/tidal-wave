@@ -33,13 +33,14 @@ public:
 
 signals:
     // Every buffer has gone into the FrontEnd, or decoding stopped (ok false).
-    // Never emitted from inside start().
+    // Never emitted from inside start(); the device is closed by then.
     void finished(bool ok, const QString &error);
 
 private:
     void onBuffer();
     void onFinished();
     void fail(const QString &err);
+    void closeSource();
 
     QAudioDecoder *m_decoder = nullptr;
     std::unique_ptr<QIODevice> m_device;

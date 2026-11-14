@@ -128,6 +128,8 @@ qt_add_library(tidalwave_lyricsync STATIC
     src/lyricsync/Aligner.h
     src/lyricsync/AudioFeed.cpp
     src/lyricsync/AudioFeed.h
+    src/lyricsync/AutoSync.cpp
+    src/lyricsync/AutoSync.h
     src/lyricsync/Decode.cpp
     src/lyricsync/Decode.h
     src/lyricsync/Dsp.cpp

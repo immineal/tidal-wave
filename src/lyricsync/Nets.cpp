@@ -86,7 +86,7 @@ bool CtcNet::load(const QByteArray &data, QString *err) {
     return true;
 }
 
-void CtcNet::forward(const float *x, int T, float *out) const {
+bool CtcNet::forward(const float *x, int T, float *out, const std::atomic<bool> *stop) const {
     const int C = m_C;
     std::vector<float> h(size_t(T) * C), d(size_t(T) * C), acc(static_cast<size_t>(C));
     const int p0 = m_kin / 2;
@@ -106,6 +106,7 @@ void CtcNet::forward(const float *x, int T, float *out) const {
         for (int o = 0; o < C; ++o) ht[o] = ht[o] > 0 ? ht[o] : 0;
     }
     for (int b = 0; b < m_nb; ++b) {
+        if (stop && stop->load(std::memory_order_relaxed)) return false;
         const int dl = m_dil[b], pk = m_k / 2;
         const float *dw = m_dww[b].data();
         for (int t = 0; t < T; ++t) {
@@ -146,6 +147,7 @@ void CtcNet::forward(const float *x, int T, float *out) const {
         const float lz = mx + float(std::log(z));
         for (int o = 0; o < m_nout; ++o) ot[o] -= lz;
     }
+    return true;
 }
 
 // ── detector ───────────────────────────────────────────────────────────────

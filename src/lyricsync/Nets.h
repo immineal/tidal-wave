@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include <atomic>
 #include <QByteArray>
 #include <QString>
 #include <vector>
@@ -16,7 +17,8 @@ public:
     int inputs() const { return m_nin; }
     int outputs() const { return m_nout; }
     // x: T x inputs, out: T x outputs log-probs.
-    void forward(const float *x, int T, float *out) const;
+    // Returns false, out unfinished, once *stop is true.
+    bool forward(const float *x, int T, float *out, const std::atomic<bool> *stop = nullptr) const;
 
 private:
     int m_nin = 0, m_C = 0, m_kin = 0, m_k = 0, m_nb = 0, m_nout = 0;

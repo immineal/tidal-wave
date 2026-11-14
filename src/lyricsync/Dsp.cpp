@@ -199,7 +199,8 @@ void Decimator::emitUpTo(size_t limit, bool atEnd) {
 
 // ── frame features ─────────────────────────────────────────────────────────
 
-FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<float> &right) {
+FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<float> &right,
+                            const std::atomic<bool> *stop) {
     FrameFeatures out;
     const size_t n = left.size();
     if (n < size_t(kNfft) || right.size() != n) return out;
@@ -247,6 +248,7 @@ FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<fl
     float sp5[kBins], hm[kBins], vib2[kBins], cen[kBins];
     auto magAt = [&](int t) { return &mag[size_t(std::clamp(t, 0, frames - 1) % kRing) * kBins]; };
     for (int t = 0; t < frames; ++t) {
+        if (stop && (t & 255) == 0 && stop->load(std::memory_order_relaxed)) return FrameFeatures{};
         while (computed < std::min(frames, t + 9)) compute(computed++);
         const float *rows[17];
         for (int j = 0; j < 17; ++j) rows[j] = magAt(t - 8 + j);

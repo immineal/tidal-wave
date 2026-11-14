@@ -2,6 +2,7 @@
 
 #pragma once
 #include <cstddef>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -53,7 +54,9 @@ struct FrameFeatures {
     int frames = 0;
     std::vector<float> band[5];    // frames x 40
 };
-FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<float> &right);
+// Stops early, with frames = 0, once *stop is true.
+FrameFeatures frameFeatures(const std::vector<float> &left, const std::vector<float> &right,
+                            const std::atomic<bool> *stop = nullptr);
 
 // numpy.median and numpy.percentile (linear) of float32 data.
 float  median(std::vector<float> v);

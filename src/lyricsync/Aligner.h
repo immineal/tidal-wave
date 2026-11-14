@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -35,6 +36,8 @@ public:
     ~FrontEnd();
     void push(const float *interleavedStereo, size_t frames);
     size_t framesIn() const;
+    // Checked during finish(); once true, finish() gives up with an empty Analysis.
+    void setStop(const std::atomic<bool> *stop);
     // Empty when the audio is too short. Frees the samples either way.
     Analysis finish(const Models &m, Timing *timing = nullptr, const DumpFn &dump = {});
 
