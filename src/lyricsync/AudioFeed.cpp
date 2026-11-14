@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "AudioFeed.h"
+#include "Aligner.h"
+
+#include <QAudioBuffer>
+#include <QAudioDecoder>
+#include <QAudioFormat>
+#include <QIODevice>
+#include <vector>
+
+namespace lyricsync {
+
+AudioFeed::AudioFeed(QObject *parent) : QObject(parent) {}
+
+AudioFeed::~AudioFeed() {
+    if (m_decoder) {
+        m_decoder->disconnect(this);
+        m_decoder->stop();
+    }
+}
+
+bool AudioFeed::start(std::unique_ptr<QIODevice> device, FrontEnd *into) {
+    if (m_decoder || !device || !device->isOpen() || !into) return false;
+    m_device = std::move(device);
+    m_into = into;
+    m_decoder = new QAudioDecoder(this);
+    if (!m_decoder->isSupported()) {
+        delete m_decoder;
+        m_decoder = nullptr;
+        return false;
+    }
+    QAudioFormat fmt;
+    fmt.setSampleRate(44100);
+    fmt.setChannelCount(2);
+    fmt.setSampleFormat(QAudioFormat::Float);
+    m_decoder->setAudioFormat(fmt);
+    m_decoder->setSourceDevice(m_device.get());
+    connect(m_decoder, &QAudioDecoder::bufferReady, this, &AudioFeed::onBuffer);
+    // Queued: some backends report the end or a bad file from inside start().
+    connect(m_decoder, &QAudioDecoder::finished, this, &AudioFeed::onFinished, Qt::QueuedConnection);
+    connect(m_decoder, qOverload<QAudioDecoder::Error>(&QAudioDecoder::error), this,
+            [this](QAudioDecoder::Error) { fail(m_decoder->errorString()); }, Qt::QueuedConnection);
+    m_decoder->start();
+    return true;
+}
+
+void AudioFeed::cancel() {
+    if (m_done) return;
+    m_done = true;
+    if (m_decoder) m_decoder->stop();
+}
+
+void AudioFeed::onBuffer() {
+    while (!m_done && m_decoder->bufferAvailable()) {
+        QString err;
+        if (!appendBuffer(m_decoder->read(), m_into, &err)) { fail(err); return; }
+        if (m_maxFrames && m_into->framesIn() > m_maxFrames) { fail(QStringLiteral("too long")); return; }
+    }
+}
+
+void AudioFeed::onFinished() {
+    if (m_done) return;
+    onBuffer();
+    if (m_done) return;
+    m_done = true;
+    emit finished(m_into->framesIn() > 0, m_into->framesIn() > 0 ? QString() : QStringLiteral("no audio"));
+}
+
+void AudioFeed::fail(const QString &err) {
+    if (m_done) return;
+    m_done = true;
+    if (m_decoder) m_decoder->stop();
+    emit finished(false, err.isEmpty() ? QStringLiteral("decoding failed") : err);
+}
+
+bool AudioFeed::appendBuffer(const QAudioBuffer &b, FrontEnd *into, QString *err) {
+    if (!b.isValid() || b.frameCount() <= 0) return true;
+    const QAudioFormat f = b.format();
+    if (f.sampleRate() != 44100) {
+        if (err) *err = QStringLiteral("decoder gave %1 Hz").arg(f.sampleRate());
+        return false;
+    }
+    const int ch = f.channelCount();
+    const qsizetype n = b.frameCount();
+    if (ch <= 0) return false;
+    std::vector<float> lr(size_t(n) * 2);
+    auto put = [&](auto sample) {
+        for (qsizetype i = 0; i < n; ++i) {
+            const float l = sample(i * ch), r = ch > 1 ? sample(i * ch + 1) : l;
+            lr[size_t(i) * 2] = l;
+            lr[size_t(i) * 2 + 1] = r;
+        }
+    };
+    switch (f.sampleFormat()) {
+    case QAudioFormat::Float: { const float *p = b.constData<float>(); put([p](qsizetype i) { return p[i]; }); break; }
+    case QAudioFormat::Int16: { const qint16 *p = b.constData<qint16>(); put([p](qsizetype i) { return p[i] / 32768.f; }); break; }
+    case QAudioFormat::Int32: { const qint32 *p = b.constData<qint32>(); put([p](qsizetype i) { return float(p[i] / 2147483648.0); }); break; }
+    case QAudioFormat::UInt8: { const quint8 *p = b.constData<quint8>(); put([p](qsizetype i) { return (p[i] - 128) / 128.f; }); break; }
+    default:
+        if (err) *err = QStringLiteral("unknown sample format");
+        return false;
+    }
+    into->push(lr.data(), size_t(n));
+    return true;
+}
+
+} // namespace lyricsync
