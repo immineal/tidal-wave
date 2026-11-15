@@ -37,6 +37,11 @@ class TidalBridge : public QObject {
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
     // True until the newest liked songs have arrived after a sign-in.
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
+    // The other three sign-in lists, each true until its own reply is in, the
+    // playlists until their last page. An empty list before then is not empty.
+    Q_PROPERTY(bool albumsLoading    READ albumsLoading    NOTIFY favoriteAlbumsChanged)
+    Q_PROPERTY(bool artistsLoading   READ artistsLoading   NOTIFY favoriteArtistsChanged)
+    Q_PROPERTY(bool playlistsLoading READ playlistsLoading NOTIFY favoritePlaylistsChanged)
 public:
     explicit TidalBridge(TidalClient *client, QObject *parent = nullptr);
 
@@ -53,6 +58,9 @@ public:
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
 
     bool favoritesLoading() const { return m_favoritesLoading; }
+    bool albumsLoading()    const { return m_albumsLoading; }
+    bool artistsLoading()   const { return m_artistsLoading; }
+    bool playlistsLoading() const { return m_playlistsLoading; }
 
     // Tidal tells a client nothing about changes made on another device. This
     // asks one small request per list and reloads the lists that moved.
@@ -258,6 +266,9 @@ private:
     // chains cannot both append page 0.
     int             m_favTracksLoadGen = 0;
     bool            m_favoritesLoading = false;
+    bool            m_albumsLoading    = false;
+    bool            m_artistsLoading   = false;
+    bool            m_playlistsLoading = false;
     // The four sign-in paging chains still running.
     int             m_favLoadsPending = 0;
 

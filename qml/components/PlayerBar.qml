@@ -559,6 +559,13 @@ Rectangle {
             return rows
         }
 
+        // A layout change hands the page to the other copy of the picker, and
+        // fullscreen is one: the menu would be left floating over the page.
+        readonly property bool hostFullScreen:
+            Window.window ? Window.window.fullScreen === true : false
+        onHostFullScreenChanged: menu.close()
+        onVisibleChanged: if (!visible) menu.close()
+
         function openMenu() {
             picker.reloadDevices()
             if (picker.castSource) picker.castSource.startScan()
@@ -617,6 +624,8 @@ Rectangle {
             x: picker.width - width
             width: 260
             padding: 6
+            // A popup only hears Escape while it holds the keyboard.
+            focus: true
 
             // Height and position come from the content, not the popup's own
             // geometry. On Qt 6.4 `y: -height - 10` loops in any style: the

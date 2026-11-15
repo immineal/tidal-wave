@@ -412,6 +412,14 @@ ApplicationWindow {
         return true
     }
 
+    // Whether the keyboard is inside a popup: every Popup's item lives in the
+    // window's overlay, so this covers dialogs, menus and pickers alike.
+    readonly property bool popupHasKeyboard: {
+        for (var f = root.activeFocusItem; f; f = f.parent)
+            if (f === Overlay.overlay) return true
+        return false
+    }
+
     Item {
         id: focusStealer
         focus: true
@@ -460,11 +468,11 @@ ApplicationWindow {
         Shortcut {
             sequence: Shortcuts.sequence("escape")
             context: Qt.ApplicationShortcut
-            // An application shortcut outranks the key handling of an open
-            // Popup, so this one stands down while a modal is up. Any Popup
-            // added in future has to be named on this line too.
-            enabled: auth.state === 2 && !updatePrompt.visible
-                     && !sideBar.settingsPanel.visible
+            // An application shortcut outranks an open Popup's own Escape, so
+            // this one stands down while any popup holds the keyboard. A field
+            // that wants Escape claims it with Keys.onShortcutOverride.
+            enabled: auth.state === 2 && !root.popupHasKeyboard
+                     && !updatePrompt.visible && !sideBar.settingsPanel.visible
             // Innermost first, so one Escape undoes one thing: the queue
             // overlay, then fullscreen, then the page.
             onActivated: {

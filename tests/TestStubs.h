@@ -163,7 +163,17 @@ public:
     }
 
     // Home / mixes
-    Q_INVOKABLE void fetchHomeMixes(QJSValue cb) { resolve(cb, emptyArray()); }
+    // Held for flushHomeMixesForTest() while setDeferHomeMixesForTest(true).
+    Q_INVOKABLE void fetchHomeMixes(QJSValue cb) {
+        if (m_deferHomeMixes) { m_pendingHomeMixes.append(cb); return; }
+        resolve(cb, emptyArray());
+    }
+    Q_INVOKABLE void setDeferHomeMixesForTest(bool on) { m_deferHomeMixes = on; }
+    Q_INVOKABLE void flushHomeMixesForTest() {
+        m_deferHomeMixes = false;
+        const auto held = std::exchange(m_pendingHomeMixes, {});
+        for (QJSValue cb : held) resolve(cb, emptyArray());
+    }
     Q_INVOKABLE void fetchMixTracks(const QString &mixId, QJSValue cb) {
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
@@ -183,7 +193,19 @@ public:
     }
 
     // Favourites / playlists (paged in the real bridge; defaults kept identical)
-    Q_PROPERTY(bool favoritesLoading MEMBER m_favoritesLoading CONSTANT)
+    // The liked songs, then the other three lists, which the real bridge
+    // loads apart. Each notifies with its own list's signal, as there.
+    Q_PROPERTY(bool favoritesLoading MEMBER m_favoritesLoading NOTIFY favoriteTracksChanged)
+    Q_PROPERTY(bool albumsLoading    MEMBER m_albumsLoading    NOTIFY favoriteAlbumsChanged)
+    Q_PROPERTY(bool artistsLoading   MEMBER m_artistsLoading   NOTIFY favoriteArtistsChanged)
+    Q_PROPERTY(bool playlistsLoading MEMBER m_playlistsLoading NOTIFY favoritePlaylistsChanged)
+    // kind: tracks, albums, artists or playlists.
+    Q_INVOKABLE void setKindLoadingForTest(const QString &kind, bool on) {
+        if (kind == QLatin1String("tracks"))    { m_favoritesLoading = on; emit favoriteTracksChanged(); }
+        if (kind == QLatin1String("albums"))    { m_albumsLoading    = on; emit favoriteAlbumsChanged(); }
+        if (kind == QLatin1String("artists"))   { m_artistsLoading   = on; emit favoriteArtistsChanged(); }
+        if (kind == QLatin1String("playlists")) { m_playlistsLoading = on; emit favoritePlaylistsChanged(); }
+    }
     Q_INVOKABLE void fetchFavoriteTracks(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
@@ -304,6 +326,11 @@ public:
     }
 private:
     bool m_favoritesLoading = false;
+    bool m_albumsLoading    = false;
+    bool m_artistsLoading   = false;
+    bool m_playlistsLoading = false;
+    bool m_deferHomeMixes   = false;
+    QList<QJSValue> m_pendingHomeMixes;
     QVariantList m_otherVersions;
     QString      m_otherVersionsError;
     bool         m_deferOtherVersions = false;
@@ -1036,6 +1063,9 @@ public:
         m_lastUserPlaylistOffset = -1;
         m_fetchedPlaylists.clear();
         m_fetchedSet = false;
+        m_favoritesLoading = m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
+        m_deferHomeMixes = false;
+        m_pendingHomeMixes.clear();
     }
 
     // The favourites cache the three searches above read. Setting it emits the

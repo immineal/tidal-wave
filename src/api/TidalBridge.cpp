@@ -44,6 +44,7 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
             resetFavoriteSync();
             m_favLoadsPending = 0;
             m_favoritesLoading = false;
+            m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
             m_favoriteMixIds.clear();
             emit favoriteTracksChanged();
             emit favoriteAlbumsChanged();
@@ -878,6 +879,7 @@ void TidalBridge::loadFavoriteTrackIds() {
 
     m_favLoadsPending = 4;
     m_favoritesLoading = true;
+    m_albumsLoading = m_artistsLoading = m_playlistsLoading = true;
     m_favoriteTrackIds.clear();
     m_favoriteTracks.clear();
     m_favoriteAlbums.clear();
@@ -1099,6 +1101,7 @@ void TidalBridge::loadFavoriteAlbums() {
         [this, gen](const QList<Album> &all, bool, bool) {
             if (gen != m_favTracksLoadGen) return;
             --m_favLoadsPending;
+            m_albumsLoading = false;
             mergeLoaded(m_favoriteAlbums, all);
             emit favoriteAlbumsChanged();
         },
@@ -1116,6 +1119,7 @@ void TidalBridge::loadFavoriteArtists() {
         [this, gen](const QList<Artist> &all, bool, bool) {
             if (gen != m_favTracksLoadGen) return;
             --m_favLoadsPending;
+            m_artistsLoading = false;
             mergeLoaded(m_favoriteArtists, all);
             emit favoriteArtistsChanged();
         },
@@ -1162,9 +1166,13 @@ void TidalBridge::reportPagedLikes() {
 
 void TidalBridge::loadNextUserPlaylistsPage(int offset) {
     if (m_client->userId() == 0) return;
-    m_client->fetchUserPlaylists([this, offset](QList<Playlist> playlists, QString err) {
+    // A chain from a superseded load must not end the current one's loading.
+    const int gen = m_favTracksLoadGen;
+    m_client->fetchUserPlaylists([this, offset, gen](QList<Playlist> playlists, QString err) {
+        if (gen != m_favTracksLoadGen) return;
         if (!err.isEmpty() || playlists.isEmpty()) {
             --m_favLoadsPending;
+            m_playlistsLoading = false;
             emit favoritePlaylistsChanged();
             return;
         }

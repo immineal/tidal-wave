@@ -22,9 +22,10 @@ Rectangle {
 
     // This is a Rectangle, not a FocusScope, so clearing input.focus leaves
     // the enclosing scope with no focus item. Only the input can put itself
-    // back.
+    // back. The text comes up selected, so typing replaces the old query.
     function takeFocus() {
         input.forceActiveFocus()
+        input.selectAll()
     }
 
     RowLayout {
