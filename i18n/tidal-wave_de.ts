@@ -1074,6 +1074,10 @@
         <translation>%1 Min.</translation>
     </message>
     <message>
+        <source>This playlist was changed somewhere else, so nothing was removed. It has been reloaded.</source>
+        <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts entfernt. Sie wurde neu geladen.</translation>
+    </message>
+    <message>
         <source>Playlist</source>
         <translation>Playlist</translation>
     </message>

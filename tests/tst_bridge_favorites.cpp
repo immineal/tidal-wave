@@ -103,10 +103,10 @@ public:
     }
 
     void removeTrackFromPlaylist(const QString &uuid, int itemIndex,
-                                 std::function<void(bool)> cb) override {
+                                 std::function<void(PlaylistWrite)> cb) override {
         Q_UNUSED(uuid); Q_UNUSED(itemIndex);
         ++removeCalls;
-        cb(removeOk);
+        cb(removeOk ? PlaylistWrite::Done : PlaylistWrite::Failed);
     }
 
     // ── the liked-song seam ──────────────────────────────────────────────

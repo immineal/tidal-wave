@@ -462,9 +462,10 @@ void TidalClient::fetchPlaylist(const QString &uuid,
     std::function<void(Playlist, QString)> cb)
 {
     // Served without a favourites row, so there is no save date here.
-    m_api->get(QStringLiteral("playlists/%1").arg(uuid), {},
-        [cb](QJsonObject root, QString err) {
+    m_api->getTagged(QStringLiteral("playlists/%1").arg(uuid), {},
+        [this, uuid, cb](QJsonObject root, QString err, QString etag) {
             if (!err.isEmpty()) { cb({}, err); return; }
+            if (!etag.isEmpty()) m_playlistEtags.insert(uuid, etag);
             cb(Playlist::fromJson(root), {});
         });
 }
@@ -1090,7 +1091,10 @@ void TidalClient::editPlaylist(const QString &uuid, const QString &title,
             form.addQueryItem("title",       title);
             form.addQueryItem("description", description);
             m_api->postApiFormEtag(QStringLiteral("playlists/%1").arg(uuid), form, etag,
-                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+                [this, uuid, cb](QJsonObject, QString e) {
+                    if (e.isEmpty()) m_playlistEtags.remove(uuid);
+                    cb(e.isEmpty());
+                });
         });
 }
 
@@ -1105,22 +1109,41 @@ void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
             form.addQueryItem("onArtifactNotFound", "FAIL");
             form.addQueryItem("onDuplicateFound",   "SKIP");
             m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
-                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+                [this, uuid, cb](QJsonObject, QString e) {
+                    if (e.isEmpty()) m_playlistEtags.remove(uuid);
+                    cb(e.isEmpty());
+                });
         });
 }
 
+// `playlists/<uuid>/items?fromIndex=` answers 405. The row's own path with
+// order=INDEX is the form Tidal takes, and the tracks listing indexes the same.
 void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,
-    std::function<void(bool)> cb)
+    std::function<void(PlaylistWrite)> cb)
 {
+    if (uuid.isEmpty() || itemIndex < 0) { cb(PlaylistWrite::Failed); return; }
+    const auto remove = [this, uuid, itemIndex, cb](const QString &etag) {
+        QUrlQuery params;
+        params.addQueryItem("order",          "INDEX");
+        params.addQueryItem("orderDirection", "ASC");
+        m_api->deleteApiEtagWithStatus(
+            QStringLiteral("playlists/%1/items/%2").arg(uuid).arg(itemIndex), params, etag,
+            [this, uuid, cb](QJsonObject, QString e, int status) {
+                // After either the version on hand is no longer the server's.
+                const PlaylistWrite r = e.isEmpty() ? PlaylistWrite::Done
+                                      : status == 412 ? PlaylistWrite::Stale
+                                                      : PlaylistWrite::Failed;
+                if (r != PlaylistWrite::Failed) m_playlistEtags.remove(uuid);
+                cb(r);
+            });
+    };
+    const QString known = m_playlistEtags.value(uuid);
+    if (!known.isEmpty()) { remove(known); return; }
+    // No read of it on hand: the version now is all there is to go on.
     m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
-        [this, uuid, itemIndex, cb](QString etag, QString err) {
-            if (!err.isEmpty()) { cb(false); return; }
-            QUrlQuery params;
-            params.addQueryItem("toIndex",   QString::number(itemIndex));
-            params.addQueryItem("fromIndex", QString::number(itemIndex));
-            params.addQueryItem("order",     "INDEX");
-            m_api->deleteApiEtag(QStringLiteral("playlists/%1/items").arg(uuid), params, etag,
-                [cb](QJsonObject, QString e) { cb(e.isEmpty()); });
+        [cb, remove](QString etag, QString err) {
+            if (!err.isEmpty() || etag.isEmpty()) { cb(PlaylistWrite::Failed); return; }
+            remove(etag);
         });
 }
 

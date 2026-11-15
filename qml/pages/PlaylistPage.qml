@@ -117,6 +117,16 @@ Rectangle {
         })
     }
 
+    // A removal was refused because the playlist changed somewhere else since
+    // this page read it. Nothing was removed; the page reads it again.
+    readonly property string staleRemovalText:
+        qsTr("This playlist was changed somewhere else, so nothing was removed. It has been reloaded.")
+    function reloadAfterStaleRemoval() {
+        tracksList.ToolTip.show(root.staleRemovalText, 5000)
+        loadPlaylistHeader(root.playlistUuid)
+        reloadTracks()
+    }
+
     function loadPlaylist() {
         loading = true
         loadError = ""
@@ -376,13 +386,19 @@ Rectangle {
             // beside the title reads root.tracks.length, and the bridge repairs
             // the cached counts drawn elsewhere.
             onRemoveFromPlaylistRequested: function(itemIndex) {
-                bridge.removeTrackFromPlaylist(root.playlistUuid, itemIndex, function(ok) {
-                    // Called before the list is touched: a successful removal
-                    // takes this delegate's row out of the model.
-                    playlistTrackRow.confirmRemovedFromPlaylist(ok === true)
-                    if (ok) {
+                var requested = root.playlistUuid
+                var row = playlistTrackRow
+                bridge.removeTrackFromPlaylist(requested, itemIndex, function(ok, stale, index) {
+                    if (requested !== root.playlistUuid) return
+                    if (stale === true) { Qt.callLater(root.reloadAfterStaleRemoval); return }
+                    // Before the list is touched, which rebuilds the rows. An
+                    // earlier splice may have destroyed this one already.
+                    if (row) row.confirmRemovedFromPlaylist(ok === true)
+                    if (ok === true && index >= 0 && index < root.tracks.length) {
+                        // The row the server took out, not itemIndex when an
+                        // earlier removal landed in between.
                         var arr = root.tracks.slice()
-                        arr.splice(itemIndex, 1)
+                        arr.splice(index, 1)
                         root.tracks = arr
                     }
                 })

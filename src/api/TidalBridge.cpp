@@ -14,6 +14,7 @@
 #include <QJsonValue>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QScopeGuard>
 #include <QDebug>
 
 TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
@@ -38,6 +39,8 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
             m_favoriteAlbums.clear();
             m_favoriteArtists.clear();
             m_favoritePlaylists.clear();
+            m_removals.clear();
+            m_removing.clear();
             // Invalidated as well as cleared, so a reply still out for the
             // account being left cannot fill the set after the sign-out.
             ++m_favMixesLoadGen;
@@ -672,9 +675,10 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
 // A round trip, because the count cannot be computed: the add posts
 // `onDuplicateFound=SKIP`, so a successful reply does not mean the playlist
 // grew. Duration and image cannot be derived from a track id either.
-void TidalBridge::refreshPlaylistMeta(const QString &uuid) {
-    if (uuid.isEmpty()) return;
-    m_client->fetchPlaylist(uuid, [this, uuid](Playlist fresh, QString err) {
+void TidalBridge::refreshPlaylistMeta(const QString &uuid, std::function<void()> then) {
+    if (uuid.isEmpty()) { if (then) then(); return; }
+    m_client->fetchPlaylist(uuid, [this, uuid, then](Playlist fresh, QString err) {
+        const auto done = qScopeGuard([&then] { if (then) then(); });
         // A failed reply, or one about another playlist, would blank the row.
         if (!err.isEmpty() || fresh.uuid != uuid) return;
 
@@ -702,9 +706,58 @@ void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJ
 }
 
 void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
-    m_client->removeTrackFromPlaylist(uuid, itemIndex, [this, uuid, cb](bool success) mutable {
-        call(cb, { success });
-        if (success) refreshPlaylistMeta(uuid);
+    m_removals[uuid].append({itemIndex, false, cb});
+    if (!m_removing.contains(uuid)) nextRemoval(uuid);
+}
+
+// One at a time, because each DELETE addresses a row by its index and sends
+// the ETag the one before it produced. The next goes out once the header has
+// been read again, which also brings that ETag.
+void TidalBridge::nextRemoval(const QString &uuid) {
+    auto it = m_removals.find(uuid);
+    if (it == m_removals.end() || it->isEmpty()) {
+        if (it != m_removals.end()) m_removals.erase(it);
+        m_removing.remove(uuid);
+        return;
+    }
+    m_removing.insert(uuid);
+    if (it->first().gone) {
+        // Asked twice for one row: the first request took it.
+        Removal r = it->takeFirst();
+        call(r.cb, { true, false, -1 });
+        nextRemoval(uuid);
+        return;
+    }
+    const int index = it->first().index;
+    const qint64 uid = m_client->userId();
+    m_client->removeTrackFromPlaylist(uuid, index,
+        [this, uuid, index, uid](TidalClient::PlaylistWrite result) {
+        // Signed out meanwhile: the queue went with the account.
+        if (uid != m_client->userId()) return;
+        auto it = m_removals.find(uuid);
+        if (it == m_removals.end() || it->isEmpty()) { m_removing.remove(uuid); return; }
+        Removal r = it->takeFirst();
+        using W = TidalClient::PlaylistWrite;
+        if (result == W::Stale) {
+            // Every one still queued was aimed at the same stale rows.
+            const QList<Removal> rest = std::exchange(*it, {});
+            m_removals.remove(uuid);
+            m_removing.remove(uuid);
+            call(r.cb, { false, true, -1 });
+            for (Removal later : rest) call(later.cb, { false, true, -1 });
+            return;
+        }
+        if (result == W::Done) {
+            // Those asked for before this answer counted rows as they were.
+            for (Removal &later : *it) {
+                if (later.gone) continue;
+                if (index < later.index) --later.index;
+                else if (index == later.index) later.gone = true;
+            }
+        }
+        call(r.cb, { result == W::Done, false, result == W::Done ? index : -1 });
+        if (result == W::Done) refreshPlaylistMeta(uuid, [this, uuid] { nextRemoval(uuid); });
+        else nextRemoval(uuid);
     });
 }
 

@@ -585,7 +585,10 @@ public:
         m_lastRemovedPlaylist = uuid;
         m_lastRemovedIndex    = itemIndex;
         m_removeFromPlaylistCalls++;
-        resolveOk(cb, m_removeFromPlaylistOk);
+        // function(ok, stale, index), as the real bridge answers.
+        if (cb.isCallable())
+            cb.call({ QJSValue(m_removeFromPlaylistOk), QJSValue(false),
+                      QJSValue(m_removeFromPlaylistOk ? itemIndex : -1) });
         if (m_removeFromPlaylistOk) refreshPlaylistMeta(uuid);
     }
 

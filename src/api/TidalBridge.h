@@ -129,6 +129,10 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // function(ok, stale, index). Removals of one playlist go out one at a
+    // time, and `itemIndex` is the row as the page showed it when asked:
+    // `index` is the row to take out once earlier removals have landed, -1
+    // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
     Q_INVOKABLE void markPlaylistPlayed     (const QString &uuid);
@@ -208,8 +212,10 @@ signals:
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     // Re-reads one playlist's header and merges what a contents change moves
-    // into both caches.
-    void refreshPlaylistMeta(const QString &uuid);
+    // into both caches. `then` runs once the answer is in, whatever it was.
+    void refreshPlaylistMeta(const QString &uuid, std::function<void()> then = {});
+    // Sends the first removal queued for `uuid`.
+    void nextRemoval(const QString &uuid);
     void sortPlaylists(QList<Playlist> &playlists) const;
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);
@@ -281,6 +287,12 @@ private:
     };
     FavoriteSync    m_favSync[4];
     int             m_favMixesSyncGen = 0;
+
+    // Removals not yet answered, per playlist, first one in flight. `index`
+    // follows the rows earlier ones take out; `gone` is a row already taken.
+    struct Removal { int index = -1; bool gone = false; QJSValue cb; };
+    QHash<QString, QList<Removal>> m_removals;
+    QSet<QString>   m_removing;   // a removal of it is out, or its header read
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;
