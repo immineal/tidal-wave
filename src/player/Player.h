@@ -274,6 +274,17 @@ private:
     void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
     // The load itself.
     void startLoad(int index);
+    // Fetches for load `serial`, unless a newer load took over.
+    void dispatchLoad(quint64 serial);
+    // Asks Tidal for the current track, by way of its twin if need be.
+    void askForStream(quint64 serial);
+    // The preload is for the current track: takes its file, or waits for
+    // the one under way. False when there is nothing to take.
+    bool adoptPreload(quint64 serial);
+    // A preload's file arrived, or with null its attempt ended.
+    void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
+    // The current track's file is on disk: hands it to the backend.
+    void playFile(QTemporaryFile *file, const QString &quality);
     // The current track ran out: the queue moves on, or repeat-one starts
     // the same file over.
     void trackEnded(bool heldPaused = false);
@@ -328,16 +339,17 @@ private:
     int  firstContextRow() const;
     void preloadNext();
     void cancelPreload();
-    // A preload attempt for the row at `next` gave up. Clears the in-progress
-    // index and records the row so the trigger does not retry it.
-    void preloadGaveUp(int next);
+    // A preload attempt gave up. Records the track so the trigger does not
+    // retry it.
+    void preloadGaveUp(qlonglong trackId);
     // The row ahead still holds this track and is not the playing one.
     bool rowAheadIs(int next, qlonglong trackId) const;
     // The stream request of a preload, and what a refusal does to the row.
-    void requestPreload(int next, qlonglong trackId, bool twinSought);
-    void preloadRefused(int next, qlonglong trackId, StreamManifest::Reason reason);
+    // `gen` is the preload's; a reply for an older one drops out.
+    void requestPreload(quint64 gen, int next, qlonglong trackId, bool twinSought);
+    void preloadRefused(quint64 gen, int next, qlonglong trackId, StreamManifest::Reason reason);
     // seekTwin() for the row ahead, which holds `of`.
-    void seekTwinAhead(int next, const Track &of, std::function<void()> noTwin);
+    void seekTwinAhead(quint64 gen, int next, const Track &of, std::function<void()> noTwin);
     // Moves the cursor to target and puts the manual queue directly after it.
     // Returns true if the list itself changed.
     bool relocateTo(int target);
@@ -498,12 +510,16 @@ private:
 
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;
-    // Which track the bytes on disk are for. Queue edits can change which
-    // track sits at m_preloadIndex without cancelling the preload, so the
-    // file is matched on the id.
+    // Which track the preload fetches, or fetched. Queue edits can change
+    // which track sits at m_preloadIndex, so the file is matched on the id.
     qlonglong            m_preloadTrackId  = 0;
-    // The row whose preload gave up; not retried until the track changes.
-    int                  m_preloadFailedIndex = -1;
+    bool                 m_preloadLookingUp = false;   // a twin lookup ahead is out
+    // Each preload's number; replies for an older one drop out.
+    quint64              m_preloadGen      = 0;
+    // The load that waits for the preload under way, by its serial.
+    quint64              m_preloadAdoptedBy = 0;
+    // The track whose preload gave up; not retried until the track changes.
+    qlonglong            m_preloadFailedId = 0;
     bool                 m_preloadReady    = false;
     QString              m_preloadQuality;
     QTemporaryFile      *m_preloadTempFile = nullptr;

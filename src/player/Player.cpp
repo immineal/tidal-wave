@@ -416,7 +416,6 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
         emit sourceChanged();
     }
     m_pendingSource = false;
-    cancelPreload();
 
     // The manual queue is the user's own list and survives a new context.
     // Rows behind the cursor have played and go with the old one.
@@ -508,7 +507,6 @@ void Player::clearManual() {
 
 void Player::jumpToManual(int index) {
     if (index < 0 || index >= m_manualCount) return;
-    cancelPreload();
     const int start = m_index + 1;
     // Rows above it in the manual queue were passed over, so they are dropped.
     if (index > 0) m_queue.remove(start, index);
@@ -566,7 +564,6 @@ void Player::jumpToQueue(int index) {
         jumpToManual(index - m_index - 1);
         return;
     }
-    cancelPreload();
     if (index == m_index) { loadAndPlay(m_index); return; }
     if (relocateTo(index)) emit queueChanged();
     loadAndPlay(m_index);
@@ -1191,6 +1188,15 @@ void Player::startLoad(int index) {
 
     // Set before the stop, so that leaving the track before is no pause.
     m_loadPlays = !m_restorePaused;
+    // The same track again starts over off the file it has.
+    const qlonglong rowId = m_queue[index].track.value("id").toLongLong();
+    QTemporaryFile *same = nullptr;
+    const QString sameQuality = m_streamedQuality;
+    if (!casting() && m_mpdTempFile && rowId == m_currentTrack.id && !m_loadOwed
+        && !m_player->source().isEmpty()) {
+        same = m_mpdTempFile;
+        m_mpdTempFile = nullptr;
+    }
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
     // lowers the loading flag. Raised before them it would be lowered again
     // for the whole of the next track's fetch.
@@ -1206,47 +1212,95 @@ void Player::startLoad(int index) {
     m_currentTrack = trackFromMap(m_queue[index].track);
     emit currentTrackChanged();
 
-    noteRecentlyPlayed(m_queue[index].track);
-
     // While casting, hand the current track to the cast device; CastManager
     // prepares and LOADs it.
     if (casting()) {
+        noteRecentlyPlayed(m_queue[index].track);
         setLoading(false);
         emit castTrackChanged();
         return;
     }
 
     // A new track is starting, so a failed preload may be tried again.
-    m_preloadFailedIndex = -1;
+    m_preloadFailedId = 0;
 
-    // Matched by track id. The queue can be reordered, inserted into and
-    // reshuffled while a preload is in flight without cancelling it, so an
-    // index match can mean another track's bytes.
-    if (m_preloadReady && m_preloadTempFile && m_preloadTrackId != 0
-        && m_preloadTrackId == m_currentTrack.id) {
-        m_mpdTempFile     = m_preloadTempFile;
-        m_preloadTempFile = nullptr;
-        m_streamedQuality = m_preloadQuality;
-        m_preloadIndex    = -1;
-        m_preloadTrackId  = 0;
-        m_preloadReady    = false;
-        m_preloadQuality  = {};
-        emit currentTrackChanged();
-        // Still loading until the media status says the file is open.
-        m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
-        beginPlayback();
-        emit audioFileReady(m_currentTrack.id, false);
+    if (same) {
+        noteRecentlyPlayed(m_queue[index].track);
+        playFile(same, sameQuality);
         return;
     }
+    dispatchLoad(serial);
+}
 
+void Player::dispatchLoad(quint64 serial) {
+    if (serial != m_loadSerial || !m_loading || m_index < 0 || m_index >= m_queue.count()) return;
+    noteRecentlyPlayed(m_queue[m_index].track);
+    if (adoptPreload(serial)) return;
+    askForStream(serial);
+}
+
+void Player::askForStream(quint64 serial) {
     cancelPreload();
-
     // Tidal lists this row as not streamed, so its twin is looked for first.
     if (!m_currentTrack.streamable && !m_currentTrack.isrc.isEmpty()) {
         seekTwin(serial, [this, serial] { requestStream(serial, true); });
         return;
     }
     requestStream(serial, false);
+}
+
+bool Player::adoptPreload(quint64 serial) {
+    // Matched by track id. The queue can be reordered, inserted into and
+    // reshuffled while a preload is in flight, so a row can hold another track.
+    if (m_preloadTrackId == 0 || m_preloadTrackId != m_currentTrack.id) return false;
+    if (!m_preloadReady) {
+        // A twin lookup ahead may end in another id, so the load does its own.
+        if (m_preloadLookingUp) return false;
+        // Under way: the load waits for it rather than fetch a second copy.
+        m_preloadAdoptedBy = serial;
+        return true;
+    }
+    if (!m_preloadTempFile) return false;
+    QTemporaryFile *file = m_preloadTempFile;
+    const QString quality = m_preloadQuality;
+    m_preloadTempFile = nullptr;
+    cancelPreload();
+    playFile(file, quality);
+    return true;
+}
+
+void Player::playFile(QTemporaryFile *file, const QString &quality) {
+    m_mpdTempFile     = file;
+    m_streamedQuality = quality;
+    emit currentTrackChanged();
+    // Still loading until the media status says the file is open.
+    m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+    beginPlayback();
+    emit audioFileReady(m_currentTrack.id, false);
+}
+
+void Player::preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file) {
+    if (gen != m_preloadGen) {
+        if (file) { file->remove(); delete file; }
+        return;
+    }
+    const quint64 waiting = m_preloadAdoptedBy;
+    m_preloadAdoptedBy = 0;
+    if (!file) {
+        preloadGaveUp(trackId);
+        // The load that waited on it asks for the track itself.
+        if (waiting && waiting == m_loadSerial && m_loading) askForStream(waiting);
+        return;
+    }
+    if (waiting && waiting == m_loadSerial && m_loading && m_currentTrack.id == trackId) {
+        const QString quality = m_preloadQuality;
+        cancelPreload();
+        playFile(file, quality);
+        return;
+    }
+    m_preloadTempFile = file;
+    m_preloadReady    = true;
+    emit audioFileReady(trackId, true);
 }
 
 void Player::noteRecentlyPlayed(const QVariantMap &track) {
@@ -1531,9 +1585,11 @@ void Player::dropAudioFile(QTemporaryFile *&f) {
 }
 
 void Player::cancelPreload() {
-    // Before the abort: it runs the download's callback at once, and with no
-    // row claimed that callback drops out and records no failed preload.
-    m_preloadIndex = -1;
+    // Before the abort: it runs the download's callback at once, and with a
+    // new generation that callback drops out and records no failed preload.
+    ++m_preloadGen;
+    m_preloadIndex     = -1;
+    m_preloadAdoptedBy = 0;
     if (m_preloadDownload) {
         auto *dl = m_preloadDownload;
         m_preloadDownload = nullptr;
@@ -1546,34 +1602,44 @@ void Player::cancelPreload() {
         delete d;          // aborts whatever segments were still coming
     }
     dropAudioFile(m_preloadTempFile);
-    m_preloadTrackId = 0;
-    m_preloadReady   = false;
-    m_preloadQuality = {};
+    m_preloadTrackId   = 0;
+    m_preloadReady     = false;
+    m_preloadLookingUp = false;
+    m_preloadQuality   = {};
 }
 
-void Player::preloadGaveUp(int next) {
-    if (m_preloadIndex == next) m_preloadIndex = -1;
-    m_preloadTrackId     = 0;
-    m_preloadFailedIndex = next;
+void Player::preloadGaveUp(qlonglong trackId) {
+    ++m_preloadGen;
+    m_preloadIndex     = -1;
+    m_preloadTrackId   = 0;
+    m_preloadLookingUp = false;
+    m_preloadFailedId  = trackId;
 }
 
 void Player::preloadNext() {
     int next = followingIndex();
-    if (next < 0 || next == m_preloadIndex || next == m_preloadFailedIndex) return;
     // Repeat-one: the playing row's bytes are already on disk.
-    if (next == m_index) return;
+    if (next < 0 || next == m_index) return;
+    const Track ahead = trackFromMap(m_queue[next].track);
+    if (ahead.id == 0 || ahead.id == m_preloadFailedId) return;
+    // The live load waits on what is under way.
+    if (m_preloadAdoptedBy) return;
+    // Fetched or under way for the same track, wherever its row has moved.
+    if (m_preloadTrackId == ahead.id) { m_preloadIndex = next; return; }
 
+    // The row ahead holds another track now: what was fetched is of no use.
     cancelPreload();
-    m_preloadIndex = next;
+    m_preloadIndex   = next;
+    m_preloadTrackId = ahead.id;
+    const quint64 gen = m_preloadGen;
 
     // As in startLoad(): the twin of a row listed as not streamed comes first.
-    const Track ahead = trackFromMap(m_queue[next].track);
     if (!ahead.streamable && !ahead.isrc.isEmpty()) {
-        seekTwinAhead(next, ahead,
-                      [this, next, id = ahead.id] { requestPreload(next, id, true); });
+        seekTwinAhead(gen, next, ahead,
+                      [this, gen, next, id = ahead.id] { requestPreload(gen, next, id, true); });
         return;
     }
-    requestPreload(next, ahead.id, false);
+    requestPreload(gen, next, ahead.id, false);
 }
 
 bool Player::rowAheadIs(int next, qlonglong trackId) const {
@@ -1581,45 +1647,62 @@ bool Player::rowAheadIs(int next, qlonglong trackId) const {
         && m_queue.at(next).track.value("id").toLongLong() == trackId;
 }
 
-void Player::seekTwinAhead(int next, const Track &of, std::function<void()> noTwin) {
-    m_client->fetchTwin(of, [this, next, forId = of.id, noTwin](Track twin, QString) {
-        if (m_preloadIndex != next) return;
+void Player::seekTwinAhead(quint64 gen, int next, const Track &of, std::function<void()> noTwin) {
+    m_preloadLookingUp = true;
+    m_client->fetchTwin(of, [this, gen, next, forId = of.id, noTwin](Track twin, QString) {
+        if (gen != m_preloadGen) return;
+        m_preloadLookingUp = false;
         // The queue may have been edited while the lookup was out.
         if (twin.id == 0 || !rowAheadIs(next, forId)) { noTwin(); return; }
         adoptTwin(next, twin);
-        requestPreload(next, twin.id, true);
+        m_preloadTrackId = twin.id;
+        requestPreload(gen, next, twin.id, true);
     });
 }
 
-void Player::preloadRefused(int next, qlonglong trackId, StreamManifest::Reason reason) {
+void Player::preloadRefused(quint64 gen, int next, qlonglong trackId, StreamManifest::Reason reason) {
     // Tidal no longer has the row ahead. Dropped now, it is never where the
     // change at the end of this track lands. A row that is kept is passed
     // over once the queue reaches it.
     const bool runGoesOn = m_droppedRun + m_keptRun < kMaxPassedOver;
-    if (reason == StreamManifest::Gone && rowAheadIs(next, trackId) && runGoesOn) {
+    if (reason == StreamManifest::Gone && rowAheadIs(next, trackId) && runGoesOn
+        && !m_preloadAdoptedBy) {
         const QString title = m_queue.at(next).track.value("title").toString();
-        m_preloadIndex = -1;
+        ++m_preloadGen;
+        m_preloadIndex   = -1;
+        m_preloadTrackId = 0;
         removeFromQueue(next);
         ++m_droppedRun;
         notePassedOver(title);
         return;
     }
-    preloadGaveUp(next);
+    preloadLanded(gen, trackId, nullptr);
 }
 
-void Player::requestPreload(int next, qlonglong trackId, bool twinSought) {
-    m_client->fetchStreamManifest(trackId, [this, next, trackId, twinSought](StreamManifest manifest, QString err) {
-        if (m_preloadIndex != next) return;
+void Player::requestPreload(quint64 gen, int next, qlonglong trackId, bool twinSought) {
+    m_client->fetchStreamManifest(trackId, [this, gen, next, trackId, twinSought](StreamManifest manifest, QString err) {
+        if (gen != m_preloadGen) return;
         if (!err.isEmpty()) {
+            // A load waits on this request, so Tidal's answer is that load's own.
+            const quint64 waiting = m_preloadAdoptedBy;
+            if (waiting && waiting == m_loadSerial && m_loading && m_currentTrack.id == trackId) {
+                cancelPreload();
+                if (!twinSought && manifest.reason != StreamManifest::Unknown
+                    && !m_currentTrack.isrc.isEmpty())
+                    seekTwin(waiting, [this, manifest, err] { streamRefused(manifest, err); });
+                else
+                    streamRefused(manifest, err);
+                return;
+            }
             const StreamManifest::Reason reason = manifest.reason;
-            const auto refused = [this, next, trackId, reason] {
-                preloadRefused(next, trackId, reason);
+            const auto refused = [this, gen, next, trackId, reason] {
+                preloadRefused(gen, next, trackId, reason);
             };
             // Tidal ruled this id out. The recording may play under another.
             const Track ahead = rowAheadIs(next, trackId) ? trackFromMap(m_queue.at(next).track)
                                                           : Track{};
             if (!twinSought && reason != StreamManifest::Unknown && !ahead.isrc.isEmpty())
-                seekTwinAhead(next, ahead, refused);
+                seekTwinAhead(gen, next, ahead, refused);
             else
                 refused();
             return;
@@ -1628,44 +1711,27 @@ void Player::requestPreload(int next, qlonglong trackId, bool twinSought) {
         m_preloadQuality = manifest.codec;
 
         if (manifest.type == StreamManifest::BTS) {
-            m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, next, trackId](QByteArray data, QString dlErr) {
+            m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, gen, trackId](QByteArray data, QString dlErr) {
+                if (gen != m_preloadGen) return;
                 m_preloadDownload = nullptr;
-                if (m_preloadIndex != next) return;
-                if (!dlErr.isEmpty() || data.isEmpty()) { preloadGaveUp(next); return; }
-                if (auto *f = saveToTempFile(data)) {
-                    m_preloadTempFile = f;
-                    m_preloadTrackId  = trackId;
-                    m_preloadReady    = true;
-                    emit audioFileReady(trackId, true);
-                } else {
-                    // A full temp directory lands here. Silent: a failed preload
-                    // costs a wait, and the live load reports the disk itself.
-                    preloadGaveUp(next);
-                }
+                // A full temp directory gives null too. Silent: a failed
+                // preload costs a wait, and the live load reports the disk.
+                preloadLanded(gen, trackId,
+                              dlErr.isEmpty() && !data.isEmpty() ? saveToTempFile(data) : nullptr);
             });
         } else {
             // Same route as the live load above.
             auto *fetcher = new DashFetcher(m_client, manifest.url);
             if (!fetcher->isValid() || !fetcher->openedTempFile()) {
                 delete fetcher;
-                preloadGaveUp(next);
+                preloadLanded(gen, trackId, nullptr);
                 return;
             }
             m_preloadDash = fetcher;
-            fetcher->start([this, fetcher, next, trackId](QTemporaryFile *file, const QString &) {
+            fetcher->start([this, fetcher, gen, trackId](QTemporaryFile *file, const QString &) {
                 if (m_preloadDash == fetcher) m_preloadDash = nullptr;
                 disposeDash(fetcher, this);
-                if (m_preloadIndex != next || !file) {
-                    if (file) { file->remove(); delete file; }
-                    // Leave no index claiming a preload: the trigger guards on it,
-                    // and a stale one would stop this track being tried again.
-                    if (m_preloadIndex == next) preloadGaveUp(next);
-                    return;
-                }
-                m_preloadTempFile = file;
-                m_preloadTrackId  = trackId;
-                m_preloadReady    = true;
-                emit audioFileReady(trackId, true);
+                preloadLanded(gen, trackId, file);
             });
         }
     });
@@ -1713,7 +1779,10 @@ void Player::beginCast(CastSession *session) {
     // must not play locally alongside the cast.
     if (m_player) m_player->pause();
     if (m_audioOut) m_audioOut->setMuted(true);
+    // A load that waited on the preload goes to the cast device instead.
+    const bool waited = m_preloadAdoptedBy != 0;
     cancelPreload();
+    if (waited && m_loading) { setLoading(false); emit castTrackChanged(); }
     m_castPosition = 0;
     m_castDuration = duration();   // seed from current until the device reports
     m_castPlaying  = true;

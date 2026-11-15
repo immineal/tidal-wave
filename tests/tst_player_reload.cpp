@@ -644,11 +644,11 @@ private slots:
         } else if (move == QLatin1String("previous")) {
             a.p().previous();
         } else {
-            // The request made ahead of time stays out, so the row is asked
-            // for again when the track before it has run out.
+            // The request made ahead of time is taken over when the track
+            // before it has run out, so the row is asked for once.
             a.p().seek(29000);
-            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
-            QVERIFY(a.client.answer(8002, ruledOut(), kGone));
+            QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002LL, 10000);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{from, 8002}));
         }
         QCOMPARE(currentId(a.p()), 8002);
         QVERIFY(a.client.answer(8002, ruledOut(), kGone));
@@ -872,10 +872,11 @@ private slots:
         } else if (move == QLatin1String("previous")) {
             a.p().previous();
         } else {
-            // Asked for ahead of time and again when the track before it ran out.
+            // Asked for ahead of time, and that request is taken over when
+            // the track before it ran out.
             a.p().seek(29000);
-            QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{from, 8002, 8002}), 10000);
-            QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
+            QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8002LL, 10000);
+            QCOMPARE(a.client.asked, (QList<qlonglong>{from, 8002}));
         }
         QCOMPARE(currentId(a.p()), 8002);
         QVERIFY(a.client.answer(8002, notForAccount(), kPreview));
@@ -1189,8 +1190,9 @@ private slots:
         QCOMPARE(a.client.asked, (QList<qlonglong>{5000, 5000}));
     }
 
-    // Removing the playing row aborts the preload of the row after it, which
-    // then loads as the playing one. The row after that is still fetched ahead.
+    // The row being fetched ahead is removed while its fetch is under way.
+    // The fetch is dropped and the new row ahead is fetched instead. The
+    // dropped one is no failure: put back, the track is fetched again.
     void anAbortedPreloadIsNotRememberedAsAFailedOne() {
         if (const char *why = obstacle()) QSKIP(why);
 
@@ -1199,23 +1201,23 @@ private slots:
         const int heldBefore = m_server.requestsHeld;
         const StreamManifest track = oneFileAt(m_server.url(QStringLiteral("/track")));
 
-        a.p().playTracks(contextOf(6000, 3), 0);
+        const QVariantList rows = contextOf(6000, 3);
+        a.p().playTracks(rows, 0);
         QVERIFY(a.client.answer(6000, track));
-        QTRY_VERIFY_WITH_TIMEOUT(a.loaded(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         a.p().seek(6000);
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001}), 5000);
         QVERIFY(a.client.answer(6001, oneFileAt(m_server.url(QStringLiteral("/held")))));
         QTRY_COMPARE_WITH_TIMEOUT(m_server.requestsHeld, heldBefore + 1, 5000);
 
-        a.p().removeFromQueue(0);
-        QCOMPARE(currentId(a.p()), 6001);
-        QCOMPARE(a.client.asked, (QList<qlonglong>{6000, 6001, 6001}));
-        QVERIFY(a.client.answer(6001, track));
-        QTRY_VERIFY_WITH_TIMEOUT(!a.mp()->source().isEmpty() && a.loaded(), 10000);
+        a.p().removeFromQueue(1);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{6000, 6001, 6002}), 5000);
+        QVERIFY(a.client.answer(6002, track));
 
-        a.p().seek(6000);
+        a.p().playNext(QVariantList{ rows.at(1) });
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked,
-                                  (QList<qlonglong>{6000, 6001, 6001, 6002}), 5000);
+                                  (QList<qlonglong>{6000, 6001, 6002, 6001}), 5000);
+        QCOMPARE(currentId(a.p()), 6000);
     }
 
     // ── a disk with no room ─────────────────────────────────────────────────

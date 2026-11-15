@@ -230,6 +230,96 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
     }
 
+    // ── what was fetched ahead is used ──────────────────────────────────────
+
+    // The next row's file is on disk. Reaching that track by a click on the
+    // page, in the queue or by Next takes the file: no request, no download.
+    void aTrackFetchedAheadIsNotFetchedAgain_data() {
+        QTest::addColumn<QString>("how");
+        QTest::newRow("a click on the page")  << QStringLiteral("page");
+        QTest::newRow("a click in the queue") << QStringLiteral("queue");
+        QTest::newRow("Next")                 << QStringLiteral("next");
+    }
+    void aTrackFetchedAheadIsNotFetchedAgain() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, how);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(8000, 3)));
+        const int servedBefore = m_server.served;
+        a.p().seek(6000);
+        QVERIFY(QTest::qWaitFor([&] { return a.client.answer(8001, track()); }, 5000));
+        QTRY_COMPARE_WITH_TIMEOUT(m_server.served - servedBefore, 1, 10000);
+        QTest::qWait(200);
+
+        if (how == QLatin1String("page"))       a.p().playTracks(contextOf(8000, 3), 1);
+        else if (how == QLatin1String("queue")) a.p().jumpToContext(0);
+        else                                    a.p().next();
+
+        QCOMPARE(currentId(a.p()), 8001);
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track fetched ahead did not play", 10000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001}));
+        QCOMPARE(m_server.served - servedBefore, 1);
+    }
+
+    // The download ahead is still under way when the track runs out. The
+    // next track waits for it rather than asking for its stream again.
+    void aFetchAheadUnderWayIsTakenOverAtTheEndOfATrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(8000, 3)));
+        a.p().seek(6000);
+        QVERIFY(QTest::qWaitFor([&] {
+            return a.client.answer(8001, oneFileAt(m_server.url(QStringLiteral("/later"))));
+        }, 5000));
+        QTRY_COMPARE_WITH_TIMEOUT(m_server.waitingLater(), 1, 5000);
+
+        a.p().seek(a.p().duration());
+        QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 8001, 8000);
+        QTest::qWait(300);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001}));
+
+        m_server.releaseLater();
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started(), "the track fetched ahead did not play", 10000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001}));
+    }
+
+    // The row after the playing one changes while its file is fetched ahead.
+    // The track that will really come next is fetched in its place.
+    void aFetchAheadForARowThatNowHoldsAnotherTrackIsRedone_data() {
+        QTest::addColumn<QString>("edit");
+        QTest::newRow("Play next")  << QStringLiteral("playNext");
+        QTest::newRow("a move")     << QStringLiteral("move");
+    }
+    void aFetchAheadForARowThatNowHoldsAnotherTrackIsRedone() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(QString, edit);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(8000, 3)));
+        a.p().seek(6000);
+        QVERIFY(QTest::qWaitFor([&] { return a.client.answer(8001, track()); }, 5000));
+
+        qlonglong comesNext = 0;
+        if (edit == QLatin1String("playNext")) {
+            a.p().playNext(QVariantList{ trackOf(9000) });
+            comesNext = 9000;
+        } else {
+            a.p().moveQueueItem(2, 1);
+            comesNext = 8002;
+        }
+        QTRY_VERIFY2_WITH_TIMEOUT(a.client.asked.contains(comesNext),
+                                  "the track that comes next was not fetched ahead", 5000);
+        QVERIFY(a.client.answer(comesNext, track()));
+        QTest::qWait(300);
+
+        a.p().seek(a.p().duration());
+        QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), comesNext, 8000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{8000, 8001, comesNext}));
+    }
+
     // ── repeat-one ──────────────────────────────────────────────────────────
 
     // Next under repeat-one goes to the next track, as it does with repeat

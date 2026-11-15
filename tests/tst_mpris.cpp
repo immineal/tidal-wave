@@ -404,13 +404,12 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         desk().forget();
 
-        // The request made ahead of time stays unanswered, so the track is
-        // asked for again when it is reached.
+        // The request made ahead of time is still out when the track is
+        // reached, which waits for it.
         a.p().seek(29000);
-        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{3000, 3001, 3001}), 10000);
-        QCOMPARE(currentId(a.p()), 3001);
+        QTRY_COMPARE_WITH_TIMEOUT(currentId(a.p()), 3001, 10000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000, 3001}));
         QCOMPARE(desk().status(), QStringLiteral("Playing"));
-        QVERIFY(a.client.answer(3001, track()));
         QVERIFY(a.client.answer(3001, track()));
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
         QTest::qWait(300);
@@ -553,9 +552,11 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(a.mp()->position() >= 12300, 5000);
         desk().forget();
 
+        // Off the file it has, with no request.
+        const int asked = int(a.client.asked.count(3000));
         a.p().jumpToQueue(0);
-        QVERIFY(a.client.answer(3000, track()));
         QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.mp()->position() > 300, 10000);
+        QCOMPARE(int(a.client.asked.count(3000)), asked);
         QTest::qWait(300);
         desk().status();
         QVERIFY(!desk().seeked.isEmpty());
