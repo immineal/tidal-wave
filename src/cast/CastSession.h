@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QByteArray>
+#include <QHostAddress>
 
 class QSslSocket;
 class QTimer;
@@ -21,6 +22,9 @@ public:
     void connectToDevice(const QString &host, int port);
     void disconnectFromDevice();
     bool isConnected() const { return m_appConnected; }
+    // This side's address on the connection to the device: the interface the
+    // OS routes to it over, so the one the device can reach back.
+    QHostAddress localAddress() const;
 
     // Test hook: plain TCP instead of TLS, so a QTcpServer can stand in for
     // the receiver. Set before connectToDevice().

@@ -4,20 +4,22 @@
 #include <QObject>
 #include <QString>
 
+class QHostAddress;
 class QTcpServer;
 class QTcpSocket;
 
 // Tiny single-file HTTP server that streams the current track to a Chromecast.
-// Binds to the LAN IPv4 so the device can reach it, and serves the current file
-// at an unguessable path with Range support (receivers ask for ranges).
+// Binds to the address the device was reached from and serves the current
+// file at an unguessable path with Range support (receivers ask for ranges).
 class CastMediaServer : public QObject {
     Q_OBJECT
 public:
     explicit CastMediaServer(QObject *parent = nullptr);
     ~CastMediaServer() override;
 
-    // Start listening. Returns the base URL (http://<lan-ip>:<port>) or empty.
-    QString start();
+    // Start listening on `address`, the local end of the connection to the
+    // device. Returns the base URL (http://<address>:<port>) or empty.
+    QString start(const QHostAddress &address);
     void    stop();
     bool    isListening() const;
 

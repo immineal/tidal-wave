@@ -61,7 +61,8 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     connect(m_prep, &CastMediaPrep::failed, this, [this](const QString &m) { emit error(m); });
 
     // Track changed while casting → re-prepare + re-load on the device.
-    connect(m_player, &Player::castTrackChanged, this, &CastManager::castCurrentTrack);
+    if (m_player)
+        connect(m_player, &Player::castTrackChanged, this, &CastManager::castCurrentTrack);
 }
 
 CastManager::~CastManager() = default;
@@ -95,10 +96,6 @@ void CastManager::onDeviceRemoved(const QString &id) {
 void CastManager::connectToDevice(const QString &id) {
     if (!m_devices.contains(id)) return;
     const Device d = m_devices.value(id);
-    if (m_server->start().isEmpty()) {
-        emit error(tr("Could not start casting. The local media server failed to start."));
-        return;
-    }
     m_deviceName = d.name;
     emit connectedChanged();               // reflect "connecting…" name immediately
     m_session->connectToDevice(d.host, d.port);
@@ -110,6 +107,14 @@ void CastManager::disconnect() {
 }
 
 void CastManager::onSessionConnected() {
+    // Served on the address the device was reached from, which it can reach
+    // back, rather than whichever interface happens to be listed first.
+    if (m_server->start(m_session->localAddress()).isEmpty()) {
+        emit error(tr("Could not start casting. The local media server failed to start."));
+        m_session->disconnectFromDevice();
+        onSessionDisconnected();
+        return;
+    }
     m_connected = true;
     // Read before beginCast(), after which position() is the device's.
     m_startTrackId = m_player ? m_player->currentTrackId() : 0;
@@ -125,6 +130,7 @@ void CastManager::onSessionDisconnected() {
     const bool hadName = !m_deviceName.isEmpty();
     m_deviceName.clear();
     if (m_prep) m_prep->cancel();
+    m_server->stop();
     if (m_player && was) m_player->endCast();
     if (was || hadName) emit connectedChanged();
 }

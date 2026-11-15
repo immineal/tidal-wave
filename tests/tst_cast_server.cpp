@@ -152,7 +152,7 @@ private slots:
     void aClientThatReadsNothingDoesNotStopTheEventLoop()
     {
         CastMediaServer server;
-        QVERIFY(!server.start().isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl url(server.setCurrentFile(m_path, QStringLiteral("audio/flac")));
         QVERIFY(url.isValid());
 
@@ -175,7 +175,7 @@ private slots:
     void twoConnectionsAreServedAtOnce()
     {
         CastMediaServer server;
-        QVERIFY(!server.start().isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl url(server.setCurrentFile(m_path, QStringLiteral("audio/flac")));
 
         // Timed from the first request: a server that serves one connection
@@ -202,7 +202,7 @@ private slots:
     void onlyTheUrlOfTheCurrentFileIsServed()
     {
         CastMediaServer server;
-        QVERIFY(!server.start().isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl url(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
 
         const QList<QByteArray> strangers{
@@ -234,7 +234,7 @@ private slots:
     void theNextFileGetsANewTokenAndTheOldUrlIsDead()
     {
         CastMediaServer server;
-        QVERIFY(!server.start().isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl first(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
         const QUrl second(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
         QVERIFY(first.path() != second.path());
@@ -294,7 +294,7 @@ private slots:
         QFETCH(qint64, last);
 
         CastMediaServer server;
-        QVERIFY(!server.start().isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl url(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
 
         Fetch f(url, get(url, range.isEmpty() ? QByteArray() : "Range: " + range + "\r\n"));

@@ -93,6 +93,10 @@ void CastSession::connectToDevice(const QString &host, int port) {
     m_connectTimer->start(m_connectTimeoutMs);
 }
 
+QHostAddress CastSession::localAddress() const {
+    return m_socket ? m_socket->localAddress() : QHostAddress();
+}
+
 void CastSession::fail(const QString &msg) {
     reset();
     emit error(msg);

@@ -4,22 +4,13 @@
 
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QNetworkInterface>
+#include <QHostAddress>
+#include <QUrl>
 #include <QFile>
 #include <QFileInfo>
 #include <QRandomGenerator>
 
 namespace {
-
-// First non-loopback IPv4 address, which the Chromecast must reach.
-QString lanAddress() {
-    const auto addrs = QNetworkInterface::allAddresses();
-    for (const QHostAddress &a : addrs) {
-        if (a.protocol() == QAbstractSocket::IPv4Protocol && !a.isLoopback())
-            return a.toString();
-    }
-    return QString();
-}
 
 constexpr qint64 kChunk      = 64 * 1024;
 constexpr qint64 kMaxRequest = 16 * 1024;   // a receiver's GET is well under 1 KiB
@@ -89,22 +80,33 @@ CastMediaServer::~CastMediaServer() {
     stop();
 }
 
-QString CastMediaServer::start() {
-    if (m_server && m_server->isListening())
-        return m_baseUrl;
-
-    const QString ip = lanAddress();
-    if (ip.isEmpty())
+QString CastMediaServer::start(const QHostAddress &address) {
+    if (address.isNull())
         return QString();
+    if (m_server && m_server->isListening()) {
+        if (m_server->serverAddress() == address)
+            return m_baseUrl;
+        m_server->close();   // another device, reached over another interface
+    }
 
     if (!m_server) {
         m_server = new QTcpServer(this);
         connect(m_server, &QTcpServer::newConnection, this, &CastMediaServer::onNewConnection);
     }
-    if (!m_server->listen(QHostAddress(ip), 0))   // 0 = ephemeral port
+    if (!m_server->listen(address, 0))   // 0 = ephemeral port
         return QString();
 
-    m_baseUrl = QStringLiteral("http://%1:%2").arg(ip).arg(m_server->serverPort());
+    // The device does not know this side's scope id, and QUrl brackets IPv6.
+    QHostAddress host = address;
+    bool mapped = false;
+    const quint32 v4 = host.toIPv4Address(&mapped);
+    if (mapped) host = QHostAddress(v4);
+    host.setScopeId(QString());
+    QUrl url;
+    url.setScheme(QStringLiteral("http"));
+    url.setHost(host.toString());
+    url.setPort(m_server->serverPort());
+    m_baseUrl = url.toString();
     return m_baseUrl;
 }
 
