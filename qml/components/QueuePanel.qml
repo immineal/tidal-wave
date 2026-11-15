@@ -123,7 +123,8 @@ Item {
 
     function headerLabelOf(kind) {
         switch (kind) {
-        case "playedHeader":  return qsTr("Played")
+        // Rows behind the cursor: played, or jumped over to get here.
+        case "playedHeader":  return qsTr("Earlier in queue")
         case "nowHeader":     return qsTr("Now Playing")
         case "manualHeader":  return qsTr("Next in queue")
         case "contextHeader": return contextHeading

@@ -216,7 +216,7 @@ TestCase {
         var panel = openPanel(host)
 
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now Playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the four section headers, in reading order")
 
@@ -262,7 +262,7 @@ TestCase {
         var labels = headerLabels(panel)
         compare(labels.indexOf(qsTr("Next in queue")), -1,
                 "an empty manual queue still drew its header")
-        compare(labels.indexOf(qsTr("Played")), -1,
+        compare(labels.indexOf(qsTr("Earlier in queue")), -1,
                 "an empty history still drew its header")
         compare(labels.join(" | "),
                 [qsTr("Now Playing"), qsTr("Next from: %1").arg("Life 1")].join(" | "),
@@ -659,7 +659,7 @@ TestCase {
         compare(entryAt(panel, panel.playedAt + 2).kind, "played",
                 "the finished track is still drawn as something upcoming")
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now Playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the headings did not follow the boundaries")
 
