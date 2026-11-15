@@ -412,6 +412,20 @@ ApplicationWindow {
         return true
     }
 
+    // A press outside the text field that has the keyboard hands it back to
+    // the window, so Space pauses again. A SearchBar's icon and padding count
+    // as its field.
+    function releaseTextFocusAt(scenePos) {
+        var f = root.activeFocusItem
+        if (!isTypingContext(f)) return
+        var box = f
+        for (var p = f; p; p = p.parent)
+            if (typeof p.takeFocus === "function" && typeof p.focused === "boolean") { box = p; break }
+        var local = box.mapFromItem(null, scenePos.x, scenePos.y)
+        if (box.contains(local)) return
+        focusStealer.forceActiveFocus()
+    }
+
     // Whether the keyboard is inside a popup: every Popup's item lives in the
     // window's overlay, so this covers dialogs, menus and pickers alike.
     readonly property bool popupHasKeyboard: {
@@ -666,4 +680,17 @@ ApplicationWindow {
     // The cached answer is already in UpdateCheck when the engine runs.
     // Whatever the network says afterwards is for the next launch.
     Component.onCompleted: updatePrompt.showIfAvailable()
+
+    // Over everything but popups: sees each press first, then turns it down so
+    // it reaches the item under it. A parent's PointHandler misses presses a
+    // MouseArea accepts.
+    MouseArea {
+        anchors.fill: parent
+        z: 1000
+        acceptedButtons: Qt.AllButtons
+        onPressed: (mouse) => {
+            root.releaseTextFocusAt(mapToItem(null, mouse.x, mouse.y))
+            mouse.accepted = false
+        }
+    }
 }
