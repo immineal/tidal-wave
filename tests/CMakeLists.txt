@@ -80,6 +80,9 @@ add_test(NAME tst_qml COMMAND tst_qml)
 # QML tests need a QPA plugin. Forcing offscreen keeps `ctest` working on a
 # headless box (and in CI) and stops test windows flashing on a desktop.
 set(TW_TEST_ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+# Nor may a test reach the desktop's session bus, where an MPRIS name shows in
+# the user's media controls. Tests that need a bus start a private one.
+list(APPEND TW_TEST_ENVIRONMENT "DBUS_SESSION_BUS_ADDRESS=unix:path=${CMAKE_CURRENT_BINARY_DIR}/no-session-bus")
 # Below Qt 6.5 the program names the FFmpeg media backend (src/main.cpp) where
 # Qt would pick GStreamer. The tests play through the one users get.
 if(Qt6_VERSION VERSION_LESS 6.5)
