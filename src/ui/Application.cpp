@@ -39,6 +39,7 @@
 #include <utility>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QWindow>
 #include <chrono>
@@ -318,6 +319,35 @@ void Application::endAccountSession(TidalClient *client, Player *player, PinStor
     if (client) client->setUserId(0);
     if (pins) pins->setUserId(0);
     if (library) library->setUserId(0);
+}
+
+QString Application::tempLockPath(const QString &dir) {
+#if defined(Q_OS_UNIX)
+    return dir + QStringLiteral("/tidal-wave-%1.lock").arg(static_cast<uint>(::getuid()));
+#else
+    return dir + QStringLiteral("/tidal-wave.lock");
+#endif
+}
+
+int Application::sweepStaleTempFiles(const QString &dir) {
+    // The QTemporaryFile templates in Player, DashFetcher, Downloader and
+    // CastMediaPrep, and nothing else.
+    static const QRegularExpression ours(QStringLiteral(
+        "^tidal-wave-(?:cast-|cover-)?[A-Za-z0-9]{6}\\.(?:mp4|flac|jpg)$"));
+    const QDir d(dir);
+    int removed = 0;
+    const QStringList names = d.entryList({QStringLiteral("tidal-wave-*")},
+                                          QDir::Files | QDir::Hidden | QDir::NoSymLinks);
+    for (const QString &name : names) {
+        if (!ours.match(name).hasMatch()) continue;
+        const QFileInfo fi(d.filePath(name));
+#if defined(Q_OS_UNIX)
+        // A shared /tmp holds other users' files too.
+        if (fi.ownerId() != static_cast<uint>(::getuid())) continue;
+#endif
+        if (QFile::remove(fi.filePath())) ++removed;
+    }
+    return removed;
 }
 
 bool Application::shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose) {
@@ -634,6 +664,15 @@ int Application::run(int argc, char **argv) {
         socket.write("show");
         socket.waitForBytesWritten(500);
         return 0; // an instance is already running
+    }
+
+    // Earlier runs leave their audio in the temp directory. Swept only while
+    // no other instance holds this lock, whatever socket it listens on.
+    m_tempLock = std::make_unique<QLockFile>(tempLockPath(QDir::tempPath()));
+    m_tempLock->setStaleLockTime(0);
+    if (m_tempLock->tryLock(0)) {
+        if (const int n = sweepStaleTempFiles(QDir::tempPath()))
+            qInfo("tidal-wave: removed %d temp file(s) left by an earlier run", n);
     }
 
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
