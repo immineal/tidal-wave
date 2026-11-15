@@ -126,7 +126,7 @@ TestCase {
 
     function test_playlist_tracks_5000() {
         exercise(playlistC, "PlaylistPage", function (page, data) {
-            S.fill(page, { playlistUuid: "uuid-big", playlistType: "USER",
+            S.fill(page, { playlistUuid: "uuid-big", playlistType: "USER", playlistEditable: true,
                            playlistTitle: "Fünftausend", playlistDuration: 1200000 })
             S.fill(page, { tracks: data })
         })

@@ -642,6 +642,7 @@ TestCase {
         verify(win)
         win.page.playlistUuid = "uuid-0"
         win.page.playlistType = "USER"
+        win.page.playlistEditable = true
         win.page.playlistTitle = "Late Night Drive"
         win.page.playlistDescription = "Thirty-odd tracks that go together."
         win.page.playlistDuration = 5400

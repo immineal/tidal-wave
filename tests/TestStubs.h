@@ -239,7 +239,7 @@ public:
         cb.call(args);
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
-    // coverUrl, type}. `type` decides whether the playlist is editable.
+    // coverUrl, type, editable}. `editable` decides whether the user may edit.
     Q_INVOKABLE void fetchPlaylist(const QString &uuid, QJSValue cb) {
         m_lastPlaylistFetched = uuid;
         m_playlistFetches++;
@@ -1300,6 +1300,7 @@ private:
             p.insert(QStringLiteral("duration"), 0);
             p.insert(QStringLiteral("coverUrl"), QString());
             p.insert(QStringLiteral("type"), QStringLiteral("USER"));
+            p.insert(QStringLiteral("editable"), true);
 
             bool exists = false;
             for (const QVariant &v : std::as_const(m_userPlaylists))

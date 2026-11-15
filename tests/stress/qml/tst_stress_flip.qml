@@ -65,7 +65,7 @@ TestCase {
                                              coverUrl750: "", similarArtists: S.artists(8) },
                                topTracks: S.tracks(8), albums: S.albums(12) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-flip" })
-                S.fill(page, { playlistType: "USER", playlistTitle: "Liste",
+                S.fill(page, { playlistType: "USER", playlistEditable: true, playlistTitle: "Liste",
                                playlistDuration: 3600, tracks: S.tracks(14) }); break
         case 6: S.fill(page, { mixId: "mix-flip" })
                 S.fill(page, { title: "Mix", subtitle: "Untertitel", tracks: S.tracks(14) }); break

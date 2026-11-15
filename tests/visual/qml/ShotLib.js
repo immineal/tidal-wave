@@ -83,7 +83,7 @@ function playlists(n) {
         out.push({ id: 400 + i, uuid: "uuid-" + i, title: names[i % names.length],
                    description: "Thirty-odd tracks that go together.",
                    coverUrl: "cover/pl" + i, numTracks: 24 + i,
-                   duration: 5400, type: "USER" })
+                   duration: 5400, type: "USER", editable: true })
     return out
 }
 

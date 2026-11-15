@@ -287,6 +287,22 @@
         <translation>Standard</translation>
     </message>
     <message>
+        <source>Default: most recently liked first</source>
+        <translation>Standard: zuletzt mit „Gefällt mir“ markierte zuerst</translation>
+    </message>
+    <message>
+        <source>Default: most recently saved first</source>
+        <translation>Standard: zuletzt gespeicherte zuerst</translation>
+    </message>
+    <message>
+        <source>Default: most recently followed first</source>
+        <translation>Standard: Künstler, denen du zuletzt gefolgt bist, zuerst</translation>
+    </message>
+    <message>
+        <source>Default: most recently played or added first</source>
+        <translation>Standard: zuletzt gespielte oder hinzugefügte zuerst</translation>
+    </message>
+    <message>
         <source>A→Z</source>
         <translation>A→Z</translation>
     </message>

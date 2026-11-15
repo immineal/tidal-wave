@@ -6,6 +6,8 @@
 #include <QTest>
 #include <QSignalSpy>
 #include <QJSEngine>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -152,12 +154,49 @@ public:
         }
         answer();
     }
-    void fetchFavoriteAlbums(AlbumsCallback cb, int, int) override { cb({}, QString()); }
-    void fetchFavoriteArtists(ArtistsCallback cb, int, int) override { cb({}, QString()); }
-    void fetchUserPlaylists(PlaylistsCallback cb, int, int) override { cb({}, QString()); }
+    // ── saved albums and followed artists, newest first ──────────────────
+    QList<Album>  albums;
+    QList<Artist> artists;
+    // A page larger than this fails, as one that timed out would.
+    int  savedRefuseAbove = -1;
+    // Paging skips the first row of each page after the first, as order=DATE
+    // does where saves share a date.
+    bool savedPagingLoses = false;
+
+    template <typename T>
+    void answerSaved(const QList<T> &all, std::function<void(QList<T>, QString)> cb,
+                     int limit, int offset) {
+        if (savedRefuseAbove >= 0 && limit > savedRefuseAbove) {
+            cb({}, QStringLiteral("timed out"));
+            return;
+        }
+        cb(all.mid(offset + (savedPagingLoses && offset > 0 ? 1 : 0), limit), QString());
+    }
+    void fetchFavoriteAlbums(AlbumsCallback cb, int limit, int offset) override {
+        answerSaved(albums, cb, limit, offset);
+    }
+    void fetchFavoriteArtists(ArtistsCallback cb, int limit, int offset) override {
+        answerSaved(artists, cb, limit, offset);
+    }
+
+    // What users/<id>/playlistsAndFavoritePlaylists lists.
+    QList<Playlist> library;
+    void fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) override {
+        cb(library.mid(offset, limit), QString());
+    }
 
     void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) override {
         ++headReads;
+        if (kind == FavoriteKind::Albums || kind == FavoriteKind::Artists) {
+            FavoritesHead h;
+            h.total = int(kind == FavoriteKind::Albums ? albums.size() : artists.size());
+            const qint64 newest = kind == FavoriteKind::Albums
+                ? (albums.isEmpty() ? 0 : albums.first().id)
+                : (artists.isEmpty() ? 0 : artists.first().id);
+            if (newest > 0) h.newest = QString::number(newest);
+            cb(h, QString());
+            return;
+        }
         if (kind != FavoriteKind::Tracks) { cb({0, QString()}, QString()); return; }
         FavoritesHead h;
         h.total = int(likes.size());
@@ -1031,7 +1070,113 @@ private slots:
         QCOMPARE(h.client.trackReads, 0);
     }
 
+    // ── whose playlist it is ──────────────────────────────────────────────
+    // Rows as playlistsAndFavoritePlaylists answers them: the user's own, one
+    // saved from another user and an editorial one, whose creator is empty.
+    // Only the first can take a song, a new title or a removal.
+    void onlyTheUsersOwnPlaylistsAreEditable() {
+        Harness h;
+        h.client.library = TidalClient::parsePlaylists(QJsonDocument::fromJson(R"({"items": [
+            {"type": "USER_CREATED", "created": "2026-01-02T00:00:00.000+0000",
+             "playlist": {"uuid": "mine", "title": "Mine", "type": "USER",
+                          "creator": {"id": 7}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-03T00:00:00.000+0000",
+             "playlist": {"uuid": "theirs", "title": "Theirs", "type": "USER",
+                          "creator": {"id": 4242}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-04T00:00:00.000+0000",
+             "playlist": {"uuid": "editorial", "title": "Picked", "type": "EDITORIAL",
+                          "creator": {}}}
+        ]})").object());
+        QCOMPARE(h.client.library.size(), 3);
+        h.client.setUserId(kUid);
+
+        const QVariantList rows = h.bridge.getUserPlaylists();
+        QCOMPARE(rowFor(rows, QStringLiteral("mine")).value(QStringLiteral("editable")), QVariant(true));
+        QCOMPARE(rowFor(rows, QStringLiteral("theirs")).value(QStringLiteral("editable")), QVariant(false));
+        QCOMPARE(rowFor(rows, QStringLiteral("editorial")).value(QStringLiteral("editable")), QVariant(false));
+
+        // The header a playlist page reads says the same. Editorial ones come
+        // back from playlists/<uuid> with {"id": 0}.
+        h.client.headers.insert(QStringLiteral("editorial"), Playlist::fromJson(
+            QJsonDocument::fromJson(R"({"uuid": "editorial", "type": "EDITORIAL",
+                                       "creator": {"id": 0}})").object()));
+        h.client.headers.insert(QStringLiteral("mine"), h.client.library.value(0));
+        QJSValue seen = h.engine.newObject();
+        const QJSValue record = h.engine.evaluate(QStringLiteral(
+            "(function (s) { return function (p, err) { s[p.uuid] = p.editable; }; })")).call({seen});
+        h.bridge.fetchPlaylist(QStringLiteral("editorial"), record);
+        h.bridge.fetchPlaylist(QStringLiteral("mine"), record);
+        QCOMPARE(seen.property(QStringLiteral("editorial")).toBool(), false);
+        QVERIFY(seen.property(QStringLiteral("editorial")).isBool());
+        QCOMPARE(seen.property(QStringLiteral("mine")).toBool(), true);
+    }
+
+    // A playlist made here is the user's even if the reply names no creator.
+    void aPlaylistMadeHereIsEditable() {
+        Harness h;
+        h.client.setUserId(kUid);
+        h.fillOne(0, 0);
+        QCOMPARE(rowFor(h.bridge.getUserPlaylists(), kUuid).value(QStringLiteral("editable")),
+                 QVariant(true));
+    }
+
+    // ── saved albums and followed artists on a reload ───────────────────────
+    // The one page failing, the reload pages by date, which loses rows that
+    // share a save date. What it lacks may still be saved, so nothing goes.
+    void aLossyReloadDoesNotShortenTheSavedLists() {
+        Harness h;
+        for (int i = 0; i < 250; ++i) {
+            h.client.albums  << mkAlbum(5000 - i);
+            h.client.artists << mkArtist(8000 - i);
+        }
+        h.client.setUserId(kUid);
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 250);
+        QCOMPARE(h.bridge.searchFavoriteArtists(QString()).size(), 250);
+
+        h.client.savedRefuseAbove = 100;
+        h.client.savedPagingLoses = true;
+        h.client.albums.prepend(mkAlbum(6000));     // saved on the phone
+        h.client.artists.prepend(mkArtist(9000));
+        h.bridge.syncFavorites();
+
+        const QVariantList albums = h.bridge.searchFavoriteAlbums(QString());
+        const QVariantList artists = h.bridge.searchFavoriteArtists(QString());
+        QCOMPARE(albums.size(), 251);
+        QCOMPARE(artists.size(), 251);
+        QCOMPARE(albums.value(0).toMap().value(QStringLiteral("id")).toLongLong(), 6000LL);
+        QCOMPARE(artists.value(0).toMap().value(QStringLiteral("id")).toLongLong(), 9000LL);
+    }
+
+    // Once the one page works again, a removal made elsewhere shows.
+    void theNextWholeReloadTakesOverAgain() {
+        Harness h;
+        for (int i = 0; i < 250; ++i) h.client.albums << mkAlbum(5000 - i);
+        h.client.setUserId(kUid);
+        h.client.savedRefuseAbove = 100;
+        h.client.savedPagingLoses = true;
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 250);
+
+        h.client.savedRefuseAbove = -1;
+        h.client.albums.removeAt(3);
+        h.bridge.syncFavorites();
+        QCOMPARE(h.bridge.searchFavoriteAlbums(QString()).size(), 249);
+    }
+
 private:
+    static Album mkAlbum(qint64 id) {
+        Album a;
+        a.id    = id;
+        a.title = QStringLiteral("Record %1").arg(id);
+        return a;
+    }
+    static Artist mkArtist(qint64 id) {
+        Artist a;
+        a.id   = id;
+        a.name = QStringLiteral("Singer %1").arg(id);
+        return a;
+    }
+
     static constexpr qint64 kDay      = 24LL * 60 * 60 * 1000;
     static constexpr qint64 kJan2026  = 1767225600000LL;   // 2026-01-01T00:00:00Z
     // An author's creation date, as the header carries for a followed playlist.

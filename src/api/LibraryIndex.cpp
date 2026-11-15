@@ -253,9 +253,9 @@ void LibraryIndex::refresh() {
         fetchAlbumPage(offset, limit, std::move(cb)); };
     pageFavorites<Album>(albumPage, albumPage,
         [](const Album &a) { return QString::number(a.id); },
-        [this, gen](const QList<Album> &all, bool whole, bool) {
+        [this, gen](const QList<Album> &all, bool whole, bool fellBack) {
             if (gen != m_loadGen) return;
-            land(m_albums, all, whole);
+            land(m_albums, all, whole, fellBack);
             partFinished(gen);
         },
         kBig, pageSize, maxPages, "saved albums", true);
@@ -264,9 +264,9 @@ void LibraryIndex::refresh() {
         fetchArtistPage(offset, limit, std::move(cb)); };
     pageFavorites<Artist>(artistPage, artistPage,
         [](const Artist &a) { return QString::number(a.id); },
-        [this, gen](const QList<Artist> &all, bool whole, bool) {
+        [this, gen](const QList<Artist> &all, bool whole, bool fellBack) {
             if (gen != m_loadGen) return;
-            land(m_artists, all, whole);
+            land(m_artists, all, whole, fellBack);
             partFinished(gen);
         },
         kBig, pageSize, maxPages, "followed artists", true);
@@ -294,6 +294,16 @@ void LibraryIndex::land(QList<T> &list, const QList<T> &all, bool whole) {
     // A broken run must not cut down a list that is already complete.
     if (whole || list.isEmpty()) list = all;
     m_loadWhole = m_loadWhole && whole;
+}
+
+template <typename T>
+void LibraryIndex::land(QList<T> &list, const QList<T> &all, bool whole, bool lossy) {
+    if (!lossy) { land(list, all, whole); return; }
+    // Paged by date, which loses rows that share a save date: it may add to a
+    // list on hand but not cut it, nor tell which songs left the library.
+    const auto key = [](const T &x) { return QString::number(x.id); };
+    list = list.isEmpty() ? all : mergeLossy(list, all, key);
+    m_loadWhole = false;
 }
 
 void LibraryIndex::partFinished(int gen) {

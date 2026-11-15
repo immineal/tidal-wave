@@ -174,7 +174,7 @@ QVariantMap TidalBridge::artistToMap(const Artist &a) {
     return m;
 }
 
-QVariantMap TidalBridge::playlistToMap(const Playlist &p) {
+QVariantMap TidalBridge::playlistToMap(const Playlist &p) const {
     QVariantMap m;
     m["uuid"]        = p.uuid;
     m["title"]       = p.title;
@@ -183,6 +183,8 @@ QVariantMap TidalBridge::playlistToMap(const Playlist &p) {
     m["duration"]    = p.duration;
     m["coverUrl"]    = p.coverUrl(320);
     m["type"]        = p.type;
+    // Whether this account may add to, rename or take songs out of it.
+    m["editable"]    = p.editableBy(m_client->userId());
     return m;
 }
 
@@ -615,6 +617,8 @@ void TidalBridge::removeArtistFavorite(qlonglong artistId, QJSValue cb) {
 
 void TidalBridge::createPlaylist(const QString &title, QJSValue cb) {
     m_client->createPlaylist(title, [this, cb](Playlist p, QString err) mutable {
+        // Made by this account just now, whether or not the reply says so.
+        if (p.creatorId == 0) p.creatorId = m_client->userId();
         // Gated on the server having made it: a failed POST must not leave a
         // phantom row.
         if (err.isEmpty() && !p.uuid.isEmpty()) {
@@ -950,13 +954,16 @@ void TidalBridge::reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead
         if (gen != s.gen) return;
         s.reloading = false;
         // A failed reload leaves the list alone and the next check tries again.
+        // So does one paged by date, but for the rows it adds: it can lose some.
+        const bool lossy = fellBack && kind != TidalClient::FavoriteKind::Tracks;
         if (whole) {
-            s.head = head;
-            const bool same = std::equal(all.cbegin(), all.cend(),
+            if (!lossy) s.head = head;
+            const QList<T> next = lossy ? mergeLossy(*cache, all, keyOf) : all;
+            const bool same = std::equal(next.cbegin(), next.cend(),
                                          cache->cbegin(), cache->cend(),
                 [&](const T &a, const T &b) { return keyOf(a) == keyOf(b); });
             if (!same) {
-                apply(all, fellBack);
+                apply(next, fellBack);
                 emit favoritesChangedElsewhere();
             }
         }

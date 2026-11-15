@@ -72,7 +72,7 @@ TestCase {
                                                       coverUrl750: "", similarArtists: S.artists(10) },
                                         topTracks: S.tracks(10), albums: S.albums(18) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-stress" })
-                missed = S.fill(page, { playlistType: "USER", playlistTitle: "Eine lange Wiedergabeliste",
+                missed = S.fill(page, { playlistType: "USER", playlistEditable: true, playlistTitle: "Eine lange Wiedergabeliste",
                                         playlistDescription: "Eine Beschreibung über mehrere Zeilen.",
                                         playlistDuration: 7322, tracks: S.tracks(25) }); break
         case 6: S.fill(page, { mixId: "mix-stress" })

@@ -761,10 +761,12 @@ Item {
             padding: 0
             property var pendingTrackId: 0
 
+            // Only the user's own playlists: Tidal refuses a song for an
+            // editorial one or another user's saved here.
             function fillFrom(pls) {
                 plPickerModel.clear()
                 for (var i = 0; i < pls.length; i++)
-                    plPickerModel.append(pls[i])
+                    if (pls[i].editable === true) plPickerModel.append(pls[i])
             }
 
             // Filled from the bridge's cache, which is paged in at sign-in and
