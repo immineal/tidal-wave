@@ -366,7 +366,6 @@ struct ArtistDetail {
     int popularity = 0;
     QList<Album> albums;
     QList<Track> topTracks;
-    QList<Artist> similarArtists;
 
     QString pictureUrl(int size = 480) const {
         if (picture.isEmpty()) return {};

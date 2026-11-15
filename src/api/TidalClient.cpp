@@ -662,6 +662,15 @@ void TidalClient::fetchArtistTopTracks(qint64 artistId, TracksCallback cb) {
             cb(err.isEmpty() ? parseTracks(root) : QList<Track>{}, err); });
 }
 
+void TidalClient::fetchSimilarArtists(qint64 artistId, ArtistsCallback cb) {
+    QUrlQuery q;
+    q.addQueryItem("limit", QString::number(kSimilarArtistsLimit));
+    q.addQueryItem("offset", "0");
+    m_api->get(QStringLiteral("artists/%1/similar").arg(artistId), q,
+        [cb](QJsonObject root, QString err) {
+            cb(err.isEmpty() ? parseArtists(root) : QList<Artist>{}, err); });
+}
+
 // ─── Search ────────────────────────────────────────
 
 QList<Mix> TidalClient::parseSearchMixes(const QJsonObject &node) {

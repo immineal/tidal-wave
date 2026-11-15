@@ -333,6 +333,13 @@ void TidalBridge::fetchArtistTopTracks(qlonglong artistId, QJSValue cb) {
     });
 }
 
+void TidalBridge::fetchSimilarArtists(qlonglong artistId, QJSValue cb) {
+    m_client->fetchSimilarArtists(artistId, [this, cb](QList<Artist> artists, QString err) mutable {
+        call(cb, { qjsEngine(this)->toScriptValue(artistsToList(artists)),
+                   qjsEngine(this)->toScriptValue(err) });
+    });
+}
+
 void TidalBridge::search(const QString &q, QJSValue cb, int limit, int offset) {
     m_client->search(q, [this, cb](SearchResults r, QString err) mutable {
         QVariantMap res;

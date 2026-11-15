@@ -80,6 +80,8 @@ public:
     Q_INVOKABLE void fetchArtistDetail    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistAlbums    (qlonglong artistId,     QJSValue cb);
     Q_INVOKABLE void fetchArtistTopTracks (qlonglong artistId,     QJSValue cb);
+    // function(artists, error): artist maps; an empty list on an error.
+    Q_INVOKABLE void fetchSimilarArtists  (qlonglong artistId,     QJSValue cb);
     // function(albums, error): the other versions of the album's record, as
     // album maps. An empty list where Tidal names none.
     Q_INVOKABLE void fetchAlbumOtherVersions(qlonglong albumId,    QJSValue cb);

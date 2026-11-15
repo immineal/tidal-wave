@@ -140,6 +140,9 @@ public:
     // list, with one entry per record: see RecordVersions.h.
     void fetchArtistAlbums (qint64 artistId,       AlbumsCallback    cb);
     void fetchArtistTopTracks(qint64 artistId,     TracksCallback    cb);
+    // artists/<id>/similar, one page. Asked apart from fetchArtistDetail so
+    // the page never waits for it. A 404 means Tidal has no list.
+    void fetchSimilarArtists(qint64 artistId,      ArtistsCallback   cb);
     void fetchAlbum        (qint64 albumId,        std::function<void(Album,QString)>  cb);
     virtual void fetchTrack(qint64 trackId,        std::function<void(Track,QString)>  cb);
 
@@ -258,6 +261,9 @@ public:
     // by other artists that this one appears on, and the constant is named
     // for that.
     static constexpr auto kFilterAppearsOn     = "COMPILATIONS";
+
+    // One row of cards. The endpoint pages, and its total only counts the page.
+    static constexpr int kSimilarArtistsLimit = 20;
 
     // The two sources fetchHomeMixes merges: the generated feed
     // (pages/my_collection_my_mixes) and the saved list (v2/favorites/mixes,

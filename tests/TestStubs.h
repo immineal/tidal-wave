@@ -373,6 +373,37 @@ public:
              << QJSValue(m_headerError);
         deliver(cb, args);
     }
+    // `artists/<id>/similar`, on a queue of its own so a test can hold it
+    // while the other three land. Answers setSimilarArtistsForTest().
+    Q_INVOKABLE void fetchSimilarArtists(qlonglong artistId, QJSValue cb) {
+        m_lastSimilarFetched = artistId;
+        m_similarFetches++;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        const QString err = m_similarError.isEmpty() ? m_headerError : m_similarError;
+        QJSValueList args;
+        args << (e ? e->toScriptValue(err.isEmpty() ? m_similarArtists : QVariantList())
+                   : emptyArray())
+             << QJSValue(err);
+        // Not deliver(): tests that hold the three header replies count them.
+        if (m_deferSimilar) { m_pendingSimilar.append({cb, args}); return; }
+        cb.call(args);
+    }
+    Q_INVOKABLE void setSimilarArtistsForTest(const QVariantList &artists,
+                                              const QString &error = QString()) {
+        m_similarArtists = artists;
+        m_similarError   = error;
+    }
+    Q_INVOKABLE void setDeferSimilarForTest(bool on) { m_deferSimilar = on; }
+    Q_INVOKABLE int  pendingSimilarForTest() const { return int(m_pendingSimilar.size()); }
+    Q_INVOKABLE void flushSimilarForTest() {
+        QList<std::pair<QJSValue, QJSValueList>> pending;
+        pending.swap(m_pendingSimilar);
+        for (auto &p : pending)
+            if (p.first.isCallable()) p.first.call(p.second);
+    }
+    Q_INVOKABLE int       similarFetchesForTest() const { return m_similarFetches; }
+    Q_INVOKABLE qlonglong lastSimilarFetchedForTest() const { return m_lastSimilarFetched; }
 
     // Search answers the real shape, {tracks, albums, artists, playlists}, from
     // setSearchResultsForTest(). The query is ignored. Offset and limit slice
@@ -971,6 +1002,12 @@ public:
         m_lastArtistFetched = 0;
         m_lastArtistTopTracksFetched = 0;
         m_lastArtistAlbumsFetched = 0;
+        m_similarArtists.clear();
+        m_similarError.clear();
+        m_deferSimilar = false;
+        m_pendingSimilar.clear();
+        m_similarFetches = 0;
+        m_lastSimilarFetched = 0;
         m_trackRadio.clear();
         m_trackRadioFetches = 0;
         m_lastTrackRadioFetched = 0;
@@ -1215,6 +1252,12 @@ private:
     qlonglong    m_lastArtistFetched = 0;
     qlonglong    m_lastArtistTopTracksFetched = 0;
     qlonglong    m_lastArtistAlbumsFetched = 0;
+    QVariantList m_similarArtists;
+    QString      m_similarError;
+    bool         m_deferSimilar = false;
+    QList<std::pair<QJSValue, QJSValueList>> m_pendingSimilar;
+    int          m_similarFetches = 0;
+    qlonglong    m_lastSimilarFetched = 0;
     QVariantList m_trackRadio;
     int          m_trackRadioFetches = 0;
     qlonglong    m_lastTrackRadioFetched = 0;

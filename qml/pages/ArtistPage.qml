@@ -24,6 +24,10 @@ Rectangle {
     property bool loading: false
     property bool showAllTracks: false
     property bool isFollowing: false
+    // artists/<id>/similar, fetched beside the rest. Empty hides the row.
+    property var similarArtists: []
+    property bool bioExpanded: false
+    readonly property int bioCollapsedLines: 4
 
     // What the last load was told, "" when it was served.
     property string loadError: ""
@@ -65,6 +69,8 @@ Rectangle {
     function loadArtist() {
         loading = true
         loadError = ""
+        bioExpanded = false
+        similarArtists = []
         // Which artist these three replies are about. artistId can change while
         // they are in flight, and a reply for the artist just left must not
         // touch the one on screen. Checked before the error.
@@ -87,6 +93,12 @@ Rectangle {
             // callback is the only place that clears `loading`. The list
             // arrives with one entry per record.
             root.albums = a
+        })
+        // Not part of `loading` or the page's error: many artists have no
+        // list (Tidal answers 404), and the row just stays hidden.
+        bridge.fetchSimilarArtists(artistId, function(s, err) {
+            if (requested !== root.artistId || err) return
+            root.similarArtists = s
         })
     }
 
@@ -168,6 +180,7 @@ Rectangle {
                 clip: true
 
                 Image {
+                    objectName: "artistHeroPhoto"
                     anchors.fill: parent
                     source: artistData.coverUrl750 ? "image://tidal/" + artistData.coverUrl750 : ""
                     fillMode: Image.PreserveAspectCrop
@@ -194,7 +207,10 @@ Rectangle {
                     anchors.margins: 28
                     spacing: 8
 
+                    // No outline: the gradient above fades the photo to the
+                    // page colour behind the name.
                     Text {
+                        objectName: "artistName"
                         Layout.fillWidth: true
                         text: artistData.name || ""
                         color: Theme.textPrimary
@@ -203,8 +219,6 @@ Rectangle {
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
-                        style: Text.Outline
-                        styleColor: Theme.artScrimStrong
                     }
 
                     // A Flow, so the pills wrap when a translation widens them.
@@ -379,14 +393,29 @@ Rectangle {
                     font.bold: true
                 }
 
+                FontMetrics { id: bioMetrics; font: bioText.font }
+
+                // StyledText, not RichText: only its layout honours
+                // maximumLineCount, and the clamp relies on `truncated`.
                 Text {
+                    id: bioText
+                    objectName: "artistBio"
                     Layout.fillWidth: true
+                    // About 75 characters a line; the page width is too long a line.
+                    Layout.maximumWidth: Math.ceil(bioMetrics.averageCharacterWidth * 75)
                     text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
+                    linkColor: Theme.accent
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
                     lineHeight: 1.5
-                    textFormat: Text.RichText
+                    textFormat: Text.StyledText
+                    // undefined resets the limit, so the whole bio shows.
+                    maximumLineCount: root.bioExpanded ? undefined : root.bioCollapsedLines
+                    elide: Text.ElideRight
+                    HoverHandler {
+                        cursorShape: bioText.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    }
                     onLinkActivated: (link) => {
                         var parts = link.split(":")
                         if (parts.length === 2) {
@@ -400,15 +429,33 @@ Rectangle {
                         }
                     }
                 }
+
+                // Shown once the bio is cut, and kept while it is open.
+                Text {
+                    objectName: "artistBioToggle"
+                    visible: root.bioExpanded || bioText.truncated
+                    text: root.bioExpanded ? qsTr("Show less") : qsTr("Read more")
+                    color: bioToggleHov.hovered ? Theme.textPrimary : Theme.textSec
+                    font.pixelSize: 13
+                    font.bold: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    HoverHandler { id: bioToggleHov }
+                    TapHandler { onTapped: root.bioExpanded = !root.bioExpanded }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                }
+
+                Item { height: 16 }
             }
 
             HorizontalSection {
+                objectName: "artistRelatedSection"
                 Layout.fillWidth: true
-                visible: (artistData.similarArtists || []).length > 0
+                visible: root.similarArtists.length > 0
                 title: qsTr("Related Artists")
                 mediaType: "artist"
                 showViewAll: false
-                items: (artistData.similarArtists || []).map(function(a) {
+                items: root.similarArtists.map(function(a) {
                     return { id: a.id, title: a.name, subtitle: qsTr("Artist"), coverUrl: a.coverUrl || "" }
                 })
                 onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }
@@ -418,17 +465,42 @@ Rectangle {
         }
     }
 
+    function escapeBio(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
+    // A reference becomes a link only where it opens another page here.
+    function bioLink(kind, id, label) {
+        var core = label.trim()
+        var words = root.escapeBio(core)
+        var opens = /^\d+$/.test(id)
+            && (kind === "album" || (kind === "artist" && Number(id) !== Number(root.artistId)))
+        if (opens && core.length > 0)
+            words = '<a href="' + kind + ':' + id + '">' + words + '</a>'
+        // Spaces Tidal puts inside the reference stay outside the link.
+        return (/^\s/.test(label) ? " " : "") + words + (/\s$/.test(label) ? " " : "")
+    }
+
+    // Tidal separates paragraphs with one or two <br/> and refers to pages as
+    // [wimpLink artistId="…"]name[/wimpLink]. Any other markup is shown as text.
     function formatBio(bio) {
         if (!bio) return ""
-        var html = bio
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-        html = html.replace(/\[wimpLink\s+(artistId|albumId|playlistId|trackId)="([^"]+)"\](.*?)\[\/wimpLink\]/g, function(match, typeAttr, id, text) {
-            var type = typeAttr.replace("Id", "")
-            return "<a href='" + type + ":" + id + "' style='color: " + Theme.accent + "; text-decoration: none; font-weight: bold;'>" + text + "</a>"
-        })
-        return html.replace(/\n/g, "<br/>")
+        var paragraphs = bio.split(/(?:\s*<br\s*\/?>\s*|\s*\n\s*)+/i)
+        var out = []
+        for (var i = 0; i < paragraphs.length; ++i) {
+            var p = paragraphs[i].trim()
+            if (p.length === 0) continue
+            var re = /\[wimpLink\s+(\w+?)Id="([^"]*)"\]([\s\S]*?)\[\/wimpLink\]/g
+            var html = "", last = 0, m
+            while ((m = re.exec(p)) !== null) {
+                html += root.escapeBio(p.slice(last, m.index)) + root.bioLink(m[1], m[2], m[3])
+                last = re.lastIndex
+            }
+            html += root.escapeBio(p.slice(last))
+            // A reference that never closes leaves no tag on screen.
+            out.push(html.replace(/\[\/?wimpLink[^\]]*\]/g, ""))
+        }
+        return out.join("<br><br>")
     }
 
     function navigateTo(page, params) {

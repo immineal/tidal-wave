@@ -69,7 +69,8 @@ TestCase {
                 missed = S.fill(page, { artistData: { name: "Ein langer Interpretenname",
                                                       bio: "Eine Biografie über mehrere Sätze, "
                                                          + "damit der Textblock wirklich umbricht.",
-                                                      coverUrl750: "", similarArtists: S.artists(10) },
+                                                      coverUrl750: "" },
+                                        similarArtists: S.artists(10),
                                         topTracks: S.tracks(10), albums: S.albums(18) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-stress" })
                 missed = S.fill(page, { playlistType: "USER", playlistEditable: true, playlistTitle: "Eine lange Wiedergabeliste",
