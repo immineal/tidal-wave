@@ -82,6 +82,9 @@ public:
     void storeFound(qint64 trackId, const LyricsResult &r, qint64 now, const QStringList &asked = {}) const;
     void storeMiss(qint64 trackId, qint64 now, const QStringList &asked = {}) const;
     void storeInstrumental(qint64 trackId, qint64 now) const;
+    // Removes expired misses, then the oldest entries until the cache's
+    // files take at most maxBytes. Returns how many files went.
+    int  prune(qint64 now, qint64 maxBytes) const;
 
 private:
     QString path(qint64 trackId) const;

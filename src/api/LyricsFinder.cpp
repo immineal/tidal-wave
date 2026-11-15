@@ -14,6 +14,7 @@
 #include <QNetworkRequest>
 #include <QSaveFile>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <algorithm>
 
@@ -161,6 +162,42 @@ void LyricsCache::storeMiss(qint64 trackId, qint64 now, const QStringList &asked
     QJsonObject o{{QStringLiteral("found"), false}, {QStringLiteral("at"), double(now)},
                   {QStringLiteral("asked"), QJsonArray::fromStringList(asked)}};
     write(trackId, QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+int LyricsCache::prune(qint64 now, qint64 maxBytes) const {
+    // Only the cache's own names: <id>.json and <id>.sync.json.
+    static const QRegularExpression own(QStringLiteral("^\\d+(\\.sync)?\\.json$"));
+    QDir dir(m_dir);
+    int removed = 0;
+    QList<QFileInfo> kept;
+    qint64 total = 0;
+    for (const QFileInfo &fi : dir.entryInfoList(QDir::Files)) {
+        if (!own.match(fi.fileName()).hasMatch()) continue;
+        if (!fi.fileName().endsWith(QLatin1String(".sync.json"))) {
+            QFile f(fi.filePath());
+            if (f.open(QIODevice::ReadOnly)) {
+                const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+                const qint64 at = qint64(o.value(QStringLiteral("at")).toDouble());
+                const bool miss = !o.value(QStringLiteral("found")).toBool()
+                               && !o.value(QStringLiteral("instrumental")).toBool();
+                f.close();
+                if (miss && (at > now || now - at >= kMissTtlMs)) {
+                    if (QFile::remove(fi.filePath())) { ++removed; continue; }
+                }
+            }
+        }
+        kept.append(fi);
+        total += fi.size();
+    }
+    if (total <= maxBytes) return removed;
+    std::sort(kept.begin(), kept.end(), [](const QFileInfo &a, const QFileInfo &b) {
+        return a.lastModified() < b.lastModified();
+    });
+    for (const QFileInfo &fi : std::as_const(kept)) {
+        if (total <= maxBytes) break;
+        if (QFile::remove(fi.filePath())) { total -= fi.size(); ++removed; }
+    }
+    return removed;
 }
 
 // ── finder ──────────────────────────────────────────────────────────────────

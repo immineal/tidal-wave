@@ -1,7 +1,10 @@
 // LyricsFinder and its providers: matching, parsing, pacing, the cache, and
 // that nothing touches the network while the switch is off. No live requests.
 
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -459,6 +462,45 @@ private slots:
         LyricsResult instr;
         QCOMPARE(c.lookup(3, 1000 + 100 * LyricsCache::kMissTtlMs, &instr), LyricsCache::Hit::Instrumental);
         QVERIFY(instr.instrumental);
+    }
+
+    // Expired misses go first, then the oldest files until the cache fits.
+    void pruneDropsExpiredMissesThenTheOldest() {
+        const QString dir = m_dir.path() + QStringLiteral("/cache-prune");
+        LyricsCache c(dir);
+        const qint64 now = 500 * LyricsCache::kMissTtlMs;
+        c.storeMiss(1, now - LyricsCache::kMissTtlMs - 1);
+        c.storeMiss(2, now - 1);
+        c.storeInstrumental(3, now - 10 * LyricsCache::kMissTtlMs);
+        const QString words(2000, QLatin1Char('x'));
+        const QDateTime base = QDateTime::currentDateTimeUtc().addDays(-100);
+        for (int id = 10; id < 20; ++id) {
+            c.storeFound(id, LyricsResult{words, false, QStringLiteral("LRCLIB"), QUrl()}, now);
+            QFile f(dir + QStringLiteral("/%1.json").arg(id));
+            QVERIFY(f.open(QIODevice::ReadWrite));
+            QVERIFY(f.setFileTime(base.addDays(id), QFileDevice::FileModificationTime));
+        }
+        QFile other(dir + QStringLiteral("/notes.txt"));
+        QVERIFY(other.open(QIODevice::WriteOnly));
+        other.write(QByteArray(50000, 'n'));
+        other.close();
+
+        QCOMPARE(c.prune(now, 1 << 30), 1);
+        LyricsResult out;
+        QCOMPARE(c.lookup(1, now, &out), LyricsCache::Hit::None);
+        QVERIFY(!QFile::exists(dir + QStringLiteral("/1.json")));
+        QCOMPARE(c.lookup(2, now, &out), LyricsCache::Hit::Miss);
+        QCOMPARE(c.lookup(3, now, &out), LyricsCache::Hit::Instrumental);
+
+        // Ten 2 kB lyrics; a 12 kB cap keeps the newest few.
+        QVERIFY(c.prune(now, 12000) > 0);
+        qint64 total = 0;
+        for (const QFileInfo &fi : QDir(dir).entryInfoList({QStringLiteral("*.json")}, QDir::Files))
+            total += fi.size();
+        QVERIFY2(total <= 12000, qPrintable(QString::number(total)));
+        QVERIFY(!QFile::exists(dir + QStringLiteral("/10.json")));
+        QVERIFY(QFile::exists(dir + QStringLiteral("/19.json")));
+        QVERIFY2(QFile::exists(dir + QStringLiteral("/notes.txt")), "a file that is not the cache's was removed");
     }
 
     // ── the finder ───────────────────────────────────────────────────────

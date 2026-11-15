@@ -17,6 +17,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QDateTime>
+#include <QThreadPool>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -726,6 +727,10 @@ int Application::run(int argc, char **argv) {
     m_autoSync = new lyricsync::AutoSync(this);
     m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });
     m_autoSync->setCacheDir(LyricsCache::defaultDir());
+    // Expired misses and, past 64 MB, the oldest lyrics; off the GUI thread.
+    QThreadPool::globalInstance()->start([] {
+        LyricsCache(LyricsCache::defaultDir()).prune(QDateTime::currentMSecsSinceEpoch(), 64LL << 20);
+    });
     // A track a lyrics site had synced lyrics for, or knows as instrumental.
     m_autoSync->setHasTimings([](qint64 id) {
         LyricsResult r;
