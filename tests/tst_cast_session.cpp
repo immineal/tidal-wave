@@ -340,6 +340,26 @@ private slots:
         QVERIFY(session.isConnected());
     }
 
+    // Once the cast is up, a dropped connection is said in the app's words,
+    // not Qt's untranslated socket text.
+    void aLostConnectionIsSaidInTheAppsWords()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy error(&session, &CastSession::error);
+
+        receiver.peer->abort();
+
+        QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 3000);
+        QCOMPARE(error.count(), 1);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The connection to the cast device was lost."));
+        QVERIFY(!session.isConnected());
+    }
+
     // Without its entry in the catalogue a sentence comes out in English.
     void everySentenceHasItsGerman_data()
     {

@@ -42,6 +42,7 @@ CastSession::~CastSession() {
     // At shutdown the event loop is gone and a closing socket never writes, so
     // this waits briefly for STOP to reach the device. No window is up then.
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        m_socket->disconnect(this);   // nothing is emitted from a destructor
         sendGoodbye();
         m_socket->waitForBytesWritten(300);
     }
@@ -59,13 +60,12 @@ void CastSession::connectToDevice(const QString &host, int port) {
     m_socket->setPeerVerifyMode(QSslSocket::VerifyNone);
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
-    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        // Before the app is up no disconnected() follows, so the attempt ends here.
-        if (!m_appConnected) {
-            fail(tr("The connection to the cast device failed."));
-            return;
-        }
-        emit error(m_socket ? m_socket->errorString() : tr("The connection to the cast device failed."));
+    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError e) {
+        // Only the waitFor* calls time out, and the socket lives on after it.
+        if (e == QAbstractSocket::SocketTimeoutError) return;
+        // Ended here in both cases, so it is one disconnected() whatever the
+        // socket does next. Qt's own text is English only.
+        fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
     });
     connect(m_socket, &QSslSocket::disconnected, this, [this]() {
         if (!m_appConnected) {
