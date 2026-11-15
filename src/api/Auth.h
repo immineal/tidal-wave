@@ -49,6 +49,10 @@ public:
     // dead. Only that ends the session. Public for tst_session.
     static bool refreshRefused(int httpStatus, const QJsonObject &body);
 
+    // Where the session is kept, and where versions up to 0.4 kept it.
+    static QString credentialsPath();
+    static QString legacyCredentialsPath();
+
 signals:
     void stateChanged(State state);
     void userCodeChanged();

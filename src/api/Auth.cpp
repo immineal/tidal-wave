@@ -3,12 +3,14 @@
 #include "Auth.h"
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QUrlQuery>
 #include <QDateTime>
 #include <QPointer>
+#include <QSaveFile>
 #include <utility>
 
 namespace {
@@ -295,8 +297,24 @@ void Auth::fetchSession() {
     });
 }
 
+// Under XDG_CONFIG_HOME where the desktop has one. Up to 0.4 the file was
+// always under ~/.config, so that copy is read when there is no other.
+QString Auth::credentialsPath() {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+         + QStringLiteral("/tidal-wave/credentials.json");
+#else
+    return legacyCredentialsPath();
+#endif
+}
+
+QString Auth::legacyCredentialsPath() {
+    return QDir::homePath() + QLatin1String(kCredsFile);
+}
+
 void Auth::loadCredentials() {
-    QString path = QDir::homePath() + kCredsFile;
+    QString path = credentialsPath();
+    if (!QFile::exists(path)) path = legacyCredentialsPath();
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return;
 
@@ -333,9 +351,8 @@ void Auth::loadCredentials() {
 }
 
 void Auth::saveCredentials() {
-    QString dir = QDir::homePath() + "/.config/tidal-wave";
-    QDir().mkpath(dir);
-    QString path = dir + "/credentials.json";
+    const QString path = credentialsPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
 
     QJsonObject obj;
     obj["access_token"]  = m_accessToken;
@@ -345,15 +362,26 @@ void Auth::saveCredentials() {
     obj["country_code"]  = m_countryCode;
     obj["username"]      = m_username;
 
-    QFile f(path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-        f.write(QJsonDocument(obj).toJson());
+    // Written beside the file and renamed over it, so a crash or a full disk
+    // leaves the old session. Owner-only before the first byte goes in.
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return;
+    if (!f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+        f.cancelWriting();
+        return;
     }
+    f.write(QJsonDocument(obj).toJson());
+    if (!f.commit()) return;
+    // The copy an earlier version left elsewhere, never the file just written
+    // under another name: XDG_CONFIG_HOME is often ~/.config itself.
+    const QString legacy = QFileInfo(legacyCredentialsPath()).canonicalFilePath();
+    if (!legacy.isEmpty() && legacy != QFileInfo(path).canonicalFilePath())
+        QFile::remove(legacy);
 }
 
 void Auth::clearCredentials() {
-    QFile::remove(QDir::homePath() + kCredsFile);
+    QFile::remove(credentialsPath());
+    QFile::remove(legacyCredentialsPath());   // the copy of an earlier version, if any
     m_refreshToken.clear();
     emit hasSavedCredentialsChanged();
 }

@@ -331,6 +331,30 @@ private slots:
         QCOMPARE(signedIn.count(), 1);
     }
 
+    // ── where the session is kept ───────────────────────────────────────
+    // XDG_CONFIG_HOME is honoured, and a session saved by an earlier version
+    // under ~/.config is still read, then moved.
+    void theSessionIsKeptWhereTheDesktopKeepsSettings()
+    {
+        const QString elsewhere = m_home->path() + QStringLiteral("/xdg");
+        qputenv("XDG_CONFIG_HOME", elsewhere.toUtf8());
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+
+        const QString moved = elsewhere + QStringLiteral("/tidal-wave/credentials.json");
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(moved), 2000);
+        QFile f(moved);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(f.readAll()).object()[QStringLiteral("user_id")].toInt(), 7);
+        QCOMPARE(QFileInfo(moved).permissions() & ~(QFileDevice::ReadUser | QFileDevice::WriteUser),
+                 QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        QVERIFY2(!QFile::exists(credsPath()), "the old copy of the tokens was left behind");
+
+        rig.auth.logout();
+        QVERIFY(!QFile::exists(moved));
+    }
+
     // ── the clock runs past the expiry while the process lives ──────────
     void theWallClockPassedTheExpiry_data()
     {
