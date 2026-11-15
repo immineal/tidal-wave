@@ -363,6 +363,29 @@ private slots:
         QCOMPARE(m_server.served - servedBefore, 0);
     }
 
+    // ── bursts ──────────────────────────────────────────────────────────────
+
+    // Next pressed five times in quick succession, as a held media key does.
+    // Each press shows its track, and only the last one is asked for.
+    void aBurstOfStepsFetchesOnlyWhereItEnds() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(1000, 10)));
+        a.p().setLoadDelay(300);   // as the program has it
+
+        for (int i = 1; i <= 5; ++i) {
+            a.p().next();
+            QCOMPARE(currentId(a.p()), 1000 + i);
+            QTest::qWait(60);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(a.client.asked.count() > 1, 3000);
+        QTest::qWait(500);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{1000, 1005}));
+        QVERIFY(a.client.answer(1005, track()));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+    }
+
     // ── removing the row that plays ─────────────────────────────────────────
 
     // The last row of the queue is removed while it plays. The queue has

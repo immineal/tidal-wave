@@ -446,7 +446,7 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
 
     emit queueChanged();
     schedulePersist();
-    loadAndPlay(m_index);
+    loadAndPlay(m_index, false, Travel::Picked, true);
 }
 
 void Player::setPlaybackSource(const QString &type, const QString &id, const QString &name) {
@@ -513,7 +513,7 @@ void Player::jumpToManual(int index) {
     setManualCount(m_manualCount - index - 1);
     setIndex(start);
     emit queueChanged();
-    loadAndPlay(m_index);
+    loadAndPlay(m_index, false, Travel::Picked, true);
 }
 
 void Player::jumpToContext(int index) {
@@ -564,9 +564,9 @@ void Player::jumpToQueue(int index) {
         jumpToManual(index - m_index - 1);
         return;
     }
-    if (index == m_index) { loadAndPlay(m_index); return; }
+    if (index == m_index) { loadAndPlay(m_index, false, Travel::Picked, true); return; }
     if (relocateTo(index)) emit queueChanged();
-    loadAndPlay(m_index);
+    loadAndPlay(m_index, false, Travel::Picked, true);
 }
 
 void Player::clearQueue() {
@@ -701,18 +701,23 @@ void Player::playPause() {
 }
 
 void Player::next(bool heldPaused) {
+    stepForward(heldPaused, true);
+}
+
+void Player::stepForward(bool heldPaused, bool wait) {
     if (!m_player) return;
     const int n = nextIndex();
     if (n < 0) { m_player->stop(); return; }
     // A queue of one row under repeat goes round to the same row.
     if (n == m_index) { startOver(heldPaused); return; }
     stepTo(n);
-    loadAndPlay(m_index, heldPaused, Travel::Forward);
+    loadAndPlay(m_index, heldPaused, Travel::Forward, wait);
 }
 
 void Player::trackEnded(bool heldPaused) {
     if (m_repeatMode == 2 && m_index >= 0) { startOver(heldPaused); return; }
-    next(heldPaused);
+    // The queue moving on by itself is no burst of steps.
+    stepForward(heldPaused, false);
 }
 
 void Player::startOver(bool heldPaused) {
@@ -750,7 +755,7 @@ void Player::previous(bool heldPaused) {
     const int p = previousIndex();
     if (p < 0) { seek(0); return; }
     stepTo(p);
-    loadAndPlay(m_index, heldPaused, Travel::Backward);
+    loadAndPlay(m_index, heldPaused, Travel::Backward, true);
 }
 
 void Player::stepTo(int n) {
@@ -1129,7 +1134,7 @@ static QTemporaryFile *saveToTempFile(const QByteArray &data) {
     return nullptr;
 }
 
-void Player::loadAndPlay(int index, bool heldPaused, Travel travel) {
+void Player::loadAndPlay(int index, bool heldPaused, Travel travel, bool wait) {
     if (index < 0 || index >= m_queue.count()) return;
     // A held step fetches nothing for a track nobody plays yet. A cast
     // device takes no hold.
@@ -1138,10 +1143,11 @@ void Player::loadAndPlay(int index, bool heldPaused, Travel travel) {
     m_travel        = travel;
     m_droppedRun    = 0;
     m_keptRun       = 0;
-    startLoad(index);
+    startLoad(index, wait);
 }
 
 void Player::dropCurrentLoad() {
+    if (m_loadTimer) m_loadTimer->stop();
     if (m_player) {
         m_player->stop();
         m_player->setSource(QUrl());
@@ -1178,7 +1184,7 @@ void Player::restOn(int index, Travel travel) {
     emit currentTrackChanged();
 }
 
-void Player::startLoad(int index) {
+void Player::startLoad(int index, bool wait) {
     if (!m_player || index < 0 || index >= m_queue.count()) return;
 
     // Replies still out for an earlier load, the download aborted below
@@ -1227,6 +1233,23 @@ void Player::startLoad(int index) {
     if (same) {
         noteRecentlyPlayed(m_queue[index].track);
         playFile(same, sameQuality);
+        return;
+    }
+    // A file on disk costs nothing, so it is taken at once. Anything that
+    // asks Tidal waits for the last step of a burst.
+    if (m_preloadReady && m_preloadTrackId == m_currentTrack.id) {
+        noteRecentlyPlayed(m_queue[index].track);
+        if (adoptPreload(serial)) return;
+        dispatchLoad(serial);
+        return;
+    }
+    if (wait && m_loadDelayMs > 0) {
+        if (!m_loadTimer) {
+            m_loadTimer = new QTimer(this);
+            m_loadTimer->setSingleShot(true);
+            connect(m_loadTimer, &QTimer::timeout, this, [this] { dispatchLoad(m_loadSerial); });
+        }
+        m_loadTimer->start(m_loadDelayMs);
         return;
     }
     dispatchLoad(serial);

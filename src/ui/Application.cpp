@@ -669,6 +669,8 @@ int Application::run(int argc, char **argv) {
         connect(m_prefs, sig, m_lyricsFinder, &LyricsFinder::switchesChanged);
     m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
+    // A burst of Next presses fetches only the track it ends on.
+    m_player->setLoadDelay(300);
     // Plain lyrics timed against the audio the player already has on disk.
     m_autoSync = new lyricsync::AutoSync(this);
     m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });

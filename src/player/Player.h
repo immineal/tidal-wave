@@ -160,6 +160,9 @@ public:
     // under repeat-one; only a track that runs out repeats.
     Q_INVOKABLE void next      (bool heldPaused = false);
     Q_INVOKABLE void previous  (bool heldPaused = false);
+    // How long a step waits for the next one before its track is fetched,
+    // so a burst of steps fetches only where it ends. 0 fetches at once.
+    void setLoadDelay(int ms) { m_loadDelayMs = ms; }
     Q_INVOKABLE void seek      (qint64 ms);
     Q_INVOKABLE void setVolume (double v);
     Q_INVOKABLE void setMuted  (bool m);
@@ -270,10 +273,11 @@ private:
     // out is reported where it was picked and stepped over on the way through.
     enum class Travel { Picked, Forward, Backward };
     // A load the user asked for. Held, it only moves onto the row: nothing
-    // is fetched until play.
-    void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
+    // is fetched until play. `wait`: a step that a burst of steps may replace.
+    void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked,
+                     bool wait = false);
     // The load itself.
-    void startLoad(int index);
+    void startLoad(int index, bool wait = false);
     // Fetches for load `serial`, unless a newer load took over.
     void dispatchLoad(quint64 serial);
     // Asks Tidal for the current track, by way of its twin if need be.
@@ -285,6 +289,7 @@ private:
     void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
     // The current track's file is on disk: hands it to the backend.
     void playFile(QTemporaryFile *file, const QString &quality);
+    void stepForward(bool heldPaused, bool wait);
     // The current track ran out: the queue moves on, or repeat-one starts
     // the same file over.
     void trackEnded(bool heldPaused = false);
@@ -485,6 +490,9 @@ private:
     bool                 m_loadOwed       = false;
     // How the owed load travels when play starts it.
     Travel               m_owedTravel     = Travel::Picked;
+    // See setLoadDelay().
+    int                  m_loadDelayMs    = 0;
+    QTimer              *m_loadTimer      = nullptr;
     // Numbers the loads, so a reply can tell that a newer load has replaced
     // the one that asked for it.
     quint64              m_loadSerial     = 0;
