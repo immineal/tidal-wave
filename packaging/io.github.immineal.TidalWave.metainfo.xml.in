@@ -140,7 +140,7 @@
           <li>A track that Tidal has no synced lyrics for is looked up on lrclib.net, on by default. NetEase Cloud Music, KuGou and Genius can be switched on as well</li>
           <li>Plain lyrics are timed against the track's audio on this machine, on by default. Timings it is unsure of are not shown, and the ones shown are marked</li>
           <li>Plain lyrics that do not fit the panel have a scroll bar</li>
-          <li>Synced lyrics follow the song again when a scroll ends on the sung line, and no line is lit before the first one is sung</li>
+          <li>Synced lyrics follow the song again when a scroll ends exactly on the sung line, and no line is lit before the first one is sung</li>
           <li>Likes, saved albums and artists, playlists and saved mixes changed on another device reach a running app. 0.4.2 read them only at sign-in</li>
           <li>Liked songs, albums and artists are read in one request per list, so none are skipped any more and every liked song shows its heart</li>
           <li>Liked songs load newest first, and the sidebar and its search know all of them. 0.4.2's sidebar often stopped after the first few dozen</li>

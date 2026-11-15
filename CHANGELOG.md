@@ -42,8 +42,10 @@ milestones and not a semver promise about an API.
 ### Changed
 
 - Synced lyrics that you scrolled follow the song again on their own when
-  the scroll ends with the sung line back in the middle of the panel. 0.4.2
-  kept them still until Resync, a click on a line or the next track.
+  the scroll ends with the sung line exactly back in the middle of the
+  panel, or before the first line back at the top. A scroll that ends near
+  it stays where it is. 0.4.2 kept them still until Resync, a click on a
+  line or the next track.
 
 ### Fixed
 
