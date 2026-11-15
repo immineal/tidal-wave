@@ -197,6 +197,60 @@ private slots:
                                          .arg(took)));
     }
 
+    // Anyone on the network can reach the server. Only the URL handed to the
+    // receiver gets the track.
+    void onlyTheUrlOfTheCurrentFileIsServed()
+    {
+        CastMediaServer server;
+        QVERIFY(!server.start().isEmpty());
+        const QUrl url(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
+
+        const QList<QByteArray> strangers{
+            "/anything", "/", "/track", "/track/", "/track?v=1",
+            "/track/00000000000000000000000000000000",
+            url.path().toUtf8() + "0", url.path().toUtf8().chopped(1),
+        };
+        for (const QByteArray &path : strangers) {
+            Fetch f(url, request("GET", path, "Range: bytes=0-9\r\n"));
+            QTRY_VERIFY_WITH_TIMEOUT(f.done(), 5000);
+            const Reply r = f.reply();
+            QVERIFY2(r.status == 404, qPrintable(QStringLiteral("GET %1 was answered %2")
+                                                 .arg(QString::fromUtf8(path)).arg(r.status)));
+            QVERIFY(r.body.isEmpty());
+        }
+
+        // 128 random bits.
+        QVERIFY2(QRegularExpression(QStringLiteral("^/track/[0-9a-f]{32}$"))
+                     .match(url.path()).hasMatch(),
+                 qPrintable(url.toString()));
+        QVERIFY(!url.hasQuery());
+
+        Fetch mine(url, get(url, "Range: bytes=0-9\r\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(mine.done(), 5000);
+        QCOMPARE(mine.reply().status, 206);
+    }
+
+    // Each file gets a token of its own; the last one's URL is dead.
+    void theNextFileGetsANewTokenAndTheOldUrlIsDead()
+    {
+        CastMediaServer server;
+        QVERIFY(!server.start().isEmpty());
+        const QUrl first(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
+        const QUrl second(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
+        QVERIFY(first.path() != second.path());
+
+        Fetch old(first, request("HEAD", target(first)));
+        QTRY_VERIFY_WITH_TIMEOUT(old.done(), 5000);
+        QCOMPARE(old.reply().status, 404);
+
+        Fetch now(second, request("HEAD", target(second)));
+        QTRY_VERIFY_WITH_TIMEOUT(now.done(), 5000);
+        const Reply r = now.reply();
+        QCOMPARE(r.status, 200);
+        QCOMPARE(r.header("Content-Length").toLongLong(), kSmall);
+        QVERIFY(r.body.isEmpty());
+    }
+
 private:
     static constexpr int kBlock  = 1024 * 1024;
     static constexpr int kBlocks = 48;

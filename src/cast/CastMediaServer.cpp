@@ -7,6 +7,7 @@
 #include <QNetworkInterface>
 #include <QFile>
 #include <QFileInfo>
+#include <QRandomGenerator>
 
 namespace {
 
@@ -20,7 +21,8 @@ QString lanAddress() {
     return QString();
 }
 
-constexpr qint64 kChunk     = 64 * 1024;
+constexpr qint64 kChunk      = 64 * 1024;
+constexpr qint64 kMaxRequest = 16 * 1024;   // a receiver's GET is well under 1 KiB
 // Bytes kept queued per connection. A receiver that stops reading holds this
 // much of the app's memory and no more.
 constexpr qint64 kHighWater = 256 * 1024;
@@ -69,6 +71,7 @@ void CastMediaServer::stop() {
     }
     m_baseUrl.clear();
     m_path.clear();
+    m_token.clear();
 }
 
 bool CastMediaServer::isListening() const {
@@ -78,10 +81,13 @@ bool CastMediaServer::isListening() const {
 QString CastMediaServer::setCurrentFile(const QString &path, const QString &mime) {
     m_path = path;
     m_mime = mime;
-    ++m_token;
+    // Anyone on the LAN reaches the port, so the path is the secret.
+    quint32 words[4];
+    QRandomGenerator::system()->fillRange(words);
+    m_token = QByteArray(reinterpret_cast<const char *>(words), sizeof(words)).toHex();
     if (m_baseUrl.isEmpty())
         return QString();
-    return QStringLiteral("%1/track?v=%2").arg(m_baseUrl).arg(m_token);
+    return m_baseUrl + QStringLiteral("/track/") + QString::fromLatin1(m_token);
 }
 
 void CastMediaServer::onNewConnection() {
@@ -92,6 +98,11 @@ void CastMediaServer::onNewConnection() {
             if (t->answered) { sock->readAll(); return; }
             t->request.append(sock->readAll());
             const int end = t->request.indexOf("\r\n\r\n");
+            if (end < 0 && t->request.size() > kMaxRequest) {
+                t->answered = true;
+                reply(sock, "431 Request Header Fields Too Large");
+                return;
+            }
             if (end < 0) return;
             t->answered = true;
             handleRequest(sock, t, t->request.left(end));
@@ -100,6 +111,13 @@ void CastMediaServer::onNewConnection() {
         connect(sock, &QTcpSocket::bytesWritten, t, [this, sock, t]() { pump(sock, t); });
         connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
     }
+}
+
+void CastMediaServer::reply(QTcpSocket *sock, const QByteArray &status,
+                            const QByteArray &headers) {
+    sock->write("HTTP/1.1 " + status + "\r\n" + headers
+                + "Content-Length: 0\r\nConnection: close\r\n\r\n");
+    sock->disconnectFromHost();
 }
 
 void CastMediaServer::pump(QTcpSocket *sock, Transfer *t) {
@@ -120,8 +138,21 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, Transfer *t, const QByteAr
     const QList<QByteArray> lines = request.split('\n');
     if (lines.isEmpty()) { sock->disconnectFromHost(); return; }
 
-    const QByteArray requestLine = lines.first().trimmed();
-    const bool isHead = requestLine.startsWith("HEAD");
+    // Request line: METHOD SP target SP version. The query plays no part.
+    const QList<QByteArray> parts = lines.first().trimmed().split(' ');
+    const QByteArray method = parts.value(0);
+    const QByteArray target = parts.value(1);
+    const qsizetype  query  = target.indexOf('?');
+    const QByteArray path   = query < 0 ? target : target.left(query);
+    if (parts.size() != 3 || m_token.isEmpty() || path != "/track/" + m_token) {
+        reply(sock, "404 Not Found");
+        return;
+    }
+    if (method != "GET" && method != "HEAD") {
+        reply(sock, "405 Method Not Allowed", "Allow: GET, HEAD\r\n");
+        return;
+    }
+    const bool isHead = method == "HEAD";
 
     // Parse a Range: bytes=start-end header if present.
     qint64 rangeStart = -1, rangeEnd = -1;
@@ -144,8 +175,7 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, Transfer *t, const QByteAr
 
     t->file.setFileName(m_path);
     if (m_path.isEmpty() || !t->file.open(QIODevice::ReadOnly)) {
-        sock->write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        sock->disconnectFromHost();
+        reply(sock, "404 Not Found");
         return;
     }
 
