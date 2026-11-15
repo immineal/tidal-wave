@@ -643,6 +643,14 @@
         <source>Favorite Artists</source>
         <translation>Lieblingskünstler</translation>
     </message>
+    <message>
+        <source>Your mixes could not be loaded.</source>
+        <translation>Deine Mixe konnten nicht geladen werden.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
+    </message>
 </context>
 <context>
     <name>HorizontalSection</name>

@@ -165,6 +165,7 @@ public:
     // Home / mixes
     // Held for flushHomeMixesForTest() while setDeferHomeMixesForTest(true).
     Q_INVOKABLE void fetchHomeMixes(QJSValue cb) {
+        ++m_homeMixesFetches;
         if (m_deferHomeMixes) { m_pendingHomeMixes.append(cb); return; }
         answerHomeMixes(cb);
     }
@@ -179,6 +180,7 @@ public:
         m_homeMixes = mixes;
         m_homeMixesError = err;
     }
+    Q_INVOKABLE int homeMixesFetchesForTest() const { return m_homeMixesFetches; }
 
     Q_INVOKABLE void fetchMixTracks(const QString &mixId, QJSValue cb) {
         Q_UNUSED(mixId); resolve(cb, emptyArray());
@@ -1215,6 +1217,7 @@ private:
 
     QVariantList m_homeMixes;
     QString      m_homeMixesError;
+    int          m_homeMixesFetches = 0;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
