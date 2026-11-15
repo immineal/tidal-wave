@@ -415,13 +415,15 @@ Rectangle {
         // Tracks Tab: virtualized ListView
         ListView {
             id: tracksList
+            objectName: "collectionTracksList"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
             property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
-            model: root.activeTab === 0 ? sortedTracks : []
+            // Bound on every tab, so a tab switch keeps the rows and the scroll.
+            model: sortedTracks
             boundsBehavior: Flickable.StopAtBounds
 
             // The fields are passed as they came off the API. TrackRow takes
@@ -467,7 +469,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
-            model: root.activeTab === 1 ? sortedAlbums : []
+            model: sortedAlbums
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -533,7 +535,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
-            model: root.activeTab === 2 ? sortedArtists : []
+            model: sortedArtists
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -588,7 +590,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedPlaylists: root.sortItems(root.filteredPlaylists, root.sortMode)
-            model: root.activeTab === 3 ? sortedPlaylists : []
+            model: sortedPlaylists
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -669,12 +671,13 @@ Rectangle {
         // Tab 4: Mixes (GridView)
         GridView {
             id: mixesGrid
+            objectName: "collectionMixesGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 4 && root.mixes.length > 0
             opacity: root.contentIn
             clip: true
-            model: root.activeTab === 4 ? root.mixes : []
+            model: root.mixes
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48

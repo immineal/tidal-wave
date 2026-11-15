@@ -119,8 +119,10 @@ Rectangle {
         duration: Theme.dur(170)
         easing.type: Easing.OutCubic
     }
+    // Each chip starts at its top: the column below is a different list.
     onActiveTabChanged: {
         resultsEntry.restart()
+        if (resultsScroll.contentItem) resultsScroll.contentItem.contentY = 0
         root._checkBottomAfterLayout()
     }
 
