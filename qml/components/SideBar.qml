@@ -703,8 +703,9 @@ Item {
                     anchors.centerIn: parent
                     width: parent.width - 32
                     // There is no room to say any of this in a 68px rail, and
-                    // an empty rail is self-explanatory.
-                    visible: root.rows.length === 0 && root.showsWide
+                    // an empty rail is self-explanatory. A library still loading
+                    // is not an empty one.
+                    visible: root.rows.length === 0 && root.showsWide && !library.loading
                     opacity: root.wideOpacity
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
