@@ -334,7 +334,7 @@ int Application::sweepStaleTempFiles(const QString &dir) {
     // The QTemporaryFile templates in Player, DashFetcher, Downloader and
     // CastMediaPrep, and nothing else.
     static const QRegularExpression ours(QStringLiteral(
-        "^tidal-wave-(?:cast-|cover-)?[A-Za-z0-9]{6}\\.(?:mp4|flac|jpg)$"));
+        "^tidal-wave-(?:cast-|cover-)?[A-Za-z0-9]{6}\\.(?:mp4|m4a|flac|jpg)$"));
     const QDir d(dir);
     int removed = 0;
     const QStringList names = d.entryList({QStringLiteral("tidal-wave-*")},
