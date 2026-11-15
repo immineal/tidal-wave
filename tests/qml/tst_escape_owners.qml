@@ -85,6 +85,15 @@ TestCase {
         return null
     }
 
+    // A Popup is no Item child; it sits in its parent's `data`.
+    function menuOf(picker) {
+        for (var i = 0; i < picker.data.length; i++)
+            if (picker.data[i] && picker.data[i].objectName === "outputMenu")
+                return picker.data[i]
+        fail("the output picker has no menu")
+        return null
+    }
+
     // The first track row of the page on screen, once the tracks are in.
     function firstRow(win) {
         var row = null
@@ -148,6 +157,18 @@ TestCase {
         escapeClosesOnly(win, page.editPopup, "playlist", "the Edit playlist dialog")
     }
 
+    // The picker takes no focus of its own unless asked to, and an unfocused
+    // popup never sees Escape: the window took it and went back.
+    function test_escape_on_the_output_picker_only_closes_it() {
+        var win = showApp()
+        openPage(win, "mix", { mixId: "mx-esc-1" })
+        var picker = findByType(win.contentItem, "OutputPicker")
+        verify(picker, "the player bar has no output picker")
+        picker.openMenu()
+        var menu = menuOf(picker)
+        escapeClosesOnly(win, menu, "mix", "the output picker")
+    }
+
     // A field with text in it clears on Escape, as LibraryFinder says. The
     // window's Escape outranked it, so the page went back instead.
     function test_escape_in_the_library_finder_clears_it_and_stays() {
@@ -171,5 +192,26 @@ TestCase {
         verify(!input.activeFocus, "Escape in an empty finder kept the focus")
         keyClick(Qt.Key_Escape)
         compare(win.currentPage, "home", "Escape after leaving the finder did not go back")
+    }
+
+    // A picker opened on Now Playing outlived the switch into fullscreen and
+    // floated over the page, where its button had gone.
+    function test_the_output_picker_does_not_survive_fullscreen() {
+        var win = showApp()
+        openPage(win, "nowplaying")
+        var picker = null
+        tryVerify(function () {
+            picker = findNamed(win.contentItem, "nowPlayingOutputButton")
+            return picker !== null
+        }, 3000, "Now Playing has no output picker on screen")
+        picker.openMenu()
+        var menu = menuOf(picker)
+        tryVerify(function () { return menu.opened }, 2000, "the output picker did not open")
+
+        win.toggleFullScreen()
+        verify(win.fullScreen, "the window did not go fullscreen")
+        tryVerify(function () { return !menu.visible }, 2000,
+                  "the output picker stayed open over fullscreen Now Playing")
+        win.leaveFullScreen()
     }
 }
