@@ -82,7 +82,7 @@ void Player::initAudio() {
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // A queue that ended is at its start for all who ask position(). The
         // backend's reports from before the end can still arrive after it.
-        if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && nextIndex() < 0) return;
+        if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
 #endif
         // Only while it plays: a paused track may never be played on.
         if (m_player->duration() > 0 && pos >= kPreloadAfterMs
@@ -690,12 +690,45 @@ void Player::next(bool heldPaused) {
     if (!m_player) return;
     const int n = nextIndex();
     if (n < 0) { m_player->stop(); return; }
-    if (n == m_index) {   // repeat one
+    // A queue of one row under repeat goes round to the same row.
+    if (n == m_index) { startOver(heldPaused); return; }
+    stepTo(n);
+    loadAndPlay(m_index, heldPaused, Travel::Forward);
+}
+
+void Player::trackEnded(bool heldPaused) {
+    if (m_repeatMode == 2 && m_index >= 0) { startOver(heldPaused); return; }
+    next(heldPaused);
+}
+
+void Player::startOver(bool heldPaused) {
+    // Nothing on disk to start over from: the track is asked for again.
+    // The loading flag is no test: the backend raises it while it buffers.
+    if (casting() || !m_mpdTempFile || m_loadOwed || m_player->source().isEmpty()) {
         loadAndPlay(m_index, heldPaused, Travel::Forward);
         return;
     }
-    stepTo(n);
-    loadAndPlay(m_index, heldPaused, Travel::Forward);
+    m_pendingSeek = 0;
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
+    // Qt 6.5 does not start a track over once it stopped at its end, so the
+    // file it has is opened again.
+    if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia) {
+        const QUrl file = m_player->source();
+        m_restorePaused = heldPaused;
+        m_loadPlays     = !heldPaused;
+        m_player->setSource(QUrl());
+        setLoading(true);
+        m_player->setSource(file);
+        beginPlayback();
+        emit seeked();
+        return;
+    }
+#endif
+    setPlayerPosition(0);
+    emit positionChanged(0);
+    emit seeked();
+    if (!heldPaused && m_player->playbackState() != QMediaPlayer::PlayingState) startBackend();
+    tellPlaying();
 }
 
 void Player::previous(bool heldPaused) {
@@ -734,7 +767,7 @@ void Player::seek(qint64 ms) {
     const qint64 length = m_player->duration();
     if (length > 0 && ms >= length) {
         m_pendingSeek = 0;
-        next(!playing());
+        trackEnded(!playing());
         return;
     }
     setPlayerPosition(ms);
@@ -948,11 +981,16 @@ void Player::setRepeatMode(int m) {
 
 int Player::nextIndex() const {
     if (m_queue.isEmpty()) return -1;
-    if (m_repeatMode == 2) return m_index;   // repeat one
     if (m_index < m_queue.count() - 1) return m_index + 1;
     // Repeat applies to the context; a manual row that has played stays spent.
-    if (m_repeatMode == 1) return firstContextRow();
+    if (m_repeatMode != 0) return firstContextRow();
     return -1;
+}
+
+int Player::followingIndex() const {
+    if (m_queue.isEmpty()) return -1;
+    if (m_repeatMode == 2) return m_index;
+    return nextIndex();
 }
 
 int Player::previousIndex() const {
@@ -1390,9 +1428,9 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
         // track over once it was stopped at its end. The last track of a queue
         // is left there, where position() answers with the start.
-        if (nextIndex() < 0) { emit positionChanged(0); break; }
+        if (followingIndex() < 0) { emit positionChanged(0); break; }
 #endif
-        next();
+        trackEnded();
         break;
     case QMediaPlayer::InvalidMedia:
         failLoad(tr("This track could not be played. The audio format may not be supported."));
@@ -1492,7 +1530,7 @@ void Player::preloadGaveUp(int next) {
 }
 
 void Player::preloadNext() {
-    int next = nextIndex();
+    int next = followingIndex();
     if (next < 0 || next == m_preloadIndex || next == m_preloadFailedIndex) return;
     // Repeat-one: the playing row's bytes are already on disk.
     if (next == m_index) return;
@@ -1958,7 +1996,8 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
             if (m_index >= m_queue.count()) {
                 // Past the end. Each step drops a row, so a wrap cannot go round
                 // for ever.
-                const bool wraps = m_repeatMode == 1;
+                // Repeat-one passes over a dead row as repeat-all does.
+                const bool wraps = m_repeatMode != 0;
                 rowLeft = wraps;
                 setIndex(wraps ? firstContextRow() : int(m_queue.count()) - 1);
             }
@@ -1970,7 +2009,7 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         int to = -1;
         if (backward)                             to = m_index - 1;
         else if (m_index + 1 < m_queue.count())   to = m_index + 1;
-        else if (m_repeatMode == 1)               to = firstContextRow();
+        else if (m_repeatMode != 0)               to = firstContextRow();
         // A wrap ends once as many rows were kept as the queue has.
         rowLeft = to >= 0 && to != m_index && m_keptRun < m_queue.count();
         if (rowLeft) stepTo(to);

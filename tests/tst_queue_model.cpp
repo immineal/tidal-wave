@@ -562,7 +562,7 @@ private slots:
                  "a consumed queue entry survived the loop back to the album");
     }
 
-    void repeatOneStaysPut() {
+    void nextUnderRepeatOneMovesOn() {
         Rig rig;
         auto &p = rig.player;
         p.playTracks(contextOf(1000, 3), 1);
@@ -570,8 +570,14 @@ private slots:
         p.setRepeatMode(2);
 
         p.next();
-        QCOMPARE(currentId(p), 1001);
-        QCOMPARE(ids(p.queueManual()), (QList<qlonglong>{9001}));
+        QCOMPARE(currentId(p), 9001);
+        QCOMPARE(ids(p.queueManual()), QList<qlonglong>());
+        verify(p);
+        // At the end it goes round, as repeat-all does.
+        p.next();
+        QCOMPARE(currentId(p), 1002);
+        p.next();
+        QCOMPARE(currentId(p), 1000);
         verify(p);
     }
 

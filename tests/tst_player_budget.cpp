@@ -230,6 +230,49 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{8000, 8001}), 5000);
     }
 
+    // ── repeat-one ──────────────────────────────────────────────────────────
+
+    // Next under repeat-one goes to the next track, as it does with repeat
+    // off; the press is a wish to hear something else.
+    void nextUnderRepeatOneMovesOn() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(2000, 3)));
+        a.p().setRepeatMode(2);
+
+        a.p().next();
+        QCOMPARE(currentId(a.p()), 2001);
+        QTRY_COMPARE_WITH_TIMEOUT(a.client.asked, (QList<qlonglong>{2000, 2001}), 5000);
+    }
+
+    // A track that runs out under repeat-one starts over from the file it
+    // has. Nothing is asked for and nothing downloaded.
+    void aTrackThatRunsOutUnderRepeatOneStartsOverWithoutAFetch_data() {
+        QTest::addColumn<bool>("bySeek");
+        QTest::newRow("played to its end")    << false;
+        QTest::newRow("a seek to its end")    << true;
+    }
+    void aTrackThatRunsOutUnderRepeatOneStartsOverWithoutAFetch() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, bySeek);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(2000, 3)));
+        const int servedBefore = m_server.served;
+        a.p().setRepeatMode(2);
+
+        if (bySeek) a.p().seek(a.p().duration());
+        else        a.p().seek(a.p().duration() - 400);
+        QTRY_VERIFY2_WITH_TIMEOUT(a.started() && a.mp()->position() > 0 && a.mp()->position() < 3000
+                                      && !a.p().loading(),
+                                  "the track did not start over", 10000);
+        QTest::qWait(300);
+        QCOMPARE(currentId(a.p()), 2000);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{2000}));
+        QCOMPARE(m_server.served - servedBefore, 0);
+    }
+
 private:
     static const char *obstacle() {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)

@@ -155,7 +155,9 @@ public:
     Q_INVOKABLE void playTracks      (const QVariantList &tracks, int startIndex = 0);
 
     Q_INVOKABLE void playPause ();
-    // heldPaused is for MPRIS: the track changes and waits there for play.
+    // heldPaused is for MPRIS: the track changes and waits there for play,
+    // with nothing fetched until then. A step always leaves the row, also
+    // under repeat-one; only a track that runs out repeats.
     Q_INVOKABLE void next      (bool heldPaused = false);
     Q_INVOKABLE void previous  (bool heldPaused = false);
     Q_INVOKABLE void seek      (qint64 ms);
@@ -272,6 +274,11 @@ private:
     void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
     // The load itself.
     void startLoad(int index);
+    // The current track ran out: the queue moves on, or repeat-one starts
+    // the same file over.
+    void trackEnded(bool heldPaused = false);
+    // The current track from its start, off the file it has where it can.
+    void startOver(bool heldPaused);
     // Puts the track at `index` on show with nothing loaded; play loads it,
     // passing over a ruled-out track in the direction of `travel`.
     void restOn(int index, Travel travel);
@@ -312,7 +319,10 @@ private:
     // differs from what was last told.
     void tellPlaying();
     Track trackFromMap(const QVariantMap &m) const;
+    // Where a step forward goes. Repeat-one wraps there as repeat-all does.
     int  nextIndex() const;
+    // Where the queue goes when a track runs out: the same row under repeat-one.
+    int  followingIndex() const;
     int  previousIndex() const;
     // First row belonging to the context, for a repeat-all wrap.
     int  firstContextRow() const;
