@@ -103,6 +103,52 @@ private slots:
         QCOMPARE(error.first().at(0).toString(),
                  QStringLiteral("The cast device did not answer."));
     }
+
+    // LOAD_FAILED used to be dropped, which left the app paused with nothing
+    // said. It has to reach error(), which CastManager passes on.
+    void aLoadTheDeviceRefusesIsReported()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        receiver.loadAnswer = FakeReceiver::LoadAnswer::Fails;
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        QSignalSpy error(&session, &CastSession::error);
+        QSignalSpy playing(&session, &CastSession::playingChanged);
+
+        load(session);
+        QTRY_COMPARE_WITH_TIMEOUT(error.count(), 1, 3000);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The cast device could not play this track."));
+        QVERIFY(!playing.isEmpty());
+        QCOMPARE(playing.last().at(0).toBool(), false);
+    }
+
+    // A track that fails while it plays ends IDLE with idleReason ERROR. Polls
+    // repeat that status, and it is one error.
+    void aPlaybackErrorOnTheDeviceIsReportedOnce()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        load(session);
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 1, 3000);
+        QTest::qWait(100);
+
+        QSignalSpy error(&session, &CastSession::error);
+        QSignalSpy finished(&session, &CastSession::mediaFinished);
+        const QJsonObject failedStatus{{"mediaSessionId", 7}, {"playerState", "IDLE"},
+                                       {"idleReason", "ERROR"}};
+        receiver.sendMediaStatus(failedStatus);
+        receiver.sendMediaStatus(failedStatus);
+        QTRY_COMPARE_WITH_TIMEOUT(error.count(), 1, 3000);
+        QTest::qWait(200);
+        QCOMPARE(error.count(), 1);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The cast device could not play this track."));
+        QCOMPARE(finished.count(), 0);
+    }
 };
 
 QTEST_MAIN(TestCastSession)

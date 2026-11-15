@@ -74,6 +74,8 @@ private:
     QString m_sessionId;                  // receiver app session (to STOP/quit it)
     int     m_mediaSessionId = 0;
     int     m_requestId      = 0;
+    int     m_loadRequestId  = 0;        // requestId of the LOAD in force
+    int     m_endedFor       = -1;       // media session whose end was reported
     int     m_tick           = 0;
     bool    m_appConnected   = false;
     bool    m_plainText      = false;

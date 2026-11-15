@@ -121,6 +121,8 @@ void CastSession::reset() {
     m_transportId.clear();
     m_sessionId.clear();
     m_mediaSessionId = 0;
+    m_loadRequestId  = 0;
+    m_endedFor       = -1;
     m_appConnected = false;
     m_haveLoad = false;
     m_loadPayload.clear();
@@ -220,12 +222,22 @@ void CastSession::handleMessage(const CastMessage &msg) {
         return;
     }
 
+    if (msg.ns == NS_MEDIA && type == "LOAD_FAILED") {
+        // Only the answer to the LOAD in force: a superseded one is no news.
+        if (payload.value("requestId").toInt() == m_loadRequestId) {
+            emit playingChanged(false);
+            emit error(tr("The cast device could not play this track."));
+        }
+        return;
+    }
+
     if (msg.ns == NS_MEDIA && type == "MEDIA_STATUS") {
         const QJsonArray statusArr = payload.value("status").toArray();
         if (statusArr.isEmpty()) return;
         const QJsonObject st = statusArr.first().toObject();
         if (st.contains("mediaSessionId"))
             m_mediaSessionId = st.value("mediaSessionId").toInt();
+        const int mediaSession = m_mediaSessionId;
         if (st.contains("media") && st.value("media").toObject().contains("duration"))
             emit durationChanged(st.value("media").toObject().value("duration").toDouble());
         if (st.contains("currentTime"))
@@ -233,8 +245,15 @@ void CastSession::handleMessage(const CastMessage &msg) {
         const QString playerState = st.value("playerState").toString();
         if (!playerState.isEmpty())
             emit playingChanged(playerState == "PLAYING");
-        if (playerState == "IDLE" && st.value("idleReason").toString() == "FINISHED")
+        const QString idleReason = playerState == "IDLE" ? st.value("idleReason").toString()
+                                                         : QString();
+        if (idleReason == "FINISHED")
             emit mediaFinished();
+        // Every poll repeats the status, so one error per media session.
+        if (idleReason == "ERROR" && mediaSession != m_endedFor) {
+            m_endedFor = mediaSession;
+            emit error(tr("The cast device could not play this track."));
+        }
         return;
     }
 }
@@ -265,7 +284,8 @@ void CastSession::loadMedia(const QString &url, const QString &contentType,
     if (durationSec > 0)
         media.insert("duration", durationSec);
 
-    QJsonObject load{{"type", "LOAD"}, {"requestId", nextRequestId()},
+    m_loadRequestId = nextRequestId();
+    QJsonObject load{{"type", "LOAD"}, {"requestId", m_loadRequestId},
                      {"media", media}, {"autoplay", true}};
     m_loadPayload = jsonToString(load);
     m_haveLoad = true;

@@ -259,6 +259,10 @@
         <source>The cast device did not answer.</source>
         <translation>Das Übertragungsgerät hat nicht geantwortet.</translation>
     </message>
+    <message>
+        <source>The cast device could not play this track.</source>
+        <translation>Das Übertragungsgerät konnte diesen Titel nicht abspielen.</translation>
+    </message>
 </context>
 <context>
     <name>CollectionPage</name>
