@@ -41,7 +41,9 @@ void CastMediaPrep::prepare(qlonglong trackId) {
     m_trackId = trackId;
     const quint64 gen = m_gen;
 
-    m_client->fetchStreamManifest(trackId, AudioQuality::HiResLossless,
+    // The player's request: its quality setting, and AAC where Tidal has no
+    // FLAC of the track. Above 96 kHz is downsampled in remux().
+    m_client->fetchStreamManifest(trackId,
         [this, gen](StreamManifest manifest, QString err) {
             if (gen != m_gen) return;   // superseded/cancelled
             if (!err.isEmpty()) {
@@ -84,15 +86,15 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
                     // AAC-in-MP4 is directly playable by the receiver.
                     emit ready(m_inputPath, QStringLiteral("audio/mp4"));
                 } else {
-                    remuxFlac(sr);
+                    remux(false, sr);
                 }
             });
         return;
     }
 
-    // DASH (lossless): joined here into an ordinary fragmented MP4, which every
-    // ffmpeg reads. Handing ffmpeg the manifest needs its DASH demuxer, which
-    // is only built with libxml2.
+    // DASH (FLAC, or AAC where Tidal has no FLAC): joined here into an ordinary
+    // fragmented MP4, which every ffmpeg reads. Handing ffmpeg the manifest
+    // needs its DASH demuxer, which is only built with libxml2.
     auto *fetcher = new DashFetcher(m_client, manifest.url);
     if (!fetcher->isValid() || !fetcher->openedTempFile()) {
         const bool manifestWasReadable = fetcher->isValid();
@@ -104,7 +106,7 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
         return;
     }
     m_dash = fetcher;
-    fetcher->start([this, gen, fetcher, sr](QTemporaryFile *file, const QString &dashErr) {
+    fetcher->start([this, gen, fetcher, aac, sr](QTemporaryFile *file, const QString &dashErr) {
         // The fetcher reports from inside its own callback: delete it a turn later.
         // Clearing the member first is what lets cancel() delete in place.
         if (m_dash == fetcher) m_dash = nullptr;
@@ -122,18 +124,22 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
         // Keep the bytes and drop the handle: cleanupInput() removes the path.
         m_inputPath = file->fileName();
         delete file;
-        remuxFlac(sr);
+        remux(aac, sr);
     });
 }
 
-void CastMediaPrep::remuxFlac(int sampleRate) {
+void CastMediaPrep::remux(bool aac, int sampleRate) {
     const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     if (ffmpeg.isEmpty()) {
+        // Joined AAC is a fragmented MP4 the receiver can play as it is,
+        // only with coarser seeking than a remuxed one.
+        if (aac) { emit ready(m_inputPath, QStringLiteral("audio/mp4")); return; }
         emit failed(tr("ffmpeg was not found on PATH. Install ffmpeg to cast this track."));
         return;
     }
 
-    QTemporaryFile out(QDir::tempPath() + QStringLiteral("/tidal-wave-cast-XXXXXX.flac"));
+    QTemporaryFile out(QDir::tempPath() + (aac ? QStringLiteral("/tidal-wave-cast-XXXXXX.m4a")
+                                               : QStringLiteral("/tidal-wave-cast-XXXXXX.flac")));
     out.setAutoRemove(false);
     if (!out.open()) {
         emit failed(tr("Could not create a temporary file for the converted audio. "
@@ -148,9 +154,14 @@ void CastMediaPrep::remuxFlac(int sampleRate) {
     // The input is always a local file, DASH included, so no
     // -protocol_whitelist is needed.
     a << QStringLiteral("-i") << m_inputPath << QStringLiteral("-map") << QStringLiteral("0:a");
+    // AAC is copied into a plain MP4 with its index up front, for seeking.
     // Chromecast's default receiver caps FLAC at 96 kHz; downsample if higher,
     // otherwise stream-copy the FLAC bitstream unchanged.
-    if (sampleRate > 96000)
+    if (aac)
+        a << QStringLiteral("-c:a") << QStringLiteral("copy")
+          << QStringLiteral("-movflags") << QStringLiteral("+faststart")
+          << QStringLiteral("-f") << QStringLiteral("mp4");
+    else if (sampleRate > 96000)
         a << QStringLiteral("-c:a") << QStringLiteral("flac")
           << QStringLiteral("-ar") << QStringLiteral("96000")
           << QStringLiteral("-compression_level") << QStringLiteral("5");
@@ -160,12 +171,13 @@ void CastMediaPrep::remuxFlac(int sampleRate) {
 
     const quint64 gen = m_gen;
     m_ffmpeg = new QProcess(this);
+    const QString mime = aac ? QStringLiteral("audio/mp4") : QStringLiteral("audio/flac");
     connect(m_ffmpeg, &QProcess::finished, this,
-        [this, gen](int code, QProcess::ExitStatus) {
+        [this, gen, mime](int code, QProcess::ExitStatus) {
             if (gen != m_gen) return;
             if (m_ffmpeg) { m_ffmpeg->deleteLater(); m_ffmpeg = nullptr; }
             cleanupInput();
-            if (code == 0) emit ready(m_outputPath, QStringLiteral("audio/flac"));
+            if (code == 0) emit ready(m_outputPath, mime);
             else           emit failed(tr("Could not convert the audio for casting. "
                                           "ffmpeg exited with code %1.").arg(code));
         });
