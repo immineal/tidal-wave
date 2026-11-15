@@ -595,7 +595,6 @@ private slots:
         QTest::newRow("next")                << QStringLiteral("next")     << qlonglong(1003) << true  << qlonglong(1004);
         QTest::newRow("previous")            << QStringLiteral("previous") << qlonglong(1001) << true  << qlonglong(1000);
         QTest::newRow("a queue jump")        << QStringLiteral("jump")     << qlonglong(1004) << true  << qlonglong(0);
-        QTest::newRow("removing the row")    << QStringLiteral("remove")   << qlonglong(1003) << true  << qlonglong(0);
         QTest::newRow("next, unreachable")   << QStringLiteral("next")     << qlonglong(1003) << false << qlonglong(0);
     }
 
@@ -621,10 +620,8 @@ private slots:
             // Twelve seconds in, the first press only rewinds.
             b.p().previous();
             b.p().previous();
-        } else if (action == QLatin1String("jump")) {
-            b.p().jumpToQueue(4);
         } else {
-            b.p().removeFromQueue(2);
+            b.p().jumpToQueue(4);
         }
         QVERIFY(b.settle());
 

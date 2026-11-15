@@ -587,6 +587,8 @@ void Player::clearQueue() {
 
 void Player::removeFromQueue(int index) {
     if (index < 0 || index >= m_queue.count()) return;
+    // The row that takes over plays if the removed one did, else it waits.
+    const bool held = !playing();
     m_queue.removeAt(index);
     if (index < m_index) {
         setIndex(m_index - 1);
@@ -597,9 +599,17 @@ void Player::removeFromQueue(int index) {
             m_currentTrack = Track{};
             setLoading(false);
             emit currentTrackChanged();
+        } else if (m_index < m_queue.count()) {
+            loadAndPlay(m_index, held, Travel::Forward);
+        } else if (m_repeatMode != 0) {
+            setIndex(int(m_queue.count()) - 1);
+            stepTo(firstContextRow());
+            loadAndPlay(m_index, held, Travel::Forward);
         } else {
-            setIndex(qMin(m_index, m_queue.count() - 1));
-            loadAndPlay(m_index);
+            // It was the last row, so the queue has ended. The row before
+            // has played, and it only shows where the queue stopped.
+            setIndex(int(m_queue.count()) - 1);
+            restOn(m_index, Travel::Picked);
         }
     }
     normalizeManualSpan();

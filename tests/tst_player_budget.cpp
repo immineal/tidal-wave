@@ -273,6 +273,72 @@ private slots:
         QCOMPARE(m_server.served - servedBefore, 0);
     }
 
+    // ── removing the row that plays ─────────────────────────────────────────
+
+    // The last row of the queue is removed while it plays. The queue has
+    // ended: nothing plays and nothing is fetched. Under repeat-all it wraps,
+    // and a paused player stays paused on the row it wrapped to.
+    void removingTheLastRowWhileItPlays_data() {
+        QTest::addColumn<bool>("paused");
+        QTest::addColumn<int>("repeat");
+        QTest::addColumn<qlonglong>("landsOn");
+        QTest::addColumn<bool>("fetches");
+        QTest::newRow("playing")                 << false << 0 << qlonglong(3001) << false;
+        QTest::newRow("paused")                  << true  << 0 << qlonglong(3001) << false;
+        QTest::newRow("playing, repeat all")     << false << 1 << qlonglong(3000) << true;
+        QTest::newRow("paused, repeat all")      << true  << 1 << qlonglong(3000) << false;
+    }
+    void removingTheLastRowWhileItPlays() {
+        if (const char *why = obstacle()) QSKIP(why);
+        QFETCH(bool, paused);
+        QFETCH(int, repeat);
+        QFETCH(qlonglong, landsOn);
+        QFETCH(bool, fetches);
+        Launch a;
+        QVERIFY(a.audioUp());
+        a.p().setRepeatMode(repeat);
+        a.p().playTracks(contextOf(3000, 3), 2);
+        QVERIFY(QTest::qWaitFor([&] { return a.client.answer(3002, track()); }, 5000));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+        if (paused) {
+            a.p().playPause();
+            QTRY_COMPARE_WITH_TIMEOUT(a.mp()->playbackState(), QMediaPlayer::PausedState, 5000);
+        }
+
+        a.p().removeFromQueue(2);
+        QCOMPARE(currentId(a.p()), landsOn);
+        QTest::qWait(500);
+        if (fetches) {
+            QCOMPARE(a.client.asked, (QList<qlonglong>{3002, 3000}));
+            QVERIFY(a.p().playing());
+        } else {
+            QCOMPARE(a.client.asked, (QList<qlonglong>{3002}));
+            QVERIFY2(!a.p().playing(), "a removed row left something playing");
+            QVERIFY(!a.started());
+        }
+    }
+
+    // The playing row is removed while paused: the queue moves onto the row
+    // after it and waits there, fetching nothing until play.
+    void removingThePausedRowWaitsOnTheNextOne() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirst(a, contextOf(3000, 3)));
+        a.p().playPause();
+        QTRY_COMPARE_WITH_TIMEOUT(a.mp()->playbackState(), QMediaPlayer::PausedState, 5000);
+
+        a.p().removeFromQueue(0);
+        QCOMPARE(currentId(a.p()), 3001);
+        QTest::qWait(500);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000}));
+        QVERIFY(!a.p().playing());
+
+        a.p().playPause();
+        QVERIFY(QTest::qWaitFor([&] { return a.client.answer(3001, track()); }, 5000));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+    }
+
 private:
     static const char *obstacle() {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
