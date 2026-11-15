@@ -91,7 +91,7 @@ void Player::initAudio() {
         emit positionChanged(pos);
     });
     connect(m_player, &QMediaPlayer::durationChanged,
-            this, &Player::durationChanged);
+            this, [this] { emit durationChanged(duration()); });
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     m_standTimer = new QTimer(this);
     m_standTimer->setInterval(kStandCheckMs);
@@ -346,7 +346,13 @@ qint64 Player::position() const {
 #endif
     return m_player ? m_player->position() : 0;
 }
-qint64 Player::duration() const { return casting() ? m_castDuration : (m_player ? m_player->duration() : 0); }
+qint64 Player::duration() const {
+    if (casting()) return m_castDuration;
+    // Until the backend has the file, the track's own length stands, and
+    // never the length of the track before.
+    const qint64 loaded = (m_player && !m_player->source().isEmpty()) ? m_player->duration() : 0;
+    return loaded > 0 ? loaded : qint64(m_currentTrack.duration) * 1000;
+}
 double Player::volume()   const { return m_audioOut ? m_audioOut->volume() : m_pendingVolume; }
 bool   Player::muted()    const { return m_audioOut ? m_audioOut->isMuted() : m_pendingMuted; }
 
@@ -1182,6 +1188,7 @@ void Player::restOn(int index, Travel travel) {
     m_loadOwed     = true;
     m_owedTravel   = travel;
     emit currentTrackChanged();
+    emit durationChanged(duration());
 }
 
 void Player::startLoad(int index, bool wait) {
@@ -1217,6 +1224,7 @@ void Player::startLoad(int index, bool wait) {
         m_pendingSeek = 0;
     m_currentTrack = trackFromMap(m_queue[index].track);
     emit currentTrackChanged();
+    emit durationChanged(duration());
 
     // While casting, hand the current track to the cast device; CastManager
     // prepares and LOADs it.

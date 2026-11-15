@@ -1542,7 +1542,7 @@ private slots:
         QVERIFY(a.audioUp());
         a.p().playTracks(contextOf(8000, last ? 1 : 3), 0);
         QVERIFY(a.client.answer(8000, track));
-        QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.p().duration() > 0, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(a.started() && a.mp()->duration() > 0, 10000);
         if (paused) {
             a.p().playPause();
             QTRY_COMPARE_WITH_TIMEOUT(a.mp()->playbackState(), QMediaPlayer::PausedState, 5000);

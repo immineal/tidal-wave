@@ -452,6 +452,26 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
     }
 
+    // ── the length shown ────────────────────────────────────────────────────
+
+    // While the next track loads, its own length shows, never the length of
+    // the track before.
+    void whileATrackLoadsItsOwnLengthShows() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVariantList rows{ trackOf(4000), trackOf(4001, 200) };
+        QVERIFY(playFirst(a, rows));
+        QTRY_COMPARE_WITH_TIMEOUT(a.p().duration(), qint64(30000), 5000);
+        QSignalSpy lengths(&a.p(), &Player::durationChanged);
+
+        a.p().next();
+        QVERIFY(a.p().loading());
+        QCOMPARE(a.p().duration(), qint64(200000));
+        QVERIFY(!lengths.isEmpty());
+        QCOMPARE(lengths.constLast().at(0).toLongLong(), 200000LL);
+    }
+
 private:
     static const char *obstacle() {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
