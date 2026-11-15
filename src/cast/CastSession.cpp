@@ -19,6 +19,11 @@ const QString SENDER        = QStringLiteral("sender-0");
 const QString RECEIVER      = QStringLiteral("receiver-0");
 const QString MEDIA_APP_ID  = QStringLiteral("CC1AD845");   // Default Media Receiver
 
+// How long a closing socket may take to hand the device its STOP and CLOSE,
+// and how long it stays open once they are out, for the device to read them.
+constexpr int kCloseGraceMs  = 3000;
+constexpr int kCloseLingerMs = 500;
+
 QString jsonToString(const QJsonObject &o) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
@@ -27,7 +32,16 @@ QString jsonToString(const QJsonObject &o) {
 CastSession::CastSession(QObject *parent) : QObject(parent) {}
 
 CastSession::~CastSession() {
-    disconnectFromDevice();
+    // At shutdown the event loop is gone and a closing socket never writes, so
+    // this waits briefly for STOP to reach the device. No window is up then.
+    if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        sendGoodbye();
+        m_socket->waitForBytesWritten(300);
+    }
+    if (m_socket) {
+        m_socket->disconnect(this);
+        m_socket->abort();   // deleted with this object, its parent
+    }
 }
 
 void CastSession::connectToDevice(const QString &host, int port) {
@@ -45,8 +59,13 @@ void CastSession::connectToDevice(const QString &host, int port) {
         m_appConnected = false;
         emit disconnected();
     });
-    m_socket->ignoreSslErrors();
-    m_socket->connectToHostEncrypted(host, quint16(port));
+    if (m_plainText) {
+        connect(m_socket, &QSslSocket::connected, this, &CastSession::onEncrypted);
+        m_socket->connectToHost(host, quint16(port));
+    } else {
+        m_socket->ignoreSslErrors();
+        m_socket->connectToHostEncrypted(host, quint16(port));
+    }
 
     if (!m_timer) {
         m_timer = new QTimer(this);
@@ -57,16 +76,10 @@ void CastSession::connectToDevice(const QString &host, int port) {
 
 void CastSession::disconnectFromDevice() {
     if (m_timer) m_timer->stop();
-    // The Default Media Receiver keeps playing after the sender drops the
-    // socket, so stop playback and quit the receiver app first.
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
-        stopMedia();
-        if (!m_sessionId.isEmpty())
-            sendMessage(NS_RECEIVER, RECEIVER,
-                        jsonToString({{"type", "STOP"}, {"requestId", nextRequestId()},
-                                      {"sessionId", m_sessionId}}));
-        m_socket->flush();
-        m_socket->waitForBytesWritten(300);
+        sendGoodbye();
+        closeQuietly(m_socket);
+        m_socket = nullptr;
     }
     if (m_socket) {
         m_socket->disconnect(this);
@@ -81,6 +94,36 @@ void CastSession::disconnectFromDevice() {
     m_appConnected = false;
     m_haveLoad = false;
     m_loadPayload.clear();
+}
+
+void CastSession::closeQuietly(QSslSocket *s) {
+    // Left to close on its own so the GUI thread never waits. Closing with the
+    // device's replies unread would reset the connection and drop what it has
+    // not read yet, so replies are read away and the close waits for the flush.
+    s->disconnect(this);
+    s->setParent(nullptr);
+    connect(s, &QSslSocket::readyRead, s, [s] { s->readAll(); });
+    connect(s, &QSslSocket::disconnected, s, &QObject::deleteLater);
+    const auto closeOnceFlushed = [s] {
+        if (s->bytesToWrite() == 0)
+            QTimer::singleShot(kCloseLingerMs, s, [s] { s->disconnectFromHost(); });
+    };
+    connect(s, &QSslSocket::bytesWritten, s, closeOnceFlushed);
+    closeOnceFlushed();
+    QTimer::singleShot(kCloseGraceMs, s, [s] { s->abort(); s->deleteLater(); });
+}
+
+void CastSession::sendGoodbye() {
+    // The Default Media Receiver keeps playing after the sender drops the
+    // socket, so stop playback, quit the app and close both virtual connections.
+    stopMedia();
+    if (!m_sessionId.isEmpty())
+        sendMessage(NS_RECEIVER, RECEIVER,
+                    jsonToString({{"type", "STOP"}, {"requestId", nextRequestId()},
+                                  {"sessionId", m_sessionId}}));
+    if (!m_transportId.isEmpty())
+        sendMessage(NS_CONNECTION, m_transportId, jsonToString({{"type", "CLOSE"}}));
+    sendMessage(NS_CONNECTION, RECEIVER, jsonToString({{"type", "CLOSE"}}));
 }
 
 void CastSession::onEncrypted() {

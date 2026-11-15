@@ -22,6 +22,10 @@ public:
     void disconnectFromDevice();
     bool isConnected() const { return m_appConnected; }
 
+    // Test hook: plain TCP instead of TLS, so a QTcpServer can stand in for
+    // the receiver. Set before connectToDevice().
+    void setPlainTextForTest(bool on) { m_plainText = on; }
+
     // Load a media URL onto the receiver. Before `connected()` the load is
     // deferred until the receiver app is up.
     void loadMedia(const QString &url, const QString &contentType,
@@ -49,6 +53,8 @@ private slots:
     void onTick();
 
 private:
+    void sendGoodbye();   // STOP and CLOSE, queued on the socket
+    void closeQuietly(QSslSocket *s);
     void sendMessage(const QString &ns, const QString &destination, const QString &payloadJson);
     void handleMessage(const CastMessage &msg);
     void establishAppConnection(const QString &transportId);
@@ -65,6 +71,7 @@ private:
     int     m_requestId      = 0;
     int     m_tick           = 0;
     bool    m_appConnected   = false;
+    bool    m_plainText      = false;
 
     bool    m_haveLoad = false;          // a media LOAD is queued/desired
     QString m_loadPayload;               // prepared LOAD JSON
