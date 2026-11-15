@@ -3,7 +3,6 @@
 #pragma once
 #include <QObject>
 #include <QString>
-#include <QHash>
 
 class QTcpServer;
 class QTcpSocket;
@@ -30,12 +29,13 @@ private slots:
     void onNewConnection();
 
 private:
-    void handleRequest(QTcpSocket *sock, const QByteArray &request);
+    struct Transfer;   // one connection's request and the bytes it is owed
+    void handleRequest(QTcpSocket *sock, Transfer *t, const QByteArray &request);
+    void pump(QTcpSocket *sock, Transfer *t);
 
     QTcpServer *m_server = nullptr;
     QString     m_baseUrl;
     QString     m_path;
     QString     m_mime;
     int         m_token = 0;
-    QHash<QTcpSocket *, QByteArray> m_pending;   // per-connection request buffer
 };

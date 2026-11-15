@@ -20,7 +20,21 @@ QString lanAddress() {
     return QString();
 }
 
+constexpr qint64 kChunk     = 64 * 1024;
+// Bytes kept queued per connection. A receiver that stops reading holds this
+// much of the app's memory and no more.
+constexpr qint64 kHighWater = 256 * 1024;
+
 } // namespace
+
+// Owned by its socket, so it goes when the connection does.
+struct CastMediaServer::Transfer : QObject {
+    explicit Transfer(QTcpSocket *sock) : QObject(sock) {}
+    QByteArray request;
+    bool       answered  = false;
+    QFile      file;
+    qint64     remaining = 0;
+};
 
 CastMediaServer::CastMediaServer(QObject *parent) : QObject(parent) {}
 
@@ -53,7 +67,6 @@ void CastMediaServer::stop() {
         m_server->deleteLater();
         m_server = nullptr;
     }
-    m_pending.clear();
     m_baseUrl.clear();
     m_path.clear();
 }
@@ -74,22 +87,36 @@ QString CastMediaServer::setCurrentFile(const QString &path, const QString &mime
 void CastMediaServer::onNewConnection() {
     while (m_server && m_server->hasPendingConnections()) {
         QTcpSocket *sock = m_server->nextPendingConnection();
-        m_pending.insert(sock, QByteArray());
-        connect(sock, &QTcpSocket::readyRead, this, [this, sock]() {
-            QByteArray &buf = m_pending[sock];
-            buf.append(sock->readAll());
-            const int end = buf.indexOf("\r\n\r\n");
-            if (end >= 0)
-                handleRequest(sock, buf.left(end));
+        auto *t = new Transfer(sock);
+        connect(sock, &QTcpSocket::readyRead, this, [this, sock, t]() {
+            if (t->answered) { sock->readAll(); return; }
+            t->request.append(sock->readAll());
+            const int end = t->request.indexOf("\r\n\r\n");
+            if (end < 0) return;
+            t->answered = true;
+            handleRequest(sock, t, t->request.left(end));
         });
-        connect(sock, &QTcpSocket::disconnected, this, [this, sock]() {
-            m_pending.remove(sock);
-            sock->deleteLater();
-        });
+        // Topped up as the receiver drains it, never waited for.
+        connect(sock, &QTcpSocket::bytesWritten, t, [this, sock, t]() { pump(sock, t); });
+        connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
     }
 }
 
-void CastMediaServer::handleRequest(QTcpSocket *sock, const QByteArray &request) {
+void CastMediaServer::pump(QTcpSocket *sock, Transfer *t) {
+    if (!t->file.isOpen()) return;
+    while (t->remaining > 0 && sock->bytesToWrite() < kHighWater) {
+        const QByteArray data = t->file.read(qMin(kChunk, t->remaining));
+        if (data.isEmpty()) { t->remaining = 0; break; }
+        sock->write(data);
+        t->remaining -= data.size();
+    }
+    if (t->remaining <= 0) {
+        t->file.close();
+        sock->disconnectFromHost();   // after what is queued has gone out
+    }
+}
+
+void CastMediaServer::handleRequest(QTcpSocket *sock, Transfer *t, const QByteArray &request) {
     const QList<QByteArray> lines = request.split('\n');
     if (lines.isEmpty()) { sock->disconnectFromHost(); return; }
 
@@ -115,14 +142,14 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, const QByteArray &request)
         }
     }
 
-    QFile file(m_path);
-    if (m_path.isEmpty() || !file.open(QIODevice::ReadOnly)) {
+    t->file.setFileName(m_path);
+    if (m_path.isEmpty() || !t->file.open(QIODevice::ReadOnly)) {
         sock->write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         sock->disconnectFromHost();
         return;
     }
 
-    const qint64 total = file.size();
+    const qint64 total = t->file.size();
     qint64 start = 0, end = total - 1;
     bool partial = false;
     if (rangeStart >= 0) {
@@ -143,18 +170,7 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, const QByteArray &request)
     headers += "Connection: close\r\n\r\n";
     sock->write(headers);
 
-    if (!isHead) {
-        file.seek(start);
-        qint64 remaining = length;
-        const qint64 chunk = 64 * 1024;
-        while (remaining > 0 && sock->state() == QAbstractSocket::ConnectedState) {
-            const QByteArray data = file.read(qMin(chunk, remaining));
-            if (data.isEmpty()) break;
-            sock->write(data);
-            sock->waitForBytesWritten(5000);   // backpressure to the device
-            remaining -= data.size();
-        }
-    }
-    file.close();
-    sock->disconnectFromHost();
+    t->remaining = isHead ? 0 : length;
+    t->file.seek(start);
+    pump(sock, t);
 }
