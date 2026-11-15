@@ -155,9 +155,19 @@ public:
     Q_INVOKABLE void playTracks      (const QVariantList &tracks, int startIndex = 0);
 
     Q_INVOKABLE void playPause ();
-    // heldPaused is for MPRIS: the track changes and waits there for play.
+    // heldPaused is for MPRIS: the track changes and waits there for play,
+    // with nothing fetched until then. A step always leaves the row, also
+    // under repeat-one; only a track that runs out repeats.
     Q_INVOKABLE void next      (bool heldPaused = false);
     Q_INVOKABLE void previous  (bool heldPaused = false);
+    // Back to the start of the track, paused, and reported as stopped.
+    Q_INVOKABLE void stop      ();
+    // At the start with nothing playing, after stop() or at the end of the
+    // queue. A paused track is not stopped.
+    bool stopped() const { return m_stopped; }
+    // How long a step waits for the next one before its track is fetched,
+    // so a burst of steps fetches only where it ends. 0 fetches at once.
+    void setLoadDelay(int ms) { m_loadDelayMs = ms; }
     Q_INVOKABLE void seek      (qint64 ms);
     Q_INVOKABLE void setVolume (double v);
     Q_INVOKABLE void setMuted  (bool m);
@@ -231,6 +241,7 @@ signals:
     // Only the manual section's length changed; the rows have not moved.
     void manualCountChanged  (int count);
     void recentlyPlayedChanged();
+    void stoppedChanged      ();
     void sourceChanged       ();
     void castTrackChanged    ();   // current track changed while casting
     // The set of output devices or the system default changed; device lists
@@ -267,10 +278,37 @@ private:
     // How the queue came onto the row being loaded. A track Tidal has ruled
     // out is reported where it was picked and stepped over on the way through.
     enum class Travel { Picked, Forward, Backward };
-    // A load the user asked for. It ends a restore that has not loaded yet.
-    void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
-    // The load itself. Only the restore calls it directly, to stay in force.
-    void startLoad(int index);
+    // A load the user asked for. Held, it only moves onto the row: nothing
+    // is fetched until play. `wait`: a step that a burst of steps may replace.
+    void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked,
+                     bool wait = false);
+    // The load itself.
+    void startLoad(int index, bool wait = false);
+    // Fetches for load `serial`, unless a newer load took over.
+    void dispatchLoad(quint64 serial);
+    // Asks Tidal for the current track, by way of its twin if need be.
+    void askForStream(quint64 serial);
+    // The preload is for the current track: takes its file, or waits for
+    // the one under way. False when there is nothing to take.
+    bool adoptPreload(quint64 serial);
+    // A preload's file arrived, or with null its attempt ended.
+    void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
+    // The current track's file is on disk: hands it to the backend.
+    void playFile(QTemporaryFile *file, const QString &quality);
+    void stepForward(bool heldPaused, bool wait);
+    void setStopped(bool s);
+    // The output's linear factor for a level on the volume slider.
+    static double outputVolume(double level);
+    // The current track ran out: the queue moves on, or repeat-one starts
+    // the same file over.
+    void trackEnded(bool heldPaused = false);
+    // The current track from its start, off the file it has where it can.
+    void startOver(bool heldPaused);
+    // Puts the track at `index` on show with nothing loaded; play loads it,
+    // passing over a ruled-out track in the direction of `travel`.
+    void restOn(int index, Travel travel);
+    // Ends what the current load has under way and drops its file.
+    void dropCurrentLoad();
     // Asks for the current track's stream on behalf of the load numbered
     // `serial`. twinSought: this load has looked for the track's twin.
     void requestStream(quint64 serial, bool twinSought);
@@ -306,22 +344,26 @@ private:
     // differs from what was last told.
     void tellPlaying();
     Track trackFromMap(const QVariantMap &m) const;
+    // Where a step forward goes. Repeat-one wraps there as repeat-all does.
     int  nextIndex() const;
+    // Where the queue goes when a track runs out: the same row under repeat-one.
+    int  followingIndex() const;
     int  previousIndex() const;
     // First row belonging to the context, for a repeat-all wrap.
     int  firstContextRow() const;
     void preloadNext();
     void cancelPreload();
-    // A preload attempt for the row at `next` gave up. Clears the in-progress
-    // index and records the row so the trigger does not retry it.
-    void preloadGaveUp(int next);
+    // A preload attempt gave up. Records the track so the trigger does not
+    // retry it.
+    void preloadGaveUp(qlonglong trackId);
     // The row ahead still holds this track and is not the playing one.
     bool rowAheadIs(int next, qlonglong trackId) const;
     // The stream request of a preload, and what a refusal does to the row.
-    void requestPreload(int next, qlonglong trackId, bool twinSought);
-    void preloadRefused(int next, qlonglong trackId, StreamManifest::Reason reason);
+    // `gen` is the preload's; a reply for an older one drops out.
+    void requestPreload(quint64 gen, int next, qlonglong trackId, bool twinSought);
+    void preloadRefused(quint64 gen, int next, qlonglong trackId, StreamManifest::Reason reason);
     // seekTwin() for the row ahead, which holds `of`.
-    void seekTwinAhead(int next, const Track &of, std::function<void()> noTwin);
+    void seekTwinAhead(quint64 gen, int next, const Track &of, std::function<void()> noTwin);
     // Moves the cursor to target and puts the manual queue directly after it.
     // Returns true if the list itself changed.
     bool relocateTo(int target);
@@ -446,22 +488,21 @@ private:
     QTimer              *m_persistTimer  = nullptr;
     // Set while restorePlaybackState() runs, so it does not save what it read.
     bool                 m_suspendPersist = false;
-    // The restore ran before initAudio(), so the load is owed.
-    bool                 m_restorePending = false;
-    // The load under way comes up paused: a restored session, a step MPRIS
-    // made while paused, or pause pressed while it loads.
+    // The load under way comes up paused: pause was pressed while it loads.
     bool                 m_restorePaused  = false;
     // A load is under way and ends in playback. Lowered with the loading flag.
     bool                 m_loadPlays      = false;
     // What playingChanged last said.
     bool                 m_playingTold    = false;
-    // Until a restored track resolves, a failed load stays quiet: the row is
-    // passed over if Tidal ruled the track out, and left to load on play
-    // otherwise.
-    bool                 m_restoreSkips   = false;
-    // The current track's load failed and left nothing loaded; the next play
-    // asks again.
+    // Nothing is loaded behind the current track: a restored session, a
+    // held step, or a load that failed. The next play asks for it.
     bool                 m_loadOwed       = false;
+    // How the owed load travels when play starts it.
+    Travel               m_owedTravel     = Travel::Picked;
+    // See setLoadDelay().
+    int                  m_loadDelayMs    = 0;
+    QTimer              *m_loadTimer      = nullptr;
+    bool                 m_stopped        = false;
     // Numbers the loads, so a reply can tell that a newer load has replaced
     // the one that asked for it.
     quint64              m_loadSerial     = 0;
@@ -487,12 +528,16 @@ private:
 
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;
-    // Which track the bytes on disk are for. Queue edits can change which
-    // track sits at m_preloadIndex without cancelling the preload, so the
-    // file is matched on the id.
+    // Which track the preload fetches, or fetched. Queue edits can change
+    // which track sits at m_preloadIndex, so the file is matched on the id.
     qlonglong            m_preloadTrackId  = 0;
-    // The row whose preload gave up; not retried until the track changes.
-    int                  m_preloadFailedIndex = -1;
+    bool                 m_preloadLookingUp = false;   // a twin lookup ahead is out
+    // Each preload's number; replies for an older one drop out.
+    quint64              m_preloadGen      = 0;
+    // The load that waits for the preload under way, by its serial.
+    quint64              m_preloadAdoptedBy = 0;
+    // The track whose preload gave up; not retried until the track changes.
+    qlonglong            m_preloadFailedId = 0;
     bool                 m_preloadReady    = false;
     QString              m_preloadQuality;
     QTemporaryFile      *m_preloadTempFile = nullptr;

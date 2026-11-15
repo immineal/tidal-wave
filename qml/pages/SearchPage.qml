@@ -710,7 +710,6 @@ Rectangle {
                         albumTitle:     root.tracks[index].albumTitle
                         durationStr:    root.tracks[index].durationStr
                         coverUrl:       root.tracks[index].coverUrl80
-                        isPlaying:      player.currentTrack.id === root.tracks[index].id && player.playing
                         trackData:      root.tracks[index]
                         showPopularity: true
                         // Declares "search" as the source so the player bar

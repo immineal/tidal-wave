@@ -281,7 +281,7 @@ private slots:
         const QString prefix = QStringLiteral("user_%1/playback/").arg(kUser);
         QVERIFY2(!savedValue(prefix + QStringLiteral("queue")).toByteArray().isEmpty(),
                  "the queue was not saved, so ~Player never ran");
-        QVERIFY(qAbs(savedValue(prefix + QStringLiteral("volume")).toDouble() - kVolume) < 0.001);
+        QVERIFY(qAbs(savedValue(prefix + QStringLiteral("volumeLevel")).toDouble() - kVolume) < 0.001);
         QCOMPARE(savedValue(prefix + QStringLiteral("repeat")).toInt(), kRepeatMode);
         QCOMPARE(savedValue(prefix + QStringLiteral("sourceName")).toString(),
                  QStringLiteral("Album"));

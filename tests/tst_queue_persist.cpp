@@ -1,10 +1,12 @@
 // What survives quitting the app, and what must not happen on the way back.
 // The session is stored per Tidal account in the Player's own QSettings:
 // volume, mute, shuffle, repeat, both queue sections, the current track and
-// the position inside it. It comes back paused, and a saved track that no
-// longer resolves is stepped over.
+// the position inside it. It comes back paused with nothing fetched, and on
+// play a saved track that no longer resolves is stepped over.
 
 #include <QTest>
+#include <QAudio>
+#include <QAudioOutput>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -162,6 +164,20 @@ private slots:
         QCOMPARE(b.p().repeatMode(), 1);
     }
 
+    // An earlier version saved the output's linear factor. It comes back as
+    // loud as it was, with the slider where that loudness sits.
+    void aVolumeAnEarlierVersionSavedSoundsTheSame() {
+        QSettings().setValue(QStringLiteral("user_%1/playback/volume").arg(kUser), 0.33);
+        Launch b;
+        QVERIFY(b.settle());
+        const double slider = QAudio::convertVolume(0.33f, QAudio::LinearVolumeScale,
+                                                    QAudio::LogarithmicVolumeScale);
+        QVERIFY2(qAbs(b.p().volume() - slider) < 0.001, qPrintable(QString::number(b.p().volume())));
+        QAudioOutput *out = b.p().findChild<QAudioOutput *>();
+        QVERIFY(out);
+        QVERIFY2(qAbs(out->volume() - 0.33) < 0.001, qPrintable(QString::number(out->volume())));
+    }
+
     // A fresh install restores nothing and asks for nothing.
     void nothingSavedMeansNothingRestored() {
         Launch a;
@@ -295,8 +311,8 @@ private slots:
     }
 
     // The row looks fine and Tidal rules the track out anyway, as it does for
-    // one pulled from the catalogue.
-    void aStreamThatWillNotResolveIsSteppedOverNotReported() {
+    // one pulled from the catalogue. Play steps over it and says so.
+    void aStreamThatWillNotResolveIsSteppedOverOnPlay() {
         {
             Launch a;
             QVERIFY(a.settle());
@@ -312,38 +328,42 @@ private slots:
             QCOMPARE(currentId(p), 1000);
 
             QSignalSpy errorSpy(&p, &Player::error);
-            QSignalSpy playingSpy(&p, &Player::playingChanged);
             QVERIFY(b.settle());
+            QCOMPARE(b.client.asked, QList<qlonglong>());
 
             // The dead row is gone and the queue carried on. The row that moves
             // up is the one the user queued, which is consumed by taking over.
+            p.playPause();
+            QVERIFY(b.settle());
             QCOMPARE(b.client.asked, (QList<qlonglong>{1000, 9001}));
             QCOMPARE(currentId(p), 9001);
             QCOMPARE(p.manualCount(), 0);
             QVERIFY2(!ids(p.queueTracks()).contains(1000),
                      "the track that would not resolve is still in the queue");
             QCOMPARE(p.queueCount(), 4);
-
-            // No error dialog at launch, and still nothing playing.
-            QCOMPARE(errorSpy.count(), 0);
-            for (const QList<QVariant> &args : playingSpy)
-                QVERIFY2(!args.at(0).toBool(), "skipping a dead track started playback");
+            QCOMPARE(errorSpy.count(), 1);
+            QCOMPARE(errorSpy.at(0).at(0).toString(),
+                     QStringLiteral("“T1000” is no longer available on Tidal and was skipped."));
         }
 
-        // Four rows, every one of them dead: fewer than a restore gives up
-        // after, so it drops them all and ends quietly.
+        // Four rows, every one of them dead: fewer than a run that gives up,
+        // so play drops them all and ends.
         Launch c(ScriptedClient::Unavailable);
         QSignalSpy errorSpy(&c.p(), &Player::error);
+        QVERIFY(c.settle());
+        c.p().playPause();
         QVERIFY(c.settle());
         QCOMPARE(c.client.asked, (QList<qlonglong>{9001, 1001, 1002, 1003}));
         QCOMPARE(c.p().queueCount(), 0);
         QCOMPARE(c.p().queueIndex(), -1);
-        QCOMPARE(errorSpy.count(), 0);
+        QVERIFY(!c.p().playing());
+        QCOMPARE(c.p().loadError(),
+                 QStringLiteral("Several tracks are no longer available on Tidal and were skipped."));
     }
 
-    // A restore asks for five rows in a row and for no more, however many are
-    // saved. The rows it did not ask for are as they were, the queue rests on
-    // the first of them, and one sentence says why.
+    // Play on a restored session asks for five rows in a row and for no more,
+    // however many are saved. The rows it did not ask for are as they were,
+    // the queue rests on the first of them, and one sentence says why.
     void aRestoreStopsAskingAfterARunOfRowsThatCannotBePlayed_data() {
         QTest::addColumn<int>("answer");
         QTest::addColumn<QList<qlonglong>>("rowsLeft");
@@ -376,7 +396,9 @@ private slots:
         {
             Launch b{ScriptedClient::Answer(answer)};
             QSignalSpy errorSpy(&b.p(), &Player::error);
-            QSignalSpy playingSpy(&b.p(), &Player::playingChanged);
+            QVERIFY(b.settle());
+            QCOMPARE(b.client.asked, QList<qlonglong>());
+            b.p().playPause();
             QVERIFY(b.settle());
 
             QVERIFY2(b.client.asked == (QList<qlonglong>{1002, 1003, 1004, 1005, 1006}),
@@ -386,9 +408,8 @@ private slots:
             QCOMPARE(b.p().position(), qint64(0));
             QVERIFY(!b.p().loading());
             QVERIFY(!b.p().playing());
-            QCOMPARE(playingSpy.count(), 0);
-            QCOMPARE(errorSpy.count(), 1);
-            QCOMPARE(errorSpy.at(0).at(0).toString(), said);
+            QCOMPARE(b.p().loadError(), said);
+            QCOMPARE(errorSpy.constLast().at(0).toString(), said);
 
             // Play is the user's own request for the row the queue rests on.
             b.client.answer = ScriptedClient::Silent;
@@ -413,6 +434,8 @@ private slots:
             Launch b(ScriptedClient::Unreachable);
             QSignalSpy errorSpy(&b.p(), &Player::error);
             QVERIFY(b.settle());
+            b.p().playPause();
+            QVERIFY(b.settle());
 
             QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
             QCOMPARE(ids(b.p().queueTracks()),
@@ -421,7 +444,7 @@ private slots:
             QCOMPARE(b.p().position(), qint64(12000));
             QVERIFY(!b.p().loading());
             QVERIFY(!b.p().playing());
-            QCOMPARE(errorSpy.count(), 0);
+            QCOMPARE(errorSpy.count(), 1);
         }
 
         // The Player saves on its way out, so the next launch shows what it kept.
@@ -433,8 +456,7 @@ private slots:
     }
 
     // Tidal has the track and does not play it to this account. The row stays
-    // in the queue, the restore passes over it without a word, and the next
-    // launch finds every row.
+    // in the queue, play passes over it, and the next launch finds every row.
     void aTrackTheAccountMayNotPlayIsPassedOverOnRestoreAndKept() {
         QVERIFY(saveFiveRowSession());
         {
@@ -442,14 +464,18 @@ private slots:
             b.client.answerFor[1002] = ScriptedClient::NotForAccount;
             QSignalSpy errorSpy(&b.p(), &Player::error);
             QVERIFY(b.settle());
+            b.p().playPause();
+            QVERIFY(b.settle());
 
             QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
             QCOMPARE(ids(b.p().queueTracks()),
                      (QList<qlonglong>{1000, 1001, 1002, 1003, 1004}));
             QCOMPARE(currentId(b.p()), 1003);
             QCOMPARE(b.p().position(), qint64(0));
-            QVERIFY(!b.p().playing());
-            QCOMPARE(errorSpy.count(), 0);
+            QCOMPARE(errorSpy.count(), 1);
+            QCOMPARE(errorSpy.at(0).at(0).toString(),
+                     QStringLiteral("“T1002” is not available for your account or region "
+                                    "and was skipped."));
         }
 
         Launch c;
@@ -458,13 +484,14 @@ private slots:
         QCOMPARE(currentId(c.p()), 1003);
     }
 
-    // The account gets none of the saved rows. The restore asks for those
-    // from the saved one to the end and rests there with the queue whole.
+    // The account gets none of the saved rows. Play asks for those from the
+    // saved one to the end and rests there with the queue whole.
     void aRestoreOntoRowsTheAccountMayNotPlayKeepsTheQueue() {
         QVERIFY(saveFiveRowSession());
 
         Launch b(ScriptedClient::NotForAccount);
-        QSignalSpy errorSpy(&b.p(), &Player::error);
+        QVERIFY(b.settle());
+        b.p().playPause();
         QVERIFY(b.settle());
 
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004}));
@@ -472,9 +499,9 @@ private slots:
         QCOMPARE(currentId(b.p()), 1004);
         QVERIFY(!b.p().loading());
         QVERIFY(!b.p().playing());
-        QCOMPARE(errorSpy.count(), 0);
 
-        // Play is the user's own request, and its failure is said.
+        // Play again asks for the row it rests on, and its failure is said.
+        QSignalSpy errorSpy(&b.p(), &Player::error);
         b.p().playPause();
         QVERIFY(b.settle());
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003, 1004, 1004}));
@@ -483,8 +510,8 @@ private slots:
                  QStringLiteral("This track is not available for your account or region."));
     }
 
-    // The other answer: Tidal no longer has the track. That row is dropped
-    // and the one after it is asked for.
+    // The other answer: Tidal no longer has the track. On play that row is
+    // dropped and the one after it is asked for.
     void aTrackTidalRulesOutIsSteppedOverOnRestore() {
         QVERIFY(saveFiveRowSession());
 
@@ -492,13 +519,14 @@ private slots:
         b.client.answerFor[1002] = ScriptedClient::Unavailable;
         QSignalSpy errorSpy(&b.p(), &Player::error);
         QVERIFY(b.settle());
+        b.p().playPause();
+        QVERIFY(b.settle());
 
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1003}));
         QCOMPARE(ids(b.p().queueTracks()), (QList<qlonglong>{1000, 1001, 1003, 1004}));
         QCOMPARE(currentId(b.p()), 1003);
         QCOMPARE(b.p().position(), qint64(0));
-        QVERIFY(!b.p().playing());
-        QCOMPARE(errorSpy.count(), 0);
+        QCOMPARE(errorSpy.count(), 1);
     }
 
     // A track left unloaded is asked for again each time play is pressed, and
@@ -509,17 +537,17 @@ private slots:
         Launch b(ScriptedClient::Unreachable);
         QSignalSpy errorSpy(&b.p(), &Player::error);
         QVERIFY(b.settle());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+        QCOMPARE(b.client.asked, QList<qlonglong>());
         QCOMPARE(errorSpy.count(), 0);
 
         b.p().playPause();
         QVERIFY(b.settle());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1002}));
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
         QCOMPARE(errorSpy.count(), 1);
 
         b.p().playPause();
         QVERIFY(b.settle());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1002, 1002}));
+        QCOMPARE(b.client.asked, (QList<qlonglong>{1002, 1002}));
         QCOMPARE(errorSpy.count(), 2);
 
         QCOMPARE(b.p().queueCount(), 5);
@@ -543,9 +571,8 @@ private slots:
 
     // ── it comes back paused ────────────────────────────────────────────────
 
-    // Nothing in a restore may start playback. The stream request is left
-    // unanswered here, so what is checked is that nothing claims to be playing
-    // and that no transport was started on the way through.
+    // Nothing in a restore may start playback, and nothing is asked for: a
+    // launch that nobody listens to costs the account nothing.
     void aRestoredSessionNeverStartsPlayingByItself() {
         QVERIFY(saveFiveRowSession());
 
@@ -555,7 +582,7 @@ private slots:
         QVERIFY(b.settle());
         QTest::qWait(60);   // whatever initAudio() set going has run by now
 
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+        QCOMPARE(b.client.asked, QList<qlonglong>());
         QCOMPARE(currentId(player), 1002);
         QCOMPARE(player.position(), qint64(12000));
         QVERIFY2(!player.playing(), "a restored session came back playing");
@@ -571,9 +598,9 @@ private slots:
 
     // ── a restore the user overtakes ────────────────────────────────────────
 
-    // The restored track, 1002, is still being asked for when the user moves
-    // on. The load that follows is the user's own and its failure is reported.
-    // A row the user picked stays; one a step landed on is passed over.
+    // The user moves on from the restored track, 1002, before it ever played.
+    // The load is the user's own and its failure is reported. A row the user
+    // picked stays; one a step landed on is passed over.
     void aLoadTheUserStartsDuringARestoreIsTheUsersOwn_data() {
         QTest::addColumn<QString>("action");
         QTest::addColumn<qlonglong>("picked");
@@ -584,7 +611,6 @@ private slots:
         QTest::newRow("next")                << QStringLiteral("next")     << qlonglong(1003) << true  << qlonglong(1004);
         QTest::newRow("previous")            << QStringLiteral("previous") << qlonglong(1001) << true  << qlonglong(1000);
         QTest::newRow("a queue jump")        << QStringLiteral("jump")     << qlonglong(1004) << true  << qlonglong(0);
-        QTest::newRow("removing the row")    << QStringLiteral("remove")   << qlonglong(1003) << true  << qlonglong(0);
         QTest::newRow("next, unreachable")   << QStringLiteral("next")     << qlonglong(1003) << false << qlonglong(0);
     }
 
@@ -600,7 +626,7 @@ private slots:
                                               : ScriptedClient::Unreachable;
         QSignalSpy errorSpy(&b.p(), &Player::error);
         QVERIFY(b.settle());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
+        QCOMPARE(b.client.asked, QList<qlonglong>());
 
         if (action == QLatin1String("play")) {
             b.p().playTracks(contextOf(2000, 3), 0);
@@ -610,20 +636,18 @@ private slots:
             // Twelve seconds in, the first press only rewinds.
             b.p().previous();
             b.p().previous();
-        } else if (action == QLatin1String("jump")) {
-            b.p().jumpToQueue(4);
         } else {
-            b.p().removeFromQueue(2);
+            b.p().jumpToQueue(4);
         }
         QVERIFY(b.settle());
 
         if (beyond) {
-            QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked, beyond}));
+            QCOMPARE(b.client.asked, (QList<qlonglong>{picked, beyond}));
             QCOMPARE(currentId(b.p()), beyond);
             QVERIFY2(!ids(b.p().queueTracks()).contains(picked),
                      "the withdrawn track the step landed on is still in the queue");
         } else {
-            QCOMPARE(b.client.asked, (QList<qlonglong>{1002, picked}));
+            QCOMPARE(b.client.asked, (QList<qlonglong>{picked}));
             QCOMPARE(currentId(b.p()), picked);
             QVERIFY2(ids(b.p().queueTracks()).contains(picked),
                      "the track the user picked was dropped from the queue");

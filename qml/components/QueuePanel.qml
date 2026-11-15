@@ -123,7 +123,8 @@ Item {
 
     function headerLabelOf(kind) {
         switch (kind) {
-        case "playedHeader":  return qsTr("Played")
+        // Rows behind the cursor: played, or jumped over to get here.
+        case "playedHeader":  return qsTr("Earlier in queue")
         case "nowHeader":     return qsTr("Now Playing")
         case "manualHeader":  return qsTr("Next in queue")
         case "contextHeader": return contextHeading
@@ -153,6 +154,8 @@ Item {
     // never has to know its position in the flat queue.
     function activate(kind, slot) {
         switch (kind) {
+        // The current track pauses or resumes, and never starts over.
+        case "current": player.playPause();         break
         case "played":  player.jumpToPlayed(slot);  break
         case "manual":  player.jumpToManual(slot);  break
         case "context": player.jumpToContext(slot); break
@@ -463,9 +466,7 @@ Item {
         readonly property bool isCurrent: kind === "current"
         readonly property bool isPlayed:  kind === "played"
         readonly property bool isManual:  kind === "manual"
-        // The current row is where you already are, so there is nowhere for a
-        // click on it to go.
-        readonly property bool actionable: !isHeader && !isCurrent
+        readonly property bool actionable: !isHeader
         readonly property bool draggable:  isManual && root.manualCount > 1
         readonly property bool dragging:   isManual && root.dragFrom === slot
 

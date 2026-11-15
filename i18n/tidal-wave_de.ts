@@ -1197,8 +1197,8 @@
         </translation>
     </message>
     <message>
-        <source>Played</source>
-        <translation>Abgespielt</translation>
+        <source>Earlier in queue</source>
+        <translation>Vorher in der Warteschlange</translation>
     </message>
     <message>
         <source>Next in queue</source>

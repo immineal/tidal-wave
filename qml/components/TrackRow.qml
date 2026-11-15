@@ -22,6 +22,8 @@ Item {
     property var    albumTitle
     property var    durationStr
     property var    coverUrl
+    // Draws the row as the playing one whatever the player holds; for
+    // previews. A real row works it out from the player.
     property bool   isPlaying: false
     property bool   showAlbum: true
     property bool   showCover: true
@@ -45,7 +47,7 @@ Item {
         if (s.length > 0) return s
         var secs = root.trackData ? Number(root.trackData.duration) : NaN
         if (!isFinite(secs) || secs <= 0) return ""
-        return Math.floor(secs / 60) + ":" + ("0" + Math.floor(secs % 60)).slice(-2)
+        return Theme.clock(secs * 1000)
     }
     readonly property string coverText:   textOf(root.coverUrl)
 
@@ -120,11 +122,18 @@ Item {
         return isFinite(n) ? n : 0
     }
 
-    // A track Tidal does not stream is played from its twin, which has
-    // another id and names this row's as the one it stands for.
-    readonly property bool playsNow: root.isPlaying
-        || (root.trackId > 0 && player.playing
-            && Number(player.currentTrack.standsForId) === root.trackId)
+    // The player's track, playing or paused. A track Tidal does not stream
+    // is played from its twin, which names this row's id as the one it stands for.
+    readonly property bool isCurrent: root.isPlaying
+        || (root.trackId > 0 && (Number(player.currentTrack.id) === root.trackId
+                                 || Number(player.currentTrack.standsForId) === root.trackId))
+    readonly property bool playsNow: root.isPlaying || (root.isCurrent && player.playing)
+
+    // A click on the current track pauses or resumes it, and never starts it over.
+    function activate() {
+        if (root.isCurrent && !root.isPlaying) player.playPause()
+        else root.playRequested()
+    }
 
     property bool   isLiked: trackId > 0 ? bridge.isTrackFavorite(trackId) : false
     // Playlist context: set when TrackRow is inside a PlaylistPage
@@ -191,8 +200,8 @@ Item {
     signal removeFromPlaylistRequested(int itemIndex)
 
     activeFocusOnTab: true
-    Keys.onReturnPressed: root.playRequested()
-    Keys.onSpacePressed:  root.playRequested()
+    Keys.onReturnPressed: root.activate()
+    Keys.onSpacePressed:  root.activate()
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             root.menuRequested(width / 2, height / 2)
@@ -205,7 +214,7 @@ Item {
         anchors.fill: parent
         anchors.margins: 2
         radius: Theme.radiusRow
-        color: root.playsNow ? Theme.accentSoft
+        color: root.isCurrent ? Theme.accentSoft
                : hov.hovered ? Theme.surfaceHov : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
@@ -226,7 +235,7 @@ Item {
                 if (mouse.button === Qt.RightButton) {
                     root.openMenu()
                 } else {
-                    root.playRequested()
+                    root.activate()
                 }
             }
         }
@@ -240,10 +249,12 @@ Item {
                 width: 24
                 Layout.alignment: Qt.AlignVCenter
                 Text {
+                    objectName: "trackRowNumber"
                     anchors.centerIn: parent
                     visible: !root.playsNow && !hov.hovered
                     text: root.trackNum
-                    color: Theme.textDim
+                    // A paused current track keeps its number, in the accent.
+                    color: root.isCurrent ? Theme.accent : Theme.textDim
                     font.pixelSize: 13
                 }
                 VectorIcon.PlayingIndicator {
@@ -294,7 +305,7 @@ Item {
                     objectName: "trackTitle"
                     Layout.fillWidth: true
                     text: root.titleText
-                    color: root.playsNow ? Theme.accent : Theme.textPrimary
+                    color: root.isCurrent ? Theme.accent : Theme.textPrimary
                     font.pixelSize: 14
                     elide: Text.ElideRight
                 }
@@ -324,10 +335,11 @@ Item {
             }
 
             Text {
+                objectName: "trackDuration"
                 text: root.durationText
                 color: Theme.textDim
                 font.pixelSize: 13
-                Layout.preferredWidth: 40
+                Layout.preferredWidth: Math.max(40, implicitWidth)
                 horizontalAlignment: Text.AlignRight
             }
 
@@ -588,7 +600,11 @@ Item {
             ContextMenu.Entry {
                 text: qsTr("Play now")
                 iconName: "play"
-                onTriggered: root.playRequested()
+                // On the current track it resumes a pause, and leaves it be if it plays.
+                onTriggered: {
+                    if (!root.isCurrent || root.isPlaying) root.playRequested()
+                    else if (!player.playing) player.playPause()
+                }
             }
             // Above Add to queue: of the two, playing the track next is what
             // a user reaches for more often.

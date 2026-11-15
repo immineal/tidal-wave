@@ -1061,6 +1061,8 @@ private slots:
         QVERIFY(b.audioUp());
         QCOMPARE(b.p().currentTrackMap(), twinRow);
         QCOMPARE(b.p().queueTrackAt(2), rows.at(2).toMap());
+        QVERIFY2(b.client.asked.isEmpty(), "the restore asked for the track before play");
+        b.p().playPause();
         QCOMPARE(b.client.asked, (QList<qlonglong>{9001}));
         QVERIFY2(b.api.lookups.isEmpty(), "the twin that came back was looked up again");
 
@@ -1082,6 +1084,8 @@ private slots:
         Launch b;
         QVERIFY(b.audioUp());
         QCOMPARE(currentId(b.p()), 1002);
+        QVERIFY2(b.client.asked.isEmpty(), "the restore asked for the track before play");
+        b.p().playPause();
         QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
         QVERIFY(b.p().currentTrack().streamable);
         QCOMPARE(b.p().currentTrack().isrc, QString());

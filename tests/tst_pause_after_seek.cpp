@@ -164,6 +164,8 @@ public:
         return false;
     }
 
+    int waiting() const { return int(m_held.count()); }
+
 private:
     QList<std::pair<qlonglong, StreamCb>> m_held;
 };
@@ -329,7 +331,9 @@ private:
         QCOMPARE((l).mp()->playbackState(), QMediaPlayer::state);                          \
         QCOMPARE((l).p().playing(), QMediaPlayer::state == QMediaPlayer::PlayingState);    \
         QCOMPARE(told(l), QMediaPlayer::state == QMediaPlayer::PlayingState                \
-                              ? QStringLiteral("Playing") : QStringLiteral("Paused"));     \
+                              ? QStringLiteral("Playing")                                  \
+                          : QMediaPlayer::state == QMediaPlayer::StoppedState              \
+                              ? QStringLiteral("Stopped") : QStringLiteral("Paused"));     \
     } while (false)
 
 class TestPauseAfterSeek : public QObject {
@@ -442,8 +446,9 @@ private slots:
                                   "the track did not play on from where the seek put it", 5000);
     }
 
-    // A restored session waits paused where it was left.
-    void aTrackHeldPausedByARestoreIsLoaded()
+    // A restored session waits where it was left with nothing loaded. A seek
+    // there is held, and play loads the track and starts it at that point.
+    void aTrackHeldByARestoreLoadsOnPlayFromASeek()
     {
         if (const char *why = obstacle()) QSKIP(why);
         {
@@ -456,18 +461,17 @@ private slots:
 
         Launch l;
         QVERIFY(l.audioUp());
-        l.heard.countFromLoaded = true;
-        QVERIFY2(l.client.answer(1, m_track), "the restore asked for nothing");
-        QTRY_VERIFY2_WITH_TIMEOUT(l.mp()->playbackState() == QMediaPlayer::PausedState,
-                                  "the restored track never came up paused", 10000);
-        SETTLED(l, PausedState);
-        QVERIFY2(qAbs(l.mp()->position() - kSavedAt) < 250,
-                 qPrintable(QStringLiteral("restored at %1 ms").arg(l.mp()->position())));
-
+        QTest::qWait(300);
+        QVERIFY2(l.client.waiting() == 0, "the restore asked for the track before play");
         l.seek(kSeekTo);
-        SETTLED(l, PausedState);
+        l.heard.countFromLoaded = true;
         l.press();
+        QVERIFY2(l.client.answer(1, m_track), "play asked for nothing");
+        QVERIFY2(QTest::qWaitFor([&l] { return l.plays() && !l.p().loading(); }, 10000),
+                 l.heard.after("the track never played").constData());
         SETTLED(l, PlayingState);
+        QVERIFY2(l.mp()->position() >= kSeekTo,
+                 qPrintable(QStringLiteral("started at %1 ms").arg(l.mp()->position())));
     }
 
     void theEndOfATrackAfterASeekIsNoLoad_data()

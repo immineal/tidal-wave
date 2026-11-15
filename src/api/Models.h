@@ -192,11 +192,15 @@ struct Track {
         return names.join(", ");
     }
 
-    QString durationString() const {
-        int m = duration / 60;
-        int s = duration % 60;
+    // m:ss, and h:mm:ss from an hour on, as Theme.clock() in the QML has it.
+    static QString clockText(int seconds) {
+        const int t = qMax(0, seconds);
+        const int h = t / 3600, m = (t % 3600) / 60, s = t % 60;
+        if (h > 0)
+            return QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
         return QStringLiteral("%1:%2").arg(m).arg(s, 2, 10, QChar('0'));
     }
+    QString durationString() const { return clockText(duration); }
 
     QString coverUrl(int size = 320) const {
         return album.coverUrl(size);

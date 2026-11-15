@@ -133,8 +133,7 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     // What the player looks a twin up by, and whether it has to.
     m["isrc"]        = t.isrc;
     m["streamable"]  = t.streamable;
-    int s = t.duration % 60, mm = t.duration / 60;
-    m["durationStr"] = QString("%1:%2").arg(mm).arg(s, 2, 10, QChar('0'));
+    m["durationStr"] = Track::clockText(t.duration);
     return m;
 }
 

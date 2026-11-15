@@ -216,7 +216,7 @@ TestCase {
         var panel = openPanel(host)
 
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now Playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the four section headers, in reading order")
 
@@ -262,7 +262,7 @@ TestCase {
         var labels = headerLabels(panel)
         compare(labels.indexOf(qsTr("Next in queue")), -1,
                 "an empty manual queue still drew its header")
-        compare(labels.indexOf(qsTr("Played")), -1,
+        compare(labels.indexOf(qsTr("Earlier in queue")), -1,
                 "an empty history still drew its header")
         compare(labels.join(" | "),
                 [qsTr("Now Playing"), qsTr("Next from: %1").arg("Life 1")].join(" | "),
@@ -489,6 +489,28 @@ TestCase {
                 "a " + row.tag + " row called the wrong thing")
     }
 
+    // The current row pauses and resumes the track, and starts nothing over.
+    function test_clicking_the_current_row_pauses_and_resumes() {
+        seedAll()
+        player.setPlayingForTest(true)
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var entry = entryAt(panel, panel.currentAt)
+        verify(entry, "the current row was never drawn")
+        var p = pointIn(host, entry, entry.width / 2, entry.height / 2)
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(!player.playing, "a click on the playing row did not pause it")
+        compare(entry.isCurrent, true, "the paused row lost its place as the current one")
+
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(player.playing, "a click on the paused row did not resume it")
+        compare(player.queueCalls.join(","), "", "the current row jumped somewhere")
+        player.setPlayingForTest(false)
+    }
+
     // ── finding your place ───────────────────────────────────────────────
 
     // Opening the panel on a queue that has been playing for a while must
@@ -637,7 +659,7 @@ TestCase {
         compare(entryAt(panel, panel.playedAt + 2).kind, "played",
                 "the finished track is still drawn as something upcoming")
         compare(headerLabels(panel).join(" | "),
-                [qsTr("Played"), qsTr("Now Playing"), qsTr("Next in queue"),
+                [qsTr("Earlier in queue"), qsTr("Now Playing"), qsTr("Next in queue"),
                  qsTr("Next from: %1").arg("Life 1")].join(" | "),
                 "the headings did not follow the boundaries")
 
