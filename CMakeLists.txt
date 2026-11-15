@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(tidal-wave VERSION 0.4.2 LANGUAGES CXX)
+project(tidal-wave VERSION 0.4.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,6 +51,8 @@ set(SOURCES
     src/api/TidalClient.cpp
     src/api/RecordVersions.cpp
     src/api/TidalBridge.cpp
+    src/api/LyricsProviders.cpp
+    src/api/LyricsFinder.cpp
     src/player/Player.cpp
     src/player/SpectrumAnalyzer.cpp
     src/player/Downloader.cpp
@@ -77,6 +79,8 @@ set(HEADERS
     src/api/TidalClient.h
     src/api/RecordVersions.h
     src/api/TidalBridge.h
+    src/api/LyricsProviders.h
+    src/api/LyricsFinder.h
     src/player/Player.h
     src/player/SpectrumAnalyzer.h
     src/player/Downloader.h
@@ -94,6 +98,7 @@ set(HEADERS
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
     src/api/LibraryIndex.h
+    src/api/PageEverything.h
 )
 
 if(UNIX AND NOT APPLE)
@@ -114,6 +119,40 @@ if(UNIX AND NOT APPLE)
         src/cast/CastManager.h
     )
 endif()
+
+# ── Lyrics aligner ───────────────────────────────────────────────────────────
+# Plain C++ over QtCore (Multimedia only to decode), its nets and table as resources. Its own library so
+# the CLI under tools/ links it without the app.
+qt_add_library(tidalwave_lyricsync STATIC
+    src/lyricsync/Aligner.cpp
+    src/lyricsync/Aligner.h
+    src/lyricsync/AudioFeed.cpp
+    src/lyricsync/AudioFeed.h
+    src/lyricsync/AutoSync.cpp
+    src/lyricsync/AutoSync.h
+    src/lyricsync/Decode.cpp
+    src/lyricsync/Decode.h
+    src/lyricsync/Dsp.cpp
+    src/lyricsync/Dsp.h
+    src/lyricsync/Nets.cpp
+    src/lyricsync/Nets.h
+    src/lyricsync/Text.cpp
+    src/lyricsync/Text.h
+)
+target_include_directories(tidalwave_lyricsync PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(tidalwave_lyricsync PUBLIC Qt6::Core Qt6::Multimedia)
+# The nets' loops want the vectoriser, which -O2 in older GCCs leaves off.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(tidalwave_lyricsync PRIVATE $<$<NOT:$<CONFIG:Debug>>:-O3>)
+endif()
+qt_add_resources(tidalwave_lyricsync lyricsync_assets
+    PREFIX "/lyricsync"
+    BASE assets/lyricsync
+    FILES
+        assets/lyricsync/ctc.f16.bin
+        assets/lyricsync/detector.f16.bin
+        assets/lyricsync/translit.bin
+)
 
 # ── QML module + app logic as a static library ───────────────────────────────
 # A static library, so that the app and tests/ link the same module,
@@ -210,6 +249,7 @@ target_link_libraries(tidalwave_qml PUBLIC
     Qt6::Multimedia
     Qt6::Svg
     Qt6::QuickControls2
+    tidalwave_lyricsync
 )
 
 if(UNIX AND NOT APPLE)
@@ -277,6 +317,14 @@ set_target_properties(tidal-wave PROPERTIES
 if(TIDALWAVE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Runs the aligner on an audio file and a lyrics file: tools/lyricsync_cli.cpp.
+option(TIDALWAVE_BUILD_LYRICSYNC_CLI "Build the lyrics aligner's command-line tool" OFF)
+if(TIDALWAVE_BUILD_LYRICSYNC_CLI OR TIDALWAVE_BUILD_TESTS)
+    qt_add_executable(lyricsync-cli tools/lyricsync_cli.cpp)
+    target_link_libraries(lyricsync-cli PRIVATE tidalwave_lyricsync)
+    set_target_properties(lyricsync-cli PROPERTIES WIN32_EXECUTABLE FALSE MACOSX_BUNDLE FALSE)
 endif()
 
 # ── Translations ───────────────────────────────────────────────────────

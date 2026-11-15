@@ -3,6 +3,7 @@
 #pragma once
 #include <QObject>
 #include <QAbstractListModel>
+#include <QSet>
 #include <QStringList>
 #include "TidalApi.h"
 #include "Models.h"
@@ -59,9 +60,30 @@ private:
 };
 
 // ──────────── High-level API client ────────────
+// How to tell, in one request, whether a list of favourites has changed: any
+// add moves `newest` and any removal alone moves `total`.
+struct FavoritesHead {
+    int     total = -1;
+    QString newest;
+    bool operator==(const FavoritesHead &o) const {
+        return total == o.total && newest == o.newest;
+    }
+};
+
+// Every saved id, unavailable ones included, from users/<id>/favorites/ids.
+// The listings leave out what is unavailable in the account's country.
+struct FavoriteIds {
+    QSet<qint64> tracks;
+    QSet<qint64> albums;
+    QSet<qint64> artists;
+};
+
 class TidalClient : public QObject {
     Q_OBJECT
 public:
+    enum class FavoriteKind { Tracks, Albums, Artists, Playlists };
+    using HeadCallback     = std::function<void(FavoritesHead,  QString)>;
+    using FavoriteIdsCallback = std::function<void(FavoriteIds, QString)>;
     using TracksCallback   = std::function<void(QList<Track>,   QString)>;
     using AlbumsCallback   = std::function<void(QList<Album>,   QString)>;
     using ArtistsCallback  = std::function<void(QList<Artist>,  QString)>;
@@ -87,11 +109,25 @@ public:
     // answers them and nothing in the app overrides one.
     virtual void fetchMixPage(const QString &mixId, MixPageCallback cb);
 
-    // My collection
+    // My collection. The favourites pages are parsed off the GUI thread: a
+    // whole list in one page runs to megabytes.
     void fetchFavoriteTracks  (TracksCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteAlbums  (AlbumsCallback    cb, int limit=50, int offset=0);
-    void fetchFavoriteArtists (ArtistsCallback   cb, int limit=50, int offset=0);
-    void fetchUserPlaylists   (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteTracksNewestFirst(TracksCallback cb, int limit, int offset);
+    // The same rows by order=INDEX, the order they were liked in. Unlike DATE
+    // it breaks ties, so paging by it repeats and skips nothing. Undocumented:
+    // a refusal is retried by DATE.
+    virtual void fetchFavoriteTracksByIndex(TracksCallback cb, int limit, int offset,
+                                            bool newestFirst);
+    virtual void fetchFavoriteAlbums (AlbumsCallback    cb, int limit=50, int offset=0);
+    virtual void fetchFavoriteArtists(ArtistsCallback   cb, int limit=50, int offset=0);
+    virtual void fetchUserPlaylists  (PlaylistsCallback cb, int limit=50, int offset=0);
+    virtual void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb);
+    virtual void fetchFavoriteIds(FavoriteIdsCallback cb);
+
+    // Tidal's largest favourites page; a larger limit answers 400. It also
+    // caps a collection at 10000 tracks, so one page holds every liked song.
+    static constexpr int kFavoritesPageMax = 10000;
+    static FavoriteIds parseFavoriteIds(const QJsonObject &root);
 
     // Content
     void fetchAlbumTracks  (qint64 albumId,        TracksCallback    cb);
@@ -112,8 +148,8 @@ public:
     void search(const QString &query, SearchCb cb, int limit = 20, int offset = 0);
 
     // Favorites management
-    void addTrackFavorite   (qint64 trackId,    std::function<void(bool)> cb);
-    void removeTrackFavorite(qint64 trackId,    std::function<void(bool)> cb);
+    virtual void addTrackFavorite(qint64 trackId, std::function<void(bool)> cb);
+    virtual void removeTrackFavorite(qint64 trackId, std::function<void(bool)> cb);
     void addAlbumFavorite    (qint64 albumId,    std::function<void(bool)> cb);
     void removeAlbumFavorite (qint64 albumId,    std::function<void(bool)> cb);
     void addArtistFavorite   (qint64 artistId,   std::function<void(bool)> cb);
@@ -289,6 +325,13 @@ private:
     static QList<Mix> orderMixes(QList<Mix> mixes);
 
     static QList<Track> parseTracks(const QJsonObject &root);
+
+    // A v1 GET whose body is parsed by `parse` on a worker thread. `cb` runs
+    // on this object's thread, and not at all once this object is gone.
+    template <typename T>
+    void getListOffThread(const QString &endpoint, const QUrlQuery &params,
+                          QList<T> (*parse)(const QJsonObject &),
+                          std::function<void(QList<T>, QString)> cb);
 
     static QString qualityString(AudioQuality q);
 

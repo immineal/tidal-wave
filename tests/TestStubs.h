@@ -183,6 +183,7 @@ public:
     }
 
     // Favourites / playlists (paged in the real bridge; defaults kept identical)
+    Q_PROPERTY(bool favoritesLoading MEMBER m_favoritesLoading CONSTANT)
     Q_INVOKABLE void fetchFavoriteTracks(QJSValue cb, int limit = 50, int offset = 0) {
         Q_UNUSED(limit); Q_UNUSED(offset); resolve(cb, emptyArray());
     }
@@ -302,6 +303,7 @@ public:
         m_lastOtherVersionsFetched = 0;
     }
 private:
+    bool m_favoritesLoading = false;
     QVariantList m_otherVersions;
     QString      m_otherVersionsError;
     bool         m_deferOtherVersions = false;
@@ -614,16 +616,89 @@ public:
         m_lastTrackMixFetched  = 0;
     }
 
-    // NowPlayingPage reads .text and .timed off the result.
+    // NowPlayingPage reads .text and .timed off the result. Empty unless a
+    // test stored lyrics with setLyricsForTest().
     Q_INVOKABLE void fetchLyrics(qlonglong trackId, QJSValue cb) {
         Q_UNUSED(trackId);
         QJSValue res = emptyObject();
         if (res.isObject()) {
-            res.setProperty(QStringLiteral("text"), QJSValue(QString()));
-            res.setProperty(QStringLiteral("timed"), QJSValue(false));
+            res.setProperty(QStringLiteral("text"), QJSValue(m_lyricsText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_lyricsTimed));
         }
         resolve(cb, res);
     }
+    Q_INVOKABLE void setLyricsForTest(const QString &text, bool timed) {
+        m_lyricsText = text;
+        m_lyricsTimed = timed;
+    }
+    // Mirrors TidalBridge::findLyrics. Answers what setFoundLyricsForTest()
+    // stored, or nothing found; "off" when the stub prefs say so.
+    Q_INVOKABLE void findLyrics(const QVariantMap &track, QJSValue cb) {
+        m_findLyricsCalls++;
+        m_lastFindLyricsTrack = track;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("text"), QJSValue(m_foundText));
+            res.setProperty(QStringLiteral("timed"), QJSValue(m_foundTimed));
+            res.setProperty(QStringLiteral("source"), QJSValue(m_foundSource));
+            res.setProperty(QStringLiteral("url"), QJSValue(m_foundUrl));
+            res.setProperty(QStringLiteral("instrumental"), QJSValue(m_foundInstrumental));
+        }
+        if (!cb.isCallable()) return;
+        QJSValueList args;
+        args << res << QJSValue(QString());
+        cb.call(args);
+    }
+    Q_INVOKABLE void setFoundLyricsForTest(const QString &text, bool timed,
+                                           const QString &source, const QString &url) {
+        m_foundText = text; m_foundTimed = timed; m_foundSource = source; m_foundUrl = url;
+    }
+    Q_INVOKABLE void setFoundInstrumentalForTest(bool on) { m_foundInstrumental = on; }
+    Q_INVOKABLE int         findLyricsCallsForTest() const { return m_findLyricsCalls; }
+    Q_INVOKABLE QVariantMap lastFindLyricsTrackForTest() const { return m_lastFindLyricsTrack; }
+    Q_INVOKABLE void resetLyricsForTest() {
+        m_lyricsText.clear(); m_lyricsTimed = false;
+        m_foundText.clear(); m_foundTimed = false; m_foundSource.clear(); m_foundUrl.clear();
+        m_foundInstrumental = false;
+        m_findLyricsCalls = 0; m_lastFindLyricsTrack.clear();
+        m_autoSyncCalls = 0; m_autoSyncText.clear(); m_autoSyncKept = false; m_autoSyncLrc.clear();
+        m_autoSyncHold = false; m_autoSyncHeld.clear(); m_autoSyncCancels = 0; m_lookAhead = false;
+    }
+    // Mirrors TidalBridge::autoSyncLyrics: answers what setAutoSyncForTest()
+    // stored, at once or, held, on a release. Every held call is kept, so a
+    // stale one can be answered after a newer one was made.
+    Q_INVOKABLE void autoSyncLyrics(qlonglong trackId, const QString &text, QJSValue cb) {
+        Q_UNUSED(trackId);
+        m_autoSyncCalls++;
+        m_autoSyncText = text;
+        m_autoSyncHeld.append(cb);
+        if (!m_autoSyncHold) releaseAutoSyncForTest();
+    }
+    Q_INVOKABLE void cancelAutoSync() { m_autoSyncCancels++; }
+    Q_INVOKABLE int  autoSyncCancelsForTest() const { return m_autoSyncCancels; }
+    Q_INVOKABLE void setAutoSyncForTest(bool kept, const QString &lrc) { m_autoSyncKept = kept; m_autoSyncLrc = lrc; }
+    Q_INVOKABLE void holdAutoSyncForTest(bool hold) { m_autoSyncHold = hold; }
+    // Answers every held call, oldest first.
+    Q_INVOKABLE void releaseAutoSyncForTest() {
+        while (!m_autoSyncHeld.isEmpty()) releaseOldestAutoSyncForTest();
+    }
+    Q_INVOKABLE void releaseOldestAutoSyncForTest() {
+        if (m_autoSyncHeld.isEmpty()) return;
+        QJSValue cb = m_autoSyncHeld.takeFirst();
+        if (!cb.isCallable()) return;
+        QJSValue res = emptyObject();
+        if (res.isObject()) {
+            res.setProperty(QStringLiteral("ok"), QJSValue(true));
+            res.setProperty(QStringLiteral("kept"), QJSValue(m_autoSyncKept));
+            res.setProperty(QStringLiteral("confidence"), QJSValue(m_autoSyncKept ? 0.9 : 0.3));
+            res.setProperty(QStringLiteral("lrc"), QJSValue(m_autoSyncLrc));
+        }
+        cb.call(QJSValueList{res, QJSValue(QString())});
+    }
+    Q_INVOKABLE int     autoSyncCallsForTest() const { return m_autoSyncCalls; }
+    Q_INVOKABLE QString lastAutoSyncTextForTest() const { return m_autoSyncText; }
+    Q_INVOKABLE void setLyricsLookAhead(bool on) { m_lookAhead = on; }
+    Q_INVOKABLE bool lyricsLookAheadForTest() const { return m_lookAhead; }
     // NowPlayingPage reads .groups, .copyright, .isrc, .releaseDate and .upc
     // off the result. Answered empty, so the credits panel shows "unavailable".
     // Counted, because the page caches per track id.
@@ -1054,6 +1129,23 @@ private:
     QHash<qlonglong, bool> m_favoriteArtists;
     QHash<QString, bool>   m_favoriteMixes;
     // What fetchTrackMix() answers, and what it was asked.
+    QString     m_lyricsText;
+    bool        m_lyricsTimed = false;
+    QString     m_foundText;
+    bool        m_foundTimed = false;
+    bool        m_foundInstrumental = false;
+    QString     m_foundSource;
+    QString     m_foundUrl;
+    int         m_findLyricsCalls = 0;
+    QVariantMap m_lastFindLyricsTrack;
+    int         m_autoSyncCalls = 0;
+    QString     m_autoSyncText;
+    bool        m_autoSyncKept = false;
+    QString     m_autoSyncLrc;
+    bool        m_autoSyncHold = false;
+    QList<QJSValue> m_autoSyncHeld;
+    int         m_autoSyncCancels = 0;
+    bool        m_lookAhead = false;
     QString   m_trackMixId;
     QString   m_trackMixError;
     int       m_trackMixFetches     = 0;
@@ -1929,6 +2021,10 @@ class StubPrefs : public QObject {
     // real Prefs. SpectrumAnalyzer reads the property by name, so this stub is a
     // complete substitute for Prefs there.
     Q_PROPERTY(bool spectrumBars READ spectrumBars WRITE setSpectrumBars NOTIFY spectrumBarsChanged)
+    // Defaults as in the real Prefs: LRCLIB and auto-sync on, the other sites off.
+    Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
+    Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
+    Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -1955,6 +2051,9 @@ public:
     bool    quitOnClose() const       { return m_quitOnClose; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
+    bool    lyricsLrclib() const      { return m_lyricsLrclib; }
+    bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
+    bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -2007,6 +2106,21 @@ public:
         m_spectrumBars = v;
         emit spectrumBarsChanged();
     }
+    void setLyricsLrclib(bool v) {
+        if (v == m_lyricsLrclib) return;
+        m_lyricsLrclib = v;
+        emit lyricsLrclibChanged();
+    }
+    void setLyricsOtherSites(bool v) {
+        if (v == m_lyricsOtherSites) return;
+        m_lyricsOtherSites = v;
+        emit lyricsOtherSitesChanged();
+    }
+    void setLyricsAutoSync(bool v) {
+        if (v == m_lyricsAutoSync) return;
+        m_lyricsAutoSync = v;
+        emit lyricsAutoSyncChanged();
+    }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
@@ -2031,6 +2145,9 @@ signals:
     void quitOnCloseChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
+    void lyricsLrclibChanged();
+    void lyricsOtherSitesChanged();
+    void lyricsAutoSyncChanged();
 
 private:
     QString m_theme    = QStringLiteral("sea");
@@ -2048,6 +2165,10 @@ private:
     bool    m_quitOnClose = false;
     bool    m_coverGradient = true;
     bool    m_spectrumBars = false;
+    // As a fresh install has them.
+    bool    m_lyricsLrclib = true;
+    bool    m_lyricsOtherSites = false;
+    bool    m_lyricsAutoSync = true;
     QString m_version = QStringLiteral("0.4.0");
 };
 

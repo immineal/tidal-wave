@@ -233,10 +233,6 @@
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
     </message>
     <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
-    </message>
-    <message>
         <source>ffmpeg was not found on PATH. Install ffmpeg to cast this track.</source>
         <translation>ffmpeg wurde im PATH nicht gefunden. ffmpeg installieren, um diesen Titel zu übertragen.</translation>
     </message>
@@ -494,10 +490,6 @@
     <message>
         <source>Could not read the lossless stream details for this track.</source>
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
         <source>Could not start ffmpeg. Check that it is installed and that you have permission to run it.</source>
@@ -819,6 +811,20 @@
         <translation>Sync</translation>
     </message>
     <message>
+        <source>Instrumental</source>
+        <comment>a track with no words</comment>
+        <translation>Instrumental</translation>
+    </message>
+    <message>
+        <source>Lyrics from %1</source>
+        <comment>%1 is a lyrics website</comment>
+        <translation>Songtext von %1</translation>
+    </message>
+    <message>
+        <source>Synced automatically, may be off</source>
+        <translation>Automatisch synchronisiert, kann abweichen</translation>
+    </message>
+    <message>
         <source>Loading…</source>
         <translation>Wird geladen…</translation>
     </message>
@@ -922,10 +928,6 @@
     <message>
         <source>Could not read the lossless stream details for this track.</source>
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
-        <translation>Die Wiedergabedaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
         <source>No audio device was found. Check the sound settings of your system.</source>
@@ -1401,6 +1403,10 @@
         <translation>Das Issue-Formular öffnet sich mit deiner Version, deinem System und beiden Qt-Versionen bereits darin. Die E-Mail öffnet sich adressiert an %1. Gesendet wird beides erst, wenn du es selbst sendest.</translation>
     </message>
     <message>
+        <source>Experimental</source>
+        <translation>Experimentell</translation>
+    </message>
+    <message>
         <source>Privacy</source>
         <translation>Datenschutz</translation>
     </message>
@@ -1476,12 +1482,44 @@
         <translation>Höchstens einmal täglich, über die Releases-Seite auf GitHub.</translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
-        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest.</translation>
+        <source>Synced lyrics from LRCLIB</source>
+        <translation>Synchronisierte Songtexte von LRCLIB</translation>
     </message>
     <message>
-        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>
-        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; und ein zwischengespeicherter Index deiner Mediathek.</translation>
+        <source>When Tidal has no synced lyrics for the playing track, lrclib.net is asked and gets its artist, title, album and length.</source>
+        <translation>Hat Tidal keinen synchronisierten Songtext zum laufenden Titel, wird lrclib.net gefragt und erhält Interpret, Titel, Album und Länge.</translation>
+    </message>
+    <message>
+        <source>Lyrics from more sites</source>
+        <translation>Songtexte von weiteren Seiten</translation>
+    </message>
+    <message>
+        <source>Asked after lrclib.net, in this order: music.163.com gets the track&apos;s artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
+        <translation>Nach lrclib.net gefragt, in dieser Reihenfolge: music.163.com erhält Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
+    </message>
+    <message>
+        <source>Sync plain lyrics automatically</source>
+        <translation>Einfache Songtexte automatisch synchronisieren</translation>
+    </message>
+    <message>
+        <source>Lyrics without timings are timed against the track&apos;s audio, here on this machine; nothing is sent for it. Timings it is unsure of are not shown, and the ones shown are marked as made here.</source>
+        <translation>Songtexte ohne Zeitangaben werden hier auf diesem Rechner am Ton des Titels ausgerichtet; dafür wird nichts gesendet. Unsichere Zeitangaben werden nicht gezeigt, und die gezeigten sind als hier erstellt gekennzeichnet.</translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
+        <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest. Songtext-Seiten erhalten Angaben zu einem Titel wie unten beschrieben: lrclib.net, solange du es nicht abschaltest, die anderen erst, wenn du sie einschaltest.</translation>
+    </message>
+    <message>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.</source>
+        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Mediathek; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
+    </message>
+    <message>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <translation>Songtexte von anderen Seiten, für einen Titel, zu dem Tidal keinen synchronisierten Songtext hat, über die Schalter unter Experimentell. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Lied mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, eines mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
+    </message>
+    <message>
+        <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
+        <translation>Das Synchronisieren einfacher Songtexte, standardmäßig an, geschieht auf diesem Rechner: Der Ton des Titels, den die App zum Abspielen ohnehin heruntergeladen hat, wird hier analysiert, und nichts davon verlässt den Rechner. Die Zeitangaben werden neben den Songtexten gespeichert.</translation>
     </message>
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>

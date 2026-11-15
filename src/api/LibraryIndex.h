@@ -32,11 +32,13 @@ public:
     explicit LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent = nullptr);
     ~LibraryIndex() override;
 
-    // Tidal caps a favourites response at 100 items whatever `limit` asks for.
+    // Playlists page at pageSize. The favourites lists come in one page and
+    // page at these two only when Tidal refuses that page.
     static constexpr int pageSize = 50;
+    static constexpr int trackPageSize = 100;
     // A backstop on paging for an API that sends neither a short page nor a
-    // repeated one.
-    static constexpr int maxPages = 100;
+    // repeated one. Liked songs arrive oldest first, so a low cap loses the newest.
+    static constexpr int maxPages = 2000;
 
     QVariantList entries() const;
     bool loading() const;
@@ -108,12 +110,14 @@ protected:
     using PlaylistsCb = std::function<void(QList<Tidal::Playlist>, QString)>;
     using MixesCb     = std::function<void(QList<Tidal::Mix>,      QString)>;
 
-    // The only six places this class reaches the network. They forward to
+    // The only places this class reaches the network. They forward to
     // TidalClient; a test subclass overrides them and serves its own pages.
     virtual void fetchPlaylistPage(int offset, int limit, PlaylistsCb cb);
     virtual void fetchAlbumPage   (int offset, int limit, AlbumsCb    cb);
     virtual void fetchArtistPage  (int offset, int limit, ArtistsCb   cb);
     virtual void fetchTrackPage   (int offset, int limit, TracksCb    cb);
+    // The liked songs in the same order by order=INDEX, for paging.
+    virtual void fetchTrackIndexPage(int offset, int limit, TracksCb  cb);
     // Mixes come from a page feed that has no offset, so there is nothing to
     // page through.
     virtual void fetchMixList     (MixesCb cb);
@@ -198,6 +202,8 @@ private:
     static void  finishEntry(Entry &e);
     // One row as QML reads it. `score` is zero outside a search result.
     static QVariantMap toRow(const Entry &e, int score);
+    template <typename T>
+    void land(QList<T> &list, const QList<T> &all, bool whole);
 
     TidalClient *m_client = nullptr;
     PinStore    *m_pins   = nullptr;
@@ -226,4 +232,8 @@ private:
     int  m_loadGen   = 0;
     int  m_indexGen  = 0;
     int  m_pending   = 0;
+    // Whether every page of the run in flight arrived.
+    bool m_loadWhole = true;
+    // A row changed here during a run, whose lists may be older than that.
+    bool m_refreshAgain = false;
 };

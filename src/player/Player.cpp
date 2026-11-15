@@ -121,11 +121,10 @@ Player::~Player() {
     m_dash = nullptr;
     // remove() as well as delete: autoRemove is off on these, so deleting the
     // object alone closes the file and leaves the bytes on disk.
-    if (m_mpdTempFile) {
-        m_mpdTempFile->remove();
-        delete m_mpdTempFile;
-        m_mpdTempFile = nullptr;
-    }
+    m_heldFiles.clear();
+    dropAudioFile(m_mpdTempFile);
+    for (QTemporaryFile *f : std::as_const(m_heldDropped)) { f->remove(); delete f; }
+    m_heldDropped.clear();
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     leaveAheadOfALostSoundEngine();
 #endif
@@ -1123,11 +1122,7 @@ void Player::startLoad(int index) {
         delete d;          // aborts whatever segments were still coming
     }
 
-    if (m_mpdTempFile) {
-        m_mpdTempFile->remove();
-        delete m_mpdTempFile;
-        m_mpdTempFile = nullptr;
-    }
+    dropAudioFile(m_mpdTempFile);
 
     m_streamedQuality.clear();
     m_loadOwed = false;
@@ -1166,6 +1161,7 @@ void Player::startLoad(int index) {
         // Still loading until the media status says the file is open.
         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
         beginPlayback();
+        emit audioFileReady(m_currentTrack.id, false);
         return;
     }
 
@@ -1311,6 +1307,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                         if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                         m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                         beginPlayback();
+                        emit audioFileReady(m_currentTrack.id, false);
                     } else {
                         failLoad(tr("Could not save the audio to a temporary file. "
                                     "Check that there is free disk space."));
@@ -1350,6 +1347,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                     if (casting()) { setLoading(false); emit castTrackChanged(); return; }
                     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
                     beginPlayback();
+                    emit audioFileReady(m_currentTrack.id, false);
                 });
             }
         });
@@ -1434,6 +1432,41 @@ void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
     setLoadError(said);
 }
 
+QString Player::audioFileFor(qlonglong trackId) const {
+    if (trackId <= 0) return {};
+    if (m_mpdTempFile && m_currentTrack.id == trackId && !casting()) return m_mpdTempFile->fileName();
+    if (m_preloadReady && m_preloadTempFile && m_preloadTrackId == trackId) return m_preloadTempFile->fileName();
+    return {};
+}
+
+void Player::holdAudioFile(const QString &path) {
+    if (!path.isEmpty()) ++m_heldFiles[path];
+}
+
+void Player::releaseAudioFile(const QString &path) {
+    auto it = m_heldFiles.find(path);
+    if (it == m_heldFiles.end() || --it.value() > 0) return;
+    m_heldFiles.erase(it);
+    for (int i = int(m_heldDropped.size()) - 1; i >= 0; --i) {
+        if (m_heldDropped.at(i)->fileName() != path) continue;
+        QTemporaryFile *f = m_heldDropped.takeAt(i);
+        f->remove();
+        delete f;
+    }
+}
+
+// Deletes a temp file unless something still reads it; see holdAudioFile().
+void Player::dropAudioFile(QTemporaryFile *&f) {
+    if (!f) return;
+    if (m_heldFiles.contains(f->fileName())) {
+        m_heldDropped.append(f);
+    } else {
+        f->remove();
+        delete f;
+    }
+    f = nullptr;
+}
+
 void Player::cancelPreload() {
     // Before the abort: it runs the download's callback at once, and with no
     // row claimed that callback drops out and records no failed preload.
@@ -1449,11 +1482,7 @@ void Player::cancelPreload() {
         m_preloadDash = nullptr;
         delete d;          // aborts whatever segments were still coming
     }
-    if (m_preloadTempFile) {
-        m_preloadTempFile->remove();
-        delete m_preloadTempFile;
-        m_preloadTempFile = nullptr;
-    }
+    dropAudioFile(m_preloadTempFile);
     m_preloadTrackId = 0;
     m_preloadReady   = false;
     m_preloadQuality = {};
@@ -1544,6 +1573,7 @@ void Player::requestPreload(int next, qlonglong trackId, bool twinSought) {
                     m_preloadTempFile = f;
                     m_preloadTrackId  = trackId;
                     m_preloadReady    = true;
+                    emit audioFileReady(trackId, true);
                 } else {
                     // A full temp directory lands here. Silent: a failed preload
                     // costs a wait, and the live load reports the disk itself.
@@ -1572,6 +1602,7 @@ void Player::requestPreload(int next, qlonglong trackId, bool twinSought) {
                 m_preloadTempFile = file;
                 m_preloadTrackId  = trackId;
                 m_preloadReady    = true;
+                emit audioFileReady(trackId, true);
             });
         }
     });

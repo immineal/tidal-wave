@@ -44,6 +44,11 @@ foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls)
     endif()
 endforeach()
 
+if(TARGET tst_lyrics)
+    target_compile_definitions(tst_lyrics PRIVATE
+        TW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+endif()
+
 # ── tst_qml: QtQuickTest runner over tests/qml/tst_*.qml ─────────────────────
 qt_add_executable(tst_qml
     tst_qml.cpp

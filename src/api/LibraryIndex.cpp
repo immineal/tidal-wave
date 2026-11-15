@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "LibraryIndex.h"
+#include "PageEverything.h"
 
 #include "TidalClient.h"
 #include "ui/PinStore.h"
@@ -135,49 +136,6 @@ QString artistPictureUrl(const QString &picture, int size = 320) {
     return QStringLiteral("https://resources.tidal.com/images/%1/%2x%2.jpg").arg(u).arg(size);
 }
 
-// Pages a favourites endpoint and hands the whole list over at once. A run
-// ends on a short page, a page that added nothing new (a server ignoring
-// `offset`), the page cap, or an error, which keeps what arrived before it.
-template <typename T, typename Fetch, typename KeyOf, typename Done>
-void pageEverything(Fetch fetch, KeyOf keyOf, Done done, int limit, int maxPages) {
-    struct Run {
-        QList<T>      acc;
-        QSet<QString> seen;
-        int offset = 0;
-        int pages  = 0;
-        std::function<void()> step;
-    };
-
-    auto run = std::make_shared<Run>();
-    // The step holds a weak reference to its own state, so the only strong
-    // references are the in-flight reply callbacks. The chain frees itself
-    // when the last one has run.
-    std::weak_ptr<Run> weak = run;
-    run->step = [weak, fetch, keyOf, done, limit, maxPages]() {
-        const auto self = weak.lock();
-        if (!self) return;
-        fetch(self->offset, limit, [self, keyOf, done, limit, maxPages](QList<T> items, QString err) {
-            if (!err.isEmpty()) { done(self->acc); return; }
-            int added = 0;
-            for (const T &item : items) {
-                const QString k = keyOf(item);
-                if (k.isEmpty() || self->seen.contains(k)) continue;
-                self->seen.insert(k);
-                self->acc.append(item);
-                ++added;
-            }
-            ++self->pages;
-            if (items.size() < limit || added == 0 || self->pages >= maxPages) {
-                done(self->acc);
-                return;
-            }
-            self->offset += int(items.size());
-            self->step();
-        });
-    };
-    run->step();
-}
-
 } // namespace
 
 LibraryIndex::LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent)
@@ -214,6 +172,7 @@ void LibraryIndex::setUserId(qint64 uid) {
     m_indexQueue.clear();
 
     m_userId = uid;
+    m_refreshAgain = false;
     m_playlists.clear();
     m_albums.clear();
     m_artists.clear();
@@ -254,6 +213,11 @@ void LibraryIndex::fetchTrackPage(int offset, int limit, TracksCb cb) {
     m_client->fetchFavoriteTracks(std::move(cb), limit, offset);
 }
 
+void LibraryIndex::fetchTrackIndexPage(int offset, int limit, TracksCb cb) {
+    if (!m_client) { cb({}, QStringLiteral("no client")); return; }
+    m_client->fetchFavoriteTracksByIndex(std::move(cb), limit, offset, false);
+}
+
 void LibraryIndex::fetchMixList(MixesCb cb) {
     if (!m_client) { cb({}, QStringLiteral("no client")); return; }
     m_client->fetchHomeMixes(std::move(cb));
@@ -267,47 +231,56 @@ void LibraryIndex::fetchAlbumTracklist(qint64 albumId, TracksCb cb) {
 void LibraryIndex::refresh() {
     const int gen = ++m_loadGen;
     m_pending = 5;
+    m_loadWhole = true;
+    m_refreshAgain = false;
     setLoading(true);
+
+    // The favourites lists come in one page each. They drop unavailable rows
+    // after slicing, so a short page proves nothing and they read on.
+    constexpr int kBig = TidalClient::kFavoritesPageMax;
 
     pageEverything<Playlist>(
         [this](int offset, int limit, PlaylistsCb cb) { fetchPlaylistPage(offset, limit, std::move(cb)); },
         [](const Playlist &p) { return p.uuid; },
-        [this, gen](const QList<Playlist> &all) {
+        [this, gen](const QList<Playlist> &all, bool whole) {
             if (gen != m_loadGen) return;
-            m_playlists = all;
+            land(m_playlists, all, whole);
             partFinished(gen);
         },
         pageSize, maxPages);
 
-    pageEverything<Album>(
-        [this](int offset, int limit, AlbumsCb cb) { fetchAlbumPage(offset, limit, std::move(cb)); },
+    const auto albumPage = [this](int offset, int limit, AlbumsCb cb) {
+        fetchAlbumPage(offset, limit, std::move(cb)); };
+    pageFavorites<Album>(albumPage, albumPage,
         [](const Album &a) { return QString::number(a.id); },
-        [this, gen](const QList<Album> &all) {
+        [this, gen](const QList<Album> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
-            m_albums = all;
+            land(m_albums, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages);
+        kBig, pageSize, maxPages, "saved albums", true);
 
-    pageEverything<Artist>(
-        [this](int offset, int limit, ArtistsCb cb) { fetchArtistPage(offset, limit, std::move(cb)); },
+    const auto artistPage = [this](int offset, int limit, ArtistsCb cb) {
+        fetchArtistPage(offset, limit, std::move(cb)); };
+    pageFavorites<Artist>(artistPage, artistPage,
         [](const Artist &a) { return QString::number(a.id); },
-        [this, gen](const QList<Artist> &all) {
+        [this, gen](const QList<Artist> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
-            m_artists = all;
+            land(m_artists, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages);
+        kBig, pageSize, maxPages, "followed artists", true);
 
-    pageEverything<Track>(
+    pageFavorites<Track>(
         [this](int offset, int limit, TracksCb cb) { fetchTrackPage(offset, limit, std::move(cb)); },
+        [this](int offset, int limit, TracksCb cb) { fetchTrackIndexPage(offset, limit, std::move(cb)); },
         [](const Track &t) { return QString::number(t.id); },
-        [this, gen](const QList<Track> &all) {
+        [this, gen](const QList<Track> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
-            m_favoriteTracks = all;
+            land(m_favoriteTracks, all, whole);
             partFinished(gen);
         },
-        pageSize, maxPages);
+        kBig, trackPageSize, maxPages, "liked songs", false);
 
     fetchMixList([this, gen](QList<Mix> mixes, QString err) {
         if (gen != m_loadGen) return;
@@ -316,12 +289,21 @@ void LibraryIndex::refresh() {
     });
 }
 
+template <typename T>
+void LibraryIndex::land(QList<T> &list, const QList<T> &all, bool whole) {
+    // A broken run must not cut down a list that is already complete.
+    if (whole || list.isEmpty()) list = all;
+    m_loadWhole = m_loadWhole && whole;
+}
+
 void LibraryIndex::partFinished(int gen) {
     if (gen != m_loadGen) return;
     if (--m_pending > 0) return;
+    // The server's answer may predate a change made here during the run.
+    if (m_refreshAgain) { refresh(); return; }
     rebuildTrackEntries();
     // Only a fully loaded library can say which songs have left it.
-    pruneSongPlays();
+    if (m_loadWhole) pruneSongPlays();
     rebuild();
     setLoading(false);
     startTrackIndex();
@@ -502,6 +484,7 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
 // `created`.
 
 void LibraryIndex::addAlbum(const Album &a) {
+    m_refreshAgain = m_loading;
     if (a.id <= 0) return;
     for (const Album &x : m_albums)
         if (x.id == a.id) return;        // already saved; re-liking adds no row
@@ -514,6 +497,7 @@ void LibraryIndex::addAlbum(const Album &a) {
 }
 
 void LibraryIndex::addArtist(const Artist &a) {
+    m_refreshAgain = m_loading;
     if (a.id <= 0) return;
     for (const Artist &x : m_artists)
         if (x.id == a.id) return;
@@ -524,6 +508,7 @@ void LibraryIndex::addArtist(const Artist &a) {
 }
 
 void LibraryIndex::addPlaylist(const Playlist &p) {
+    m_refreshAgain = m_loading;
     if (p.uuid.isEmpty()) return;
     for (const Playlist &x : m_playlists)
         if (x.uuid == p.uuid) return;
@@ -564,6 +549,7 @@ void LibraryIndex::refreshPlaylistMeta(const Playlist &p) {
 }
 
 void LibraryIndex::addTrack(const Track &t) {
+    m_refreshAgain = m_loading;
     if (t.id <= 0) return;
     for (const Track &x : m_favoriteTracks)
         if (x.id == t.id) return;
@@ -580,6 +566,7 @@ void LibraryIndex::addTrack(const Track &t) {
 }
 
 void LibraryIndex::addMix(const Mix &m) {
+    m_refreshAgain = m_loading;
     if (m.id.isEmpty()) return;
     for (const Mix &x : m_mixes)
         if (x.id == m.id) return;        // already listed; re-saving adds no row
@@ -591,6 +578,7 @@ void LibraryIndex::addMix(const Mix &m) {
 }
 
 void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
+    m_refreshAgain = m_loading;
     if (id.isEmpty()) return;
 
     if (kind == QLatin1String(kKindAlbum)) {

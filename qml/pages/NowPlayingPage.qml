@@ -269,13 +269,23 @@ Rectangle {
         return Window.window ? Window.window.formatSleepTime(seconds) : ""
     }
 
-    // Lyrics state: "none", "loading", "ready", "unavailable"
+    // Lyrics state: "none", "loading", "ready", "unavailable", and
+    // "instrumental" when another site knows the track has no words.
     property string lyricsState: "none"
     property var    lyricsData:  []   // [{ms, text}] for timed; [{ms: 0, text}] for plain
     property bool   lyricsIsTimed: false
+    // -1 before the first timed line starts: nothing is lit, and the view
+    // holds line 0 (followLine).
     property int    currentLyricLine: -1
     property bool   userScrolled: false
     property bool   ignoreLyricsSync: false
+    // Set when the words came from another site: its name and the page.
+    property string lyricsSource: ""
+    // The timings were made here from plain lyrics, and may be off.
+    property bool   lyricsAutoSynced: false
+    // Bumped by every loadLyrics(), so an answer for an earlier one is dropped.
+    property int    lyricsSerial: 0
+    property string lyricsSourceUrl: ""
 
     // The band at the bottom of the open panel that belongs to the chips.
     // Nothing scrolls through it, so a tap on a chip cannot also hit a lyric.
@@ -289,10 +299,29 @@ Rectangle {
     // offset, not its centred item.
     function recentreLyrics() {
         if (!root.showLyrics || root.userScrolled) return
-        if (root.currentLyricLine < 0 || root.lyricsData.length === 0) return
+        if (root.lyricsData.length === 0) return
         // Instant: a re-wrap is a correction, and a correction that travels
         // reads as the words drifting on their own.
-        centreLyricLine(root.currentLyricLine, false)
+        centreLyricLine(root.followLine(), false)
+    }
+
+    // The line the view keeps centred: the one being sung, or the first.
+    function followLine() { return Math.max(root.currentLyricLine, 0) }
+
+    // A scroll that ends with the followed line exactly where centring puts it
+    // (in the intro: back at the top) is a resync. Near it is still a scroll.
+    function resumeIfCentred() {
+        if (!root.userScrolled || !root.lyricsIsTimed) return
+        var line = root.followLine()
+        var item = lyricsView.itemAtIndex(line)
+        if (!item) return
+        var was = lyricsView.contentY
+        lyricsView.positionViewAtIndex(line, ListView.Center)
+        var want = lyricsView.contentY
+        lyricsView.contentY = was
+        if (Math.abs(want - was) > 2) return
+        root.userScrolled = false
+        root.centreLyricLine(line, true)
     }
 
     // Puts one line in the middle of the panel, animated when the song moved
@@ -365,28 +394,103 @@ Rectangle {
 
     function loadLyrics() {
         if (!hasTrack || track.id <= 0) return
+        var serial = ++lyricsSerial
         lyricsState = "loading"
+        lyricsSource = ""
+        lyricsSourceUrl = ""
+        lyricsAutoSynced = false
+        var forId = track.id
         bridge.fetchLyrics(track.id, function(result, err) {
-            if (err) { lyricsState = "unavailable"; return }
-            var rawText = result.text || ""
-            var timed   = result.timed || false
-            if (rawText.length === 0) { lyricsState = "unavailable"; return }
-            lyricsIsTimed = timed
-            if (timed) {
-                lyricsData = parseLrc(rawText)
-            } else {
-                var plain = rawText.split('\n')
-                var arr = []
-                for (var i = 0; i < plain.length; i++) {
-                    var t = plain[i].trim()
-                    if (t.length > 0) arr.push({ ms: 0, text: t })
-                }
-                lyricsData = arr
+            if (!root.lyricsCurrent(forId, serial)) return
+            var rawText = err ? "" : (result.text || "")
+            if (rawText.length > 0 && result.timed) { root.showLyricsText(rawText, true); return }
+            // Tidal's plain words show at once; the sites are still asked for synced ones.
+            if (rawText.length > 0) {
+                root.showLyricsText(rawText, false)
+                root.autoSyncLyrics(forId, serial, rawText)
             }
-            lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
-            currentLyricLine = 0
+            root.findLyricsElsewhere(forId, serial, rawText.length > 0)
         })
     }
+
+    function lyricsCurrent(forId, serial) {
+        return serial === root.lyricsSerial && root.hasTrack && root.track.id === forId
+    }
+
+    function lyricsSitesOn() { return prefs.lyricsLrclib || prefs.lyricsOtherSites }
+
+    // Synced lyrics from a site beat Tidal's plain ones and auto-synced ones;
+    // plain lyrics from a site are used only when Tidal has none.
+    function findLyricsElsewhere(forId, serial, havePlain) {
+        if (!lyricsSitesOn()) { if (!havePlain) lyricsState = "unavailable"; return }
+        bridge.findLyrics(root.track, function(result, err) {
+            if (!root.lyricsCurrent(forId, serial)) return
+            var text = err ? "" : (result.text || "")
+            if (text.length > 0 && result.timed) {
+                // Real timings: the plain lyrics need no syncing any more.
+                if (havePlain && prefs.lyricsAutoSync) bridge.cancelAutoSync()
+                root.lyricsSource    = result.source || ""
+                root.lyricsSourceUrl = result.url || ""
+                root.lyricsAutoSynced = false
+                root.showLyricsText(text, true)
+                return
+            }
+            if (havePlain) return
+            if (!err && result.instrumental) { root.lyricsState = "instrumental"; return }
+            if (text.length === 0) { root.lyricsState = "unavailable"; return }
+            root.lyricsSource    = result.source || ""
+            root.lyricsSourceUrl = result.url || ""
+            root.showLyricsText(text, false)
+            root.autoSyncLyrics(forId, serial, text)
+        })
+    }
+
+    // Plain lyrics timed against the audio, here. Shown only when the aligner
+    // trusts its result, and never over real timings that came meanwhile.
+    function autoSyncLyrics(forId, serial, text) {
+        if (!prefs.lyricsAutoSync) return
+        bridge.autoSyncLyrics(forId, text, function(result, err) {
+            if (!root.lyricsCurrent(forId, serial)) return
+            if (err || !result.kept || !result.lrc || root.lyricsIsTimed) return
+            root.showLyricsText(result.lrc, true)
+            root.lyricsAutoSynced = true
+        })
+    }
+
+    function showLyricsText(rawText, timed) {
+        lyricsIsTimed = timed
+        if (timed) {
+            lyricsData = parseLrc(rawText)
+        } else {
+            var plain = rawText.split('\n')
+            var arr = []
+            for (var i = 0; i < plain.length; i++) {
+                var t = plain[i].trim()
+                if (t.length > 0) arr.push({ ms: 0, text: t })
+            }
+            lyricsData = arr
+        }
+        lyricsState = lyricsData.length > 0 ? "ready" : "unavailable"
+        currentLyricLine = -1
+    }
+
+    // A site switched on may have what is missing; auto-sync switched off
+    // takes its timings away, switched on may add them.
+    function lyricsSwitchChanged() {
+        var plainShown = lyricsState === "ready" && (!lyricsIsTimed || lyricsAutoSynced)
+        if (lyricsState === "unavailable" || plainShown) loadLyrics()
+    }
+    Connections {
+        target: prefs
+        function onLyricsLrclibChanged()     { if (prefs.lyricsLrclib) root.lyricsSwitchChanged() }
+        function onLyricsOtherSitesChanged() { if (prefs.lyricsOtherSites) root.lyricsSwitchChanged() }
+        function onLyricsAutoSyncChanged()   { root.lyricsSwitchChanged() }
+    }
+
+    // The next track's audio is analysed ahead only while lyrics are on screen.
+    readonly property bool lyricsLookAhead: showLyrics && prefs.lyricsAutoSync
+    onLyricsLookAheadChanged: bridge.setLyricsLookAhead(lyricsLookAhead)
+    Component.onDestruction: bridge.setLyricsLookAhead(false)
 
     // ─── Credits ───────────────────────────────────────
     // The same four states the lyrics have: "none", "loading", "ready",
@@ -481,7 +585,7 @@ Rectangle {
         onTriggered: {
             if (root.ignoreLyricsSync) return
             var pos = player.position
-            var found = 0
+            var found = -1
             for (var i = 0; i < root.lyricsData.length; i++) {
                 if (root.lyricsData[i].ms <= pos) found = i
                 else break
@@ -489,7 +593,7 @@ Rectangle {
             if (found !== root.currentLyricLine) {
                 root.currentLyricLine = found
                 if (!root.userScrolled)
-                    root.centreLyricLine(found, true)
+                    root.centreLyricLine(root.followLine(), true)
             }
         }
     }
@@ -700,6 +804,35 @@ Rectangle {
                             cacheBuffer: 200
 
                             onMovingChanged: if (moving) root.userScrolled = true
+                            onMovementEnded: root.resumeIfCentred()
+
+                            // Plain lyrics only: synced ones follow the song.
+                            // In the right margin, from the top corner down to
+                            // the chips' band, so it never sits over a chip.
+                            ScrollBar.vertical: ScrollBar {
+                                id: lyricsBar
+                                objectName: "nowPlayingLyricsScrollBar"
+                                parent: lyricsPanel
+                                x: lyricsPanel.width - width - 3
+                                y: 12
+                                height: Math.max(0, lyricsPanel.height - y - root.lyricsFooterRoom)
+                                policy: !root.lyricsIsTimed && root.lyricsState === "ready"
+                                        && lyricsView.visibleArea.heightRatio < 1
+                                        ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                                visible: policy === ScrollBar.AlwaysOn
+                                padding: 3
+                                // Set straight on contentY, which never starts
+                                // the view moving, so say it here.
+                                onPressedChanged: if (pressed) root.userScrolled = true
+
+                                contentItem: Rectangle {
+                                    implicitWidth: 4
+                                    radius: width / 2
+                                    color: lyricsBar.pressed || lyricsBar.hovered ? Theme.textSec : Theme.textDim
+                                    Behavior on color { ColorAnimation { duration: Theme.dur(100) } }
+                                }
+                                background: Rectangle { implicitWidth: 10; color: "transparent" }
+                            }
 
                             // Every resize is a re-wrap, which moves the
                             // centred line. Deferred so the delegates are laid
@@ -766,12 +899,19 @@ Rectangle {
                                 text: qsTr("No lyrics available")
                                 color: Theme.textDim; font.pixelSize: 14
                             }
+                            Text {
+                                objectName: "nowPlayingLyricsInstrumental"
+                                anchors.centerIn: parent
+                                visible: root.lyricsState === "instrumental"
+                                text: qsTr("Instrumental", "a track with no words")
+                                color: Theme.textDim; font.pixelSize: 14
+                            }
                         }
 
                         // Resync button
                         Rectangle {
                             objectName: "nowPlayingLyricsResync"
-                            visible: root.userScrolled && root.lyricsIsTimed && root.currentLyricLine >= 0
+                            visible: root.userScrolled && root.lyricsIsTimed && root.lyricsData.length > 0
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.bottomMargin: 10
@@ -792,10 +932,59 @@ Rectangle {
                                 gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     root.userScrolled = false
-                                    if (root.currentLyricLine >= 0)
-                                        root.centreLyricLine(root.currentLyricLine, true)
+                                    root.centreLyricLine(root.followLine(), true)
                                 }
                             }
+                        }
+
+                        // Where the words came from, when it was not Tidal.
+                        // Bottom left, clear of the chips in the other corner.
+                        Text {
+                            id: lyricsSourceText
+                            objectName: "nowPlayingLyricsSource"
+                            readonly property string sourceUrl: root.lyricsSourceUrl
+                            visible: root.lyricsState === "ready" && root.lyricsSource.length > 0
+                                     && !(root.userScrolled && root.lyricsIsTimed)
+                            anchors.left: parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: 16
+                            anchors.bottomMargin: 10
+                            height: 26
+                            width: Math.min(implicitWidth,
+                                            Math.max(0, parent.width - panelChips.width - 46))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Lyrics from %1", "%1 is a lyrics website").arg(root.lyricsSource)
+                            color: Theme.textDim; font.pixelSize: 11
+                            font.underline: sourceHover.hovered && sourceUrl.length > 0
+                            HoverHandler {
+                                id: sourceHover
+                                cursorShape: parent.sourceUrl.length > 0 ? Qt.PointingHandCursor
+                                                                         : Qt.ArrowCursor
+                            }
+                            TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
+                                onTapped: if (parent.sourceUrl.length > 0) app.openUrl(parent.sourceUrl)
+                            }
+                        }
+
+                        // Timings made here, from plain lyrics. Beside the source
+                        // when there is one, and hidden with it during a scroll.
+                        Text {
+                            objectName: "nowPlayingLyricsAutoSynced"
+                            visible: root.lyricsState === "ready" && root.lyricsAutoSynced
+                                     && !root.userScrolled
+                            anchors.left: lyricsSourceText.visible ? lyricsSourceText.right : parent.left
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: lyricsSourceText.visible ? 10 : 16
+                            anchors.bottomMargin: 10
+                            height: 26
+                            width: Math.min(implicitWidth, Math.max(0, parent.width - panelChips.width - 46
+                                       - (lyricsSourceText.visible ? lyricsSourceText.width + 10 : 0)))
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: qsTr("Synced automatically, may be off")
+                            color: Theme.textDim; font.pixelSize: 11
                         }
                     }
 
@@ -975,6 +1164,7 @@ Rectangle {
                     // Lyrics in the corner. The Row skips a hidden chip, so
                     // with no lyrics Credits takes the corner.
                     Row {
+                        id: panelChips
                         objectName: "nowPlayingPanelChips"
                         anchors.bottom: parent.bottom
                         anchors.right: parent.right
@@ -1662,7 +1852,9 @@ Rectangle {
                                 // the hit target, and an anchored MouseArea
                                 // inside a layout is undefined behaviour.
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                // Exclusive on press, as in SettingsPanel's buttons.
                                 TapHandler {
+                                    gesturePolicy: TapHandler.ReleaseWithinBounds
                                     onTapped: {
                                         if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
                                     }

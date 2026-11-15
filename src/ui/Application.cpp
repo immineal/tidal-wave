@@ -39,7 +39,11 @@
 #include <utility>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QTimer>
 #include <QWindow>
+#include <chrono>
+
+using namespace std::chrono_literals;
 #include <QMenu>
 #include <QAction>
 #include <QProcess>
@@ -546,6 +550,8 @@ Application::~Application() {
     // and would re-evaluate against null as each of them is destroyed.
     // The member is cleared first, so nothing reaches a half-destroyed engine.
     delete std::exchange(m_engine, nullptr);
+    // Before the player: its worker may still read the player's temp files.
+    delete std::exchange(m_autoSync, nullptr);
 }
 
 int Application::run(int argc, char **argv) {
@@ -655,7 +661,32 @@ int Application::run(int argc, char **argv) {
     m_auth   = new Auth(m_api, this);
     m_client = new TidalClient(m_api, this);
     m_bridge = new TidalBridge(m_client, this);
+    m_lyricsFinder = new LyricsFinder(this);
+    m_lyricsFinder->setProviderEnabled([prefs = m_prefs](const QString &provider) {
+        return provider == LrclibProvider().name() ? prefs->lyricsLrclib() : prefs->lyricsOtherSites();
+    });
+    for (auto sig : {&Prefs::lyricsLrclibChanged, &Prefs::lyricsOtherSitesChanged})
+        connect(m_prefs, sig, m_lyricsFinder, &LyricsFinder::switchesChanged);
+    m_bridge->setLyricsFinder(m_lyricsFinder);
     m_player = new Player(m_client, this);
+    // Plain lyrics timed against the audio the player already has on disk.
+    m_autoSync = new lyricsync::AutoSync(this);
+    m_autoSync->setEnabled([prefs = m_prefs] { return prefs->lyricsAutoSync(); });
+    m_autoSync->setCacheDir(LyricsCache::defaultDir());
+    // A track a lyrics site had synced lyrics for, or knows as instrumental.
+    m_autoSync->setHasTimings([](qint64 id) {
+        LyricsResult r;
+        const LyricsCache::Hit hit = LyricsCache(LyricsCache::defaultDir()).lookup(id, QDateTime::currentMSecsSinceEpoch(), &r);
+        return hit == LyricsCache::Hit::Instrumental || (hit == LyricsCache::Hit::Found && r.timed);
+    });
+    m_autoSync->setAudioSource([player = m_player](qint64 id) { return player->audioFileFor(id); });
+    m_autoSync->setFileHold([player = m_player](const QString &p) { player->holdAudioFile(p); },
+                            [player = m_player](const QString &p) { player->releaseAudioFile(p); });
+    connect(m_player, &Player::audioFileReady, m_autoSync, &lyricsync::AutoSync::audioReady);
+    connect(m_prefs, &Prefs::lyricsAutoSyncChanged, m_autoSync, [this] {
+        if (!m_prefs->lyricsAutoSync()) m_autoSync->cancel();
+    });
+    m_bridge->setAutoSync(m_autoSync);
     m_player->setPrefs(m_prefs);
     m_downloader = new Downloader(m_client, this);
     // LibraryIndex asks PinStore where each row belongs, so the store is
@@ -674,6 +705,7 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteMixAdded,    m_library, &LibraryIndex::addMix);
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
+    connect(m_bridge, &TidalBridge::favoritesChangedElsewhere, m_library, &LibraryIndex::refresh);
     // Not through addPlaylist: that stamps addedAt and would lift a renamed
     // playlist to the top of the sidebar.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);
@@ -699,7 +731,19 @@ int Application::run(int argc, char **argv) {
         m_pins->setUserId(m_auth->userId());
         m_library->setUserId(m_auth->userId());
         m_library->refresh();
+        m_sinceFavoritesCheck.start();
     });
+
+    // Likes made on another device show up when the window is used again, or
+    // within a few minutes while it stays up. A window in the tray asks nothing.
+    auto *favoritesCheck = new QTimer(this);
+    favoritesCheck->setInterval(5min);
+    connect(favoritesCheck, &QTimer::timeout, this, [this]() { checkFavorites(0); });
+    favoritesCheck->start();
+    connect(qApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+                if (state == Qt::ApplicationActive) checkFavorites(60'000);
+            });
 
     connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
         // Do not keep indexing against an account that just signed out.
@@ -880,6 +924,16 @@ bool Application::eventFilter(QObject *watched, QEvent *event) {
     return QObject::eventFilter(watched, event);
 }
 #endif // Q_OS_MACOS
+
+void Application::checkFavorites(qint64 minGapMs) {
+    if (!m_engine || !m_sinceFavoritesCheck.isValid()) return;
+    if (m_sinceFavoritesCheck.elapsed() < minGapMs) return;
+    const auto rootObjs = m_engine->rootObjects();
+    const auto *window = rootObjs.isEmpty() ? nullptr : qobject_cast<QWindow *>(rootObjs.first());
+    if (!window || !window->isVisible()) return;
+    m_sinceFavoritesCheck.restart();
+    m_bridge->syncFavorites();
+}
 
 void Application::showWindow() {
     if (m_engine) {

@@ -1126,6 +1126,44 @@ TestCase {
         h.panel.close()
     }
 
+    // LRCLIB and auto-sync start on, the other sites off; each line says
+    // what its switch sends, or that it sends nothing.
+    function test_lyrics_switches_data() {
+        return [
+            { tag: "lrclib", key: "lyricsLrclib", toggle: "settingsLrclibToggle",
+              note: "settingsLrclibNote", fresh: true,
+              mustSay: ["lrclib.net", "artist", "title", "album", "length"] },
+            { tag: "other sites", key: "lyricsOtherSites", toggle: "settingsOtherLyricsToggle",
+              note: "settingsOtherLyricsNote", fresh: false,
+              mustSay: ["music.163.com", "lyrics.kugou.com", "genius.com", "artist", "title",
+                        "length", "China"] },
+            { tag: "auto-sync", key: "lyricsAutoSync", toggle: "settingsAutoSyncToggle",
+              note: "settingsAutoSyncNote", fresh: true,
+              mustSay: ["audio", "this machine", "nothing is sent", "unsure"] }
+        ]
+    }
+
+    function test_lyrics_switches(data) {
+        prefs[data.key] = data.fresh
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, data.toggle)
+        verify(toggle, "there is no switch " + data.toggle)
+        compare(toggle.checked, data.fresh)
+        var note = findByName(h.panel.contentItem, data.note)
+        verify(note && note.visible, "the switch has no line saying what it does")
+        for (var i = 0; i < data.mustSay.length; i++)
+            verify(note.text.indexOf(data.mustSay[i]) !== -1,
+                   "the note never says \"" + data.mustSay[i] + "\"")
+
+        scrollTo(h.panel, toggle)
+        clickItem(h.panel, toggle)
+        compare(prefs[data.key], !data.fresh, "the switch did not change the setting")
+        compare(toggle.checked, !data.fresh)
+        clickItem(h.panel, toggle)
+        compare(prefs[data.key], data.fresh)
+        h.panel.close()
+    }
+
     // Qt picks the scene graph backend once at startup, so the note is always
     // visible in the panel.
     function test_restart_note_is_always_visible() {
@@ -1387,7 +1425,7 @@ TestCase {
     // privacy notice, which is long prose and the natural end of the panel.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,window,playback,performance,updates,feedback,shortcuts,privacy"
+        "account,appearance,window,playback,performance,updates,feedback,shortcuts,experimental,privacy"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -1700,7 +1738,9 @@ TestCase {
 
         var mustSay = ["no analytics", "no telemetry", "auth.tidal.com", "api.tidal.com",
                        "resources.tidal.com", "mDNS", "api.github.com", "IP address",
-                       "tokens", "switched off above", "release page", "README"]
+                       "tokens", "switched off above", "release page", "README",
+                       "lrclib.net", "music.163.com", "lyrics.kugou.com", "genius.com",
+                       "China", "Experimental", "synced lyrics", "analysed here"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy text never mentions \"" + mustSay[j] + "\"")

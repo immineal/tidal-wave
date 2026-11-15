@@ -135,6 +135,57 @@ private slots:
         QVERIFY(!p3.quitOnClose());
     }
 
+    // LRCLIB and auto-sync are on in a fresh install, the other sites off.
+    // Keys are literals, as for quitOnClose.
+    void lyricsSwitchesDefaultsAndKeys() {
+        {
+            Prefs p;
+            QVERIFY(p.lyricsLrclib());
+            QVERIFY(!p.lyricsOtherSites());
+            QVERIFY(p.lyricsAutoSync());
+            QSignalSpy spy(&p, &Prefs::lyricsOtherSitesChanged);
+            p.setLyricsOtherSites(true);
+            p.setLyricsOtherSites(true);
+            QCOMPARE(spy.count(), 1);
+            p.setLyricsLrclib(false);
+            p.setLyricsAutoSync(false);
+        }
+        {
+            QSettings s;
+            QCOMPARE(s.value(QStringLiteral("lyrics/otherSites")).toBool(), true);
+            QCOMPARE(s.value(QStringLiteral("lyrics/lrclib")).toBool(), false);
+            QCOMPARE(s.value(QStringLiteral("lyrics/autoSync")).toBool(), false);
+        }
+        Prefs p2;
+        QVERIFY(!p2.lyricsLrclib());
+        QVERIFY(p2.lyricsOtherSites());
+        QVERIFY(!p2.lyricsAutoSync());
+    }
+
+    // The old single switch: a stored choice carries over to both site
+    // switches and the old key goes, so it cannot override a later change.
+    void oldLyricsSwitchMigrates_data() {
+        QTest::addColumn<bool>("old");
+        QTest::newRow("was on") << true;
+        QTest::newRow("was off") << false;
+    }
+
+    void oldLyricsSwitchMigrates() {
+        QFETCH(bool, old);
+        QSettings().setValue(QStringLiteral("lyrics/externalSources"), old);
+        {
+            Prefs p;
+            QCOMPARE(p.lyricsLrclib(), old);
+            QCOMPARE(p.lyricsOtherSites(), old);
+            QVERIFY(p.lyricsAutoSync());
+            p.setLyricsLrclib(!old);
+        }
+        QVERIFY(!QSettings().contains(QStringLiteral("lyrics/externalSources")));
+        Prefs p2;
+        QCOMPARE(p2.lyricsLrclib(), !old);
+        QCOMPARE(p2.lyricsOtherSites(), old);
+    }
+
     // The key is written out for the same reason as quitOnClose's: a rename
     // would silently put everyone back on the default.
     void tintedGreysIsStoredUnderItsOwnKey() {

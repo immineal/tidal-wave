@@ -15,8 +15,10 @@
 #include <QTemporaryDir>
 
 #include <climits>
+#include <utility>
 
 #include "api/LibraryIndex.h"
+#include "api/TidalClient.h"
 #include "ui/PinStore.h"
 
 using namespace Tidal;
@@ -116,6 +118,20 @@ public:
     // Pretend the API never advances: every page comes back as the first one.
     // That is the shape that would spin forever without a guard.
     bool repeatFirstPage = false;
+    // The liked-songs page at this offset answers an error.
+    int  failTracksAt = -1;
+    // Runs once a liked-songs reply is written and before it is delivered.
+    std::function<void()> duringTrackPage;
+    // Ids the server leaves out of a page after slicing it, as Tidal does
+    // with rows unavailable in the country: that page comes back short.
+    QSet<qint64> unavailable;
+    // A page larger than this answers an error, as Tidal does above 10000.
+    int  refuseAbove = -1;
+    // Paging by date skips the first row of every page after the first, as
+    // order=DATE does where likes share a save date. By index it does not.
+    bool dateSkipsAtPageStarts = false;
+    QList<int> trackLimits;          // the limit of each liked-songs request
+    int  indexRequests = 0;
     // Hold tracklist replies so a test can decide how much of the background
     // index has finished by the time it searches.
     bool deferTracklists = false;
@@ -148,13 +164,28 @@ protected:
     }
     void fetchAlbumPage(int offset, int limit, AlbumsCb cb) override {
         ++albumRequests;
-        cb(slice(albums, offset, limit), QString());
+        if (refused(limit)) { cb({}, QStringLiteral("400")); return; }
+        cb(available(slice(albums, offset, limit)), QString());
     }
     void fetchArtistPage(int offset, int limit, ArtistsCb cb) override {
-        cb(slice(artists, offset, limit), QString());
+        if (refused(limit)) { cb({}, QStringLiteral("400")); return; }
+        cb(available(slice(artists, offset, limit)), QString());
     }
     void fetchTrackPage(int offset, int limit, TracksCb cb) override {
-        cb(slice(favoriteTracks, offset, limit), QString());
+        trackLimits << limit;
+        answerTracks(offset + (dateSkipsAtPageStarts && offset > 0 ? 1 : 0), limit, cb);
+    }
+    void fetchTrackIndexPage(int offset, int limit, TracksCb cb) override {
+        ++indexRequests;
+        answerTracks(offset, limit, cb);
+    }
+    void answerTracks(int offset, int limit, TracksCb cb) {
+        if (offset == failTracksAt) { cb({}, QStringLiteral("offline")); return; }
+        if (refused(limit)) { cb({}, QStringLiteral("400")); return; }
+        // Sliced first: this reply is older than what the hook changes.
+        const QList<Track> page = available(slice(favoriteTracks, offset, limit));
+        if (const auto run = std::exchange(duringTrackPage, nullptr)) run();
+        cb(page, QString());
     }
     void fetchMixList(MixesCb cb) override {
         cb(mixes, QString());
@@ -170,6 +201,14 @@ private:
     QList<T> slice(const QList<T> &all, int offset, int limit) const {
         if (repeatFirstPage) return all.mid(0, limit);
         return all.mid(offset, limit);
+    }
+
+    bool refused(int limit) const { return refuseAbove >= 0 && limit > refuseAbove; }
+
+    template <typename T>
+    QList<T> available(QList<T> page) const {
+        page.removeIf([this](const T &x) { return unavailable.contains(x.id); });
+        return page;
     }
 
     struct Parked { qint64 albumId; TracksCb cb; };
@@ -217,6 +256,135 @@ private slots:
         QSettings().clear();
         QSettings().sync();
         QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).removeRecursively();
+    }
+
+    // ── a second load ────────────────────────────────────────────────────
+    void aFailedPageLeavesAWholeListAlone() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 120; ++i)
+            lib.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        lib.setUserId(kUser);
+        lib.refresh();
+        lib.markTrackPlayed(QStringLiteral("5110"));
+        QCOMPARE(lib.search(QStringLiteral("Song 110"), {QStringLiteral("track")}).size(), 1);
+
+        // The request after the one page fails: the list on hand stays whole,
+        // so the song stays findable and keeps its play.
+        lib.failTracksAt = 120;
+        lib.refresh();
+        QCOMPARE(lib.search(QStringLiteral("Song 110"), {QStringLiteral("track")}).size(), 1);
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:5110")));
+    }
+
+    void aFailedFirstLoadKeepsThePlaysOfSongsItDidNotReach() {
+        PinStore pins; pins.setUserId(kUser);
+        {
+            TestLibrary lib(&pins);
+            const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+            for (int i = 0; i < 120; ++i)
+                lib.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+            lib.setUserId(kUser);
+            lib.refresh();
+            lib.markTrackPlayed(QStringLiteral("5110"));
+        }
+        TestLibrary again(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 120; ++i)
+            again.favoriteTracks << mkTrack(5000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        again.failTracksAt = 120;
+        again.setUserId(kUser);
+        again.refresh();
+        QVERIFY(storedRecents(kUser).contains(QStringLiteral("track:5110")));
+    }
+
+    // The list arrives oldest first: a cap on paging would cost the newest likes.
+    void theNewestOfALargeCollectionOfLikesArrives() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 6000; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(lib.search(QStringLiteral("Song 5999"), {QStringLiteral("track")}).size(), 1);
+    }
+
+    // One unavailable row on the first page makes it short. The rest of the
+    // list must still arrive, for liked songs, saved albums and artists.
+    void aShortPageMidListDoesNotEndTheRun() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 250; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        for (int i = 0; i < 120; ++i) {
+            lib.albums << mkAlbum(20000 + i, QStringLiteral("Record %1").arg(i), {});
+            lib.artists << mkArtist(30000 + i, QStringLiteral("Singer %1").arg(i));
+        }
+        lib.unavailable = {10003, 20003, 30003};
+        lib.refuseAbove = LibraryIndex::trackPageSize;   // paged, so pages are short
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(lib.search(QStringLiteral("Song 249"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Record 119"), {QStringLiteral("album")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Singer 119"), {QStringLiteral("artist")}).size(), 1);
+    }
+
+    // Paged by date, likes that share a save date repeat and go missing. One
+    // page has no page boundaries for them to fall across.
+    void theLikedSongsComeInOnePage() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 250; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        lib.dateSkipsAtPageStarts = true;
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QCOMPARE(lib.trackLimits.value(0), 10000);
+        QCOMPARE(lib.search(QStringLiteral("Song 100"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Song 200"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.indexRequests, 0);
+    }
+
+    // Tidal refusing the one page: paged by INDEX, which has no ties to lose.
+    void aRefusedPageIsPagedByIndex() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        for (int i = 0; i < 250; ++i)
+            lib.favoriteTracks << mkTrack(10000 + i, QStringLiteral("Song %1").arg(i), album, {});
+        for (int i = 0; i < 120; ++i)
+            lib.albums << mkAlbum(20000 + i, QStringLiteral("Record %1").arg(i), {});
+        lib.refuseAbove = LibraryIndex::trackPageSize;
+        lib.dateSkipsAtPageStarts = true;
+        lib.setUserId(kUser);
+        lib.refresh();
+
+        QVERIFY(lib.indexRequests >= 3);
+        QCOMPARE(lib.search(QStringLiteral("Song 100"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Song 249"), {QStringLiteral("track")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Record 119"), {QStringLiteral("album")}).size(), 1);
+    }
+
+    // The load's lists may predate a song liked while it ran, so it runs again.
+    void aLikeDuringALoadIsNotLost() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        const Album album = mkAlbum(70, QStringLiteral("Keep"), {});
+        const Track song = mkTrack(6000, QStringLiteral("Fresh"), album, {});
+        lib.setUserId(kUser);
+        lib.duringTrackPage = [&]() {
+            lib.addTrack(song);
+            lib.favoriteTracks << song;    // the server has it from here on
+        };
+        lib.refresh();
+        QVERIFY(!lib.loading());
+        QCOMPARE(lib.search(QStringLiteral("Fresh"), {QStringLiteral("track")}).size(), 1);
     }
 
     // ── one list, newest first, under the pinned block ───────────────────

@@ -15,7 +15,7 @@ Rectangle {
     property var filteredArtists:   []
     property var filteredPlaylists: []
     property var mixes: []
-    property bool loading:  false
+    property bool loading: bridge.favoritesLoading
     // 0=default, 1=A-Z, 2=Z-A. Default is the order the library arrived in,
     // which is most recently saved first: the favourites endpoints are asked
     // for order=DATE. It is not persisted, so it is 0 on every visit.

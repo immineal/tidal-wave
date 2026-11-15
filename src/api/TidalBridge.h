@@ -10,6 +10,9 @@
 #include <QStringList>
 #include "TidalClient.h"
 
+class LyricsFinder;
+namespace lyricsync { class AutoSync; }
+
 // Sorts by max(local last-played time, Playlist::addedAt), descending.
 // `playtimes` maps playlist uuid to ms since epoch. Stable, so playlists with
 // equal keys keep the order the API returned.
@@ -32,6 +35,8 @@ class TidalBridge : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Use the bridge context property")
     Q_PROPERTY(QString preferredQuality READ preferredQuality WRITE setPreferredQuality NOTIFY preferredQualityChanged)
+    // True until the newest liked songs have arrived after a sign-in.
+    Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoriteTracksChanged)
 public:
     explicit TidalBridge(TidalClient *client, QObject *parent = nullptr);
 
@@ -46,6 +51,12 @@ public:
     // function(mix, tracks, error): the mix's header beside its tracks, for a
     // page opened with nothing but an id.
     Q_INVOKABLE void fetchMixPage      (const QString &mixId, QJSValue cb);
+
+    bool favoritesLoading() const { return m_favoritesLoading; }
+
+    // Tidal tells a client nothing about changes made on another device. This
+    // asks one small request per list and reloads the lists that moved.
+    void syncFavorites();
 
     Q_INVOKABLE void fetchFavoriteTracks  (QJSValue cb, int limit = 50, int offset = 0);
     Q_INVOKABLE void fetchFavoriteAlbums  (QJSValue cb, int limit = 50, int offset = 0);
@@ -121,6 +132,19 @@ public:
     // `tracks/<id>` is the one endpoint known to carry it.
     Q_INVOKABLE void fetchTrackMix (qlonglong trackId, QJSValue cb);
     Q_INVOKABLE void fetchLyrics    (qlonglong trackId, QJSValue cb);
+    // Lyrics from other sites for a track map, when the switch for it is on:
+    // function({text, timed, source, url}, error), error "off" when it is off.
+    Q_INVOKABLE void findLyrics     (const QVariantMap &track, QJSValue cb);
+    void setLyricsFinder(LyricsFinder *f) { m_lyricsFinder = f; }
+    // Times plain lyrics against the track's audio, here on this machine:
+    // function({ok, kept, confidence, lrc}, error), error "off" when the
+    // switch is off. A newer call drops the older one's answer.
+    Q_INVOKABLE void autoSyncLyrics (qlonglong trackId, const QString &text, QJSValue cb);
+    // Whether the next track's audio is analysed ahead, while lyrics are on screen.
+    // Drops the auto-sync asked for, and stops its analysis unless the next track needs it.
+    Q_INVOKABLE void cancelAutoSync();
+    Q_INVOKABLE void setLyricsLookAhead(bool on);
+    void setAutoSync(lyricsync::AutoSync *a) { m_autoSync = a; }
     // Answers { groups: [{type, contributors:[{id, name}]}], copyright, isrc,
     //           releaseDate, upc } and an error string.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
@@ -169,6 +193,10 @@ signals:
     // LibraryIndex spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
 
+    // syncFavorites() found a change made on another device. The bridge's own
+    // caches and signals are already up to date.
+    void favoritesChangedElsewhere();
+
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     // Re-reads one playlist's header and merges what a contents change moves
@@ -178,12 +206,23 @@ private:
     QString recentSearchesKey() const;
     void    saveRecentSearches(const QStringList &queries);
     void loadFavoriteTrackIds();
+    void resetFavoriteSync();
+    void favoriteChangedHere(TidalClient::FavoriteKind kind);
+    void reloadFavorites(TidalClient::FavoriteKind kind, const FavoritesHead &head);
+    // `paged` lists the same rows page by page, for when one page is refused.
+    template <typename T, typename Fetch, typename Paged, typename KeyOf, typename Apply>
+    void reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead &head, int limit,
+                    const QList<T> &cache, Fetch fetch, Paged paged, KeyOf keyOf,
+                    Apply apply);
     // Loaded eagerly at sign-in, so MixPage knows the save state without a
     // round trip per page.
     void loadFavoriteMixIds();
-    void loadNextFavoriteTracksPage(int offset);
-    void loadNextFavoriteAlbumsPage(int offset);
-    void loadNextFavoriteArtistsPage(int offset);
+    void loadFavoriteTracks();
+    void loadFavoriteAlbums();
+    void loadFavoriteArtists();
+    void refreshLikedTrackIds();
+    void applyLikedTrackIds();
+    void reportPagedLikes();
     void loadNextUserPlaylistsPage(int offset);
 
 public:
@@ -203,16 +242,34 @@ private:
     QVariantList mixesList     (const QList<Mix>      &v) const;
 
     TidalClient  *m_client;
+    LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     QQmlEngine   *m_engine = nullptr;
+    // The hearts: every listed song and every id favorites/ids answered.
     QSet<qlonglong> m_favoriteTrackIds;
+    // The last favorites/ids answer for songs, kept in step with likes here.
+    QSet<qlonglong> m_likedTrackIds;
+    int             m_likedIdsGen = 0;
+    bool            m_likedIdsInFlight = false;
+    // The liked-songs listing on hand was paged because one page was refused.
+    bool            m_tracksFellBack = false;
     // Bumped each time loadFavoriteTrackIds() restarts paging. Callbacks from
     // a superseded load compare against it and bail, so two overlapping
     // chains cannot both append page 0.
     int             m_favTracksLoadGen = 0;
-    // Whether m_favoriteTracks is in its final, newest-first order. It is
-    // built oldest first and reversed when the last page lands, so the end a
-    // newly liked song belongs at depends on this.
-    bool            m_favTracksSettled = false;
+    bool            m_favoritesLoading = false;
+    // The four sign-in paging chains still running.
+    int             m_favLoadsPending = 0;
+
+    // One per FavoriteKind. A reload lands whole or not at all, and a change
+    // made here during one bumps `gen`, because its pages may predate that.
+    struct FavoriteSync {
+        int           gen = 0;
+        bool          reloading = false;
+        FavoritesHead head;     // what the list on hand was reloaded against
+    };
+    FavoriteSync    m_favSync[4];
+    int             m_favMixesSyncGen = 0;
 
     QList<Track>    m_favoriteTracks;
     QList<Album>    m_favoriteAlbums;

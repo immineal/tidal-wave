@@ -6,11 +6,14 @@
 #include "api/Auth.h"
 #include "api/TidalClient.h"
 #include "api/TidalBridge.h"
+#include "api/LyricsFinder.h"
+#include "lyricsync/AutoSync.h"
 #include "player/Player.h"
 #include "player/Downloader.h"
 #include "mpris/MprisPlayer.h"
 #include "ui/ImageProvider.h"
 #include <QSystemTrayIcon>
+#include <QElapsedTimer>
 #include <QIcon>
 
 class QQmlApplicationEngine;
@@ -182,6 +185,7 @@ private:
     // Called at startup when a tray exists, and again from the D-Bus watcher
     // if one turns up later.
     void createTrayIcon(const QIcon &icon);
+    void checkFavorites(qint64 minGapMs);
 
     Prefs       *m_prefs  = nullptr;
     I18n        *m_i18n   = nullptr;
@@ -190,6 +194,8 @@ private:
     Auth        *m_auth   = nullptr;
     TidalClient *m_client = nullptr;
     TidalBridge *m_bridge = nullptr;
+    LyricsFinder *m_lyricsFinder = nullptr;
+    lyricsync::AutoSync *m_autoSync = nullptr;
     Player      *m_player = nullptr;
     Downloader  *m_downloader = nullptr;
     CastManager *m_cast   = nullptr;
@@ -198,6 +204,7 @@ private:
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
+    QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;
 
     bool         m_reallyQuit = false;

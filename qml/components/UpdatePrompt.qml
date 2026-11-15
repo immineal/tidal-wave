@@ -116,7 +116,9 @@ Popup {
         }
 
         HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: btn.activated() }
+        // Exclusive on press, as in SettingsPanel: a passive grab can leak
+        // through a modal Popup to the page beneath.
+        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: btn.activated() }
 
         Keys.onReturnPressed: btn.activated()
         Keys.onEnterPressed:  btn.activated()

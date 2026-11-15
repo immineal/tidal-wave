@@ -12,6 +12,20 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Dolby Atmos</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Explicit</source>
+        <comment>a version of an album with its lyrics as recorded</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <comment>a version of an album with its lyrics edited</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Album</source>
         <translation type="unfinished"></translation>
     </message>
@@ -21,6 +35,10 @@
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Dolby Atmos, plays in stereo</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Play</source>
@@ -42,11 +60,36 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Other versions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This album is not available</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Tidal would not serve it. It may have been taken down, or it may not be available where you are. Searching for the title often finds another release of it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find album</source>
+        <comment>verb, look for another release of this album</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove from library</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed from your library.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal would not remove it. It is still in your library.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removing…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -140,6 +183,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Appears On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>About</source>
         <translation type="unfinished"></translation>
     </message>
@@ -183,10 +230,6 @@
     </message>
     <message>
         <source>Could not read the lossless stream details for this track.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -446,10 +489,6 @@
     </message>
     <message>
         <source>Could not read the lossless stream details for this track.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -740,7 +779,21 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Instrumental</source>
+        <comment>a track with no words</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Resync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lyrics from %1</source>
+        <comment>%1 is a lyrics website</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synced automatically, may be off</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -857,15 +910,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not load this track for playback. %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Could not download the audio for this track. No data came back.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Could not download the audio for this track. %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -877,7 +922,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not save the playback details to a temporary file. Check that there is free disk space.</source>
+        <source>The sound output was lost. Restart Tidal Wave to get it back.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This track is no longer available on Tidal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This track is not available for your account or region.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not load this track for playback.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not download the audio for this track.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -898,6 +959,42 @@
     </message>
     <message>
         <source>Low</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No audio device was found. Check the sound settings of your system.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks in a row are no longer available on Tidal, so playback stopped here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks in a row are not available for your account or region, so playback stopped here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks in a row are not available, so playback stopped here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>“%1” is no longer available on Tidal and was skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>“%1” is not available for your account or region and was skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks are no longer available on Tidal and were skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks are not available for your account or region and were skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several tracks are not available and were skipped.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1339,6 +1436,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Experimental</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Privacy</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1381,11 +1482,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run.</source>
+        <source>Synced lyrics from LRCLIB</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; and a cached index of your library.</source>
+        <source>When Tidal has no synced lyrics for the playing track, lrclib.net is asked and gets its artist, title, album and length.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lyrics from more sites</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Asked after lrclib.net, in this order: music.163.com gets the track&apos;s artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync plain lyrics automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lyrics without timings are timed against the track&apos;s audio, here on this machine; nothing is sent for it. Timings it is unsure of are not shown, and the ones shown are marked as made here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
