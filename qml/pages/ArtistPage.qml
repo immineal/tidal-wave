@@ -168,6 +168,7 @@ Rectangle {
                 clip: true
 
                 Image {
+                    objectName: "artistHeroPhoto"
                     anchors.fill: parent
                     source: artistData.coverUrl750 ? "image://tidal/" + artistData.coverUrl750 : ""
                     fillMode: Image.PreserveAspectCrop
@@ -194,7 +195,10 @@ Rectangle {
                     anchors.margins: 28
                     spacing: 8
 
+                    // No outline: the gradient above fades the photo to the
+                    // page colour behind the name.
                     Text {
+                        objectName: "artistName"
                         Layout.fillWidth: true
                         text: artistData.name || ""
                         color: Theme.textPrimary
@@ -203,8 +207,6 @@ Rectangle {
                         wrapMode: Text.WordWrap
                         maximumLineCount: 2
                         elide: Text.ElideRight
-                        style: Text.Outline
-                        styleColor: Theme.artScrimStrong
                     }
 
                     // A Flow, so the pills wrap when a translation widens them.
