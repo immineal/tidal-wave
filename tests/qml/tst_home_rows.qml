@@ -355,11 +355,11 @@ TestCase {
 
         bridge.setUserPlaylistsForTest(cacheOrder)
         bridge.setKindLoadingForTest("playlists", false)
-        var final = cacheOrder.map(function (p) { return p.uuid }).join(",")
-        tryVerify(function () { return idsOf(page.playlists) === final }, 2000,
+        var finalOrder = cacheOrder.map(function (p) { return p.uuid }).join(",")
+        tryVerify(function () { return idsOf(page.playlists) === finalOrder }, 2000,
                   "the row never settled on the bridge's order")
         for (var i = 0; i < shown.length; ++i)
-            compare(shown[i], final,
+            compare(shown[i], finalOrder,
                     "the row showed another order before its final one: "
                     + shown.join("  then  "))
         bridge.resetForTest()
