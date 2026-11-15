@@ -99,6 +99,11 @@ Rectangle {
                 selectionColor: Theme.accent
                 selectedTextColor: Theme.accentInk
                 verticalAlignment: TextInput.AlignVCenter
+                // Claimed ahead of the window's Escape shortcut, which would
+                // otherwise take it and go back.
+                Keys.onShortcutOverride: (event) => {
+                    if (event.key === Qt.Key_Escape) event.accepted = true
+                }
                 Keys.onEscapePressed: {
                     if (text.length > 0) text = ""
                     else                 root.releaseFocus()
