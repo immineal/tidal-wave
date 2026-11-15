@@ -27,6 +27,51 @@ constexpr qint64 kMaxRequest = 16 * 1024;   // a receiver's GET is well under 1 
 // much of the app's memory and no more.
 constexpr qint64 kHighWater = 256 * 1024;
 
+bool isDigits(const QByteArray &s) {
+    if (s.isEmpty()) return false;
+    for (char ch : s)
+        if (ch < '0' || ch > '9') return false;
+    return true;
+}
+
+struct ByteRange {
+    enum Kind { Whole, Part, Unsatisfiable } kind = Whole;
+    qint64 first = 0, last = 0;
+};
+
+// A Range header against a file of `size` bytes, after RFC 9110 section 14.
+// What it cannot parse, another unit or several ranges is ignored: the whole
+// file is an answer the RFC allows to all three.
+ByteRange parseRange(const QByteArray &value, qint64 size) {
+    const int eq = value.indexOf('=');
+    if (eq < 0 || value.left(eq).trimmed().toLower() != "bytes") return {};
+    const QByteArray set = value.mid(eq + 1).trimmed();
+    if (set.contains(',')) return {};
+    const int dash = set.indexOf('-');
+    if (dash < 0) return {};
+    const QByteArray a = set.left(dash).trimmed();
+    const QByteArray b = set.mid(dash + 1).trimmed();
+
+    bool ok = false;
+    if (a.isEmpty()) {                        // bytes=-N: the last N bytes
+        if (!isDigits(b)) return {};
+        qint64 n = b.toLongLong(&ok);
+        if (!ok) n = size;                    // more digits than qint64: all of it
+        if (n == 0 || size == 0) return {ByteRange::Unsatisfiable};
+        return {ByteRange::Part, qMax<qint64>(0, size - n), size - 1};
+    }
+    if (!isDigits(a) || (!b.isEmpty() && !isDigits(b))) return {};
+    const qint64 first = a.toLongLong(&ok);
+    if (!ok || first >= size) return {ByteRange::Unsatisfiable};
+    qint64 last = size - 1;                   // bytes=N-: open to the end
+    if (!b.isEmpty()) {
+        const qint64 l = b.toLongLong(&ok);
+        if (ok && l < first) return {};      // invalid, so ignored
+        if (ok) last = qMin(l, size - 1);
+    }
+    return {ByteRange::Part, first, last};
+}
+
 } // namespace
 
 // Owned by its socket, so it goes when the connection does.
@@ -154,21 +199,11 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, Transfer *t, const QByteAr
     }
     const bool isHead = method == "HEAD";
 
-    // Parse a Range: bytes=start-end header if present.
-    qint64 rangeStart = -1, rangeEnd = -1;
+    QByteArray rangeHeader;
     for (const QByteArray &l : lines) {
-        const QByteArray line = l.trimmed();
-        if (line.toLower().startsWith("range:")) {
-            const int eq = line.indexOf('=');
-            if (eq >= 0) {
-                const QByteArray spec = line.mid(eq + 1).trimmed();
-                const int dash = spec.indexOf('-');
-                if (dash >= 0) {
-                    rangeStart = spec.left(dash).toLongLong();
-                    const QByteArray endStr = spec.mid(dash + 1);
-                    if (!endStr.isEmpty()) rangeEnd = endStr.toLongLong();
-                }
-            }
+        const int colon = l.indexOf(':');
+        if (colon > 0 && l.left(colon).trimmed().toLower() == "range") {
+            rangeHeader = l.mid(colon + 1).trimmed();
             break;
         }
     }
@@ -179,15 +214,17 @@ void CastMediaServer::handleRequest(QTcpSocket *sock, Transfer *t, const QByteAr
         return;
     }
 
-    const qint64 total = t->file.size();
-    qint64 start = 0, end = total - 1;
-    bool partial = false;
-    if (rangeStart >= 0) {
-        partial = true;
-        start = qBound<qint64>(0, rangeStart, total - 1);
-        end   = (rangeEnd >= 0) ? qBound<qint64>(start, rangeEnd, total - 1) : total - 1;
+    const qint64    total = t->file.size();
+    const ByteRange range = parseRange(rangeHeader, total);
+    if (range.kind == ByteRange::Unsatisfiable) {
+        reply(sock, "416 Range Not Satisfiable",
+              "Content-Range: bytes */" + QByteArray::number(total) + "\r\n");
+        return;
     }
-    const qint64 length = end - start + 1;
+    const bool   partial = range.kind == ByteRange::Part;
+    const qint64 start   = partial ? range.first : 0;
+    const qint64 end     = partial ? range.last  : total - 1;
+    const qint64 length  = end - start + 1;
 
     QByteArray headers;
     headers += partial ? "HTTP/1.1 206 Partial Content\r\n" : "HTTP/1.1 200 OK\r\n";

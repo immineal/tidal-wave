@@ -251,6 +251,74 @@ private slots:
         QVERIFY(r.body.isEmpty());
     }
 
+    // RFC 9110 section 14: ranges, suffix ranges, open ranges, and 416 for
+    // what the file cannot satisfy.
+    void ranges_data()
+    {
+        QTest::addColumn<QByteArray>("range");
+        QTest::addColumn<int>("status");
+        QTest::addColumn<qint64>("first");   // of the bytes sent; -1 for none
+        QTest::addColumn<qint64>("last");
+
+        const qint64 n = kSmall;
+        const QByteArray N = QByteArray::number(n);
+        QTest::newRow("no range")       << QByteArray()             << 200 << 0LL << n - 1;
+        QTest::newRow("closed")         << QByteArray("bytes=0-9")  << 206 << 0LL << 9LL;
+        QTest::newRow("in the middle")  << QByteArray("bytes=100-199") << 206 << 100LL << 199LL;
+        QTest::newRow("open")           << "bytes=" + QByteArray::number(n - 100) + "-"
+                                        << 206 << n - 100 << n - 1;
+        QTest::newRow("suffix")         << QByteArray("bytes=-500") << 206 << n - 500 << n - 1;
+        QTest::newRow("suffix longer than the file")
+                                        << QByteArray("bytes=-999999") << 206 << 0LL << n - 1;
+        QTest::newRow("end past the file")
+                                        << "bytes=10-" + QByteArray::number(n + 1000)
+                                        << 206 << 10LL << n - 1;
+        QTest::newRow("start at the size") << "bytes=" + N + "-" << 416 << -1LL << -1LL;
+        QTest::newRow("start past the file")
+                                        << "bytes=" + QByteArray::number(n + 10) + "-"
+                                           + QByteArray::number(n + 20)
+                                        << 416 << -1LL << -1LL;
+        QTest::newRow("empty suffix")   << QByteArray("bytes=-0")   << 416 << -1LL << -1LL;
+        // Invalid or not understood: the Range header is ignored.
+        QTest::newRow("last before first") << QByteArray("bytes=5-2") << 200 << 0LL << n - 1;
+        QTest::newRow("another unit")   << QByteArray("items=0-5")  << 200 << 0LL << n - 1;
+        QTest::newRow("garbage")        << QByteArray("bytes=x-y")  << 200 << 0LL << n - 1;
+        QTest::newRow("several ranges") << QByteArray("bytes=0-1,5-6") << 200 << 0LL << n - 1;
+    }
+
+    void ranges()
+    {
+        QFETCH(QByteArray, range);
+        QFETCH(int, status);
+        QFETCH(qint64, first);
+        QFETCH(qint64, last);
+
+        CastMediaServer server;
+        QVERIFY(!server.start().isEmpty());
+        const QUrl url(server.setCurrentFile(m_small, QStringLiteral("audio/flac")));
+
+        Fetch f(url, get(url, range.isEmpty() ? QByteArray() : "Range: " + range + "\r\n"));
+        QTRY_VERIFY_WITH_TIMEOUT(f.done(), 5000);
+        const Reply r = f.reply();
+        QCOMPARE(r.status, status);
+        if (status == 416) {
+            QCOMPARE(r.header("Content-Range"), "bytes */" + QByteArray::number(kSmall));
+            QVERIFY(r.body.isEmpty());
+            return;
+        }
+        const qint64 length = last - first + 1;
+        QCOMPARE(r.header("Content-Length").toLongLong(), length);
+        QCOMPARE(qint64(r.body.size()), length);
+        QCOMPARE(r.body.at(0), byteAt(first));
+        QCOMPARE(r.body.at(r.body.size() - 1), byteAt(last));
+        if (status == 206)
+            QCOMPARE(r.header("Content-Range"),
+                     "bytes " + QByteArray::number(first) + "-" + QByteArray::number(last)
+                     + "/" + QByteArray::number(kSmall));
+        else
+            QVERIFY(r.header("Content-Range").isEmpty());
+    }
+
 private:
     static constexpr int kBlock  = 1024 * 1024;
     static constexpr int kBlocks = 48;
