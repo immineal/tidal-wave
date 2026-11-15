@@ -53,9 +53,18 @@ void CastSession::connectToDevice(const QString &host, int port) {
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
     connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        // Before the app is up no disconnected() follows, so the attempt ends here.
+        if (!m_appConnected) {
+            fail(tr("The connection to the cast device failed."));
+            return;
+        }
         emit error(m_socket ? m_socket->errorString() : tr("The connection to the cast device failed."));
     });
     connect(m_socket, &QSslSocket::disconnected, this, [this]() {
+        if (!m_appConnected) {
+            fail(tr("The connection to the cast device failed."));
+            return;
+        }
         m_appConnected = false;
         emit disconnected();
     });
@@ -72,15 +81,36 @@ void CastSession::connectToDevice(const QString &host, int port) {
         m_timer->setInterval(1000);
         connect(m_timer, &QTimer::timeout, this, &CastSession::onTick);
     }
+    // TCP, TLS and LAUNCH together. A device that takes the connection and
+    // never starts the app would leave the UI saying "Connecting" for good.
+    if (!m_connectTimer) {
+        m_connectTimer = new QTimer(this);
+        m_connectTimer->setSingleShot(true);
+        connect(m_connectTimer, &QTimer::timeout, this, [this] {
+            if (!m_appConnected) fail(tr("The cast device did not answer."));
+        });
+    }
+    m_connectTimer->start(m_connectTimeoutMs);
+}
+
+void CastSession::fail(const QString &msg) {
+    reset();
+    emit error(msg);
+    emit disconnected();
 }
 
 void CastSession::disconnectFromDevice() {
-    if (m_timer) m_timer->stop();
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
         sendGoodbye();
         closeQuietly(m_socket);
         m_socket = nullptr;
     }
+    reset();
+}
+
+void CastSession::reset() {
+    if (m_timer) m_timer->stop();
+    if (m_connectTimer) m_connectTimer->stop();
     if (m_socket) {
         m_socket->disconnect(this);
         m_socket->abort();
@@ -216,6 +246,7 @@ void CastSession::establishAppConnection(const QString &transportId) {
     // Virtual connection to the media app is required before media messages.
     sendMessage(NS_CONNECTION, m_transportId, jsonToString({{"type", "CONNECT"}}));
     m_appConnected = true;
+    if (m_connectTimer) m_connectTimer->stop();
     emit connected();
     if (m_haveLoad)
         sendLoad();

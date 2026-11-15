@@ -255,6 +255,10 @@
         <source>The connection to the cast device failed.</source>
         <translation>Die Verbindung zum Übertragungsgerät ist fehlgeschlagen.</translation>
     </message>
+    <message>
+        <source>The cast device did not answer.</source>
+        <translation>Das Übertragungsgerät hat nicht geantwortet.</translation>
+    </message>
 </context>
 <context>
     <name>CollectionPage</name>

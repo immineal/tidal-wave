@@ -25,6 +25,7 @@ public:
     // Test hook: plain TCP instead of TLS, so a QTcpServer can stand in for
     // the receiver. Set before connectToDevice().
     void setPlainTextForTest(bool on) { m_plainText = on; }
+    void setConnectTimeoutForTest(int ms) { m_connectTimeoutMs = ms; }
 
     // Load a media URL onto the receiver. Before `connected()` the load is
     // deferred until the receiver app is up.
@@ -53,6 +54,8 @@ private slots:
     void onTick();
 
 private:
+    void reset();                       // drops the socket and all session state
+    void fail(const QString &msg);      // error(), then disconnected()
     void sendGoodbye();   // STOP and CLOSE, queued on the socket
     void closeQuietly(QSslSocket *s);
     void sendMessage(const QString &ns, const QString &destination, const QString &payloadJson);
@@ -63,6 +66,8 @@ private:
 
     QSslSocket *m_socket    = nullptr;
     QTimer     *m_timer     = nullptr;   // heartbeat + status poll
+    QTimer     *m_connectTimer = nullptr;
+    int         m_connectTimeoutMs = 10000;
     QByteArray  m_buffer;
 
     QString m_transportId;               // media app destination (RECEIVER_STATUS)

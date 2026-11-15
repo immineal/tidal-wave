@@ -63,6 +63,46 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(receiver.peer->state(), QAbstractSocket::UnconnectedState,
                                   5000);
     }
+
+    // A device that refuses the connection ends the attempt: "Connecting" in
+    // the UI waits for disconnected().
+    void aRefusedConnectionEndsTheAttempt()
+    {
+        quint16 port = 0;
+        {
+            QTcpServer probe;
+            QVERIFY(probe.listen(QHostAddress::LocalHost));
+            port = probe.serverPort();
+        }
+        CastSession session;
+        session.setPlainTextForTest(true);
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy error(&session, &CastSession::error);
+        session.connectToDevice(QStringLiteral("127.0.0.1"), port);
+        QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 5000);
+        QCOMPARE(error.count(), 1);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The connection to the cast device failed."));
+        QTest::qWait(100);
+        QCOMPARE(gone.count(), 1);
+    }
+
+    // A device that takes the connection and never launches the app.
+    void aDeviceThatNeverAnswersTimesOut()
+    {
+        QTcpServer silent;
+        QVERIFY(silent.listen(QHostAddress::LocalHost));
+        CastSession session;
+        session.setPlainTextForTest(true);
+        session.setConnectTimeoutForTest(500);
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy error(&session, &CastSession::error);
+        session.connectToDevice(QStringLiteral("127.0.0.1"), silent.serverPort());
+        QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 5000);
+        QCOMPARE(error.count(), 1);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The cast device did not answer."));
+    }
 };
 
 QTEST_MAIN(TestCastSession)
