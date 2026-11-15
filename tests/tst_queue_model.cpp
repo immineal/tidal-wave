@@ -286,6 +286,35 @@ private slots:
         verify(p);
     }
 
+    // A page's Shuffle turns shuffle on and starts on a random row. Every row
+    // plays: the start row first, all the others shuffled after it, and none
+    // is filed behind the cursor as if it had played.
+    void shuffleFromARandomRowPlaysTheWholeContext() {
+        Rig rig;
+        auto &p = rig.player;
+        p.setShuffle(true);
+        p.playTracks(contextOf(1000, 12), 8);
+
+        QCOMPARE(currentId(p), 1008);
+        QVERIFY(p.queuePlayed().isEmpty());
+        const QList<qlonglong> ahead = ids(p.queueContext());
+        QList<qlonglong> others;
+        for (int i = 0; i < 12; ++i) if (i != 8) others.append(1000 + i);
+        QCOMPARE(QSet<qlonglong>(ahead.begin(), ahead.end()),
+                 QSet<qlonglong>(others.begin(), others.end()));
+        QCOMPARE(ahead.count(), 11);
+        verify(p);
+
+        // Off again, the album goes on in its own order from where it is, and
+        // the rows before that point are behind the cursor, as without shuffle.
+        p.setShuffle(false);
+        QCOMPARE(currentId(p), 1008);
+        QCOMPARE(ids(p.queueContext()), (QList<qlonglong>{1009, 1010, 1011}));
+        QCOMPARE(ids(p.queuePlayed()),
+                 (QList<qlonglong>{1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007}));
+        verify(p);
+    }
+
     // ── walking the combined order ──────────────────────────────────────────
 
     void nextAndPreviousWalkAcrossTheBoundaryBetweenSections() {

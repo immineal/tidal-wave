@@ -430,9 +430,16 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
         m_queue.append(Entry{ tracks.at(i).toMap(), false, i });
 
     setManualCount(0);
-    setIndex(qBound(0, startIndex, m_queue.count() - 1));
-    // Rows before the starting point keep their order.
-    if (m_shuffle) reorderContext();
+    const int start = qBound(0, startIndex, m_queue.count() - 1);
+    if (m_shuffle) {
+        // The picked row plays first and all the others are shuffled after
+        // it. Left where it was, the rows before it would never play.
+        m_queue.move(start, 0);
+        setIndex(0);
+        reorderContext();
+    } else {
+        setIndex(start);
+    }
 
     for (int i = 0; i < manual.count(); ++i)
         m_queue.insert(m_index + 1 + i, manual.at(i));
@@ -1058,9 +1065,20 @@ void Player::reorderContext() {
             m_queue.swapItemsAt(i, j);
         }
     } else {
-        // The context's own order. Stable, so rows without a position stay put.
-        std::stable_sort(m_queue.begin() + from, m_queue.end(),
-                         [](const Entry &a, const Entry &b) { return a.natural < b.natural; });
+        // The context's own order. Rows that come before the current one go
+        // behind the cursor, as if the context had been started on it.
+        const int here = (m_index >= 0) ? m_queue.at(m_index).natural : -1;
+        QList<Entry> before;
+        for (int i = m_queue.count() - 1; i >= from && here >= 0; --i) {
+            const int n = m_queue.at(i).natural;
+            if (n >= 0 && n < here) before.prepend(m_queue.takeAt(i));
+        }
+        const auto byNatural = [](const Entry &a, const Entry &b) { return a.natural < b.natural; };
+        std::stable_sort(before.begin(), before.end(), byNatural);
+        for (int i = 0; i < before.count(); ++i) m_queue.insert(m_index + i, before.at(i));
+        if (!before.isEmpty()) setIndex(m_index + int(before.count()));
+        // Stable, so rows without a position stay put.
+        std::stable_sort(m_queue.begin() + from + before.count(), m_queue.end(), byNatural);
     }
 }
 
