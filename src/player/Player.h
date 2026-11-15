@@ -267,10 +267,16 @@ private:
     // How the queue came onto the row being loaded. A track Tidal has ruled
     // out is reported where it was picked and stepped over on the way through.
     enum class Travel { Picked, Forward, Backward };
-    // A load the user asked for. It ends a restore that has not loaded yet.
+    // A load the user asked for. Held, it only moves onto the row: nothing
+    // is fetched until play.
     void loadAndPlay(int index, bool heldPaused = false, Travel travel = Travel::Picked);
-    // The load itself. Only the restore calls it directly, to stay in force.
+    // The load itself.
     void startLoad(int index);
+    // Puts the track at `index` on show with nothing loaded; play loads it,
+    // passing over a ruled-out track in the direction of `travel`.
+    void restOn(int index, Travel travel);
+    // Ends what the current load has under way and drops its file.
+    void dropCurrentLoad();
     // Asks for the current track's stream on behalf of the load numbered
     // `serial`. twinSought: this load has looked for the track's twin.
     void requestStream(quint64 serial, bool twinSought);
@@ -446,22 +452,17 @@ private:
     QTimer              *m_persistTimer  = nullptr;
     // Set while restorePlaybackState() runs, so it does not save what it read.
     bool                 m_suspendPersist = false;
-    // The restore ran before initAudio(), so the load is owed.
-    bool                 m_restorePending = false;
-    // The load under way comes up paused: a restored session, a step MPRIS
-    // made while paused, or pause pressed while it loads.
+    // The load under way comes up paused: pause was pressed while it loads.
     bool                 m_restorePaused  = false;
     // A load is under way and ends in playback. Lowered with the loading flag.
     bool                 m_loadPlays      = false;
     // What playingChanged last said.
     bool                 m_playingTold    = false;
-    // Until a restored track resolves, a failed load stays quiet: the row is
-    // passed over if Tidal ruled the track out, and left to load on play
-    // otherwise.
-    bool                 m_restoreSkips   = false;
-    // The current track's load failed and left nothing loaded; the next play
-    // asks again.
+    // Nothing is loaded behind the current track: a restored session, a
+    // held step, or a load that failed. The next play asks for it.
     bool                 m_loadOwed       = false;
+    // How the owed load travels when play starts it.
+    Travel               m_owedTravel     = Travel::Picked;
     // Numbers the loads, so a reply can tell that a newer load has replaced
     // the one that asked for it.
     quint64              m_loadSerial     = 0;

@@ -432,29 +432,27 @@ private slots:
                  (QStringList{ QStringLiteral("Playing"), QStringLiteral("Paused") }));
     }
 
-    // A restored session comes back paused, so its load is never Playing.
+    // A restored session comes back paused and loads nothing until Play.
     void aRestoredTrackIsPausedThroughout() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
 
         Launch b;
         QVERIFY(b.audioUp());
-        QCOMPARE(b.client.asked, (QList<qlonglong>{1002}));
         QCOMPARE(desk().status(), QStringLiteral("Paused"));
         desk().forget();
 
-        QVERIFY(b.client.answer(1002, track()));
-        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
         QTest::qWait(300);
+        QCOMPARE(b.client.asked, QList<qlonglong>());
         QCOMPARE(desk().status(), QStringLiteral("Paused"));
         QCOMPARE(desk().statuses(), QStringList());
     }
 
     // ── Play ────────────────────────────────────────────────────────────────
 
-    // The session was restored and its track never loaded: Tidal was out of
-    // reach, or the stream resolved and the download failed. Nothing is loaded
-    // for Play to start, so it asks again and plays from where it was left.
+    // The restored track's first load failed: Tidal was out of reach, or the
+    // stream resolved and the download failed. Nothing is loaded for Play to
+    // start, so it asks again and plays from where it was left.
     void playLoadsARestoredTrackThatNeverLoaded_data() {
         QTest::addColumn<bool>("streamResolved");
         QTest::addColumn<QString>("method");
@@ -471,6 +469,7 @@ private slots:
 
         Launch b;
         QVERIFY(b.audioUp());
+        desk().player(method);
         if (streamResolved) {
             QSignalSpy errorSpy(&b.p(), &Player::error);
             QVERIFY(b.client.answer(1002, oneFileAt(m_server.url(QStringLiteral("/gone")))));
@@ -482,7 +481,7 @@ private slots:
         QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 12000000LL);
         desk().forget();
 
-        desk().player(method);
+        desk().player(method == QLatin1String("PlayPause") ? method : QStringLiteral("Play"));
         QVERIFY2(b.client.answer(1002, track()), "Play asked for nothing");
         QTRY_VERIFY2_WITH_TIMEOUT(b.started(), "Play left it paused", 10000);
         QTRY_VERIFY_WITH_TIMEOUT(b.mp()->position() >= 11500, 5000);
@@ -590,7 +589,7 @@ private slots:
     }
 
     // A restored track waits at its saved position, which a client reads.
-    // Loading the track moves nothing.
+    // Play loads it and it plays on from there, with no jump to announce.
     void aRestoredTrackLoadsWithoutAJump() {
         if (const char *why = obstacle()) QSKIP(why);
         QVERIFY(saveFiveRowSession());
@@ -600,13 +599,14 @@ private slots:
         QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 12000000LL);
         desk().forget();
 
+        desk().player(QStringLiteral("Play"));
         QVERIFY(b.client.answer(1002, track()));
-        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
-        QTRY_VERIFY_WITH_TIMEOUT(qAbs(b.mp()->position() - 12000) < 250, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(b.started() && b.mp()->position() >= 12000, 10000);
         QTest::qWait(300);
         const qlonglong position = desk().get(QStringLiteral("Position")).toLongLong();
-        QVERIFY2(within(position, 11750, 12250), qPrintable(QString::number(position)));
-        QCOMPARE(desk().seeked, QList<qlonglong>());
+        QVERIFY2(within(position, 11750, 14500), qPrintable(QString::number(position)));
+        for (const qlonglong at : std::as_const(desk().seeked))
+            QVERIFY2(within(at, 11750, 12500), qPrintable(QString::number(at)));
     }
 
     // ── Seek ────────────────────────────────────────────────────────────────
@@ -634,14 +634,16 @@ private slots:
         }
         desk().forget();
 
+        const QList<qlonglong> asked = l->client.asked;
         desk().player(QStringLiteral("Seek"), { by });
         QCOMPARE(currentId(l->p()), 1003);
-        QVERIFY(l->client.answer(1003, track()));
         if (paused) {
-            QTRY_VERIFY_WITH_TIMEOUT(l->loaded(), 10000);
+            // It waits on the next track, with nothing fetched until Play.
             QTest::qWait(400);
+            QCOMPARE(l->client.asked, asked);
             QVERIFY2(!l->p().playing(), "the seek started playback");
         } else {
+            QVERIFY(l->client.answer(1003, track()));
             QTRY_VERIFY_WITH_TIMEOUT(l->started(), 10000);
             QTest::qWait(400);
         }
@@ -696,7 +698,8 @@ private slots:
     }
 
     // The specification: "If playback is paused or stopped, it remains that
-    // way." The track changes, and it waits at its start for Play.
+    // way." The track changes, and it waits at its start for Play with
+    // nothing fetched.
     void nextAndPreviousLeaveAPausedPlayerPaused_data() { steps_data(); }
     void nextAndPreviousLeaveAPausedPlayerPaused() {
         if (const char *why = obstacle()) QSKIP(why);
@@ -707,12 +710,12 @@ private slots:
         std::unique_ptr<Launch> l;
         QVERIFY(pausedOnTheThirdOfFive(l, restored));
         desk().forget();
+        QList<qlonglong> asked = l->client.asked;
 
         desk().player(forward ? QStringLiteral("Next") : QStringLiteral("Previous"));
         QCOMPARE(currentId(l->p()), to);
-        QVERIFY(l->client.answer(to, track()));
-        QTRY_VERIFY_WITH_TIMEOUT(l->loaded(), 10000);
         QTest::qWait(400);
+        QCOMPARE(l->client.asked, asked);
         QVERIFY2(!l->p().playing(), "the step started playback");
         QCOMPARE(desk().statuses(), QStringList());
         QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
@@ -721,10 +724,12 @@ private slots:
         QCOMPARE(metadata.constFirst().toMap().value(QStringLiteral("mpris:trackid"))
                      .value<QDBusObjectPath>().path(), trackPath(to));
 
-        // The new track is loaded, so Play starts it without another request.
+        // Play fetches the track and starts it.
         desk().player(QStringLiteral("Play"));
+        QVERIFY(l->client.answer(to, track()));
         QTRY_VERIFY_WITH_TIMEOUT(l->started(), 10000);
-        QCOMPARE(l->client.asked, (QList<qlonglong>{1002, to}));
+        asked.append(to);
+        QCOMPARE(l->client.asked, asked);
         QTRY_COMPARE_WITH_TIMEOUT(desk().statuses(),
                                   (QStringList{ QStringLiteral("Playing") }), 5000);
     }
@@ -756,8 +761,6 @@ private slots:
 
         Launch b;
         QVERIFY(b.audioUp());
-        QVERIFY(b.client.answer(1002, track()));
-        QTRY_VERIFY_WITH_TIMEOUT(b.loaded(), 10000);
         desk().forget();
 
         desk().player(QStringLiteral("Previous"));
@@ -837,7 +840,10 @@ private slots:
         }
         QCOMPARE(currentId(l->p()), id);
         const QList<qlonglong> asked = l->client.asked;
-        QCOMPARE(asked.constLast(), id);
+        // A held step and a restored track have nothing under way: Play
+        // starts the load.
+        if (load == QLatin1String("users")) QCOMPARE(asked.constLast(), id);
+        else QVERIFY2(!asked.contains(id), "a track nobody plays was fetched");
         desk().forget();
 
         QStringList read;
@@ -1097,8 +1103,9 @@ private slots:
 private:
     Desktop &desk() { return *m_desk; }
 
-    // Five rows, paused at the start of the third with the track loaded. The
-    // restored kind was left there by an earlier launch.
+    // Five rows, paused at the start of the third. The one started by hand
+    // has the track loaded. The restored kind was left there by an earlier
+    // launch and has nothing loaded.
     bool pausedOnTheThirdOfFive(std::unique_ptr<Launch> &l, bool restored)
     {
         if (restored) {
@@ -1109,13 +1116,12 @@ private:
         }
         l = std::make_unique<Launch>();
         if (!l->audioUp()) return false;
-        if (!restored) l->p().playTracks(contextOf(1000, 5), 2);
+        if (restored) return currentId(l->p()) == 1002 && l->client.asked.isEmpty();
+        l->p().playTracks(contextOf(1000, 5), 2);
         if (!l->client.answer(1002, track())) return false;
-        if (!restored) {
-            if (!QTest::qWaitFor([&l] { return l->started(); }, 10000)) return false;
-            l->p().playPause();
-            l->p().seek(0);
-        }
+        if (!QTest::qWaitFor([&l] { return l->started(); }, 10000)) return false;
+        l->p().playPause();
+        l->p().seek(0);
         return QTest::qWaitFor([&l] {
             return l->loaded() && l->mp()->playbackState() == QMediaPlayer::PausedState
                 && l->mp()->position() == 0;

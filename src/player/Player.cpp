@@ -84,8 +84,9 @@ void Player::initAudio() {
         // backend's reports from before the end can still arrive after it.
         if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && nextIndex() < 0) return;
 #endif
-        qint64 dur = m_player->duration();
-        if (dur > 0 && pos >= kPreloadAfterMs)
+        // Only while it plays: a paused track may never be played on.
+        if (m_player->duration() > 0 && pos >= kPreloadAfterMs
+            && m_player->playbackState() == QMediaPlayer::PlayingState)
             preloadNext();
         emit positionChanged(pos);
     });
@@ -103,12 +104,6 @@ void Player::initAudio() {
         m_standTimer->start();
     });
 #endif
-
-    // A session restored from the constructor had no player yet; load it now.
-    if (m_restorePending) {
-        m_restorePending = false;
-        startLoad(m_index);
-    }
 
     applySpectrumTap();
 }
@@ -674,17 +669,10 @@ void Player::playPause() {
 #endif
     if (!m_player) return;
     // Nothing is loaded behind the current track for play() to start.
-    if (m_loadOwed) { loadAndPlay(m_index); return; }
+    if (m_loadOwed) { loadAndPlay(m_index, false, m_owedTravel); return; }
     if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // A load is under way, and the press decides what it ends in.
         m_loadPlays = !m_loadPlays;
-        if (m_loadPlays && m_restoreSkips) {
-            // Play pressed on a restored track makes the load the user's own.
-            m_restoreSkips = false;
-            m_travel       = Travel::Picked;
-            m_droppedRun   = 0;
-            m_keptRun      = 0;
-        }
         // Until the file is handed to the backend the hold is kept here.
         if (m_player->source().isEmpty()) m_restorePaused = !m_loadPlays;
         else if (m_loadPlays)             startBackend();
@@ -1080,15 +1068,51 @@ static QTemporaryFile *saveToTempFile(const QByteArray &data) {
 
 void Player::loadAndPlay(int index, bool heldPaused, Travel travel) {
     if (index < 0 || index >= m_queue.count()) return;
-    // The user asked for this track, so a restore still waiting on its own
-    // load is over: this one plays unless it is held, and its failures are
-    // reported. A cast device takes no hold.
-    m_restorePaused = heldPaused && !casting();
-    m_restoreSkips  = false;
+    // A held step fetches nothing for a track nobody plays yet. A cast
+    // device takes no hold.
+    if (heldPaused && !casting()) { restOn(index, travel); return; }
+    m_restorePaused = false;
     m_travel        = travel;
     m_droppedRun    = 0;
     m_keptRun       = 0;
     startLoad(index);
+}
+
+void Player::dropCurrentLoad() {
+    if (m_player) {
+        m_player->stop();
+        m_player->setSource(QUrl());
+    }
+    if (m_activeDownload) {
+        auto *dl = m_activeDownload;
+        m_activeDownload = nullptr;
+        dl->abort();
+        dl->deleteLater();
+    }
+    if (m_dash) {
+        auto *d = m_dash;
+        m_dash = nullptr;
+        delete d;          // aborts whatever segments were still coming
+    }
+    dropAudioFile(m_mpdTempFile);
+}
+
+void Player::restOn(int index, Travel travel) {
+    if (index < 0 || index >= m_queue.count()) return;
+    ++m_loadSerial;        // replies for what was under way drop out
+    m_loadPlays     = false;
+    m_restorePaused = false;
+    dropCurrentLoad();
+    setLoadError(QString());
+    setLoading(false);
+    tellPlaying();
+    m_streamedQuality.clear();
+    if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
+        m_pendingSeek = 0;
+    m_currentTrack = trackFromMap(m_queue[index].track);
+    m_loadOwed     = true;
+    m_owedTravel   = travel;
+    emit currentTrackChanged();
 }
 
 void Player::startLoad(int index) {
@@ -1104,25 +1128,9 @@ void Player::startLoad(int index) {
     // stop() and setSource({}) both pass through onMediaStatusChanged, which
     // lowers the loading flag. Raised before them it would be lowered again
     // for the whole of the next track's fetch.
-    m_player->stop();
-    m_player->setSource(QUrl());
+    dropCurrentLoad();
     setLoading(true);
     tellPlaying();
-
-    if (m_activeDownload) {
-        auto *dl = m_activeDownload;
-        m_activeDownload = nullptr;
-        dl->abort();
-        dl->deleteLater();
-    }
-
-    if (m_dash) {
-        auto *d = m_dash;
-        m_dash = nullptr;
-        delete d;          // aborts whatever segments were still coming
-    }
-
-    dropAudioFile(m_mpdTempFile);
 
     m_streamedQuality.clear();
     m_loadOwed = false;
@@ -1236,21 +1244,14 @@ void Player::adoptTwin(int index, const Track &twin) {
 void Player::streamRefused(const StreamManifest &manifest, const QString &err) {
     // A restore and a queue on its way pass over a track Tidal has ruled
     // out. The loading flag stays up for the row that follows.
-    if (manifest.reason != StreamManifest::Unknown
-        && (m_restoreSkips || m_travel != Travel::Picked)) {
+    if (manifest.reason != StreamManifest::Unknown && m_travel != Travel::Picked) {
         passOverTrack(manifest.reason);
         return;
     }
     setLoading(false);
     // Nothing is loaded behind this track, so the next play asks again.
-    m_loadOwed = true;
-    if (m_restoreSkips) {
-        // The request failed, as it does with no network. That is no
-        // verdict on the track, so the restore ends with the queue whole.
-        m_restorePaused = false;
-        m_restoreSkips  = false;
-        return;
-    }
+    m_loadOwed   = true;
+    m_owedTravel = Travel::Picked;
     qWarning() << "Stream request failed:" << err;
     setLoadError(
         manifest.reason == StreamManifest::Gone
@@ -1276,13 +1277,6 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                 }
                 streamRefused(manifest, err);
                 return;
-            }
-            // Something resolved: the restore is over, later failures are reported.
-            // The rows it passed over in silence are in no later notice.
-            if (m_restoreSkips) {
-                m_restoreSkips = false;
-                m_droppedRun   = 0;
-                m_keptRun      = 0;
             }
             m_streamedQuality = manifest.codec;
             emit currentTrackChanged();
@@ -1355,7 +1349,8 @@ void Player::requestStream(quint64 serial, bool twinSought) {
 
 void Player::failLoad(const QString &msg) {
     setLoading(false);
-    m_loadOwed = true;
+    m_loadOwed   = true;
+    m_owedTravel = Travel::Picked;
     setLoadError(msg);
 }
 
@@ -1385,6 +1380,8 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             const qint64 to = m_pendingSeek;
             m_pendingSeek = 0;
             setPlayerPosition(to);
+            // The buffering that follows is this seek's, and no new load.
+            m_seekedLoaded = true;
         }
         break;
     case QMediaPlayer::EndOfMedia:
@@ -1875,16 +1872,11 @@ void Player::restorePlaybackState() {
     emit queueChanged();
 
     if (m_index >= 0 && m_index < m_queue.count()) {
-        m_currentTrack = trackFromMap(m_queue.at(m_index).track);
-        emit currentTrackChanged();
+        // Nothing is fetched until play: a launch nobody listens to costs
+        // the account nothing. Play passes over a track Tidal ruled out.
+        restOn(m_index, Travel::Forward);
         // Only the track it was actually left on gets its position back.
-        m_pendingSeek   = sameTrack ? qMax<qint64>(0, savedPos) : 0;
-        m_restorePaused = true;
-        m_restoreSkips  = true;
-        m_droppedRun    = 0;
-        m_keptRun       = 0;
-        if (m_player) startLoad(m_index);
-        else          m_restorePending = true;   // initAudio() will pick it up
+        m_pendingSeek = sameTrack ? qMax<qint64>(0, savedPos) : 0;
     }
 
     m_suspendPersist = false;
@@ -1899,7 +1891,7 @@ void Player::beginPlayback() {
         return;
     }
     if (m_restorePaused) {
-        // A restored session stays paused: opening the app must not play.
+        // Pause was pressed while it loaded.
         m_restorePaused = false;
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
         // A paused backend opens its sink too, and none without the sound
@@ -1935,9 +1927,7 @@ bool Player::startBackend(bool sinkHeld) {
 
 void Player::passOverTrack(StreamManifest::Reason reason) {
     if (m_index < 0 || m_index >= m_queue.count()) return;
-    // A restore says nothing and always goes forward.
-    const bool restoring = m_restoreSkips;
-    const bool backward  = !restoring && m_travel == Travel::Backward;
+    const bool backward = m_travel == Travel::Backward;
     const QString title = m_queue.at(m_index).track.value(QStringLiteral("title")).toString();
     m_pendingSeek = 0;   // that position belonged to the row being left
 
@@ -1951,11 +1941,10 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
             setIndex(-1);
             m_currentTrack  = Track{};
             m_restorePaused = false;
-            m_restoreSkips  = false;
             setLoading(false);
             emit currentTrackChanged();
             emit queueChanged();
-            if (!restoring) notePassedOver(title);
+            notePassedOver(title);
             return;
         }
 
@@ -1969,8 +1958,8 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
             if (m_index >= m_queue.count()) {
                 // Past the end. Each step drops a row, so a wrap cannot go round
                 // for ever.
-                const bool wraps = !restoring && m_repeatMode == 1;
-                rowLeft = restoring || wraps;
+                const bool wraps = m_repeatMode == 1;
+                rowLeft = wraps;
                 setIndex(wraps ? firstContextRow() : int(m_queue.count()) - 1);
             }
         }
@@ -1981,7 +1970,7 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         int to = -1;
         if (backward)                             to = m_index - 1;
         else if (m_index + 1 < m_queue.count())   to = m_index + 1;
-        else if (!restoring && m_repeatMode == 1) to = firstContextRow();
+        else if (m_repeatMode == 1)               to = firstContextRow();
         // A wrap ends once as many rows were kept as the queue has.
         rowLeft = to >= 0 && to != m_index && m_keptRun < m_queue.count();
         if (rowLeft) stepTo(to);
@@ -1997,14 +1986,13 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         // The queue rests on a row with nothing loaded, which play asks for.
         m_currentTrack  = trackFromMap(m_queue.at(m_index).track);
         m_restorePaused = false;
-        m_restoreSkips  = false;
         m_loadOwed      = true;
+        m_owedTravel    = Travel::Picked;
         setLoading(false);
         emit currentTrackChanged();
     }
-    // A run that ends is told in a restore as well.
-    if (runEnds || !restoring) notePassedOver(title, runEnds);
-    if (!restoring) schedulePersist();
+    notePassedOver(title, runEnds);
+    schedulePersist();
 }
 
 void Player::notePassedOver(const QString &title, bool runEnded) {
