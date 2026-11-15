@@ -163,7 +163,7 @@ bool TidalApi::refuseIfRateLimited(const QUrl &url, const Finisher &done) {
     Answer a;
     a.status = 429;
     a.failed = true;
-    a.error  = QStringLiteral("Tidal asked for a pause; try again in %1 s").arg(secs);
+    a.error  = tr("Tidal asked for a pause; try again in %1 s").arg(secs);
     QTimer::singleShot(0, this, [done, a] { done(a); });
     return true;
 }

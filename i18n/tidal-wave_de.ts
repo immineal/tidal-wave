@@ -1713,6 +1713,13 @@
     </message>
 </context>
 <context>
+    <name>TidalApi</name>
+    <message>
+        <source>Tidal asked for a pause; try again in %1 s</source>
+        <translation>Tidal bittet um eine Pause; versuche es in %1 s noch einmal</translation>
+    </message>
+</context>
+<context>
     <name>TidalClient</name>
     <message>
         <source>Tidal did not return a playable manifest for this track.</source>
