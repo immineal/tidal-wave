@@ -24,6 +24,13 @@ const QString MEDIA_APP_ID  = QStringLiteral("CC1AD845");   // Default Media Rec
 constexpr int kCloseGraceMs  = 3000;
 constexpr int kCloseLingerMs = 500;
 
+// CASTV2 caps a message at 64 KiB.
+constexpr quint32 kMaxFrameBytes = 64 * 1024;
+
+QString lostMessage() {
+    return CastSession::tr("The connection to the cast device was lost.");
+}
+
 QString jsonToString(const QJsonObject &o) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
@@ -193,12 +200,19 @@ void CastSession::onReadyRead() {
     // Frames are: 4-byte big-endian length + protobuf body.
     while (m_buffer.size() >= 4) {
         const quint32 len = qFromBigEndian<quint32>(m_buffer.constData());
-        if (m_buffer.size() < int(4 + len)) break;
-        const QByteArray body = m_buffer.mid(4, int(len));
-        m_buffer.remove(0, int(4 + len));
+        // A longer frame is a broken peer, and waiting for it would buffer
+        // without end. Checked first, so the sums below cannot overflow.
+        if (len > kMaxFrameBytes) {
+            fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
+            return;
+        }
+        if (m_buffer.size() < qsizetype(4 + len)) break;
+        const QByteArray body = m_buffer.mid(4, qsizetype(len));
+        m_buffer.remove(0, qsizetype(4 + len));
         CastMessage msg;
         if (CastMessage::decode(body, msg))
             handleMessage(msg);
+        if (!m_socket) return;   // the message ended the session
     }
 }
 

@@ -263,6 +263,10 @@
         <source>The cast device could not play this track.</source>
         <translation>Das Übertragungsgerät konnte diesen Titel nicht abspielen.</translation>
     </message>
+    <message>
+        <source>The connection to the cast device was lost.</source>
+        <translation>Die Verbindung zum Übertragungsgerät wurde unterbrochen.</translation>
+    </message>
 </context>
 <context>
     <name>CollectionPage</name>

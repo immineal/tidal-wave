@@ -4,10 +4,14 @@
 #include <QTest>
 #include <QElapsedTimer>
 #include <QSignalSpy>
+#include <QSettings>
 #include <QTcpServer>
+#include <QTemporaryDir>
 
 #include "FakeCastReceiver.h"
 #include "cast/CastSession.h"
+#include "ui/I18n.h"
+#include "ui/Prefs.h"
 
 using namespace fakecast;
 
@@ -26,6 +30,16 @@ class TestCastSession : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        // The German check writes the language to settings: kept out of the real ones.
+        QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_cast_session"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QVERIFY(m_dir.isValid());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
+    }
+
     // Leaving a cast sends the receiver its STOP and CLOSE and does not wait
     // for them on the GUI thread, even when the device has stopped reading.
     void disconnectingDoesNotWaitForASlowReceiver()
@@ -208,6 +222,66 @@ private slots:
         QVERIFY(!receiver.last(kMedia, QStringLiteral("LOAD"))
                      .contains(QStringLiteral("currentTime")));
     }
+
+    // CASTV2 messages are at most 64 KiB. A longer length is a broken or
+    // hostile peer, and one near 4 GiB used to wrap the buffer arithmetic.
+    void aFrameLongerThanCastAllowsDropsTheConnection_data()
+    {
+        QTest::addColumn<quint32>("length");
+        QTest::newRow("just over 64 KiB") << quint32(64 * 1024 + 1);
+        QTest::newRow("near 4 GiB")       << quint32(0xFFFFFFF0u);
+        QTest::newRow("4 GiB less 4")     << quint32(0xFFFFFFFCu);
+    }
+
+    void aFrameLongerThanCastAllowsDropsTheConnection()
+    {
+        QFETCH(quint32, length);
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy error(&session, &CastSession::error);
+
+        QByteArray frame(4, '\0');
+        qToBigEndian<quint32>(length, frame.data());
+        receiver.peer->write(frame + QByteArray(64, 'x'));
+
+        QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 3000);
+        QVERIFY(!session.isConnected());
+        QCOMPARE(error.count(), 1);
+        QCOMPARE(error.first().at(0).toString(),
+                 QStringLiteral("The connection to the cast device was lost."));
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.peer->state(), QAbstractSocket::UnconnectedState,
+                                  3000);
+    }
+
+    // Without its entry in the catalogue a sentence comes out in English.
+    void everySentenceHasItsGerman_data()
+    {
+        QTest::addColumn<QString>("sentence");
+        const char *const session[] = {
+            "The connection to the cast device failed.",
+            "The cast device did not answer.",
+            "The cast device could not play this track.",
+            "The connection to the cast device was lost.",
+        };
+        for (const char *s : session) QTest::newRow(s) << QString::fromUtf8(s);
+    }
+
+    void everySentenceHasItsGerman()
+    {
+        QFETCH(QString, sentence);
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+        QVERIFY(QCoreApplication::translate("CastSession", sentence.toUtf8().constData())
+                != sentence);
+    }
+
+private:
+    QTemporaryDir m_dir;
 };
 
 QTEST_MAIN(TestCastSession)
