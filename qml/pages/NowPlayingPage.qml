@@ -308,8 +308,8 @@ Rectangle {
     // The line the view keeps centred: the one being sung, or the first.
     function followLine() { return Math.max(root.currentLyricLine, 0) }
 
-    // A scroll that ends with the followed line back where centring puts it
-    // is a resync, so following resumes without the button.
+    // A scroll that ends with the followed line exactly where centring puts it
+    // (in the intro: back at the top) is a resync. Near it is still a scroll.
     function resumeIfCentred() {
         if (!root.userScrolled || !root.lyricsIsTimed) return
         var line = root.followLine()
@@ -319,7 +319,7 @@ Rectangle {
         lyricsView.positionViewAtIndex(line, ListView.Center)
         var want = lyricsView.contentY
         lyricsView.contentY = was
-        if (Math.abs(want - was) > Math.max(24, item.height / 2)) return
+        if (Math.abs(want - was) > 2) return
         root.userScrolled = false
         root.centreLyricLine(line, true)
     }

@@ -2466,7 +2466,14 @@ TestCase {
         view.movementEnded()
         verify(page.userScrolled, "a scroll away from the line resumed following")
 
-        view.contentY = home + 6
+        // Near is not enough: a short scroll off the line must stay put.
+        for (var off of [-30, -12, 8, 12, 30]) {
+            view.contentY = home + off
+            view.movementEnded()
+            verify(page.userScrolled, "a scroll ending " + off + " px off the line snapped back")
+        }
+
+        view.contentY = home + 1
         view.movementEnded()
         verify(!page.userScrolled, "scrolling back onto the line did not resume following")
         verify(!findChild(page, "nowPlayingLyricsResync").visible,
@@ -2500,6 +2507,37 @@ TestCase {
         player.setPositionForTest(30500)
         tryVerify(function () { return page.currentLyricLine === 0 }, 2000,
                   "the first line did not light when it started")
+    }
+
+    // In the intro the view holds line 0 against the top; a scroll back up to
+    // the top resumes following, one that stops short of it does not.
+    function test_lyrics_scroll_back_to_top_resumes_in_intro() {
+        var host = showHost(nowPlayingHost, 1280, 1200)
+        var page = host.page
+        settlePage(page)
+        var lines = []
+        for (var i = 0; i < 40; i++)
+            lines.push({ ms: 30000 + i * 5000, text: "Line " + i + " of a lyric" })
+        page.lyricsIsTimed = true
+        page.lyricsData = lines
+        page.lyricsState = "ready"
+        page.userScrolled = false
+        page.currentLyricLine = -1
+        page.showLyrics = true
+        settlePage(page)
+        frame(host)
+        player.setPositionForTest(10000)
+        wait(900)
+        var view = findChild(page, "nowPlayingLyricsView")
+        var top = view.contentY
+
+        page.userScrolled = true
+        view.contentY = top + 15
+        view.movementEnded()
+        verify(page.userScrolled, "a scroll 15 px below the top snapped back")
+        view.contentY = top
+        view.movementEnded()
+        verify(!page.userScrolled, "scrolling back to the top did not resume following")
     }
 
     // ── the sleep timer pill ─────────────────────────────────────────────
