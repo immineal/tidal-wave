@@ -61,6 +61,7 @@ private slots:
 private:
     void reset();                       // drops the socket and all session state
     void fail(const QString &msg);      // error(), then disconnected()
+    void endedByDevice();               // disconnected(), with nothing to report
     void sendGoodbye();   // STOP and CLOSE, queued on the socket
     void closeQuietly(QSslSocket *s);
     void sendMessage(const QString &ns, const QString &destination, const QString &payloadJson);

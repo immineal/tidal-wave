@@ -206,8 +206,8 @@
 <context>
     <name>CastManager</name>
     <message>
-        <source>Could not find a local network address for casting. Check that you are connected to a network.</source>
-        <translation>Es wurde keine lokale Netzwerkadresse für die Übertragung gefunden. Netzwerkverbindung prüfen.</translation>
+        <source>Could not hand this track to the cast device. The local media server is not running.</source>
+        <translation>Dieser Titel konnte nicht an das Übertragungsgerät übergeben werden. Der lokale Medienserver läuft nicht.</translation>
     </message>
     <message>
         <source>Could not start casting. The local media server failed to start.</source>
@@ -233,8 +233,8 @@
         <translation>Die Audiodaten konnten nicht in einer temporären Datei gespeichert werden. Prüfen, ob genügend Speicherplatz frei ist.</translation>
     </message>
     <message>
-        <source>Could not read the lossless stream details for this track.</source>
-        <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
+        <source>Could not read the stream details for this track.</source>
+        <translation>Die Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
     </message>
     <message>
         <source>ffmpeg was not found on PATH. Install ffmpeg to cast this track.</source>
@@ -262,6 +262,10 @@
     <message>
         <source>The cast device could not play this track.</source>
         <translation>Das Übertragungsgerät konnte diesen Titel nicht abspielen.</translation>
+    </message>
+    <message>
+        <source>The connection to the cast device was lost.</source>
+        <translation>Die Verbindung zum Übertragungsgerät wurde unterbrochen.</translation>
     </message>
 </context>
 <context>

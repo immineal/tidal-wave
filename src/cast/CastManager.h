@@ -59,6 +59,10 @@ private:
 
     QHash<QString, Device> m_devices;
     bool    m_connected = false;
+    // Between beginCast() and endCast(). Outlasts m_connected while a cast
+    // moves from one device to the next.
+    bool    m_playerCasting = false;
+    QString m_deviceId;
     QString m_deviceName;
     // The local track and position when the cast began, for its first LOAD.
     qlonglong m_startTrackId = 0;

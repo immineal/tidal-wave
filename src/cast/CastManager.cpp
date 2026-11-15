@@ -37,8 +37,9 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     connect(m_prep, &CastMediaPrep::ready, this, [this](const QString &path, const QString &mime) {
         const QString url = m_server->setCurrentFile(path, mime);
         if (url.isEmpty()) {
-            emit error(tr("Could not find a local network address for casting. "
-                          "Check that you are connected to a network."));
+            // Only once the server has stopped: it is given its address on start.
+            emit error(tr("Could not hand this track to the cast device. "
+                          "The local media server is not running."));
             return;
         }
         const QVariantMap t = m_player ? m_player->currentTrackMap() : QVariantMap();
@@ -95,7 +96,19 @@ void CastManager::onDeviceRemoved(const QString &id) {
 
 void CastManager::connectToDevice(const QString &id) {
     if (!m_devices.contains(id)) return;
+    // Its ticked row picked again: no reason to restart what is playing.
+    if (m_connected && id == m_deviceId) return;
     const Device d = m_devices.value(id);
+    if (m_connected) {
+        // The session tells the first device to stop. The Player stays with
+        // the cast, so nothing plays here meanwhile and the next device
+        // starts where the first one was.
+        m_connected = false;
+        if (m_prep) m_prep->cancel();
+        m_server->stop();
+        if (m_player) m_player->onCastPlaying(false);
+    }
+    m_deviceId   = id;
     m_deviceName = d.name;
     emit connectedChanged();               // reflect "connecting…" name immediately
     m_session->connectToDevice(d.host, d.port);
@@ -120,6 +133,7 @@ void CastManager::onSessionConnected() {
     m_startTrackId = m_player ? m_player->currentTrackId() : 0;
     m_startSec     = m_player ? m_player->position() / 1000.0 : 0;
     if (m_player) m_player->beginCast(m_session);
+    m_playerCasting = m_player != nullptr;
     emit connectedChanged();
     castCurrentTrack();
 }
@@ -128,10 +142,12 @@ void CastManager::onSessionDisconnected() {
     const bool was = m_connected;
     m_connected = false;
     const bool hadName = !m_deviceName.isEmpty();
+    m_deviceId.clear();
     m_deviceName.clear();
     if (m_prep) m_prep->cancel();
     m_server->stop();
-    if (m_player && was) m_player->endCast();
+    if (m_player && m_playerCasting) m_player->endCast();
+    m_playerCasting = false;
     if (was || hadName) emit connectedChanged();
 }
 

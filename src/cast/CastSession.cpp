@@ -24,6 +24,13 @@ const QString MEDIA_APP_ID  = QStringLiteral("CC1AD845");   // Default Media Rec
 constexpr int kCloseGraceMs  = 3000;
 constexpr int kCloseLingerMs = 500;
 
+// CASTV2 caps a message at 64 KiB.
+constexpr quint32 kMaxFrameBytes = 64 * 1024;
+
+QString lostMessage() {
+    return CastSession::tr("The connection to the cast device was lost.");
+}
+
 QString jsonToString(const QJsonObject &o) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
@@ -35,6 +42,7 @@ CastSession::~CastSession() {
     // At shutdown the event loop is gone and a closing socket never writes, so
     // this waits briefly for STOP to reach the device. No window is up then.
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
+        m_socket->disconnect(this);   // nothing is emitted from a destructor
         sendGoodbye();
         m_socket->waitForBytesWritten(300);
     }
@@ -52,13 +60,12 @@ void CastSession::connectToDevice(const QString &host, int port) {
     m_socket->setPeerVerifyMode(QSslSocket::VerifyNone);
     connect(m_socket, &QSslSocket::encrypted, this, &CastSession::onEncrypted);
     connect(m_socket, &QSslSocket::readyRead, this, &CastSession::onReadyRead);
-    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        // Before the app is up no disconnected() follows, so the attempt ends here.
-        if (!m_appConnected) {
-            fail(tr("The connection to the cast device failed."));
-            return;
-        }
-        emit error(m_socket ? m_socket->errorString() : tr("The connection to the cast device failed."));
+    connect(m_socket, &QSslSocket::errorOccurred, this, [this](QAbstractSocket::SocketError e) {
+        // Only the waitFor* calls time out, and the socket lives on after it.
+        if (e == QAbstractSocket::SocketTimeoutError) return;
+        // Ended here in both cases, so it is one disconnected() whatever the
+        // socket does next. Qt's own text is English only.
+        fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
     });
     connect(m_socket, &QSslSocket::disconnected, this, [this]() {
         if (!m_appConnected) {
@@ -100,6 +107,18 @@ QHostAddress CastSession::localAddress() const {
 void CastSession::fail(const QString &msg) {
     reset();
     emit error(msg);
+    emit disconnected();
+}
+
+void CastSession::endedByDevice() {
+    // The app is gone or someone else's, so it is not ours to stop: only the
+    // platform connection is closed, and the socket.
+    sendMessage(NS_CONNECTION, RECEIVER, jsonToString({{"type", "CLOSE"}}));
+    if (m_socket) {
+        closeQuietly(m_socket);
+        m_socket = nullptr;
+    }
+    reset();
     emit disconnected();
 }
 
@@ -193,12 +212,19 @@ void CastSession::onReadyRead() {
     // Frames are: 4-byte big-endian length + protobuf body.
     while (m_buffer.size() >= 4) {
         const quint32 len = qFromBigEndian<quint32>(m_buffer.constData());
-        if (m_buffer.size() < int(4 + len)) break;
-        const QByteArray body = m_buffer.mid(4, int(len));
-        m_buffer.remove(0, int(4 + len));
+        // A longer frame is a broken peer, and waiting for it would buffer
+        // without end. Checked first, so the sums below cannot overflow.
+        if (len > kMaxFrameBytes) {
+            fail(m_appConnected ? lostMessage() : tr("The connection to the cast device failed."));
+            return;
+        }
+        if (m_buffer.size() < qsizetype(4 + len)) break;
+        const QByteArray body = m_buffer.mid(4, qsizetype(len));
+        m_buffer.remove(0, qsizetype(4 + len));
         CastMessage msg;
         if (CastMessage::decode(body, msg))
             handleMessage(msg);
+        if (!m_socket) return;   // the message ended the session
     }
 }
 
@@ -213,16 +239,27 @@ void CastSession::handleMessage(const CastMessage &msg) {
         return;
     }
 
+    if (msg.ns == NS_CONNECTION && type == "CLOSE") {
+        // The device closed our virtual connection: the user stopped the cast
+        // there, or the app quit.
+        if (m_appConnected) endedByDevice();
+        return;
+    }
+
     if (msg.ns == NS_RECEIVER && type == "RECEIVER_STATUS") {
         const QJsonArray apps = payload.value("status").toObject().value("applications").toArray();
         for (const QJsonValue &a : apps) {
             const QJsonObject app = a.toObject();
-            if (app.value("appId").toString() == MEDIA_APP_ID) {
-                m_sessionId = app.value("sessionId").toString();
-                establishAppConnection(app.value("transportId").toString());
-                return;
-            }
+            if (app.value("appId").toString() != MEDIA_APP_ID) continue;
+            const QString sessionId = app.value("sessionId").toString();
+            // A new session of the same app is another sender's relaunch.
+            if (m_appConnected && sessionId != m_sessionId) break;
+            m_sessionId = sessionId;
+            establishAppConnection(app.value("transportId").toString());
+            return;
         }
+        // Our app is no longer running: something else took the device.
+        if (m_appConnected) endedByDevice();
         return;
     }
 

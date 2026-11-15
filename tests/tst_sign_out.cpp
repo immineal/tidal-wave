@@ -163,7 +163,9 @@ private slots:
         QVERIFY(tmp.isValid());
         const QStringList ours = {
             QStringLiteral("tidal-wave-a1B2c3.mp4"), QStringLiteral("tidal-wave-cast-Zz9yX8.mp4"),
-            QStringLiteral("tidal-wave-cover-q1w2e3.jpg"), QStringLiteral("tidal-wave-000000.flac")};
+            QStringLiteral("tidal-wave-cover-q1w2e3.jpg"), QStringLiteral("tidal-wave-000000.flac"),
+            // CastMediaPrep's three: the fetched file and both conversions.
+            QStringLiteral("tidal-wave-cast-Aa1Bb2.flac"), QStringLiteral("tidal-wave-cast-q9W8e7.m4a")};
         const QStringList theirs = {
             QStringLiteral("tidal-wave-notes.txt"), QStringLiteral("tidal-wave-a1B2c3.mp4.part"),
             QStringLiteral("other-a1B2c3.mp4"), QStringLiteral("tidal-wave-1000.lock")};

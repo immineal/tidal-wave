@@ -17,12 +17,14 @@
 #include <QJsonObject>
 #include <QList>
 #include <QMediaPlayer>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <memory>
 #include <utility>
@@ -31,6 +33,8 @@
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "cast/CastMediaPrep.h"
+#include "ui/I18n.h"
+#include "ui/Prefs.h"
 
 // @BASE@ and no host written out: moc honours a // comment inside a raw string
 // literal and loses track of where strings end. profiles= is required: without
@@ -234,6 +238,12 @@ private slots:
         // The cast path shells out to ffmpeg. CI has it, so a skip is worth
         // chasing.
         m_ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+        // The German check writes the language to settings: kept out of the real ones.
+        QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_cast_prep"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QVERIFY(m_dir.isValid());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
     }
 
     void aLosslessTrackIsJoinedHereAndHandedToFfmpegAsALocalFile()
@@ -335,13 +345,22 @@ private slots:
     }
 
     // A manifest this cannot expand must say that, rather than reporting a
-    // network fault for a URL it left an identifier in.
+    // network fault for a URL it left an identifier in. DASH carries AAC too,
+    // so the sentence does not say lossless.
+    void aManifestTheJoinCannotExpandIsRefusedAsSuch_data()
+    {
+        QTest::addColumn<QString>("codec");
+        QTest::newRow("lossless") << QStringLiteral("LOSSLESS");
+        QTest::newRow("aac")      << QStringLiteral("HIGH");
+    }
+
     void aManifestTheJoinCannotExpandIsRefusedAsSuch()
     {
+        QFETCH(QString, codec);
         Tidal::StreamManifest manifest;
         manifest.type       = Tidal::StreamManifest::MPD;
         manifest.url        = QStringLiteral("<MPD></MPD>");
-        manifest.codec      = QStringLiteral("LOSSLESS");
+        manifest.codec      = codec;
         manifest.sampleRate = 44100;
 
         TidalApi      api;
@@ -355,7 +374,19 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(failed.count() == 1, 5000);
         QCOMPARE(ready.count(), 0);
         QCOMPARE(failed.first().at(0).toString(),
-                 QStringLiteral("Could not read the lossless stream details for this track."));
+                 QStringLiteral("Could not read the stream details for this track."));
+    }
+
+    // Without its entry in the catalogue the sentence comes out in English.
+    void theStreamDetailsSentenceHasItsGerman()
+    {
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+        const char *sentence = "Could not read the stream details for this track.";
+        QVERIFY(QCoreApplication::translate("CastMediaPrep", sentence)
+                != QString::fromUtf8(sentence));
     }
 
     // A track Tidal has only in AAC. The player takes the AAC where the FLAC
@@ -445,7 +476,8 @@ private slots:
     }
 
 private:
-    QString m_ffmpeg;
+    QString       m_ffmpeg;
+    QTemporaryDir m_dir;
 };
 
 QTEST_MAIN(TestCastPrep)
