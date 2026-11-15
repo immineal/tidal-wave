@@ -62,8 +62,8 @@ TestCase {
                                tracks: S.tracks(14) }); break
         case 4: S.fill(page, { artistId: 7 })
                 S.fill(page, { artistData: { name: "Interpret", bio: "Eine Biografie.",
-                                             coverUrl750: "", similarArtists: S.artists(8) },
-                               topTracks: S.tracks(8), albums: S.albums(12) }); break
+                                             coverUrl750: "" },
+                               similarArtists: S.artists(8), topTracks: S.tracks(8), albums: S.albums(12) }); break
         case 5: S.fill(page, { playlistUuid: "uuid-flip" })
                 S.fill(page, { playlistType: "USER", playlistTitle: "Liste",
                                playlistDuration: 3600, tracks: S.tracks(14) }); break

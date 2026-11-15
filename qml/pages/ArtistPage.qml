@@ -24,6 +24,8 @@ Rectangle {
     property bool loading: false
     property bool showAllTracks: false
     property bool isFollowing: false
+    // artists/<id>/similar, fetched beside the rest. Empty hides the row.
+    property var similarArtists: []
     property bool bioExpanded: false
     readonly property int bioCollapsedLines: 4
 
@@ -68,6 +70,7 @@ Rectangle {
         loading = true
         loadError = ""
         bioExpanded = false
+        similarArtists = []
         // Which artist these three replies are about. artistId can change while
         // they are in flight, and a reply for the artist just left must not
         // touch the one on screen. Checked before the error.
@@ -90,6 +93,12 @@ Rectangle {
             // callback is the only place that clears `loading`. The list
             // arrives with one entry per record.
             root.albums = a
+        })
+        // Not part of `loading` or the page's error: many artists have no
+        // list (Tidal answers 404), and the row just stays hidden.
+        bridge.fetchSimilarArtists(artistId, function(s, err) {
+            if (requested !== root.artistId || err) return
+            root.similarArtists = s
         })
     }
 
@@ -440,12 +449,13 @@ Rectangle {
             }
 
             HorizontalSection {
+                objectName: "artistRelatedSection"
                 Layout.fillWidth: true
-                visible: (artistData.similarArtists || []).length > 0
+                visible: root.similarArtists.length > 0
                 title: qsTr("Related Artists")
                 mediaType: "artist"
                 showViewAll: false
-                items: (artistData.similarArtists || []).map(function(a) {
+                items: root.similarArtists.map(function(a) {
                     return { id: a.id, title: a.name, subtitle: qsTr("Artist"), coverUrl: a.coverUrl || "" }
                 })
                 onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }

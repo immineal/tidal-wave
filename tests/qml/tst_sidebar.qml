@@ -1334,8 +1334,7 @@ TestCase {
             host.page.sourceComponent = artistC
             page = host.page.item
             page.artistId   = 7
-            page.artistData = { name: "Ein Interpret", bio: "", coverUrl750: "",
-                                similarArtists: [] }
+            page.artistData = { name: "Ein Interpret", bio: "", coverUrl750: "" }
             page.topTracks  = makeSweepTracks(10)
         }
         return page

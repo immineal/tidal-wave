@@ -318,9 +318,9 @@ TestCase {
                 name: "Ein ausgesprochen langer Interpretenname",
                 bio: "Eine kurze Biografie mit mehreren Sätzen, damit der Textblock "
                    + "wirklich umbricht und nicht aus der Seite läuft.",
-                coverUrl750: "",
-                similarArtists: makeArtists(8)
+                coverUrl750: ""
             }
+            page.similarArtists = makeArtists(8)
             page.topTracks = makeTracks(6)
             page.albums = makeDiscography(12)
             settle(page)
@@ -346,9 +346,9 @@ TestCase {
             name: "Ein ausgesprochen langer Interpretenname",
             bio: "Eine kurze Biografie mit mehreren Sätzen, damit der Textblock "
                + "wirklich umbricht und nicht aus der Seite läuft.",
-            coverUrl750: "",
-            similarArtists: makeArtists(8)
+            coverUrl750: ""
         }
+        page.similarArtists = makeArtists(8)
         page.topTracks = makeTracks(8)
         page.albums = makeDiscography(12)
         settle(page)
@@ -865,7 +865,7 @@ TestCase {
             var w = widths[i]
             var page = makePane(artistC, w)
             page.artistId = 7
-            page.artistData = { name: "Interpret", bio: "", coverUrl750: "", similarArtists: [] }
+            page.artistData = { name: "Interpret", bio: "", coverUrl750: "" }
             page.topTracks = []
             page.albums = makeAlbums(14)
             settle(page)

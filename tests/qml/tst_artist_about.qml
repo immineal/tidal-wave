@@ -1,7 +1,7 @@
 // The lower half of the artist page and its name: the bio as Tidal sends it
 // (<br/> between paragraphs, [wimpLink ...] references), clamped to a few
-// lines with a toggle, and the name over the photo without an outline. Every
-// id, name and sentence below is invented.
+// lines with a toggle, the Related Artists row, and the name over the photo
+// without an outline. Every id, name and sentence below is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -190,6 +190,82 @@ TestCase {
         page.artistId = testCase.artistId + 1
         settle(page)
         verify(findChild(page, "artistBio").truncated, "the next artist opened expanded")
+    }
+
+    // ── Related Artists ──────────────────────────────────────────────────────
+
+    readonly property var threeSimilar: [
+        { id: 900000061, name: "Erste Verwandte",  coverUrl: "" },
+        { id: 900000062, name: "Zweite Verwandte", coverUrl: "" },
+        { id: 900000063, name: "Dritte Verwandte", coverUrl: "" }
+    ]
+
+    function cardTitles(section) {
+        var list = findChild(section, "sectionList")
+        verify(list, "the row has no list of cards")
+        var out = []
+        for (var i = 0; i < list.count; ++i) {
+            var card = list.itemAtIndex(i)
+            verify(card, "card " + i + " was not drawn")
+            out.push(findChild(card, "cardTitle").text)
+        }
+        return out
+    }
+
+    function test_relatedArtistsShow() {
+        bridge.setSimilarArtistsForTest(threeSimilar)
+        var page = open({ id: testCase.artistId, name: "Eine Band" })
+        compare(bridge.lastSimilarFetchedForTest(), testCase.artistId)
+        var section = findChild(page, "artistRelatedSection")
+        verify(section, "the page has no Related Artists section")
+        verify(section.visible, "the Related Artists section is hidden")
+        compare(cardTitles(section), ["Erste Verwandte", "Zweite Verwandte", "Dritte Verwandte"])
+    }
+
+    function test_relatedArtistsHideWhenEmpty() {
+        bridge.setSimilarArtistsForTest([])
+        var page = open({ id: testCase.artistId, name: "Eine Band" })
+        verify(!findChild(page, "artistRelatedSection").visible)
+    }
+
+    // A refusal (Tidal answers 404 for an artist with no list) hides the row
+    // and is not the page's error.
+    function test_relatedArtistsRefusedIsHiddenNotAnError() {
+        bridge.setSimilarArtistsForTest(threeSimilar, "server replied: Not Found")
+        var page = open({ id: testCase.artistId, name: "Eine Band" })
+        verify(!findChild(page, "artistRelatedSection").visible)
+        compare(page.loadError, "")
+        verify(!page.loadFailed)
+    }
+
+    // The rest of the page lands while the similar list is still out.
+    function test_relatedArtistsDoNotHoldThePage() {
+        bridge.setSimilarArtistsForTest(threeSimilar)
+        bridge.setDeferSimilarForTest(true)
+        var page = open({ id: testCase.artistId, name: "Eine Band", bio: "Ein Satz." })
+        compare(bridge.pendingSimilarForTest(), 1)
+        compare(page.artistData.name, "Eine Band")
+        verify(!page.loading, "the page waits for the similar list")
+        verify(findChild(page, "artistBio").visible)
+        verify(!findChild(page, "artistRelatedSection").visible)
+        bridge.flushSimilarForTest()
+        settle(page)
+        verify(findChild(page, "artistRelatedSection").visible)
+    }
+
+    // A list for the artist just left does not land on the next one.
+    function test_relatedArtistsForAnotherArtistAreDropped() {
+        bridge.setSimilarArtistsForTest(threeSimilar)
+        bridge.setDeferSimilarForTest(true)
+        var page = open({ id: testCase.artistId, name: "Eine Band" })
+        bridge.setSimilarArtistsForTest([])
+        page.artistId = testCase.artistId + 1
+        settle(page)
+        compare(bridge.pendingSimilarForTest(), 2)
+        bridge.flushSimilarForTest()
+        settle(page)
+        verify(!findChild(page, "artistRelatedSection").visible,
+               "the previous artist's related list landed on this one")
     }
 
     // ── the name over the photo ──────────────────────────────────────────────
