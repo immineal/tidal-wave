@@ -281,6 +281,7 @@ void TidalClient::getListOffThread(const QString &endpoint, const QUrlQuery &par
         if (!err.isEmpty()) { cb({}, err); return; }
         // Not QFuture::then(this): Qt before 6.6 asserts when that context is gone.
         QPointer<TidalClient> guard(this);
+        ++m_listsParsing;
         QThreadPool::globalInstance()->start([guard, body, parse, cb] {
             QJsonParseError perr;
             const QJsonDocument doc = QJsonDocument::fromJson(body, &perr);
@@ -288,7 +289,9 @@ void TidalClient::getListOffThread(const QString &endpoint, const QUrlQuery &par
                                 ? Parsed{parse(doc.object()), QString()}
                                 : Parsed{QList<T>{}, perr.errorString()};
             QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, cb, parsed] {
-                if (guard) cb(parsed.first, parsed.second);
+                if (!guard) return;
+                --guard->m_listsParsing;
+                cb(parsed.first, parsed.second);
             }, Qt::QueuedConnection);
         });
     });

@@ -343,6 +343,10 @@ public:
     // tracks/<id>/playbackinfopostpaywall does not serve them FLAC.
     static bool usesTrackManifests(AudioQuality q);
 
+    // Lists whose body is still being parsed: a test's "settled" is no
+    // request out and none of these.
+    int listsParsingForTest() const { return m_listsParsing; }
+
     // The `formats` to ask the track-manifest endpoint for, one query item
     // each. The server picks the best one the track has.
     static QStringList manifestFormats(AudioQuality q);
@@ -363,4 +367,5 @@ private:
     TidalApi     *m_api;
     qint64        m_userId  = 0;
     AudioQuality  m_quality = AudioQuality::Lossless;
+    int           m_listsParsing = 0;
 };
