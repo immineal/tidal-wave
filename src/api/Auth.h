@@ -45,6 +45,14 @@ public:
     static QString   expiryToString(const QDateTime &when);
     static QDateTime expiryFromString(const QString &stored);
 
+    // Whether the login host's answer to a refresh says the refresh token is
+    // dead. Only that ends the session. Public for tst_session.
+    static bool refreshRefused(int httpStatus, const QJsonObject &body);
+
+    // Where the session is kept, and where versions up to 0.4 kept it.
+    static QString credentialsPath();
+    static QString legacyCredentialsPath();
+
 signals:
     void stateChanged(State state);
     void userCodeChanged();
@@ -52,6 +60,8 @@ signals:
     void loginSucceeded();
     void loginFailed(const QString &reason);
     void sessionExpired();
+    // The user logged out. sessionExpired is the other way a session ends.
+    void loggedOut();
     void hasSavedCredentialsChanged();
 
 protected:
@@ -88,6 +98,7 @@ private:
     QString m_userCode;
     QString m_verificationUri;
     int     m_pollInterval = 5;
+    int     m_retryMs = 5000;   // the next start-up refresh retry, see Auth.cpp
 
     QString m_accessToken;
     QString m_refreshToken;

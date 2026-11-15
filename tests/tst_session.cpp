@@ -38,7 +38,7 @@ const QByteArray kExpired =
 class FakeTidal : public QTcpServer {
 public:
     struct Seen { QByteArray verb; QString path; QByteArray bearer; QByteArray body; };
-    enum TokenAnswer { Issue, Refuse, Hold, BadGateway };
+    enum TokenAnswer { Issue, Refuse, Hold, BadGateway, RateLimited, Unavailable };
 
     FakeTidal()
     {
@@ -109,6 +109,14 @@ private:
             // What a proxy says when the login host cannot be reached.
             case BadGateway: answer(sock, 502, "<html>Bad Gateway</html>"); return;
             case Refuse: answer(sock, 400, R"({"error":"invalid_grant","error_description":"gone"})"); return;
+            // Busy or down, said in the login host's own JSON.
+            case RateLimited:
+                answer(sock, 429, R"({"error":"too_many_requests","error_description":"slow down"})",
+                       "Retry-After: 1\r\n");
+                return;
+            case Unavailable:
+                answer(sock, 503, R"({"error":"server_error","error_description":"down"})");
+                return;
             case Issue:  issue(sock); return;
             }
         }
@@ -130,9 +138,10 @@ private:
                               + n + "\",\"expires_in\":3600}");
     }
 
-    static void answer(QTcpSocket *sock, int status, const QByteArray &body)
+    static void answer(QTcpSocket *sock, int status, const QByteArray &body,
+                       const QByteArray &extra = {})
     {
-        sock->write("HTTP/1.0 " + QByteArray::number(status) + " Answer\r\n"
+        sock->write("HTTP/1.0 " + QByteArray::number(status) + " Answer\r\n" + extra +
                     "Content-Type: application/json\r\nETag: \"e1\"\r\n"
                     "Content-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
         sock->flush();
@@ -241,6 +250,8 @@ class TestSession : public QObject {
 
     std::unique_ptr<QTemporaryDir> m_home;
     QByteArray m_realHome;
+    QByteArray m_realConfig;
+    bool m_hadConfig = false;
 
     QString credsPath() const
     {
@@ -287,16 +298,61 @@ private slots:
     void init()
     {
         m_realHome = qgetenv("HOME");
+        m_hadConfig = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+        m_realConfig = qgetenv("XDG_CONFIG_HOME");
         m_home = std::make_unique<QTemporaryDir>();
         QVERIFY(m_home->isValid());
         qputenv("HOME", m_home->path().toUtf8());
+        // Both, or the credentials of the account on this machine are read,
+        // written and deleted.
+        qputenv("XDG_CONFIG_HOME", (m_home->path() + QStringLiteral("/.config")).toUtf8());
         QCOMPARE(QDir::homePath(), m_home->path());
     }
 
     void cleanup()
     {
         qputenv("HOME", m_realHome);
+        if (m_hadConfig) qputenv("XDG_CONFIG_HOME", m_realConfig);
+        else qunsetenv("XDG_CONFIG_HOME");
         m_home.reset();
+    }
+
+    // ── signing in ──────────────────────────────────────────────────────
+    // A saved token that is still good: the session is checked behind it,
+    // and that check must not announce the sign-in a second time, which
+    // would load the whole library twice.
+    void aSavedSessionSignsInOnce()
+    {
+        Rig rig;
+        QSignalSpy signedIn(&rig.auth, &Auth::loginSucceeded);
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QTest::qWait(100);
+        QCOMPARE(signedIn.count(), 1);
+    }
+
+    // ── where the session is kept ───────────────────────────────────────
+    // XDG_CONFIG_HOME is honoured, and a session saved by an earlier version
+    // under ~/.config is still read, then moved.
+    void theSessionIsKeptWhereTheDesktopKeepsSettings()
+    {
+        const QString elsewhere = m_home->path() + QStringLiteral("/xdg");
+        qputenv("XDG_CONFIG_HOME", elsewhere.toUtf8());
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+
+        const QString moved = elsewhere + QStringLiteral("/tidal-wave/credentials.json");
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(moved), 2000);
+        QFile f(moved);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(f.readAll()).object()[QStringLiteral("user_id")].toInt(), 7);
+        QCOMPARE(QFileInfo(moved).permissions() & ~(QFileDevice::ReadUser | QFileDevice::WriteUser),
+                 QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        QVERIFY2(!QFile::exists(credsPath()), "the old copy of the tokens was left behind");
+
+        rig.auth.logout();
+        QVERIFY(!QFile::exists(moved));
     }
 
     // ── the clock runs past the expiry while the process lives ──────────
@@ -676,6 +732,36 @@ private slots:
         QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
         QVERIFY(rig.auth.accessToken().isEmpty());
         QVERIFY(!QFile::exists(credsPath()));
+    }
+
+    // Busy or down is no refusal of the refresh token, whatever the body
+    // says: the session stays.
+    void aRefreshTheLoginHostCannotServeKeepsTheSession_data()
+    {
+        QTest::addColumn<int>("answer");
+        QTest::newRow("429 with an error in JSON") << int(FakeTidal::RateLimited);
+        QTest::newRow("503 with an error in JSON") << int(FakeTidal::Unavailable);
+    }
+
+    void aRefreshTheLoginHostCannotServeKeepsTheSession()
+    {
+        QFETCH(int, answer);
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        rig.tidal.goodTokens.clear();
+        rig.tidal.tokenAnswer = FakeTidal::TokenAnswer(answer);
+        QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+
+        QStringList errors;
+        rig.send(QStringLiteral("get"), [&errors](QString e) { errors << e; });
+        QTRY_COMPARE_WITH_TIMEOUT(errors.size(), 1, 5000);
+        QTest::qWait(50);
+        QVERIFY(!errors.first().isEmpty());
+        QCOMPARE(expired.count(), 0);
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
+        QCOMPARE(savedCreds()[QStringLiteral("refresh_token")].toString(),
+                 QStringLiteral("refresh-old"));
     }
 
     // An answer that is not the login host's is the network's fault: the

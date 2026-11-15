@@ -82,6 +82,9 @@ class TidalClient : public QObject {
     Q_OBJECT
 public:
     enum class FavoriteKind { Tracks, Albums, Artists, Playlists };
+    // How a playlist write that sends an ETag ended. Stale is a 412: the
+    // playlist changed since this client last read it.
+    enum class PlaylistWrite { Done, Stale, Failed };
     using HeadCallback     = std::function<void(FavoritesHead,  QString)>;
     using FavoriteIdsCallback = std::function<void(FavoriteIds, QString)>;
     using TracksCallback   = std::function<void(QList<Track>,   QString)>;
@@ -183,7 +186,12 @@ public:
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
     virtual void addTrackToPlaylist     (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
-    virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,  std::function<void(bool)> cb);
+    // Takes out the row at `itemIndex`, sending the ETag of the version
+    // fetchPlaylist() last read, so a view that has gone stale is refused.
+    virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,
+                                          std::function<void(PlaylistWrite)> cb);
+    // Deletes a playlist this account made. A 404 counts: it is gone.
+    virtual void deletePlaylist          (const QString &uuid,  std::function<void(bool)> cb);
 
     // Track features
     void fetchTrackRadio(qint64 trackId, TracksCallback cb);
@@ -306,7 +314,7 @@ signals:
 private:
     // Pages through `endpoint` until totalNumberOfItems is reached and
     // delivers the whole list in one callback. The API caps a response at 100
-    // items whatever `limit` says.
+    // items whatever `limit` says. A failed page ends it with the error.
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
 
@@ -371,6 +379,9 @@ public:
 private:
 
     TidalApi     *m_api;
+    // Per playlist uuid, the ETag of the version last read. A write of ours
+    // moves the server's on, so it drops the entry until the next read.
+    QHash<QString, QString> m_playlistEtags;
     qint64        m_userId  = 0;
     AudioQuality  m_quality = AudioQuality::Lossless;
     int           m_listsParsing = 0;

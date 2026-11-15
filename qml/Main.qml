@@ -383,6 +383,21 @@ ApplicationWindow {
         root.navigate(entry.page, entry.params, true)
     }
 
+    // A deleted playlist: its page is left and the back history forgets it,
+    // so no back step lands on a page that answers 404.
+    Connections {
+        target: bridge
+        function onPlaylistDeleted(uuid) { root.forgetPlaylist(uuid) }
+    }
+
+    function forgetPlaylist(uuid) {
+        var isIt = function (e) {
+            return e.page === "playlist" && e.params && e.params.playlistUuid === uuid
+        }
+        root.navHistory = root.navHistory.filter(function (e) { return !isIt(e) })
+        if (isIt({ page: root.currentPage, params: root._currentNavParams })) root.goBack()
+    }
+
     Connections {
         target: auth
         function onStateChanged(state) {

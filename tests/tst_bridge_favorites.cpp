@@ -103,10 +103,10 @@ public:
     }
 
     void removeTrackFromPlaylist(const QString &uuid, int itemIndex,
-                                 std::function<void(bool)> cb) override {
+                                 std::function<void(PlaylistWrite)> cb) override {
         Q_UNUSED(uuid); Q_UNUSED(itemIndex);
         ++removeCalls;
-        cb(removeOk);
+        cb(removeOk ? PlaylistWrite::Done : PlaylistWrite::Failed);
     }
 
     // ── the liked-song seam ──────────────────────────────────────────────
@@ -787,7 +787,7 @@ private slots:
     }
 
     // The count is not written on the strength of the post alone: the post
-    // sends onDuplicateFound=SKIP, so an accepted add may have added nothing.
+    // sends onDupes=SKIP, so an accepted add may have added nothing.
     void theCacheIsNotWrittenUntilTheHeaderAnswers() {
         Harness h;
         h.fillOne(0, 0);

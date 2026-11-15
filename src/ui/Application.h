@@ -15,6 +15,8 @@
 #include <QSystemTrayIcon>
 #include <QElapsedTimer>
 #include <QIcon>
+#include <QLockFile>
+#include <memory>
 
 class QQmlApplicationEngine;
 class QQmlEngine;
@@ -69,6 +71,20 @@ public:
     static bool isAudioServerStartupNoise(const QString &msg);
     // Whether a log line is the FFmpeg media backend announcing itself.
     static bool isMediaBackendStartupNoise(const QString &msg);
+
+    // What a session that ended leaves behind: no playback, no queue, no
+    // account in the client (the bridge's favourites go with it), the pins
+    // and the library. `forget`, an explicit log out, also writes the emptied
+    // queue under the account. Public and static for tst_sign_out.
+    static void endAccountSession(TidalClient *client, Player *player, PinStore *pins,
+                                  LibraryIndex *library, bool forget);
+
+    // Deletes the audio and artwork temp files earlier runs left in `dir`:
+    // this user's, named as this app names them. The caller holds the temp
+    // lock, so no running instance has any of them open. Returns the count.
+    static int sweepStaleTempFiles(const QString &dir);
+    // The lock every instance holds on its temp directory while it runs.
+    static QString tempLockPath(const QString &dir);
 
     // ── High-DPI scaling ─────────────────────────────────────────────────
     // Qt derives its scale factor from the logical DPI, which is 96 where the
@@ -206,6 +222,7 @@ private:
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;
+    std::unique_ptr<QLockFile> m_tempLock;
 
     bool         m_reallyQuit = false;
     bool         m_reducedMotion = false;

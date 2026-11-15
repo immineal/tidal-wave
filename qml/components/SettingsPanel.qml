@@ -854,8 +854,23 @@ Popup {
                 Layout.rightMargin: root.sideMargin
                 Layout.topMargin: 28
                 Layout.bottomMargin: 20
-                onActivated: { root.close(); auth.logout() }
+                onActivated: logOutDialog.ask()
             }
+        }
+    }
+
+    // Logging out stops playback and clears the queue, so it is asked first.
+    readonly property alias logOutConfirm: logOutDialog
+    ConfirmDialog {
+        id: logOutDialog
+        objectName: "logOutDialog"
+        heading: qsTr("Log out?")
+        text: qsTr("Playback stops and the queue is cleared. To listen again you sign in with your Tidal account.")
+        confirmLabel: qsTr("Log out")
+        onConfirmed: {
+            logOutDialog.close()
+            root.close()
+            auth.logout()
         }
     }
 

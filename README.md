@@ -29,7 +29,8 @@ you happen to use.
 
 - Login uses Tidal's OAuth device flow. You type your password on Tidal's own
   site in your browser, and the app never sees it. The session is cached as
-  plain JSON in `~/.config/tidal-wave/credentials.json`; see Privacy below.
+  plain JSON in `~/.config/tidal-wave/credentials.json` (under `$XDG_CONFIG_HOME`
+  where that is set); see Privacy below.
 - Four stream qualities: 96 kbps, 320 kbps, lossless, and hi-res lossless.
 - Media keys, the lock screen and the desktop's player widget work through
   MPRIS2 on D-Bus.
@@ -346,12 +347,13 @@ named.
 
 ### What is stored on your machine
 
-*   **`~/.config/tidal-wave/credentials.json`** holds your access and refresh tokens, the
-    token expiry, your Tidal user id, your country code and your display name
-    (`Auth::saveCredentials`). It is plain JSON, readable and writable by your user only,
-    not encrypted and not in a system keyring, so anything running as you can read it, and
-    the refresh token is enough to use your account. Logging out deletes it. Note the
-    lowercase directory name: this is not the same place as the settings below.
+*   **`~/.config/tidal-wave/credentials.json`** (under `$XDG_CONFIG_HOME` where that is
+    set) holds your access and refresh tokens, the token expiry, your Tidal user id, your
+    country code and your display name (`Auth::saveCredentials`). It is plain JSON,
+    readable and writable by your user only, not encrypted and not in a system keyring, so
+    anything running as you can read it, and the refresh token is enough to use your
+    account. Logging out deletes it. Note the lowercase directory name: this is not the
+    same place as the settings below.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
     language, sidebar width, audio output device, software rendering flag and the
     three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
