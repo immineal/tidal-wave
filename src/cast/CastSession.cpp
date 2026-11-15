@@ -110,6 +110,18 @@ void CastSession::fail(const QString &msg) {
     emit disconnected();
 }
 
+void CastSession::endedByDevice() {
+    // The app is gone or someone else's, so it is not ours to stop: only the
+    // platform connection is closed, and the socket.
+    sendMessage(NS_CONNECTION, RECEIVER, jsonToString({{"type", "CLOSE"}}));
+    if (m_socket) {
+        closeQuietly(m_socket);
+        m_socket = nullptr;
+    }
+    reset();
+    emit disconnected();
+}
+
 void CastSession::disconnectFromDevice() {
     if (m_socket && m_socket->state() == QAbstractSocket::ConnectedState) {
         sendGoodbye();
@@ -227,16 +239,27 @@ void CastSession::handleMessage(const CastMessage &msg) {
         return;
     }
 
+    if (msg.ns == NS_CONNECTION && type == "CLOSE") {
+        // The device closed our virtual connection: the user stopped the cast
+        // there, or the app quit.
+        if (m_appConnected) endedByDevice();
+        return;
+    }
+
     if (msg.ns == NS_RECEIVER && type == "RECEIVER_STATUS") {
         const QJsonArray apps = payload.value("status").toObject().value("applications").toArray();
         for (const QJsonValue &a : apps) {
             const QJsonObject app = a.toObject();
-            if (app.value("appId").toString() == MEDIA_APP_ID) {
-                m_sessionId = app.value("sessionId").toString();
-                establishAppConnection(app.value("transportId").toString());
-                return;
-            }
+            if (app.value("appId").toString() != MEDIA_APP_ID) continue;
+            const QString sessionId = app.value("sessionId").toString();
+            // A new session of the same app is another sender's relaunch.
+            if (m_appConnected && sessionId != m_sessionId) break;
+            m_sessionId = sessionId;
+            establishAppConnection(app.value("transportId").toString());
+            return;
         }
+        // Our app is no longer running: something else took the device.
+        if (m_appConnected) endedByDevice();
         return;
     }
 

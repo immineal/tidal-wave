@@ -1,11 +1,15 @@
 // CastManager wiring the session, the media server and the prep together,
-// against the fake receiver of FakeCastReceiver.h. No Player: the manager
-// runs without one. No device, no Tidal (the API points at a dead port).
+// against the fake receiver of FakeCastReceiver.h. Some cases run without a
+// Player, the rest over a real, muted one that never fetches a track. No
+// device, no Tidal (the API points at a dead port).
 
 #include <QTest>
 #include <QFile>
 #include <QHostAddress>
 #include <QSignalSpy>
+#include <QMediaPlayer>
+#include <QSettings>
+#include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -18,6 +22,9 @@
 #include "cast/CastManager.h"
 #include "cast/CastMediaPrep.h"
 #include "cast/CastSession.h"
+#include "player/Player.h"
+#include "ui/I18n.h"
+#include "ui/Prefs.h"
 
 using namespace fakecast;
 
@@ -61,12 +68,63 @@ private:
     std::atomic<int>  m_status{0};
 };
 
+// A port nobody listens on.
+quint16 deadPort()
+{
+    QTcpServer probe;
+    if (!probe.listen(QHostAddress::LocalHost)) return 0;
+    return probe.serverPort();
+}
+
+// A manager over a real, muted Player, with the fake receivers it may pick.
+struct Rig {
+    LocalApi    api;
+    TidalClient client{&api};
+    Player      player{&client};
+    CastManager manager{&client, &player};
+
+    bool start()
+    {
+        player.setMuted(true);
+        player.setVolume(0.0);
+        auto *session = manager.findChild<CastSession *>();
+        if (!session) return false;
+        session->setPlainTextForTest(true);
+        // The Player builds its audio objects on the first turn of the loop.
+        return QTest::qWaitFor([this] { return player.findChild<QMediaPlayer *>() != nullptr; },
+                               10000);
+    }
+
+    bool add(const QString &id, const QString &name, quint16 port)
+    {
+        return QMetaObject::invokeMethod(&manager, "onDeviceFound", Q_ARG(QString, id),
+                                         Q_ARG(QString, name),
+                                         Q_ARG(QString, QStringLiteral("127.0.0.1")),
+                                         Q_ARG(int, int(port)));
+    }
+
+    bool castTo(const QString &id)
+    {
+        manager.connectToDevice(id);
+        return QTest::qWaitFor([this] { return manager.connected(); }, 5000);
+    }
+};
+
 } // namespace
 
 class TestCastManager : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        QCoreApplication::setOrganizationName(QStringLiteral("TidalWaveTest"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_cast_manager"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QVERIFY(m_dir.isValid());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_dir.path());
+    }
+
     // The receiver fetches from the URL in LOAD, so its host has to be the
     // address the device was reached from, not whichever interface (docker0,
     // a VPN, a VM bridge) the system happens to list first.
@@ -116,6 +174,28 @@ private slots:
 
         manager.disconnect();
     }
+
+    // A device that ends the cast itself ends it here: the Player goes back
+    // to local and the picker stops showing the device.
+    void theDeviceEndingTheCastEndsItForThePlayer()
+    {
+        FakeReceiver first;
+        QVERIFY(first.listen(QHostAddress::LocalHost));
+        Rig r;
+        QVERIFY(r.start());
+        QVERIFY(r.add(QStringLiteral("device-1"), QStringLiteral("Kitchen"), first.serverPort()));
+        QVERIFY(r.castTo(QStringLiteral("device-1")));
+
+        QSignalSpy error(&r.manager, &CastManager::error);
+        first.send(kConnection, QJsonObject{{"type", "CLOSE"}}, kTransport);
+        QTRY_VERIFY_WITH_TIMEOUT(!r.manager.connected(), 3000);
+        QVERIFY(!r.player.casting());
+        QCOMPARE(r.manager.deviceName(), QString());
+        QCOMPARE(error.count(), 0);
+    }
+
+private:
+    QTemporaryDir m_dir;
 };
 
 QTEST_MAIN(TestCastManager)

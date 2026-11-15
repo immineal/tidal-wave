@@ -256,6 +256,90 @@ private slots:
                                   3000);
     }
 
+    // The receiver closing our virtual connection, or a status that no longer
+    // lists our app (the user or another sender started something else),
+    // ends the cast as a disconnect does, with nothing to report.
+    void theDeviceEndingTheCastEndsItHere_data()
+    {
+        QTest::addColumn<QString>("ns");
+        QTest::addColumn<QString>("source");
+        QTest::addColumn<QJsonObject>("payload");
+
+        QTest::newRow("CLOSE from the media app")
+            << kConnection << kTransport << QJsonObject{{"type", "CLOSE"}};
+        QTest::newRow("CLOSE from the platform")
+            << kConnection << QStringLiteral("receiver-0") << QJsonObject{{"type", "CLOSE"}};
+        const auto status = [](const QJsonArray &apps) {
+            return QJsonObject{{"type", "RECEIVER_STATUS"}, {"requestId", 0},
+                               {"status", QJsonObject{{"applications", apps}}}};
+        };
+        QTest::newRow("another app took over")
+            << kReceiver << QStringLiteral("receiver-0")
+            << status(QJsonArray{QJsonObject{{"appId", "233637DE"}, {"sessionId", "s-2"},
+                                             {"transportId", "web-2"}}});
+        QTest::newRow("our app relaunched by another sender")
+            << kReceiver << QStringLiteral("receiver-0")
+            << status(QJsonArray{QJsonObject{{"appId", kAppId}, {"sessionId", "session-2"},
+                                             {"transportId", "web-2"}}});
+        QTest::newRow("no app at all")
+            << kReceiver << QStringLiteral("receiver-0")
+            << QJsonObject{{"type", "RECEIVER_STATUS"}, {"requestId", 0},
+                           {"status", QJsonObject{{"volume", QJsonObject{{"level", 0.5}}}}}};
+    }
+
+    void theDeviceEndingTheCastEndsItHere()
+    {
+        QFETCH(QString, ns);
+        QFETCH(QString, source);
+        QFETCH(QJsonObject, payload);
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        load(session);
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 1, 3000);
+        QTest::qWait(100);
+
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy up(&session, &CastSession::connected);
+        QSignalSpy error(&session, &CastSession::error);
+        receiver.send(ns, payload, source);
+
+        QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 3000);
+        QVERIFY(!session.isConnected());
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.peer->state(), QAbstractSocket::UnconnectedState,
+                                  5000);
+        QCOMPARE(gone.count(), 1);
+        QCOMPARE(up.count(), 0);
+        QVERIFY2(error.isEmpty(), qPrintable(error.isEmpty() ? QString()
+                                             : error.first().at(0).toString()));
+        // The app is no longer ours to stop.
+        QCOMPARE(receiver.count(kReceiver, QStringLiteral("STOP")), 0);
+        QCOMPARE(receiver.count(kMedia, QStringLiteral("STOP")), 0);
+    }
+
+    // A status that still lists our app, as a volume change sends, is no end.
+    void aStatusThatStillListsOurAppKeepsTheCast()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        QSignalSpy gone(&session, &CastSession::disconnected);
+        QSignalSpy up(&session, &CastSession::connected);
+
+        const QJsonObject app{{"appId", kAppId}, {"sessionId", "session-1"},
+                              {"transportId", kTransport}};
+        receiver.send(kReceiver, QJsonObject{{"type", "RECEIVER_STATUS"}, {"requestId", 0},
+                                             {"status", QJsonObject{
+                                                 {"applications", QJsonArray{app}},
+                                                 {"volume", QJsonObject{{"level", 0.3}}}}}});
+        QTest::qWait(300);
+        QCOMPARE(gone.count(), 0);
+        QCOMPARE(up.count(), 0);
+        QVERIFY(session.isConnected());
+    }
+
     // Without its entry in the catalogue a sentence comes out in English.
     void everySentenceHasItsGerman_data()
     {
