@@ -75,12 +75,19 @@ Rectangle {
 
     function refreshRows() {
         recentAlbums = firstOf(bridge.searchFavoriteAlbums(""),  albumItem)
-        playlists    = firstOf(bridge.getUserPlaylists(),        playlistItem)
+        refreshPlaylists()
         artists      = firstOf(bridge.searchFavoriteArtists(""), artistItem)
     }
 
-    // The first fill goes to the network: the cache refreshRows() reads is
-    // still being paged in when this page mounts.
+    // Held until the bridge has every page: the order is recency over the
+    // whole list, so a first page or the server's own order would reshuffle.
+    function refreshPlaylists() {
+        if (!bridge.playlistsLoading)
+            playlists = firstOf(bridge.getUserPlaylists(), playlistItem)
+    }
+
+    // The first fill of albums and artists goes to the network: the cache
+    // refreshRows() reads is still being paged in when this page mounts.
     function loadContent() {
         loading = true
         bridge.fetchHomeMixes(function(mixList, err) {
@@ -103,10 +110,7 @@ Rectangle {
             recentAlbums = firstOf(albums, albumItem)
         }, root.rowLimit, 0)
 
-        bridge.fetchUserPlaylists(function(lists, err) {
-            if (err.length > 0) return
-            playlists = firstOf(lists, playlistItem)
-        }, root.rowLimit, 0)
+        refreshPlaylists()
 
         bridge.fetchFavoriteArtists(function(artistList, err) {
             if (err.length > 0) return
