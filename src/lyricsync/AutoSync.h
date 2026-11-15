@@ -70,8 +70,11 @@ public:
     bool busyForTest() const { return m_analysing != 0 || m_aligning; }
     void setMaxSecondsForTest(int s) { m_maxSeconds = s; }
     // A failure that may pass (no file yet, a stalled decoder) is retried on
-    // the track's next audio, this many times in all.
+    // the track's next audio, or after kRetryMs while a sync() waits for it,
+    // this many times in all.
     static constexpr int kMaxTries = 3;
+    static constexpr int kRetryMs = 10000;
+    void setRetryMsForTest(int ms) { m_retryMs = ms; }
 
 signals:
     void analysed(qint64 trackId, bool ok);
@@ -91,7 +94,8 @@ private:
     bool skipAhead(qint64 trackId) const;
     bool cachedSync(qint64 trackId) const;
     void writeTooLong(qint64 trackId) const;
-    void onAligned(quint64 gen, const Result &r);
+    void onAligned(qint64 trackId, quint64 gen, const Result &r);
+    void retry(qint64 trackId);
     std::shared_ptr<const Analysis> analysisFor(qint64 trackId);
     bool readCache(qint64 trackId, const QString &text, Result *out) const;
 
@@ -113,6 +117,7 @@ private:
     qint64  m_aheadId = 0;
     bool    m_aheadSkip = false;
     int     m_maxSeconds = kMaxSeconds;
+    int     m_retryMs = kRetryMs;
     qint64  m_analysing = 0;
     bool    m_aligning = false;
     QHash<qint64, Failure> m_failed;

@@ -178,62 +178,79 @@ private slots:
         QVERIFY(m_held.isEmpty());
     }
 
-    // A file the decoder cannot read fails; asked again, the track waits for
-    // its next audio instead of being decoded again at once.
-    void badAudioWaitsForTheNextPlay() {
+    // A file the decoder cannot read is tried kMaxTries times, then the
+    // request gets the error; asked again, it is not decoded again.
+    void badAudioIsTriedThenAnswered() {
         QObject owner;
         AutoSync *a = make(&owner);
+        a->setRetryMsForTest(50);
         QSignalSpy analysed(a, &AutoSync::analysed);
         m_paths[10] = m_junk;
         AutoSync::Result got;
-        bool done = false;
-        a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
-        QTRY_VERIFY_WITH_TIMEOUT(done, AudioFeed::kStallMs + 10000);
+        int answers = 0;
+        a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; ++answers; });
+        QTRY_COMPARE_WITH_TIMEOUT(answers, 1, AutoSync::kMaxTries * (AudioFeed::kStallMs + 10000));
         QVERIFY(!got.ok);
         QVERIFY(!got.error.isEmpty());
-        QCOMPARE(m_released, QStringList{m_junk});
-        done = false;
-        a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; done = true; });
-        QTest::qWait(200);
-        QVERIFY(!done);
-        QCOMPARE(analysed.count(), 1);
-        a->cancel();
+        QCOMPARE(analysed.count(), AutoSync::kMaxTries);
+        QCOMPARE(m_released.size(), AutoSync::kMaxTries);
+        a->sync(10, kText, [&](const AutoSync::Result &r) { got = r; ++answers; });
+        QTRY_COMPARE(answers, 2);                    // given up: at once
+        QCOMPARE(analysed.count(), AutoSync::kMaxTries);
     }
 
-    // No file yet is a passing failure: tried again on the track's next
-    // audio, up to kMaxTries times, then answered at once.
-    void passingFailureIsRetriedOnTheNextAudio() {
+    // The page asks once per track. A passing failure keeps that request, and
+    // it is answered when a later try works, with no new audio announced.
+    void waitingRequestIsRetried() {
         QObject owner;
         AutoSync *a = make(&owner);
+        a->setRetryMsForTest(100);
+        QSignalSpy analysed(a, &AutoSync::analysed);
+        const QString later = m_dir.filePath(QStringLiteral("later2.wav"));
+        QFile::remove(later);
+        m_paths[15] = later;
+        AutoSync::Result got;
+        int answers = 0;
+        a->sync(15, kText, [&](const AutoSync::Result &r) { got = r; ++answers; });
+        QTRY_COMPARE(analysed.count(), 1);
+        QCOMPARE(analysed.at(0).at(1).toBool(), false);
+        QTest::qWait(20);
+        QCOMPARE(answers, 0);                        // still waiting
+        QVERIFY(writeWav(later, 16));
+        QTRY_COMPARE_WITH_TIMEOUT(answers, 1, 30000);
+        QVERIFY2(got.ok, qPrintable(got.error));
+    }
+
+    // A passing failure is tried again on the track's next audio or after a
+    // pause, kMaxTries times in all; then the request gets the error, and a
+    // later one gets it at once.
+    void passingFailureIsRetriedThenGivenUp() {
+        QObject owner;
+        AutoSync *a = make(&owner);
+        a->setRetryMsForTest(50);
         QSignalSpy analysed(a, &AutoSync::analysed);
         const QString later = m_dir.filePath(QStringLiteral("later.wav"));
         QFile::remove(later);
         m_paths[13] = later;
         AutoSync::Result got;
         int answers = 0;
-        auto ask = [&] { a->sync(13, kText, [&](const AutoSync::Result &r) { got = r; ++answers; }); };
-        ask();
-        QTRY_COMPARE(answers, 1);
-        QCOMPARE(got.error, QStringLiteral("cannot open the audio"));
-        ask();
-        QTest::qWait(100);
-        QCOMPARE(answers, 1);                        // waits for the next audio
+        a->sync(13, kText, [&](const AutoSync::Result &r) { got = r; ++answers; });
+        QTRY_COMPARE(analysed.count(), 1);
         QVERIFY(writeWav(later, 16));
         a->audioReady(13, false);
-        QTRY_COMPARE_WITH_TIMEOUT(answers, 2, 30000);
+        QTRY_COMPARE_WITH_TIMEOUT(answers, 1, 30000);
         QVERIFY2(got.ok, qPrintable(got.error));
 
         m_paths[14] = later + QStringLiteral(".gone");
+        analysed.clear();
         answers = 0;
-        a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
+        a->sync(14, kText, [&](const AutoSync::Result &r) { got = r; ++answers; });
         QTRY_COMPARE(answers, 1);
-        for (int i = 1; i < AutoSync::kMaxTries; ++i) {
-            a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
-            a->audioReady(14, false);
-            QTRY_COMPARE(answers, i + 1);
-        }
+        QCOMPARE(got.error, QStringLiteral("cannot open the audio"));
+        QCOMPARE(analysed.count(), AutoSync::kMaxTries);
         a->sync(14, kText, [&](const AutoSync::Result &) { ++answers; });
-        QTRY_COMPARE(answers, AutoSync::kMaxTries + 1);   // given up: at once
+        QTRY_COMPARE(answers, 2);                    // given up: at once
+        QCOMPARE(analysed.count(), AutoSync::kMaxTries);
     }
 
     // Audio over the cap is refused once and remembered on disk.

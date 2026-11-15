@@ -13,6 +13,7 @@
 #include <QJsonObject>
 #include <QPointer>
 #include <QSaveFile>
+#include <QTimer>
 
 namespace lyricsync {
 
@@ -146,11 +147,14 @@ void AutoSync::sync(qint64 trackId, const QString &plainText, Done done) {
     if (m_enabled && !m_enabled()) { r.error = QStringLiteral("off"); answer(r); return; }
     if (trackId <= 0 || plainLines(plainText).isEmpty()) { r.error = QStringLiteral("no lyrics"); answer(r); return; }
     if (readCache(trackId, plainText, &r)) { answer(r); return; }
-    // A failure that may pass waits for the track's next audio; others answer now.
-    if (const auto it = m_failed.constFind(trackId); it != m_failed.cend() && it->permanent) {
-        r.error = it->error;
-        answer(r);
-        return;
+    // A final failure answers now; one that may pass gets another try.
+    if (const auto it = m_failed.find(trackId); it != m_failed.end()) {
+        if (it->permanent) {
+            r.error = it->error;
+            answer(r);
+            return;
+        }
+        it->armed = true;
     }
     m_pending = {trackId, plainText, std::move(done), gen};
     pump();
@@ -182,9 +186,10 @@ void AutoSync::pump() {
         if (std::shared_ptr<const Analysis> a = analysisFor(m_pending.trackId)) {
             m_aligning = true;
             const quint64 gen = m_pending.gen;
-            const QString text = m_pending.text, file = m_cacheDir.isEmpty() ? QString() : cacheFile(m_pending.trackId);
+            const qint64 id = m_pending.trackId;
+            const QString text = m_pending.text, file = m_cacheDir.isEmpty() ? QString() : cacheFile(id);
             QPointer<AutoSync> self(this);
-            QMetaObject::invokeMethod(m_worker, [self, models = m_models, stop = m_stop, a, text, file, gen] {
+            QMetaObject::invokeMethod(m_worker, [self, models = m_models, stop = m_stop, a, text, file, gen, id] {
                 const Alignment al = align(*a, text, **models, nullptr, stop.get());
                 Result r;
                 r.ok = al.aligned;
@@ -203,7 +208,7 @@ void AutoSync::pump() {
                         f.commit();
                     }
                 }
-                QMetaObject::invokeMethod(self, [self, gen, r] { if (self) self->onAligned(gen, r); },
+                QMetaObject::invokeMethod(self, [self, id, gen, r] { if (self) self->onAligned(id, gen, r); },
                                           Qt::QueuedConnection);
             }, Qt::QueuedConnection);
         }
@@ -222,6 +227,7 @@ void AutoSync::pump() {
 
 void AutoSync::startAnalysis(qint64 trackId, const QString &path) {
     m_analysing = trackId;
+    qInfo() << "[autosync] analysing track" << trackId << (trackId == m_pending.trackId ? "" : "ahead");
     m_jobStop = std::make_shared<std::atomic<bool>>(false);
     if (m_hold) m_hold(path);
     QPointer<AutoSync> self(this);
@@ -286,21 +292,39 @@ void AutoSync::onAnalysed(qint64 trackId, const QString &path, std::shared_ptr<c
         f.armed = false;
         ++f.tries;
         f.permanent = outcome != Outcome::Transient || f.tries >= kMaxTries;
+        qInfo().noquote() << "[autosync] track" << trackId << "not analysed:" << err
+                          << (f.permanent ? QStringLiteral("(final)")
+                                          : QStringLiteral("(try %1 of %2)").arg(f.tries).arg(kMaxTries));
         if (outcome == Outcome::TooLong) writeTooLong(trackId);
         if (m_pending.done && m_pending.trackId == trackId) {
-            Result r;
-            r.error = err;
-            Done done = std::move(m_pending.done);
-            m_pending = {};
-            done(r);
+            if (f.permanent) {
+                Result r;
+                r.error = err;
+                Done done = std::move(m_pending.done);
+                m_pending = {};
+                done(r);
+            } else {
+                // Someone waits for it: tried again soon, whether or not new audio comes.
+                QTimer::singleShot(m_retryMs, this, [this, trackId] { retry(trackId); });
+            }
         }
     }
     emit analysed(trackId, ok);
     pump();
 }
 
-void AutoSync::onAligned(quint64 gen, const Result &r) {
+void AutoSync::retry(qint64 trackId) {
+    if (!m_pending.done || m_pending.trackId != trackId) return;
+    if (auto it = m_failed.find(trackId); it != m_failed.end() && !it->permanent) it->armed = true;
+    pump();
+}
+
+void AutoSync::onAligned(qint64 trackId, quint64 gen, const Result &r) {
     m_aligning = false;
+    qInfo().noquote() << "[autosync] track" << trackId
+                      << (r.ok ? QStringLiteral("aligned, confidence %1, %2").arg(r.confidence, 0, 'f', 3)
+                                     .arg(r.kept ? QStringLiteral("shown") : QStringLiteral("not shown"))
+                               : r.error);
     if (m_pending.done && m_pending.gen == gen && gen == m_gen) {
         Done done = std::move(m_pending.done);
         m_pending = {};
