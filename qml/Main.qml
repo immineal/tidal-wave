@@ -696,6 +696,8 @@ ApplicationWindow {
     // Whatever the network says afterwards is for the next launch.
     Component.onCompleted: updatePrompt.showIfAvailable()
 
+    CastErrorTip { }
+
     // Over everything but popups: sees each press first, then turns it down so
     // it reaches the item under it. A parent's PointHandler misses presses a
     // MouseArea accepts.

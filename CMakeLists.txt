@@ -198,6 +198,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/SeekBar.qml
         qml/components/QueuePanel.qml
         qml/components/UpdatePrompt.qml
+        qml/components/CastErrorTip.qml
         qml/components/VectorIcon.qml
         qml/components/AppMark.qml
         qml/components/ArtistLinks.qml
