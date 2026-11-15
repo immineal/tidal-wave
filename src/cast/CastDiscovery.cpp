@@ -2,6 +2,8 @@
 
 #include "CastDiscovery.h"
 #include <QtGlobal>
+#include <QHostAddress>
+#include <QNetworkInterface>
 
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
@@ -28,7 +30,7 @@ QString txtValue(AvahiStringList *txt, const char *key) {
     return out;
 }
 
-void resolveCb(AvahiServiceResolver *r, AvahiIfIndex, AvahiProtocol,
+void resolveCb(AvahiServiceResolver *r, AvahiIfIndex iface, AvahiProtocol,
                AvahiResolverEvent event, const char *name, const char * /*type*/,
                const char * /*domain*/, const char * /*hostName*/,
                const AvahiAddress *address, uint16_t port,
@@ -42,7 +44,9 @@ void resolveCb(AvahiServiceResolver *r, AvahiIfIndex, AvahiProtocol,
         const QString instance = QString::fromUtf8(name);
         if (id.isEmpty()) id = instance;
         if (fn.isEmpty()) fn = instance;
-        self->onResolved(instance, id, fn, QString::fromUtf8(addr), int(port));
+        self->onResolved(instance, id, fn,
+                         CastDiscovery::withScope(QString::fromUtf8(addr), int(iface)),
+                         int(port));
     }
     avahi_service_resolver_free(r);
 }
@@ -52,6 +56,7 @@ void browseCb(AvahiServiceBrowser *, AvahiIfIndex iface, AvahiProtocol proto,
               const char *domain, AvahiLookupResultFlags, void *userdata) {
     auto *self = static_cast<CastDiscovery *>(userdata);
     if (event == AVAHI_BROWSER_NEW) {
+        self->onBrowsed(QString::fromUtf8(name));
         auto *client = static_cast<AvahiClient *>(self->clientHandle());
         if (client)
             avahi_service_resolver_new(client, iface, proto, name, type, domain,
@@ -111,17 +116,58 @@ void CastDiscovery::stop() {
         avahi_threaded_poll_free(static_cast<AvahiThreadedPoll *>(m_poll));
         m_poll = nullptr;
     }
-    m_nameToId.clear();
+    m_instances.clear();
+}
+
+QString CastDiscovery::withScope(const QString &address, int ifIndex) {
+    const QHostAddress a(address);
+    if (a.protocol() != QAbstractSocket::IPv6Protocol || !a.isLinkLocal()
+        || !a.scopeId().isEmpty())
+        return address;
+    const QString iface = QNetworkInterface::interfaceNameFromIndex(ifIndex);
+    return iface.isEmpty() ? address : address + QLatin1Char('%') + iface;
+}
+
+void CastDiscovery::onBrowsed(const QString &instanceName) {
+    QMetaObject::invokeMethod(this, [this, instanceName] { addRecord(instanceName); },
+                              Qt::QueuedConnection);
 }
 
 void CastDiscovery::onResolved(const QString &instanceName, const QString &id,
                                const QString &name, const QString &host, int port) {
-    m_nameToId.insert(instanceName, id);
-    emit deviceFound(id, name, host, port);
+    QMetaObject::invokeMethod(this, [=] { addResolved(instanceName, id, name, host, port); },
+                              Qt::QueuedConnection);
 }
 
 void CastDiscovery::onRemoved(const QString &instanceName) {
-    const QString id = m_nameToId.take(instanceName);
+    QMetaObject::invokeMethod(this, [this, instanceName] { removeRecord(instanceName); },
+                              Qt::QueuedConnection);
+}
+
+void CastDiscovery::addRecord(const QString &instanceName) {
+    ++m_instances[instanceName].records;
+}
+
+void CastDiscovery::addResolved(const QString &instanceName, const QString &id,
+                                const QString &name, const QString &host, int port) {
+    Instance &in = m_instances[instanceName];
+    in.id = id;
+    // Both families resolve. IPv4 is kept: it is what every device answers
+    // on, and a link-local IPv6 address is tied to one interface.
+    const auto isV4 = [](const QString &h) {
+        return QHostAddress(h).protocol() == QAbstractSocket::IPv4Protocol;
+    };
+    if (!isV4(host) && isV4(in.host)) return;
+    in.host = host;
+    emit deviceFound(id, name, host, port);
+}
+
+void CastDiscovery::removeRecord(const QString &instanceName) {
+    const auto it = m_instances.find(instanceName);
+    if (it == m_instances.end()) return;
+    if (--it->records > 0) return;   // still there over the other family
+    const QString id = it->id;
+    m_instances.erase(it);
     if (!id.isEmpty())
         emit deviceRemoved(id);
 }
