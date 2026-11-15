@@ -204,6 +204,9 @@ private:
     static QVariantMap toRow(const Entry &e, int score);
     template <typename T>
     void land(QList<T> &list, const QList<T> &all, bool whole);
+    // The same for albums and artists, whose fallback paging can lose rows.
+    template <typename T>
+    void land(QList<T> &list, const QList<T> &all, bool whole, bool lossy);
 
     TidalClient *m_client = nullptr;
     PinStore    *m_pins   = nullptr;

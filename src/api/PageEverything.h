@@ -60,6 +60,20 @@ void pageEverything(Fetch fetch, KeyOf keyOf, Done done, int limit, int maxPages
     run->step();
 }
 
+// A listing that can lose rows laid over the list on hand: its new rows go in
+// front, and nothing on hand is dropped, since a row it lacks may only have
+// fallen between two pages.
+template <typename T, typename KeyOf>
+QList<T> mergeLossy(const QList<T> &onHand, const QList<T> &listed, KeyOf keyOf) {
+    QSet<QString> have;
+    for (const T &x : onHand) have.insert(keyOf(x));
+    QList<T> out;
+    for (const T &x : listed)
+        if (!have.contains(keyOf(x))) out.append(x);
+    out.append(onHand);
+    return out;
+}
+
 // Lists a favourites list in one page of `bigLimit`, read on to the empty page
 // like any other run. Only when Tidal refuses that page does it page at
 // `smallLimit` with `paged`. `pagedLoses` says its order has ties, which offset

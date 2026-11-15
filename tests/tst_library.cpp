@@ -130,6 +130,8 @@ public:
     // Paging by date skips the first row of every page after the first, as
     // order=DATE does where likes share a save date. By index it does not.
     bool dateSkipsAtPageStarts = false;
+    // The same for saved albums and followed artists.
+    bool savedDateSkips = false;
     QList<int> trackLimits;          // the limit of each liked-songs request
     int  indexRequests = 0;
     // Hold tracklist replies so a test can decide how much of the background
@@ -165,11 +167,11 @@ protected:
     void fetchAlbumPage(int offset, int limit, AlbumsCb cb) override {
         ++albumRequests;
         if (refused(limit)) { cb({}, QStringLiteral("400")); return; }
-        cb(available(slice(albums, offset, limit)), QString());
+        cb(available(slice(albums, savedStart(offset), limit)), QString());
     }
     void fetchArtistPage(int offset, int limit, ArtistsCb cb) override {
         if (refused(limit)) { cb({}, QStringLiteral("400")); return; }
-        cb(available(slice(artists, offset, limit)), QString());
+        cb(available(slice(artists, savedStart(offset), limit)), QString());
     }
     void fetchTrackPage(int offset, int limit, TracksCb cb) override {
         trackLimits << limit;
@@ -204,6 +206,7 @@ private:
     }
 
     bool refused(int limit) const { return refuseAbove >= 0 && limit > refuseAbove; }
+    int savedStart(int offset) const { return offset + (savedDateSkips && offset > 0 ? 1 : 0); }
 
     template <typename T>
     QList<T> available(QList<T> page) const {
@@ -369,6 +372,30 @@ private slots:
         QCOMPARE(lib.search(QStringLiteral("Song 100"), {QStringLiteral("track")}).size(), 1);
         QCOMPARE(lib.search(QStringLiteral("Song 249"), {QStringLiteral("track")}).size(), 1);
         QCOMPARE(lib.search(QStringLiteral("Record 119"), {QStringLiteral("album")}).size(), 1);
+    }
+
+    // A refresh whose one page fails pages albums and artists by date, which
+    // loses rows that share a save date. That may add to the lists, not cut them.
+    void aLossyRefreshDoesNotShortenTheSavedLists() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        for (int i = 0; i < 120; ++i) {
+            lib.albums  << mkAlbum(20000 + i, QStringLiteral("Record %1").arg(i), {});
+            lib.artists << mkArtist(30000 + i, QStringLiteral("Singer %1").arg(i));
+        }
+        lib.setUserId(kUser);
+        lib.refresh();
+        QCOMPARE(lib.search(QStringLiteral("Record 49"), {QStringLiteral("album")}).size(), 1);
+
+        lib.refuseAbove = LibraryIndex::pageSize;
+        lib.savedDateSkips = true;
+        lib.albums.prepend(mkAlbum(20999, QStringLiteral("Fresh Record"), {}));
+        lib.refresh();
+
+        // Row 50 of each list is the one paging by date skips.
+        QCOMPARE(lib.search(QStringLiteral("Record 49"), {QStringLiteral("album")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Singer 50"), {QStringLiteral("artist")}).size(), 1);
+        QCOMPARE(lib.search(QStringLiteral("Fresh Record"), {QStringLiteral("album")}).size(), 1);
     }
 
     // The load's lists may predate a song liked while it ran, so it runs again.

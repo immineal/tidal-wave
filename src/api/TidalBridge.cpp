@@ -954,13 +954,16 @@ void TidalBridge::reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead
         if (gen != s.gen) return;
         s.reloading = false;
         // A failed reload leaves the list alone and the next check tries again.
+        // So does one paged by date, but for the rows it adds: it can lose some.
+        const bool lossy = fellBack && kind != TidalClient::FavoriteKind::Tracks;
         if (whole) {
-            s.head = head;
-            const bool same = std::equal(all.cbegin(), all.cend(),
+            if (!lossy) s.head = head;
+            const QList<T> next = lossy ? mergeLossy(*cache, all, keyOf) : all;
+            const bool same = std::equal(next.cbegin(), next.cend(),
                                          cache->cbegin(), cache->cend(),
                 [&](const T &a, const T &b) { return keyOf(a) == keyOf(b); });
             if (!same) {
-                apply(all, fellBack);
+                apply(next, fellBack);
                 emit favoritesChangedElsewhere();
             }
         }
