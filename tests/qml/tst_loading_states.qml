@@ -105,6 +105,49 @@ TestCase {
         return page
     }
 
+    // ── Collection: no empty state for a list still on its way ───────────
+
+    // Mixes are fetched by the page itself, and nothing guarded their empty
+    // state, so "No mixes" sat under the loading scrim.
+    function test_no_mixes_is_not_claimed_while_the_mixes_load() {
+        bridge.setDeferHomeMixesForTest(true)
+        var page = makeCollection(4)
+        verify(!says(page, "No mixes"),
+               "Collection said \"No mixes\" while the mixes were still loading")
+        var spinner = findByName(page, "loadingSpinner")
+        verify(spinner && spinner.visible,
+               "the page showed no loading state while the mixes loaded")
+
+        bridge.flushHomeMixesForTest()
+        settle(page)
+        verify(!spinner.visible, "the loading state stayed after the mixes had loaded")
+        verify(says(page, "No mixes"),
+               "an account with no mixes never said so once they had loaded")
+    }
+
+    function test_no_empty_state_while_its_kind_loads_data() {
+        return [
+            { tag: "tracks",    tab: 0, kind: "tracks",    line: "No saved tracks" },
+            { tag: "albums",    tab: 1, kind: "albums",    line: "No saved albums" },
+            { tag: "artists",   tab: 2, kind: "artists",   line: "No followed artists" },
+            { tag: "playlists", tab: 3, kind: "playlists", line: "No playlists yet" }
+        ]
+    }
+
+    // The bridge loads the four lists apart, and the liked songs are not the
+    // last to land: an empty album list after the songs is not yet an answer.
+    function test_no_empty_state_while_its_kind_loads(row) {
+        bridge.setKindLoadingForTest(row.kind, true)
+        var page = makeCollection(row.tab)
+        verify(!says(page, row.line),
+               "Collection said \"" + row.line + "\" while that list was still loading")
+
+        bridge.setKindLoadingForTest(row.kind, false)
+        settle(page)
+        verify(says(page, row.line),
+               "an empty " + row.kind + " list never said so once it had loaded")
+    }
+
     // ── the sidebar ──────────────────────────────────────────────────────
 
     function test_the_sidebar_says_nothing_is_saved_only_once_it_knows() {

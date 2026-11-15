@@ -152,9 +152,27 @@ public:
         }
         answer();
     }
-    void fetchFavoriteAlbums(AlbumsCallback cb, int, int) override { cb({}, QString()); }
-    void fetchFavoriteArtists(ArtistsCallback cb, int, int) override { cb({}, QString()); }
-    void fetchUserPlaylists(PlaylistsCallback cb, int, int) override { cb({}, QString()); }
+    // The other three sign-in lists. holdLists parks every reply, in the order
+    // asked, for deliverList(). Playlists page by offset, as the endpoint does.
+    bool holdLists = false;
+    QList<Playlist> userPlaylists;
+    QList<std::function<void()>> parkedLists;
+
+    void answerList(std::function<void()> answer) {
+        if (holdLists) { parkedLists << answer; return; }
+        answer();
+    }
+    void deliverList() { if (!parkedLists.isEmpty()) parkedLists.takeFirst()(); }
+
+    void fetchFavoriteAlbums(AlbumsCallback cb, int, int) override {
+        answerList([cb] { cb({}, QString()); });
+    }
+    void fetchFavoriteArtists(ArtistsCallback cb, int, int) override {
+        answerList([cb] { cb({}, QString()); });
+    }
+    void fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) override {
+        answerList([this, cb, limit, offset] { cb(userPlaylists.mid(offset, limit), QString()); });
+    }
 
     void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) override {
         ++headReads;
@@ -354,6 +372,41 @@ private slots:
         QVERIFY(h.bridge.searchFavoriteTracks(QString()).isEmpty());
         h.client.deliverPage();
         QVERIFY(!h.bridge.favoritesLoading());
+    }
+
+    // The four lists land apart, and the liked songs need not be last. Each
+    // says it is loading until its own reply is in, the playlists until their
+    // last page, so an empty list is never read as an empty library.
+    void eachListIsLoadingUntilItsOwnReply() {
+        Harness h;
+        for (int i = 0; i < 60; ++i)
+            h.client.userPlaylists << mkPlaylist(QStringLiteral("pl-%1").arg(i),
+                                                 QStringLiteral("Liste %1").arg(i),
+                                                 3, 600, QString(), kJan2026 + i);
+        h.client.holdLists = true;
+        h.client.likes = mkLikes(3);
+        h.client.setUserId(kUid);
+
+        QVERIFY(!h.bridge.favoritesLoading());
+        QVERIFY(h.bridge.albumsLoading());
+        QVERIFY(h.bridge.artistsLoading());
+        QVERIFY(h.bridge.playlistsLoading());
+
+        h.client.deliverList();               // albums
+        QVERIFY(!h.bridge.albumsLoading());
+        QVERIFY(h.bridge.artistsLoading());
+        h.client.deliverList();               // artists
+        QVERIFY(!h.bridge.artistsLoading());
+
+        QSignalSpy playlists(&h.bridge, &TidalBridge::favoritePlaylistsChanged);
+        h.client.deliverList();               // the first 50 playlists
+        QVERIFY(h.bridge.playlistsLoading());
+        h.client.deliverList();               // the last 10
+        QVERIFY(h.bridge.playlistsLoading());
+        h.client.deliverList();               // the empty page that ends it
+        QVERIFY(!h.bridge.playlistsLoading());
+        QCOMPARE(h.bridge.getUserPlaylists().size(), 60);
+        QVERIFY(playlists.size() >= 2);       // the first page, and the end
     }
 
     void aSyncBeforeTheFirstLoadEndsAsksNothing() {

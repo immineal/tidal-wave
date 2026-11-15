@@ -16,6 +16,21 @@ Rectangle {
     property var filteredPlaylists: []
     property var mixes: []
     property bool loading: bridge.favoritesLoading
+    // The page asks for the mixes itself; an empty list before an answer is
+    // not an account without mixes.
+    property bool mixesLoading: false
+    property bool mixesLoaded: false
+
+    // The open tab's list is still on its way and none of it is here yet.
+    readonly property bool tabWaiting: {
+        switch (activeTab) {
+        case 1: return bridge.albumsLoading && filteredAlbums.length === 0
+        case 2: return bridge.artistsLoading && filteredArtists.length === 0
+        case 3: return bridge.playlistsLoading && filteredPlaylists.length === 0
+        case 4: return mixesLoading && mixes.length === 0
+        }
+        return false
+    }
     // 0=default, 1=A-Z, 2=Z-A. Default is the order the library arrived in,
     // which is most recently saved first: the favourites endpoints are asked
     // for order=DATE. It is not persisted, so it is 0 on every visit.
@@ -112,8 +127,11 @@ Rectangle {
     }
 
     function loadMixes() {
+        mixesLoading = true
         bridge.fetchHomeMixes(function(mixList, err) {
+            mixesLoading = false
             if (err.length > 0) return
+            mixesLoaded = true
             var items = []
             for (var i = 0; i < mixList.length; i++) {
                 items.push(mixList[i])
@@ -610,6 +628,7 @@ Rectangle {
         // Empty state for playlists
         Item {
             visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
+                     && !bridge.playlistsLoading
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -685,7 +704,8 @@ Rectangle {
 
         // Empty state for mixes
         Item {
-            visible: root.activeTab === 4 && root.mixes.length === 0
+            visible: root.activeTab === 4 && root.mixes.length === 0 && root.mixesLoaded
+                     && !root.loading
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -715,6 +735,7 @@ Rectangle {
         // Empty state for albums
         Item {
             visible: root.activeTab === 1 && root.filteredAlbums.length === 0 && !root.loading
+                     && !bridge.albumsLoading
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -729,6 +750,7 @@ Rectangle {
         // Empty state for artists
         Item {
             visible: root.activeTab === 2 && root.filteredArtists.length === 0 && !root.loading
+                     && !bridge.artistsLoading
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -752,5 +774,5 @@ Rectangle {
 
     NewPlaylistDialog { id: newPlaylistDialog }
 
-    LoadingOverlay { loading: root.loading }
+    LoadingOverlay { loading: root.loading || root.tabWaiting }
 }
