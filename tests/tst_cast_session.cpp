@@ -149,6 +149,45 @@ private slots:
                  QStringLiteral("The cast device could not play this track."));
         QCOMPARE(finished.count(), 0);
     }
+
+    // The status poll repeats IDLE/FINISHED until the next LOAD lands, and
+    // each repeat used to skip another track.
+    void theEndOfATrackIsReportedOncePerLoad()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+        load(session);   // media session 7
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 1, 3000);
+        QTest::qWait(100);
+
+        QSignalSpy finished(&session, &CastSession::mediaFinished);
+        const auto ended = [](int mediaSession) {
+            return QJsonObject{{"mediaSessionId", mediaSession}, {"playerState", "IDLE"},
+                               {"idleReason", "FINISHED"}};
+        };
+        for (int i = 0; i < 3; ++i) receiver.sendMediaStatus(ended(7));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 3000);
+        QTest::qWait(200);
+        QCOMPARE(finished.count(), 1);
+
+        load(session);   // media session 8
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 2, 3000);
+        QTest::qWait(100);
+        receiver.sendMediaStatus(ended(7));   // a late answer to a poll of the last one
+        receiver.sendMediaStatus(ended(8));
+        receiver.sendMediaStatus(ended(8));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 2, 3000);
+        QTest::qWait(200);
+        QCOMPARE(finished.count(), 2);
+
+        // The late status did not point transport back at the last track.
+        session.pause();
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("PAUSE")), 1, 3000);
+        QCOMPARE(receiver.last(kMedia, QStringLiteral("PAUSE"))
+                     .value(QStringLiteral("mediaSessionId")).toInt(), 8);
+    }
 };
 
 QTEST_MAIN(TestCastSession)

@@ -235,8 +235,13 @@ void CastSession::handleMessage(const CastMessage &msg) {
         const QJsonArray statusArr = payload.value("status").toArray();
         if (statusArr.isEmpty()) return;
         const QJsonObject st = statusArr.first().toObject();
-        if (st.contains("mediaSessionId"))
-            m_mediaSessionId = st.value("mediaSessionId").toInt();
+        if (st.contains("mediaSessionId")) {
+            // Ids grow with each LOAD. A lower one answers a poll of the last
+            // track and would point transport commands back at it.
+            const int id = st.value("mediaSessionId").toInt();
+            if (id < m_mediaSessionId) return;
+            m_mediaSessionId = id;
+        }
         const int mediaSession = m_mediaSessionId;
         if (st.contains("media") && st.value("media").toObject().contains("duration"))
             emit durationChanged(st.value("media").toObject().value("duration").toDouble());
@@ -247,12 +252,14 @@ void CastSession::handleMessage(const CastMessage &msg) {
             emit playingChanged(playerState == "PLAYING");
         const QString idleReason = playerState == "IDLE" ? st.value("idleReason").toString()
                                                          : QString();
-        if (idleReason == "FINISHED")
-            emit mediaFinished();
-        // Every poll repeats the status, so one error per media session.
-        if (idleReason == "ERROR" && mediaSession != m_endedFor) {
+        // Every poll repeats the status until the next LOAD, so one end per
+        // media session: a second FINISHED would skip another track.
+        if ((idleReason == "FINISHED" || idleReason == "ERROR") && mediaSession != m_endedFor) {
             m_endedFor = mediaSession;
-            emit error(tr("The cast device could not play this track."));
+            if (idleReason == "FINISHED")
+                emit mediaFinished();
+            else
+                emit error(tr("The cast device could not play this track."));
         }
         return;
     }
