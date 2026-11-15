@@ -204,6 +204,27 @@ private slots:
         QCOMPARE(rig.tidal.count(QStringLiteral("/auth/oauth2/token")), 1);
     }
 
+    // ── a long list whose later page fails ──────────────────────────────
+    // Delivered with the error, so a page can say it is not all there.
+    void aListWhoseLaterPageFailsSaysSo()
+    {
+        Rig rig;
+        TidalClient client(&rig.api);
+        rig.tidal.answers[QStringLiteral("/api/playlists/pl-1/tracks")] = {
+            {200, tracksPage(0, 100, 150), {}},
+            {500, R"({"status":500,"userMessage":"broken"})", {}}};
+        bool done = false;
+        QString err;
+        int rows = -1;
+        client.fetchPlaylistTracks(QStringLiteral("pl-1"), [&](QList<Tidal::Track> t, QString e) {
+            done = true; err = e; rows = int(t.size());
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(done && rig.api.idle(), 5000);
+        QCOMPARE(rig.tidal.count(QStringLiteral("/api/playlists/pl-1/tracks")), 2);
+        QVERIFY2(!err.isEmpty(), "a list missing a third of its rows was handed on as whole");
+        QCOMPARE(rows, 100);
+    }
+
     // ── what reaches the log ────────────────────────────────────────────
     // A signed media URL carries its signature in the query.
     void aFailedDownloadNamesNoSignature()

@@ -477,8 +477,10 @@ void TidalClient::fetchAllTracks(const QString &endpoint, TracksCallback cb,
     q.addQueryItem("offset", QString::number(offset));
     m_api->get(endpoint, q,
         [this, endpoint, cb, offset, acc](QJsonObject root, QString err) mutable {
+            // The rows so far go along, but with the error: a list missing
+            // its later pages must not pass for the whole of it.
             if (!err.isEmpty()) {
-                cb(acc, acc.isEmpty() ? err : QString());
+                cb(acc, err);
                 return;
             }
             QList<Track> page = parseTracks(root);

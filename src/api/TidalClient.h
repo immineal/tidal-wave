@@ -300,7 +300,7 @@ signals:
 private:
     // Pages through `endpoint` until totalNumberOfItems is reached and
     // delivers the whole list in one callback. The API caps a response at 100
-    // items whatever `limit` says.
+    // items whatever `limit` says. A failed page ends it with the error.
     void fetchAllTracks(const QString &endpoint, TracksCallback cb,
                         int offset = 0, QList<Track> acc = {});
 
