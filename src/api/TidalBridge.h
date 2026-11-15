@@ -232,7 +232,7 @@ public:
     static QVariantMap  albumToMap (const Album &a);
 private:
     static QVariantMap  artistToMap (const Artist &a);
-    static QVariantMap  playlistToMap(const Playlist &p);
+    QVariantMap         playlistToMap(const Playlist &p) const;
     static QVariantMap  mixToMap    (const Mix &m);
 
     QVariantList tracksToList  (const QList<Track>    &v) const;

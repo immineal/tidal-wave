@@ -1300,6 +1300,7 @@ private:
             p.insert(QStringLiteral("duration"), 0);
             p.insert(QStringLiteral("coverUrl"), QString());
             p.insert(QStringLiteral("type"), QStringLiteral("USER"));
+            p.insert(QStringLiteral("editable"), true);
 
             bool exists = false;
             for (const QVariant &v : std::as_const(m_userPlaylists))

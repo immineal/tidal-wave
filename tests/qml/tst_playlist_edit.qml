@@ -45,11 +45,11 @@ TestCase {
     function makeCache() {
         return [
             { id: 401, uuid: "p-first", title: "Alte Liste",  description: "unberührt",
-              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER" },
+              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER", editable: true },
             { id: 402, uuid: "p-mid",   title: "Zugfahrt",    description: "Für die Bahn",
-              coverUrl: "cdn/c2.jpg", numTracks: 31, duration: 5400, type: "USER" },
+              coverUrl: "cdn/c2.jpg", numTracks: 31, duration: 5400, type: "USER", editable: true },
             { id: 403, uuid: "p-end",   title: "Winterabend", description: "",
-              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER" }
+              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER", editable: true }
         ]
     }
 
@@ -653,5 +653,45 @@ TestCase {
         verify(row.lastConfirmation.length > 0, "a failed add said nothing at all")
         verify(row.lastConfirmation.indexOf("Could not") >= 0,
                "a failed add was reported as a success: \"" + row.lastConfirmation + "\"")
+    }
+
+    // ── whose playlist it is ─────────────────────────────────────────────
+    // Tidal takes an edit only from the playlist's creator. An editorial
+    // playlist and another user's, saved to the library, are not offered.
+
+    function foreignRows() {
+        return [
+            { uuid: "p-theirs", title: "Fremde Liste", description: "", coverUrl: "",
+              numTracks: 20, duration: 3000, type: "USER", editable: false },
+            { uuid: "p-editorial", title: "Ausgewählt", description: "", coverUrl: "",
+              numTracks: 40, duration: 6000, type: "EDITORIAL", editable: false }
+        ]
+    }
+
+    function pickerUuids(list) {
+        var out = []
+        for (var i = 0; i < list.count; ++i) out.push(list.model.get(i).uuid)
+        return out
+    }
+
+    function test_the_picker_offers_only_playlists_the_user_owns() {
+        bridge.setUserPlaylistsForTest(makeCache().concat(foreignRows()))
+        var host = showPane(1200)
+        makePicker(host)
+
+        var uuids = pickerUuids(pickerList(host))
+        compare(uuids.length, 3, "the picker offers " + uuids.join(", "))
+        verify(uuids.indexOf("p-theirs") < 0, "the picker offers another user's playlist")
+        verify(uuids.indexOf("p-editorial") < 0, "the picker offers an editorial playlist")
+    }
+
+    // The fetch the picker makes while the cache is still empty, the same.
+    function test_the_picker_filters_a_fetched_list_too() {
+        bridge.setFetchedUserPlaylistsForTest(makeCache().concat(foreignRows()))
+        var host = showPane(1200)
+        makePicker(host)
+
+        compare(pickerUuids(pickerList(host)).length, 3,
+                "the fetched list offered playlists the user cannot add to")
     }
 }

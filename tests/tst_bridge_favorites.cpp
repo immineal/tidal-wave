@@ -6,6 +6,8 @@
 #include <QTest>
 #include <QSignalSpy>
 #include <QJSEngine>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -154,7 +156,12 @@ public:
     }
     void fetchFavoriteAlbums(AlbumsCallback cb, int, int) override { cb({}, QString()); }
     void fetchFavoriteArtists(ArtistsCallback cb, int, int) override { cb({}, QString()); }
-    void fetchUserPlaylists(PlaylistsCallback cb, int, int) override { cb({}, QString()); }
+
+    // What users/<id>/playlistsAndFavoritePlaylists lists.
+    QList<Playlist> library;
+    void fetchUserPlaylists(PlaylistsCallback cb, int limit, int offset) override {
+        cb(library.mid(offset, limit), QString());
+    }
 
     void fetchFavoritesHead(FavoriteKind kind, HeadCallback cb) override {
         ++headReads;
@@ -1029,6 +1036,56 @@ private slots:
         QVERIFY(seen.property(QStringLiteral("seen")).toBool());
         QCOMPARE(seen.property(QStringLiteral("mix")).toString(), QString());
         QCOMPARE(h.client.trackReads, 0);
+    }
+
+    // ── whose playlist it is ──────────────────────────────────────────────
+    // Rows as playlistsAndFavoritePlaylists answers them: the user's own, one
+    // saved from another user and an editorial one, whose creator is empty.
+    // Only the first can take a song, a new title or a removal.
+    void onlyTheUsersOwnPlaylistsAreEditable() {
+        Harness h;
+        h.client.library = TidalClient::parsePlaylists(QJsonDocument::fromJson(R"({"items": [
+            {"type": "USER_CREATED", "created": "2026-01-02T00:00:00.000+0000",
+             "playlist": {"uuid": "mine", "title": "Mine", "type": "USER",
+                          "creator": {"id": 7}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-03T00:00:00.000+0000",
+             "playlist": {"uuid": "theirs", "title": "Theirs", "type": "USER",
+                          "creator": {"id": 4242}}},
+            {"type": "USER_FAVORITE", "created": "2026-01-04T00:00:00.000+0000",
+             "playlist": {"uuid": "editorial", "title": "Picked", "type": "EDITORIAL",
+                          "creator": {}}}
+        ]})").object());
+        QCOMPARE(h.client.library.size(), 3);
+        h.client.setUserId(kUid);
+
+        const QVariantList rows = h.bridge.getUserPlaylists();
+        QCOMPARE(rowFor(rows, QStringLiteral("mine")).value(QStringLiteral("editable")), QVariant(true));
+        QCOMPARE(rowFor(rows, QStringLiteral("theirs")).value(QStringLiteral("editable")), QVariant(false));
+        QCOMPARE(rowFor(rows, QStringLiteral("editorial")).value(QStringLiteral("editable")), QVariant(false));
+
+        // The header a playlist page reads says the same. Editorial ones come
+        // back from playlists/<uuid> with {"id": 0}.
+        h.client.headers.insert(QStringLiteral("editorial"), Playlist::fromJson(
+            QJsonDocument::fromJson(R"({"uuid": "editorial", "type": "EDITORIAL",
+                                       "creator": {"id": 0}})").object()));
+        h.client.headers.insert(QStringLiteral("mine"), h.client.library.value(0));
+        QJSValue seen = h.engine.newObject();
+        const QJSValue record = h.engine.evaluate(QStringLiteral(
+            "(function (s) { return function (p, err) { s[p.uuid] = p.editable; }; })")).call({seen});
+        h.bridge.fetchPlaylist(QStringLiteral("editorial"), record);
+        h.bridge.fetchPlaylist(QStringLiteral("mine"), record);
+        QCOMPARE(seen.property(QStringLiteral("editorial")).toBool(), false);
+        QVERIFY(seen.property(QStringLiteral("editorial")).isBool());
+        QCOMPARE(seen.property(QStringLiteral("mine")).toBool(), true);
+    }
+
+    // A playlist made here is the user's even if the reply names no creator.
+    void aPlaylistMadeHereIsEditable() {
+        Harness h;
+        h.client.setUserId(kUid);
+        h.fillOne(0, 0);
+        QCOMPARE(rowFor(h.bridge.getUserPlaylists(), kUuid).value(QStringLiteral("editable")),
+                 QVariant(true));
     }
 
 private:

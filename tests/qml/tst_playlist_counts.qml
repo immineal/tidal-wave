@@ -31,11 +31,11 @@ TestCase {
     function makeCache() {
         return [
             { uuid: "p-first", title: "Alte Liste",  description: "unberührt",
-              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER" },
+              coverUrl: "cdn/c1.jpg", numTracks: 12, duration: 2400, type: "USER", editable: true },
             { uuid: "p-tape",  title: "Tape",        description: "",
-              coverUrl: "",           numTracks: 0,  duration: 0,    type: "USER" },
+              coverUrl: "",           numTracks: 0,  duration: 0,    type: "USER", editable: true },
             { uuid: "p-end",   title: "Winterabend", description: "",
-              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER" }
+              coverUrl: "cdn/c3.jpg", numTracks: 7,  duration: 1500, type: "USER", editable: true }
         ]
     }
 

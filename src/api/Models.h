@@ -247,6 +247,9 @@ struct Playlist {
     int     duration  = 0;
     QString image;  // UUID
     QString type;   // USER / EDITORIAL
+    // Who made it. An editorial one answers {} or {"id": 0}, so 0. Another
+    // user's playlist saved here is USER too, with their id.
+    qint64  creatorId = 0;
     // When this user created or saved the playlist, in ms since epoch. 0 when
     // the response carried no usable date. Half of the ordering key in
     // sortPlaylistsByRecency() and in LibraryIndex::rebuild().
@@ -258,6 +261,10 @@ struct Playlist {
         u.replace('-', '/');
         return QStringLiteral("https://resources.tidal.com/images/%1/%2x%2.jpg").arg(u).arg(size);
     }
+
+    // Tidal takes edits only from the creator. v1 has no field for
+    // collaborators, so a playlist shared for editing is not counted.
+    bool editableBy(qint64 userId) const { return userId > 0 && creatorId == userId; }
 
     // `wrapper` is the favourites row the playlist arrived in, if any. Its
     // "created" is this user's save date and wins over the playlist's own,
@@ -273,6 +280,7 @@ struct Playlist {
         // a 3:2 crop that answers 403 at square sizes.
         p.image      = j["squareImage"].toString(j["image"].toString());
         p.type        = j["type"].toString();
+        p.creatorId   = j["creator"].toObject()["id"].toVariant().toLongLong();
         p.addedAt     = isoToMSecs(wrapper["created"].toString());
         if (p.addedAt == 0)
             p.addedAt = isoToMSecs(j["created"].toString());
