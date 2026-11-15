@@ -102,7 +102,7 @@ void CastMediaPrep::prepareFromManifest(const Tidal::StreamManifest &manifest) {
         emit failed(manifestWasReadable
             ? tr("Could not save the audio to a temporary file. "
                  "Check that there is free disk space.")
-            : tr("Could not read the lossless stream details for this track."));
+            : tr("Could not read the stream details for this track."));
         return;
     }
     m_dash = fetcher;

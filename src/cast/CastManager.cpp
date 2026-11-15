@@ -37,8 +37,9 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     connect(m_prep, &CastMediaPrep::ready, this, [this](const QString &path, const QString &mime) {
         const QString url = m_server->setCurrentFile(path, mime);
         if (url.isEmpty()) {
-            emit error(tr("Could not find a local network address for casting. "
-                          "Check that you are connected to a network."));
+            // Only once the server has stopped: it is given its address on start.
+            emit error(tr("Could not hand this track to the cast device. "
+                          "The local media server is not running."));
             return;
         }
         const QVariantMap t = m_player ? m_player->currentTrackMap() : QVariantMap();

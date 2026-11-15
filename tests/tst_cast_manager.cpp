@@ -263,6 +263,30 @@ private slots:
         QCOMPARE(error.count(), 0);
     }
 
+    // A track that is ready once the cast server has stopped: the sentence
+    // names that, not a network address it never looked for.
+    void aTrackReadyWithNoServerSaysSo()
+    {
+        LocalApi    api;
+        TidalClient client{&api};
+        CastManager manager(&client, nullptr);
+        auto *prep = manager.findChild<CastMediaPrep *>();
+        QVERIFY(prep);
+        QSignalSpy error(&manager, &CastManager::error);
+        emit prep->ready(QStringLiteral("/nonexistent/track.flac"), QStringLiteral("audio/flac"));
+        QCOMPARE(error.count(), 1);
+        const QString sentence = QStringLiteral("Could not hand this track to the cast device. "
+                                                "The local media server is not running.");
+        QCOMPARE(error.first().at(0).toString(), sentence);
+
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        QVERIFY(i18n.isCatalogueLoaded());
+        QVERIFY2(QCoreApplication::translate("CastManager", sentence.toUtf8().constData())
+                     != sentence, "the sentence has no German");
+    }
+
 private:
     QTemporaryDir m_dir;
 };
