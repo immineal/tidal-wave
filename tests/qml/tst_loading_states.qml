@@ -124,4 +124,45 @@ TestCase {
         verify(says(win.contentItem, "Nothing saved yet"),
                "an empty library never said so once it had loaded")
     }
+
+    // ── the playlist page's count ────────────────────────────────────────
+
+    function makeTracks(n) {
+        var out = []
+        for (var i = 0; i < n; ++i)
+            out.push({ id: 9100 + i, title: "Stück " + (i + 1), artists: "Eine Band",
+                       albumTitle: "Ein Album", durationStr: "3:21", duration: 201,
+                       coverUrl: "", coverUrl80: "", albumId: 42, artistId: 7 })
+        return out
+    }
+
+    // The header brings the length at once, the tracklist the count seconds
+    // later. In between the page said "0 tracks • 93 hr 45 min".
+    function test_the_playlist_shows_no_count_before_its_tracks_are_in() {
+        bridge.setPlaylistTracksForTest(makeTracks(3))
+        bridge.setPlaylistForTest({ uuid: "p-long", title: "Lang", description: "",
+                                    numTracks: 3, duration: 337500, coverUrl: "",
+                                    type: "USER" })
+        bridge.setDeferTrackRepliesForTest(true)
+
+        var host = createTemporaryObject(pageHost, testCase)
+        host.visible = true
+        var page = createTemporaryObject(playlistC, host.pane,
+                                         { playlistUuid: "p-long", playlistTitle: "Lang",
+                                           playlistType: "USER" })
+        verify(page, "PlaylistPage did not load")
+        settle(host.contentItem)
+        verify(page.loading, "the tracklist was not held back, so this case proves nothing")
+
+        // "track", not "tracks": the suite runs without the English plurals.
+        verify(!says(host.contentItem, "0 track"),
+               "the page claimed 0 tracks while its tracks were loading")
+        verify(says(host.contentItem, "93 hr 45 min"),
+               "the length the header brought was not shown while the tracks loaded")
+
+        bridge.flushTrackRepliesForTest()
+        settle(host.contentItem)
+        verify(says(host.contentItem, "3 track") && says(host.contentItem, "93 hr 45 min"),
+               "the count did not appear once the tracks were in")
+    }
 }

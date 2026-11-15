@@ -269,6 +269,9 @@ Rectangle {
                             // fragments, so a translation can reorder it.
                             var n = root.tracks.length
                             var d = root.playlistDuration
+                            // The count is the tracklist's, still on its way.
+                            if (root.loading && n === 0)
+                                return d > 0 ? root.durationText(d) : ""
                             return d > 0 ? qsTr("%n track(s) • %1", "", n).arg(root.durationText(d))
                                          : qsTr("%n track(s)", "", n)
                         }
