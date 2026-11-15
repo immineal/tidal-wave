@@ -25,6 +25,11 @@ constexpr qint64 kRenewGapMs = 60000;
 // whole wait: a timer's clock can stand still while the machine sleeps.
 constexpr int kExpiryCheckMs = 30000;
 
+// A refresh at start-up that got no answer is tried again after this,
+// doubling up to the cap, so a login host that is down is not hammered.
+constexpr int kRetryFirstMs = 5000;
+constexpr int kRetryMaxMs   = 300000;
+
 } // namespace
 
 Auth::Auth(TidalApi *api, QObject *parent)
@@ -172,24 +177,26 @@ void Auth::refreshAccessToken() {
     form.addQueryItem("client_secret", kClientSecret);
 
     m_refreshing = true;
-    m_api->postForm("oauth2/token", form,
-                    [this, asked = m_refreshToken](QJsonObject obj, QString err) {
+    m_api->postFormWithStatus("oauth2/token", form,
+                    [this, asked = m_refreshToken](QJsonObject obj, QString err, int status) {
         m_refreshing = false;
         // Signed out while this was on its way: the answer is for no session.
         if (asked != m_refreshToken) return;
         if (!err.isEmpty()) {
-            if (obj.contains("error")) {
+            if (refreshRefused(status, obj)) {
                 endSession();
             } else {
-                // No error body means the network failed, e.g. right after
-                // boot. Retry and keep the saved session.
+                // The network, or a login host that is busy or down, e.g.
+                // right after boot. Retry and keep the saved session.
                 if (m_state != State::LoggedIn) {
-                    QTimer::singleShot(5000, this, &Auth::refreshAccessToken);
+                    QTimer::singleShot(m_retryMs, this, &Auth::refreshAccessToken);
+                    m_retryMs = qMin(m_retryMs * 2, kRetryMaxMs);
                 }
                 answerRefused(false);
             }
             return;
         }
+        m_retryMs = kRetryFirstMs;
         m_accessToken = obj["access_token"].toString();
         if (obj.contains("refresh_token")) {
             m_refreshToken = obj["refresh_token"].toString();
@@ -206,6 +213,13 @@ void Auth::refreshAccessToken() {
             fetchSession();
         }
     });
+}
+
+// RFC 6749 5.2: invalid_grant is a refresh token that is invalid, expired or
+// revoked, which Tidal answers with 400. Anything else may pass.
+bool Auth::refreshRefused(int httpStatus, const QJsonObject &body) {
+    return (httpStatus == 400 || httpStatus == 401)
+        && body["error"].toString() == QLatin1String("invalid_grant");
 }
 
 // Tidal's "username" is the email address on most accounts, so it comes last
