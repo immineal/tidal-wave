@@ -37,6 +37,7 @@ TestCase {
     Component { id: playlistC;   PlaylistPage   { anchors.fill: parent } }
     Component { id: mixC;        MixPage        { anchors.fill: parent } }
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
+    Component { id: loginC;      LoginPage      { anchors.fill: parent } }
     Component { id: trackRowC;   TrackRow       { } }
     Component { id: pillC;       PillButton     { } }
     Component { id: mediaCardC;  MediaCard      { } }
@@ -223,6 +224,50 @@ TestCase {
             if (hit) return hit
         }
         return null
+    }
+
+    // ── the login card ──────────────────────────────────────────────────────
+
+    // Everything visible inside the card ends above its bottom edge.
+    function auditCardBottom(card, item, label) {
+        var kids = item.children
+        for (var i = 0; i < kids.length; ++i) {
+            var c = kids[i]
+            if (!c || !c.visible || c.height <= 0) continue
+            var bottom = c.mapToItem(card, 0, c.height).y
+            verify(bottom <= card.height + 1,
+                   label + ": " + describe(c) + " ends at " + bottom.toFixed(1)
+                   + " in a card " + card.height.toFixed(1) + " tall")
+            auditCardBottom(card, c, label)
+        }
+    }
+
+    // The card grows with what it holds: a long error, or the German words.
+    function test_login_card_holds_a_long_error() {
+        // No animation: the card is at its height once the layout has run.
+        app.setReducedMotionForTest(true)
+        auth.setHasSavedCredentialsForTest(false)
+        auth.setStateForTest(0)
+        var page = makePane(loginC, 640)
+        var card = findByName(page, "loginAuthCard")
+        verify(card, "LoginPage has no auth card")
+        page.errorMessage = "Die Anmeldung ist fehlgeschlagen, weil der Server nicht "
+                + "erreichbar war. Prüfe die Verbindung und versuche es noch einmal. "
+                + "Wenn das Problem bleibt, melde dich später erneut an. Die "
+                + "Fehlermeldung des Servers lautete: Zeitüberschreitung der Anfrage. "
+                + "SSL-Handshake fehlgeschlagen: Das Zertifikat der Gegenstelle konnte "
+                + "nicht überprüft werden, weil die Zertifikatskette unvollständig ist "
+                + "oder ein Zwischenzertifikat fehlt. Prüfe Datum und Uhrzeit."
+        settle(page)
+        settle(page)
+        auditCardBottom(card, card, "signed out with an error")
+
+        auth.setStateForTest(1)
+        settle(page)
+        settle(page)
+        auditCardBottom(card, card, "waiting for the device code")
+        auth.setStateForTest(2)
+        app.setReducedMotionForTest(false)
     }
 
     // ── blanket audit: the four hero pages ──────────────────────────────────

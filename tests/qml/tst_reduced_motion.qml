@@ -408,13 +408,26 @@ TestCase {
     // ── a page transition ────────────────────────────────────────────────
 
     // Navigating between pages is a Loader swap with no animation of its
-    // own. The one transition a page animates is the login card resizing as
-    // the auth state moves on, 220px to 400px at its tallest jump.
+    // own. The one transition a page animates is the login card resizing to
+    // what the auth state shows, signed out to the device code at its tallest.
     function test_page_transition_data() { return test_rail_expansion_data() }
+
+    // The card's height at each frame for a while: long past the 200ms
+    // animation, so the last sample is where it settled.
+    function heightsOverFrames(card, holder) {
+        var out = [card.height]
+        var t0 = Date.now()
+        while (Date.now() - t0 < 700) {
+            frame(holder)
+            wait(15)
+            out.push(card.height)
+        }
+        return out
+    }
 
     function test_page_transition(row) {
         app.setReducedMotionForTest(row.reduced)
-        // Settle the card at its signed-out height before measuring.
+        auth.setHasSavedCredentialsForTest(false)
         auth.setStateForTest(0)
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -424,21 +437,20 @@ TestCase {
 
         var card = findByName(page, "loginAuthCard")
         verify(card, "LoginPage has no auth card to measure")
-        tryVerify(function () { return card.height === 220 },
-                  settleMs, "the card never settled at its signed-out height")
+        var settled = heightsOverFrames(card, holder)
+        var before = settled[settled.length - 1]
 
-        auth.setStateForTest(1)          // PendingDevice: the card grows to 400
-        oneFrame()
+        auth.setStateForTest(1)          // PendingDevice: the card grows
+        var hs = heightsOverFrames(card, holder)
+        var after = hs[hs.length - 1]
+        verify(after > before, "the device-code card is not taller than the signed-out one")
+        var between = hs.filter(function (h) { return h > before && h < after })
 
-        if (row.reduced) {
-            compare(card.height, 400,
-                    "reduced motion: the card must be at its new height on the next frame")
-        } else {
-            verify(card.height < 400,
-                   "without reduced motion the card jumped instead of growing")
-            tryVerify(function () { return card.height === 400 },
-                      settleMs, "the card never reached its new height")
-        }
+        if (row.reduced)
+            compare(between.length, 0,
+                    "reduced motion: the card passed through " + between + " on its way")
+        else
+            verify(between.length > 0, "without reduced motion the card jumped: " + hs)
     }
 
     // ── an indefinite "still working" indicator ──────────────────────────

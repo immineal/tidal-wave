@@ -195,13 +195,18 @@ TestCase {
 
     // Move the login card between its two heights and report how it got
     // there: instantly, or over the usual 200ms.
-    function resizeCard(card, state, target) {
+    // Heights frame by frame for longer than the 200ms animation: the first
+    // frame after the change and the height it settled at.
+    function resizeCard(card, state) {
         auth.setStateForTest(state)
-        wait(1)
-        var afterOneFrame = card.height
-        tryVerify(function () { return card.height === target },
-                  5000, "the login card never reached " + target)
-        return { afterOneFrame: afterOneFrame, settled: card.height }
+        var hs = []
+        var t0 = Date.now()
+        while (Date.now() - t0 < 700) {
+            card.Window.window.update()
+            waitForRendering(card, 1000)
+            hs.push(card.height)
+        }
+        return { afterOneFrame: hs[0], settled: hs[hs.length - 1] }
     }
 
     function test_reduced_motion_preference() {
@@ -236,9 +241,8 @@ TestCase {
             return
         }
 
-        // 0 is LoggedOut, where the card is 220 high; 1 is PendingDevice, 400.
-        // The stub starts with saved credentials, which is the 140px
-        // "Restoring session" card instead.
+        // 0 is LoggedOut; 1 is PendingDevice, the taller card. The stub starts
+        // with saved credentials, which is the short "Restoring session" card.
         auth.setHasSavedCredentialsForTest(false)
         auth.setStateForTest(0)
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -248,20 +252,19 @@ TestCase {
 
         var card = findByName(page, "loginAuthCard")
         verify(card, "LoginPage has no auth card to measure")
-        tryVerify(function () { return card.height === 220 },
-                  5000, "the card never settled at its signed-out height")
+        resizeCard(card, 0)
 
         // Baseline: motion allowed, so the resize should take time.
         app.setReducedMotionForTest(false)
-        var animated = resizeCard(card, 1, 400)
+        var animated = resizeCard(card, 1)
         var animatedTravelled = animated.afterOneFrame !== animated.settled
-        resizeCard(card, 0, 220)
+        resizeCard(card, 0)
 
         // Now with the preference on. This half is deterministic: a
         // zero-length animation has written its target before the first frame.
         app.setReducedMotionForTest(true)
         compare(Theme.reduceMotion, true, "Theme ignored the preference")
-        var reduced = resizeCard(card, 1, 400)
+        var reduced = resizeCard(card, 1)
         app.setReducedMotionForTest(false)
         auth.setStateForTest(2)
 

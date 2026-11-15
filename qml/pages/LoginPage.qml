@@ -15,6 +15,7 @@ Rectangle {
     }
 
     ColumnLayout {
+        id: pageColumn
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 420)
         spacing: 0
@@ -56,11 +57,27 @@ Rectangle {
             color: Theme.surface
             border.color: Theme.border
             border.width: 1
-            height: auth.state === 0 ? (auth.hasSavedCredentials ? 140 : (errorMessage.length > 0 ? 260 : 220)) : auth.state === 1 ? 400 : 100
-            Behavior on height { NumberAnimation { duration: Theme.dur(200) } }
+            // As tall as what the state shows, so a long error or longer
+            // translations never clip. Implicit: the page's layout sizes it.
+            implicitHeight: Math.max(100, cardContent.implicitHeight + 64)
+            Behavior on implicitHeight { NumberAnimation { duration: Theme.dur(200) } }
+
+            // The error's wrapped height, from a width the layouts don't set:
+            // a layout drops a height that changes while it lays out.
+            Text {
+                id: errorMeasure
+                visible: false
+                width: pageColumn.width - 64
+                text: errorMessage
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
 
             ColumnLayout {
-                anchors.fill: parent
+                id: cardContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 32
                 spacing: 20
 
@@ -156,6 +173,7 @@ Rectangle {
                     Text {
                         Layout.alignment: Qt.AlignHCenter
                         Layout.fillWidth: true
+                        Layout.preferredHeight: errorMeasure.implicitHeight
                         visible: errorMessage.length > 0
                         text: errorMessage
                         color: Theme.red
@@ -217,9 +235,14 @@ Rectangle {
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1
-                        Text {
+                        // Selectable, so the code can be copied into the browser.
+                        TextEdit {
                             anchors.centerIn: parent
                             text: auth.userCode || "…"
+                            readOnly: true
+                            selectByMouse: true
+                            selectionColor: Theme.accent
+                            selectedTextColor: Theme.accentInk
                             color: Theme.textPrimary
                             font.pixelSize: 28
                             font.bold: true
