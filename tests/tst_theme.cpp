@@ -75,11 +75,11 @@ const QStringList kColourTokens = {
     // type
     "textPrimary", "textSec", "textDim",
     // accent and the tints derived from it
-    "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
+    "accent", "accentDim", "accentInk", "accentText", "accentSoft", "accentTint", "accentWash",
     // interaction
     "hoverFill",
     // semantic
-    "red", "redSoft", "redInk", "green", "greenWash",
+    "red", "redSoft", "redInk", "redText", "green", "greenWash",
     // things drawn over arbitrary cover art, which is neither light nor dark
     "scrim", "artScrim", "artScrimStrong", "artInk", "artBorder",
 };
@@ -356,6 +356,17 @@ private slots:
             QVERIFY2(contrast(col("accent"), g) >= 3.0,
                      qPrintable(where + ": accent below AA-large ("
                                 + QString::number(contrast(col("accent"), g), 'f', 2) + ")"));
+            // The accent and red as text, from a 12 px error line to the
+            // playing row's title: AA.
+            for (const char *k : {"accentText", "redText"})
+                QVERIFY2(contrast(col(k), g) >= 4.5,
+                         qPrintable(where + ": " + QLatin1String(k) + " below AA ("
+                                    + QString::number(contrast(col(k), g), 'f', 2) + ")"));
+            // On a dark ground the quiet text sits at 11 to 13 px: AA there.
+            if (p.value(QStringLiteral("dark")).toBool())
+                QVERIFY2(contrast(col("textDim"), g) >= 4.5,
+                         qPrintable(where + ": textDim below AA on a dark ground ("
+                                    + QString::number(contrast(col("textDim"), g), 'f', 2) + ")"));
         }
 
         // Text on a solid accent fill (PillButton, the play button, the
@@ -716,10 +727,11 @@ private slots:
         const QStringList grounds = {"bg", "surface", "surfaceHigh", "surfaceHov", "border"};
         const QStringList type    = {"textPrimary", "textSec", "textDim"};
 
-        // With the pure-black switch on, this ramp is byte for byte the retired
-        // "Deep" palette, which deepMigratesToSeaInBlack() relies on.
+        // With the pure-black switch on, these grounds are byte for byte the
+        // retired "Deep" palette, which deepMigratesToSeaInBlack() relies on.
+        // The quiet greys were raised to APCA Lc 60 and 40 in 0.5.0.
         const QStringList darkRamp = {"#0a0a0a", "#141414", "#1e1e1e", "#383838", "#2a2a2a"};
-        const QStringList darkType = {"#ffffff", "#a0a0a0", "#6b6b6b"};
+        const QStringList darkType = {"#ffffff", "#b5b5b5", "#8f8f8f"};
         for (int i = 0; i < grounds.size(); ++i)
             QCOMPARE(dark.value(grounds.at(i)).value<QColor>().name(), darkRamp.at(i));
         for (int i = 0; i < type.size(); ++i)
@@ -780,8 +792,8 @@ private slots:
 
         // Everything a palette carries that is neither a ground nor type.
         const QSet<QString> mayDiffer = {
-            "accent", "accentDim", "accentInk", "accentSoft", "accentTint", "accentWash",
-            "red", "redSoft", "redInk", "green", "greenWash"
+            "accent", "accentDim", "accentInk", "accentText", "accentSoft", "accentTint", "accentWash",
+            "red", "redSoft", "redInk", "redText", "green", "greenWash"
         };
         for (int i = 0; i < names.size(); ++i) {
             for (int j = i + 1; j < names.size(); ++j) {

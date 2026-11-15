@@ -31,6 +31,8 @@ QtObject {
     readonly property color accentDim: p.accentDim
     // Ink on a solid accent fill, white in every theme.
     readonly property color accentInk: p.accentInk
+    // The accent as text or an icon; accent itself is for fills.
+    readonly property color accentText: p.accentText
     // Three strengths of accent wash: accentSoft tints a playing row,
     // accentTint a hero gradient, accentWash a filled badge.
     readonly property color accentSoft: p.accentSoft
@@ -44,6 +46,7 @@ QtObject {
 
     // ── semantic ─────────────────────────────────────────────────────────
     readonly property color red:     p.red
+    readonly property color redText: p.redText
     readonly property color redSoft: p.redSoft
     readonly property color redInk:   p.redInk
     readonly property color green:   p.green
