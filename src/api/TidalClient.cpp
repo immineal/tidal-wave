@@ -1107,7 +1107,7 @@ void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
             QUrlQuery form;
             form.addQueryItem("trackIds",           QString::number(trackId));
             form.addQueryItem("onArtifactNotFound", "FAIL");
-            form.addQueryItem("onDuplicateFound",   "SKIP");
+            form.addQueryItem("onDupes",            "SKIP");
             m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
                 [this, uuid, cb](QJsonObject, QString e) {
                     if (e.isEmpty()) m_playlistEtags.remove(uuid);

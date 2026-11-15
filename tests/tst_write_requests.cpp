@@ -267,6 +267,54 @@ private slots:
         QCOMPARE(before.answers(), QStringList{QStringLiteral("true,false,0")});
     }
 
+    // ── every other write ───────────────────────────────────────────────
+    // One row per write the app makes, as it must reach Tidal. The shapes
+    // follow python-tidal, the client that is known to work.
+    void everyWriteHasItsKnownShape_data()
+    {
+        QTest::addColumn<int>("write");
+        QTest::addColumn<QString>("line");
+        QTest::newRow("like a song")      << 0 << "POST /api/users/7/favorites/tracks {trackIds=101&countryCode=DE}";
+        QTest::newRow("unlike a song")    << 1 << "DELETE /api/users/7/favorites/tracks/101?countryCode=DE";
+        QTest::newRow("save an album")    << 2 << "POST /api/users/7/favorites/albums {albumIds=101&countryCode=DE}";
+        QTest::newRow("unsave an album")  << 3 << "DELETE /api/users/7/favorites/albums/101?countryCode=DE";
+        QTest::newRow("follow an artist") << 4 << "POST /api/users/7/favorites/artists {artistIds=101&countryCode=DE}";
+        QTest::newRow("unfollow")         << 5 << "DELETE /api/users/7/favorites/artists/101?countryCode=DE";
+        QTest::newRow("save a mix")       << 6 << "PUT /api/v2/favorites/mixes/add?mixIds=0a1b&onArtifactNotFound=FAIL&countryCode=DE";
+        QTest::newRow("unsave a mix")     << 7 << "PUT /api/v2/favorites/mixes/remove?mixIds=0a1b&onArtifactNotFound=FAIL&countryCode=DE";
+        QTest::newRow("new playlist")     << 8 << "POST /api/users/7/playlists {title=Tape%202&description=}";
+        QTest::newRow("rename")           << 9 << "POST /api/playlists/pl-tape-1 [If-None-Match: \"v1\"] {title=Tape%202&description=Side%20B}";
+        // python-tidal's name for the duplicate rule; onDuplicateFound let a
+        // duplicate in during the audit.
+        QTest::newRow("add a song")       << 10 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101&onArtifactNotFound=FAIL&onDupes=SKIP}";
+    }
+
+    void everyWriteHasItsKnownShape()
+    {
+        QFETCH(int, write);
+        QFETCH(QString, line);
+        Rig rig;
+        bool done = false;
+        const auto answered = [&done](bool) { done = true; };
+        TidalClient &c = rig.client;
+        switch (write) {
+        case 0:  c.addTrackFavorite(101, answered); break;
+        case 1:  c.removeTrackFavorite(101, answered); break;
+        case 2:  c.addAlbumFavorite(101, answered); break;
+        case 3:  c.removeAlbumFavorite(101, answered); break;
+        case 4:  c.addArtistFavorite(101, answered); break;
+        case 5:  c.removeArtistFavorite(101, answered); break;
+        case 6:  c.addMixFavorite(QStringLiteral("0a1b"), answered); break;
+        case 7:  c.removeMixFavorite(QStringLiteral("0a1b"), answered); break;
+        case 8:  c.createPlaylist(QStringLiteral("Tape 2"),
+                                  [&done](Tidal::Playlist, QString) { done = true; }); break;
+        case 9:  c.editPlaylist(kUuid, QStringLiteral("Tape 2"), QStringLiteral("Side B"), answered); break;
+        case 10: c.addTrackToPlaylist(kUuid, 101, answered); break;
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(done && rig.settled(), 5000);
+        QCOMPARE(rig.tidal.writes(), QStringList{line});
+    }
+
 };
 
 QTEST_GUILESS_MAIN(TestWriteRequests)

@@ -673,7 +673,7 @@ void TidalBridge::editPlaylist(const QString &uuid, const QString &title,
 
 // ── a playlist's own numbers, after its contents changed ────────────────────
 // A round trip, because the count cannot be computed: the add posts
-// `onDuplicateFound=SKIP`, so a successful reply does not mean the playlist
+// `onDupes=SKIP`, so a successful reply does not mean the playlist
 // grew. Duration and image cannot be derived from a track id either.
 void TidalBridge::refreshPlaylistMeta(const QString &uuid, std::function<void()> then) {
     if (uuid.isEmpty()) { if (then) then(); return; }

@@ -787,7 +787,7 @@ private slots:
     }
 
     // The count is not written on the strength of the post alone: the post
-    // sends onDuplicateFound=SKIP, so an accepted add may have added nothing.
+    // sends onDupes=SKIP, so an accepted add may have added nothing.
     void theCacheIsNotWrittenUntilTheHeaderAnswers() {
         Harness h;
         h.fillOne(0, 0);

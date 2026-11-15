@@ -189,7 +189,7 @@ TestCase {
                 "the picker did not start from the empty playlist the report starts from")
 
         // The server reports two tracks when asked, which is the only way the
-        // app can know: the post sends onDuplicateFound=SKIP, so a success does
+        // app can know: the post sends onDupes=SKIP, so a success does
         // not mean the playlist grew.
         bridge.setPlaylistHeaderForTest("p-tape", tapeHeaderWithTwo())
 
