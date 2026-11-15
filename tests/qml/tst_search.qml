@@ -530,6 +530,77 @@ TestCase {
                   + "is up and typing goes nowhere")
     }
 
+    // ── coming back to an old query ─────────────────────────────────────
+    // Ctrl+2 over an old query and then typing appended to it. The field has
+    // to come up with its text selected, so a keystroke replaces the query.
+
+    function test_coming_back_selects_the_old_query() {
+        var win = showApp()
+        keyClick(Qt.Key_2, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "search" }, settleMs,
+                  "Ctrl+2 did not navigate to the search page")
+        var bar = searchBarIn(win.contentItem)
+        bar.text = query
+
+        keyClick(Qt.Key_1, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "home" }, settleMs,
+                  "Ctrl+1 did not navigate home")
+        keyClick(Qt.Key_2, Qt.ControlModifier)
+        tryVerify(function () { return win.currentPage === "search" }, settleMs,
+                  "Ctrl+2 did not navigate back to the search page")
+        frame(win.contentItem)
+
+        var input = win.activeFocusItem
+        verify(win.isTypingContext(input), "the field did not take the keyboard")
+        compare(input.selectedText, query,
+                "the old query was not selected, so typing appends to it")
+
+        // What a keystroke does to a selection: it goes, and the key is all
+        // that is left.
+        input.remove(input.selectionStart, input.selectionEnd)
+        input.insert(input.cursorPosition, "k")
+        compare(bar.text, "k", "the keystroke did not replace the old query")
+    }
+
+    // Typing a new query over the old one keeps the old results up until the
+    // new search runs; the page does not drop back to recents in between.
+    function test_the_old_results_stay_until_the_new_query_runs() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        typeInto(win.page, query)
+        tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
+                  settleMs, "the first query never produced results")
+        var searches = bridge.searchCountForTest()
+
+        typeInto(win.page, "k")
+        frame(win.contentItem)
+        verify(saysSomethingContaining(resultsArea(win.page), "Erfundenes Lied 1"),
+               "the results went the moment a new query was started: "
+               + visibleCopy(win.page))
+        compare(bridge.searchCountForTest(), searches,
+                "a one-letter query went out as a search")
+
+        bridge.setSearchResultsForTest(fakeTracks(1), [], [], [])
+        typeInto(win.page, "ke")
+        tryVerify(function () { return bridge.searchCountForTest() === searches + 1 },
+                  settleMs, "the new query never went out")
+        tryVerify(function () { return win.page.tracks.length === 1 }, settleMs,
+                  "the new query's results never replaced the old ones")
+    }
+
+    // Emptying the field is not a new query, and goes back to recents.
+    function test_an_emptied_field_still_drops_the_results() {
+        var win = showPage()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        typeInto(win.page, query)
+        tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
+                  settleMs, "the first query never produced results")
+        typeInto(win.page, "")
+        frame(win.contentItem)
+        verify(!saysSomethingContaining(win.page, "Erfundenes Lied 1"),
+               "the results stayed on screen with the field emptied")
+    }
+
     // ════════════════════════════════════════════════════════════════════
     //  Paging, recent searches, mixes, section order and the tab pill.
     // ════════════════════════════════════════════════════════════════════
@@ -1455,7 +1526,9 @@ TestCase {
         search(win, "slate")
         compare(orderNames(win.page)[0], "Artists")
 
-        typeInto(win.page, "s")
+        // Emptied, not shortened: a short query typed over this one keeps the
+        // answer up until it runs (test_the_old_results_stay_until_...).
+        typeInto(win.page, "")
         compare(orderNames(win.page),
                 ["Tracks", "Albums", "Artists", "Playlists", "Mixes"],
                 "the previous query's order outlived the query")

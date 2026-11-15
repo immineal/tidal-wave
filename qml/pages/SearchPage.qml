@@ -36,6 +36,11 @@ Rectangle {
 
     readonly property bool replied: query.length >= 2 && repliedFor === query
 
+    // A new query typed over an answered one keeps that answer up until it
+    // runs. Only an emptied field goes back to the recent searches.
+    readonly property bool showsResults:
+        query.length >= 2 || (query.length > 0 && repliedFor.length > 0)
+
     // Hits of the kind the active tab shows, so the no-results strip speaks
     // about that tab and not about all five arrays.
     readonly property int tabHits:
@@ -179,7 +184,8 @@ Rectangle {
             placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
                 root.query = text
-                if (text.length < 2) { clearResults(); return }
+                if (text.length === 0) { clearResults(); return }
+                if (text.length < 2) { root.holdResults(); return }
                 searchDebounce.restart()
             }
             // Enter means this is the query, so it is remembered whatever the
@@ -200,7 +206,7 @@ Rectangle {
         Item {
             id: tabsHost
             objectName: "searchTabsHost"
-            visible: root.query.length >= 2
+            visible: root.showsResults
             Layout.leftMargin: 24
             // The row is the whole of this item's size. A plain Item has no
             // implicit size of its own, and a ColumnLayout asks for one.
@@ -384,7 +390,7 @@ Rectangle {
             objectName: "searchEmptyState"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.query.length < 2
+            visible: !root.showsResults
 
             ColumnLayout {
                 anchors.centerIn: parent
@@ -537,7 +543,7 @@ Rectangle {
             // Stated, because a ScrollView on Qt 6.5 works its content height
             // out once and does not follow the column as rows arrive.
             contentHeight: resultsColumn.implicitHeight
-            visible: root.query.length >= 2
+            visible: root.showsResults
             opacity: root.resultsIn
 
             ColumnLayout {
@@ -1115,11 +1121,12 @@ Rectangle {
     function loadMore(kind) {
         if (kind < kTracks || kind > kMixes) return
         if (loading || loadingMore || !_more[kind]) return
-        if (query.length < 2) return
+        // The query on screen is the answered one, not what is being typed.
+        if (repliedFor.length < 2) return
 
         loadingMore = true
         var gen = root._searchGen
-        var q = root.query
+        var q = root.repliedFor
         // Where the page sits now. While the column's implicit height lags
         // behind its new children, contentY is clamped to the old maximum and
         // the view jumps up. Put back once the layout has settled.
@@ -1196,6 +1203,13 @@ Rectangle {
         _sent  = [0, 0, 0, 0, 0, 0]
         _total = [0, 0, 0, 0, 0, 0]
         _more  = [false, false, false, false, false, false]
+    }
+
+    // Too short to search: nothing goes out and nothing still out may land,
+    // but the answer on screen stays.
+    function holdResults() {
+        searchDebounce.stop()
+        _searchGen++; loading = false; loadingMore = false
     }
 
     function clearResults() {
