@@ -45,7 +45,7 @@ Item {
         if (s.length > 0) return s
         var secs = root.trackData ? Number(root.trackData.duration) : NaN
         if (!isFinite(secs) || secs <= 0) return ""
-        return Math.floor(secs / 60) + ":" + ("0" + Math.floor(secs % 60)).slice(-2)
+        return Theme.clock(secs * 1000)
     }
     readonly property string coverText:   textOf(root.coverUrl)
 
@@ -324,10 +324,11 @@ Item {
             }
 
             Text {
+                objectName: "trackDuration"
                 text: root.durationText
                 color: Theme.textDim
                 font.pixelSize: 13
-                Layout.preferredWidth: 40
+                Layout.preferredWidth: Math.max(40, implicitWidth)
                 horizontalAlignment: Text.AlignRight
             }
 

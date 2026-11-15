@@ -113,4 +113,14 @@ QtObject {
     // zero, so a transition still starts and finishes. An infinite animation
     // also needs `loops: Theme.reduceMotion ? 1 : Animation.Infinite`.
     function dur(ms) { return reduceMotion ? 0 : ms }
+
+    // A length in ms as a clock reads it: m:ss, and h:mm:ss from an hour on.
+    // The seek bar and the track rows share it, so the two always agree.
+    function clock(ms) {
+        var t = Math.max(0, Math.floor((Number(ms) || 0) / 1000))
+        var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60
+        var ss = (s < 10 ? "0" : "") + s
+        if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + ss
+        return m + ":" + ss
+    }
 }

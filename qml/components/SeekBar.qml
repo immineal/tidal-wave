@@ -18,7 +18,8 @@ Item {
     // the duration label outside the bar for that frame.
     Text {
         id: elapsedLabel
-        width: 36
+        // As wide as the length: a track of an hour or more reads h:mm:ss.
+        width: durationLabel.width
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         text: msToStr(_dragging ? _dragValue : position)
@@ -82,7 +83,7 @@ Item {
 
     Text {
         id: durationLabel
-        width: 36
+        width: Math.max(36, implicitWidth)
         anchors.right: parent.right
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
@@ -91,10 +92,5 @@ Item {
         font.pixelSize: 11
     }
 
-    function msToStr(ms) {
-        var s = Math.floor(ms / 1000)
-        var m = Math.floor(s / 60)
-        s = s % 60
-        return m + ":" + (s < 10 ? "0" : "") + s
-    }
+    function msToStr(ms) { return Theme.clock(ms) }
 }
