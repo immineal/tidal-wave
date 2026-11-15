@@ -297,6 +297,8 @@ private:
     void playFile(QTemporaryFile *file, const QString &quality);
     void stepForward(bool heldPaused, bool wait);
     void setStopped(bool s);
+    // The output's linear factor for a level on the volume slider.
+    static double outputVolume(double level);
     // The current track ran out: the queue moves on, or repeat-one starts
     // the same file over.
     void trackEnded(bool heldPaused = false);

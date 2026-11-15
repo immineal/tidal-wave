@@ -5,6 +5,8 @@
 // play a saved track that no longer resolves is stepped over.
 
 #include <QTest>
+#include <QAudio>
+#include <QAudioOutput>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -160,6 +162,20 @@ private slots:
         QCOMPARE(b.p().muted(), true);
         QCOMPARE(b.p().shuffle(), true);
         QCOMPARE(b.p().repeatMode(), 1);
+    }
+
+    // An earlier version saved the output's linear factor. It comes back as
+    // loud as it was, with the slider where that loudness sits.
+    void aVolumeAnEarlierVersionSavedSoundsTheSame() {
+        QSettings().setValue(QStringLiteral("user_%1/playback/volume").arg(kUser), 0.33);
+        Launch b;
+        QVERIFY(b.settle());
+        const double slider = QAudio::convertVolume(0.33f, QAudio::LinearVolumeScale,
+                                                    QAudio::LogarithmicVolumeScale);
+        QVERIFY2(qAbs(b.p().volume() - slider) < 0.001, qPrintable(QString::number(b.p().volume())));
+        QAudioOutput *out = b.p().findChild<QAudioOutput *>();
+        QVERIFY(out);
+        QVERIFY2(qAbs(out->volume() - 0.33) < 0.001, qPrintable(QString::number(out->volume())));
     }
 
     // A fresh install restores nothing and asks for nothing.

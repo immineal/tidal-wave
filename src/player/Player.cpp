@@ -9,6 +9,7 @@
 #include <QDataStream>
 #include <QDir>
 #include <QMediaDevices>
+#include <QAudio>
 #include <QScopedValueRollback>
 #include <QSet>
 #include "api/TidalBridge.h"
@@ -63,7 +64,7 @@ void Player::initAudio() {
     // the default at construction and never notices a later change.
     m_audioOut = new QAudioOutput(resolveAudioDevice(), this);
     m_player->setAudioOutput(m_audioOut);
-    m_audioOut->setVolume(m_pendingVolume);
+    m_audioOut->setVolume(outputVolume(m_pendingVolume));
     m_audioOut->setMuted(m_pendingMuted);
 
     // Needs an instance: audioOutputsChanged is not a static signal.
@@ -271,14 +272,15 @@ Player::AudioState Player::captureAudioState() const {
     // device while casting, and the swap disturbs the local side.
     s.position = m_player ? m_player->position() : 0;
     s.playing  = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
-    s.volume   = m_audioOut ? m_audioOut->volume()  : m_pendingVolume;
+    s.volume   = m_pendingVolume;
     s.muted    = m_audioOut ? m_audioOut->isMuted() : m_pendingMuted;
     return s;
 }
 
 void Player::restoreAudioState(const AudioState &state) {
     if (m_audioOut) {
-        m_audioOut->setVolume(state.volume);
+        m_pendingVolume = state.volume;
+        m_audioOut->setVolume(outputVolume(state.volume));
         // The live value: while casting the local output is force-muted and
         // must stay that way across a swap, whatever m_pendingMuted says.
         m_audioOut->setMuted(state.muted);
@@ -305,7 +307,7 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 #endif
 
     auto *fresh = new QAudioOutput(device, this);
-    fresh->setVolume(state.volume);
+    fresh->setVolume(outputVolume(state.volume));
     fresh->setMuted(state.muted);
 
     // Detach, delete the old output outright, then attach. A destroyed output
@@ -353,7 +355,14 @@ qint64 Player::duration() const {
     const qint64 loaded = (m_player && !m_player->source().isEmpty()) ? m_player->duration() : 0;
     return loaded > 0 ? loaded : qint64(m_currentTrack.duration) * 1000;
 }
-double Player::volume()   const { return m_audioOut ? m_audioOut->volume() : m_pendingVolume; }
+double Player::volume()   const { return m_pendingVolume; }
+
+double Player::outputVolume(double level) {
+    // The slider is a loudness scale, as Qt advises for one; the output
+    // takes a linear factor.
+    return QAudio::convertVolume(float(level), QAudio::LogarithmicVolumeScale,
+                                 QAudio::LinearVolumeScale);
+}
 bool   Player::muted()    const { return m_audioOut ? m_audioOut->isMuted() : m_pendingMuted; }
 
 void Player::tellPlaying() {
@@ -976,7 +985,7 @@ void Player::setVolume(double v) {
 #ifdef Q_OS_LINUX
     if (casting() && m_castSession) m_castSession->setVolume(m_pendingVolume);
 #endif
-    if (m_audioOut) m_audioOut->setVolume(m_pendingVolume);
+    if (m_audioOut) m_audioOut->setVolume(outputVolume(m_pendingVolume));
     emit volumeChanged(m_pendingVolume);
     schedulePersist();
 }
@@ -1970,7 +1979,9 @@ void Player::savePlaybackState() {
     const QString p = settingsPrefix();
     if (p.isEmpty()) return;
     QSettings s;
-    s.setValue(p + QStringLiteral("volume"),     volume());
+    // Under its own key: "volume" held the output's linear factor.
+    s.setValue(p + QStringLiteral("volumeLevel"), volume());
+    s.remove(p + QStringLiteral("volume"));
     s.setValue(p + QStringLiteral("muted"),      muted());
     s.setValue(p + QStringLiteral("shuffle"),    m_shuffle);
     s.setValue(p + QStringLiteral("repeat"),     m_repeatMode);
@@ -1988,8 +1999,11 @@ void Player::restorePlaybackState() {
     // Nothing read back here is worth writing straight out again.
     m_suspendPersist = true;
 
-    if (s.contains(p + QStringLiteral("volume")))
-        setVolume(s.value(p + QStringLiteral("volume")).toDouble());
+    if (s.contains(p + QStringLiteral("volumeLevel")))
+        setVolume(s.value(p + QStringLiteral("volumeLevel")).toDouble());
+    else if (s.contains(p + QStringLiteral("volume")))   // saved before 0.5.0: as loud as it was
+        setVolume(QAudio::convertVolume(s.value(p + QStringLiteral("volume")).toFloat(),
+                                        QAudio::LinearVolumeScale, QAudio::LogarithmicVolumeScale));
     if (s.contains(p + QStringLiteral("muted")))
         setMuted(s.value(p + QStringLiteral("muted")).toBool());
 
