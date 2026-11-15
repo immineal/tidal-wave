@@ -191,6 +191,10 @@
         <translation>Info</translation>
     </message>
     <message>
+        <source>Read more</source>
+        <translation>Mehr lesen</translation>
+    </message>
+    <message>
         <source>Related Artists</source>
         <translation>Ähnliche Künstler</translation>
     </message>

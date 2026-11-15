@@ -1,6 +1,7 @@
-// The artist's name over the hero photo: no outline, and readable on the
-// gradient over the brightest or darkest photo in every palette. Every id and
-// name below is invented.
+// The lower half of the artist page and its name: the bio as Tidal sends it
+// (<br/> between paragraphs, [wimpLink ...] references), clamped to a few
+// lines with a toggle, and the name over the photo without an outline. Every
+// id, name and sentence below is invented.
 
 import QtQuick
 import QtQuick.Controls
@@ -58,6 +59,137 @@ TestCase {
         prefs.theme = "sea"
         prefs.oledBlack = false
         prefs.tintedGreys = false
+    }
+
+    // A bio of `n` invented sentences, one paragraph.
+    function longBio(n) {
+        var s = []
+        for (var i = 0; i < n; ++i)
+            s.push("Die Band spielte im Jahr " + (1990 + i) + " eine lange Reihe von Konzerten in kleinen Hallen.")
+        return s.join(" ")
+    }
+
+    // ── formatBio ────────────────────────────────────────────────────────────
+
+    function test_breaksAreParagraphsNotText() {
+        var page = makePage()
+        var html = page.formatBio("Erster Absatz.<br/>Zweiter Absatz.")
+        verify(html.indexOf("&lt;br") < 0, "the <br/> came out as text: " + html)
+        verify(html.indexOf("<br") > 0, "the paragraphs are not broken: " + html)
+        verify(html.indexOf("Erster Absatz.") < html.indexOf("Zweiter Absatz."))
+        // Tidal's own bios use one or two in a row; both read as one break.
+        compare(page.formatBio("A.<br/><br/>B."), page.formatBio("A.<br/>B."))
+        compare(page.formatBio("A.<br>B."), page.formatBio("A.<br/>B."))
+        compare(page.formatBio("A. <BR /> B."), page.formatBio("A.<br/>B."))
+        compare(page.formatBio("A.\n\nB."), page.formatBio("A.<br/>B."))
+    }
+
+    function test_otherMarkupStaysText() {
+        var page = makePage()
+        var html = page.formatBio("Ein <b>fetter</b> Satz & mehr")
+        verify(html.indexOf("<b>") < 0, "markup other than <br/> was let through: " + html)
+        verify(html.indexOf("&lt;b&gt;fetter&lt;/b&gt;") >= 0, html)
+        verify(html.indexOf("&amp; mehr") >= 0, html)
+    }
+
+    function test_wimpLinksBecomeLinks() {
+        var page = makePage()
+        page.artistId = testCase.artistId
+        var html = page.formatBio(
+            'Mit [wimpLink artistId="900000077"]Der Gast[/wimpLink] nahm sie '
+            + '[wimpLink albumId="900000088"]Das Album[/wimpLink] auf.')
+        verify(html.indexOf("[wimpLink") < 0 && html.indexOf("[/wimpLink]") < 0, html)
+        verify(html.indexOf('href="artist:900000077"') >= 0, "no artist link: " + html)
+        verify(html.indexOf('href="album:900000088"') >= 0, "no album link: " + html)
+        verify(html.indexOf(">Der Gast</a>") >= 0, html)
+    }
+
+    // A link to the page already open, or to something with no page here,
+    // would do nothing: those read as plain words.
+    function test_deadLinksArePlainText() {
+        var page = makePage()
+        page.artistId = testCase.artistId
+        var html = page.formatBio(
+            '[wimpLink artistId="' + testCase.artistId + '"]Die Band[/wimpLink] und '
+            + '[wimpLink trackId="900000099"]ein Lied[/wimpLink] und '
+            + '[wimpLink playlistId="aaaa-bbbb"]eine Liste[/wimpLink].')
+        compare(html.indexOf("<a"), -1, "a dead link was made: " + html)
+        verify(html.indexOf("Die Band und ein Lied und eine Liste.") >= 0, html)
+    }
+
+    // Square brackets that are not a reference are words, and a reference
+    // that never closes does not leave its tag on screen.
+    function test_strayBracketsAndUnclosedLinks() {
+        var page = makePage()
+        verify(page.formatBio("Die [Erste Reihe] spielte").indexOf("[Erste Reihe]") >= 0)
+        var html = page.formatBio('Mit [wimpLink artistId="900000077"]Der Gast und mehr.')
+        verify(html.indexOf("wimpLink") < 0, html)
+        verify(html.indexOf("Mit Der Gast und mehr.") >= 0, html)
+    }
+
+    // ── the clamp ────────────────────────────────────────────────────────────
+
+    function test_longBioIsClampedWithAToggle() {
+        var page = open({ id: testCase.artistId, name: "Eine Band", bio: longBio(30) })
+        var bio = findChild(page, "artistBio")
+        var toggle = findChild(page, "artistBioToggle")
+        verify(bio, "the page has no bio text")
+        verify(toggle, "the page has no Read more toggle")
+        verify(bio.visible)
+        verify(bio.lineCount <= page.bioCollapsedLines,
+               "the collapsed bio shows " + bio.lineCount + " lines")
+        verify(bio.truncated, "the collapsed bio is not cut")
+        verify(toggle.visible, "a cut bio offers no Read more")
+        compare(toggle.text, "Read more")
+        var collapsed = bio.height
+
+        mouseClick(toggle)
+        settle(page)
+        verify(!bio.truncated, "the opened bio is still cut")
+        verify(bio.height > collapsed * 2, "the opened bio did not grow: " + bio.height)
+        verify(toggle.visible)
+        compare(toggle.text, "Show less")
+
+        // The opened bio pushes the toggle below the window, so scroll to it.
+        var flick = findChild(page, "artistContent").contentItem
+        flick.contentY = Math.max(0, toggle.mapToItem(flick.contentItem, 0, 0).y - 200)
+        settle(page)
+        mouseClick(toggle)
+        settle(page)
+        verify(bio.truncated)
+        compare(bio.height, collapsed)
+        compare(toggle.text, "Read more")
+    }
+
+    function test_shortBioHasNoToggle() {
+        var page = open({ id: testCase.artistId, name: "Eine Band", bio: "Ein Satz." })
+        var bio = findChild(page, "artistBio")
+        verify(bio.visible)
+        verify(!bio.truncated)
+        verify(!findChild(page, "artistBioToggle").visible, "a whole bio offers Read more")
+    }
+
+    // A measure of about 75 characters on a wide window, not the page width.
+    function test_bioKeepsAReadableMeasure() {
+        var page = open({ id: testCase.artistId, name: "Eine Band", bio: longBio(30) }, 1600)
+        var bio = findChild(page, "artistBio")
+        var fm = createTemporaryObject(metricsC, testCase, { font: bio.font })
+        verify(bio.width <= fm.averageCharacterWidth * 80,
+               "the bio is " + bio.width + " px wide, "
+               + Math.round(bio.width / fm.averageCharacterWidth) + " characters")
+        verify(bio.width >= fm.averageCharacterWidth * 60, "the bio is only " + bio.width + " px wide")
+    }
+
+    // A new artist starts collapsed.
+    function test_anotherArtistStartsCollapsed() {
+        var page = open({ id: testCase.artistId, name: "Eine Band", bio: longBio(30) })
+        mouseClick(findChild(page, "artistBioToggle"))
+        settle(page)
+        verify(!findChild(page, "artistBio").truncated)
+        bridge.setArtistForTest({ id: testCase.artistId + 1, name: "Andere Band", bio: longBio(30) }, [], [])
+        page.artistId = testCase.artistId + 1
+        settle(page)
+        verify(findChild(page, "artistBio").truncated, "the next artist opened expanded")
     }
 
     // ── the name over the photo ──────────────────────────────────────────────

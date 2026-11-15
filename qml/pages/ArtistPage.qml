@@ -24,6 +24,8 @@ Rectangle {
     property bool loading: false
     property bool showAllTracks: false
     property bool isFollowing: false
+    property bool bioExpanded: false
+    readonly property int bioCollapsedLines: 4
 
     // What the last load was told, "" when it was served.
     property string loadError: ""
@@ -65,6 +67,7 @@ Rectangle {
     function loadArtist() {
         loading = true
         loadError = ""
+        bioExpanded = false
         // Which artist these three replies are about. artistId can change while
         // they are in flight, and a reply for the artist just left must not
         // touch the one on screen. Checked before the error.
@@ -381,14 +384,29 @@ Rectangle {
                     font.bold: true
                 }
 
+                FontMetrics { id: bioMetrics; font: bioText.font }
+
+                // StyledText, not RichText: only its layout honours
+                // maximumLineCount, and the clamp relies on `truncated`.
                 Text {
+                    id: bioText
+                    objectName: "artistBio"
                     Layout.fillWidth: true
+                    // About 75 characters a line; the page width is too long a line.
+                    Layout.maximumWidth: Math.ceil(bioMetrics.averageCharacterWidth * 75)
                     text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
+                    linkColor: Theme.accent
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
                     lineHeight: 1.5
-                    textFormat: Text.RichText
+                    textFormat: Text.StyledText
+                    // undefined resets the limit, so the whole bio shows.
+                    maximumLineCount: root.bioExpanded ? undefined : root.bioCollapsedLines
+                    elide: Text.ElideRight
+                    HoverHandler {
+                        cursorShape: bioText.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    }
                     onLinkActivated: (link) => {
                         var parts = link.split(":")
                         if (parts.length === 2) {
@@ -402,6 +420,23 @@ Rectangle {
                         }
                     }
                 }
+
+                // Shown once the bio is cut, and kept while it is open.
+                Text {
+                    objectName: "artistBioToggle"
+                    visible: root.bioExpanded || bioText.truncated
+                    text: root.bioExpanded ? qsTr("Show less") : qsTr("Read more")
+                    color: bioToggleHov.hovered ? Theme.textPrimary : Theme.textSec
+                    font.pixelSize: 13
+                    font.bold: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    HoverHandler { id: bioToggleHov }
+                    TapHandler { onTapped: root.bioExpanded = !root.bioExpanded }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
+                }
+
+                Item { height: 16 }
             }
 
             HorizontalSection {
@@ -420,17 +455,42 @@ Rectangle {
         }
     }
 
+    function escapeBio(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
+    // A reference becomes a link only where it opens another page here.
+    function bioLink(kind, id, label) {
+        var core = label.trim()
+        var words = root.escapeBio(core)
+        var opens = /^\d+$/.test(id)
+            && (kind === "album" || (kind === "artist" && Number(id) !== Number(root.artistId)))
+        if (opens && core.length > 0)
+            words = '<a href="' + kind + ':' + id + '">' + words + '</a>'
+        // Spaces Tidal puts inside the reference stay outside the link.
+        return (/^\s/.test(label) ? " " : "") + words + (/\s$/.test(label) ? " " : "")
+    }
+
+    // Tidal separates paragraphs with one or two <br/> and refers to pages as
+    // [wimpLink artistId="…"]name[/wimpLink]. Any other markup is shown as text.
     function formatBio(bio) {
         if (!bio) return ""
-        var html = bio
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-        html = html.replace(/\[wimpLink\s+(artistId|albumId|playlistId|trackId)="([^"]+)"\](.*?)\[\/wimpLink\]/g, function(match, typeAttr, id, text) {
-            var type = typeAttr.replace("Id", "")
-            return "<a href='" + type + ":" + id + "' style='color: " + Theme.accent + "; text-decoration: none; font-weight: bold;'>" + text + "</a>"
-        })
-        return html.replace(/\n/g, "<br/>")
+        var paragraphs = bio.split(/(?:\s*<br\s*\/?>\s*|\s*\n\s*)+/i)
+        var out = []
+        for (var i = 0; i < paragraphs.length; ++i) {
+            var p = paragraphs[i].trim()
+            if (p.length === 0) continue
+            var re = /\[wimpLink\s+(\w+?)Id="([^"]*)"\]([\s\S]*?)\[\/wimpLink\]/g
+            var html = "", last = 0, m
+            while ((m = re.exec(p)) !== null) {
+                html += root.escapeBio(p.slice(last, m.index)) + root.bioLink(m[1], m[2], m[3])
+                last = re.lastIndex
+            }
+            html += root.escapeBio(p.slice(last))
+            // A reference that never closes leaves no tag on screen.
+            out.push(html.replace(/\[\/?wimpLink[^\]]*\]/g, ""))
+        }
+        return out.join("<br><br>")
     }
 
     function navigateTo(page, params) {
