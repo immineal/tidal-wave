@@ -134,6 +134,9 @@ public:
     // `index` is the row to take out once earlier removals have landed, -1
     // when there is none. `stale` means the playlist changed elsewhere.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb);
+    // function(ok). On success the playlist leaves the caches, and
+    // playlistDeleted tells the pages and the sidebar.
+    Q_INVOKABLE void deletePlaylist         (const QString &uuid, QJSValue cb);
     Q_INVOKABLE QVariantList getUserPlaylists() const;
     Q_INVOKABLE void markPlaylistPlayed     (const QString &uuid);
 
@@ -201,9 +204,11 @@ signals:
     void playlistStatsRefreshed(const QString &uuid);
     // A mix the user just saved, carrying the row for LibraryIndex.
     void favoriteMixAdded(const Mix &mix);
-    // `kind` is "album", "artist", "track" or "mix", spelled the way
-    // LibraryIndex spells it.
+    // `kind` is "album", "artist", "track", "mix" or "playlist", spelled the
+    // way LibraryIndex spells it.
     void favoriteRemoved(const QString &kind, const QString &id);
+    // A playlist the user deleted. A page showing it leaves.
+    void playlistDeleted(const QString &uuid);
 
     // syncFavorites() found a change made on another device. The bridge's own
     // caches and signals are already up to date.

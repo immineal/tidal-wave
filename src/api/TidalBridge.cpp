@@ -761,6 +761,27 @@ void TidalBridge::nextRemoval(const QString &uuid) {
     });
 }
 
+void TidalBridge::deletePlaylist(const QString &uuid, QJSValue cb) {
+    m_client->deletePlaylist(uuid, [this, uuid, cb](bool success) mutable {
+        // The answer first: playlistDeleted can close the page whose dialog
+        // asked, and the callback must not land on a destroyed dialog.
+        call(cb, { QJSValue(success) });
+        if (success) {
+            favoriteChangedHere(TidalClient::FavoriteKind::Playlists);
+            for (int i = 0; i < m_favoritePlaylists.size(); ++i) {
+                if (m_favoritePlaylists[i].uuid != uuid) continue;
+                m_favoritePlaylists.removeAt(i);
+                break;
+            }
+            // Removals still queued for it have nothing left to remove.
+            m_removals.remove(uuid);
+            emit favoritePlaylistsChanged();
+            emit favoriteRemoved(QStringLiteral("playlist"), uuid);
+            emit playlistDeleted(uuid);
+        }
+    });
+}
+
 QVariantList TidalBridge::getUserPlaylists() const {
     QList<Playlist> playlists = m_favoritePlaylists;
     sortPlaylists(playlists);

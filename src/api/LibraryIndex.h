@@ -77,8 +77,7 @@ public:
     // server answered with. Writes what mergePlaylistMeta() copies and
     // nothing else.
     void refreshPlaylistMeta(const Tidal::Playlist &p);
-    // `kind` is album/artist/track/mix. Nothing in the interface unfavourites
-    // a playlist.
+    // `kind` is album/artist/track/mix, or playlist for one the user deleted.
     void removeEntry(const QString &kind, const QString &id);
 
     // The library list filtered by kind, with nothing typed. Empty `kinds`
@@ -133,6 +132,7 @@ private:
         QString subtitle;
         QString imageUrl;
         QString playlistType;        // playlists: USER / EDITORIAL, see toRow
+        bool    editable = false;    // playlists: made by this account
         QString mixType;             // mixes: DISCOVERY_MIX / TRACK_MIX / ..., see toRow
         qint64  albumId = 0;         // tracks: the saved album holding them
         int     trackCount = 0;      // albums and playlists; QML formats it,

@@ -323,6 +323,10 @@ Item {
     // coordinates.
     function showPinMenu(x, y, data) {
         if (!data) return
+        // Only a playlist this account made can be deleted; a library row
+        // says so, a pinned item in the rail does not.
+        pinContextMenu.removeLabel = (data.kind === "playlist" && data.editable === true)
+                                     ? qsTr("Delete playlist…") : ""
         pinContextMenu.showPin(x, y, data.kind, data.id, data.title || "",
                                data.subtitle || "", data.imageUrl || "")
     }
@@ -330,7 +334,12 @@ Item {
     ContextMenu {
         id: pinContextMenu
         objectName: "sidebarPinMenu"
+        onRemoveRequested: deletePlaylistDialog.askFor(pinContextMenu.pinId,
+                                                       pinContextMenu.pinTitle)
     }
+
+    readonly property alias deleteDialog: deletePlaylistDialog
+    DeletePlaylistDialog { id: deletePlaylistDialog }
 
     // Coalesces a burst of keystrokes into one pass over the index. 120ms is
     // below the point where the list feels like it is lagging the typing.

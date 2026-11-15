@@ -399,6 +399,13 @@
     </message>
 </context>
 <context>
+    <name>ConfirmDialog</name>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+</context>
+<context>
     <name>ContextMenu</name>
     <message numerus="yes">
         <source>%n track(s) added to play next</source>
@@ -475,6 +482,30 @@
         <source>Unpin</source>
         <comment>verb, remove from the pinned block</comment>
         <translation>Nicht mehr anheften</translation>
+    </message>
+</context>
+<context>
+    <name>DeletePlaylistDialog</name>
+    <message>
+        <source>Delete playlist?</source>
+        <translation>Playlist löschen?</translation>
+    </message>
+    <message>
+        <source>“%1” will be deleted from your Tidal account on every device. This cannot be undone.</source>
+        <translation>„%1“ wird auf allen Geräten aus deinem Tidal-Konto gelöscht. Das lässt sich nicht rückgängig machen.</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <comment>verb, the button that deletes the playlist</comment>
+        <translation>Löschen</translation>
+    </message>
+    <message>
+        <source>Deleting…</source>
+        <translation>Wird gelöscht…</translation>
+    </message>
+    <message>
+        <source>Could not delete the playlist.</source>
+        <translation>Die Playlist konnte nicht gelöscht werden.</translation>
     </message>
 </context>
 <context>
@@ -1129,6 +1160,11 @@
         <translation>Beschreibung</translation>
     </message>
     <message>
+        <source>Delete</source>
+        <comment>verb, the button that deletes the playlist</comment>
+        <translation>Löschen</translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation>Abbrechen</translation>
     </message>
@@ -1625,6 +1661,10 @@
 </context>
 <context>
     <name>SideBar</name>
+    <message>
+        <source>Delete playlist…</source>
+        <translation>Playlist löschen…</translation>
+    </message>
     <message>
         <source>Home</source>
         <comment>noun, the home page</comment>

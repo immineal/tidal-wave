@@ -605,6 +605,30 @@ public:
         if (m_deferEdits) { m_pendingEdits.append({cb, uuid, title, description}); return; }
         deliverEdit(cb, uuid, title, description);
     }
+    // ── deletePlaylist, as TidalBridge::deletePlaylist behaves ───────────
+    // On a success the row leaves the cache and playlistDeleted goes out.
+    Q_INVOKABLE void deletePlaylist(const QString &uuid, QJSValue cb) {
+        m_deleteCalls++;
+        m_lastDeletedUuid = uuid;
+        if (m_deferDeletes) { m_pendingDeletes.append({cb, uuid}); return; }
+        deliverDelete(cb, uuid);
+    }
+    Q_INVOKABLE void    setDeletePlaylistOkForTest(bool ok) { m_deleteOk = ok; }
+    Q_INVOKABLE void    setDeferDeletePlaylistForTest(bool on) { m_deferDeletes = on; }
+    Q_INVOKABLE void    flushDeletePlaylistsForTest() {
+        const auto pending = m_pendingDeletes;
+        m_pendingDeletes.clear();
+        for (const auto &d : pending) deliverDelete(d.first, d.second);
+    }
+    Q_INVOKABLE int     deletePlaylistCallsForTest() const { return m_deleteCalls; }
+    Q_INVOKABLE QString lastDeletedPlaylistForTest() const { return m_lastDeletedUuid; }
+    Q_INVOKABLE void    resetDeletePlaylistForTest() {
+        m_deleteCalls = 0;
+        m_lastDeletedUuid.clear();
+        m_deleteOk = true;
+        m_deferDeletes = false;
+        m_pendingDeletes.clear();
+    }
     Q_INVOKABLE QVariantList getUserPlaylists() const { return m_userPlaylists; }
     Q_INVOKABLE void markPlaylistPlayed(const QString &uuid) { m_lastPlaylistPlayed = uuid; }
 
@@ -1044,6 +1068,7 @@ public:
     Q_INVOKABLE int  trackCreditsFetchCountForTest() const { return m_trackCreditsFetches; }
     Q_INVOKABLE void resetTrackCreditsFetchCountForTest() { m_trackCreditsFetches = 0; }
     Q_INVOKABLE void resetForTest() {
+        resetDeletePlaylistForTest();
         m_userPlaylistFetches = 0;
         m_trackCreditsFetches = 0;
         // The favourite maps too, so one test's likes do not reach the next.
@@ -1109,6 +1134,7 @@ signals:
     // playlist's numbers moved. PlaylistPage listens to this one because
     // favoritePlaylistsChanged also fires on sign-in paging and on every play.
     void playlistStatsRefreshed(const QString &uuid);
+    void playlistDeleted(const QString &uuid);
 
 private:
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
@@ -1381,6 +1407,26 @@ private:
         args << QJSValue(ok);
         cb.call(args);
     }
+
+    // The real bridge's order: the answer, then the row leaves and the signal.
+    void deliverDelete(QJSValue cb, const QString &uuid) {
+        const bool ok = m_deleteOk;
+        if (cb.isCallable()) cb.call({ QJSValue(ok) });
+        if (!ok) return;
+        for (int i = 0; i < m_userPlaylists.size(); ++i) {
+            if (m_userPlaylists.at(i).toMap().value(QStringLiteral("uuid")).toString() != uuid)
+                continue;
+            m_userPlaylists.removeAt(i);
+            emit favoritePlaylistsChanged();
+            break;
+        }
+        emit playlistDeleted(uuid);
+    }
+    bool    m_deleteOk     = true;
+    bool    m_deferDeletes = false;
+    int     m_deleteCalls  = 0;
+    QString m_lastDeletedUuid;
+    QList<QPair<QJSValue, QString>> m_pendingDeletes;
 
     struct PendingEdit { QJSValue cb; QString uuid, title, description; };
     bool    m_editOk     = true;

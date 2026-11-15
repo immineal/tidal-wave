@@ -713,6 +713,10 @@ int Application::run(int argc, char **argv) {
     // match, which they do after a track add, and the count would be lost.
     connect(m_bridge, &TidalBridge::playlistStatsChanged, m_library,
             &LibraryIndex::refreshPlaylistMeta);
+    // A deleted playlist's pin would open a page that answers 404.
+    connect(m_bridge, &TidalBridge::playlistDeleted, m_pins, [this](const QString &uuid) {
+        m_pins->unpin(QStringLiteral("playlist"), uuid);
+    });
 #ifdef Q_OS_LINUX
     // Chromecast discovery relies on Avahi, so Linux only.
     m_cast = new CastManager(m_client, m_player, this);

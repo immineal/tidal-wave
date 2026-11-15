@@ -1147,6 +1147,18 @@ void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,
         });
 }
 
+void TidalClient::deletePlaylist(const QString &uuid, std::function<void(bool)> cb) {
+    if (uuid.isEmpty()) { cb(false); return; }
+    QUrlQuery params;
+    params.addQueryItem("countryCode", m_api->countryCode());
+    m_api->deleteApiWithStatus(QStringLiteral("playlists/%1").arg(uuid), params,
+        [this, uuid, cb](QJsonObject, QString err, int httpStatus) {
+            const bool gone = err.isEmpty() || httpStatus == 404;
+            if (gone) m_playlistEtags.remove(uuid);
+            cb(gone);
+        });
+}
+
 void TidalClient::fetchTrackRadio(qint64 trackId, TracksCallback cb) {
     QUrlQuery q;
     q.addQueryItem("limit", "50");

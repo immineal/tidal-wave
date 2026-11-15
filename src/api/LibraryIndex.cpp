@@ -396,7 +396,10 @@ LibraryIndex::Entry LibraryIndex::entryFor(const Track &t, qint64 albumId) {
 void LibraryIndex::rebuild() {
     m_library.clear();
     m_library.reserve(m_playlists.size() + m_albums.size() + m_artists.size() + m_mixes.size());
-    for (const Playlist &p : m_playlists) m_library.append(entryFor(p));
+    for (const Playlist &p : m_playlists) {
+        m_library.append(entryFor(p));
+        m_library.last().editable = p.editableBy(m_userId);
+    }
     for (const Album &a : m_albums)       m_library.append(entryFor(a));
     for (const Artist &a : m_artists)     m_library.append(entryFor(a));
     for (const Mix &m : m_mixes)          m_library.append(entryFor(m));
@@ -476,8 +479,11 @@ QVariantMap LibraryIndex::toRow(const Entry &e, int score) {
     m[QStringLiteral("trackCount")] = e.trackCount;
     // The types let PlaylistPage and MixPage decide what they are showing
     // before their own request lands.
-    if (e.kind == QLatin1String(kKindPlaylist))
+    if (e.kind == QLatin1String(kKindPlaylist)) {
         m[QStringLiteral("type")] = e.playlistType;
+        // Whether this account made it, and so may delete it.
+        m[QStringLiteral("editable")] = e.editable;
+    }
     if (e.kind == QLatin1String(kKindMix))
         m[QStringLiteral("mixType")] = e.mixType;
     if (e.kind == QLatin1String(kKindTrack))
@@ -608,6 +614,13 @@ void LibraryIndex::removeEntry(const QString &kind, const QString &id) {
         for (int i = 0; i < m_artists.size(); ++i) {
             if (m_artists[i].id != artistId) continue;
             m_artists.removeAt(i);
+            rebuild();
+            return;
+        }
+    } else if (kind == QLatin1String(kKindPlaylist)) {
+        for (int i = 0; i < m_playlists.size(); ++i) {
+            if (m_playlists[i].uuid != id) continue;
+            m_playlists.removeAt(i);
             rebuild();
             return;
         }

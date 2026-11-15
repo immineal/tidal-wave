@@ -618,8 +618,24 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Row {
-                spacing: 10; anchors.right: parent.right
+            RowLayout {
+                width: parent.width
+                spacing: 10
+                // Away from Save, so it is not hit on the way there.
+                PillButton {
+                    objectName: "editPlaylistDelete"
+                    text: qsTr("Delete", "verb, the button that deletes the playlist")
+                    danger: true
+                    enabled: !editPlaylistPopup.busy
+                    opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
+                    onClicked: {
+                        editPlaylistPopup.close()
+                        deletePlaylistDialog.askFor(root.playlistUuid, root.playlistTitle)
+                    }
+                }
+                Item { Layout.fillWidth: true }
                 PillButton {
                     objectName: "editPlaylistCancel"
                     text: qsTr("Cancel"); accent: false
@@ -627,6 +643,8 @@ Rectangle {
                     // NewPlaylistDialog's pair.
                     enabled: !editPlaylistPopup.busy
                     opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
                     onClicked: editPlaylistPopup.close()
                 }
                 PillButton {
@@ -638,9 +656,15 @@ Rectangle {
                     enabled: !editPlaylistPopup.busy
                              && editTitleField.text.trim().length > 0
                     opacity: enabled ? 1 : 0.45
+                    Layout.preferredWidth:  implicitWidth
+                    Layout.preferredHeight: implicitHeight
                     onClicked: root.saveEdits()
                 }
             }
         }
     }
+
+    // Main leaves the page once the bridge says the playlist is gone.
+    readonly property alias deleteDialog: deletePlaylistDialog
+    DeletePlaylistDialog { id: deletePlaylistDialog }
 }

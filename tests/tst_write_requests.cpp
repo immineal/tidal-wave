@@ -287,6 +287,7 @@ private slots:
         // python-tidal's name for the duplicate rule; onDuplicateFound let a
         // duplicate in during the audit.
         QTest::newRow("add a song")       << 10 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101&onArtifactNotFound=FAIL&onDupes=SKIP}";
+        QTest::newRow("delete playlist")  << 11 << "DELETE /api/playlists/pl-tape-1?countryCode=DE";
     }
 
     void everyWriteHasItsKnownShape()
@@ -310,11 +311,53 @@ private slots:
                                   [&done](Tidal::Playlist, QString) { done = true; }); break;
         case 9:  c.editPlaylist(kUuid, QStringLiteral("Tape 2"), QStringLiteral("Side B"), answered); break;
         case 10: c.addTrackToPlaylist(kUuid, 101, answered); break;
+        case 11: c.deletePlaylist(kUuid, answered); break;
         }
         QTRY_VERIFY_WITH_TIMEOUT(done && rig.settled(), 5000);
         QCOMPARE(rig.tidal.writes(), QStringList{line});
     }
 
+    // A playlist deleted elsewhere already is gone, which is what was asked.
+    void deletingAPlaylistThatIsGoneCountsAsDone()
+    {
+        Rig rig;
+        rig.tidal.write = {404, R"({"status":404,"userMessage":"not found"})"};
+        bool ok = false, done = false;
+        rig.client.deletePlaylist(kUuid, [&](bool r) { ok = r; done = true; });
+        QTRY_VERIFY_WITH_TIMEOUT(done && rig.settled(), 5000);
+        QVERIFY(ok);
+    }
+
+    // The bridge's side: the playlist leaves its cache, and the signal that
+    // takes it out of the sidebar and the history goes out after the answer.
+    void aDeletedPlaylistLeavesTheBridge()
+    {
+        Rig rig;
+        rig.tidal.write = {204, {}};
+        QStringList order;
+        connect(&rig.bridge, &TidalBridge::playlistDeleted, this,
+                [&order](const QString &uuid) { order << QStringLiteral("signal ") + uuid; });
+        const Rig::Told told = rig.slot();
+        rig.bridge.deletePlaylist(kUuid, told.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(told.answers().size() == 1 && rig.settled(), 5000);
+        QCOMPARE(told.answers(), QStringList{QStringLiteral("true")});
+        QCOMPARE(order, QStringList{QStringLiteral("signal pl-tape-1")});
+        for (const QVariant &v : rig.bridge.getUserPlaylists())
+            QVERIFY(v.toMap().value(QStringLiteral("uuid")).toString() != kUuid);
+    }
+
+    void aRefusedDeleteKeepsThePlaylist()
+    {
+        Rig rig;
+        rig.tidal.write = {403, R"({"status":403,"userMessage":"not yours"})"};
+        int deleted = 0;
+        connect(&rig.bridge, &TidalBridge::playlistDeleted, this, [&deleted] { ++deleted; });
+        const Rig::Told told = rig.slot();
+        rig.bridge.deletePlaylist(kUuid, told.fn);
+        QTRY_VERIFY_WITH_TIMEOUT(told.answers().size() == 1 && rig.settled(), 5000);
+        QCOMPARE(told.answers(), QStringList{QStringLiteral("false")});
+        QCOMPARE(deleted, 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestWriteRequests)
