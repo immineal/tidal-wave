@@ -408,7 +408,8 @@ Rectangle {
                     linkColor: Theme.accent
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
-                    lineHeight: 1.5
+                    // Of the font's own line height, which is already ~1.35 em.
+                    lineHeight: 1.15
                     textFormat: Text.StyledText
                     // undefined resets the limit, so the whole bio shows.
                     maximumLineCount: root.bioExpanded ? undefined : root.bioCollapsedLines
@@ -445,7 +446,7 @@ Rectangle {
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                 }
 
-                Item { height: 16 }
+                Item { height: 24 }
             }
 
             HorizontalSection {
