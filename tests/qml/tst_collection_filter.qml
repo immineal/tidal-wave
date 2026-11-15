@@ -1,5 +1,7 @@
-// CollectionPage's tabs. A tab switch keeps each tab's rows and scroll. The
-// bridge stub is from tests/TestStubs.h.
+// CollectionPage's field, its tabs and its empty states. A filter that matches
+// nothing says so, and does not claim the library is empty. The Mixes tab
+// filters too. A tab switch keeps each tab's rows and scroll. The bridge stub
+// is from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Controls
@@ -78,8 +80,52 @@ TestCase {
         return false
     }
 
+    function test_a_filter_with_no_match_says_nothing_matches_data() {
+        return [
+            { tag: "tracks", tab: 0, empty: "No saved tracks" },
+            { tag: "albums", tab: 1, empty: "No saved albums" },
+            { tag: "artists", tab: 2, empty: "No followed artists" },
+            { tag: "playlists", tab: 3, empty: "No playlists yet" },
+        ]
+    }
 
+    function test_a_filter_with_no_match_says_nothing_matches(row) {
+        bridge.setFavoriteTracksListForTest(makeTracks(3))
+        bridge.setFavoriteAlbumsForTest([{ id: 5, title: "Ein Album", artists: "Eine Band", coverUrl: "" }])
+        bridge.setFavoriteArtistsForTest([{ id: 3, name: "Eine Band", coverUrl: "" }])
+        var page = makeCollection(row.tab)
+        typeFilter(page, "xyzzy")
+        verify(!anyVisibleText(page, row.empty),
+               "a filter with no match claimed the " + row.tag + " are empty")
+        var said = shownText(page, "collectionNoMatchesText")
+        verify(said.indexOf("xyzzy") !== -1, "the page did not say nothing matches: '" + said + "'")
+    }
 
+    function test_the_mixes_tab_filters_its_grid_and_its_count() {
+        bridge.setHomeMixesForTest([
+            { id: "m1", title: "Morgenmix", subtitle: "Eine Band", coverUrl: "", mixType: "" },
+            { id: "m2", title: "Abendmix",  subtitle: "Andere",    coverUrl: "", mixType: "" },
+        ])
+        var page = makeCollection(4)
+        compare(page.filteredMixes.length, 2)
+        typeFilter(page, "abend")
+        compare(page.filteredMixes.length, 1, "the field did nothing on the Mixes tab")
+        compare(findChild(page, "collectionMixesGrid").count, 1, "the grid was not filtered")
+        var labels = []
+        var row = findChild(page, "collectionTabsRow")
+        verify(row)
+        verify(row.children.length > 0)
+        var found = false
+        for (var i = 0; i < row.children.length; ++i) {
+            var l = findChild(row.children[i], "collectionTabLabel")
+            if (l && l.text.indexOf("Mixes") === 0) { found = true; compare(l.text, "Mixes (1)") }
+        }
+        verify(found, "no Mixes tab label")
+        typeFilter(page, "xyzzy")
+        verify(shownText(page, "collectionNoMatchesText").indexOf("xyzzy") !== -1,
+               "the Mixes tab did not say nothing matches")
+        verify(!anyVisibleText(page, "No mixes"), "a filter miss claimed there are no mixes")
+    }
 
     function test_a_tab_switch_keeps_the_scroll_position() {
         bridge.setFavoriteTracksListForTest(makeTracks(300))

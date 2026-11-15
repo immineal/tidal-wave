@@ -15,11 +15,37 @@ Rectangle {
     property var filteredArtists:   []
     property var filteredPlaylists: []
     property var mixes: []
+    // The mixes the field lets through. Tidal has no search over them, so the
+    // page filters its own list.
+    readonly property var filteredMixes: {
+        var q = searchPattern.toLowerCase()
+        if (q.length === 0) return mixes
+        return mixes.filter(function (m) {
+            return (m.title || "").toLowerCase().indexOf(q) !== -1
+                || (m.subtitle || "").toLowerCase().indexOf(q) !== -1
+        })
+    }
     property bool loading: bridge.favoritesLoading
     // The page asks for the mixes itself; an empty list before an answer is
     // not an account without mixes.
     property bool mixesLoading: false
     property bool mixesLoaded: false
+
+    // How many rows the open tab shows.
+    readonly property int tabCount: [filteredTracks.length, filteredAlbums.length,
+                                     filteredArtists.length, filteredPlaylists.length,
+                                     filteredMixes.length][activeTab] || 0
+    // Which empty state the open tab shows, if any: "" for none, "filter" when
+    // the field matches nothing, "empty" for a library that has none of the kind.
+    readonly property string emptyKind: {
+        if (tabCount > 0 || tabWaiting) return ""
+        if (activeTab === 4 ? !mixesLoaded : loading) return ""
+        if (activeTab === 1 && bridge.albumsLoading) return ""
+        if (activeTab === 2 && bridge.artistsLoading) return ""
+        if (activeTab === 3 && bridge.playlistsLoading) return ""
+        if (searchPattern.length > 0) return "filter"
+        return "empty"
+    }
 
     // The open tab's list is still on its way and none of it is here yet.
     readonly property bool tabWaiting: {
@@ -280,7 +306,7 @@ Rectangle {
                         Text {
                             id: tl; objectName: "collectionTabLabel"; anchors.centerIn: parent
                             text: {
-                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.mixes.length]
+                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
                                 // Tab name followed by how many items it holds
                                 return qsTr("%1 (%2)").arg(modelData)
                                                       .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
@@ -384,7 +410,8 @@ Rectangle {
                 objectName: "collectionSearch"
                 // A whole phrase per tab: German cannot take "Search saved " + a noun
                 placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
-                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                              qsTr("Search saved artists…"), qsTr("Search saved playlists…"),
+                              qsTr("Search mixes…")
                              ][root.activeTab] || qsTr("Search saved items…")
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
@@ -644,8 +671,7 @@ Rectangle {
 
         // Empty state for playlists
         Item {
-            visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
-                     && !bridge.playlistsLoading
+            visible: root.activeTab === 3 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -674,10 +700,10 @@ Rectangle {
             objectName: "collectionMixesGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 4 && root.mixes.length > 0
+            visible: root.activeTab === 4 && root.filteredMixes.length > 0
             opacity: root.contentIn
             clip: true
-            model: root.mixes
+            model: root.filteredMixes
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -722,8 +748,7 @@ Rectangle {
 
         // Empty state for mixes
         Item {
-            visible: root.activeTab === 4 && root.mixes.length === 0 && root.mixesLoaded
-                     && !root.loading
+            visible: root.activeTab === 4 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -738,7 +763,7 @@ Rectangle {
 
         // Empty state for tracks
         Item {
-            visible: root.activeTab === 0 && root.filteredTracks.length === 0 && !root.loading
+            visible: root.activeTab === 0 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -752,8 +777,7 @@ Rectangle {
 
         // Empty state for albums
         Item {
-            visible: root.activeTab === 1 && root.filteredAlbums.length === 0 && !root.loading
-                     && !bridge.albumsLoading
+            visible: root.activeTab === 1 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -765,10 +789,40 @@ Rectangle {
             }
         }
 
+        // The field matches nothing on this tab. Not the empty library's
+        // copy: the library may hold plenty.
+        Item {
+            objectName: "collectionNoMatches"
+            visible: root.emptyKind === "filter"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: 12
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "search"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                Text {
+                    objectName: "collectionNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern)
+                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Try other words, or clear the search to see everything.")
+                    color: Theme.textSec; font.pixelSize: 13
+                }
+            }
+        }
+
         // Empty state for artists
         Item {
-            visible: root.activeTab === 2 && root.filteredArtists.length === 0 && !root.loading
-                     && !bridge.artistsLoading
+            visible: root.activeTab === 2 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {

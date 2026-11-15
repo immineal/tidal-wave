@@ -401,6 +401,18 @@
         <source>Follow artists to see them here</source>
         <translation>Künstlern folgen, damit sie hier erscheinen</translation>
     </message>
+    <message>
+        <source>Search mixes…</source>
+        <translation>Mixe suchen…</translation>
+    </message>
+    <message>
+        <source>Nothing matches &quot;%1&quot;</source>
+        <translation>Nichts passt zu „%1“</translation>
+    </message>
+    <message>
+        <source>Try other words, or clear the search to see everything.</source>
+        <translation>Versuch es mit anderen Wörtern, oder leere die Suche, um alles zu sehen.</translation>
+    </message>
 </context>
 <context>
     <name>ConfirmDialog</name>

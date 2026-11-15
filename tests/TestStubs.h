@@ -166,14 +166,20 @@ public:
     // Held for flushHomeMixesForTest() while setDeferHomeMixesForTest(true).
     Q_INVOKABLE void fetchHomeMixes(QJSValue cb) {
         if (m_deferHomeMixes) { m_pendingHomeMixes.append(cb); return; }
-        resolve(cb, emptyArray());
+        answerHomeMixes(cb);
     }
     Q_INVOKABLE void setDeferHomeMixesForTest(bool on) { m_deferHomeMixes = on; }
     Q_INVOKABLE void flushHomeMixesForTest() {
         m_deferHomeMixes = false;
         const auto held = std::exchange(m_pendingHomeMixes, {});
-        for (QJSValue cb : held) resolve(cb, emptyArray());
+        for (QJSValue cb : held) answerHomeMixes(cb);
     }
+    // What fetchHomeMixes answers: these mixes, or nothing beside `err`.
+    Q_INVOKABLE void setHomeMixesForTest(const QVariantList &mixes, const QString &err = {}) {
+        m_homeMixes = mixes;
+        m_homeMixesError = err;
+    }
+
     Q_INVOKABLE void fetchMixTracks(const QString &mixId, QJSValue cb) {
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
@@ -804,12 +810,34 @@ public:
 
     // Local filters over the already-loaded favourites, used by CollectionPage's
     // search field and HomePage's refresh. All four answer from lists a test can
-    // fill. The query is ignored: every caller under test passes "".
-    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return m_favoriteTrackList; }
-    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
-    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
+    // fill, matched on the fields the real bridge matches.
+    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const {
+        return matching(m_favoriteTrackList, query, {"title", "artists", "albumTitle"});
+    }
+    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const {
+        return matching(m_favoriteAlbumList, query, {"title", "artists"});
+    }
+    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const {
+        return matching(m_favoriteArtistList, query, {"name"});
+    }
     // The same list getUserPlaylists() answers from, as in the real bridge.
-    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
+    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const {
+        return matching(m_userPlaylists, query, {"title"});
+    }
+    static QVariantList matching(const QVariantList &rows, const QString &query,
+                                 const QStringList &fields) {
+        if (query.isEmpty()) return rows;
+        QVariantList out;
+        for (const QVariant &v : rows) {
+            const QVariantMap m = v.toMap();
+            for (const QString &f : fields)
+                if (m.value(f).toString().contains(query, Qt::CaseInsensitive)) {
+                    out.append(v);
+                    break;
+                }
+        }
+        return out;
+    }
 
     // ── what the next createPlaylist() answers ──────────────────────────
     // Nothing set: the server makes it and hands back a uuid. An error string:
@@ -1131,6 +1159,8 @@ public:
         m_favoritesLoading = m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
         m_deferHomeMixes = false;
         m_pendingHomeMixes.clear();
+        m_homeMixes.clear();
+        m_homeMixesError.clear();
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -1174,6 +1204,17 @@ signals:
     void playlistDeleted(const QString &uuid);
 
 private:
+    void answerHomeMixes(QJSValue &cb) {
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e && m_homeMixesError.isEmpty() ? e->toScriptValue(m_homeMixes) : emptyArray())
+             << QJSValue(m_homeMixesError);
+        cb.call(args);
+    }
+
+    QVariantList m_homeMixes;
+    QString      m_homeMixesError;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
