@@ -1656,8 +1656,8 @@
         <translation>Mein Konto</translation>
     </message>
     <message>
-        <source>Settings (Ctrl+,)</source>
-        <translation>Einstellungen (Strg+,)</translation>
+        <source>Settings (%1)</source>
+        <translation>Einstellungen (%1)</translation>
     </message>
 </context>
 <context>

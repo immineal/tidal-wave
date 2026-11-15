@@ -276,7 +276,7 @@ ApplicationWindow {
     readonly property var detailPages: ["album", "artist", "playlist", "mix", "nowplaying", "radio"]
 
     // The other side of that line, and the bottom of the back history: these
-    // are reached in one press from the sidebar (and from Ctrl+H/Ctrl+F/Ctrl+L),
+    // are reached in one press from the sidebar (and from Ctrl+1/2/3),
     // so there is never a chain of them to walk back through.
     readonly property var topLevelPages: ["home", "search", "collection"]
 

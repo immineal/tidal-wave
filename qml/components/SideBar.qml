@@ -806,7 +806,7 @@ Item {
                     // In the rail the labels are not on screen, so this is the
                     // only place the row says what it is.
                     ToolTip.visible: settingsHover.hovered
-                    ToolTip.text: qsTr("Settings (Ctrl+,)")
+                    ToolTip.text: qsTr("Settings (%1)").arg(Shortcuts.display("settings"))
                     ToolTip.delay: 450
                 }
             }
