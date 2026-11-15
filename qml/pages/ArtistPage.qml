@@ -286,7 +286,6 @@ Rectangle {
                     albumTitle:  modelData.albumTitle
                     durationStr: modelData.durationStr
                     coverUrl:    modelData.coverUrl80
-                    isPlaying:   player.currentTrack.id === modelData.id && player.playing
                     trackData:   modelData
                     onPlayRequested: root.playFrom(root.topTracks, index)
                 }

@@ -489,6 +489,28 @@ TestCase {
                 "a " + row.tag + " row called the wrong thing")
     }
 
+    // The current row pauses and resumes the track, and starts nothing over.
+    function test_clicking_the_current_row_pauses_and_resumes() {
+        seedAll()
+        player.setPlayingForTest(true)
+        var host = showHost()
+        var panel = openPanel(host)
+
+        var entry = entryAt(panel, panel.currentAt)
+        verify(entry, "the current row was never drawn")
+        var p = pointIn(host, entry, entry.width / 2, entry.height / 2)
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(!player.playing, "a click on the playing row did not pause it")
+        compare(entry.isCurrent, true, "the paused row lost its place as the current one")
+
+        mouseClick(host.contentItem, p.x, p.y)
+        settle(host.contentItem)
+        verify(player.playing, "a click on the paused row did not resume it")
+        compare(player.queueCalls.join(","), "", "the current row jumped somewhere")
+        player.setPlayingForTest(false)
+    }
+
     // ── finding your place ───────────────────────────────────────────────
 
     // Opening the panel on a queue that has been playing for a while must

@@ -435,10 +435,6 @@ Rectangle {
                 albumTitle:  modelData.albumTitle
                 durationStr: modelData.durationStr
                 coverUrl:    modelData.coverUrl80
-                // Both ids are undefined on a partial payload, and undefined
-                // equals undefined, which would mark every row as playing.
-                isPlaying:   Number(modelData.id) > 0
-                             && player.currentTrack.id === modelData.id && player.playing
                 trackData:   modelData
                 onPlayRequested: {
                     player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))

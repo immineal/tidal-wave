@@ -426,7 +426,6 @@ Rectangle {
             durationStr: modelData.durationStr
             showAlbum:   false
             showCover:   false
-            isPlaying:   player.currentTrack.id === modelData.id && player.playing
             trackData:   modelData
             onPlayRequested: root.playFrom(root.tracks, index)
         }
