@@ -22,11 +22,12 @@ Rectangle {
     property string coverUrl: ""
     property string playlistDescription: ""
     property int    playlistDuration: 0
-    property string playlistType: ""   // "USER" = editable, "" / "EDITORIAL" = read-only
+    property string playlistType: ""   // "USER" / "EDITORIAL"
+    // Whether the user made it, as the header says. Another user's playlist
+    // saved here is USER too, and only the creator may edit.
+    property bool   playlistEditable: false
     property var    tracks: []
     property bool   loading: false
-
-    readonly property bool isUserPlaylist: playlistType === "USER"
 
     // What the last load was told, "" when it was served.
     property string loadError: ""
@@ -119,6 +120,7 @@ Rectangle {
     function loadPlaylist() {
         loading = true
         loadError = ""
+        playlistEditable = false
         // Which playlist these replies are about; see MixPage.loadMix().
         var requested = playlistUuid
         bridge.fetchPlaylistTracks(requested, function (t, err) {
@@ -131,8 +133,8 @@ Rectangle {
     }
 
     // The hero's own request: the page can be opened with nothing but a uuid,
-    // and the tracks endpoint answers tracks only. `type` decides whether the
-    // user may edit. Nothing the reply leaves out overwrites the caller's.
+    // and the tracks endpoint answers tracks only. `editable` decides whether
+    // the user may edit. Nothing else the reply leaves out overwrites the caller's.
     function loadPlaylistHeader(requested) {
         bridge.fetchPlaylist(requested, function (p, err) {
             // Superseded first, and on its own: a reply about a playlist
@@ -147,6 +149,7 @@ Rectangle {
             if (p.description) root.playlistDescription = p.description
             if (p.duration)    root.playlistDuration    = p.duration
             if (p.type)        root.playlistType        = p.type
+            root.playlistEditable = p.editable === true
         })
     }
 
@@ -315,7 +318,7 @@ Rectangle {
 
                         PillButton {
                             objectName: "playlistEditButton"
-                            visible: root.isUserPlaylist
+                            visible: root.playlistEditable
                             text: qsTr("Edit")
                             icon: "edit"
                             accent: false
@@ -345,6 +348,7 @@ Rectangle {
 
         delegate: TrackRow {
             id: playlistTrackRow
+            objectName: "playlistTrackRow"
             width: tracksList.width - 32
             x: 16
             // Against the width this row would have with the sidebar out, so
@@ -359,7 +363,7 @@ Rectangle {
             coverUrl:       modelData.coverUrl80
             isPlaying:      player.currentTrack.id === modelData.id && player.playing
             trackData:      modelData
-            playlistUuid:   root.isUserPlaylist ? root.playlistUuid : ""
+            playlistUuid:   root.playlistEditable ? root.playlistUuid : ""
             trackItemIndex: index
             onPlayRequested: {
                 bridge.markPlaylistPlayed(root.playlistUuid)

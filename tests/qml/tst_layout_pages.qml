@@ -284,12 +284,13 @@ TestCase {
         for (var i = 0; i < widths.length; ++i) {
             var w = widths[i]
             var page = makePane(playlistC, w)
-            page.playlistType = "USER"   // worst case: the Edit pill shows too
+            page.playlistType = "USER"
             page.playlistTitle = "Eine ziemlich lange Wiedergabeliste für den Herbst"
             page.playlistDescription = "Eine Beschreibung, die ohne Weiteres über "
                 + "mehrere Zeilen laufen kann und trotzdem nicht aus der Seite laufen darf."
             page.playlistDuration = 7322
             page.playlistUuid = "uuid-test"
+            page.playlistEditable = true   // worst case: the Edit pill shows too
             page.tracks = makeTracks(8)
             settle(page)
             audit(page, "PlaylistPage @" + w)

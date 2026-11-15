@@ -239,7 +239,7 @@ public:
         cb.call(args);
     }
     // The playlist itself: {uuid, title, description, numTracks, duration,
-    // coverUrl, type}. `type` decides whether the playlist is editable.
+    // coverUrl, type, editable}. `editable` decides whether the user may edit.
     Q_INVOKABLE void fetchPlaylist(const QString &uuid, QJSValue cb) {
         m_lastPlaylistFetched = uuid;
         m_playlistFetches++;

@@ -53,11 +53,11 @@ TestCase {
         ]
     }
 
-    // What fetchPlaylist() answers for the page under test. The USER type
+    // What fetchPlaylist() answers for the page under test. `editable`
     // decides whether the Edit pill is drawn at all.
     function makeHeader() {
         return { uuid: "p-mid", title: "Zugfahrt", description: "Für die Bahn",
-                 numTracks: 31, duration: 5400, coverUrl: "cdn/c2.jpg", type: "USER" }
+                 numTracks: 31, duration: 5400, coverUrl: "cdn/c2.jpg", type: "USER", editable: true }
     }
 
     function makeTrack() {
@@ -693,5 +693,36 @@ TestCase {
 
         compare(pickerUuids(pickerList(host)).length, 3,
                 "the fetched list offered playlists the user cannot add to")
+    }
+
+    function test_edit_and_remove_are_not_offered_on_someone_elses_playlist() {
+        var header = makeHeader()
+        header.editable = false
+        bridge.setPlaylistForTest(header)
+        bridge.setPlaylistTracksForTest([makeTrack()])
+        var host = showPane(1200)
+        var page = createTemporaryObject(playlistC, host.pane, {})
+        page.playlistUuid = "p-mid"
+        settle(host.contentItem)
+        compare(page.tracks.length, 1, "the tracks fixture did not load")
+
+        var btn = findByName(host.contentItem, "playlistEditButton")
+        verify(btn, "the hero has no Edit button")
+        verify(!btn.visible, "Edit is offered on a playlist the user does not own")
+        var row = findByName(host.contentItem, "playlistTrackRow")
+        verify(row, "the track row was never built")
+        compare(row.playlistUuid, "", "Remove from playlist is offered on a playlist the user does not own")
+    }
+
+    function test_edit_and_remove_are_offered_on_the_users_own_playlist() {
+        bridge.setPlaylistTracksForTest([makeTrack()])
+        var host = showPane(1200)
+        var page = makePage(host)
+
+        verify(findByName(host.contentItem, "playlistEditButton").visible,
+               "Edit is not offered on the user's own playlist")
+        var row = findByName(host.contentItem, "playlistTrackRow")
+        verify(row, "the track row was never built")
+        compare(row.playlistUuid, "p-mid", "Remove from playlist is not offered on the user's own playlist")
     }
 }
