@@ -331,7 +331,9 @@ private:
         QCOMPARE((l).mp()->playbackState(), QMediaPlayer::state);                          \
         QCOMPARE((l).p().playing(), QMediaPlayer::state == QMediaPlayer::PlayingState);    \
         QCOMPARE(told(l), QMediaPlayer::state == QMediaPlayer::PlayingState                \
-                              ? QStringLiteral("Playing") : QStringLiteral("Paused"));     \
+                              ? QStringLiteral("Playing")                                  \
+                          : QMediaPlayer::state == QMediaPlayer::StoppedState              \
+                              ? QStringLiteral("Stopped") : QStringLiteral("Paused"));     \
     } while (false)
 
 class TestPauseAfterSeek : public QObject {

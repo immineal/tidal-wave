@@ -23,6 +23,7 @@ MprisPlayer::MprisPlayer(Player *player, QObject *parent)
     connect(m_player, &Player::playingChanged,      this, stateChanged);
     connect(m_player, &Player::loadingChanged,      this, stateChanged);
     connect(m_player, &Player::currentTrackChanged, this, stateChanged);
+    connect(m_player, &Player::stoppedChanged,      this, stateChanged);
     connect(m_player, &Player::seeked, this, [this] {
         m_seeked = true;
         scheduleAnnounce();
@@ -115,6 +116,7 @@ qint64 MprisPlayer::lengthMs() const {
 QString MprisPlayer::playbackStatus() const {
     if (m_player->currentTrackMap().isEmpty()) return QStringLiteral("Stopped");
     if (m_player->playing()) return QStringLiteral("Playing");
+    if (m_player->stopped()) return QStringLiteral("Stopped");
     return QStringLiteral("Paused");
 }
 
@@ -182,7 +184,7 @@ void MprisPlayer::Previous()  { m_player->previous(playbackStatus() != QLatin1St
 void MprisPlayer::Pause()     { if (m_player->playing()) m_player->playPause(); }
 void MprisPlayer::Play()      { if (!m_player->playing()) m_player->playPause(); }
 void MprisPlayer::PlayPause() { m_player->playPause(); }
-void MprisPlayer::Stop()      { m_player->seek(0); Pause(); }
+void MprisPlayer::Stop()      { m_player->stop(); }
 void MprisPlayer::Seek(qlonglong offsetMicros) {
     if (!hasTrack()) return;
     const qint64 to = m_player->position() + offsetMicros / 1000;

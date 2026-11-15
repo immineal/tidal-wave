@@ -771,6 +771,29 @@ private slots:
         QCOMPARE(desk().statuses(), QStringList());
     }
 
+    // Stop: the status says Stopped and the track is back at its start. Play
+    // starts it from there off the file it has, with no new request.
+    void stopIsStoppedAndPlayStartsOver() {
+        if (const char *why = obstacle()) QSKIP(why);
+
+        Launch a;
+        QVERIFY(a.audioUp());
+        QVERIFY(playFirstOf(a, 3000));
+        a.p().seek(2000);
+        desk().forget();
+
+        desk().player(QStringLiteral("Stop"));
+        QCOMPARE(desk().status(), QStringLiteral("Stopped"));
+        QCOMPARE(desk().get(QStringLiteral("Position")).toLongLong(), 0LL);
+        QTRY_VERIFY_WITH_TIMEOUT(!a.started(), 5000);
+
+        desk().player(QStringLiteral("Play"));
+        QTRY_VERIFY_WITH_TIMEOUT(a.started(), 10000);
+        QCOMPARE(desk().status(), QStringLiteral("Playing"));
+        QVERIFY(a.mp()->position() < 1500);
+        QCOMPARE(a.client.asked, (QList<qlonglong>{3000}));
+    }
+
     // While a track plays, Next plays the one after it.
     void nextWhilePlayingPlaysTheNextTrack() {
         if (const char *why = obstacle()) QSKIP(why);
@@ -812,7 +835,7 @@ private slots:
         QTest::newRow("a load the user started, Pause")
             << users << QStringList{ pause } << QStringList{ paused };
         QTest::newRow("a load the user started, Stop")
-            << users << QStringList{ stop } << QStringList{ paused };
+            << users << QStringList{ stop } << QStringList{ QStringLiteral("Stopped") };
         QTest::newRow("a load the user started, PlayPause")
             << users << QStringList{ toggle } << QStringList{ paused };
         QTest::newRow("a load the user started, Pause, then Play")

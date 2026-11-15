@@ -160,6 +160,11 @@ public:
     // under repeat-one; only a track that runs out repeats.
     Q_INVOKABLE void next      (bool heldPaused = false);
     Q_INVOKABLE void previous  (bool heldPaused = false);
+    // Back to the start of the track, paused, and reported as stopped.
+    Q_INVOKABLE void stop      ();
+    // At the start with nothing playing, after stop() or at the end of the
+    // queue. A paused track is not stopped.
+    bool stopped() const { return m_stopped; }
     // How long a step waits for the next one before its track is fetched,
     // so a burst of steps fetches only where it ends. 0 fetches at once.
     void setLoadDelay(int ms) { m_loadDelayMs = ms; }
@@ -236,6 +241,7 @@ signals:
     // Only the manual section's length changed; the rows have not moved.
     void manualCountChanged  (int count);
     void recentlyPlayedChanged();
+    void stoppedChanged      ();
     void sourceChanged       ();
     void castTrackChanged    ();   // current track changed while casting
     // The set of output devices or the system default changed; device lists
@@ -290,6 +296,7 @@ private:
     // The current track's file is on disk: hands it to the backend.
     void playFile(QTemporaryFile *file, const QString &quality);
     void stepForward(bool heldPaused, bool wait);
+    void setStopped(bool s);
     // The current track ran out: the queue moves on, or repeat-one starts
     // the same file over.
     void trackEnded(bool heldPaused = false);
@@ -493,6 +500,7 @@ private:
     // See setLoadDelay().
     int                  m_loadDelayMs    = 0;
     QTimer              *m_loadTimer      = nullptr;
+    bool                 m_stopped        = false;
     // Numbers the loads, so a reply can tell that a newer load has replaced
     // the one that asked for it.
     quint64              m_loadSerial     = 0;

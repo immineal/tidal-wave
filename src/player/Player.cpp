@@ -613,6 +613,7 @@ void Player::removeFromQueue(int index) {
             // has played, and it only shows where the queue stopped.
             setIndex(int(m_queue.count()) - 1);
             restOn(m_index, Travel::Picked);
+            setStopped(true);
         }
     }
     normalizeManualSpan();
@@ -713,7 +714,7 @@ void Player::next(bool heldPaused) {
 void Player::stepForward(bool heldPaused, bool wait) {
     if (!m_player) return;
     const int n = nextIndex();
-    if (n < 0) { m_player->stop(); return; }
+    if (n < 0) { m_player->stop(); setStopped(true); return; }
     // A queue of one row under repeat goes round to the same row.
     if (n == m_index) { startOver(heldPaused); return; }
     stepTo(n);
@@ -796,6 +797,7 @@ void Player::seek(qint64 ms) {
         return;
     }
     setPlayerPosition(ms);
+    if (ms > 0) setStopped(false);
     // Nothing is loaded to seek inside yet, so hold it until something is.
     m_pendingSeek = (m_player->duration() > 0) ? 0 : qMax<qint64>(0, ms);
     emit seeked();
@@ -1201,6 +1203,7 @@ void Player::startLoad(int index, bool wait) {
 
     // Set before the stop, so that leaving the track before is no pause.
     m_loadPlays = !m_restorePaused;
+    setStopped(false);
     // The same track again starts over off the file it has.
     const qlonglong rowId = m_queue[index].track.value("id").toLongLong();
     QTemporaryFile *same = nullptr;
@@ -1541,7 +1544,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
         // track over once it was stopped at its end. The last track of a queue
         // is left there, where position() answers with the start.
-        if (followingIndex() < 0) { emit positionChanged(0); break; }
+        if (followingIndex() < 0) { setStopped(true); emit positionChanged(0); break; }
 #endif
         trackEnded();
         break;
@@ -1559,9 +1562,39 @@ void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     if (m_seekToggling) return;   // the state a seek started in is the one it ends in
     // Audio is coming out, so the load is over even if a media status was
     // missed. After the guard above: a rebind's transient Playing is no load.
-    if (state == QMediaPlayer::PlayingState) setLoading(false);
+    if (state == QMediaPlayer::PlayingState) { setLoading(false); setStopped(false); }
     tellPlaying();
     schedulePersist();         // a pause is the position worth coming back to
+}
+
+void Player::stop() {
+    if (m_index < 0) return;
+#ifdef Q_OS_LINUX
+    if (casting()) {
+        if (m_castPlaying) m_castSession->pause();
+        seek(0);
+        setStopped(true);
+        return;
+    }
+#endif
+    if (!m_player) return;
+    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+        // The load under way comes up paused.
+        m_loadPlays = false;
+        if (m_player->source().isEmpty()) m_restorePaused = true;
+        else                              m_player->pause();
+    } else if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+        m_player->pause();
+    }
+    tellPlaying();
+    seek(0);
+    setStopped(true);
+}
+
+void Player::setStopped(bool s) {
+    if (m_stopped == s) return;
+    m_stopped = s;
+    emit stoppedChanged();
 }
 
 void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
