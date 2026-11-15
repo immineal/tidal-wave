@@ -282,16 +282,20 @@ void TidalClient::getListOffThread(const QString &endpoint, const QUrlQuery &par
         // Not QFuture::then(this): Qt before 6.6 asserts when that context is gone.
         QPointer<TidalClient> guard(this);
         ++m_listsParsing;
-        QThreadPool::globalInstance()->start([guard, body, parse, cb] {
+        // The callback may hold script values, which must not be copied or
+        // freed off the GUI thread: the worker only passes this handle back.
+        auto held = std::make_shared<std::function<void(QList<T>, QString)>>(cb);
+        QThreadPool::globalInstance()->start([guard, body, parse, held]() mutable {
             QJsonParseError perr;
             const QJsonDocument doc = QJsonDocument::fromJson(body, &perr);
             Parsed parsed = perr.error == QJsonParseError::NoError
                                 ? Parsed{parse(doc.object()), QString()}
                                 : Parsed{QList<T>{}, perr.errorString()};
-            QMetaObject::invokeMethod(QCoreApplication::instance(), [guard, cb, parsed] {
+            QMetaObject::invokeMethod(QCoreApplication::instance(),
+                                      [guard, held = std::move(held), parsed] {
                 if (!guard) return;
                 --guard->m_listsParsing;
-                cb(parsed.first, parsed.second);
+                (*held)(parsed.first, parsed.second);
             }, Qt::QueuedConnection);
         });
     });

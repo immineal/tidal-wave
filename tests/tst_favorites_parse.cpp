@@ -4,6 +4,7 @@
 // and title below is invented.
 
 #include <QTest>
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -11,7 +12,9 @@
 #include <QThread>
 #include <QUrlQuery>
 
+#include <atomic>
 #include <functional>
+#include <memory>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -47,6 +50,18 @@ static QByteArray page(int n) {
     }
     return QJsonDocument(QJsonObject{{"items", items}}).toJson(QJsonDocument::Compact);
 }
+
+// Counts its copies and deletions off the GUI thread, which a captured
+// QJSValue must never have: its engine is not thread-safe.
+struct Tattle {
+    std::shared_ptr<std::atomic<int>> offMain;
+    explicit Tattle(std::shared_ptr<std::atomic<int>> c) : offMain(std::move(c)) {}
+    Tattle(const Tattle &o) : offMain(o.offMain) { note(); }
+    ~Tattle() { note(); }
+    void note() const {
+        if (QThread::currentThread() != QCoreApplication::instance()->thread()) ++*offMain;
+    }
+};
 
 struct Reply {
     QList<Track> tracks;
@@ -95,6 +110,26 @@ private slots:
                                     10000, 0);
         QCOMPARE(r.calls, 1);
         QCOMPARE(r.err, QStringLiteral("refused"));
+    }
+
+    // A page's callback holds script values: it stays on the GUI thread,
+    // whether the client is still there when the rows land or not.
+    void theCallbackNeverLeavesTheGuiThread() {
+        FakeApi api;
+        api.body = page(2000);
+        auto off = std::make_shared<std::atomic<int>>(0);
+        {
+            TidalClient client(&api);
+            int calls = 0;
+            client.fetchFavoriteAlbums([t = Tattle(off), &calls](QList<Album>, QString) { ++calls; },
+                                       10000, 0);
+            QTRY_COMPARE(calls, 1);
+            auto *gone = new TidalClient(&api);
+            gone->fetchFavoriteTracks([t = Tattle(off)](QList<Track>, QString) {}, 10000, 0);
+            delete gone;
+            QTest::qWait(300);
+        }
+        QCOMPARE(off->load(), 0);
     }
 
     // The continuation is bound to the client, so a reply that lands after it
