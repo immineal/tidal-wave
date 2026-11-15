@@ -60,4 +60,7 @@ private:
     QHash<QString, Device> m_devices;
     bool    m_connected = false;
     QString m_deviceName;
+    // The local track and position when the cast began, for its first LOAD.
+    qlonglong m_startTrackId = 0;
+    double    m_startSec     = 0;
 };

@@ -13,9 +13,10 @@ class DashFetcher;
 // unit that includes both.
 namespace Tidal { struct StreamManifest; }
 
-// Produces a Chromecast-friendly local audio file for a track. AAC tiers are
-// served as fetched; FLAC tiers are remuxed to .flac and downsampled to the
-// receiver's 96 kHz limit. Emits ready() once per prepare(), or failed().
+// Produces a Chromecast-friendly local audio file for a track, at the quality
+// the player asks for. AAC from a single file is served as fetched, AAC from
+// DASH is remuxed to .m4a, FLAC to .flac and downsampled to the receiver's
+// 96 kHz limit. Emits ready() once per prepare(), or failed().
 class CastMediaPrep : public QObject {
     Q_OBJECT
 public:
@@ -35,7 +36,7 @@ signals:
     void failed(const QString &msg);
 
 private:
-    void remuxFlac(int sampleRate);
+    void remux(bool aac, int sampleRate);
     void cleanupInput();
 
     TidalClient   *m_client  = nullptr;
@@ -45,7 +46,7 @@ private:
     // Always a plain .mp4 by the time ffmpeg sees it: BTS downloads one, and
     // DASH is joined out of its segments by DashFetcher.
     QString        m_inputPath;
-    QString        m_outputPath;   // temp output (flac)
+    QString        m_outputPath;   // temp output (flac or m4a)
     qlonglong      m_trackId  = 0;
     quint64        m_gen      = 0; // bumped per prepare()/cancel() to drop stale callbacks
 };

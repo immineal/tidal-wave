@@ -3,7 +3,8 @@
 // that TidalApi::makeRequest sets, so the test proves the app fetched the
 // bytes and ffmpeg read a local file. Checking only that the output decodes
 // would pass wherever ffmpeg has the demuxer. The fixture is tst_dash's: one
-// second of FLAC in fragmented MP4. Nothing is played.
+// second of FLAC in fragmented MP4. Nothing is played. The AAC case gets its
+// manifests from a localhost stand-in for Tidal, with tst_aac_only's fixture.
 
 #include <QTest>
 #include <QAudioOutput>
@@ -11,6 +12,10 @@
 #include <QFile>
 #include <QHash>
 #include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QList>
 #include <QMediaPlayer>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -20,6 +25,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <memory>
+#include <utility>
 
 #include "api/Models.h"
 #include "api/TidalApi.h"
@@ -116,6 +122,105 @@ private:
             connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
         }
     }
+};
+
+#include "aac_dash_fixture.inc"
+
+constexpr qlonglong kAacTrack = 100000002;
+
+// Tidal's manifest for a track it has only in AAC, as in tst_aac_only.
+QByteArray aacManifest(const QString &base)
+{
+    return "<?xml version='1.0' encoding='UTF-8'?>"
+           "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" "
+                "profiles=\"urn:mpeg:dash:profile:isoff-main:2011\" type=\"static\" "
+                "minBufferTime=\"PT0.697S\" mediaPresentationDuration=\"PT2.000S\">"
+           "<Period id=\"0\">"
+           "<AdaptationSet id=\"0\" contentType=\"audio\" mimeType=\"audio/mp4\">"
+           "<Representation id=\"AACLC\" codecs=\"mp4a.40.2\" "
+                           "bandwidth=\"321589\" audioSamplingRate=\"44100\">"
+           "<SegmentTemplate timescale=\"44100\" "
+               "initialization=\"" + base.toUtf8() + "0.mp4\" "
+               "media=\"" + base.toUtf8() + "$Number$.mp4\" startNumber=\"1\">"
+           "<SegmentTimeline><S d=\"30720\"/><S d=\"31744\"/><S d=\"25736\"/></SegmentTimeline>"
+           "</SegmentTemplate></Representation></AdaptationSet></Period></MPD>";
+}
+
+QByteArray aacAnswer(const QString &base)
+{
+    const QJsonObject attributes{
+        {"trackPresentation", QStringLiteral("FULL")},
+        {"formats", QJsonArray{QStringLiteral("AACLC")}},
+        {"uri", QStringLiteral("data:application/dash+xml;base64,")
+                    + QString::fromLatin1(aacManifest(base).toBase64())},
+    };
+    return QJsonDocument(QJsonObject{
+        {"data", QJsonObject{{"id", QString::number(kAacTrack)},
+                             {"type", QStringLiteral("trackManifests")},
+                             {"attributes", attributes}}},
+    }).toJson();
+}
+
+// Tidal's refusal of a request for FLAC when the track has none.
+QByteArray noFlacRefusal()
+{
+    return QJsonDocument(QJsonObject{{"errors", QJsonArray{QJsonObject{
+        {"code", QStringLiteral("CLIENT_NOT_ENTITLED")},
+        {"detail", QStringLiteral("refused")},
+        {"status", QStringLiteral("403")}}}}}).toJson();
+}
+
+// Tidal on localhost: the manifest endpoint answers in turn, any other path
+// is a file.
+class AacOrigin : public QTcpServer {
+public:
+    AacOrigin()
+    {
+        connect(this, &QTcpServer::newConnection, this, [this] {
+            while (QTcpSocket *sock = nextPendingConnection()) {
+                auto buf = std::make_shared<QByteArray>();
+                connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
+                connect(sock, &QTcpSocket::readyRead, sock, [this, sock, buf] {
+                    buf->append(sock->readAll());
+                    if (buf->indexOf("\r\n\r\n") < 0) return;
+                    const QString target = QString::fromUtf8(
+                        buf->left(buf->indexOf("\r\n")).split(' ').value(1));
+                    buf->clear();
+                    const qsizetype mark = target.indexOf(QLatin1Char('?'));
+                    const QString path = mark < 0 ? target : target.left(mark);
+                    Answer a{404, QByteArray()};
+                    if (path.startsWith(QStringLiteral("/trackManifests/"))) {
+                        manifestQueries << (mark < 0 ? QString() : target.mid(mark + 1));
+                        a = manifestAnswers.isEmpty() ? Answer{500, "{}"}
+                                                      : manifestAnswers.takeFirst();
+                    } else if (files.contains(path)) {
+                        a = {200, files.value(path)};
+                    }
+                    sock->write("HTTP/1.0 " + QByteArray::number(a.first) + " Answer\r\n"
+                                "Content-Length: " + QByteArray::number(a.second.size())
+                                + "\r\n\r\n" + a.second);
+                    sock->flush();
+                    sock->disconnectFromHost();
+                });
+            }
+        });
+    }
+
+    using Answer = std::pair<int, QByteArray>;
+    QList<Answer>              manifestAnswers;
+    QStringList                manifestQueries;
+    QHash<QString, QByteArray> files;
+
+    QString base() const { return QStringLiteral("http://127.0.0.1:%1/").arg(serverPort()); }
+};
+
+// The real TidalApi with every request to Tidal sent to `local`.
+class LocalApi : public TidalApi {
+public:
+    QString local;
+
+protected:
+    QString baseUrl(const QString &) const override { return local; }
 };
 
 } // namespace
@@ -251,6 +356,92 @@ private slots:
         QCOMPARE(ready.count(), 0);
         QCOMPARE(failed.first().at(0).toString(),
                  QStringLiteral("Could not read the lossless stream details for this track."));
+    }
+
+    // A track Tidal has only in AAC. The player takes the AAC where the FLAC
+    // it asked for is refused, and a cast has to as well.
+    void aTrackTidalHasOnlyInAacIsCastInAac()
+    {
+        AacOrigin origin;
+        QVERIFY(origin.listen(QHostAddress::LocalHost));
+        const QString audio = origin.base() + QStringLiteral("audio/");
+        origin.files.insert(QStringLiteral("/audio/0.mp4"), QByteArray::fromBase64(kAacDashInitB64));
+        origin.files.insert(QStringLiteral("/audio/1.mp4"), QByteArray::fromBase64(kAacDashSeg1B64));
+        origin.files.insert(QStringLiteral("/audio/2.mp4"), QByteArray::fromBase64(kAacDashSeg2B64));
+        origin.files.insert(QStringLiteral("/audio/3.mp4"), QByteArray::fromBase64(kAacDashSeg3B64));
+        origin.manifestAnswers = {{403, noFlacRefusal()}, {200, aacAnswer(audio)}};
+
+        LocalApi api;
+        api.local = origin.base();
+        TidalClient client{&api};
+        client.setAudioQuality(AudioQuality::Lossless);
+        CastMediaPrep prep{&client};
+
+        QSignalSpy ready(&prep, &CastMediaPrep::ready);
+        QSignalSpy failed(&prep, &CastMediaPrep::failed);
+        prep.prepare(kAacTrack);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() + failed.count() > 0, 30000);
+
+        QVERIFY2(failed.isEmpty(),
+                 qPrintable(QStringLiteral("casting an AAC-only track failed: %1 (manifest "
+                                           "queries: %2)")
+                            .arg(failed.isEmpty() ? QString() : failed.first().at(0).toString(),
+                                 origin.manifestQueries.join(QStringLiteral(" | ")))));
+        // The ladder the player climbs: its own setting first, then AAC.
+        QCOMPARE(origin.manifestQueries.size(), 2);
+        QVERIFY(origin.manifestQueries.at(0).contains(QStringLiteral("formats=FLAC")));
+        QVERIFY(!origin.manifestQueries.at(0).contains(QStringLiteral("FLAC_HIRES")));
+        QVERIFY(origin.manifestQueries.at(1).contains(QStringLiteral("formats=AACLC")));
+
+        const QString path = ready.first().at(0).toString();
+        QCOMPARE(ready.first().at(1).toString(), QStringLiteral("audio/mp4"));
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::ReadOnly));
+        const QByteArray head = out.read(8);
+        out.close();
+        QCOMPARE(head.mid(4, 4), QByteArrayLiteral("ftyp"));
+
+        prep.cancel();
+        QVERIFY2(!QFile::exists(path), "the cast file outlived the cast it was made for");
+    }
+
+    // The file of one track goes when the next one replaces it, not only when
+    // the cast ends.
+    void theNextTrackRemovesTheFileOfTheLastOne()
+    {
+        if (m_ffmpeg.isEmpty())
+            QSKIP("no ffmpeg on PATH, and the cast path is a conversion");
+        GatedSegmentServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        server.files.insert(QStringLiteral("/init.mp4"),  initSegment());
+        server.files.insert(QStringLiteral("/seg-1.mp4"), mediaSegment1());
+        server.files.insert(QStringLiteral("/seg-2.mp4"), mediaSegment2());
+        server.files.insert(QStringLiteral("/seg-3.mp4"), mediaSegment3());
+        QString mpd = QString::fromUtf8(kManifest);
+        mpd.replace(QStringLiteral("@BASE@"), server.base());
+
+        Tidal::StreamManifest manifest;
+        manifest.type       = Tidal::StreamManifest::MPD;
+        manifest.url        = mpd;
+        manifest.codec      = QStringLiteral("LOSSLESS");
+        manifest.sampleRate = 44100;
+
+        // The second track's manifest request goes to a port nobody listens on.
+        LocalApi      api;
+        api.local = QStringLiteral("http://127.0.0.1:1/");
+        TidalClient   client{&api};
+        CastMediaPrep prep{&client};
+        QSignalSpy ready(&prep, &CastMediaPrep::ready);
+
+        prep.prepareFromManifest(manifest);
+        QTRY_COMPARE_WITH_TIMEOUT(ready.count(), 1, 30000);
+        const QString first = ready.first().at(0).toString();
+        QVERIFY(QFile::exists(first));
+
+        // A second track, as CastManager starts it on a track change.
+        prep.prepare(1);
+        QVERIFY2(!QFile::exists(first), "the last track's cast file was left behind");
+        prep.cancel();
     }
 
 private:
