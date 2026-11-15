@@ -916,9 +916,8 @@ Item {
     function open(kind, id, data) {
         switch (kind) {
         case "playlist":
-            // The row carries the playlist's Tidal type, which is what
-            // PlaylistPage reads to decide whether the playlist is editable.
-            // Anything that is not "USER" opens read-only.
+            // The row carries the playlist's Tidal type for the header; whether
+            // it is editable comes from the playlist PlaylistPage fetches.
             root.navigate("playlist", {
                 playlistUuid:  id,
                 playlistTitle: data.title || "",
