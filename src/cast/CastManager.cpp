@@ -47,11 +47,16 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
         if (!cover.isEmpty())
             art = QStringLiteral("https://resources.tidal.com/images/%1/640x640.jpg")
                       .arg(QString(cover).replace('-', '/'));
+        // The track playing here when the cast began goes on from where it was.
+        double start = 0;
+        if (m_player && m_startTrackId > 0 && m_player->currentTrackId() == m_startTrackId)
+            start = m_startSec;
+        m_startTrackId = 0;
         m_session->loadMedia(url, mime,
                              t.value(QStringLiteral("title")).toString(),
                              t.value(QStringLiteral("artists")).toString(),
                              t.value(QStringLiteral("albumTitle")).toString(),
-                             art, t.value(QStringLiteral("duration")).toDouble());
+                             art, t.value(QStringLiteral("duration")).toDouble(), start);
     });
     connect(m_prep, &CastMediaPrep::failed, this, [this](const QString &m) { emit error(m); });
 
@@ -106,6 +111,9 @@ void CastManager::disconnect() {
 
 void CastManager::onSessionConnected() {
     m_connected = true;
+    // Read before beginCast(), after which position() is the device's.
+    m_startTrackId = m_player ? m_player->currentTrackId() : 0;
+    m_startSec     = m_player ? m_player->position() / 1000.0 : 0;
     if (m_player) m_player->beginCast(m_session);
     emit connectedChanged();
     castCurrentTrack();

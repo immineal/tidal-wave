@@ -13,11 +13,11 @@ using namespace fakecast;
 
 namespace {
 
-void load(CastSession &session)
+void load(CastSession &session, double startSec = 0)
 {
     session.loadMedia(QStringLiteral("http://127.0.0.1:1/track/x"), QStringLiteral("audio/flac"),
                       QStringLiteral("Tone"), QStringLiteral("Artist"), QStringLiteral("Album"),
-                      QString(), 180.0);
+                      QString(), 180.0, startSec);
 }
 
 } // namespace
@@ -187,6 +187,26 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("PAUSE")), 1, 3000);
         QCOMPARE(receiver.last(kMedia, QStringLiteral("PAUSE"))
                      .value(QStringLiteral("mediaSessionId")).toInt(), 8);
+    }
+
+    // Handing a track over to the device starts it where it was playing here.
+    void aLoadStartsAtTheGivenPosition()
+    {
+        FakeReceiver receiver;
+        QVERIFY(receiver.listen(QHostAddress::LocalHost));
+        CastSession session;
+        QVERIFY(connectTo(session, receiver));
+
+        load(session, 42.5);
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 1, 3000);
+        QCOMPARE(receiver.last(kMedia, QStringLiteral("LOAD"))
+                     .value(QStringLiteral("currentTime")).toDouble(), 42.5);
+
+        // The next track starts at its beginning: no currentTime at all.
+        load(session);
+        QTRY_COMPARE_WITH_TIMEOUT(receiver.count(kMedia, QStringLiteral("LOAD")), 2, 3000);
+        QVERIFY(!receiver.last(kMedia, QStringLiteral("LOAD"))
+                     .contains(QStringLiteral("currentTime")));
     }
 };
 

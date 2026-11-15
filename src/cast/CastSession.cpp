@@ -280,7 +280,8 @@ void CastSession::establishAppConnection(const QString &transportId) {
 
 void CastSession::loadMedia(const QString &url, const QString &contentType,
                             const QString &title, const QString &artist,
-                            const QString &album, const QString &artUrl, double durationSec) {
+                            const QString &album, const QString &artUrl, double durationSec,
+                            double startSec) {
     QJsonObject metadata{{"metadataType", 3}, {"title", title},
                          {"artist", artist}, {"albumName", album}};
     if (!artUrl.isEmpty())
@@ -294,6 +295,8 @@ void CastSession::loadMedia(const QString &url, const QString &contentType,
     m_loadRequestId = nextRequestId();
     QJsonObject load{{"type", "LOAD"}, {"requestId", m_loadRequestId},
                      {"media", media}, {"autoplay", true}};
+    if (startSec > 0)
+        load.insert("currentTime", startSec);
     m_loadPayload = jsonToString(load);
     m_haveLoad = true;
     if (m_appConnected)

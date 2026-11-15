@@ -27,11 +27,12 @@ public:
     void setPlainTextForTest(bool on) { m_plainText = on; }
     void setConnectTimeoutForTest(int ms) { m_connectTimeoutMs = ms; }
 
-    // Load a media URL onto the receiver. Before `connected()` the load is
-    // deferred until the receiver app is up.
+    // Load a media URL onto the receiver, starting at `startSec`. Before
+    // `connected()` the load is deferred until the receiver app is up.
     void loadMedia(const QString &url, const QString &contentType,
                    const QString &title, const QString &artist,
-                   const QString &album, const QString &artUrl, double durationSec);
+                   const QString &album, const QString &artUrl, double durationSec,
+                   double startSec = 0);
 
     void play();
     void pause();
