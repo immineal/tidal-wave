@@ -16,10 +16,17 @@ Rectangle {
     property var filteredPlaylists: []
     property var mixes: []
     property bool loading: bridge.favoritesLoading
-    // 0=default, 1=A-Z, 2=Z-A. Default is the order the library arrived in,
-    // which is most recently saved first: the favourites endpoints are asked
-    // for order=DATE. It is not persisted, so it is 0 on every visit.
+    // 0=default, 1=A-Z, 2=Z-A. Default is the order the bridge hands over:
+    // newest saved first, playlists by the later of last played and added.
+    // It is not persisted, so it is 0 on every visit.
     property int  sortMode: 0
+    // What Default means on the current tab, for the pill's tooltip.
+    readonly property string defaultOrderHint: [
+        qsTr("Default: most recently liked first"),
+        qsTr("Default: most recently saved first"),
+        qsTr("Default: most recently followed first"),
+        qsTr("Default: most recently played or added first")
+    ][activeTab] || ""
 
     // Grid metrics for the four grids below, all derived from the grid's width
     // alone. cellWidth is floored, so the columns never cross the viewport, and
@@ -319,6 +326,8 @@ Rectangle {
                     Rectangle {
                         required property string modelData
                         required property int    index
+                        objectName: index === 0 ? "collectionSortDefault" : ""
+                        readonly property string hint: index === 0 ? root.defaultOrderHint : ""
                         height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusChip
                         color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
                         Text {
@@ -332,6 +341,10 @@ Rectangle {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.sortMode = index
                         }
+                        HoverHandler { id: sortHov }
+                        ToolTip.visible: hint.length > 0 && sortHov.hovered
+                        ToolTip.text: hint
+                        ToolTip.delay: 600
                     }
                 }
             }
@@ -550,12 +563,14 @@ Rectangle {
         // Tab 3: Playlists Tab (virtualized GridView)
         GridView {
             id: playlistsGrid
+            objectName: "collectionPlaylistsGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 3 && root.filteredPlaylists.length > 0
             opacity: root.contentIn
             clip: true
-            model: root.activeTab === 3 ? root.filteredPlaylists : []
+            property var sortedPlaylists: root.sortItems(root.filteredPlaylists, root.sortMode)
+            model: root.activeTab === 3 ? sortedPlaylists : []
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
