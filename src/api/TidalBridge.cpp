@@ -31,6 +31,9 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
             loadFavoriteTrackIds();
             loadFavoriteMixIds();
         } else {
+            // The sign-in paging chains, playlists among them, are dropped
+            // where they stand: a page of the account left must not land.
+            ++m_favTracksLoadGen;
             m_favoriteTrackIds.clear();
             m_likedTrackIds.clear();
             ++m_likedIdsGen;

@@ -1471,6 +1471,14 @@
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
     </message>
     <message>
+        <source>Log out?</source>
+        <translation>Abmelden?</translation>
+    </message>
+    <message>
+        <source>Playback stops and the queue is cleared. To listen again you sign in with your Tidal account.</source>
+        <translation>Die Wiedergabe stoppt und die Warteschlange wird geleert. Zum Weiterhören meldest du dich wieder mit deinem Tidal-Konto an.</translation>
+    </message>
+    <message>
         <source>Dark</source>
         <comment>heading over the dark themes</comment>
         <translation>Dunkel</translation>

@@ -1,7 +1,7 @@
-// Deleting a playlist. A playlist the account made can be deleted from its
-// sidebar row and from the Edit dialog, always behind a confirmation; one it
-// only saved cannot. Once the bridge says it is gone, Main leaves its page
-// and the back history forgets it.
+// Deleting a playlist, and the question before Log out. A playlist the
+// account made can be deleted from its sidebar row and from the Edit dialog,
+// always behind a confirmation; one it only saved cannot. Once the bridge
+// says it is gone, Main leaves its page and the back history forgets it.
 
 import QtQuick
 import QtQuick.Layouts
@@ -233,5 +233,32 @@ TestCase {
                      && win.navHistory[i].params.playlistUuid === "p-own"),
                    "back still leads to the deleted playlist")
         compare(win.navHistory[win.navHistory.length - 1].page, "artist")
+    }
+
+    // ── Log out ──────────────────────────────────────────────────────────
+
+    function test_log_out_asks_first() {
+        var win = showApp()
+        var sidebar = findByType(win.contentItem, "SideBar")
+        verify(sidebar)
+        sidebar.openSettings()
+        var panel = sidebar.settingsPanel
+        tryVerify(function () { return panel.visible }, settleMs)
+        var button = findByName(panel.contentItem, "settingsLogOut")
+        verify(button, "Settings has no Log out")
+        button.activated()
+        var dlg = panel.logOutConfirm
+        tryVerify(function () { return dlg.visible }, settleMs, "Log out asked nothing")
+        compare(auth.state, 2, "Log out acted before the answer")
+
+        mouseClick(inDialog(dlg, "confirmDialogCancel"))
+        tryVerify(function () { return !dlg.visible }, settleMs)
+        compare(auth.state, 2, "Cancel logged out")
+
+        button.activated()
+        tryVerify(function () { return dlg.visible }, settleMs)
+        mouseClick(inDialog(dlg, "confirmDialogConfirm"))
+        tryVerify(function () { return auth.state === 0 }, settleMs, "confirming did not log out")
+        tryVerify(function () { return !dlg.visible }, settleMs)
     }
 }

@@ -306,6 +306,20 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
     return server->listen(socketName);
 }
 
+void Application::endAccountSession(TidalClient *client, Player *player, PinStore *pins,
+                                    LibraryIndex *library, bool forget) {
+    if (library) library->cancelIndexing();
+    if (player) {
+        player->clearQueue();
+        // Written now, while the account is still set: once it is 0 nothing
+        // is saved, and a pending save must not land under the next one.
+        if (forget) player->savePlaybackState();
+    }
+    if (client) client->setUserId(0);
+    if (pins) pins->setUserId(0);
+    if (library) library->setUserId(0);
+}
+
 bool Application::shouldQuitOnWindowClose(bool trayAvailable, bool quitOnClose) {
     // Without a tray a hidden window cannot be brought back, so the close has
     // to quit whatever the preference says.
@@ -749,6 +763,14 @@ int Application::run(int argc, char **argv) {
                 if (state == Qt::ApplicationActive) checkFavorites(60'000);
             });
 
+    // A session that ended takes playback, the queue and the account's
+    // lists with it, so the next account to sign in inherits nothing.
+    connect(m_auth, &Auth::loggedOut, this, [this]() {
+        endAccountSession(m_client, m_player, m_pins, m_library, true);
+    });
+    connect(m_auth, &Auth::sessionExpired, this, [this]() {
+        endAccountSession(m_client, m_player, m_pins, m_library, false);
+    });
     connect(m_auth, &Auth::stateChanged, this, [this](Auth::State s) {
         // Do not keep indexing against an account that just signed out.
         if (s == Auth::State::LoggedOut)

@@ -399,5 +399,6 @@ void Auth::logout() {
     m_api->setAccessToken({});
     clearCredentials();
     answerRefused(false);
+    emit loggedOut();
     setState(State::LoggedOut);
 }

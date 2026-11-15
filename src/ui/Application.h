@@ -70,6 +70,13 @@ public:
     // Whether a log line is the FFmpeg media backend announcing itself.
     static bool isMediaBackendStartupNoise(const QString &msg);
 
+    // What a session that ended leaves behind: no playback, no queue, no
+    // account in the client (the bridge's favourites go with it), the pins
+    // and the library. `forget`, an explicit log out, also writes the emptied
+    // queue under the account. Public and static for tst_sign_out.
+    static void endAccountSession(TidalClient *client, Player *player, PinStore *pins,
+                                  LibraryIndex *library, bool forget);
+
     // ── High-DPI scaling ─────────────────────────────────────────────────
     // Qt derives its scale factor from the logical DPI, which is 96 where the
     // display system advertises nothing. The rule defers to devicePixelRatio()

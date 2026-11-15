@@ -60,6 +60,8 @@ signals:
     void loginSucceeded();
     void loginFailed(const QString &reason);
     void sessionExpired();
+    // The user logged out. sessionExpired is the other way a session ends.
+    void loggedOut();
     void hasSavedCredentialsChanged();
 
 protected:
