@@ -317,6 +317,20 @@ private slots:
         m_home.reset();
     }
 
+    // ── signing in ──────────────────────────────────────────────────────
+    // A saved token that is still good: the session is checked behind it,
+    // and that check must not announce the sign-in a second time, which
+    // would load the whole library twice.
+    void aSavedSessionSignsInOnce()
+    {
+        Rig rig;
+        QSignalSpy signedIn(&rig.auth, &Auth::loginSucceeded);
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QTest::qWait(100);
+        QCOMPARE(signedIn.count(), 1);
+    }
+
     // ── the clock runs past the expiry while the process lives ──────────
     void theWallClockPassedTheExpiry_data()
     {

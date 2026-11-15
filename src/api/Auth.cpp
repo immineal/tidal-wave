@@ -268,6 +268,7 @@ void Auth::fetchSession() {
             }
             return;
         }
+        const qint64 before = m_userId;
         m_userId      = obj["userId"].toVariant().toLongLong();
         m_countryCode = obj["countryCode"].toString();
         m_api->setCountryCode(m_countryCode);
@@ -284,6 +285,9 @@ void Auth::fetchSession() {
 
         saveCredentials();
 
+        // A saved token signed in already; this check only confirms it.
+        // Each announcement loads the whole library.
+        if (m_state == State::LoggedIn && before == m_userId) return;
         // Emit before the state flips: QML fetches user-scoped data on the
         // state change, and TidalClient::userId is set by this signal.
         emit loginSucceeded();
