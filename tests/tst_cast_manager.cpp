@@ -175,6 +175,75 @@ private slots:
         manager.disconnect();
     }
 
+    // Picking a second device while casting ends the cast on the first one
+    // and says "connecting" until the second is up. The Player stays with the
+    // cast meanwhile: going local in between would play the track here.
+    void switchingDevicesEndsTheCastOnTheFirst()
+    {
+        FakeReceiver first, second;
+        QVERIFY(first.listen(QHostAddress::LocalHost));
+        QVERIFY(second.listen(QHostAddress::LocalHost));
+        Rig r;
+        QVERIFY(r.start());
+        QVERIFY(r.add(QStringLiteral("device-1"), QStringLiteral("Kitchen"), first.serverPort()));
+        QVERIFY(r.add(QStringLiteral("device-2"), QStringLiteral("Hall"), second.serverPort()));
+        QVERIFY(r.castTo(QStringLiteral("device-1")));
+        QVERIFY(r.player.casting());
+
+        QSignalSpy changed(&r.manager, &CastManager::connectedChanged);
+        r.manager.connectToDevice(QStringLiteral("device-2"));
+        QVERIFY2(!r.manager.connected(), "still casting to the first device");
+        QVERIFY(!changed.isEmpty());
+        QCOMPARE(r.manager.deviceName(), QStringLiteral("Hall"));
+        QTRY_COMPARE_WITH_TIMEOUT(first.count(kConnection, QStringLiteral("CLOSE")), 2, 5000);
+
+        QTRY_VERIFY_WITH_TIMEOUT(r.manager.connected(), 5000);
+        QCOMPARE(r.manager.deviceName(), QStringLiteral("Hall"));
+        QVERIFY(r.player.casting());
+        QCOMPARE(second.count(kReceiver, QStringLiteral("LAUNCH")), 1);
+        r.manager.disconnect();
+        QVERIFY(!r.player.casting());
+    }
+
+    // The second device never answers: the cast is over, here too.
+    void switchingToADeviceThatFailsEndsTheCast()
+    {
+        FakeReceiver first;
+        QVERIFY(first.listen(QHostAddress::LocalHost));
+        Rig r;
+        QVERIFY(r.start());
+        QVERIFY(r.add(QStringLiteral("device-1"), QStringLiteral("Kitchen"), first.serverPort()));
+        QVERIFY(r.add(QStringLiteral("device-2"), QStringLiteral("Hall"), deadPort()));
+        QVERIFY(r.castTo(QStringLiteral("device-1")));
+
+        QSignalSpy error(&r.manager, &CastManager::error);
+        r.manager.connectToDevice(QStringLiteral("device-2"));
+        QTRY_COMPARE_WITH_TIMEOUT(error.count(), 1, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!r.player.casting(), 3000);
+        QVERIFY(!r.manager.connected());
+        QCOMPARE(r.manager.deviceName(), QString());
+    }
+
+    // The ticked row picked again is no reason to restart the cast.
+    void pickingTheDeviceAlreadyCastToKeepsTheCast()
+    {
+        FakeReceiver first;
+        QVERIFY(first.listen(QHostAddress::LocalHost));
+        Rig r;
+        QVERIFY(r.start());
+        QVERIFY(r.add(QStringLiteral("device-1"), QStringLiteral("Kitchen"), first.serverPort()));
+        QVERIFY(r.castTo(QStringLiteral("device-1")));
+
+        QSignalSpy changed(&r.manager, &CastManager::connectedChanged);
+        r.manager.connectToDevice(QStringLiteral("device-1"));
+        QTest::qWait(300);
+        QVERIFY(r.manager.connected());
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(first.count(kConnection, QStringLiteral("CLOSE")), 0);
+        QCOMPARE(first.count(kReceiver, QStringLiteral("LAUNCH")), 1);
+        r.manager.disconnect();
+    }
+
     // A device that ends the cast itself ends it here: the Player goes back
     // to local and the picker stops showing the device.
     void theDeviceEndingTheCastEndsItForThePlayer()
