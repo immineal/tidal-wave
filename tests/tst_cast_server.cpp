@@ -90,16 +90,21 @@ public:
             if (!s.waitForConnected(5000)) return;
             s.write(request);
             s.waitForBytesWritten(5000);
-            for (int i = 0; i < 500 && !m_release; ++i)
+            m_holding = true;
+            for (int i = 0; i < 1000 && !m_release; ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            m_holding = false;
             s.abort();
         });
     }
     ~Stalled() { m_release = true; m_thread.join(); }
+    // Connected with its request sent, and not yet hung up.
+    bool holding() const { return m_holding; }
 
 private:
     std::thread       m_thread;
     std::atomic<bool> m_release{false};
+    std::atomic<bool> m_holding{false};
 };
 
 QByteArray request(const QByteArray &method, const QByteArray &target,
@@ -178,23 +183,22 @@ private slots:
         QVERIFY(!server.start(QHostAddress::LocalHost).isEmpty());
         const QUrl url(server.setCurrentFile(m_path, QStringLiteral("audio/flac")));
 
-        // Timed from the first request: a server that serves one connection
-        // at a time answers the second only when the first hangs up, at 5 s.
-        QElapsedTimer clock;
-        clock.start();
+        // A server that serves one connection at a time answers the second
+        // only once the first hangs up. Asked of the first client, not of a
+        // clock, so a stall of the whole machine cannot fake either outcome.
         Stalled stalled(url, get(url));
+        QTRY_VERIFY_WITH_TIMEOUT(stalled.holding(), 5000);
         QTest::qWait(200);   // the first request is in and being served
 
         Fetch second(url, get(url, "Range: bytes=1000-1999\r\n"));
-        QTRY_VERIFY_WITH_TIMEOUT(second.done(), 4000);
-        const qint64 took = clock.elapsed();
+        QTRY_VERIFY_WITH_TIMEOUT(second.done(), 12000);
+        const bool firstStillHeld = stalled.holding();
 
         const Reply r = second.reply();
         QCOMPARE(r.status, 206);
         QCOMPARE(r.body.size(), 1000);
         QCOMPARE(r.body.at(0), byteAt(1000));
-        QVERIFY2(took < 2000, qPrintable(QStringLiteral("the second request took %1 ms")
-                                         .arg(took)));
+        QVERIFY2(firstStillHeld, "the second request was answered only after the first hung up");
     }
 
     // Anyone on the network can reach the server. Only the URL handed to the
