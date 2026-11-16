@@ -678,8 +678,7 @@ Rectangle {
                     visible: picker.localDevices.length > 0
                     text: qsTr("This computer")
                     color: Theme.textDim
-                    font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
-                    font.capitalization: Font.AllUppercase
+                    font.pixelSize: Theme.fontMicro; font.bold: true
                     Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space1; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {
@@ -703,8 +702,7 @@ Rectangle {
                     visible: !!picker.castSource
                     text: qsTr("Cast to")
                     color: Theme.textDim
-                    font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
-                    font.capitalization: Font.AllUppercase
+                    font.pixelSize: Theme.fontMicro; font.bold: true
                     Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space2; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {

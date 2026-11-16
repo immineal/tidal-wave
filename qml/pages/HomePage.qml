@@ -256,8 +256,6 @@ Rectangle {
                             color: Theme.textSec
                             font.pixelSize: Theme.fontMicro
                             font.bold: true
-                            font.capitalization: Font.AllUppercase
-                            font.letterSpacing: 1
                         }
                         Text {
                             id: continueTitle

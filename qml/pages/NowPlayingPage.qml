@@ -1059,8 +1059,6 @@ Rectangle {
                                             color: Theme.textDim
                                             font.pixelSize: creditsPanel.labelSize
                                             font.bold: true
-                                            font.letterSpacing: 1
-                                            font.capitalization: Font.AllUppercase
                                             horizontalAlignment: creditsPanel.align
                                             wrapMode: Text.WordWrap
                                         }
@@ -2101,8 +2099,6 @@ Rectangle {
                             color: Theme.textDim
                             font.pixelSize: Theme.fontMicro
                             font.bold: true
-                            font.letterSpacing: 1
-                            font.capitalization: Font.AllUppercase
                         }
 
                         Repeater {

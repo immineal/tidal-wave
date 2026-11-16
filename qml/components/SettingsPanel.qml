@@ -1168,8 +1168,7 @@ Popup {
             Text {
                 text: sec.heading
                 color: Theme.textDim
-                font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
-                font.capitalization: Font.AllUppercase
+                font.pixelSize: Theme.fontMicro; font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             },

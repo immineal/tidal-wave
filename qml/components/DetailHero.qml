@@ -144,8 +144,6 @@ Rectangle {
                 color: Theme.textSec
                 font.pixelSize: Theme.fontMicro
                 font.bold: true
-                font.letterSpacing: 1
-                font.capitalization: Font.AllUppercase
             }
 
             Text {

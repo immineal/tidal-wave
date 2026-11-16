@@ -270,9 +270,10 @@ private slots:
                      .constData());
     }
 
-    // Letter spacing on mixed-case text reads as a slip. Spaced type is an
-    // overline, so the element that spaces its letters also capitalises them.
-    void letterSpacingOnlyOnCapitals() {
+    // No text in capitals and no spaced letters: every label is set in
+    // sentence case at the font's own spacing, overlines included.
+    void noCapitalsAndNoLetterSpacing() {
+        static const QRegularExpression caps(QStringLiteral("\\bcapitalization\\s*:"));
         static const QRegularExpression spaced(QStringLiteral(
             "\\bletterSpacing\\s*:\\s*(?!0(\\.0+)?\\s*($|[;}]))"));
         QList<Hit> hits;
@@ -284,32 +285,13 @@ private slots:
             if (!f.open(QIODevice::ReadOnly)) continue;
             const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
             for (int i = 0; i < lines.size(); ++i) {
-                if (!spaced.match(codeOf(lines.at(i))).hasMatch()) continue;
-                // The enclosing element: back to its unmatched `{`, then on
-                // to the `}` that closes it.
-                int depth = 0, open = i;
-                for (int k = i; k >= 0; --k) {
-                    const QString c = codeOf(lines.at(k));
-                    for (int j = c.size() - 1; j >= 0; --j) {
-                        if (k == i && j > c.indexOf(QLatin1String("letterSpacing"))) continue;
-                        if (c.at(j) == QLatin1Char('}')) ++depth;
-                        else if (c.at(j) == QLatin1Char('{') && depth-- == 0) { open = k; k = -1; break; }
-                    }
-                }
-                QString block;
-                depth = 0;
-                for (int k = open; k < lines.size(); ++k) {
-                    const QString c = codeOf(lines.at(k));
-                    block += c + QLatin1Char('\n');
-                    depth += c.count(QLatin1Char('{')) - c.count(QLatin1Char('}'));
-                    if (depth <= 0 && k > open) break;
-                }
-                if (!block.contains(QLatin1String("Font.AllUppercase")))
+                const QString code = codeOf(lines.at(i));
+                if (caps.match(code).hasMatch() || spaced.match(code).hasMatch())
                     hits.append({QDir(qmlDir()).relativeFilePath(path), i + 1, lines.at(i).trimmed()});
             }
         }
         QVERIFY2(hits.isEmpty(),
-                 report(hits, QStringLiteral("space the letters of text that is not set in capitals"))
+                 report(hits, QStringLiteral("set text in capitals or space its letters"))
                      .constData());
     }
 
