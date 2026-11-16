@@ -27,7 +27,9 @@ Rectangle {
         var fade = Theme.space16 + Theme.space4
         return Math.min(1, Math.max(0, (scrolled - (heroHeight - height - fade)) / fade))
     }
-    color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Math.min(0.95, reveal))
+    // Opaque once revealed: rows scrolling under a see-through bar read as
+    // text printed over the title.
+    color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, reveal)
 
     BackButton {
         objectName: bar.backObjectName

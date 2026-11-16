@@ -281,7 +281,7 @@ TestCase {
                         coverUrl: S.track(2).coverUrl; trackData: S.track(2)
                     }
                     TrackRow {
-                        width: col.width; trackNum: 4; showPopularity: true
+                        width: col.width; trackNum: 4
                         title: S.track(3).title; artists: S.track(3).artists
                         albumTitle: S.track(3).albumTitle; durationStr: S.track(3).durationStr
                         coverUrl: S.track(3).coverUrl; trackData: S.track(3)
@@ -813,6 +813,119 @@ TestCase {
         popup.open()
         settle(win.contentItem, 500)
         shot(win.contentItem, "sleep_" + row.theme)
+        win.destroy()
+    }
+
+    // Two card rows at the page width, the last card cut off at the edge.
+    Component {
+        id: rowsC
+        ShotWindow {
+            width: testCase.pageWidth; height: 560; visible: true
+            property alias first: a
+            property alias second: b
+            Column {
+                y: 16; width: parent.width; spacing: 24
+                HorizontalSection { id: a; title: "Recently played"; mediaType: "album" }
+                HorizontalSection { id: b; title: "Your playlists"; mediaType: "playlist" }
+            }
+        }
+    }
+    function test_21_cardRows_data() { return test_02_sidebar_data() }
+    function test_21_cardRows(row) {
+        prefs.theme = row.theme
+        var win = rowsC.createObject(testCase)
+        verify(win)
+        win.first.items = S.albums(6).concat(S.albums(6))
+        win.second.items = S.playlists(4)
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "cardrows_" + row.theme)
+        // One card along, so both edge arrows show.
+        win.first.scrollTo(win.first.minX + win.first.cardSize + win.first.listSpacing)
+        settle(win.contentItem, 300)
+        shot(win.contentItem, "cardrows_scrolled_" + row.theme)
+        win.destroy()
+    }
+
+    // The queue with a manual section long enough to show the grips.
+    Component {
+        id: queueC
+        ShotWindow {
+            width: 420; height: 760; visible: true
+            QueuePanel { anchors.fill: parent }
+        }
+    }
+    function test_22_queue_data() { return test_02_sidebar_data() }
+    function test_22_queue(row) {
+        prefs.theme = row.theme
+        player.setManualForTest(S.tracks(4))
+        var win = queueC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "queue_" + row.theme)
+        win.destroy()
+        player.setManualForTest([])
+    }
+
+    // Settings scrolled to the shortcut table.
+    function test_23_settingsShortcuts_data() { return test_02_sidebar_data() }
+    function test_23_settingsShortcuts(row) {
+        prefs.theme = row.theme
+        var win = settingsC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 200)
+        win.sidebar.openSettings()
+        settle(win.contentItem, 400)
+        var panel = win.sidebar.settingsPanel
+        var flick = findByName(panel.contentItem, "settingsScroll").contentItem
+        var key = findByName(flick.contentItem, "settingsShortcutKey")
+        verify(key, "the shortcut table was not found")
+        var pos = key.mapToItem(flick.contentItem, 0, 0)
+        flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, pos.y - 80))
+        settle(win.contentItem, 400)
+        shot(win.contentItem, "settings_shortcuts_" + row.theme)
+        panel.close()
+        win.destroy()
+    }
+
+    // Now Playing with the lyrics open, windowed and stacked.
+    function test_24_nowPlayingLyrics_data() { return test_02_sidebar_data() }
+    function test_24_nowPlayingLyrics(row) {
+        prefs.theme = row.theme
+        bridge.setLyricsForTest("The tide came in at four\nAnd took the pier lights out\n"
+                                + "We stood where the rails had been\nCounting the boats by sound\n"
+                                + "Nobody said a word\nThe radio said rain", false)
+        var comps = [nowPlayingWideC, nowPlayingC]
+        var names = ["nowplaying_lyrics_wide_", "nowplaying_lyrics_"]
+        for (var i = 0; i < comps.length; ++i) {
+            var win = comps[i].createObject(testCase)
+            verify(win)
+            settle(win.contentItem, 400)
+            win.page.showLyrics = true
+            settle(win.contentItem, 700)
+            shot(win.page, names[i] + row.theme)
+            win.destroy()
+        }
+    }
+
+    // Fullscreen Now Playing on a 1920x1080 screen.
+    Component {
+        id: nowPlayingFullC
+        ShotWindow {
+            id: fw
+            width: 1920; height: 1080; visible: true
+            property bool fullScreen: true
+            function toggleFullScreen() { fullScreen = !fullScreen }
+            property alias page: pg
+            NowPlayingPage { id: pg; anchors.fill: parent }
+        }
+    }
+    function test_25_nowPlayingFullscreen_data() { return test_02_sidebar_data() }
+    function test_25_nowPlayingFullscreen(row) {
+        prefs.theme = row.theme
+        var win = nowPlayingFullC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 600)
+        shot(win.page, "nowplaying_fullscreen_" + row.theme)
         win.destroy()
     }
 }

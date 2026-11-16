@@ -1365,18 +1365,22 @@ TestCase {
         verify(box && panel && view, "the lyrics panel was not found")
         verify(panel.visible, "the lyrics panel did not open")
 
-        // All the width the page has, up to the measure. At 640 the artwork
-        // already took the whole content width, so the gain there is height.
-        verify(Math.abs(box.width - Math.min(page.contentWidth, page.lyricsMeasure)) <= 1,
+        // Side by side the panel takes the artwork's column, so the text
+        // column beside it stays put. Stacked it gets all the width the page
+        // has, up to the measure.
+        var wanted = page.stacked ? Math.min(page.contentWidth, page.lyricsMeasure)
+                                  : page.sideCoverSize
+        verify(Math.abs(box.width - wanted) <= 1,
                row.tag + ": the lyrics got " + box.width.toFixed(1)
-               + "px of a " + page.contentWidth.toFixed(1) + "px page, capped at "
-               + page.lyricsMeasure)
+               + "px of a " + page.contentWidth.toFixed(1) + "px page, where "
+               + wanted.toFixed(1) + " was meant")
         verify(box.height >= 280 - 0.5,
                row.tag + ": the lyrics column is only " + box.height.toFixed(1) + "px tall")
-        // More room than the artwork's square, at every size. Opening the lyrics
-        // stacks the page, which can shrink the cover, so the square is read
-        // before they open.
-        verify(box.width * box.height > square * square,
+        // Never less room than the artwork's square, and more wherever the
+        // page is wider than the square. Read before they open.
+        verify(box.width * box.height > square * square
+               || (box.width * box.height >= square * square - 1
+                   && page.contentWidth <= square + 0.5),
                row.tag + ": the lyrics got " + box.width.toFixed(1) + "x"
                + box.height.toFixed(1) + " where the artwork square was "
                + square.toFixed(1) + ", which is no more room than before")
@@ -1497,13 +1501,6 @@ TestCase {
         var page = openLyrics(host)
         var docked = panelShape(page)
 
-        // Docked, the words are the smaller half of the page: the text column
-        // is taller than the panel.
-        verify(docked.h < docked.info,
-               row.tag + ": docked, the panel is already " + docked.h.toFixed(1)
-               + " against a " + docked.info.toFixed(1)
-               + "px text column, so this case is measuring nothing")
-
         enterReading(host)
         verify(page.readingView,
                row.tag + ": fullscreen with the lyrics open is the reading view")
@@ -1511,8 +1508,8 @@ TestCase {
         var reading = panelShape(page)
 
         // All the width the page has, up to the measure, which is held in
-        // characters, so at twice the type it is twice the pixels.
-        verify(reading.size === 2 * docked.size,
+        // characters, so it grows with the type.
+        verify(docked.size === Theme.fontSection && reading.size === Theme.fontDisplay,
                row.tag + ": the lyric line is set at " + reading.size
                + "px where docked it was " + docked.size)
         verify(docked.drawn > 0 && reading.drawn > 0,
@@ -1523,7 +1520,8 @@ TestCase {
         verify(reading.drawn > docked.drawn,
                row.tag + ": the lines are painted at " + reading.drawn
                + "px, the same as the " + docked.drawn + " they had docked")
-        verify(Math.abs(reading.w - Math.min(page.contentWidth, 2 * 640)) <= 1,
+        verify(Math.abs(reading.w - Math.min(page.contentWidth,
+                                             640 * Theme.fontDisplay / Theme.fontSection)) <= 1,
                row.tag + ": the words got " + reading.w.toFixed(1)
                + "px of a " + page.contentWidth.toFixed(1) + "px page")
         verify(reading.w > docked.w + 1,
@@ -1536,9 +1534,12 @@ TestCase {
         verify(Math.abs(reading.h - spare) <= 0.5,
                row.tag + ": the panel is " + reading.h.toFixed(1)
                + " where the page could spare " + spare.toFixed(1))
-        verify(reading.h >= docked.h - 0.5,
-               row.tag + ": the panel lost height entering the reading view, "
-               + docked.h.toFixed(1) + " -> " + reading.h.toFixed(1))
+        // Docked side by side the panel is as tall as the text column, which
+        // the reading view may not match in height, only in room.
+        verify(reading.w * reading.h > docked.w * docked.h,
+               row.tag + ": the reading view gives the words "
+               + reading.w.toFixed(0) + "x" + reading.h.toFixed(0) + " where docked they had "
+               + docked.w.toFixed(0) + "x" + docked.h.toFixed(0))
 
         // Up Next has folded, and that is where the height came from: it is the
         // one block on the page that is neither chrome nor a control.

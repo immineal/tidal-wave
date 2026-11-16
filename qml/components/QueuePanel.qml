@@ -45,6 +45,8 @@ Item {
     // its own bounds. 16 is the smallest size that stays inside the slack of
     // the layout guard in tests/qml/tst_layout_player.qml.
     readonly property int iconSize: 16
+    readonly property int gripSize: 24
+    readonly property int gripGlyph: 20
 
     // ── the model ────────────────────────────────────────────────────────
     // One list and two boundaries, all gated on `visible` so a closed panel
@@ -471,6 +473,20 @@ Item {
                     cacheBuffer: 240
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    // No drag to scroll: a press on a row's title or artist
+                    // would otherwise hand the drag to the list. The wheel and
+                    // the scroll bar scroll; the grip moves rows.
+                    interactive: false
+                    keyNavigationEnabled: true
+                    WheelHandler {
+                        target: null
+                        onWheel: (event) => {
+                            var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y
+                            var top = list.originY
+                            var end = top + Math.max(0, list.contentHeight - list.height)
+                            list.contentY = Math.max(top, Math.min(end, list.contentY - dy))
+                        }
+                    }
 
                     delegate: QueueEntry {
                         required property int index
@@ -527,10 +543,10 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
 
                     anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top:    root.currentAbove ? parent.top : undefined
-                    anchors.bottom: root.currentAbove ? undefined : parent.bottom
-                    anchors.topMargin: Theme.space3
-                    anchors.bottomMargin: Theme.space3
+                    // A y, not a top and a bottom anchor swapped by binding:
+                    // for a moment both held, and the pill kept the stretched
+                    // height over the rows, taking their clicks.
+                    y: root.currentAbove ? Theme.space3 : parent.height - height - Theme.space3
 
                     width: jumpRow.implicitWidth + 24
                     height: 28
@@ -719,7 +735,19 @@ Item {
                 enabled: !entry.isHeader
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                // A drag on a row is not a scroll: the grip moves rows and the
+                // wheel scrolls. A press that travelled is not a click either.
+                preventStealing: true
+                property point pressAt
+                property bool travelled: false
+                onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+                onPositionChanged: function (mouse) {
+                    if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                            || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
+                        travelled = true
+                }
                 onClicked: function (mouse) {
+                    if (travelled) return
                     if (mouse.button === Qt.RightButton) {
                         if (entry.isManual) rowMenu.popup()
                         return
@@ -737,23 +765,25 @@ Item {
                 // The grip's column is reserved on every track row, so the
                 // artwork keeps one straight edge across section boundaries.
                 Item {
-                    Layout.preferredWidth: 16
+                    Layout.preferredWidth: root.gripSize
                     Layout.fillHeight: true
 
+                    // Full strength at rest: a faint grip read as decoration.
                     VectorIcon {
+                        objectName: "queueDragGrip"
                         anchors.centerIn: parent
                         visible: entry.draggable
                         name: "grip"
-                        width: root.iconSize; height: root.iconSize
-                        color: entry.dragging ? Theme.accentText : Theme.textDim
-                        opacity: qHov.hovered || entry.dragging ? 1 : 0.45
+                        width: root.gripGlyph; height: root.gripGlyph
+                        color: entry.dragging ? Theme.accentText
+                             : qHov.hovered ? Theme.textPrimary : Theme.textSec
                     }
 
                     MouseArea {
                         objectName: "queueDragArea"
                         anchors.fill: parent
-                        // A deliberate bleed, so a 16px-wide grip is not a
-                        // 16px-wide target. 4 is what the layout guard in
+                        // A deliberate bleed, so the grip's target is wider
+                        // than its column. 4 is what the layout guard in
                         // tests/qml/tst_layout_player.qml allows for overhang.
                         anchors.margins: -Theme.space1
                         visible: entry.draggable

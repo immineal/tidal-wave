@@ -96,6 +96,8 @@ Popup {
     // decides the width.
     width: Math.min(380, (parent ? parent.width : 380) - 48)
     modal: true
+    // Dims the app behind, as the queue panel does. Fusion's own is faint.
+    Overlay.modal: Rectangle { color: Theme.scrim }
     focus: true
     closePolicy: root.busy
                  ? Popup.NoAutoClose

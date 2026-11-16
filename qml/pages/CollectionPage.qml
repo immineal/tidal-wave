@@ -77,15 +77,15 @@ Rectangle {
         qsTr("Default: most recently played or added first")
     ][activeTab] || ""
 
-    // Grid metrics for the four grids below, all derived from the grid's width
-    // alone. cellWidth is floored, so the columns never cross the viewport, and
-    // the remainder is split between the two edge insets.
+    // Grid metrics for the four grids, from the grid's width alone. A cell
+    // holds half a gutter each side of its card, so the cells start half a
+    // gutter left of the inset and the first card lines up with the title.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
     readonly property int gridGutter: Theme.space6     // breathing room in a cell, split either side of the card
     readonly property int gridEdge: Theme.space6       // the pane inset, matching the header above
 
-    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge) }
+    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge + gridGutter) }
     function gridColumns(w) {
         var avail = gridSpace(w)
         var n = Math.max(1, Math.round(avail / gridTargetCell))
@@ -97,9 +97,7 @@ Rectangle {
     function gridCell(w) {
         return Math.max(1, Math.floor(gridSpace(w) / gridColumns(w)))
     }
-    function gridLeft(w) {
-        return gridEdge + Math.floor((gridSpace(w) - gridColumns(w) * gridCell(w)) / 2)
-    }
+    function gridLeft(w) { return gridEdge - gridGutter / 2 }
     // Chosen so that width - leftMargin - rightMargin is exactly columns *
     // cellWidth, the figure GridView divides by cellWidth to count its columns.
     function gridRight(w) {
@@ -191,6 +189,7 @@ Rectangle {
         // these spacers have to declare it or they collapse to nothing.
         Item { Layout.preferredHeight: Theme.space6 }
         Text {
+            objectName: "collectionTitle"
             Layout.leftMargin: Theme.space6
             text: qsTr("Collection")
             color: Theme.textPrimary
@@ -234,7 +233,8 @@ Rectangle {
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusFull
+                        // Sized off the bold label, as the tabs are.
+                        height: 30; width: sortBold.implicitWidth + 16; radius: Theme.radiusFull
                         color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
                         // One of three, so it reads as a radio button. The ring
                         // is outside the pill, apart from the chosen fill.
@@ -261,6 +261,11 @@ Rectangle {
                             text: modelData
                             color: root.sortMode === index ? Theme.accentInk : Theme.textSec
                             font.pixelSize: Theme.fontMeta
+                            font.bold: root.sortMode === index
+                        }
+                        Text {
+                            id: sortBold; visible: false
+                            text: modelData; font.pixelSize: Theme.fontMeta; font.bold: true
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -358,8 +363,11 @@ Rectangle {
             }
 
             ScrollBar.vertical: ScrollBar {
+                objectName: "collectionTracksScrollBar"
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -432,6 +440,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -489,6 +499,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -555,6 +567,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -636,6 +650,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 

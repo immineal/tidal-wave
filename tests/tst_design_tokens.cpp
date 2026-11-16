@@ -30,10 +30,6 @@ struct Exemption {
 };
 
 const Exemption kExempt[] = {
-    {"components/PlayerBar.qml", "qualityBadgeText",
-     "the quality badges are being unified apart from this pass"},
-    {"pages/NowPlayingPage.qml", "qualityBadgeText",
-     "the quality badges are being unified apart from this pass"},
     {"components/AppMark.qml", "markCorner",
      "the app icon's corner is part of the drawn mark, at its 64-unit size"},
     {"components/VectorIcon.qml", "_fat.indexOf",
@@ -128,6 +124,23 @@ class TestDesignTokens : public QObject {
                 }
                 if (!exempt) hits.append({rel, i + 1, lines.at(i).trimmed()});
             }
+        }
+        return hits;
+    }
+
+    // Every line under qml/, strings and all, with no exemptions.
+    QList<Hit> scanAll(const std::function<bool(const QString &line)> &match) const {
+        QList<Hit> hits;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            for (int i = 0; i < lines.size(); ++i)
+                if (match(lines.at(i)))
+                    hits.append({QDir(qmlDir()).relativeFilePath(path), i + 1, lines.at(i).trimmed()});
         }
         return hits;
     }
@@ -257,6 +270,21 @@ private slots:
         const auto hits = scan([](const QString &code) { return local.match(code).hasMatch(); });
         QVERIFY2(hits.isEmpty(),
                  report(hits, QStringLiteral("build their own copy of a control in qml/components"))
+                     .constData());
+    }
+
+    // The quality badge is one component, so the bar and Now Playing cannot
+    // drift apart in size, type or colour again.
+    void qualityBadgeIsOneComponent() {
+        const auto all = scanAll([](const QString &line) {
+            return line.contains(QLatin1String("objectName: \"qualityBadge\""));
+        });
+        QList<Hit> hits;
+        for (const Hit &h : all)
+            if (h.file != QLatin1String("components/QualityBadge.qml")) hits.append(h);
+        QVERIFY2(!all.isEmpty(), "no quality badge was found under qml/");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("draw a quality badge of their own instead of QualityBadge"))
                      .constData());
     }
 

@@ -42,8 +42,9 @@ Rectangle {
     // ─── Crossing the breakpoint ───────────────────────
     // How stacked the page is: 0 with the cover beside the text, 1 with it
     // above. Everything that moves in the rearrangement is lerped off this one
-    // clock. An open panel is the stacked arrangement at every width.
-    readonly property bool stackedLayout: stacked || showPanel
+    // clock. A docked panel takes the artwork's place and moves nothing; the
+    // reading view is the stacked arrangement at every width.
+    readonly property bool stackedLayout: stacked || readingView
     property real stackness: stackedLayout ? 1 : 0
 
     Behavior on stackness {
@@ -102,24 +103,26 @@ Rectangle {
         return panelValue + (reading - panelValue) * root.readingness
     }
 
-    // Stacked, the cover takes the height the rest of the page leaves it,
-    // capped at 420 and at the content width and floored at 180. Side by side
-    // it keeps 45% of the content width.
-    readonly property real sideCoverSize:    Math.min(contentWidth * 0.45, 420)
-    readonly property real stackedCoverSize: Math.min(contentWidth, 420,
+    // Stacked, the cover takes the height the page leaves it, floored at 180;
+    // side by side 45% of the content width. Both stop at coverCap: 420, or in
+    // fullscreen the height the page has, so the art fills the screen.
+    readonly property real sideRoom: height - 2 * pageMargin - headerRow.height - 32
+    readonly property real coverCap: fullScreen ? Math.max(420, sideRoom) : 420
+    readonly property real sideCoverSize:    Math.min(contentWidth * 0.45, coverCap)
+    readonly property real stackedCoverSize: Math.min(contentWidth, coverCap,
                                                       Math.max(180, stackedCoverRoom))
     readonly property real coverSize: blend(sideCoverSize, stackedCoverSize)
 
     // ─── What a panel asks for instead ─────────────────
-    // The size the lines are set in: 14 docked, twice that in the reading view,
-    // where they are read from further back. Lerped, so it grows with the slot.
-    readonly property int  lyricsSize:  Theme.fontBody
+    // The size the lines are set in: 18 docked, 28 in the reading view, where
+    // they are read from further back. Lerped, so it grows with the slot.
+    readonly property int  lyricsSize:  Theme.fontSection
     readonly property int  readingSize: Theme.fontDisplay
     readonly property real lyricLineSize: rblend(lyricsSize, readingSize)
 
-    // A measure, not a square: 640px is about 90 characters at 14px, past the
+    // A measure, not a square: 640px is about 70 characters at 18px, past the
     // longest lyric line, and wider is not more readable. Held in characters,
-    // so the reading size gets twice the width.
+    // so the reading size gets a wider one.
     readonly property real lyricsMeasure: 640 * lyricLineSize / lyricsSize
     readonly property real lyricsWidth: Math.min(contentWidth, lyricsMeasure)
 
@@ -133,9 +136,15 @@ Rectangle {
     readonly property real lyricsHeight:
         Math.max(coverSize, 280, Math.min(lyricsCap, stackedCoverRoom))
 
+    // A docked panel's box. Side by side it is the artwork's column at the
+    // height of the pair; stacked it is the measure wide and the artwork's
+    // height tall. Neither moves the text column or Up Next.
+    readonly property real dockedWidth:  blend(sideCoverSize, lyricsWidth)
+    readonly property real dockedHeight: blend(sideBodyHeight, Math.max(stackedCoverSize, 280))
+
     // The slot both live in: square for the artwork, a column for a panel.
-    readonly property real slotWidth:  lblend(coverSize, lyricsWidth)
-    readonly property real slotHeight: lblend(coverSize, lyricsHeight)
+    readonly property real slotWidth:  lblend(coverSize, rblend(dockedWidth, lyricsWidth))
+    readonly property real slotHeight: lblend(coverSize, rblend(dockedHeight, lyricsHeight))
 
     // What is left once the margins, the header row, the two 32px gaps and the
     // text column have taken their height. The settled stacked height: a
@@ -156,10 +165,9 @@ Rectangle {
     // which keeps the arithmetic below closed-form.
     readonly property real infoHeight: infoColumn.implicitHeight
     // The settled height the pair takes side by side, and the centre line both
-    // are held on there. `lblend` and not `slotHeight`: this must not be one of
-    // the things the stack animation is moving.
-    readonly property real sideBodyHeight:
-        Math.max(lblend(sideCoverSize, lyricsHeight), infoHeight)
+    // are held on there. Not `slotHeight`: this must not be one of the things
+    // the stack animation or a panel is moving.
+    readonly property real sideBodyHeight: Math.max(sideCoverSize, infoHeight)
 
     readonly property real coverX: Math.round(blend(0, (contentWidth - slotWidth) / 2))
     readonly property real coverY: Math.round(blend((sideBodyHeight - slotHeight) / 2, 0))
@@ -766,7 +774,9 @@ Rectangle {
                         visible: opacity > 0.01
                         Image {
                             anchors.fill: parent
-                            source: hasTrack ? "image://tidal/" + track.coverUrl : ""
+                            // The large rendition where the map has it: the
+                            // 320px one goes soft at 420 and more.
+                            source: hasTrack ? "image://tidal/" + (track.coverUrl1280 || track.coverUrl) : ""
                             fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
                         }
                     }
@@ -1272,7 +1282,10 @@ Rectangle {
                                 id: titleLink
                                 objectName: "nowPlayingTitle"
                                 text: hasTrack ? track.title : "–"; color: Theme.textPrimary
-                                font.pixelSize: Theme.fontDisplay; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true
+                                font.pixelSize: Theme.fontDisplay; font.bold: true; Layout.fillWidth: true
+                                // Two lines before it elides: a long title is
+                                // most of what this page is for.
+                                wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                                 font.underline: titleHit.containsMouse && hasTrack && Number(track.albumId) > 0
                                 activeFocusOnTab: hasTrack && Number(track.albumId) > 0
                                 Keys.onReturnPressed: if (hasTrack && Number(track.albumId) > 0) navigateTo("album", { albumId: Number(track.albumId) })
@@ -1409,23 +1422,7 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: Theme.space3
 
-                        // Quality badge
-                        Rectangle {
-                            objectName: "qualityBadge"
-                            visible: player.audioQuality.length > 0
-                            height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusSmall
-                            color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
-                                   player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
-                            Text {
-                                id: qlbl; objectName: "qualityBadgeText"
-                                anchors.centerIn: parent
-                                // The tier and the real format, e.g. "Max · 24-bit / 96 kHz FLAC".
-                                text: player.audioFormat.length > 0
-                                      ? player.qualityLabel(player.audioQuality) + " · " + player.audioFormat
-                                      : player.qualityLabel(player.audioQuality)
-                                color: Theme.textPrimary; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                        }
+                        QualityBadge { withTier: true }
 
                         Item { Layout.fillWidth: true } // Pusher
 

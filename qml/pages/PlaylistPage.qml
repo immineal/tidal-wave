@@ -418,6 +418,8 @@ Rectangle {
         anchors.centerIn: Overlay.overlay
         width: 400
         modal: true
+        // Dims the app behind, as the queue panel does. Fusion's own is faint.
+        Overlay.modal: Rectangle { color: Theme.scrim }
         focus: true
         // No way out of the dialog while a request is out, so the user can
         // always tell whether the rename took.

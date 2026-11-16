@@ -180,7 +180,7 @@ Item {
         case "repeat":
             return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3"
         case "repeat-one":
-            return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3 M 11 11 L 12 10 V 14 M 10 14 H 14"
+            return "M 17 2 L 21 6 L 17 10 M 3 11 V 10 A 4 4 0 0 1 7 6 H 21 M 7 22 L 3 18 L 7 14 M 21 13 V 14 A 4 4 0 0 1 17 18 H 3"
         case "clock":
             return "M 12 2 A 10 10 0 1 0 12 22 A 10 10 0 1 0 12 2 M 12 6 V 12 L 16 14"
         // Three bare lines read as a hamburger menu, so _accentFor adds a mark.
@@ -279,6 +279,11 @@ Item {
         case "queue":  return "M 16.5 14.6 L 22 18 L 16.5 21.4 Z"
         case "mix":    return "M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z"
         case "cast":   return "M 3.7 19.5 A 1.2 1.2 0 1 0 1.3 19.5 A 1.2 1.2 0 1 0 3.7 19.5 Z"
+        // A solid disc with the "1" cut out of it, which still reads at 18px
+        // where a stroked "1" was a speck.
+        case "repeat-one":
+            return "M 16.2 12 A 4.2 4.2 0 1 0 7.8 12 A 4.2 4.2 0 1 0 16.2 12 Z"
+                 + " M 12.9 9.4 V 14.6 H 11.5 V 11.4 L 10.6 12 V 10.7 L 11.8 9.4 Z"
         }
         return ""
     }
