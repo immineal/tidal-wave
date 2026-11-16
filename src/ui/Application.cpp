@@ -6,6 +6,9 @@
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "ui/RemoteControl.h"
+#include "ui/TrackNotifier.h"
+#include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
 #include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
@@ -44,6 +47,7 @@
 #include <QTimer>
 #include <QWindow>
 #include <chrono>
+#include <cstdio>
 
 using namespace std::chrono_literals;
 #include <QMenu>
@@ -53,6 +57,10 @@ using namespace std::chrono_literals;
 #include <QEvent>
 #include <QUrl>
 #include <QQuickStyle>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPixmap>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>   // getuid(), for the per-user socket name
@@ -658,14 +666,21 @@ int Application::run(int argc, char **argv) {
     const QIcon appIcon = loadAppIcon();
     QApplication::setWindowIcon(appIcon);
 
-    const QString socketName = singleInstanceSocketName();
-    QLocalSocket socket;
-    socket.connectToServer(socketName);
-    if (socket.waitForConnected(500)) {
-        socket.write("show");
-        socket.waitForBytesWritten(500);
-        return 0; // an instance is already running
+    // main() passes the argv QApplication has taken its own options out of
+    // (-platform and the like). Test children pass only the program name.
+    QStringList arguments;
+    for (int i = 0; i < argc; ++i)
+        arguments << QString::fromLocal8Bit(argv[i]);
+    const RemoteControl::Parsed launch = RemoteControl::parseArguments(arguments);
+    if (launch.exit) {
+        std::fputs(launch.output.toLocal8Bit().constData(), stdout);
+        std::fputs(launch.error.toLocal8Bit().constData(), stderr);
+        return launch.exitCode;
     }
+
+    const QString socketName = singleInstanceSocketName();
+    if (RemoteControl::sendToRunning(socketName, launch.request))
+        return 0; // an instance is already running and has the request
 
     // Earlier runs leave their audio in the temp directory. Swept only while
     // no other instance holds this lock, whatever socket it listens on.
@@ -676,18 +691,11 @@ int Application::run(int argc, char **argv) {
             qInfo("tidal-wave: removed %d temp file(s) left by an earlier run", n);
     }
 
+    m_remote = new RemoteControl(this);
+    connect(m_remote, &RemoteControl::showRequested, this, &Application::showWindow);
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
     if (claimSingleInstanceSocket(server, socketName)) {
-        connect(server, &QLocalServer::newConnection, this, [this, server]() {
-            QLocalSocket *clientSocket = server->nextPendingConnection();
-            connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
-                QByteArray data = clientSocket->readAll();
-                if (data == "show") {
-                    this->showWindow();
-                }
-                clientSocket->disconnectFromServer();
-            });
-        });
+        m_remote->listen(server);
     } else {
         // Carry on without the lock: the app still works, a second launch
         // just opens a second window. Say so on stderr.
@@ -791,6 +799,22 @@ int Application::run(int argc, char **argv) {
     // Raise takes the way back that the tray's Show item takes.
     connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
 #endif
+    // The same calls as the tray and the player bar.
+    connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_remote, &RemoteControl::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_remote, &RemoteControl::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_remote, &RemoteControl::openRequested, this, &Application::openRequested);
+    m_remote->setAlbumOfTrack([client = m_client](qint64 trackId, std::function<void(qint64)> done) {
+        client->fetchTrack(trackId, [done](Track t, QString err) {
+            done(err.isEmpty() ? t.album.id : 0);
+        });
+    });
+    setUpTrackNotifier();
+    // This launch's own options wait like a second launch's; the window
+    // shows itself.
+    LaunchRequest own = launch.request;
+    own.show = false;
+    m_remote->submit(own);
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
@@ -898,6 +922,24 @@ int Application::run(int argc, char **argv) {
 #endif
     if (m_engine->rootObjects().isEmpty()) return -1;
 
+    // The tray's window entry follows the window.
+    if (auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+        connect(window, &QWindow::visibleChanged, this, &Application::refreshTray);
+        connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
+    }
+    refreshTray();
+
+    // Requests from the command line act once there is a session and a page.
+    // Queued, so the player's audio set-up and the sign-in page change are
+    // done first.
+    const auto updateReady = [this] {
+        m_remote->setReady(m_auth->state() == Auth::State::LoggedIn);
+    };
+    connect(m_auth, &Auth::stateChanged, this, [this, updateReady] {
+        QTimer::singleShot(0, this, updateReady);
+    });
+    QTimer::singleShot(0, this, updateReady);
+
     // After the engine, so the request is never ahead of the first frame.
     m_update->startupCheck();
 
@@ -946,19 +988,21 @@ void Application::createTrayIcon(const QIcon &icon) {
     m_trayIcon = new QSystemTrayIcon(trayArt, this);
     m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
-    QMenu *trayMenu = new QMenu();
-    QAction *showAction = trayMenu->addAction(tr("Show"));
-    connect(showAction, &QAction::triggered, this, &Application::showWindow);
-
-    QAction *hideAction = trayMenu->addAction(tr("Hide"));
-    connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
-
-    trayMenu->addSeparator();
-
-    QAction *quitAction = trayMenu->addAction(tr("Quit"));
-    connect(quitAction, &QAction::triggered, this, &Application::quit);
-
-    m_trayIcon->setContextMenu(trayMenu);
+    m_trayMenu = new TrayMenu(this);
+    connect(m_trayMenu, &TrayMenu::toggleWindowRequested, this, &Application::toggleWindow);
+    connect(m_trayMenu, &TrayMenu::quitRequested, this, &Application::quit);
+    // The same calls as the player bar's buttons.
+    connect(m_trayMenu, &TrayMenu::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_trayMenu, &TrayMenu::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_trayMenu, &TrayMenu::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_player, &Player::playingChanged, this, &Application::refreshTray);
+    connect(m_player, &Player::currentTrackChanged, this, &Application::refreshTray);
+    connect(m_trayMenu, &TrayMenu::toolTipChanged, m_trayIcon, &QSystemTrayIcon::setToolTip);
+    // Also at opening, since a window manager can hide or minimise the window
+    // without a signal the app watches.
+    connect(m_trayMenu, &TrayMenu::aboutToShow, this, &Application::refreshTray);
+    m_trayIcon->setContextMenu(m_trayMenu->menu());
+    refreshTray();
 
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
@@ -967,6 +1011,76 @@ void Application::createTrayIcon(const QIcon &icon) {
     });
 
     m_trayIcon->show();
+}
+
+void Application::setUpTrackNotifier() {
+    m_notifier = new TrackNotifier(this);
+    m_notifier->setEnabled([prefs = m_prefs] { return prefs->trackNotifications(); });
+    m_notifier->setWindowActive([this] {
+        const auto roots = m_engine ? m_engine->rootObjects() : QList<QObject *>();
+        const auto *window = roots.isEmpty() ? nullptr : qobject_cast<QWindow *>(roots.first());
+        return window && window->isVisible() && window->isActive();
+    });
+#ifdef Q_OS_LINUX
+    // Built on first use, so nothing talks to the notification server while
+    // the setting is off.
+    m_notifier->setSender([this, send = std::shared_ptr<TrackNotifier::Sender>()]
+                          (const TrackNotifier::Notification &n) mutable {
+        if (!send)
+            send = std::make_shared<TrackNotifier::Sender>(
+                TrackNotifier::freedesktopSender(QDBusConnection::sessionBus(), this));
+        (*send)(n);
+    });
+#else
+    m_notifier->setSender([this](const TrackNotifier::Notification &n) {
+        if (!m_trayIcon) return;
+        const QIcon icon = n.cover.isNull() ? QIcon() : QIcon(QPixmap::fromImage(n.cover));
+        m_trayIcon->showMessage(n.title, n.body, icon, 5000);
+    });
+#endif
+    // The image provider's cache belongs to the QML loader thread, so this is
+    // a fetch of its own: one small JPEG per track, only while the setting is on.
+    auto *nam = new QNetworkAccessManager(this);
+    m_notifier->setCoverFetcher([nam](const QUrl &url, std::function<void(const QImage &)> done) {
+        QNetworkRequest request(url);
+        request.setTransferTimeout(3000);
+        QNetworkReply *reply = nam->get(request);
+        connect(reply, &QNetworkReply::finished, reply, [reply, done] {
+            QImage image;
+            if (reply->error() == QNetworkReply::NoError) image.loadFromData(reply->readAll());
+            reply->deleteLater();
+            done(image);
+        });
+    });
+    const auto feed = [this] { m_notifier->update(m_player->currentTrackMap(), m_player->playing()); };
+    connect(m_player, &Player::currentTrackChanged, this, feed);
+    connect(m_player, &Player::playingChanged, this, feed);
+}
+
+void Application::refreshTray() {
+    if (!m_trayMenu)
+        return;
+    TrayMenu::State state;
+    if (m_engine && !m_engine->rootObjects().isEmpty()) {
+        if (const auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+            // As toggleWindow() sees it: a minimised window is brought back.
+            state.windowShown = window->isVisible()
+                             && window->windowState() != Qt::WindowMinimized;
+        }
+    }
+    if (m_player) {
+        const QVariantMap track = m_player->currentTrackMap();
+        state.hasTrack = !track.isEmpty();
+        state.playing  = m_player->playing();
+        state.title    = track.value(QStringLiteral("title")).toString();
+        QStringList names;
+        for (const QVariant &a : track.value(QStringLiteral("artistList")).toList())
+            names << a.toMap().value(QStringLiteral("name")).toString();
+        names.removeAll(QString());
+        state.artist = names.isEmpty() ? track.value(QStringLiteral("artists")).toString()
+                                       : names.join(QStringLiteral(", "));
+    }
+    m_trayMenu->setState(state);
 }
 
 #ifdef Q_OS_MACOS

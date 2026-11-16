@@ -94,21 +94,6 @@
     </message>
 </context>
 <context>
-    <name>Application</name>
-    <message>
-        <source>Show</source>
-        <translation>Anzeigen</translation>
-    </message>
-    <message>
-        <source>Hide</source>
-        <translation>Ausblenden</translation>
-    </message>
-    <message>
-        <source>Quit</source>
-        <translation>Beenden</translation>
-    </message>
-</context>
-<context>
     <name>ArtistLinks</name>
     <message>
         <source>, </source>
@@ -1694,6 +1679,14 @@
         <translation>Solange dies aus ist, wird das Fenster beim Schließen nur ausgeblendet und das Tray-Symbol holt es zurück. Ohne Tray-Symbol beendet Schließen immer das Programm.</translation>
     </message>
     <message>
+        <source>Show a notification when a new track starts</source>
+        <translation>Benachrichtigung anzeigen, wenn ein neuer Titel beginnt</translation>
+    </message>
+    <message>
+        <source>Not while the Tidal Wave window is in front.</source>
+        <translation>Nicht, solange das Fenster von Tidal Wave im Vordergrund ist.</translation>
+    </message>
+    <message>
         <source>Lossless (16-bit)</source>
         <translation>Lossless (16 Bit)</translation>
     </message>
@@ -1920,6 +1913,42 @@
             <numerusform>%n Titel</numerusform>
             <numerusform>%n Titel</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>TrayMenu</name>
+    <message>
+        <source>%1 - %2</source>
+        <comment>tray tooltip: track title, then its artists</comment>
+        <translation>%1 - %2</translation>
+    </message>
+    <message>
+        <source>Previous track</source>
+        <translation>Vorheriger Titel</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>Pausieren</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>Abspielen</translation>
+    </message>
+    <message>
+        <source>Next track</source>
+        <translation>Nächster Titel</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>Anzeigen</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>Ausblenden</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Beenden</translation>
     </message>
 </context>
 <context>

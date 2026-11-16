@@ -69,6 +69,10 @@ set(SOURCES
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
     src/ui/SignalWatcher.cpp
+    src/ui/TrayMenu.cpp
+    src/ui/RemoteControl.cpp
+    src/ui/TidalLink.cpp
+    src/ui/TrackNotifier.cpp
     src/api/LibraryIndex.cpp
     src/api/FavoritesCache.cpp
 )
@@ -98,6 +102,10 @@ set(HEADERS
     src/ui/PinStore.h
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
+    src/ui/TrayMenu.h
+    src/ui/RemoteControl.h
+    src/ui/TidalLink.h
+    src/ui/TrackNotifier.h
     src/api/LibraryIndex.h
     src/api/FavoritesCache.h
     src/api/PageEverything.h

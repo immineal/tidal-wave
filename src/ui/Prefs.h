@@ -39,6 +39,8 @@ class Prefs : public QObject {
     // The close button ends the process and does not hide to the tray. With
     // no tray icon a close quits whatever this says.
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    // A desktop notification when a new track starts. Off by default.
+    Q_PROPERTY(bool trackNotifications READ trackNotifications WRITE setTrackNotifications NOTIFY trackNotificationsChanged)
     // The fullscreen Now Playing page tops its gradient with a colour from
     // the cover art. The colour is clamped for legibility; see CoverColor.h.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
@@ -74,6 +76,7 @@ public:
     bool    softwareRendering() const { return m_softwareRendering; }
     double  uiScale() const { return m_uiScale; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    trackNotifications() const { return m_trackNotifications; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
     bool    lyricsLrclib() const      { return m_lyricsLrclib; }
@@ -89,6 +92,7 @@ public:
     void setSoftwareRendering(bool v);
     void setUiScale(double v);
     void setQuitOnClose(bool v);
+    void setTrackNotifications(bool v);
     void setCoverGradient(bool v);
     void setSpectrumBars(bool v);
     void setLyricsLrclib(bool v);
@@ -113,6 +117,7 @@ signals:
     void softwareRenderingChanged();
     void uiScaleChanged();
     void quitOnCloseChanged();
+    void trackNotificationsChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
     void lyricsLrclibChanged();
@@ -130,6 +135,7 @@ private:
     bool      m_softwareRendering;
     double    m_uiScale;
     bool      m_quitOnClose;
+    bool      m_trackNotifications;
     bool      m_coverGradient;
     bool      m_spectrumBars;
     bool      m_lyricsLrclib;

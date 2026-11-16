@@ -28,6 +28,9 @@ class UpdateCheck;
 class PinStore;
 class LibraryIndex;
 class SignalWatcher;
+class TrayMenu;
+class RemoteControl;
+class TrackNotifier;
 
 class Application : public QObject {
     Q_OBJECT
@@ -184,6 +187,9 @@ public:
 
 signals:
     void reallyQuitChanged();
+    // A Tidal link from the command line or the desktop, as RemoteControl
+    // passes it on: "album", "artist", "playlist" or "mix", and the id.
+    void openRequested(const QString &kind, const QString &id);
     void reducedMotionChanged();
 
 protected:
@@ -201,6 +207,9 @@ private:
     // Called at startup when a tray exists, and again from the D-Bus watcher
     // if one turns up later.
     void createTrayIcon(const QIcon &icon);
+    // Relabels the tray menu after the window or the player changed.
+    void refreshTray();
+    void setUpTrackNotifier();
     void checkFavorites(qint64 minGapMs);
 
     Prefs       *m_prefs  = nullptr;
@@ -219,6 +228,9 @@ private:
     LibraryIndex *m_library = nullptr;
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
+    TrayMenu    *m_trayMenu = nullptr;
+    RemoteControl *m_remote = nullptr;
+    TrackNotifier *m_notifier = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;

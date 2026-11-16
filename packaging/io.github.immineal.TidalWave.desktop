@@ -8,13 +8,32 @@ Version=1.0
 Name=Tidal Wave
 GenericName=Music Player
 Comment=A native desktop client for Tidal
-Exec=tidal-wave
+Exec=tidal-wave %u
 Icon=tidal-wave
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 Keywords=music;streaming;tidal;audio;hifi;
 StartupNotify=true
+# %u is a tidal:// link. The actions hand their option to a running instance
+# (src/ui/RemoteControl.cpp). Flatpak rewrites every Exec= line on export.
+MimeType=x-scheme-handler/tidal;
+Actions=PlayPause;Next;Previous;
 # The X11 WM_CLASS, which Qt builds from the binary name and
 # QCoreApplication::applicationName(). It never follows desktopFileName(), so
 # this is the binary name; tests/firstrun/run.sh checks it.
 StartupWMClass=tidal-wave
+
+[Desktop Action PlayPause]
+Name=Play/Pause
+Name[de]=Wiedergabe/Pause
+Exec=tidal-wave --play-pause
+
+[Desktop Action Next]
+Name=Next Track
+Name[de]=Nächster Titel
+Exec=tidal-wave --next
+
+[Desktop Action Previous]
+Name=Previous Track
+Name[de]=Vorheriger Titel
+Exec=tidal-wave --previous

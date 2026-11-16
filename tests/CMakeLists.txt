@@ -44,6 +44,11 @@ foreach(reads_qml_as_text tst_shortcuts tst_startup tst_qml_cpp_calls)
     endif()
 endforeach()
 
+if(TARGET tst_desktop_entry)
+    target_compile_definitions(tst_desktop_entry PRIVATE
+        TIDALWAVE_DESKTOP_FILE="${CMAKE_SOURCE_DIR}/packaging/io.github.immineal.TidalWave.desktop")
+endif()
+
 if(TARGET tst_lyrics)
     target_compile_definitions(tst_lyrics PRIVATE
         TW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
