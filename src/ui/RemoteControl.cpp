@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "RemoteControl.h"
+#include "TidalLink.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -10,6 +11,7 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QPointer>
 #include <QTimer>
 
 #include <cstring>
@@ -20,7 +22,7 @@ namespace {
 const QByteArray kPlainShow = QByteArrayLiteral("show");
 // A request is a few hundred bytes; anything this long is not one.
 constexpr qsizetype kMaxMessage = 64 * 1024;
-// Pending commands before sign-in; a stuck launcher cannot pile up more.
+// Pending items before sign-in; a stuck launcher cannot pile up more.
 constexpr qsizetype kMaxPending = 16;
 
 struct CommandName {
@@ -203,9 +205,14 @@ void RemoteControl::listen(QLocalServer *server) {
 void RemoteControl::submit(const LaunchRequest &request) {
     if (request.show)
         emit showRequested();
-    for (LaunchRequest::Command c : request.commands) {
-        if (m_ready) perform(c);
-        else if (m_pending.size() < kMaxPending) m_pending << c;
+    QList<Pending> items;
+    for (LaunchRequest::Command c : request.commands)
+        items << Pending{c, QString()};
+    for (const QString &url : request.urls)
+        items << Pending{LaunchRequest::Command::PlayPause, url};
+    for (const Pending &item : std::as_const(items)) {
+        if (m_ready) perform(item);
+        else if (m_pending.size() < kMaxPending) m_pending << item;
     }
 }
 
@@ -215,10 +222,33 @@ void RemoteControl::setReady(bool ready) {
         perform(m_pending.takeFirst());
 }
 
-void RemoteControl::perform(LaunchRequest::Command command) {
-    switch (command) {
+void RemoteControl::perform(const Pending &item) {
+    if (!item.url.isEmpty()) {
+        open(item.url);
+        return;
+    }
+    switch (item.command) {
     case LaunchRequest::Command::PlayPause: emit playPauseRequested(); break;
     case LaunchRequest::Command::Next:      emit nextRequested();      break;
     case LaunchRequest::Command::Previous:  emit previousRequested();  break;
     }
+}
+
+void RemoteControl::open(const QString &url) {
+    const TidalLink link = TidalLink::parse(url);
+    if (!link.isValid()) {
+        qWarning("tidal-wave: not a Tidal link, ignored: %s", qPrintable(url));
+        return;
+    }
+    if (link.kind != QLatin1String("track")) {
+        emit openRequested(link.kind, link.id);
+        return;
+    }
+    if (!m_albumOfTrack) return;
+    QPointer<RemoteControl> self(this);
+    m_albumOfTrack(link.id.toLongLong(), [self, id = link.id](qint64 albumId) {
+        if (!self) return;
+        if (albumId > 0) emit self->openRequested(QStringLiteral("album"), QString::number(albumId));
+        else qWarning("tidal-wave: no album found for track %s", qPrintable(id));
+    });
 }

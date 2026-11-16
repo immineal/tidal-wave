@@ -186,6 +186,9 @@ public:
 
 signals:
     void reallyQuitChanged();
+    // A Tidal link from the command line or the desktop, as RemoteControl
+    // passes it on: "album", "artist", "playlist" or "mix", and the id.
+    void openRequested(const QString &kind, const QString &id);
     void reducedMotionChanged();
 
 protected:

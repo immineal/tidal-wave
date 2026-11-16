@@ -217,6 +217,73 @@ private slots:
                                               LaunchRequest{}, 200));
     }
 
+    // ── links ───────────────────────────────────────────────────────────
+
+    void aLinkOpensOnceReady() {
+        RemoteControl rc;
+        QSignalSpy open(&rc, &RemoteControl::openRequested);
+        LaunchRequest r;
+        r.urls = {QStringLiteral("https://tidal.com/browse/artist/9")};
+        rc.submit(r);
+        QCOMPARE(open.count(), 0);
+        rc.setReady(true);
+        QCOMPARE(open.count(), 1);
+        QCOMPARE(open.first().at(0).toString(), QStringLiteral("artist"));
+        QCOMPARE(open.first().at(1).toString(), QStringLiteral("9"));
+    }
+
+    // A track has no page; its album opens.
+    void aTrackLinkOpensItsAlbum() {
+        RemoteControl rc;
+        rc.setReady(true);
+        qint64 askedFor = 0;
+        rc.setAlbumOfTrack([&](qint64 trackId, std::function<void(qint64)> done) {
+            askedFor = trackId;
+            done(trackId == 1234 ? 77 : 0);
+        });
+        QSignalSpy open(&rc, &RemoteControl::openRequested);
+        LaunchRequest r;
+        r.urls = {QStringLiteral("tidal://track/1234")};
+        rc.submit(r);
+        QCOMPARE(askedFor, 1234);
+        QCOMPARE(open.count(), 1);
+        QCOMPARE(open.first().at(0).toString(), QStringLiteral("album"));
+        QCOMPARE(open.first().at(1).toString(), QStringLiteral("77"));
+
+        // The lookup failed: nothing opens.
+        r.urls = {QStringLiteral("tidal://track/5")};
+        QTest::ignoreMessage(QtWarningMsg, "tidal-wave: no album found for track 5");
+        rc.submit(r);
+        QCOMPARE(open.count(), 1);
+    }
+
+    void junkLinksOpenNothing() {
+        RemoteControl rc;
+        rc.setReady(true);
+        QSignalSpy open(&rc, &RemoteControl::openRequested);
+        LaunchRequest r;
+        r.urls = {QStringLiteral("https://example.com/album/1")};
+        QTest::ignoreMessage(QtWarningMsg,
+                             "tidal-wave: not a Tidal link, ignored: https://example.com/album/1");
+        rc.submit(r);
+        QCOMPARE(open.count(), 0);
+    }
+
+    // Commands and links act in the order they were given.
+    void pendingItemsKeepTheirOrder() {
+        RemoteControl rc;
+        QStringList seen;
+        connect(&rc, &RemoteControl::nextRequested, this, [&] { seen << "next"; });
+        connect(&rc, &RemoteControl::openRequested, this,
+                [&](const QString &kind, const QString &) { seen << kind; });
+        LaunchRequest r;
+        r.commands = {Command::Next};
+        r.urls = {QStringLiteral("tidal://album/1")};
+        rc.submit(r);
+        rc.setReady(true);
+        QCOMPARE(seen, (QStringList{"next", "album"}));
+    }
+
 private:
     QTemporaryDir m_dir;
 };

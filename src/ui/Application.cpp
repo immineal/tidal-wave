@@ -794,6 +794,12 @@ int Application::run(int argc, char **argv) {
     connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
     connect(m_remote, &RemoteControl::nextRequested, m_player, [this] { m_player->next(); });
     connect(m_remote, &RemoteControl::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_remote, &RemoteControl::openRequested, this, &Application::openRequested);
+    m_remote->setAlbumOfTrack([client = m_client](qint64 trackId, std::function<void(qint64)> done) {
+        client->fetchTrack(trackId, [done](Track t, QString err) {
+            done(err.isEmpty() ? t.album.id : 0);
+        });
+    });
     // This launch's own options wait like a second launch's; the window
     // shows itself.
     LaunchRequest own = launch.request;

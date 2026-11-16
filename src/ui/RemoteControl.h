@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <functional>
 #include <optional>
 
 class QLocalServer;
@@ -61,21 +62,36 @@ public:
     // Takes requests from later launches on `server`, which must listen.
     void listen(QLocalServer *server);
 
-    // Shows at once; commands wait until setReady(true): before sign-in and
-    // the first page there is no queue to act on.
+    // Shows at once; commands and links wait until setReady(true): before
+    // sign-in there is no queue to act on and no page to open.
     void submit(const LaunchRequest &request);
     void setReady(bool ready);
     bool isReady() const { return m_ready; }
+
+    // Finds the album a track is on; 0 when the lookup fails. A track has no
+    // page of its own, so a track link opens its album.
+    using AlbumOfTrack = std::function<void(qint64 trackId, std::function<void(qint64 albumId)>)>;
+    void setAlbumOfTrack(AlbumOfTrack lookup) { m_albumOfTrack = std::move(lookup); }
 
 signals:
     void showRequested();
     void playPauseRequested();
     void nextRequested();
     void previousRequested();
+    // `kind` is "album", "artist", "playlist" or "mix", with the id that
+    // TidalLink parsed.
+    void openRequested(const QString &kind, const QString &id);
 
 private:
-    void perform(LaunchRequest::Command command);
+    // A command, or a link when `url` is set.
+    struct Pending {
+        LaunchRequest::Command command = LaunchRequest::Command::PlayPause;
+        QString url;
+    };
+    void perform(const Pending &item);
+    void open(const QString &url);
 
     bool m_ready = false;
-    QList<LaunchRequest::Command> m_pending;
+    QList<Pending> m_pending;
+    AlbumOfTrack m_albumOfTrack;
 };
