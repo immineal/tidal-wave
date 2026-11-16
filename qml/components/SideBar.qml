@@ -999,6 +999,8 @@ Item {
 
         readonly property string kind:   modelData.kind
         readonly property string itemId: modelData.id
+        readonly property bool menuOpen: pinContextMenu.visible && pinContextMenu.pinKind === kind
+                                         && pinContextMenu.pinId === itemId
         readonly property string title:  modelData.title
         readonly property bool   pinned: modelData.pinned === true
         readonly property bool   hasArt: (modelData.imageUrl || "").length > 0
@@ -1076,7 +1078,9 @@ Item {
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
             radius: Theme.radiusMedium
-            color: rowItem.dragging || rowHov.hovered ? Theme.hoverFill : "transparent"
+            // Marked while its menu is open too, so the menu says which row.
+            color: rowItem.dragging || rowHov.hovered || rowItem.menuOpen
+                   ? Theme.hoverFill : "transparent"
             border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
             border.color: Theme.accent
             // The lift. A transform rather than a y offset, because the row's

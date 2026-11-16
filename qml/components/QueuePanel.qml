@@ -701,7 +701,7 @@ Item {
             visible: !entry.isHeader
             radius: Theme.radiusMedium
             color: entry.isCurrent ? Theme.accentSoft
-                 : (entry.dragging || qHov.hovered) ? Theme.hoverFill
+                 : (entry.dragging || qHov.hovered || rowMenu.visible) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
@@ -885,6 +885,7 @@ Item {
                 }
                 implicitWidth: Theme.menuWidth(this)
                 overlap: 0
+                padding: Theme.menuPadding
                 background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
                 ContextMenu.Entry {
                     text: qsTr("Remove from queue")

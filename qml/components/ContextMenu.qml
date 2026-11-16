@@ -93,7 +93,21 @@ Menu {
                 elide: Text.ElideRight
             }
         }
-        background: Rectangle { color: entry.highlighted ? Theme.hoverFill : "transparent" }
+        background: Rectangle {
+            radius: Theme.radiusMedium
+            color: entry.highlighted ? Theme.hoverFill : "transparent"
+        }
+    }
+
+    // ── a rule between groups of entries ─────────────────────────────────
+    // A hidden MenuSeparator still adds its height, so `shown` zeroes it.
+    component Separator : MenuSeparator {
+        property bool shown: true
+        visible: shown
+        height: shown ? implicitHeight : 0
+        topPadding: Theme.space1
+        bottomPadding: Theme.space1
+        contentItem: Rectangle { implicitHeight: 1; color: Theme.border }
     }
 
     // ── queueing ───────────────────────────────────────────────────────
@@ -244,6 +258,7 @@ Menu {
     // Qt may let a menu hang `overlap` pixels past the window edge (Basic asks
     // for 1, for submenus). This menu has no submenus.
     overlap: 0
+    padding: Theme.menuPadding
 
     // ── the pin face ─────────────────────────────────────────────────────
 
@@ -325,10 +340,8 @@ Menu {
         iconName: "queue"
         onTriggered: root.addToQueue()
     }
-    MenuSeparator {
-        visible: root.trackSource !== null && root.canPin
-        height: visible ? implicitHeight : 0
-        contentItem: Rectangle { height: 1; color: Theme.border }
+    Separator {
+        shown: root.trackSource !== null && root.canPin
     }
 
     Entry {
@@ -349,11 +362,9 @@ Menu {
 
     // Last, under a rule of its own: the one row where a misclick costs you
     // something should not sit against the row above it.
-    MenuSeparator {
-        visible: root.removeLabel.length > 0
-                 && (root.canPin || root.trackSource !== null)
-        height: visible ? implicitHeight : 0
-        contentItem: Rectangle { height: 1; color: Theme.border }
+    Separator {
+        shown: root.removeLabel.length > 0
+               && (root.canPin || root.trackSource !== null)
     }
     Entry {
         id: removeEntry

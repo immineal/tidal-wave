@@ -309,12 +309,16 @@ Item {
             event.accepted = root.moveToRow(rowIndex - 1)
     }
 
+    // The row keeps its hover mark while its menu is open, so the menu
+    // still says which row it is about once the pointer is on it.
+    readonly property bool menuOpen: menuLoader.item ? menuLoader.item.visible : false
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium
         color: root.isCurrent ? Theme.accentSoft
-               : hov.hovered ? Theme.hoverFill : "transparent"
+               : hov.hovered || root.menuOpen ? Theme.hoverFill : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
 
@@ -668,6 +672,7 @@ Item {
             }
             implicitWidth: Theme.menuWidth(this)
             overlap: 0
+            padding: Theme.menuPadding
             background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             // So a test can read the two queue labels without walking a
@@ -733,6 +738,41 @@ Item {
                     root.confirmQueued(false)
                 }
             }
+            // Opens MixPage by the mix id, where the hero's Save pill can put
+            // the station in the library and take it out again. See
+            // root.startRadio().
+            ContextMenu.Entry {
+                objectName: "startRadioMenuItem"
+                text: qsTr("Start radio")
+                // What the queue heading already draws for a radio source;
+                // see QueuePanel.contextGlyph.
+                iconName: "waves"
+                enabled: root.trackId > 0
+                onTriggered: root.startRadio()
+            }
+            ContextMenu.Separator { }
+            ContextMenu.Entry {
+                objectName: "likeMenuItem"
+                text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
+                                   : qsTr("Like", "verb, add to favourites")
+                // Filled is the state it is in, so it is the row that undoes
+                // it, the same pairing the pin row uses.
+                iconName: root.isLiked ? "heart-filled" : "heart"
+                enabled: root.trackId > 0
+                // Over the row, not the menu entry: the menu has closed by the
+                // time a refusal comes back, and a tool tip anchored to a
+                // destroyed popup item has nowhere to draw.
+                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
+            }
+            ContextMenu.Entry {
+                text: qsTr("Add to playlist")
+                // The plus, not a second list glyph. "Add to queue" above it
+                // already draws a list, and two lists one row apart at 16px
+                // are one smudge twice.
+                iconName: "plus"
+                enabled: root.trackId > 0
+                onTriggered: root.openPicker()
+            }
             ContextMenu.Entry {
                 text: qsTr("Download…")
                 iconName: "download"
@@ -748,54 +788,7 @@ Item {
                 enabled: root.savedFile !== ""
                 onTriggered: downloader.showInFolder(root.savedFile)
             }
-            ContextMenu.Entry {
-                text: qsTr("Add to playlist")
-                // The plus, not a second list glyph. "Add to queue" above it
-                // already draws a list, and two lists one row apart at 16px
-                // are one smudge twice.
-                iconName: "plus"
-                enabled: root.trackId > 0
-                onTriggered: root.openPicker()
-            }
-            ContextMenu.Entry {
-                objectName: "removeFromPlaylistMenuItem"
-                text: qsTr("Remove from playlist")
-                danger: true
-                iconName: "trash"
-                visible: root.playlistUuid.length > 0
-                height: visible ? implicitHeight : 0
-                enabled: root.trackData !== null && root.playlistUuid.length > 0
-                onTriggered: {
-                    if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
-                        root.removeFromPlaylistRequested(root.trackItemIndex)
-                }
-            }
-            // Opens MixPage by the mix id, where the hero's Save pill can put
-            // the station in the library and take it out again. See
-            // root.startRadio().
-            ContextMenu.Entry {
-                objectName: "startRadioMenuItem"
-                text: qsTr("Start radio")
-                // What the queue heading already draws for a radio source;
-                // see QueuePanel.contextGlyph.
-                iconName: "waves"
-                enabled: root.trackId > 0
-                onTriggered: root.startRadio()
-            }
-            ContextMenu.Entry {
-                objectName: "likeMenuItem"
-                text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
-                                   : qsTr("Like", "verb, add to favourites")
-                // Filled is the state it is in, so it is the row that undoes
-                // it, the same pairing the pin row uses.
-                iconName: root.isLiked ? "heart-filled" : "heart"
-                enabled: root.trackId > 0
-                // Over the row, not the menu entry: the menu has closed by the
-                // time a refusal comes back, and a tool tip anchored to a
-                // destroyed popup item has nowhere to draw.
-                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
-            }
-            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
+            ContextMenu.Separator { }
             ContextMenu.Entry {
                 text: qsTr("Go to album")
                 iconName: "album"
@@ -840,6 +833,7 @@ Item {
                 enter: ContextMenu.OpenFade { }
                 exit:  ContextMenu.CloseFade { }
                 implicitWidth: Theme.menuWidth(this)
+                padding: Theme.menuPadding
                 background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
                 // Instantiator and not a Repeater: a Repeater is an Item, so a
@@ -859,7 +853,6 @@ Item {
                     onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
                 }
             }
-            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
             // No "/browse/" in the link: tidal.com redirects /browse/track/<id>
             // to /track/<id>, so the short form is the canonical one.
             ContextMenu.Entry {
@@ -869,6 +862,21 @@ Item {
                 onTriggered: {
                     if (root.trackId > 0)
                         bridge.copyToClipboard("https://tidal.com/track/" + root.trackId)
+                }
+            }
+            // Last, under a rule of its own: the one row that costs something.
+            ContextMenu.Separator { shown: root.playlistUuid.length > 0 }
+            ContextMenu.Entry {
+                objectName: "removeFromPlaylistMenuItem"
+                text: qsTr("Remove from playlist")
+                danger: true
+                iconName: "trash"
+                visible: root.playlistUuid.length > 0
+                height: visible ? implicitHeight : 0
+                enabled: root.trackData !== null && root.playlistUuid.length > 0
+                onTriggered: {
+                    if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
+                        root.removeFromPlaylistRequested(root.trackItemIndex)
                 }
             }
         }
