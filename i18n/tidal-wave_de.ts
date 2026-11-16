@@ -646,6 +646,18 @@
 </context>
 <context>
     <name>HomePage</name>
+    <message>
+        <source>Good morning</source>
+        <translation>Guten Morgen</translation>
+    </message>
+    <message>
+        <source>Good afternoon</source>
+        <translation>Guten Tag</translation>
+    </message>
+    <message>
+        <source>Good evening</source>
+        <translation>Guten Abend</translation>
+    </message>
     <message numerus="yes">
         <source>%Ln track(s)</source>
         <translation>

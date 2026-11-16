@@ -571,6 +571,18 @@
 <context>
     <name>HomePage</name>
     <message>
+        <source>Good morning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Good afternoon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Good evening</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Recently played</source>
         <comment>Home, the row of things played here lately</comment>
         <translation type="unfinished"></translation>

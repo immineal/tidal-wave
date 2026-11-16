@@ -16,9 +16,21 @@ Rectangle {
     // The mixes did not load. Its row says so and offers the retry; the other
     // rows hide while empty and refill from the bridge's lists.
     property bool mixesFailed: false
+    property string greeting: greetingFor(new Date().getHours())
+
+    function greetingFor(h) {
+        if (h < 12) return qsTr("Good morning")
+        if (h < 18) return qsTr("Good afternoon")
+        return qsTr("Good evening")
+    }
+
+    Timer {
+        interval: 60000; running: true; repeat: true
+        onTriggered: root.greeting = root.greetingFor(new Date().getHours())
+    }
 
     // ── what the user was listening to ───────────────────────────────────
-    // The page opens on the user's own music: the track in the player, and
+    // Under the greeting, the user's own music: the track in the player, and
     // the albums, playlists, mixes and artists played here most recently.
     // Tidal keeps no play history the app can read, so these are local.
     readonly property var nowTrack: player.currentTrack
@@ -189,7 +201,18 @@ Rectangle {
             // empty hides with it.
             Item { Layout.preferredHeight: Theme.space6 }
 
-            // The track in the player, to pick up where it was left.
+            Text {
+                objectName: "homeTitle"
+                Layout.leftMargin: Theme.space6
+                text: root.greeting
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontDisplay
+                font.bold: true
+            }
+
+            // Under it, the track in the player, to pick up where it was left.
+            Item { Layout.preferredHeight: Theme.space6; visible: root.hasTrack }
+
             Rectangle {
                 id: continueCard
                 objectName: "homeContinue"
@@ -292,18 +315,6 @@ Rectangle {
                         ToolTip.delay: Theme.tooltipDelay
                     }
                 }
-            }
-
-            // With nothing in the player, the page is named the way the
-            // sidebar names it.
-            Text {
-                objectName: "homeTitle"
-                visible: !root.hasTrack
-                Layout.leftMargin: Theme.space6
-                text: qsTranslate("SideBar", "Home", "noun, the home page")
-                color: Theme.textPrimary
-                font.pixelSize: Theme.fontDisplay
-                font.bold: true
             }
 
             Item { Layout.preferredHeight: Theme.space6 }

@@ -1,6 +1,6 @@
-// The top of Home is about the user's own music: the track in the player
-// with a way to pick it up again, then what was played here lately. A page
-// with neither is named the way the sidebar names it.
+// The top of Home: the greeting by the time of day as the page's title,
+// under it the track in the player with a way to pick it up again, then
+// what was played here lately.
 
 import QtQuick
 import QtQuick.Window
@@ -76,11 +76,19 @@ TestCase {
         return { host: host, page: page }
     }
 
-    function test_no_greeting_by_the_clock() {
+    function greetingNow() {
+        var h = new Date().getHours()
+        return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"
+    }
+
+    function test_the_greeting_is_the_title() {
         var h = makeHome()
-        var texts = allTexts(h.page, []).join(" | ")
-        verify(!/Good (morning|afternoon|evening)/.test(texts),
-               "Home still greets by the time of day: " + texts)
+        var title = findByName(h.page, "homeTitle")
+        verify(title && title.visible, "Home has no title")
+        compare(title.text, greetingNow(), "the title is not the greeting for the hour")
+        compare(h.page.greetingFor(9), "Good morning")
+        compare(h.page.greetingFor(15), "Good afternoon")
+        compare(h.page.greetingFor(21), "Good evening")
     }
 
     function test_the_track_in_the_player_leads_the_page() {
@@ -90,7 +98,10 @@ TestCase {
         var card = findByName(h.page, "homeContinue")
         verify(card && card.visible, "Home does not show the track in the player")
         verify(allTexts(card, []).indexOf("Signal Box") >= 0, "the card does not name the track")
-        verify(!findByName(h.page, "homeTitle").visible, "the plain title shows over the track")
+        var title = findByName(h.page, "homeTitle")
+        verify(title.visible, "the greeting went away with a track loaded")
+        verify(card.mapToItem(h.page, 0, 0).y >= title.mapToItem(h.page, 0, title.height).y,
+               "the card is not under the greeting")
 
         var resume = findByName(card, "homeResume")
         verify(resume && resume.visible, "the card has no way to resume")
@@ -115,8 +126,13 @@ TestCase {
         ])
         bridge.setFavoriteAlbumsForTest([{ id: 11, title: "Older album", artists: "Kestrel Arcade",
                                            coverUrl: "" }])
+        player.setCurrentTrackForTest({ id: 51, title: "Signal Box", artists: "Kestrel Arcade",
+                                        coverUrl: "" })
         var h = makeHome()
         var row = findByName(h.page, "homeRecentlyPlayed")
+        var card = findByName(h.page, "homeContinue")
+        verify(row.mapToItem(h.page, 0, 0).y >= card.mapToItem(h.page, 0, card.height).y,
+               "the row is not under the track in the player")
         verify(row && row.visible, "Home has no recently played row")
         compare(row.items.length, 3, "the row holds something never played")
         compare(row.items[0].title, "Newest list", "the row is not newest first")
@@ -135,10 +151,11 @@ TestCase {
         walk(h.page)
     }
 
-    function test_with_nothing_played_the_page_is_named() {
+    function test_with_nothing_loaded_only_the_greeting() {
         var h = makeHome()
         var title = findByName(h.page, "homeTitle")
         verify(title && title.visible, "an empty Home has no title")
+        compare(title.text, greetingNow())
         verify(!findByName(h.page, "homeContinue").visible)
         verify(!findByName(h.page, "homeRecentlyPlayed").visible)
     }
