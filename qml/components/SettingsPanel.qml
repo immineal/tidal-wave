@@ -1200,7 +1200,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.")
+                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting deletes the token; the listens stay until the same account connects again, and connecting another account deletes them.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded

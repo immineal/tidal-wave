@@ -63,7 +63,8 @@ public:
 
     // Checks the secret with the service and keeps it if it is accepted.
     Q_INVOKABLE void signIn(const QString &secret);
-    // Forgets the secret and the listens that wait for it.
+    // Forgets the secret. The listens that wait stay for the same account to
+    // connect again; another account's sign-in drops them.
     Q_INVOKABLE void disconnectAccount();
 
     // From PlayTracker. Both do nothing while off or without an account.
@@ -91,7 +92,9 @@ private:
     void pump();
     void holdFor(qint64 ms);
     void sendBatch();
-    void batchDone(int count, int generation, const ScrobbleReply &reply);
+    void batchDone(const QList<Listen> &batch, int generation, const ScrobbleReply &reply);
+    // Takes these out of the queue wherever they are; false if none was there.
+    bool removeSent(const QList<Listen> &sent);
     QString retryText(const ScrobbleReply &reply) const;
 
     ScrobbleService *m_service;
@@ -106,6 +109,8 @@ private:
     // does not take it back.
     bool    m_errorStays = false;
     QList<Listen> m_queue;
+    // The account the queue belongs to, kept with it across a disconnect.
+    QString m_queueUser;
     std::optional<Listen> m_pendingNow;
 
     QTimer *m_timer = nullptr;

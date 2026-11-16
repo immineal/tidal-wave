@@ -1438,6 +1438,20 @@
             <numerusform>%Ln Wiedergaben warten auf den Versand.</numerusform>
         </translation>
     </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until you connect again.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet, bis du dich wieder verbindest.</numerusform>
+            <numerusform>%Ln Wiedergaben warten, bis du dich wieder verbindest.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until %1 connects again.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet, bis %1 wieder verbunden ist.</numerusform>
+            <numerusform>%Ln Wiedergaben warten, bis %1 wieder verbunden ist.</numerusform>
+        </translation>
+    </message>
     <message>
         <source>%1 could not be reached. Try again in a moment.</source>
         <translation>%1 ist nicht erreichbar. Versuch es gleich noch einmal.</translation>
@@ -1755,8 +1769,8 @@
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
     </message>
     <message>
-        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.</source>
-        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben; beim Trennen wird beides gelöscht.</translation>
+        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting deletes the token; the listens stay until the same account connects again, and connecting another account deletes them.</source>
+        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben. Beim Trennen wird der Token gelöscht; die Wiedergaben bleiben, bis dasselbe Konto wieder verbunden wird, und werden gelöscht, wenn du ein anderes Konto verbindest.</translation>
     </message>
     <message>
         <source>Log out?</source>

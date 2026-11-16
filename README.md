@@ -380,8 +380,10 @@ named.
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
     that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`), and
     `scrobble-queue-listenbrainz.json`, the listens not yet accepted by ListenBrainz, so a
-    quit or an outage loses none. It holds at most 10000, is removed once it is empty, and
-    disconnecting deletes it (`src/scrobble/ScrobbleSink.cpp`).
+    quit or an outage loses none, with the user name they belong to. It holds at most
+    10000 and is removed once it is empty. Disconnecting keeps it, so the same account
+    connecting again sends them; connecting another account deletes it
+    (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
     lyrics found on another site, a note that a site called it an instrumental, or a note
     that none were found, so that a song is looked up once. A "none found" note is

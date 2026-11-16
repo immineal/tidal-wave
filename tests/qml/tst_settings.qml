@@ -2072,7 +2072,7 @@ TestCase {
         for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
         var mustSay = ["api.listenbrainz.org", "only once you switch it on",
                        "the time you played it", "ListenBrainz user token",
-                       "disconnecting deletes"]
+                       "deletes the token", "the listens stay until the same account connects again"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy block never says \"" + mustSay[j] + "\" about ListenBrainz")

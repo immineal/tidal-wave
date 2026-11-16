@@ -71,7 +71,10 @@ void ScrobbleSink::load() {
     const QJsonObject account = readObject(m_paths.secret);
     m_secret = account.value(QStringLiteral("secret")).toString();
     m_user   = account.value(QStringLiteral("user_name")).toString();
-    const QJsonArray rows = readObject(m_paths.queue).value(QStringLiteral("listens")).toArray();
+    const QJsonObject queue = readObject(m_paths.queue);
+    m_queueUser = queue.value(QStringLiteral("user_name")).toString();
+    if (m_queueUser.isEmpty()) m_queueUser = m_user;
+    const QJsonArray rows = queue.value(QStringLiteral("listens")).toArray();
     for (const auto &v : rows) {
         const Listen l = Listen::fromStored(v.toObject());
         if (l.isValid()) m_queue.append(l);
@@ -87,6 +90,7 @@ void ScrobbleSink::saveQueue() {
     for (const Listen &l : std::as_const(m_queue)) rows.append(l.toStored());
     QJsonObject doc;
     doc[QStringLiteral("version")] = 1;
+    if (!m_queueUser.isEmpty()) doc[QStringLiteral("user_name")] = m_queueUser;
     doc[QStringLiteral("listens")] = rows;
     if (!writeFile(m_paths.queue, QJsonDocument(doc).toJson(QJsonDocument::Compact), false))
         qWarning() << "Scrobbling: could not write the queue to" << m_paths.queue;
@@ -124,7 +128,14 @@ void ScrobbleSink::setAuthFailed(bool failed) {
 
 QString ScrobbleSink::statusText() const {
     if (m_checking) return tr("Checking the token with %1…").arg(serviceName());
-    if (!connected()) return m_lastError;
+    if (!connected()) {
+        if (m_queue.isEmpty()) return m_lastError;
+        QString kept = m_queueUser.isEmpty()
+            ? tr("%Ln listen(s) kept until you connect again.", nullptr, int(m_queue.size()))
+            : tr("%Ln listen(s) kept until %1 connects again.", nullptr, int(m_queue.size())).arg(m_queueUser);
+        if (!m_lastError.isEmpty()) kept += QLatin1Char(' ') + m_lastError;
+        return kept;
+    }
     QString line = m_queue.isEmpty()
         ? tr("Nothing is waiting to be sent.")
         : tr("%Ln listen(s) waiting to be sent.", nullptr, int(m_queue.size()));
@@ -152,11 +163,12 @@ void ScrobbleSink::signIn(const QString &raw) {
             return;
         }
         // Another account's listens are not this one's to send.
-        if (!m_user.isEmpty() && user != m_user && !m_queue.isEmpty()) {
+        if (!m_queueUser.isEmpty() && user != m_queueUser && !m_queue.isEmpty()) {
             m_queue.clear();
-            saveQueue();
             emit queueChanged();
         }
+        m_queueUser = user;
+        saveQueue();
         m_secret = secret;
         m_user   = user;
         // An answer still out was for the old token and is not waited for.
@@ -182,8 +194,6 @@ void ScrobbleSink::disconnectAccount() {
     m_secret.clear();
     m_user.clear();
     QFile::remove(m_paths.secret);
-    m_queue.clear();
-    saveQueue();
     m_pendingNow.reset();
     m_timer->stop();
     m_busy = false;
@@ -194,7 +204,6 @@ void ScrobbleSink::disconnectAccount() {
     setError(QString());
     if (wasChecking) emit checkingChanged();
     emit accountChanged();
-    emit queueChanged();
     emit statusChanged();
 }
 
@@ -251,12 +260,21 @@ void ScrobbleSink::pump() {
 
 void ScrobbleSink::sendBatch() {
     const int cap = m_singlesLeft > 0 ? 1 : m_service->maxBatch();
-    const int count = int(qMin<qsizetype>(cap, m_queue.size()));
+    const QList<Listen> batch = m_queue.mid(0, cap);
     m_busy = true;
     const int generation = m_generation;
-    m_service->submit(m_secret, m_queue.mid(0, count), [this, count, generation](const ScrobbleReply &r) {
-        batchDone(count, generation, r);
+    m_service->submit(m_secret, batch, [this, batch, generation](const ScrobbleReply &r) {
+        batchDone(batch, generation, r);
     });
+}
+
+bool ScrobbleSink::removeSent(const QList<Listen> &sent) {
+    bool any = false;
+    for (const Listen &l : sent) {
+        const qsizetype i = m_queue.indexOf(l);
+        if (i >= 0) { m_queue.removeAt(i); any = true; }
+    }
+    return any;
 }
 
 QString ScrobbleSink::retryText(const ScrobbleReply &r) const {
@@ -267,12 +285,21 @@ QString ScrobbleSink::retryText(const ScrobbleReply &r) const {
     return tr("%1 could not be reached. Listens wait here and go out later.").arg(serviceName());
 }
 
-void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) {
-    if (generation != m_generation) return;
+void ScrobbleSink::batchDone(const QList<Listen> &batch, int generation, const ScrobbleReply &r) {
+    if (generation != m_generation) {
+        // Taken after a disconnect: sent, so the next connect does not send it again.
+        if (r.kind == ScrobbleReply::Ok && removeSent(batch)) {
+            saveQueue();
+            emit queueChanged();
+            emit statusChanged();
+        }
+        return;
+    }
     m_busy = false;
+    const int count = int(batch.size());
     switch (r.kind) {
     case ScrobbleReply::Ok:
-        m_queue.erase(m_queue.begin(), m_queue.begin() + qMin<qsizetype>(count, m_queue.size()));
+        removeSent(batch);
         saveQueue();
         m_failures = 0;
         if (m_singlesLeft > 0) --m_singlesLeft;
@@ -304,7 +331,8 @@ void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) 
             m_singlesLeft = count;
         } else {
             if (m_singlesLeft > 0) --m_singlesLeft;
-            const Listen dropped = m_queue.takeFirst();
+            const Listen dropped = batch.first();
+            removeSent(batch);
             saveQueue();
             setError(tr("%1 turned down the listen of \"%2\".").arg(serviceName(), dropped.title), true);
             emit queueChanged();
