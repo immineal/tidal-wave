@@ -172,7 +172,7 @@ Rectangle {
                     Layout.fillWidth: true
                     // Over nothing it reads as an account without mixes.
                     visible: mixes.length > 0
-                    title: qsTr("Your mixes")
+                    title: qsTr("My mixes")
                     items: root.mixes
                     mediaType: "mix"
                     onItemClicked: (idx, item) => navigateTo("mix", {
@@ -203,7 +203,7 @@ Rectangle {
                     Layout.rightMargin: Theme.space6
                     spacing: Theme.space2
                     Text {
-                        text: qsTr("Your mixes")
+                        text: qsTr("My mixes")
                         color: Theme.textPrimary
                         font.pixelSize: Theme.fontSection
                         font.bold: true
@@ -250,7 +250,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: playlists.length > 0
-                    title: qsTr("Your playlists")
+                    title: qsTr("My playlists")
                     items: root.playlists
                     mediaType: "playlist"
                     onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })

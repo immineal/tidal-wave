@@ -65,7 +65,7 @@ Prefs::Prefs(QObject *parent)
     , m_reducedMotion(m_settings.value(kReducedMotion, QStringLiteral("system")).toString())
     // On by default, as in Tidal's and Spotify's own apps.
     , m_normalizeLoudness(m_settings.value(kNormalizeLoudness, true).toBool())
-    , m_autoplay(m_settings.value(kAutoplay, true).toBool())
+    , m_autoplay(m_settings.value(kAutoplay, false).toBool())
     , m_crossfade(m_settings.value(kCrossfade, false).toBool())
     , m_crossfadeSeconds(m_settings.value(kCrossfadeSeconds, 5).toInt())
 {

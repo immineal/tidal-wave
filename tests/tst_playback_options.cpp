@@ -247,6 +247,7 @@ private slots:
         if (const char *why = obstacle()) QSKIP(why);
         Rig r(m_dir.filePath(QStringLiteral("short.wav")));
         r.client.radio = { radioTrack(1), radioTrack(21), radioTrack(22) };
+        r.prefs.setAutoplay(true);
         QVERIFY(r.up());
         r.player.playTracks({ row(1) }, 0);
         QTRY_COMPARE_WITH_TIMEOUT(r.client.radioAsked, 1, 10000);
@@ -265,6 +266,7 @@ private slots:
         if (const char *why = obstacle()) QSKIP(why);
         Rig r(m_dir.filePath(QStringLiteral("long.wav")));
         r.client.radio = { radioTrack(31) };
+        r.prefs.setAutoplay(true);
         QVERIFY(r.up());
         r.player.playTracks({ row(1, 7, 7) }, 0);
         QTRY_COMPARE_WITH_TIMEOUT(r.client.radioAsked, 1, 12000);
@@ -288,6 +290,7 @@ private slots:
     // Repeat goes round the queue, so autoplay has no end to follow.
     void repeatTakesPrecedence() {
         Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.prefs.setAutoplay(true);
         r.player.setRepeatMode(1);
         r.client.radio = { radioTrack(21) };
         QVERIFY(r.up());

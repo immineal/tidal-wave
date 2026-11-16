@@ -574,7 +574,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your mixes</source>
+        <source>My mixes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -582,7 +582,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your playlists</source>
+        <source>My playlists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1298,6 +1298,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Tidal could not load more results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached, so no more results could be loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1702,7 +1710,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your account</source>
+        <source>My account</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

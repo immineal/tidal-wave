@@ -650,16 +650,16 @@
         <translation>Künstler</translation>
     </message>
     <message>
-        <source>Your mixes</source>
-        <translation>Deine Mixe</translation>
+        <source>My mixes</source>
+        <translation>Meine Mixe</translation>
     </message>
     <message>
         <source>Saved albums</source>
         <translation>Gespeicherte Alben</translation>
     </message>
     <message>
-        <source>Your playlists</source>
-        <translation>Deine Playlists</translation>
+        <source>My playlists</source>
+        <translation>Meine Playlists</translation>
     </message>
     <message>
         <source>Favourite artists</source>
@@ -1538,6 +1538,14 @@
         <translation>Tidal konnte diese Suche nicht beantworten.</translation>
     </message>
     <message>
+        <source>Tidal could not load more results.</source>
+        <translation>Tidal konnte keine weiteren Ergebnisse laden.</translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached, so no more results could be loaded.</source>
+        <translation>Tidal ist nicht erreichbar, daher konnten keine weiteren Ergebnisse geladen werden.</translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation>Künstler</translation>
     </message>
@@ -1778,7 +1786,7 @@
     </message>
     <message>
         <source>Let the colour in</source>
-        <translation>Grautöne einfärben</translation>
+        <translation>Mehr Farbe wagen</translation>
     </message>
     <message>
         <source>Bars follow the music</source>
@@ -2087,8 +2095,8 @@
         <translation>Noch nichts gespeichert</translation>
     </message>
     <message>
-        <source>Your account</source>
-        <translation>Dein Konto</translation>
+        <source>My account</source>
+        <translation>Mein Konto</translation>
     </message>
     <message>
         <source>Settings (%1)</source>
