@@ -1735,14 +1735,6 @@
         <source>Unknown artist</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>%1%</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Popularity</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>

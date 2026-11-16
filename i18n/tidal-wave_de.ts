@@ -2052,14 +2052,6 @@
         <source>Unknown artist</source>
         <translation>Unbekannter Künstler</translation>
     </message>
-    <message>
-        <source>%1%</source>
-        <translation>%1 %</translation>
-    </message>
-    <message>
-        <source>Popularity</source>
-        <translation>Beliebtheit</translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>

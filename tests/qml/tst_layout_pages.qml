@@ -682,7 +682,7 @@ TestCase {
         var row = createTemporaryObject(trackRowC, holder, {
             width: w, trackNum: 1, title: t.title, artists: t.artists,
             albumTitle: t.albumTitle, durationStr: t.durationStr,
-            showPopularity: true, trackData: t
+            trackData: t
         })
         verify(row, "the row was not created")
         settle(holder)
@@ -698,17 +698,6 @@ TestCase {
         var narrow = makeRow(639)
         verify(!findByName(narrow, "trackAlbumColumn").visible,
                "the album column still shows at a row width of 639")
-    }
-
-    function test_trackrow_hides_popularity_below_560() {
-        var wide = makeRow(600)
-        var pop = findByName(wide, "trackPopularityColumn")
-        verify(pop, "the popularity column was not found")
-        verify(pop.visible, "popularity is hidden at a row width of 600")
-
-        var narrow = makeRow(559)
-        verify(!findByName(narrow, "trackPopularityColumn").visible,
-               "popularity still shows at a row width of 559")
     }
 
     function test_trackrow_fits_at_every_width() {

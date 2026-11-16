@@ -281,7 +281,7 @@ TestCase {
                         coverUrl: S.track(2).coverUrl; trackData: S.track(2)
                     }
                     TrackRow {
-                        width: col.width; trackNum: 4; showPopularity: true
+                        width: col.width; trackNum: 4
                         title: S.track(3).title; artists: S.track(3).artists
                         albumTitle: S.track(3).albumTitle; durationStr: S.track(3).durationStr
                         coverUrl: S.track(3).coverUrl; trackData: S.track(3)

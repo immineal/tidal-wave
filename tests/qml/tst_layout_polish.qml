@@ -885,6 +885,32 @@ TestCase {
         bridge.setAlbumFavoriteForTest(42, false)
     }
 
+    // ── 11. search results ───────────────────────────────────────────────
+
+    Component { id: searchC; SearchPage { anchors.fill: parent } }
+
+    function test_search_rows_show_no_bare_percentage() {
+        var t = tracks(4)
+        for (var i = 0; i < t.length; ++i) t[i].popularity = 83
+        bridge.setSearchResultsForTest(t, [], [], [])
+        var host = showHost(plainHost, 1000, 800)
+        var page = createTemporaryObject(searchC, host.pane)
+        page.searchFor("titel")
+        settle(host)
+        wait(300)
+        var rows = collectByName(page, "trackTitle", [])
+        verify(rows.length > 0, "no track rows were shown")
+        var bare = []
+        function walk(it) {
+            if (!it) return
+            if (it.visible && typeof it.text === "string" && /^\s*\d+\s*%\s*$/.test(it.text))
+                bare.push(it.text)
+            for (var k = 0; k < it.children.length; ++k) walk(it.children[k])
+        }
+        walk(page)
+        compare(bare.length, 0, "a bare percentage is shown: " + bare.join(", "))
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
