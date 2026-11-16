@@ -270,6 +270,37 @@ TestCase {
         app.setReducedMotionForTest(false)
     }
 
+    // The sign-in code sits inside its box with room on every side, however
+    // wide the code and the font set it: the border never crosses a glyph.
+    function test_login_code_fits_its_box_data() {
+        return [ { tag: "Tidal's shape", code: "WXYZ-1234", px: 0 },
+                 { tag: "wide letters",  code: "MWMW-WMWM", px: 0 },
+                 { tag: "a larger font", code: "WXYZ-1234", px: 40 } ]
+    }
+    function test_login_code_fits_its_box(row) {
+        app.setReducedMotionForTest(true)
+        auth.setDeviceCodeForTest(row.code, "https://link.tidal.com/" + row.code)
+        auth.setStateForTest(1)
+        var page = makePane(loginC, 640)
+        var code = findByName(page, "loginDeviceCode")
+        verify(code, "the code was not found")
+        if (row.px > 0) code.font.pixelSize = row.px
+        settle(page)
+        settle(page)
+        var box = code.parent
+        compare(code.text, row.code)
+        var left = code.mapToItem(box, 0, 0)
+        var pad = Theme.space3
+        verify(left.x >= pad && left.x + code.contentWidth <= box.width - pad,
+               "the code runs from " + left.x.toFixed(1) + " to "
+               + (left.x + code.contentWidth).toFixed(1) + " in a box "
+               + box.width.toFixed(1) + " wide")
+        verify(left.y >= 0 && left.y + code.contentHeight <= box.height,
+               "the code is taller than its box")
+        auth.setStateForTest(2)
+        app.setReducedMotionForTest(false)
+    }
+
     // ── blanket audit: the four hero pages ──────────────────────────────────
 
     function test_album_page_fits() {

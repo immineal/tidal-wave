@@ -209,14 +209,18 @@ Rectangle {
 
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
-                        width: 200
-                        height: 64
+                        // Sized off the code, so the border keeps clear of it
+                        // however wide the code and the font set it.
+                        Layout.preferredWidth: Math.max(200, Math.ceil(codeText.contentWidth) + 2 * Theme.space6)
+                        Layout.preferredHeight: Math.max(64, Math.ceil(codeText.contentHeight) + 2 * Theme.space3)
                         radius: Theme.radiusLarge
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1
                         // Selectable, so the code can be copied into the browser.
                         TextEdit {
+                            id: codeText
+                            objectName: "loginDeviceCode"
                             anchors.centerIn: parent
                             text: auth.userCode || "…"
                             readOnly: true
