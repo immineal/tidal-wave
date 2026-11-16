@@ -1363,7 +1363,7 @@ TestCase {
         // The square hero cover is a fixed size in a RowLayout that never
         // squeezes it. What comes and goes is the album column of the track rows.
         // ArtistPage has no square cover: its hero art is the backdrop.
-        var art = findByName(page, "heroArt")
+        var art = data.which === "artist" ? null : findByName(page, "heroArt")
         var artWidth = art ? art.width : 0
         if (art) verify(art.visible, "the " + data.tag + " hero art started out hidden")
 

@@ -145,6 +145,7 @@ Rectangle {
     }
 
     ScrollView {
+        id: artistScroll
         objectName: "artistContent"
         anchors.fill: parent
         rightPadding: Theme.space4
@@ -162,89 +163,52 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            // Hero. Grows with its content, so a wrapped name or pill row fits.
-            Rectangle {
+            // No artwork tile: the photo is the whole hero's backdrop.
+            DetailHero {
+                id: hero
                 Layout.fillWidth: true
-                implicitHeight: Math.max(320, heroCol.implicitHeight + 56)
-                color: "transparent"
-                clip: true
-
-                Image {
-                    objectName: "artistHeroPhoto"
-                    anchors.fill: parent
-                    source: artistData.coverUrl750 ? "image://tidal/" + artistData.coverUrl750 : ""
-                    fillMode: Image.PreserveAspectCrop
-                    opacity: 0.4
-                    smooth: true
-                    mipmap: true
+                kind: qsTr("Artist")
+                title: artistData.name || ""
+                titleObjectName: "artistName"
+                titleLines: 2
+                showArt: false
+                backdropSource: artistData.coverUrl750 || ""
+                backdropObjectName: "artistHeroPhoto"
+                backdropOpacity: 0.4
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        orientation: Gradient.Vertical
-                        GradientStop { position: 0.4; color: "transparent" }
-                        GradientStop { position: 1; color: Theme.bg }
-                    }
-                }
-
-                ColumnLayout {
-                    id: heroCol
-                    // Anchored right too, so a long name has room to wrap.
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: Theme.space8
-                    spacing: Theme.space2
-
-                    // No outline: the gradient above fades the photo to the
-                    // page colour behind the name.
-                    Text {
-                        objectName: "artistName"
-                        Layout.fillWidth: true
-                        text: artistData.name || ""
-                        color: Theme.textPrimary
-                        font.pixelSize: Theme.fontDisplay
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
-                        elide: Text.ElideRight
-                    }
-
-                    // A Flow, so the pills wrap when a translation widens them.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: Theme.space3
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                    },
+                    PillButton {
+                        // Album's word, so it shares its translation.
+                        text: qsTranslate("AlbumPage", "Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (topTracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(topTracks, Math.floor(Math.random() * topTracks.length))
+                            }
                         }
-
-                        PillButton {
-                            objectName: "artistFollowPill"
-                            text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            icon: root.isFollowing ? "heart-filled" : "heart"
-                            accent: root.isFollowing
-                            // On the action row, which has clear space above.
-                            onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
-                                                                      heroActions)
-                        }
+                    },
+                    PillButton {
+                        objectName: "artistFollowPill"
+                        text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
+                        icon: root.isFollowing ? "heart-filled" : "heart"
+                        accent: root.isFollowing
+                        // On the action row, which has clear space above.
+                        onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
+                                                                  hero.actionRow)
                     }
-                }
-
-                // A right-click on the hero pins what the page is showing.
-                MouseArea {
-                    objectName: "heroPinArea"
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function (mouse) {
-                        var p = mapToItem(root, mouse.x, mouse.y)
-                        root.showHeroPinMenu(p.x, p.y)
-                    }
-                }
+                ]
             }
 
             Item { height: Theme.space2 }
@@ -525,7 +489,7 @@ Rectangle {
         // No trackSource, so no queue actions: an artist is not a tracklist.
 
         // The hero's action row, which has the page above it to draw over.
-        confirmAnchor: heroActions
+        confirmAnchor: hero.actionRow
     }
 
     // What the page says when there is nothing to draw and a reason for it.
@@ -577,10 +541,11 @@ Rectangle {
         }
     }
 
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: Theme.space2 } }
+    DetailBar {
+        objectName: "artistStickyHeader"
+        flickable: artistScroll.contentItem
+        heroHeight: hero.height
+        title: artistData.name || ""
     }
 
     LoadingOverlay { loading: root.loading }

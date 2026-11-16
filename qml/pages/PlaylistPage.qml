@@ -159,192 +159,92 @@ Rectangle {
         model: root.tracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: Rectangle {
+        header: DetailHero {
+            id: hero
             width: tracksList.width
-            // Grows with its content, so a wrapped title, description or pill
-            // row is not cut off.
-            implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
-            color: "transparent"
+            kind: qsTr("Playlist")
+            title: root.playlistTitle
+            artSource: root.coverUrl
+            // Without a cover of its own, the first four tracks' covers.
+            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            artIcon: "playlist"
+            onPinRequested: (x, y) => {
+                var p = hero.mapToItem(root, x, y)
+                root.showHeroPinMenu(p.x, p.y)
+            }
+            // The queue confirmation is drawn just above the action row.
+            // Assigned, not bound: an id inside the list's header component is
+            // out of reach from the page root.
+            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.accentTint }
-                    GradientStop { position: 1; color: Theme.bg }
-                }
+            Text {
+                visible: root.playlistDescription.length > 0
+                Layout.fillWidth: true
+                text: root.playlistDescription
+                color: Theme.textSec
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
             }
 
-            RowLayout {
-                id: heroRow
-                anchors {
-                    left: parent.left; right: parent.right
-                    verticalCenter: parent.verticalCenter
-                    leftMargin: Theme.space16; rightMargin: Theme.space6
+            Text {
+                text: {
+                    // One complete sentence per case rather than glued
+                    // fragments, so a translation can reorder it.
+                    var n = root.tracks.length
+                    var d = root.playlistDuration
+                    // The count is the tracklist's, still on its way.
+                    if (root.loading && n === 0)
+                        return d > 0 ? Theme.lengthText(d) : ""
+                    return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(Theme.lengthText(d))
+                                 : qsTr("%Ln track(s)", "", n)
                 }
-                spacing: Theme.space6
-
-                Rectangle {
-                    objectName: "heroArt"
-                    width: 180
-                    height: 180
-                    radius: Theme.radiusSmall
-                    color: Theme.accentWash
-                    clip: true
-                    Image {
-                        id: playlistCover
-                        objectName: "heroCover"
-                        anchors.fill: parent
-                        visible: root.coverUrl.length > 0
-                        source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
-                    }
-                    Grid {
-                        id: collageGrid
-                        anchors.fill: parent
-                        columns: 2
-                        rows: 2
-                        visible: root.coverUrl.length === 0 && root.tracks.length >= 4
-                        Repeater {
-                            model: root.tracks.slice(0, 4)
-                            Image {
-                                width: 90
-                                height: 90
-                                source: (modelData && modelData.coverUrl) ? "image://tidal/" + modelData.coverUrl : ""
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                            }
-                        }
-                    }
-                    VectorIcon {
-                        visible: !playlistCover.visible && !collageGrid.visible
-                        anchors.centerIn: parent
-                        name: "playlist"
-                        color: Theme.accentText
-                        width: 64
-                        height: 64
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: Theme.space2
-
-                    Text {
-                        text: qsTr("Playlist")
-                        color: Theme.textSec
-                        font.pixelSize: Theme.fontMicro
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    Text {
-                        objectName: "heroTitle"
-                        Layout.fillWidth: true
-                        text: root.playlistTitle
-                        color: Theme.textPrimary
-                        font.pixelSize: Theme.fontDisplay
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        visible: root.playlistDescription.length > 0
-                        Layout.fillWidth: true
-                        text: root.playlistDescription
-                        color: Theme.textSec
-                        font.pixelSize: Theme.fontMeta
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        text: {
-                            // One complete sentence per case rather than glued
-                            // fragments, so a translation can reorder it.
-                            var n = root.tracks.length
-                            var d = root.playlistDuration
-                            // The count is the tracklist's, still on its way.
-                            if (root.loading && n === 0)
-                                return d > 0 ? Theme.lengthText(d) : ""
-                            return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(Theme.lengthText(d))
-                                         : qsTr("%Ln track(s)", "", n)
-                        }
-                        color: Theme.textSec
-                        font.pixelSize: Theme.fontBody
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-
-                    // A Flow, so the pills wrap in a narrow pane.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: Theme.space3
-                        // The queue confirmation is drawn just above this row.
-                        // Assigned, not bound: an id inside the list's header
-                        // component is out of reach from the page root.
-                        Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
-
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    root.playFrom(root.tracks, 0)
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            text: qsTr("Shuffle")
-                            icon: "shuffle"
-                            accent: false
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    player.setShuffle(true)
-                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            objectName: "playlistEditButton"
-                            visible: root.playlistEditable
-                            text: qsTr("Edit")
-                            icon: "edit"
-                            accent: false
-                            onClicked: {
-                                editTitleField.text         = root.playlistTitle
-                                editDescField.text          = root.playlistDescription
-                                editPlaylistPopup.errorText = ""
-                                editPlaylistPopup.busy      = false
-                                editPlaylistPopup.open()
-                            }
-                        }
-                    }
-                }
+                color: Theme.textSec
+                font.pixelSize: Theme.fontBody
+                Layout.fillWidth: true
+                elide: Text.ElideRight
             }
 
-            // A right-click on the hero pins what the page is showing.
-            MouseArea {
-                objectName: "heroPinArea"
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    var p = mapToItem(root, mouse.x, mouse.y)
-                    root.showHeroPinMenu(p.x, p.y)
+            actions: [
+                PillButton {
+                    text: qsTr("Play", "verb, button label")
+                    icon: "play"
+                    accent: true
+                    onClicked: {
+                        if (root.tracks.length > 0) {
+                            bridge.markPlaylistPlayed(root.playlistUuid)
+                            root.playFrom(root.tracks, 0)
+                        }
+                    }
+                },
+                PillButton {
+                    text: qsTr("Shuffle")
+                    icon: "shuffle"
+                    accent: false
+                    onClicked: {
+                        if (root.tracks.length > 0) {
+                            bridge.markPlaylistPlayed(root.playlistUuid)
+                            player.setShuffle(true)
+                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                        }
+                    }
+                },
+                PillButton {
+                    objectName: "playlistEditButton"
+                    visible: root.playlistEditable
+                    text: qsTr("Edit")
+                    icon: "edit"
+                    accent: false
+                    onClicked: {
+                        editTitleField.text         = root.playlistTitle
+                        editDescField.text          = root.playlistDescription
+                        editPlaylistPopup.errorText = ""
+                        editPlaylistPopup.busy      = false
+                        editPlaylistPopup.open()
+                    }
                 }
-            }
+            ]
         }
 
         delegate: TrackRow {
@@ -446,11 +346,11 @@ Rectangle {
         }
     }
 
-    // Back button sits in a fixed bar that doesn't overlap the track list
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: Theme.space2 } }
+    DetailBar {
+        objectName: "playlistStickyHeader"
+        flickable: tracksList
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        title: root.playlistTitle
     }
 
     LoadingOverlay { loading: root.loading }

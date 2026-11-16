@@ -233,186 +233,103 @@ Rectangle {
         header: Column {
             width: tracksList.width
 
-            // Hero header. Grows with its content, so a wrapped title or pill
-            // row is not cut off.
-            Rectangle {
+            DetailHero {
+                id: hero
                 width: parent.width
-                implicitHeight: Math.max(280, heroRow.implicitHeight + 48)
-                color: "transparent"
-                clip: true
+                kind: qsTr("Album")
+                title: albumData.title || ""
+                artSource: albumData.coverUrl || ""
+                artIcon: "album"
+                backdropSource: albumData.coverUrl640 || ""
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
+                }
+                // The queue confirmation is drawn above the action row.
+                // Assigned, not bound: an id inside the list's header
+                // component is out of reach from the root.
+                Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
-                Image {
-                    anchors.fill: parent
-                    source: albumData.coverUrl640 ? "image://tidal/" + albumData.coverUrl640 : ""
-                    fillMode: Image.PreserveAspectCrop
-                    opacity: 0.18
-                    smooth: true
-                    mipmap: true
+                // One hover target and one tab stop per artist, so a featured
+                // credit opens the guest rather than the lead.
+                ArtistLinks {
+                    Layout.fillWidth: true
+                    namePrefix: "albumHero"
+                    fontPixelSize: Theme.fontBody
+                    artistList: root.albumArtistList
+                    joinedText: albumData.artists || ""
+                    fallbackArtistId: root.effectiveArtistId
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    // accentTint, not artScrimStrong: the hero is a tint over
-                    // the page, and the black scrim composites to a
-                    // low-contrast grey on the light themes.
-                    gradient: Gradient {
-                        orientation: Gradient.Vertical
-                        GradientStop { position: 0; color: Theme.accentTint }
-                        GradientStop { position: 1; color: Theme.bg }
+                Text {
+                    objectName: "albumFacts"
+                    text: {
+                        // Bullet-separated facts, each a complete qsTr unit.
+                        var parts = []
+                        // The whole date where there is one, the year on
+                        // its own where the response only had that.
+                        var released = root.releaseText(albumData.releaseDate)
+                        if (released) parts.push(released)
+                        else if (albumData.year) parts.push(albumData.year)
+                        if (albumData.numTracks) parts.push(qsTr("%Ln track(s)", "", albumData.numTracks))
+                        if (albumData.duration > 0) parts.push(Theme.lengthText(albumData.duration))
+                        // Raw API codes like HI_RES_LOSSLESS never reach the user
+                        if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
+                        else parts.push(root.soundOf(albumData))
+                        // qualityLabel echoes a code it does not know, and an
+                        // unknown code can be empty, which otherwise leaves the
+                        // line ending in a dangling separator.
+                        return parts.filter(function (p) { return p && String(p).length > 0 }).join(" • ")
                     }
+                    color: Theme.textSec
+                    font.pixelSize: Theme.fontMeta
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                 }
 
-                RowLayout {
-                    id: heroRow
-                    anchors {
-                        left: parent.left; right: parent.right
-                        verticalCenter: parent.verticalCenter
-                        leftMargin: Theme.space16; rightMargin: Theme.space6
-                    }
-                    spacing: Theme.space6
-
-                    Rectangle {
-                        objectName: "heroArt"
-                        width: 200
-                        height: 200
-                        radius: Theme.radiusSmall
-                        color: Theme.surfaceHigh
-                        clip: true
-                        Image {
-                            anchors.fill: parent
-                            source: albumData.coverUrl ? "image://tidal/" + albumData.coverUrl : ""
-                            fillMode: Image.PreserveAspectCrop
-                            smooth: true
-                            mipmap: true
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
-                        spacing: Theme.space2
-
-                        Text {
-                            text: qsTr("Album")
-                            color: Theme.textSec
-                            font.pixelSize: Theme.fontMicro
-                            font.bold: true
-                            font.letterSpacing: 1
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: albumData.title || ""
-                            color: Theme.textPrimary
-                            font.pixelSize: Theme.fontDisplay
-                            font.bold: true
-                            wrapMode: Text.WordWrap
-                        }
-
-                        // One hover target and one tab stop per artist, so a
-                        // featured credit opens the guest rather than the lead.
-                        ArtistLinks {
-                            Layout.fillWidth: true
-                            namePrefix: "albumHero"
-                            fontPixelSize: Theme.fontBody
-                            artistList: root.albumArtistList
-                            joinedText: albumData.artists || ""
-                            fallbackArtistId: root.effectiveArtistId
-                        }
-
-                        Text {
-                            objectName: "albumFacts"
-                            text: {
-                                // Bullet-separated facts, each a complete qsTr unit.
-                                var parts = []
-                                // The whole date where there is one, the year on
-                                // its own where the response only had that.
-                                var released = root.releaseText(albumData.releaseDate)
-                                if (released) parts.push(released)
-                                else if (albumData.year) parts.push(albumData.year)
-                                if (albumData.numTracks) parts.push(qsTr("%Ln track(s)", "", albumData.numTracks))
-                                if (albumData.duration > 0) parts.push(Theme.lengthText(albumData.duration))
-                                // Raw API codes like HI_RES_LOSSLESS never reach the user
-                                if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
-                                else parts.push(root.soundOf(albumData))
-                                // qualityLabel echoes a code it does not know, and an
-                                // unknown code can be empty, which otherwise leaves the
-                                // line ending in a dangling separator.
-                                return parts.filter(function (p) { return p && String(p).length > 0 }).join(" • ")
-                            }
-                            color: Theme.textSec
-                            font.pixelSize: Theme.fontMeta
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-
-                        // The rights line as the label worded it: a legal
-                        // notice, so neither translated nor reformatted. Hidden
-                        // when the response carried none.
-                        Text {
-                            objectName: "albumCopyright"
-                            visible: text.length > 0
-                            text: albumData.copyright || ""
-                            color: Theme.textDim
-                            font.pixelSize: Theme.fontMicro
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-
-                        // A Flow, so the pills wrap in a narrow pane.
-                        Flow {
-                            id: heroActions
-                            Layout.fillWidth: true
-                            spacing: Theme.space3
-                            // The queue confirmation is drawn above this row.
-                            // Assigned, not bound: an id inside the list's
-                            // header component is out of reach from the root.
-                            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
-
-                            PillButton {
-                                text: qsTr("Play", "verb, button label")
-                                icon: "play"
-                                accent: true
-                                onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
-                            }
-
-                            PillButton {
-                                text: qsTr("Shuffle")
-                                icon: "shuffle"
-                                accent: false
-                                onClicked: {
-                                    if (root.tracks.length > 0) {
-                                        player.setShuffle(true)
-                                        root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                                    }
-                                }
-                            }
-
-                            PillButton {
-                                objectName: "albumSavePill"
-                                text: root.isSaved ? qsTr("Saved", "state, album is in the library")
-                                                   : qsTr("Save", "verb, add album to the library")
-                                icon: root.isSaved ? "heart-filled" : "heart"
-                                accent: root.isSaved
-                                // Anchored on the action row, which has clear
-                                // space above it.
-                                onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
-                                                                          heroActions)
-                            }
-                        }
-                    }
+                // The rights line as the label worded it: a legal
+                // notice, so neither translated nor reformatted. Hidden
+                // when the response carried none.
+                Text {
+                    objectName: "albumCopyright"
+                    visible: text.length > 0
+                    text: albumData.copyright || ""
+                    color: Theme.textDim
+                    font.pixelSize: Theme.fontMicro
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                 }
 
-                // A right-click on the hero pins what the page is showing.
-                MouseArea {
-                    objectName: "heroPinArea"
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function (mouse) {
-                        var p = mapToItem(root, mouse.x, mouse.y)
-                        root.showHeroPinMenu(p.x, p.y)
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
+                    },
+                    PillButton {
+                        text: qsTr("Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (root.tracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                            }
+                        }
+                    },
+                    PillButton {
+                        objectName: "albumSavePill"
+                        text: root.isSaved ? qsTr("Saved", "state, album is in the library")
+                                           : qsTr("Save", "verb, add album to the library")
+                        icon: root.isSaved ? "heart-filled" : "heart"
+                        accent: root.isSaved
+                        // Anchored on the action row, which has clear space
+                        // above it.
+                        onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
+                                                                  hero.actionRow)
                     }
-                }
+                ]
             }
 
             Item { height: Theme.space2; width: parent.width }
@@ -589,59 +506,21 @@ Rectangle {
         }
     }
 
-    // Sticky bar: the back button is always visible, the title fades in once
-    // the hero scrolls out.
-    Rectangle {
+    // The back button is always there; the title fades in once the hero
+    // scrolls out.
+    DetailBar {
         id: stickyHeader
         objectName: "albumStickyHeader"
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52
-        // How far the header has come in: 0 while the hero is still on screen,
-        // 1 from where the first row reaches the bar. The list counts from
-        // originY, which is minus the hero's height.
-        readonly property real reveal: {
-            var hero = tracksList.headerItem ? tracksList.headerItem.height : 280
-            var scrolled = tracksList.contentY - tracksList.originY
-            return Math.min(1, Math.max(0, (scrolled - (hero - height - 80)) / 80))
-        }
-        color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, Math.min(0.95, reveal))
-
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: Theme.space2 } }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.space16
-            anchors.rightMargin: Theme.space4
-            spacing: Theme.space3
-            opacity: stickyHeader.reveal
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spaceHalf
-                Text {
-                    Layout.fillWidth: true
-                    text: albumData.title || ""
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontBody
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
-                ArtistLinks {
-                    Layout.fillWidth: true
-                    namePrefix: "albumSticky"
-                    fontPixelSize: Theme.fontMeta
-                    artistList: root.albumArtistList
-                    joinedText: albumData.artists || ""
-                    fallbackArtistId: root.effectiveArtistId
-                    // The header is always present at full size and only fades
-                    // in, so its links are disabled while it is invisible.
-                    enabled: stickyHeader.reveal > 0
-                }
-            }
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border
-            opacity: stickyHeader.reveal
+        flickable: tracksList
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        title: albumData.title || ""
+        ArtistLinks {
+            Layout.fillWidth: true
+            namePrefix: "albumSticky"
+            fontPixelSize: Theme.fontMeta
+            artistList: root.albumArtistList
+            joinedText: albumData.artists || ""
+            fallbackArtistId: root.effectiveArtistId
         }
     }
 

@@ -114,151 +114,67 @@ Rectangle {
         model: root.tracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: Rectangle {
+        header: DetailHero {
+            id: hero
             width: tracksList.width
-            // Grows with its content, so a wrapped title or pill row fits.
-            implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
-            color: "transparent"
+            kind: root.isTrackRadio ? qsTr("Radio", "noun, a track's radio station")
+                                    : qsTr("Mix", "noun, a Tidal mix")
+            title: root.title
+            artSource: root.coverUrl
+            artIcon: "mix"
+            onPinRequested: (x, y) => {
+                var p = hero.mapToItem(root, x, y)
+                root.showHeroPinMenu(p.x, p.y)
+            }
+            // The queue confirmation is drawn just above the action row.
+            // Assigned, not bound: an id inside the list's header component is
+            // out of reach from the page root.
+            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.accentTint }
-                    GradientStop { position: 1; color: Theme.bg }
-                }
+            Text {
+                visible: root.subtitle.length > 0
+                Layout.fillWidth: true
+                text: root.subtitle
+                color: Theme.textSec
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
             }
 
-            RowLayout {
-                id: heroRow
-                anchors {
-                    left: parent.left; right: parent.right
-                    verticalCenter: parent.verticalCenter
-                    leftMargin: Theme.space16; rightMargin: Theme.space6
-                }
-                spacing: Theme.space6
-
-                Rectangle {
-                    objectName: "heroArt"
-                    width: 180
-                    height: 180
-                    radius: Theme.radiusSmall
-                    color: Theme.accentWash
-                    clip: true
-                    Image {
-                        id: mixCover
-                        objectName: "heroCover"
-                        anchors.fill: parent
-                        source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
-                    }
-                    VectorIcon {
-                        visible: mixCover.status !== Image.Ready
-                        anchors.centerIn: parent
-                        name: "mix"
-                        color: Theme.accentText
-                        width: 64
-                        height: 64
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: Theme.space2
-
-                    Text {
-                        objectName: "heroKindLabel"
-                        text: root.isTrackRadio
-                              ? qsTr("Radio", "noun, a track's radio station")
-                              : qsTr("Mix", "noun, a Tidal mix")
-                        color: Theme.textSec
-                        font.pixelSize: Theme.fontMicro
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    Text {
-                        objectName: "heroTitle"
-                        Layout.fillWidth: true
-                        text: root.title
-                        color: Theme.textPrimary
-                        font.pixelSize: Theme.fontDisplay
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        visible: root.subtitle.length > 0
-                        Layout.fillWidth: true
-                        text: root.subtitle
-                        color: Theme.textSec
-                        font.pixelSize: Theme.fontBody
-                        wrapMode: Text.WordWrap
-                    }
-
-                    // A Flow, so the pills wrap when a translation widens them.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: Theme.space3
-                        // The queue confirmation is drawn just above this row.
-                        // Assigned, not bound: an id inside the list's header
-                        // component is out of reach from the page root.
-                        Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
-
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
-                        }
-
-                        PillButton {
-                            text: qsTr("Shuffle")
-                            icon: "shuffle"
-                            accent: false
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    player.setShuffle(true)
-                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                                }
-                            }
-                        }
-
-                        // The account-wide favourite, a heart and the words as
-                        // on AlbumPage. The local pin is on the right-click
-                        // menu and writes nothing to Tidal.
-                        PillButton {
-                            objectName: "mixSavePill"
-                            // Dead until the page knows which mix it is: a
-                            // MixPage can be constructed with no id at all.
-                            enabled: root.mixId.length > 0
-                            text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
-                                               : qsTr("Save", "verb, add mix to the library")
-                            icon: root.isSaved ? "heart-filled" : "heart"
-                            accent: root.isSaved
-                            // On the action row, which has clear space above.
-                            onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
-                                                                    heroActions)
+            actions: [
+                PillButton {
+                    text: qsTr("Play", "verb, button label")
+                    icon: "play"
+                    accent: true
+                    onClicked: if (root.tracks.length > 0) root.playFrom(root.tracks, 0)
+                },
+                PillButton {
+                    text: qsTr("Shuffle")
+                    icon: "shuffle"
+                    accent: false
+                    onClicked: {
+                        if (root.tracks.length > 0) {
+                            player.setShuffle(true)
+                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
                         }
                     }
+                },
+                // The account-wide favourite, a heart and the words as on
+                // AlbumPage. The local pin is on the right-click menu and
+                // writes nothing to Tidal.
+                PillButton {
+                    objectName: "mixSavePill"
+                    // Dead until the page knows which mix it is: a MixPage can
+                    // be constructed with no id at all.
+                    enabled: root.mixId.length > 0
+                    text: root.isSaved ? qsTr("Saved", "state, mix is in the library")
+                                       : qsTr("Save", "verb, add mix to the library")
+                    icon: root.isSaved ? "heart-filled" : "heart"
+                    accent: root.isSaved
+                    // On the action row, which has clear space above.
+                    onClicked: root.favoriteAction.toggleMix(root.mixId, root.isSaved,
+                                                            hero.actionRow)
                 }
-            }
-
-            // A right-click on the hero pins what the page is showing.
-            MouseArea {
-                objectName: "heroPinArea"
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    var p = mapToItem(root, mouse.x, mouse.y)
-                    root.showHeroPinMenu(p.x, p.y)
-                }
-            }
+            ]
         }
 
         delegate: TrackRow {
@@ -332,7 +248,12 @@ Rectangle {
         }
     }
 
-    BackButton { anchors { top: parent.top; left: parent.left; margins: Theme.space4 } }
+    DetailBar {
+        objectName: "mixStickyHeader"
+        flickable: tracksList
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        title: root.title
+    }
 
     LoadingOverlay { loading: root.loading }
 

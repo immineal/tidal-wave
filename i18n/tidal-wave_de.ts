@@ -1400,10 +1400,6 @@
         <source>Track Radio</source>
         <translation>Titel-Radio</translation>
     </message>
-    <message>
-        <source>Play all</source>
-        <translation>Alle abspielen</translation>
-    </message>
 </context>
 <context>
     <name>SearchBar</name>
