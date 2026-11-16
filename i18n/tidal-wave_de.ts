@@ -56,15 +56,15 @@
     </message>
     <message>
         <source>Remove from library</source>
-        <translation>Aus der Mediathek entfernen</translation>
+        <translation>Aus der Sammlung entfernen</translation>
     </message>
     <message>
         <source>Removed from your library.</source>
-        <translation>Aus deiner Mediathek entfernt.</translation>
+        <translation>Aus deiner Sammlung entfernt.</translation>
     </message>
     <message>
         <source>Tidal would not remove it. It is still in your library.</source>
-        <translation>Tidal hat es nicht entfernt. Es ist weiterhin in deiner Mediathek.</translation>
+        <translation>Tidal hat es nicht entfernt. Es ist weiterhin in deiner Sammlung.</translation>
     </message>
     <message>
         <source>Removing…</source>
@@ -354,7 +354,7 @@
     </message>
     <message>
         <source>Remove from library</source>
-        <translation>Aus der Mediathek entfernen</translation>
+        <translation>Aus der Sammlung entfernen</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -429,7 +429,7 @@
     </message>
     <message>
         <source>Your library could not be loaded</source>
-        <translation>Deine Mediathek konnte nicht geladen werden</translation>
+        <translation>Deine Sammlung konnte nicht geladen werden</translation>
     </message>
     <message>
         <source>Tidal could not be reached. It loads again by itself once the connection is back.</source>
@@ -478,7 +478,7 @@
     <message>
         <source>Could not remove the album from your library</source>
         <comment>shown when removing an album from the library failed</comment>
-        <translation>Album konnte nicht aus der Mediathek entfernt werden</translation>
+        <translation>Album konnte nicht aus der Sammlung entfernt werden</translation>
     </message>
     <message>
         <source>Could not save the album</source>
@@ -493,7 +493,7 @@
     <message>
         <source>Could not remove the mix from your library</source>
         <comment>shown when removing a mix from the library failed</comment>
-        <translation>Mix konnte nicht aus der Mediathek entfernt werden</translation>
+        <translation>Mix konnte nicht aus der Sammlung entfernt werden</translation>
     </message>
     <message>
         <source>Could not save the mix</source>
@@ -709,7 +709,7 @@
     <name>LibraryFinder</name>
     <message>
         <source>Find in library</source>
-        <translation>Mediathek…</translation>
+        <translation>Sammlung…</translation>
     </message>
     <message>
         <source>Tracks</source>
@@ -1044,7 +1044,7 @@
     <name>OfflineNotice</name>
     <message>
         <source>Tidal cannot be reached. Your library is shown as last saved on this computer.</source>
-        <translation>Tidal ist nicht erreichbar. Deine Mediathek wird so gezeigt, wie sie zuletzt auf diesem Rechner gespeichert wurde.</translation>
+        <translation>Tidal ist nicht erreichbar. Deine Sammlung wird so gezeigt, wie sie zuletzt auf diesem Rechner gespeichert wurde.</translation>
     </message>
     <message>
         <source>Tidal cannot be reached. Trying again by itself.</source>
@@ -1248,7 +1248,7 @@
     </message>
     <message>
         <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.</source>
-        <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Bibliothek.</translation>
+        <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Sammlung.</translation>
     </message>
     <message>
         <source>%1 hr %2 min</source>
@@ -1765,7 +1765,7 @@
     </message>
     <message>
         <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.</source>
-        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Mediathek; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
+        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Sammlung; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
     </message>
     <message>
         <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
@@ -1952,7 +1952,7 @@
     </message>
     <message>
         <source>Your library could not be loaded</source>
-        <translation>Deine Mediathek konnte nicht geladen werden</translation>
+        <translation>Deine Sammlung konnte nicht geladen werden</translation>
     </message>
 </context>
 <context>
