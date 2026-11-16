@@ -30,6 +30,25 @@ ApplicationWindow {
     property var    pageParams:  ({})
     property bool   queueOpen:   false
 
+    // The queue takes the keyboard while it is open and gives it back to
+    // whatever had it, as a dialog does.
+    property Item _focusBeforeQueue: null
+    onQueueOpenChanged: {
+        if (queueOpen) {
+            root._focusBeforeQueue = root.activeFocusItem
+            Qt.callLater(function () { if (root.queueOpen) queuePanel.takeFocus() })
+        } else {
+            // Deferred, so the panel has seen `open` go false and lets go.
+            var back = root._focusBeforeQueue
+            root._focusBeforeQueue = null
+            Qt.callLater(function () {
+                if (root.queueOpen) return
+                if (back && back.visible) back.forceActiveFocus(Qt.TabFocusReason)
+                else focusStealer.forceActiveFocus()
+            })
+        }
+    }
+
     // ─── Where back goes ───────────────────────────────────────────────────
     // A stack of (page, params) pairs. The top is where one back goes. Arriving
     // at a top-level destination empties it (see navigate), so it is as deep as

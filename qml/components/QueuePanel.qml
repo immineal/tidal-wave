@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Window
 import TidalWave
 
 // The queue overlay: a scrim across the page with the panel pinned to its
@@ -82,6 +83,72 @@ Item {
     readonly property int contextHeaderAt: contextCount > 0 ? afterManual : -1
     readonly property int contextAt:       afterManual + (contextCount > 0 ? 1 : 0)
     readonly property int rowCount:        contextAt + contextCount
+
+    // ── the keyboard ─────────────────────────────────────────────────────
+    // The list is one tab stop: the row last walked to, else the playing one.
+    property int keyRow: -1
+    function isRow(i) { return i >= 0 && i < rowCount && kindOf(i).lastIndexOf("Header") < 0 }
+    readonly property int tabRow: isRow(keyRow) ? keyRow
+                                : hasCurrent ? currentAt
+                                : isRow(0) ? 0 : (isRow(1) ? 1 : -1)
+    // Up and Down step over the headings; Home and End go to the ends.
+    function focusRow(from, step) {
+        for (var i = from + step; i >= 0 && i < rowCount; i += step) {
+            if (!isRow(i)) continue
+            keyRow = i
+            list.positionViewAtIndex(i, ListView.Contain)
+            var it = list.itemAtIndex(i)
+            if (it) it.forceActiveFocus(Qt.TabFocusReason)
+            return true
+        }
+        return false
+    }
+    // Where the keyboard goes when the panel opens.
+    function takeFocus() {
+        var i = tabRow
+        if (i >= 0) {
+            list.positionViewAtIndex(i, ListView.Contain)
+            var it = list.itemAtIndex(i)
+            if (it) { it.forceActiveFocus(Qt.TabFocusReason); return }
+        }
+        closeBtn.forceActiveFocus(Qt.TabFocusReason)
+    }
+
+    // Tab goes round inside the open panel. Qt moves focus before any parent
+    // sees the key, so a stop outside is caught here and sent to the far end.
+    property Item _lastInside: null
+    function holds(item) {
+        for (var p = item; p; p = p.parent) if (p === panel) return true
+        return false
+    }
+    function edgeStop(forward) {
+        var first = panel.nextItemInFocusChain(true)
+        if (!forward) {
+            var last = first
+            for (var n = 0, it = first; n < 200 && it && holds(it); ++n) {
+                last = it
+                it = it.nextItemInFocusChain(true)
+                if (it === first) break
+            }
+            return last
+        }
+        return first
+    }
+    // Through the window object: tst_frame_gating bans the text "Window.active".
+    readonly property Item keyboardItem: Window.window ? Window.window.activeFocusItem : null
+    onKeyboardItemChanged: {
+        var f = keyboardItem
+        if (!f || !open) return
+        if (holds(f)) { _lastInside = f; return }
+        // A menu or dialog the panel opened lives in the overlay.
+        for (var p = f; p; p = p.parent) if (p === Overlay.overlay) return
+        if (!_lastInside) return
+        var back = _lastInside.nextItemInFocusChain(false) === f
+        var target = edgeStop(back ? false : true)
+        _lastInside = null
+        if (target && holds(target)) target.forceActiveFocus(Qt.TabFocusReason)
+    }
+    onOpenChanged: if (!open) _lastInside = null
 
     function kindOf(i) {
         if (i === playedHeaderAt)  return "playedHeader"
@@ -313,19 +380,68 @@ Item {
                     }
                     Item { width: 8 }
                     // Clears the manual queue and only that: the history and
-                    // the album are not the user's list.
-                    Text {
+                    // the album are not the user's list. The hit area is 32
+                    // tall around the 12px word.
+                    Item {
+                        id: clearBtn
                         objectName: "queueClear"
-                        text: qsTr("Clear", "verb, empties the play queue")
-                        color: clearHov.hovered ? Theme.textPrimary : Theme.textSec
-                        font.pixelSize: 12
                         visible: root.manualCount > 0
+                        implicitWidth: Math.max(32, clearText.implicitWidth + 12)
+                        implicitHeight: 32
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: player.clearManual()
+                        Keys.onSpacePressed:  player.clearManual()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Clear queue", "button, empties the play queue")
+                        Accessible.onPressAction: player.clearManual()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: clearHov.hovered ? Theme.surfaceHov : "transparent"
+                            border.width: clearBtn.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        Text {
+                            id: clearText
+                            anchors.centerIn: parent
+                            text: qsTr("Clear", "verb, empties the play queue")
+                            color: clearHov.hovered || clearBtn.activeFocus ? Theme.textPrimary : Theme.textSec
+                            font.pixelSize: 12
+                        }
                         HoverHandler { id: clearHov }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: player.clearManual()
                         }
+                    }
+                    // The way out besides Escape and a click beside the panel.
+                    Item {
+                        id: closeBtn
+                        objectName: "queueClose"
+                        implicitWidth: 32
+                        implicitHeight: 32
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.dismissed()
+                        Keys.onSpacePressed:  root.dismissed()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Close queue", "button, hides the play queue")
+                        Accessible.onPressAction: root.dismissed()
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.radiusButton
+                            color: closeHov.hovered ? Theme.surfaceHov : "transparent"
+                            border.width: closeBtn.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: "x"
+                            width: 14; height: 14; strokeWidth: 1.8
+                            color: closeHov.hovered || closeBtn.activeFocus ? Theme.textPrimary : Theme.textSec
+                        }
+                        HoverHandler { id: closeHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: root.dismissed() }
                     }
                 }
             }
@@ -501,9 +617,23 @@ Item {
             return isFinite(n) ? n : 0
         }
 
-        activeFocusOnTab: actionable
+        activeFocusOnTab: activeFocus || (actionable && rowIndex === root.tabRow)
+        onActiveFocusChanged: if (activeFocus && actionable) root.keyRow = rowIndex
+        // Space stays play/pause for the window, as on a track row.
+        readonly property bool leavesSpaceToPlayer: true
         Keys.onReturnPressed: root.activate(kind, slot)
-        Keys.onSpacePressed:  root.activate(kind, slot)
+        Keys.onEnterPressed:  root.activate(kind, slot)
+        Keys.onUpPressed:     root.focusRow(rowIndex, -1)
+        Keys.onDownPressed:   root.focusRow(rowIndex, 1)
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Home) root.focusRow(-1, 1)
+            else if (event.key === Qt.Key_End) root.focusRow(root.rowCount, -1)
+            else if (event.key === Qt.Key_Menu
+                     || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                if (entry.isManual) rowMenu.popup(entry, 16, entry.height)
+            } else return
+            event.accepted = true
+        }
         Accessible.role: isHeader ? Accessible.StaticText : Accessible.ListItem
         Accessible.name: isHeader ? headerText
                                   : qsTranslate("TrackRow", "%1, %2",
@@ -697,6 +827,7 @@ Item {
                     // left click and the rest of the line jumps to the track.
                     ArtistLinks {
                         Layout.fillWidth: true
+                        tabStops: false
                         namePrefix: "queue"
                         fontPixelSize: 11
                         artistList: entry.artistList

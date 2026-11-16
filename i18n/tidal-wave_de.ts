@@ -1393,6 +1393,16 @@
         <source>Remove from queue</source>
         <translation>Aus der Warteschlange entfernen</translation>
     </message>
+    <message>
+        <source>Clear queue</source>
+        <comment>button, empties the play queue</comment>
+        <translation>Warteschlange leeren</translation>
+    </message>
+    <message>
+        <source>Close queue</source>
+        <comment>button, hides the play queue</comment>
+        <translation>Warteschlange schließen</translation>
+    </message>
 </context>
 <context>
     <name>RadioPage</name>
