@@ -134,7 +134,7 @@ Rectangle {
     // Atmos only one gives up its year.
     function secondLine(a, withLength) {
         if (!a.titleShared) return a.year
-        var tracks = a.numTracks > 0 ? qsTr("%n track(s)", "", a.numTracks) : ""
+        var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
         if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
         return parts.filter(function (p) { return p.length > 0 }).join(" • ")

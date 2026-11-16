@@ -16,10 +16,10 @@
         <translation>Album</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -145,10 +145,10 @@
         <translation>%1 Min.</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -372,10 +372,10 @@
         <translation>Künstler nicht mehr folgen</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -457,19 +457,19 @@
 <context>
     <name>ContextMenu</name>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
         </translation>
     </message>
     <message>
@@ -654,10 +654,10 @@
         <translation>Guten Abend</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1197,17 +1197,17 @@
         <translation>Playlist</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) • %1</source>
+        <source>%Ln track(s) • %1</source>
         <translation>
-            <numerusform>%n Titel • %1</numerusform>
-            <numerusform>%n Titel • %1</numerusform>
+            <numerusform>%Ln Titel • %1</numerusform>
+            <numerusform>%Ln Titel • %1</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1270,10 +1270,10 @@
         <translation>Warteschlange</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1411,10 +1411,10 @@
         <translation>Künstler</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1850,19 +1850,19 @@
         <translation>Beliebtheit</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
         </translation>
     </message>
     <message>
@@ -1937,10 +1937,10 @@
         <translation>Neue Playlist…</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>

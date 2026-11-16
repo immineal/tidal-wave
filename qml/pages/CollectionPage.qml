@@ -645,7 +645,7 @@ Rectangle {
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(playlistsGrid.cellWidth)
                     title: modelData.title
-                    subtitle: qsTr("%n track(s)", "", modelData.numTracks)
+                    subtitle: qsTr("%Ln track(s)", "", modelData.numTracks)
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "playlist"
                     itemId: modelData.uuid || ""

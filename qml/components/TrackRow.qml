@@ -563,8 +563,8 @@ Item {
     }
 
     function confirmQueued(atFront) {
-        root.confirm(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", 1)
-                             : qsTr("%n track(s) added to queue", "queue confirmation", 1))
+        root.confirm(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", 1)
+                             : qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
     // The same for the picker, for an existing playlist and for one made on
@@ -1006,7 +1006,7 @@ Item {
                                     // actually draws.
                                     Text {
                                         objectName: "pickerRowTrackCount"
-                                        text: qsTr("%n track(s)", "", model.numTracks)
+                                        text: qsTr("%Ln track(s)", "", model.numTracks)
                                         color: Theme.textSec; font.pixelSize: 11
                                     }
                                 }

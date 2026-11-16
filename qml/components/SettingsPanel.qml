@@ -607,9 +607,13 @@ Popup {
                     // The number, always, so a size can be reported back.
                     Text {
                         objectName: "settingsUiScaleValue"
-                        text: prefs.uiScale > 0
-                              ? prefs.uiScale.toFixed(2) + "x"
-                              : qsTr("Automatic", "interface size, the default")
+                        // In the app's own locale, 1,25x in German.
+                        text: {
+                            var relocalise = root.currentLanguage   // dependency, see above
+                            return prefs.uiScale > 0
+                                ? prefs.uiScale.toLocaleString(Qt.locale(), 'f', 2) + "x"
+                                : qsTr("Automatic", "interface size, the default")
+                        }
                         color: Theme.textSec; font.pixelSize: 13
                     }
                     Slider {
@@ -641,7 +645,7 @@ Popup {
                     objectName: "settingsUiScaleAutoNote"
                     visible: app.scaleWasChosenAutomatically()
                              && !app.scaleIsEnvironmentOverridden()
-                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toFixed(2))
+                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }

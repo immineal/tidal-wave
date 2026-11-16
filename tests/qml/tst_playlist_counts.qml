@@ -172,7 +172,7 @@ TestCase {
     // The expected string, built by the call the delegate makes: the plural
     // form differs per language and per number.
     function countText(n) {
-        return qsTr("%n track(s)", "", n)
+        return qsTr("%Ln track(s)", "", n)
     }
 
     // ── the picker's count ───────────────────────────────────────────────

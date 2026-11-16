@@ -305,7 +305,7 @@ Item {
                     anchors.rightMargin: 16
                     Text { text: qsTr("Queue", "noun, the play queue"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
                     Item { Layout.fillWidth: true }
-                    Text { text: qsTr("%n track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
+                    Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
                     Text {
                         visible: player.shuffle
                         text: qsTr("· Shuffled")

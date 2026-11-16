@@ -341,7 +341,7 @@ TestCase {
               kind: "artist",   id: "7",       drawn: qsTr("Artist"),
               stored: "" },
             { tag: "playlist stores no track count",
-              kind: "playlist", id: "uuid-p1", drawn: qsTr("%n track(s)", "", 31),
+              kind: "playlist", id: "uuid-p1", drawn: qsTr("%Ln track(s)", "", 31),
               stored: "" }
         ]
     }

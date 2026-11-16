@@ -341,7 +341,7 @@ Rectangle {
                                 var released = root.releaseText(albumData.releaseDate)
                                 if (released) parts.push(released)
                                 else if (albumData.year) parts.push(albumData.year)
-                                if (albumData.numTracks) parts.push(qsTr("%n track(s)", "", albumData.numTracks))
+                                if (albumData.numTracks) parts.push(qsTr("%Ln track(s)", "", albumData.numTracks))
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
                                 if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
