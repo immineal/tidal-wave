@@ -143,6 +143,10 @@ Item {
     // Download state for this row: "idle" | "busy" | "done" | "error"
     property string dlState: "idle"
     property string dlError: ""
+    // The file this track was saved as since launch, "" if none or gone.
+    property string savedFile: ""
+    // A sentence to read, so it stays up as long as LoadErrorTip's.
+    readonly property int dlErrorDwellMs: 6000
 
     // Column breakpoints, measured against the row's own width, not the
     // window's. The fixed columns add up to 472px with all of them on, so the
@@ -175,16 +179,44 @@ Item {
             if (root.trackId > 0 && id === root.trackId) root.dlState = "busy"
         }
         function onDownloadFinished(id, path) {
-            if (root.trackId > 0 && id === root.trackId) { root.dlState = "done"; dlResetTimer.restart() }
+            if (root.trackId > 0 && id === root.trackId) {
+                root.dlState = "done"
+                root.savedFile = path
+                dlResetTimer.interval = 3000
+                dlResetTimer.restart()
+            }
         }
         function onDownloadError(id, msg) {
-            if (root.trackId > 0 && id === root.trackId) { root.dlState = "error"; root.dlError = msg; dlResetTimer.restart() }
+            if (root.trackId > 0 && id === root.trackId) {
+                root.dlState = "error"
+                root.dlError = msg
+                dlResetTimer.interval = root.dlErrorDwellMs
+                dlResetTimer.restart()
+                root.showDownloadError()
+            }
         }
     }
-    Timer { id: dlResetTimer; interval: 3000; onTriggered: root.dlState = "idle" }
+    Timer {
+        id: dlResetTimer
+        interval: 3000
+        onTriggered: {
+            if (root.dlState === "error") dlButton.ToolTip.hide()
+            root.dlState = "idle"
+            root.dlError = ""
+        }
+    }
     onTrackDataChanged: {
+        if (root.dlState === "error") dlButton.ToolTip.hide()
         root.dlState = (root.trackId > 0 && downloader.isDownloading(root.trackId)) ? "busy" : "idle"
         root.dlError = ""
+        root.savedFile = root.trackId > 0 ? downloader.savedPath(root.trackId) : ""
+    }
+
+    // Says why the download failed, over the red download button, as the
+    // player bar says why a track would not load. Not while the row is off screen.
+    function showDownloadError() {
+        if (root.dlError === "" || !root.visible || !Window.window || !Window.window.visible) return
+        dlButton.ToolTip.show(root.dlError, root.dlErrorDwellMs)
     }
 
     // Routing for the menu's artist rows. Asked from the row: a submenu is a
@@ -370,6 +402,7 @@ Item {
             // the title does not jump under the cursor.
             Item {
                 id: dlButton
+                objectName: "trackDownloadButton"
                 readonly property bool shown: hov.hovered || root.dlState !== "idle"
                 opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
@@ -423,8 +456,11 @@ Item {
                     anchors.margins: -4
                     enabled: dlButton.shown && root.dlState !== "busy" && root.trackId > 0
                     cursorShape: Qt.PointingHandCursor
+                    // The tick, still up after a save, opens the file's folder.
                     onClicked: {
-                        if (root.trackId > 0 && root.dlState !== "busy")
+                        if (root.dlState === "done" && root.savedFile !== "")
+                            downloader.showInFolder(root.savedFile)
+                        else if (root.trackId > 0 && root.dlState !== "busy")
                             downloader.downloadTrack(root.trackData)
                     }
                 }
@@ -465,6 +501,8 @@ Item {
     readonly property alias rowMenu: menuLoader.item
 
     function openMenu() {
+        // Asked again: the file may have been moved or deleted since.
+        if (root.trackId > 0) root.savedFile = downloader.savedPath(root.trackId)
         menuLoader.active = true
         menuLoader.item.popup()
     }
@@ -525,8 +563,8 @@ Item {
     }
 
     function confirmQueued(atFront) {
-        root.confirm(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", 1)
-                             : qsTr("%n track(s) added to queue", "queue confirmation", 1))
+        root.confirm(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", 1)
+                             : qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
     // The same for the picker, for an existing playlist and for one made on
@@ -637,6 +675,15 @@ Item {
                 iconName: "download"
                 enabled: root.trackId > 0 && root.dlState !== "busy"
                 onTriggered: { if (root.trackId > 0) downloader.downloadTrack(root.trackData) }
+            }
+            ContextMenu.Entry {
+                objectName: "showInFolderMenuItem"
+                text: qsTr("Show in folder", "opens the file manager at a downloaded track")
+                iconName: "folder"
+                visible: root.savedFile !== ""
+                height: visible ? implicitHeight : 0
+                enabled: root.savedFile !== ""
+                onTriggered: downloader.showInFolder(root.savedFile)
             }
             ContextMenu.Entry {
                 text: qsTr("Add to playlist")
@@ -959,7 +1006,7 @@ Item {
                                     // actually draws.
                                     Text {
                                         objectName: "pickerRowTrackCount"
-                                        text: qsTr("%n track(s)", "", model.numTracks)
+                                        text: qsTr("%Ln track(s)", "", model.numTracks)
                                         color: Theme.textSec; font.pixelSize: 11
                                     }
                                 }

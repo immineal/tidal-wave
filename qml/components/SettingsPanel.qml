@@ -17,6 +17,7 @@ Popup {
     property var langSource:   (typeof i18n        !== "undefined") ? i18n        : null
     property var deviceSource: (typeof player      !== "undefined") ? player      : null
     property var check:        (typeof updateCheck !== "undefined") ? updateCheck : null
+    property var downloads:    (typeof downloader  !== "undefined") ? downloader  : null
 
     // The effective language, when there is something to ask. Both lists below
     // come back from C++ with translated labels, so they have to be rebuilt
@@ -555,6 +556,41 @@ Popup {
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                 }
+
+                // Where the save dialog of a track download opens.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 5
+                    visible: root.downloads !== null
+
+                    Text {
+                        text: qsTr("Download folder")
+                        color: Theme.textSec; font.pixelSize: 13
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Text {
+                            objectName: "settingsDownloadFolder"
+                            text: root.downloads ? root.downloads.folder : ""
+                            color: Theme.textPrimary; font.pixelSize: 13
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+                        }
+                        PanelButton {
+                            objectName: "settingsDownloadFolderButton"
+                            label: qsTr("Change…", "button that picks another download folder")
+                            onActivated: if (root.downloads) root.downloads.chooseFolder()
+                        }
+                    }
+                    Text {
+                        text: qsTr("Each download asks for a file name and format, starting in this folder.")
+                        color: Theme.textDim; font.pixelSize: 11
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                }
             }
 
 
@@ -593,9 +629,13 @@ Popup {
                     // The number, always, so a size can be reported back.
                     Text {
                         objectName: "settingsUiScaleValue"
-                        text: prefs.uiScale > 0
-                              ? prefs.uiScale.toFixed(2) + "x"
-                              : qsTr("Automatic", "interface size, the default")
+                        // In the app's own locale, 1,25x in German.
+                        text: {
+                            var relocalise = root.currentLanguage   // dependency, see above
+                            return prefs.uiScale > 0
+                                ? prefs.uiScale.toLocaleString(Qt.locale(), 'f', 2) + "x"
+                                : qsTr("Automatic", "interface size, the default")
+                        }
                         color: Theme.textSec; font.pixelSize: 13
                     }
                     Slider {
@@ -627,7 +667,7 @@ Popup {
                     objectName: "settingsUiScaleAutoNote"
                     visible: app.scaleWasChosenAutomatically()
                              && !app.scaleIsEnvironmentOverridden()
-                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toFixed(2))
+                    text: qsTr("Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.").arg(app.activeScaleFactor().toLocaleString(Qt.locale(), 'f', 2))
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }

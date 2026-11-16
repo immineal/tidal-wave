@@ -57,6 +57,19 @@ Rectangle {
         })
     }
 
+    // A track's disc, 1 when the payload has none.
+    function discOf(t) {
+        var v = t ? Number(t.volumeNumber) : NaN
+        return v > 0 ? v : 1
+    }
+
+    // Disc headers are drawn only for an album that has more than one disc.
+    readonly property bool multiDisc: {
+        for (var i = 1; i < tracks.length; ++i)
+            if (discOf(tracks[i]) !== discOf(tracks[0])) return true
+        return false
+    }
+
     // Records this album as the "playing from" source, then starts playback.
     function playFrom(list, i) {
         player.setPlaybackSource("album", "" + root.albumId, root.albumData.title || "")
@@ -328,7 +341,7 @@ Rectangle {
                                 var released = root.releaseText(albumData.releaseDate)
                                 if (released) parts.push(released)
                                 else if (albumData.year) parts.push(albumData.year)
-                                if (albumData.numTracks) parts.push(qsTr("%n track(s)", "", albumData.numTracks))
+                                if (albumData.numTracks) parts.push(qsTr("%Ln track(s)", "", albumData.numTracks))
                                 if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
                                 if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
@@ -416,18 +429,44 @@ Rectangle {
             Item { height: 8; width: parent.width }
         }
 
-        delegate: TrackRow {
-            width: tracksList.width - 32
-            x: 16
-            trackNum:    index + 1
-            title:       modelData.title
-            artists:     modelData.artists
-            albumTitle:  root.albumData.title || ""
-            durationStr: modelData.durationStr
-            showAlbum:   false
-            showCover:   false
-            trackData:   modelData
-            onPlayRequested: root.playFrom(root.tracks, index)
+        // A wrapper, so a disc's first row can carry its "Disc n" header.
+        delegate: Column {
+            id: trackDelegate
+            width: tracksList.width
+            readonly property int disc: root.discOf(modelData)
+            readonly property bool startsDisc: root.multiDisc
+                && (index === 0 || root.discOf(root.tracks[index - 1]) !== disc)
+
+            Text {
+                objectName: "albumDiscHeader"
+                visible: trackDelegate.startsDisc
+                x: 16 + 12
+                width: parent.width - 32 - 12
+                height: visible ? implicitHeight : 0
+                topPadding: index === 0 ? 4 : 20
+                bottomPadding: 6
+                text: qsTr("Disc %1", "heading over one disc's tracks on an album page")
+                          .arg(trackDelegate.disc.toLocaleString(Qt.locale(), 'f', 0))
+                color: Theme.textSec
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+
+            TrackRow {
+                width: tracksList.width - 32
+                x: 16
+                // The album's own numbering, which starts over on each disc.
+                trackNum:    modelData.trackNumber > 0 ? modelData.trackNumber : index + 1
+                title:       modelData.title
+                artists:     modelData.artists
+                albumTitle:  root.albumData.title || ""
+                durationStr: modelData.durationStr
+                showAlbum:   false
+                showCover:   false
+                trackData:   modelData
+                onPlayRequested: root.playFrom(root.tracks, index)
+            }
         }
 
         footer: Column {

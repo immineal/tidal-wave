@@ -240,6 +240,8 @@ Item {
             return "M 12 3 V 15 M 7 10 L 12 15 L 17 10 M 4 20 H 20"
         case "check":
             return "M 5 12 L 10 17 L 19 7"
+        case "folder":
+            return "M 4 20 H 20 A 2 2 0 0 0 22 18 V 8.5 A 2 2 0 0 0 20 6.5 H 12 L 10 4 H 4 A 2 2 0 0 0 2 6 V 18 A 2 2 0 0 0 4 20 Z"
         // A sheet over a sheet, for "Copy link". A chain link cannot be drawn
         // at this size: its two half-rings close into one flat oval.
         case "copy":

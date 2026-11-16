@@ -6,11 +6,14 @@
 #include <QLocale>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 
 #include <cstdio>
+#include <memory>
 
 #include "ui/I18n.h"
 #include "ui/Prefs.h"
@@ -18,6 +21,7 @@
 namespace {
 
 const char kChildFlag[] = "--print-system-language";
+const char kNumbersFlag[] = "--print-numbers";
 
 // Prints the language a fresh install starts in, with the settings kept in
 // `settingsDir`.
@@ -30,6 +34,37 @@ int printSystemLanguage(const QString &settingsDir) {
     Prefs prefs;
     I18n i18n(&prefs);
     std::fputs(qPrintable(i18n.effectiveLanguage()), stdout);
+    return 0;
+}
+
+// Starts in English, switches live to `language`, and prints 4991 as C++,
+// a QML binding and a German plural write it, joined by "|".
+int printNumbers(const QString &settingsDir, const QString &language) {
+    QCoreApplication::setOrganizationName(QStringLiteral("tidal-wave-tests"));
+    QCoreApplication::setApplicationName(QStringLiteral("tst_i18n-numbers"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir);
+
+    Prefs prefs;
+    prefs.setLanguage(QStringLiteral("en"));
+    I18n i18n(&prefs);
+    QQmlEngine engine;
+    i18n.setEngine(&engine);
+    QQmlComponent component(&engine);
+    component.setData("import QtQml\n"
+                      "QtObject { property string count: qsTr(\"(%1)\")"
+                      ".arg(Number(4991).toLocaleString(Qt.locale(), 'f', 0)) }",
+                      QUrl(QStringLiteral("qrc:/Probe.qml")));
+    std::unique_ptr<QObject> probe(component.create());
+    if (!probe) {
+        std::fputs(qPrintable(component.errorString()), stderr);
+        return 1;
+    }
+    prefs.setLanguage(language);
+    const QString out = QLocale().toString(4991) + QLatin1Char('|')
+        + probe->property("count").toString() + QLatin1Char('|')
+        + QCoreApplication::translate("QueuePanel", "%Ln track(s)", nullptr, 4991);
+    std::fputs(qPrintable(out), stdout);
     return 0;
 }
 
@@ -188,6 +223,49 @@ private slots:
         QCOMPARE(QString::fromLatin1(child.readAllStandardOutput()), expected);
     }
 
+    // ── numbers ──────────────────────────────────────────────────────────
+    // A number follows the language picked in the app, not the system's:
+    // German on an English system writes 4.991. "system" keeps the system's.
+    void numbersFollowTheChosenLanguage_data() {
+        QTest::addColumn<QString>("lang");
+        QTest::addColumn<QString>("language");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("German on an English system")
+            << "en_US.UTF-8" << "de" << "4.991|(4.991)|4.991 Titel";
+        QTest::newRow("English on a German system")
+            << "de_DE.UTF-8" << "en" << "4,991|(4,991)|4,991 tracks";
+        // The system's own formats stay where they already speak the language.
+        QTest::newRow("German on a Swiss German system")
+            << "de_CH.UTF-8" << "de" << QLocale(QStringLiteral("de_CH")).toString(4991)
+                + "|(" + QLocale(QStringLiteral("de_CH")).toString(4991) + ")|"
+                + QLocale(QStringLiteral("de_CH")).toString(4991) + " Titel";
+    }
+
+    void numbersFollowTheChosenLanguage() {
+        QFETCH(QString, lang);
+        QFETCH(QString, language);
+        QFETCH(QString, expected);
+
+        QTemporaryDir settings;
+        QVERIFY(settings.isValid());
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        const QStringList inherited = env.keys();
+        for (const QString &key : inherited) {
+            if (key == QLatin1String("LANG") || key == QLatin1String("LANGUAGE")
+                || key.startsWith(QLatin1String("LC_")))
+                env.remove(key);
+        }
+        env.insert(QStringLiteral("LANG"), lang);
+
+        QProcess child;
+        child.setProcessEnvironment(env);
+        child.start(QCoreApplication::applicationFilePath(),
+                    { QString::fromLatin1(kNumbersFlag), settings.path(), language });
+        QVERIFY2(child.waitForFinished(30000), "the child did not finish");
+        QCOMPARE(child.exitCode(), 0);
+        QCOMPARE(QString::fromUtf8(child.readAllStandardOutput()), expected);
+    }
+
     // ── the live object ──────────────────────────────────────────────────
 
     void effectiveLanguageTracksPrefs() {
@@ -228,7 +306,7 @@ private slots:
 
 
     // ── plurals ──────────────────────────────────────────────────────────
-    // Sources are written "%n track(s)", lupdate's shorthand. With no English
+    // Sources are written "%Ln track(s)", lupdate's shorthand. With no English
     // catalogue Qt falls back to the source verbatim, so English ships a
     // catalogue carrying just the numerus forms.
     void englishResolvesPlurals_data() {
@@ -253,7 +331,7 @@ private slots:
         QVERIFY2(i18n.isCatalogueLoaded(), "English catalogue not installed");
 
         const QString out = QCoreApplication::translate(
-            qPrintable(context), "%n track(s)", nullptr, n);
+            qPrintable(context), "%Ln track(s)", nullptr, n);
         QCOMPARE(out, expected);
         // The shorthand must never reach a person.
         QVERIFY(!out.contains(QLatin1String("(s)")));
@@ -265,8 +343,8 @@ private slots:
         I18n i18n(&prefs);
         QVERIFY(i18n.isCatalogueLoaded());
 
-        const QString one  = QCoreApplication::translate("QueuePanel", "%n track(s)", nullptr, 1);
-        const QString many = QCoreApplication::translate("QueuePanel", "%n track(s)", nullptr, 7);
+        const QString one  = QCoreApplication::translate("QueuePanel", "%Ln track(s)", nullptr, 1);
+        const QString many = QCoreApplication::translate("QueuePanel", "%Ln track(s)", nullptr, 7);
         QVERIFY(!one.contains(QLatin1String("(s)")));
         QVERIFY(!many.contains(QLatin1String("(s)")));
         QVERIFY2(one != many, "German singular and plural are identical");
@@ -326,6 +404,8 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     if (argc == 3 && qstrcmp(argv[1], kChildFlag) == 0)
         return printSystemLanguage(QString::fromLocal8Bit(argv[2]));
+    if (argc == 4 && qstrcmp(argv[1], kNumbersFlag) == 0)
+        return printNumbers(QString::fromLocal8Bit(argv[2]), QString::fromLocal8Bit(argv[3]));
 
     TestI18n tc;
     return QTest::qExec(&tc, argc, argv);

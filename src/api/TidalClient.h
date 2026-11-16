@@ -208,9 +208,6 @@ public:
     // title, then one in hi-res, then the more popular, then the lower id.
     static Track pickTwin(const QJsonObject &root, const Track &of);
 
-    // Recently played
-    void fetchRecentlyPlayed(TracksCallback cb);
-
     // The parsers and merges below are public and static so tests can reach
     // them. They touch no member state.
 

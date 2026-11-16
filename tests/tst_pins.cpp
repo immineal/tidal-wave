@@ -320,7 +320,7 @@ private slots:
     // ── a pin stores facts, never rendered text ──────────────────────────
     // A pin's subtitle is a datum Tidal sent, such as an album's artists. A row
     // in QSettings outlives the locale it was written in. A playlist has no such
-    // datum, so a rendered "%n track(s)" handed to pin() is dropped.
+    // datum, so a rendered "%Ln track(s)" handed to pin() is dropped.
 
     void aPlaylistPinKeepsNoRenderedSubtitle() {
         PinStore p;

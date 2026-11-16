@@ -200,7 +200,6 @@ qt_add_qml_module(tidalwave_qml
         qml/components/PillButton.qml
         qml/components/NavIcon.qml
         qml/components/HorizontalSection.qml
-        qml/components/PageHeader.qml
         qml/components/LoadingOverlay.qml
         qml/components/ContextMenu.qml
         qml/components/SearchBar.qml

@@ -2,6 +2,7 @@
 
 #pragma once
 #include <QObject>
+#include <QLocale>
 #include <QPointer>
 #include <QQmlEngine>
 #include <QStringList>
@@ -9,7 +10,6 @@
 #include <QVariantList>
 
 class QQmlEngine;
-class QLocale;
 class Prefs;
 
 // Installs the QTranslator for Prefs::language and retranslates the live QML
@@ -42,6 +42,12 @@ public:
     static QString resolveLanguage(const QString &pref, const QStringList &displayLanguages,
                                    const QLocale &formatLocale);
 
+    // The locale numbers and dates are written in. "system" keeps the
+    // system's formats, and so does a language the system's formats are in;
+    // another language brings its own.
+    static QLocale numberLocale(const QString &pref, const QString &language,
+                                const QLocale &system);
+
     // True once a .qm for the effective language is installed.
     bool isCatalogueLoaded() const { return m_loaded; }
 
@@ -60,5 +66,6 @@ private:
     QTranslator m_appTranslator;
     QTranslator m_qtTranslator;
     QString     m_effective;
+    QLocale     m_locale;
     bool        m_loaded = false;
 };

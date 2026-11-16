@@ -63,7 +63,7 @@ Rectangle {
     }
     function playlistItem(p) {
         return { id: p.uuid, title: p.title,
-                 subtitle: qsTr("%n track(s)", "", p.numTracks),
+                 subtitle: qsTr("%Ln track(s)", "", p.numTracks),
                  coverUrl: p.coverUrl, type: "playlist",
                  playlistType: p.type || "" }
     }

@@ -193,9 +193,6 @@ public:
     //           releaseDate, upc } and an error string.
     Q_INVOKABLE void fetchTrackCredits(qlonglong trackId, QJSValue cb);
 
-    // Recently played
-    Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb);
-
     Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const;
     Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const;

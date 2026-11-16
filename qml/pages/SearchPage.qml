@@ -911,7 +911,7 @@ Rectangle {
         if (kind === kPlaylists)
             return playlists.map(function (p) {
                 return { id: p.uuid, title: p.title,
-                         subtitle: qsTr("%n track(s)", "", p.numTracks),
+                         subtitle: qsTr("%Ln track(s)", "", p.numTracks),
                          coverUrl: p.coverUrl || "", playlistType: p.type || "" }
             })
         if (kind === kMixes)

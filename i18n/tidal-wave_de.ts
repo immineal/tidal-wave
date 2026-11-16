@@ -16,10 +16,10 @@
         <translation>Album</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -92,6 +92,11 @@
         <source>Dolby Atmos, plays in stereo</source>
         <translation>Dolby Atmos, Wiedergabe in Stereo</translation>
     </message>
+    <message>
+        <source>Disc %1</source>
+        <comment>heading over one disc&apos;s tracks on an album page</comment>
+        <translation>CD %1</translation>
+    </message>
 </context>
 <context>
     <name>ArtistLinks</name>
@@ -125,10 +130,10 @@
         <translation>%1 Min.</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -352,10 +357,10 @@
         <translation>Künstler nicht mehr folgen</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -437,19 +442,19 @@
 <context>
     <name>ContextMenu</name>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
         </translation>
     </message>
     <message>
@@ -579,6 +584,10 @@
         <source>Download cancelled</source>
         <translation>Download abgebrochen</translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation>Download-Ordner</translation>
+    </message>
 </context>
 <context>
     <name>Feedback</name>
@@ -630,10 +639,10 @@
         <translation>Guten Abend</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1173,17 +1182,17 @@
         <translation>Playlist</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) • %1</source>
+        <source>%Ln track(s) • %1</source>
         <translation>
-            <numerusform>%n Titel • %1</numerusform>
-            <numerusform>%n Titel • %1</numerusform>
+            <numerusform>%Ln Titel • %1</numerusform>
+            <numerusform>%Ln Titel • %1</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1246,10 +1255,10 @@
         <translation>Warteschlange</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1387,10 +1396,10 @@
         <translation>Künstler</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
     </message>
     <message>
@@ -1738,6 +1747,19 @@
         <source>Go back</source>
         <translation>Zurück</translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation>Download-Ordner</translation>
+    </message>
+    <message>
+        <source>Change…</source>
+        <comment>button that picks another download folder</comment>
+        <translation>Ändern…</translation>
+    </message>
+    <message>
+        <source>Each download asks for a file name and format, starting in this folder.</source>
+        <translation>Jeder Download fragt nach Dateiname und Format und beginnt in diesem Ordner.</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1821,19 +1843,19 @@
         <translation>Beliebtheit</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
-            <numerusform>%n Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
+            <numerusform>%Ln Titel als Nächstes eingereiht</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
-            <numerusform>%n Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zur Warteschlange hinzugefügt</numerusform>
         </translation>
     </message>
     <message>
@@ -1908,11 +1930,16 @@
         <translation>Neue Playlist…</translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n Titel</numerusform>
-            <numerusform>%n Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
+            <numerusform>%Ln Titel</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded track</comment>
+        <translation>Im Ordner anzeigen</translation>
     </message>
 </context>
 <context>

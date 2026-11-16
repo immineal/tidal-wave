@@ -30,10 +30,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -92,6 +92,11 @@
         <source>Removing…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Disc %1</source>
+        <comment>heading over one disc&apos;s tracks on an album page</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Application</name>
@@ -140,10 +145,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -335,10 +340,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -385,19 +390,19 @@
 <context>
     <name>ContextMenu</name>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n track added to play next</numerusform>
-            <numerusform>%n tracks added to play next</numerusform>
+            <numerusform>%Ln track added to play next</numerusform>
+            <numerusform>%Ln tracks added to play next</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n track added to queue</numerusform>
-            <numerusform>%n tracks added to queue</numerusform>
+            <numerusform>%Ln track added to queue</numerusform>
+            <numerusform>%Ln tracks added to queue</numerusform>
         </translation>
     </message>
     <message>
@@ -503,6 +508,10 @@
         <source>Download cancelled</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Feedback</name>
@@ -554,10 +563,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -1062,17 +1071,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) • %1</source>
+        <source>%Ln track(s) • %1</source>
         <translation>
-            <numerusform>%n track • %1</numerusform>
-            <numerusform>%n tracks • %1</numerusform>
+            <numerusform>%Ln track • %1</numerusform>
+            <numerusform>%Ln tracks • %1</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -1130,10 +1139,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -1271,10 +1280,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
     </message>
     <message>
@@ -1602,6 +1611,19 @@
         <source>Go back</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change…</source>
+        <comment>button that picks another download folder</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each download asks for a file name and format, starting in this folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1670,19 +1692,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to play next</source>
+        <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n track added to play next</numerusform>
-            <numerusform>%n tracks added to play next</numerusform>
+            <numerusform>%Ln track added to play next</numerusform>
+            <numerusform>%Ln tracks added to play next</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s) added to queue</source>
+        <source>%Ln track(s) added to queue</source>
         <comment>queue confirmation</comment>
         <translation>
-            <numerusform>%n track added to queue</numerusform>
-            <numerusform>%n tracks added to queue</numerusform>
+            <numerusform>%Ln track added to queue</numerusform>
+            <numerusform>%Ln tracks added to queue</numerusform>
         </translation>
     </message>
     <message>
@@ -1757,11 +1779,16 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%n track(s)</source>
+        <source>%Ln track(s)</source>
         <translation>
-            <numerusform>%n track</numerusform>
-            <numerusform>%n tracks</numerusform>
+            <numerusform>%Ln track</numerusform>
+            <numerusform>%Ln tracks</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded track</comment>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

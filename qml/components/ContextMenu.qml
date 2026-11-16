@@ -134,8 +134,8 @@ Menu {
     function _confirm(n, atFront) {
         var at = root.confirmAnchor || root.parent
         if (!at) return
-        at.ToolTip.show(atFront ? qsTr("%n track(s) added to play next", "queue confirmation", n)
-                                : qsTr("%n track(s) added to queue", "queue confirmation", n),
+        at.ToolTip.show(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", n)
+                                : qsTr("%Ln track(s) added to queue", "queue confirmation", n),
                         root.confirmMs)
     }
 

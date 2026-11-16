@@ -134,6 +134,7 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["coverUrl80"]  = t.coverUrl(80);
     m["duration"]    = t.duration;
     m["trackNumber"] = t.trackNumber;
+    m["volumeNumber"] = t.discNumber;
     m["explicit_"]   = t.explicit_;
     m["quality"]     = t.audioQuality;
     m["popularity"]  = t.popularity;
@@ -904,12 +905,6 @@ void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {
     });
 }
 
-void TidalBridge::fetchRecentlyPlayed(QJSValue cb) {
-    m_client->fetchRecentlyPlayed([this, cb](QList<Track> tracks, QString err) mutable {
-        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
-                   qjsEngine(this)->toScriptValue(err) });
-    });
-}
 
 QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
     QVariantList list;

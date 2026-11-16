@@ -1269,19 +1269,3 @@ void TidalClient::fetchTrackCredits(qint64 trackId,
         });
 }
 
-void TidalClient::fetchRecentlyPlayed(TracksCallback cb) {
-    QUrlQuery q;
-    q.addQueryItem("limit", "20");
-    m_api->get(QStringLiteral("users/%1/history").arg(m_userId), q,
-        [this, cb](QJsonObject root, QString err) {
-            if (!err.isEmpty()) { cb({}, err); return; }
-            QList<Track> tracks;
-            for (const auto &v : root["items"].toArray()) {
-                auto obj  = v.toObject();
-                auto item = obj["item"].toObject();
-                if (item.contains("id"))
-                    tracks.append(Track::fromJson(item));
-            }
-            cb(tracks, {});
-        });
-}

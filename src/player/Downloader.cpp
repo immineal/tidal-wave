@@ -17,6 +17,17 @@
 #include <QStringList>
 #include <QRegularExpression>
 #include <QDebug>
+#include <QDesktopServices>
+#if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#endif
+
+namespace {
+const QString kFolderKey = QStringLiteral("download/lastDir");
+}
 
 Downloader::Downloader(TidalClient *client, QObject *parent)
     : QObject(parent), m_client(client)
@@ -91,13 +102,7 @@ void Downloader::downloadTrack(const QVariantMap &track) {
         const QString title  = track.value(QStringLiteral("title")).toString();
         QString base = sanitizeFilename(artist.isEmpty() ? title : (artist + QStringLiteral(" - ") + title));
 
-        QSettings settings;
-        QString dir = settings.value(QStringLiteral("download/lastDir")).toString();
-        if (dir.isEmpty() || !QDir(dir).exists())
-            dir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-        if (dir.isEmpty())
-            dir = QDir::homePath();
-
+        const QString dir = folder();
         const QString suggested = dir + QStringLiteral("/") + base + QStringLiteral(".flac");
         QString selectedFilter;
         const QString filters = QStringLiteral("FLAC (*.flac);;MP3 (*.mp3);;WAV (*.wav)");
@@ -113,7 +118,7 @@ void Downloader::downloadTrack(const QVariantMap &track) {
             else                                                      fmt = QStringLiteral("flac");
             path += QStringLiteral(".") + fmt;
         }
-        settings.setValue(QStringLiteral("download/lastDir"), QFileInfo(path).absolutePath());
+        setFolder(QFileInfo(path).absolutePath());
 
         auto *job = new DownloadJob;
         job->id          = id;
@@ -359,8 +364,12 @@ void Downloader::finish(DownloadJob *job, const QString &err) {
     const QString target = job->targetPath;
     delete job;
 
-    if (err.isEmpty()) emit downloadFinished(id, target);
-    else               emit downloadError(id, err);
+    if (err.isEmpty()) {
+        m_saved.insert(id, target);
+        emit downloadFinished(id, target);
+    } else {
+        emit downloadError(id, err);
+    }
 }
 
 void Downloader::cancelDownload(qlonglong id) {
@@ -368,4 +377,66 @@ void Downloader::cancelDownload(qlonglong id) {
     if (!job) return;
     QFile::remove(job->targetPath);
     finish(job, tr("Download cancelled"));
+}
+
+QString Downloader::folder() const {
+    const QString dir = QSettings().value(kFolderKey).toString();
+    if (!dir.isEmpty() && QDir(dir).exists()) return dir;
+    const QString music = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+    return music.isEmpty() ? QDir::homePath() : music;
+}
+
+void Downloader::setFolder(const QString &dir) {
+    if (dir.isEmpty()) return;
+    const QString clean = QDir::cleanPath(dir);
+    const QString before = folder();
+    QSettings().setValue(kFolderKey, clean);
+    if (folder() != before) emit folderChanged();
+}
+
+void Downloader::chooseFolder() {
+    QTimer::singleShot(0, this, [this] {
+        const QString dir = QFileDialog::getExistingDirectory(nullptr, tr("Download folder"), folder());
+        if (!dir.isEmpty()) setFolder(dir);
+    });
+}
+
+QString Downloader::savedPath(qlonglong id) const {
+    const QString path = m_saved.value(id);
+    return (!path.isEmpty() && QFileInfo::exists(path)) ? path : QString();
+}
+
+// Each desktop's own way to point at a file. Where none answers, the folder
+// opens with nothing selected.
+void Downloader::showInFolder(const QString &path) {
+    const QFileInfo info(path);
+    if (path.isEmpty() || !info.exists()) return;
+    const QUrl folderUrl = QUrl::fromLocalFile(info.absolutePath());
+#if defined(Q_OS_WIN)
+    if (QProcess::startDetached(QStringLiteral("explorer.exe"),
+            { QStringLiteral("/select,") + QDir::toNativeSeparators(info.absoluteFilePath()) }))
+        return;
+    QDesktopServices::openUrl(folderUrl);
+#elif defined(Q_OS_MACOS)
+    if (QProcess::startDetached(QStringLiteral("open"),
+            { QStringLiteral("-R"), info.absoluteFilePath() }))
+        return;
+    QDesktopServices::openUrl(folderUrl);
+#elif defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
+    // org.freedesktop.FileManager1, which Dolphin, Nautilus, Nemo, Thunar
+    // and others implement. Asked async, so a missing one never blocks.
+    QDBusMessage call = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.FileManager1"), QStringLiteral("/org/freedesktop/FileManager1"),
+        QStringLiteral("org.freedesktop.FileManager1"), QStringLiteral("ShowItems"));
+    call << QStringList{ QUrl::fromLocalFile(info.absoluteFilePath()).toString() } << QString();
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected()) { QDesktopServices::openUrl(folderUrl); return; }
+    auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [folderUrl](QDBusPendingCallWatcher *w) {
+        if (QDBusPendingReply<>(*w).isError()) QDesktopServices::openUrl(folderUrl);
+        w->deleteLater();
+    });
+#else
+    QDesktopServices::openUrl(folderUrl);
+#endif
 }

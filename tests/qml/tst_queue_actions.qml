@@ -356,7 +356,7 @@ TestCase {
         page.pinMenu.addToQueueItem.triggered()
 
         tryVerify(function () { return tip.visible }, 2000, "queueing gave no confirmation")
-        compare(tip.text, qsTr("%n track(s) added to queue", "queue confirmation", 4))
+        compare(tip.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 4))
         verify(!tip.activeFocus, "the confirmation took focus")
         verify(!tip.modal, "the confirmation blocked the window")
 
@@ -374,7 +374,7 @@ TestCase {
         row.rowMenu.close()
 
         tryVerify(function () { return tip.visible }, 2000, "a row queued without a word")
-        compare(tip.text, qsTr("%n track(s) added to queue", "queue confirmation", 1))
+        compare(tip.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
     function test_the_confirmation_names_the_action() {
@@ -383,7 +383,7 @@ TestCase {
 
         page.pinMenu.playNextItem.triggered()
         tryVerify(function () { return tip.visible }, 2000, "Play next gave no confirmation")
-        compare(tip.text, qsTr("%n track(s) added to play next", "queue confirmation", 2))
+        compare(tip.text, qsTr("%Ln track(s) added to play next", "queue confirmation", 2))
         tryVerify(function () { return !tip.visible }, 5000, "the confirmation never went away")
     }
 }

@@ -142,10 +142,6 @@ TestCase {
         HorizontalSection { width: 900 }
     }
     Component {
-        id: pageHeaderC
-        PageHeader { width: 500 }
-    }
-    Component {
         id: pillC
         PillButton { }
     }
@@ -279,7 +275,6 @@ TestCase {
             { tag: "SideBar",           c: sidebarC    },
             { tag: "PlayerBar",         c: playerBarC  },
             { tag: "HorizontalSection", c: sectionC    },
-            { tag: "PageHeader",        c: pageHeaderC },
             { tag: "CollectionPage",    c: collectionC },
             { tag: "AlbumPage",         c: albumPageC  },
             { tag: "PlaylistPage",      c: playlistPageC },
@@ -491,7 +486,7 @@ TestCase {
         "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip",
         "speaker", "cast", "queue", "volume-high", "volume-mute",
         // The rest of what a context menu asks for.
-        "next", "plus", "waves", "copy"
+        "next", "plus", "waves", "copy", "folder"
     ]
 
     function markCases() {

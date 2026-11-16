@@ -285,8 +285,8 @@ Rectangle {
                             // The count is the tracklist's, still on its way.
                             if (root.loading && n === 0)
                                 return d > 0 ? root.durationText(d) : ""
-                            return d > 0 ? qsTr("%n track(s) • %1", "", n).arg(root.durationText(d))
-                                         : qsTr("%n track(s)", "", n)
+                            return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(root.durationText(d))
+                                         : qsTr("%Ln track(s)", "", n)
                         }
                         color: Theme.textSec
                         font.pixelSize: 14
