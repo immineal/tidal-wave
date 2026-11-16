@@ -1941,7 +1941,32 @@
     </message>
 </context>
 <context>
+    <name>DuplicateAddDialog</name>
+    <message numerus="yes">
+        <source>%Ln of these %1 tracks are in it already.</source>
+        <translation>
+            <numerusform>%Ln of these %1 tracks is in it already.</numerusform>
+            <numerusform>%Ln of these %1 tracks are in it already.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>All %Ln tracks are in it already. Add them anyway?</source>
+        <translation>
+            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
+            <numerusform>All %Ln tracks are in it already. Add them anyway?</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>Edits</name>
+    <message numerus="yes">
+        <source>%Ln track(s) added to “%1”</source>
+        <comment>confirmation after adding several tracks to a playlist</comment>
+        <translation>
+            <numerusform>%Ln track added to “%1”</numerusform>
+            <numerusform>%Ln tracks added to “%1”</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Still undoing the last change</source>
         <comment>shown when Undo is asked again before the last one finished</comment>

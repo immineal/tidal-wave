@@ -796,6 +796,9 @@ ApplicationWindow {
 
     CastErrorTip { }
 
+    // Asks before a track goes into a playlist that holds it already.
+    DuplicateAddDialog { }
+
     // A Tidal link from the command line or the desktop. Track links arrive
     // as their album; each page loads its header from the id.
     Connections {
