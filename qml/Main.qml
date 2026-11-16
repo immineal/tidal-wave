@@ -796,6 +796,17 @@ ApplicationWindow {
 
     CastErrorTip { }
 
+    // The device ended the cast itself, so the player bar going back to
+    // local is no surprise. CastManager exists only on Linux.
+    Connections {
+        target: (typeof cast !== "undefined") ? cast : null
+        ignoreUnknownSignals: true
+        function onEndedOnDevice(deviceName) {
+            Toasts.show(qsTr("Casting ended on %1", "the cast device ended the cast itself")
+                        .arg(deviceName))
+        }
+    }
+
     // Asks before a track goes into a playlist that holds it already.
     DuplicateAddDialog { }
 

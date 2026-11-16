@@ -2150,11 +2150,18 @@ public:
     Q_INVOKABLE int scanCountForTest() const { return m_scanCount; }
     Q_INVOKABLE QString lastConnectIdForTest() const { return m_lastConnectId; }
     Q_INVOKABLE void emitErrorForTest(const QString &msg) { emit error(msg); }
+    // What CastManager does when the device ends the cast itself.
+    Q_INVOKABLE void endOnDeviceForTest() {
+        const QString name = m_deviceName;
+        emit endedOnDevice(name);
+        disconnect();
+    }
 
 signals:
     void devicesChanged();
     void connectedChanged();
     void error(const QString &msg);
+    void endedOnDevice(const QString &deviceName);
 
 private:
     QVariantList m_devices;

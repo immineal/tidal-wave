@@ -957,6 +957,11 @@
         <source>%1 – %2 · Tidal Wave</source>
         <translation>%1 – %2 · Tidal Wave</translation>
     </message>
+    <message>
+        <source>Casting ended on %1</source>
+        <comment>the cast device ended the cast itself</comment>
+        <translation>Übertragung auf %1 beendet</translation>
+    </message>
 </context>
 <context>
     <name>MediaCard</name>
