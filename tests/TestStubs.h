@@ -2231,6 +2231,8 @@ class StubPrefs : public QObject {
     Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
     Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    // The playback switches, with the real Prefs' defaults.
+    Q_PROPERTY(bool normalizeLoudness MEMBER m_normalizeLoudness NOTIFY normalizeLoudnessChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -2361,6 +2363,7 @@ signals:
     void lyricsLrclibChanged();
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
+    void normalizeLoudnessChanged();
 
 private:
     QString m_theme    = QStringLiteral("sea");
@@ -2383,6 +2386,7 @@ private:
     bool    m_lyricsLrclib = true;
     bool    m_lyricsOtherSites = false;
     bool    m_lyricsAutoSync = true;
+    bool    m_normalizeLoudness = true;
 
     QString m_version = QStringLiteral("0.4.0");
 };

@@ -1746,6 +1746,14 @@
         <source>Go back</source>
         <translation>Zurück</translation>
     </message>
+    <message>
+        <source>Normalize loudness</source>
+        <translation>Lautstärke angleichen</translation>
+    </message>
+    <message>
+        <source>Plays every track about as loud as the others, by Tidal&apos;s own measure. An album played in its order keeps its own balance.</source>
+        <translation>Spielt jeden Titel etwa so laut wie die anderen, nach Tidals eigener Messung. Ein Album, das in seiner Reihenfolge läuft, behält sein eigenes Verhältnis.</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>

@@ -526,6 +526,28 @@ Popup {
                     onPicked: function (value) { bridge.preferredQuality = value }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 12
+                    Text {
+                        text: qsTr("Normalize loudness")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Toggle {
+                        objectName: "settingsNormalizeToggle"
+                        checked: prefs.normalizeLoudness
+                        onToggled: prefs.normalizeLoudness = !prefs.normalizeLoudness
+                    }
+                }
+                Text {
+                    objectName: "settingsNormalizeNote"
+                    text: qsTr("Plays every track about as loud as the others, by Tidal's own measure. An album played in its order keeps its own balance.")
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
                 // Hidden where there is nothing to choose between, which is
                 // every box with no audio backend at all.
                 ColumnLayout {

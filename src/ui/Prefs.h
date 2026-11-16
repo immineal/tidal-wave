@@ -54,6 +54,8 @@ class Prefs : public QObject {
     Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
     // Time plain lyrics against the track's audio, on this machine. On by default.
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    // Tidal's ReplayGain applied to each track. On by default.
+    Q_PROPERTY(bool normalizeLoudness READ normalizeLoudness WRITE setNormalizeLoudness NOTIFY normalizeLoudnessChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -82,6 +84,7 @@ public:
     bool    lyricsLrclib() const      { return m_lyricsLrclib; }
     bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
     bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
+    bool    normalizeLoudness() const { return m_normalizeLoudness; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -98,6 +101,7 @@ public:
     void setLyricsLrclib(bool v);
     void setLyricsOtherSites(bool v);
     void setLyricsAutoSync(bool v);
+    void setNormalizeLoudness(bool v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -123,6 +127,7 @@ signals:
     void lyricsLrclibChanged();
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
+    void normalizeLoudnessChanged();
 
 private:
     QSettings m_settings;
@@ -141,4 +146,5 @@ private:
     bool      m_lyricsLrclib;
     bool      m_lyricsOtherSites;
     bool      m_lyricsAutoSync;
+    bool      m_normalizeLoudness;
 };

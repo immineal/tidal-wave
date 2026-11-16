@@ -389,6 +389,9 @@ struct StreamManifest {
     int     bitDepth   = 16;
     double  replayGainTrack = 0.0;
     double  replayGainAlbum = 0.0;
+    // Sample peaks, 1.0 full scale; 0 when Tidal gave none.
+    double  peakTrack = 0.0;
+    double  peakAlbum = 0.0;
     // Tidal's name for the delivery format: FLAC, FLAC_HIRES, AACLC, HEAACV1.
     QString format;
     // Bits per second, from the DASH Representation; 0 when not stated.

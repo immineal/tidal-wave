@@ -31,6 +31,7 @@
 #include <QAudioBufferOutput>
 #endif
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <utility>
 #include <QRandomGenerator>
@@ -79,8 +80,8 @@ void Player::initAudio() {
     // the default at construction and never notices a later change.
     m_audioOut = new QAudioOutput(resolveAudioDevice(), this);
     m_player->setAudioOutput(m_audioOut);
-    m_audioOut->setVolume(outputVolume(m_pendingVolume));
     m_audioOut->setMuted(m_pendingMuted);
+    applyLevel();
 
     // Needs an instance: audioOutputsChanged is not a static signal.
     m_devices = new QMediaDevices(this);
@@ -174,11 +175,13 @@ Player::~Player() {
 
 void Player::setPrefs(Prefs *prefs) {
     if (m_prefs == prefs) return;
-    if (m_prefs) disconnect(m_prefs, &Prefs::audioDeviceChanged, this, nullptr);
+    if (m_prefs) disconnect(m_prefs, nullptr, this, nullptr);
     m_prefs = prefs;
     if (m_prefs) {
         connect(m_prefs, &Prefs::audioDeviceChanged, this, [this] { applyAudioDevice(); });
+        connect(m_prefs, &Prefs::normalizeLoudnessChanged, this, [this] { applyLevel(); });
     }
+    applyLevel();
     applyAudioDevice();
     // The analyser reads its switch off this object by property name.
     if (m_spectrum) m_spectrum->setPrefsSource(m_prefs);
@@ -310,7 +313,7 @@ Player::AudioState Player::captureAudioState() const {
 void Player::restoreAudioState(const AudioState &state) {
     if (m_audioOut) {
         m_pendingVolume = state.volume;
-        m_audioOut->setVolume(outputVolume(state.volume));
+        applyLevel();
         // The live value: while casting the local output is force-muted and
         // must stay that way across a swap, whatever m_pendingMuted says.
         m_audioOut->setMuted(state.muted);
@@ -337,7 +340,7 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 #endif
 
     auto *fresh = new QAudioOutput(device, this);
-    fresh->setVolume(outputVolume(state.volume));
+    fresh->setVolume(float(qMin(1.0, outputVolume(state.volume) * m_gain)));
     fresh->setMuted(state.muted);
 
     // Detach, delete the old output outright, then attach. A destroyed output
@@ -1040,7 +1043,7 @@ void Player::setVolume(double v) {
 #ifdef Q_OS_LINUX
     if (casting() && m_castSession) m_castSession->setVolume(m_pendingVolume);
 #endif
-    if (m_audioOut) m_audioOut->setVolume(outputVolume(m_pendingVolume));
+    applyLevel();
     emit volumeChanged(m_pendingVolume);
     schedulePersist();
 }
@@ -1054,9 +1057,41 @@ void Player::setMuted(bool m) {
     schedulePersist();
 }
 
+// ─── Loudness ──────────────────────────────────────
+// Tidal's ReplayGain for the track, or for the album while one plays in its
+// own order, as Spotify does. The output cannot go past full scale, so a gain
+// above 0 dB only shows below full volume. The peak caps it short of clipping.
+
+bool Player::albumInOrder(int row) const {
+    if (m_shuffle || m_sourceType != QLatin1String("album") || row < 0 || row >= m_queue.count())
+        return false;
+    const Entry &e = m_queue.at(row);
+    return !e.manual
+        && QString::number(e.track.value(QStringLiteral("albumId")).toLongLong()) == m_sourceId;
+}
+
+double Player::gainFor(const StreamManifest &info, int row) const {
+    if (!m_prefs || !m_prefs->normalizeLoudness()) return 1.0;
+    const bool album = albumInOrder(row) && info.replayGainAlbum != 0.0;
+    const double db   = album ? info.replayGainAlbum : info.replayGainTrack;
+    const double peak = album ? info.peakAlbum : info.peakTrack;
+    double factor = std::pow(10.0, db / 20.0);
+    if (peak > 0.0) factor = qMin(factor, 1.0 / peak);
+    return factor;
+}
+
+double Player::trackGain() const { return m_gain; }
+
+void Player::applyLevel() {
+    const double level = outputVolume(m_pendingVolume);
+    m_gain = gainFor(m_streamInfo, m_index);
+    if (m_audioOut) m_audioOut->setVolume(float(qMin(1.0, level * m_gain)));
+}
+
 void Player::setShuffle(bool s) {
     m_shuffle = s;
     reorderContext();
+    applyLevel();
     emit shuffleChanged(s);
     emit queueChanged();
     schedulePersist();
@@ -1381,6 +1416,7 @@ void Player::playFile(QTemporaryFile *file, const QString &quality, const Stream
     m_mpdTempFile     = file;
     m_streamedQuality = quality;
     m_streamInfo      = info;
+    applyLevel();
     emit currentTrackChanged();
     // Still loading until the media status says the file is open.
     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
@@ -1481,6 +1517,7 @@ void Player::takeOverPreloadJoin() {
     m_dash = fetcher;
     m_streamedQuality = quality;
     m_streamInfo      = info;
+    applyLevel();
     emit currentTrackChanged();
     followJoin(m_loadSerial, fetcher);
     if (fetcher->segmentsReady() >= 2)
@@ -1674,6 +1711,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
             m_streamedQuality = manifest.codec;
             m_streamInfo      = manifest;
             m_streamInfo.url.clear();
+            applyLevel();
             emit currentTrackChanged();
 
             if (manifest.type == StreamManifest::BTS) {

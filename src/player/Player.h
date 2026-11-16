@@ -89,6 +89,8 @@ public:
     QString     audioFormat() const;
     // The badge text for a stream: format, bit depth and rate, or bit rate.
     static QString formatLabel(const StreamManifest &info);
+    // The loudness factor applied to the current track, 1.0 for none.
+    double      trackGain() const;
     int          queueCount()    const { return m_queue.count(); }
     int          queueIndex()    const { return m_index; }
     QVariantList queueTracks()   const;
@@ -277,6 +279,13 @@ private slots:
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
 
 private:
+    // ── Loudness ────────────────────────────────────────────────────────
+    double gainFor(const StreamManifest &info, int row) const;
+    // The row plays as part of its album, in the album's order.
+    bool   albumInOrder(int row) const;
+    // Sets the output from the volume and the track's gain.
+    void   applyLevel();
+
     struct Entry {
         QVariantMap track;
         // The user put this row here. Shuffle and playTracks() leave it alone,
@@ -617,4 +626,6 @@ private:
     // What the manifests said, without the manifest itself.
     StreamManifest       m_streamInfo;
     StreamManifest       m_preloadInfo;
+    // The loudness factor of the output.
+    double               m_gain        = 1.0;
 };

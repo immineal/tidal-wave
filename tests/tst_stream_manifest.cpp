@@ -234,7 +234,9 @@ private slots:
         QCOMPARE(m.bitDepth, 16);
         QCOMPARE(m.replayGainTrack, 10.29);
         QCOMPARE(m.replayGainAlbum, -5.3);
-        // The badge reads the format.
+        // The peaks cap a positive gain, and the badge reads the format.
+        QCOMPARE(m.peakTrack, 0.335114);
+        QCOMPARE(m.peakAlbum, 0.997223);
         QCOMPARE(m.format, QStringLiteral("FLAC"));
         QCOMPARE(m.bandwidth, 570611);
         // The manifest text itself, which is what DashFetcher parses.

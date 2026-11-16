@@ -1,7 +1,9 @@
-// The format badge's text. The tracks are silent WAV files handed out as
-// Tidal's lossy tier hands out a whole file; the Player is muted throughout.
+// Loudness normalisation and the format badge's text. The tracks are silent
+// WAV files handed out as Tidal's lossy tier hands out a whole file; the
+// Player is muted throughout.
 
 #include <QTest>
+#include <QAudio>
 #include <QAudioOutput>
 #include <QDataStream>
 #include <QFile>
@@ -13,6 +15,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
+#include <cmath>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -61,6 +64,11 @@ QVariantMap row(qlonglong id, qlonglong albumId = 7, int seconds = 1) {
     t[QStringLiteral("albumTitle")] = QStringLiteral("Album");
     t[QStringLiteral("duration")]   = seconds;
     return t;
+}
+
+double level(double slider) {
+    return QAudio::convertVolume(float(slider), QAudio::LogarithmicVolumeScale,
+                                 QAudio::LinearVolumeScale);
 }
 
 } // namespace
@@ -113,6 +121,59 @@ private slots:
     }
 
     void init() { QSettings().clear(); }
+
+    // ── loudness ────────────────────────────────────────────────────────────
+
+    void theTracksGainScalesTheOutput_data() {
+        QTest::addColumn<double>("gainDb");
+        QTest::addColumn<double>("peak");
+        QTest::addColumn<bool>("on");
+        QTest::addColumn<double>("factor");
+        QTest::newRow("-6 dB")              << -6.0 << 0.3 << true  << std::pow(10.0, -6.0 / 20.0);
+        QTest::newRow("+6 dB, peak caps it") << 6.0 << 0.8 << true  << 1.25;
+        QTest::newRow("+2 dB, room to spare") << 2.0 << 0.5 << true << std::pow(10.0, 2.0 / 20.0);
+        QTest::newRow("switched off")       << -6.0 << 0.3 << false << 1.0;
+        QTest::newRow("no gain from Tidal")  << 0.0 << 0.0 << true  << 1.0;
+    }
+    void theTracksGainScalesTheOutput() {
+        QFETCH(double, gainDb);
+        QFETCH(double, peak);
+        QFETCH(bool, on);
+        QFETCH(double, factor);
+        Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.prefs.setNormalizeLoudness(on);
+        r.client.base.replayGainTrack = gainDb;
+        r.client.base.peakTrack       = peak;
+        r.client.base.replayGainAlbum = -1.0;
+        QVERIFY(r.up());
+        r.player.playTracks({ row(1) }, 0);
+        QVERIFY(r.loaded());
+        QVERIFY2(std::fabs(r.player.trackGain() - factor) < 1e-3,
+                 qPrintable(QStringLiteral("gain %1, wanted %2").arg(r.player.trackGain()).arg(factor)));
+        QVERIFY(std::fabs(r.out()->volume() - level(0.5) * factor) < 1e-3);
+        // The slider still moves it.
+        r.player.setVolume(0.2);
+        QVERIFY(std::fabs(r.out()->volume() - level(0.2) * factor) < 1e-3);
+        // Switched over while it plays.
+        r.prefs.setNormalizeLoudness(!on);
+        const double other = on ? 1.0 : std::pow(10.0, gainDb / 20.0);
+        QVERIFY(std::fabs(r.out()->volume() - qMin(1.0, level(0.2) * qMin(other, peak > 0 ? 1.0 / peak : 1e9))) < 1e-3);
+    }
+
+    // An album played from its page in its order takes the album's gain, so
+    // its quiet tracks stay quiet. Shuffled, each track has its own.
+    void anAlbumInOrderTakesTheAlbumGain() {
+        Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.client.base.replayGainTrack = -8.0;
+        r.client.base.replayGainAlbum = -3.0;
+        QVERIFY(r.up());
+        r.player.setPlaybackSource(QStringLiteral("album"), QStringLiteral("7"), QStringLiteral("Album"));
+        r.player.playTracks({ row(1), row(2) }, 0);
+        QVERIFY(r.loaded());
+        QVERIFY(std::fabs(r.player.trackGain() - std::pow(10.0, -3.0 / 20.0)) < 1e-3);
+        r.player.setShuffle(true);
+        QVERIFY(std::fabs(r.player.trackGain() - std::pow(10.0, -8.0 / 20.0)) < 1e-3);
+    }
 
     // ── the badge ───────────────────────────────────────────────────────────
 

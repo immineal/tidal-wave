@@ -23,6 +23,7 @@ constexpr auto kExternalLyrics = "lyrics/externalSources";
 constexpr auto kLyricsLrclib = "lyrics/lrclib";
 constexpr auto kLyricsOtherSites = "lyrics/otherSites";
 constexpr auto kLyricsAutoSync = "lyrics/autoSync";
+constexpr auto kNormalizeLoudness = "playback/normalizeLoudness";
 
 // A choice made with the old switch holds for both new ones; written back
 // at once so it is not applied again over a later change.
@@ -57,6 +58,8 @@ Prefs::Prefs(QObject *parent)
     , m_lyricsLrclib(migrateLyricsSwitch(m_settings).value(kLyricsLrclib, true).toBool())
     , m_lyricsOtherSites(m_settings.value(kLyricsOtherSites, false).toBool())
     , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
+    // On by default, as in Tidal's and Spotify's own apps.
+    , m_normalizeLoudness(m_settings.value(kNormalizeLoudness, true).toBool())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
@@ -180,6 +183,13 @@ void Prefs::setLyricsAutoSync(bool v) {
     m_lyricsAutoSync = v;
     m_settings.setValue(kLyricsAutoSync, v);
     emit lyricsAutoSyncChanged();
+}
+
+void Prefs::setNormalizeLoudness(bool v) {
+    if (v == m_normalizeLoudness) return;
+    m_normalizeLoudness = v;
+    m_settings.setValue(kNormalizeLoudness, v);
+    emit normalizeLoudnessChanged();
 }
 
 QString Prefs::appVersion() const {

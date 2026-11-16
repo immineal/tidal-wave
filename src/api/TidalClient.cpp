@@ -904,8 +904,12 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     m.type     = StreamManifest::MPD;
     m.mimeType = QStringLiteral("application/dash+xml");
     m.url      = QString::fromUtf8(body);
-    m.replayGainTrack = attrs["trackAudioNormalizationData"].toObject()["replayGain"].toDouble();
-    m.replayGainAlbum = attrs["albumAudioNormalizationData"].toObject()["replayGain"].toDouble();
+    const QJsonObject trackNorm = attrs["trackAudioNormalizationData"].toObject();
+    const QJsonObject albumNorm = attrs["albumAudioNormalizationData"].toObject();
+    m.replayGainTrack = trackNorm["replayGain"].toDouble();
+    m.replayGainAlbum = albumNorm["replayGain"].toDouble();
+    m.peakTrack       = trackNorm["peakAmplitude"].toDouble();
+    m.peakAlbum       = albumNorm["peakAmplitude"].toDouble();
 
     // Format, sample rate and bit depth live only in the Representation id:
     // "FLAC,44100,16", or a bare "AACLC" with neither number.
@@ -1054,6 +1058,8 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
             m.bitDepth   = root["bitDepth"].toInt(16);
             m.replayGainTrack = root["trackReplayGain"].toDouble();
             m.replayGainAlbum = root["albumReplayGain"].toDouble();
+            m.peakTrack       = root["trackPeakAmplitude"].toDouble();
+            m.peakAlbum       = root["albumPeakAmplitude"].toDouble();
 
             QString mimeType = root["manifestMimeType"].toString();
             QByteArray manifestB64 = root["manifest"].toString().toUtf8();
