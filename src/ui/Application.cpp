@@ -953,6 +953,13 @@ void Application::createTrayIcon(const QIcon &icon) {
     m_trayMenu = new TrayMenu(this);
     connect(m_trayMenu, &TrayMenu::toggleWindowRequested, this, &Application::toggleWindow);
     connect(m_trayMenu, &TrayMenu::quitRequested, this, &Application::quit);
+    // The same calls as the player bar's buttons.
+    connect(m_trayMenu, &TrayMenu::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_trayMenu, &TrayMenu::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_trayMenu, &TrayMenu::previousRequested, m_player, [this] { m_player->previous(); });
+    connect(m_player, &Player::playingChanged, this, &Application::refreshTray);
+    connect(m_player, &Player::currentTrackChanged, this, &Application::refreshTray);
+    connect(m_trayMenu, &TrayMenu::toolTipChanged, m_trayIcon, &QSystemTrayIcon::setToolTip);
     // Also at opening, since a window manager can hide or minimise the window
     // without a signal the app watches.
     connect(m_trayMenu, &TrayMenu::aboutToShow, this, &Application::refreshTray);
@@ -978,6 +985,18 @@ void Application::refreshTray() {
             state.windowShown = window->isVisible()
                              && window->windowState() != Qt::WindowMinimized;
         }
+    }
+    if (m_player) {
+        const QVariantMap track = m_player->currentTrackMap();
+        state.hasTrack = !track.isEmpty();
+        state.playing  = m_player->playing();
+        state.title    = track.value(QStringLiteral("title")).toString();
+        QStringList names;
+        for (const QVariant &a : track.value(QStringLiteral("artistList")).toList())
+            names << a.toMap().value(QStringLiteral("name")).toString();
+        names.removeAll(QString());
+        state.artist = names.isEmpty() ? track.value(QStringLiteral("artists")).toString()
+                                       : names.join(QStringLiteral(", "));
     }
     m_trayMenu->setState(state);
 }

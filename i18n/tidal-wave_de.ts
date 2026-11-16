@@ -1843,6 +1843,27 @@
 <context>
     <name>TrayMenu</name>
     <message>
+        <source>%1 - %2</source>
+        <comment>tray tooltip: track title, then its artists</comment>
+        <translation>%1 - %2</translation>
+    </message>
+    <message>
+        <source>Previous track</source>
+        <translation>Vorheriger Titel</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>Pausieren</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>Abspielen</translation>
+    </message>
+    <message>
+        <source>Next track</source>
+        <translation>Nächster Titel</translation>
+    </message>
+    <message>
         <source>Show</source>
         <translation>Anzeigen</translation>
     </message>

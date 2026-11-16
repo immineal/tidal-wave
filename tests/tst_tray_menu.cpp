@@ -75,6 +75,68 @@ private slots:
         QCOMPARE(toggled.count(), 1);
     }
 
+    // Previous, Play or Pause, Next: what Strawberry and Clementine offer.
+    void hasPlaybackControls() {
+        TrayMenu tray;
+        QVERIFY(action(tray, "trayPrevious"));
+        QVERIFY(action(tray, "trayPlayPause"));
+        QVERIFY(action(tray, "trayNext"));
+    }
+
+    void playbackFollowsThePlayer() {
+        TrayMenu tray;
+        QAction *prev = action(tray, "trayPrevious");
+        QAction *play = action(tray, "trayPlayPause");
+        QAction *next = action(tray, "trayNext");
+
+        // Nothing queued: the buttons would do nothing, and the tooltip
+        // names the app.
+        TrayMenu::State s;
+        tray.setState(s);
+        QVERIFY(!play->isEnabled() && !prev->isEnabled() && !next->isEnabled());
+        QCOMPARE(tray.toolTip(), QCoreApplication::applicationName());
+
+        QSignalSpy tip(&tray, &TrayMenu::toolTipChanged);
+        s.hasTrack = true;
+        s.title = QStringLiteral("A Song");
+        s.artist = QStringLiteral("A Band");
+        tray.setState(s);
+        QVERIFY(play->isEnabled() && prev->isEnabled() && next->isEnabled());
+        QCOMPARE(play->text(), QStringLiteral("Play"));
+        QCOMPARE(tray.toolTip(), QStringLiteral("A Song - A Band"));
+        QVERIFY(!tip.isEmpty());
+        QCOMPARE(tip.last().first().toString(), QStringLiteral("A Song - A Band"));
+
+        s.playing = true;
+        tray.setState(s);
+        QCOMPARE(play->text(), QStringLiteral("Pause"));
+
+        QSignalSpy pp(&tray, &TrayMenu::playPauseRequested);
+        QSignalSpy nx(&tray, &TrayMenu::nextRequested);
+        QSignalSpy pv(&tray, &TrayMenu::previousRequested);
+        play->trigger();
+        next->trigger();
+        prev->trigger();
+        QCOMPARE(pp.count(), 1);
+        QCOMPARE(nx.count(), 1);
+        QCOMPARE(pv.count(), 1);
+    }
+
+    void playbackLabelsAreTranslated() {
+        Prefs prefs;
+        prefs.setLanguage(QStringLiteral("de"));
+        I18n i18n(&prefs);
+        TrayMenu tray;
+        TrayMenu::State s;
+        s.hasTrack = true;
+        s.playing = true;
+        tray.setState(s);
+        QCOMPARE(action(tray, "trayPlayPause")->text(), QStringLiteral("Pausieren"));
+        QCOMPARE(action(tray, "trayNext")->text(), QStringLiteral("Nächster Titel"));
+        QCOMPARE(action(tray, "trayPrevious")->text(), QStringLiteral("Vorheriger Titel"));
+        prefs.setLanguage(QStringLiteral("en"));
+    }
+
 private:
     QTemporaryDir m_dir;
 };
