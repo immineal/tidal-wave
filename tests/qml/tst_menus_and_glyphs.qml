@@ -1131,7 +1131,7 @@ TestCase {
         return [
             { tag: "Add to queue",      label: "Zur Warteschlange hinzufügen" },
             { tag: "Remove from queue", label: "Aus der Warteschlange entfernen" },
-            { tag: "Remove from library", label: "Aus der Sammlung entfernen" },
+            { tag: "Remove from collection", label: "Aus der Sammlung entfernen" },
             { tag: "Unfollow artist",   label: "Künstler nicht mehr folgen" },
             { tag: "Unlike",            label: "Gefällt mir nicht mehr" },
             { tag: "Remove from playlist", label: "Aus der Playlist entfernen" },

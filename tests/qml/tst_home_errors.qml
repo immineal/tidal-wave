@@ -59,8 +59,8 @@ TestCase {
         var page = makeHome()
         var failed = findChild(page, "homeMixesFailed")
         verify(failed && failed.visible, "a failed mixes fetch said nothing")
-        compare(visibleTexts(page, []).filter(function (t) { return t === "View all" }).length, 0,
-                "View all stands over an empty row")
+        compare(visibleTexts(page, []).filter(function (t) { return t === "Show all" }).length, 0,
+                "Show all stands over an empty row")
 
         bridge.setHomeMixesForTest(mixes(3))
         var before = bridge.homeMixesFetchesForTest()

@@ -12,7 +12,7 @@ Rectangle {
     // The kinds the chips have switched on, spelled the way LibraryIndex spells
     // them. Empty means no filter, which is also what "every chip off" means.
     property var kinds: []
-    property string placeholder: qsTr("Find in library")
+    property string placeholder: qsTr("Collection…", "placeholder of the field that filters the collection")
 
     readonly property bool focused: input.activeFocus
 

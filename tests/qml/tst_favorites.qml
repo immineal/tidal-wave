@@ -58,13 +58,13 @@ TestCase {
     // The strings the shared helper can say, with the context of the file the
     // inline component is declared in, ContextMenu.qml. Written out here, so
     // swapping two of them in the helper is a failure.
-    readonly property string likeFailed:     qsTranslate("ContextMenu", "Could not like the song",
+    readonly property string likeFailed:     qsTranslate("ContextMenu", "Could not like the track",
                                                 "shown when adding a track to favourites failed")
-    readonly property string unlikeFailed:   qsTranslate("ContextMenu", "Could not unlike the song",
+    readonly property string unlikeFailed:   qsTranslate("ContextMenu", "Could not unlike the track",
                                                 "shown when removing a track from favourites failed")
     readonly property string saveFailed:     qsTranslate("ContextMenu", "Could not save the album",
                                                 "shown when saving an album to the library failed")
-    readonly property string unsaveFailed:   qsTranslate("ContextMenu", "Could not remove the album from your library",
+    readonly property string unsaveFailed:   qsTranslate("ContextMenu", "Could not remove the album from your collection",
                                                 "shown when removing an album from the library failed")
     readonly property string followFailed:   qsTranslate("ContextMenu", "Could not follow the artist",
                                                 "shown when following an artist failed")
@@ -72,7 +72,7 @@ TestCase {
                                                 "shown when unfollowing an artist failed")
     readonly property string mixSaveFailed:   qsTranslate("ContextMenu", "Could not save the mix",
                                                 "shown when saving a mix to the library failed")
-    readonly property string mixUnsaveFailed: qsTranslate("ContextMenu", "Could not remove the mix from your library",
+    readonly property string mixUnsaveFailed: qsTranslate("ContextMenu", "Could not remove the mix from your collection",
                                                 "shown when removing a mix from the library failed")
 
     // ── hosts ────────────────────────────────────────────────────────────

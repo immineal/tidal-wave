@@ -70,7 +70,7 @@ Item {
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
                 Accessible.role: Accessible.Link
-                Accessible.name: qsTr("View all: %1", "link to the full list of a section").arg(root.title)
+                Accessible.name: qsTr("Show all: %1", "link to the full list of a section").arg(root.title)
                 Accessible.onPressAction: root.viewAllClicked()
 
                 readonly property color ink: viewAll.activeFocus ? Theme.accentText : Theme.textSec
@@ -83,7 +83,7 @@ Item {
                         id: viewAllText
                         objectName: "viewAllLabel"
                         anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("View all")
+                        text: qsTr("Show all")
                         color: viewAll.ink
                         font.pixelSize: 12
                         font.underline: viewAll.activeFocus

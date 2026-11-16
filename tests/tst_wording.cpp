@@ -4,6 +4,7 @@
 // TIDALWAVE_QML_DIR comes from tests/CMakeLists.txt.
 
 #include <QTest>
+#include <QDirIterator>
 #include <QFile>
 #include <QRegularExpression>
 #include <QStringList>
@@ -140,6 +141,54 @@ private slots:
         }
         bad.removeDuplicates();
         QVERIFY2(bad.isEmpty(), qPrintable("Title Case:\n  " + bad.join("\n  ")));
+    }
+
+    // One noun per thing: a track, the collection, log in, show all, yours.
+    void englishHasOneWordPerThing() {
+        const QList<QPair<QRegularExpression, QString>> rules = {
+            { QRegularExpression(QStringLiteral("\\bsongs?\\b"),
+                                 QRegularExpression::CaseInsensitiveOption), "track" },
+            { QRegularExpression(QStringLiteral("\\blibrary\\b"),
+                                 QRegularExpression::CaseInsensitiveOption), "collection" },
+            { QRegularExpression(QStringLiteral("\\bsign(ed)? (in|out)\\b"),
+                                 QRegularExpression::CaseInsensitiveOption), "log in" },
+            { QRegularExpression(QStringLiteral("\\bView all\\b")), "Show all" },
+            { QRegularExpression(QStringLiteral("^My ")), "Your" },
+        };
+        QStringList bad;
+        for (const Entry &e : std::as_const(m_entries))
+            for (const auto &r : rules)
+                if (r.first.match(e.source).hasMatch())
+                    bad << show(e, e.source) + QStringLiteral("  (say \"%1\")").arg(r.second);
+        QVERIFY2(bad.isEmpty(), qPrintable("another word for the same thing:\n  "
+                                           + bad.join("\n  ")));
+    }
+
+    // A separator between two pieces belongs to the code that joins them,
+    // and there is one: the middle dot.
+    void separatorsStayOutOfStrings() {
+        QStringList bad;
+        for (const Entry &e : std::as_const(m_entries)) {
+            const QString s = e.source.trimmed();
+            if (s.contains(u'•') || e.german.contains(u'•')
+                || s.startsWith(u'·') || s.endsWith(u'·'))
+                bad << show(e, e.source);
+        }
+        QDirIterator it(QStringLiteral(TIDALWAVE_QML_DIR), { QStringLiteral("*.qml") },
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QFile f(it.next());
+            QVERIFY(f.open(QIODevice::ReadOnly | QIODevice::Text));
+            int line = 0;
+            while (!f.atEnd()) {
+                ++line;
+                const QString l = QString::fromUtf8(f.readLine());
+                if (l.contains(u'•') && !l.trimmed().startsWith(QLatin1String("//")))
+                    bad << QStringLiteral("%1:%2").arg(it.fileName()).arg(line);
+            }
+        }
+        QVERIFY2(bad.isEmpty(), qPrintable("a bullet, or a separator in a string:\n  "
+                                           + bad.join("\n  ")));
     }
 
 private:

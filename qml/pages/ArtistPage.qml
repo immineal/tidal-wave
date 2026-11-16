@@ -137,7 +137,7 @@ Rectangle {
         var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
         if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
-        return parts.filter(function (p) { return p.length > 0 }).join(" • ")
+        return parts.filter(function (p) { return p.length > 0 }).join(" · ")
     }
 
     // The cards of a row. Two that would still read the same add their length.

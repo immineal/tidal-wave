@@ -375,7 +375,7 @@ Item {
                     Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
                     Text {
                         visible: player.shuffle
-                        text: qsTr("· Shuffled")
+                        text: "· " + qsTr("Shuffled", "the queue is in shuffled order")
                         color: Theme.accentText; font.pixelSize: 12
                     }
                     Item { width: 8 }

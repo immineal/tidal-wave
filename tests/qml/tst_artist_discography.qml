@@ -481,7 +481,7 @@ TestCase {
 
         compare(cardTitles(s.albums), ["Nachtfahrt", "Nachtfahrt", "Nachtfahrt", "Morgenrot"])
         compare(cardLines(s.albums),
-                ["2012 • 14 tracks", "13 tracks • Dolby Atmos", "12 tracks • Dolby Atmos", "2021"],
+                ["2012 · 14 tracks", "13 tracks · Dolby Atmos", "12 tracks · Dolby Atmos", "2021"],
                 "what the cards of one title read under it")
     }
 
@@ -504,15 +504,15 @@ TestCase {
         var s = openWith(oneTitleOneCount())
 
         compare(cardLines(s.albums),
-                ["2021 • 14 tracks • 51 min", "2021 • 14 tracks • 58 min", "13 tracks • Dolby Atmos"])
+                ["2021 · 14 tracks · 51 min", "2021 · 14 tracks · 58 min", "13 tracks · Dolby Atmos"])
     }
 
     function test_no_second_line_is_cut_data() {
         return [
-            { tag: "English", language: "en", atmosLine: "13 tracks • Dolby Atmos",
-              lengthLine: "2021 • 14 tracks • 51 min" },
-            { tag: "German",  language: "de", atmosLine: "13 Titel • Dolby Atmos",
-              lengthLine: "2021 • 14 Titel • 51 Min." }
+            { tag: "English", language: "en", atmosLine: "13 tracks · Dolby Atmos",
+              lengthLine: "2021 · 14 tracks · 51 min" },
+            { tag: "German",  language: "de", atmosLine: "13 Titel · Dolby Atmos",
+              lengthLine: "2021 · 14 Titel · 51 Min." }
         ]
     }
 

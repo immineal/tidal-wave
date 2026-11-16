@@ -180,7 +180,7 @@ TestCase {
     }
 
     // The header brings the length at once, the tracklist the count seconds
-    // later. In between the page said "0 tracks • 93 hr 45 min".
+    // later. In between the page said "0 tracks · 93 hr 45 min".
     function test_the_playlist_shows_no_count_before_its_tracks_are_in() {
         bridge.setPlaylistTracksForTest(makeTracks(3))
         bridge.setPlaylistForTest({ uuid: "p-long", title: "Lang", description: "",

@@ -146,7 +146,7 @@ TestCase {
         bridge.setUnloadedKindsForTest(["tracks", "albums", "artists", "playlists"])
         var page = makeCollection(0)
         verify(!anyVisibleText(page, "No saved tracks"), "an unloaded library was called empty")
-        compare(shownText(page, "collectionUnavailableText"), "Your library could not be loaded")
+        compare(shownText(page, "collectionUnavailableText"), "Your collection could not be loaded")
         var retry = findChild(page, "collectionUnavailableRetry")
         verify(retry && retry.visible, "no retry")
         mouseClick(retry)

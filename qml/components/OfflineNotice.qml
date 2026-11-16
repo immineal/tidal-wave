@@ -38,7 +38,7 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: root.source && root.source.libraryFromCache
-                  ? qsTr("Tidal cannot be reached. Your library is shown as last saved on this computer.")
+                  ? qsTr("Tidal cannot be reached. Your collection is shown as last saved on this computer.")
                   : qsTr("Tidal cannot be reached. Trying again by itself.")
             color: Theme.textPrimary
             font.pixelSize: 13

@@ -925,10 +925,10 @@ Popup {
                     text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.")
                 }
                 PrivacyLine {
-                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.")
+                    text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your collection; lyrics found on other sites; and the timings made here for plain lyrics.")
                 }
                 PrivacyLine {
-                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
+                    text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
                 }
                 PrivacyLine {
                     text: qsTr("Syncing plain lyrics, on by default, happens on this machine: the track's audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.")
@@ -968,7 +968,7 @@ Popup {
         id: logOutDialog
         objectName: "logOutDialog"
         heading: qsTr("Log out?")
-        text: qsTr("Playback stops and the queue is cleared. To listen again you sign in with your Tidal account.")
+        text: qsTr("Playback stops and the queue is cleared. To listen again, log in with your Tidal account.")
         confirmLabel: qsTr("Log out")
         onConfirmed: {
             logOutDialog.close()

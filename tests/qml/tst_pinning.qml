@@ -452,7 +452,7 @@ TestCase {
         compare(menu.pinItem.text, qsTr("Unpin"), "the label must follow the pin state")
         verify(menu.playNextItem.visible, "an album tile must still offer Play next")
         verify(menu.addToQueueItem.visible, "an album tile must still offer Add to queue")
-        compare(menu.removeItem.text, qsTr("Remove from library"))
+        compare(menu.removeItem.text, qsTr("Remove from collection"))
         verify(menu.removeItem.danger, "removing from the library is destructive")
         compare(menu.removeItem.iconName, "trash")
         verify(!menu.pinItem.danger, "pinning is not destructive")

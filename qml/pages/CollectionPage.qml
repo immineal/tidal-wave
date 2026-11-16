@@ -562,7 +562,7 @@ Rectangle {
                     mediaType: "album"
                     itemId: "" + modelData.id
                     // The tile's own menu has Pin, the queue actions and this.
-                    removeLabel: qsTr("Remove from library")
+                    removeLabel: qsTr("Remove from collection")
                     // The tile is the anchor, not the grid: it is what was
                     // right-clicked. It survives a refusal, because the grid is
                     // only rebuilt when the removal lands.
@@ -886,7 +886,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
-                                               : qsTr("Your library could not be loaded")
+                                               : qsTr("Your collection could not be loaded")
                     color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
                 }
                 Text {
