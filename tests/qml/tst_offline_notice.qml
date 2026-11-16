@@ -75,6 +75,6 @@ TestCase {
         var win = showApp()
         var t = findChild(win.contentItem, "sidebarEmptyText")
         verify(t, "no sidebar empty line")
-        compare(t.text, "Your library could not be loaded")
+        compare(t.text, "Your collection could not be loaded")
     }
 }

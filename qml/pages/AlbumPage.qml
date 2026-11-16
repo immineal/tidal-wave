@@ -179,7 +179,7 @@ Rectangle {
                     : qsTr("Clean", "a version of an album with its lyrics edited"))
             parts.push(root.soundOf(a))
             return { id: a.id, title: a.title, coverUrl: a.coverUrl,
-                     subtitle: parts.filter(function (p) { return p.length > 0 }).join(" • "),
+                     subtitle: parts.filter(function (p) { return p.length > 0 }).join(" · "),
                      // The subtitle is translated words, so a pin stores this.
                      pinSubtitle: a.artists || "" }
         })
@@ -349,7 +349,7 @@ Rectangle {
                                 // qualityLabel echoes a code it does not know, and an
                                 // unknown code can be empty, which otherwise leaves the
                                 // line ending in a dangling separator.
-                                return parts.filter(function (p) { return p && String(p).length > 0 }).join(" • ")
+                                return parts.filter(function (p) { return p && String(p).length > 0 }).join(" · ")
                             }
                             color: Theme.textSec
                             font.pixelSize: 13
@@ -573,7 +573,7 @@ Rectangle {
                 PillButton {
                     objectName: "albumLoadErrorUnsave"
                     // The words CollectionPage's removeLabel uses for this.
-                    text: qsTr("Remove from library")
+                    text: qsTr("Remove from collection")
                     icon: "trash"
                     accent: false
                     // isSaved alone: the bridge emits favoriteAlbumsChanged
@@ -590,8 +590,8 @@ Rectangle {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 visible: text.length > 0
-                text: root.unsaveDone    ? qsTr("Removed from your library.")
-                    : root.unsaveRefused ? qsTr("Tidal would not remove it. It is still in your library.")
+                text: root.unsaveDone    ? qsTr("Removed from your collection.")
+                    : root.unsaveRefused ? qsTr("Tidal would not remove it. It is still in your collection.")
                     : root.unsaving      ? qsTr("Removing…")
                     : ""
                 color: root.unsaveRefused ? Theme.redText : Theme.textSec

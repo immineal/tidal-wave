@@ -642,7 +642,7 @@ Item {
     function confirmAddedToPlaylist(ok, title) {
         root.confirm(ok ? qsTr("Added to “%1”",
                                "confirmation after adding a track to a playlist").arg(title)
-                        : qsTr("Could not add the song to “%1”",
+                        : qsTr("Could not add the track to “%1”",
                                "shown when adding a track to a playlist failed").arg(title))
     }
 
@@ -650,7 +650,7 @@ Item {
     // list is the confirmation.
     function confirmRemovedFromPlaylist(ok) {
         if (ok === true) return
-        root.confirm(qsTr("Could not remove the song from the playlist",
+        root.confirm(qsTr("Could not remove the track from the playlist",
                           "shown when removing a track from a playlist failed"))
     }
 

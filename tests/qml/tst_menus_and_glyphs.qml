@@ -419,7 +419,7 @@ TestCase {
     function test_a_menu_at_the_right_edge_stays_on_screen() {
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
         var menu = createTemporaryObject(probeMenuC, holder,
-                                         { longLabel: "Aus der Mediathek entfernen" })
+                                         { longLabel: "Aus der Sammlung entfernen" })
         // Three pixels from the right edge of the window, which is where a
         // right-click on the last column of a list lands.
         menu.popup(holder.width - 3, 40)
@@ -1011,7 +1011,7 @@ TestCase {
             title: "Ein Album", subtitle: "Eine Band", pinKind: "album", itemId: "42"
         })
         card.pinMenu.trackSource = function (cb) { cb([]) }
-        card.pinMenu.removeLabel = "Aus der Mediathek entfernen"
+        card.pinMenu.removeLabel = "Aus der Sammlung entfernen"
         settle(holder)
         card.pinMenu.showPin(0, 0, "album", "42", "Ein Album", "Eine Band", "")
         settle(holder)
@@ -1131,7 +1131,7 @@ TestCase {
         return [
             { tag: "Add to queue",      label: "Zur Warteschlange hinzufügen" },
             { tag: "Remove from queue", label: "Aus der Warteschlange entfernen" },
-            { tag: "Remove from library", label: "Aus der Mediathek entfernen" },
+            { tag: "Remove from collection", label: "Aus der Sammlung entfernen" },
             { tag: "Unfollow artist",   label: "Künstler nicht mehr folgen" },
             { tag: "Unlike",            label: "Gefällt mir nicht mehr" },
             { tag: "Remove from playlist", label: "Aus der Playlist entfernen" },

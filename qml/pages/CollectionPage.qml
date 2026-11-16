@@ -192,7 +192,7 @@ Rectangle {
         Item { Layout.preferredHeight: 24 }
         Text {
             Layout.leftMargin: 24
-            text: qsTr("My Collection")
+            text: qsTr("Collection")
             color: Theme.textPrimary
             font.pixelSize: 28; font.bold: true
         }
@@ -501,7 +501,7 @@ Rectangle {
                 coverUrl:    modelData.coverUrl80
                 trackData:   modelData
                 onPlayRequested: {
-                    player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
+                    player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
                     // "Liked Songs" is not a kind the sidebar orders and
                     // markPlayed() drops it, so the track's album stands in.
                     // Recorded after the source so it is the newer of the two.
@@ -562,7 +562,7 @@ Rectangle {
                     mediaType: "album"
                     itemId: "" + modelData.id
                     // The tile's own menu has Pin, the queue actions and this.
-                    removeLabel: qsTr("Remove from library")
+                    removeLabel: qsTr("Remove from collection")
                     // The tile is the anchor, not the grid: it is what was
                     // right-clicked. It survives a refusal, because the grid is
                     // only rebuilt when the removal lands.
@@ -886,7 +886,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
-                                               : qsTr("Your library could not be loaded")
+                                               : qsTr("Your collection could not be loaded")
                     color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
                 }
                 Text {

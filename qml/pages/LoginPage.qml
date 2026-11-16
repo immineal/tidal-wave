@@ -42,7 +42,7 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Native Desktop Tidal Client")
+                text: qsTr("Native desktop client for Tidal")
                 color: Theme.textSec
                 font.pixelSize: 14
             }
@@ -132,7 +132,7 @@ Rectangle {
 
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        text: qsTr("Sign in with your Tidal account")
+                        text: qsTr("Log in with your Tidal account")
                         color: Theme.textSec
                         font.pixelSize: 14
                     }

@@ -285,7 +285,7 @@ Rectangle {
                             // The count is the tracklist's, still on its way.
                             if (root.loading && n === 0)
                                 return d > 0 ? root.durationText(d) : ""
-                            return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(root.durationText(d))
+                            return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(root.durationText(d))
                                          : qsTr("%Ln track(s)", "", n)
                         }
                         color: Theme.textSec
@@ -445,7 +445,7 @@ Rectangle {
                     objectName: "playlistLoadErrorDetail"
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.")
+                    text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
                     color: Theme.textSec
                     font.pixelSize: 13
                     wrapMode: Text.WordWrap
@@ -552,7 +552,7 @@ Rectangle {
             width: parent.width
             spacing: 14
 
-            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 

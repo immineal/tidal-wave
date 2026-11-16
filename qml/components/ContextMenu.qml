@@ -163,11 +163,11 @@ Menu {
             if (!(trackId > 0)) return
             fav.lastMessage = ""
             if (liked) bridge.removeTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not unlike the song",
+                fav._refused(ok, anchor, qsTr("Could not unlike the track",
                                               "shown when removing a track from favourites failed"))
             })
             else       bridge.addTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not like the song",
+                fav._refused(ok, anchor, qsTr("Could not like the track",
                                               "shown when adding a track to favourites failed"))
             })
         }
@@ -176,7 +176,7 @@ Menu {
             if (!(albumId > 0)) return
             fav.lastMessage = ""
             if (saved) bridge.removeAlbumFavorite(albumId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the album from your library",
+                fav._refused(ok, anchor, qsTr("Could not remove the album from your collection",
                                               "shown when removing an album from the library failed"))
             })
             else       bridge.addAlbumFavorite(albumId, function (ok) {
@@ -206,7 +206,7 @@ Menu {
             // A track radio is a mix to Tidal and to this call, so the message
             // names the mix even on a page whose heading reads "Radio".
             if (saved) bridge.removeMixFavorite(mixId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the mix from your library",
+                fav._refused(ok, anchor, qsTr("Could not remove the mix from your collection",
                                               "shown when removing a mix from the library failed"))
             })
             else       bridge.addMixFavorite(mixId, function (ok) {

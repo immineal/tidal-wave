@@ -200,10 +200,13 @@ Item {
     }
 
     // Names the source when it has a name, as an album, a playlist or a mix
-    // does. A radio or a one-off play has nothing to name.
+    // does. A radio or a one-off play has nothing to name, and a search is
+    // named as one.
     readonly property string contextHeading:
-        contextName.length > 0 ? qsTr("Next from: %1").arg(contextName)
-                               : qsTr("Up Next")
+        contextName.length === 0   ? qsTr("Up next")
+        : contextType === "search" ? qsTr("Next from: search “%1”",
+                                          "the queue was started from the search results").arg(contextName)
+                                   : qsTr("Next from: %1").arg(contextName)
 
     function contextGlyph(type) {
         switch (type) {
@@ -375,7 +378,7 @@ Item {
                     Text { text: qsTr("%Ln track(s)", "", root.totalCount); color: Theme.textSec; font.pixelSize: 12 }
                     Text {
                         visible: player.shuffle
-                        text: qsTr("· Shuffled")
+                        text: "· " + qsTr("Shuffled", "the queue is in shuffled order")
                         color: Theme.accentText; font.pixelSize: 12
                     }
                     Item { width: 8 }

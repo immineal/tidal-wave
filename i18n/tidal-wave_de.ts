@@ -55,16 +55,16 @@
         <translation>Album suchen</translation>
     </message>
     <message>
-        <source>Remove from library</source>
-        <translation>Aus der Mediathek entfernen</translation>
+        <source>Remove from collection</source>
+        <translation>Aus der Sammlung entfernen</translation>
     </message>
     <message>
-        <source>Removed from your library.</source>
-        <translation>Aus deiner Mediathek entfernt.</translation>
+        <source>Removed from your collection.</source>
+        <translation>Aus deiner Sammlung entfernt.</translation>
     </message>
     <message>
-        <source>Tidal would not remove it. It is still in your library.</source>
-        <translation>Tidal hat es nicht entfernt. Es ist weiterhin in deiner Mediathek.</translation>
+        <source>Tidal would not remove it. It is still in your collection.</source>
+        <translation>Tidal hat es nicht entfernt. Es ist weiterhin in deiner Sammlung.</translation>
     </message>
     <message>
         <source>Removing…</source>
@@ -173,7 +173,7 @@
         <translation>Singles &amp; EPs</translation>
     </message>
     <message>
-        <source>Appears On</source>
+        <source>Appears on</source>
         <translation>Erscheint auf</translation>
     </message>
     <message>
@@ -185,7 +185,7 @@
         <translation>Mehr lesen</translation>
     </message>
     <message>
-        <source>Related Artists</source>
+        <source>Related artists</source>
         <translation>Ähnliche Künstler</translation>
     </message>
     <message>
@@ -269,8 +269,8 @@
 <context>
     <name>CollectionPage</name>
     <message>
-        <source>My Collection</source>
-        <translation>Meine Sammlung</translation>
+        <source>Collection</source>
+        <translation>Sammlung</translation>
     </message>
     <message>
         <source>Tracks</source>
@@ -349,12 +349,12 @@
         <translation>Neue Playlist</translation>
     </message>
     <message>
-        <source>Liked Songs</source>
+        <source>Liked tracks</source>
         <translation>Lieblingstitel</translation>
     </message>
     <message>
-        <source>Remove from library</source>
-        <translation>Aus der Mediathek entfernen</translation>
+        <source>Remove from collection</source>
+        <translation>Aus der Sammlung entfernen</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -417,7 +417,7 @@
     </message>
     <message>
         <source>Nothing matches &quot;%1&quot;</source>
-        <translation>Nichts passt zu „%1“</translation>
+        <translation>Keine Treffer für „%1“</translation>
     </message>
     <message>
         <source>Try other words, or clear the search to see everything.</source>
@@ -428,8 +428,8 @@
         <translation>Mixe konnten nicht geladen werden</translation>
     </message>
     <message>
-        <source>Your library could not be loaded</source>
-        <translation>Deine Mediathek konnte nicht geladen werden</translation>
+        <source>Your collection could not be loaded</source>
+        <translation>Deine Sammlung konnte nicht geladen werden</translation>
     </message>
     <message>
         <source>Tidal could not be reached. It loads again by itself once the connection is back.</source>
@@ -466,19 +466,19 @@
         </translation>
     </message>
     <message>
-        <source>Could not unlike the song</source>
+        <source>Could not unlike the track</source>
         <comment>shown when removing a track from favourites failed</comment>
         <translation>Die Markierung „Gefällt mir“ konnte nicht entfernt werden</translation>
     </message>
     <message>
-        <source>Could not like the song</source>
+        <source>Could not like the track</source>
         <comment>shown when adding a track to favourites failed</comment>
         <translation>Titel konnte nicht mit „Gefällt mir“ markiert werden</translation>
     </message>
     <message>
-        <source>Could not remove the album from your library</source>
+        <source>Could not remove the album from your collection</source>
         <comment>shown when removing an album from the library failed</comment>
-        <translation>Album konnte nicht aus der Mediathek entfernt werden</translation>
+        <translation>Album konnte nicht aus der Sammlung entfernt werden</translation>
     </message>
     <message>
         <source>Could not save the album</source>
@@ -491,9 +491,9 @@
         <translation>Künstler konnte nicht entfolgt werden</translation>
     </message>
     <message>
-        <source>Could not remove the mix from your library</source>
+        <source>Could not remove the mix from your collection</source>
         <comment>shown when removing a mix from the library failed</comment>
-        <translation>Mix konnte nicht aus der Mediathek entfernt werden</translation>
+        <translation>Mix konnte nicht aus der Sammlung entfernt werden</translation>
     </message>
     <message>
         <source>Could not save the mix</source>
@@ -658,19 +658,19 @@
         <translation>Künstler</translation>
     </message>
     <message>
-        <source>My Mixes</source>
-        <translation>Meine Mixe</translation>
+        <source>Your mixes</source>
+        <translation>Deine Mixe</translation>
     </message>
     <message>
-        <source>Saved Albums</source>
+        <source>Saved albums</source>
         <translation>Gespeicherte Alben</translation>
     </message>
     <message>
-        <source>Your Playlists</source>
+        <source>Your playlists</source>
         <translation>Deine Playlists</translation>
     </message>
     <message>
-        <source>Favorite Artists</source>
+        <source>Favourite artists</source>
         <translation>Lieblingskünstler</translation>
     </message>
     <message>
@@ -689,11 +689,11 @@
 <context>
     <name>HorizontalSection</name>
     <message>
-        <source>View all</source>
+        <source>Show all</source>
         <translation>Alle anzeigen</translation>
     </message>
     <message>
-        <source>View all: %1</source>
+        <source>Show all: %1</source>
         <comment>link to the full list of a section</comment>
         <translation>Alle anzeigen: %1</translation>
     </message>
@@ -707,10 +707,6 @@
 </context>
 <context>
     <name>LibraryFinder</name>
-    <message>
-        <source>Find in library</source>
-        <translation>Mediathek…</translation>
-    </message>
     <message>
         <source>Tracks</source>
         <translation>Titel</translation>
@@ -731,11 +727,16 @@
         <source>Mixes</source>
         <translation>Mixe</translation>
     </message>
+    <message>
+        <source>Collection…</source>
+        <comment>placeholder of the field that filters the collection</comment>
+        <translation>Sammlung…</translation>
+    </message>
 </context>
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Desktop Tidal Client</source>
+        <source>Native desktop client for Tidal</source>
         <translation>Nativer Tidal-Client für den Desktop</translation>
     </message>
     <message>
@@ -743,7 +744,7 @@
         <translation>Sitzung wird wiederhergestellt…</translation>
     </message>
     <message>
-        <source>Sign in with your Tidal account</source>
+        <source>Log in with your Tidal account</source>
         <translation>Mit deinem Tidal-Konto anmelden</translation>
     </message>
     <message>
@@ -798,7 +799,7 @@
     </message>
     <message>
         <source>Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.</source>
-        <translation>Tidal liefert seine Titel nicht aus. Ein Mix wird jeden Tag neu für dich zusammengestellt, deshalb kann einer, der vor einiger Zeit gespeichert oder angepinnt wurde, nicht mehr existieren.</translation>
+        <translation>Tidal liefert seine Titel nicht aus. Ein Mix wird jeden Tag neu für dich zusammengestellt, deshalb gibt es einen, der vor einiger Zeit gespeichert oder angeheftet wurde, vielleicht nicht mehr.</translation>
     </message>
     <message>
         <source>Mix</source>
@@ -964,15 +965,15 @@
         <translation>Download fehlgeschlagen. Zum Wiederholen klicken.</translation>
     </message>
     <message>
-        <source>End of Track</source>
+        <source>End of track</source>
         <translation>Titelende</translation>
     </message>
     <message>
-        <source>Sleep Timer</source>
+        <source>Sleep timer</source>
         <translation>Sleep-Timer</translation>
     </message>
     <message>
-        <source>Stop at End of Track</source>
+        <source>Stop at end of track</source>
         <translation>Am Titelende stoppen</translation>
     </message>
     <message>
@@ -1005,7 +1006,7 @@
         <translation>Blendet die letzten 30 s aus</translation>
     </message>
     <message>
-        <source>Cancel Sleep Timer</source>
+        <source>Cancel sleep timer</source>
         <translation>Sleep-Timer abbrechen</translation>
     </message>
     <message>
@@ -1017,7 +1018,7 @@
         <translation>%1 %</translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation>Als Nächstes</translation>
     </message>
     <message>
@@ -1039,12 +1040,17 @@
         <comment>sleep timer option, for a screen reader</comment>
         <translation>%1 Minuten</translation>
     </message>
+    <message>
+        <source>Playing from: search “%1”</source>
+        <comment>the track was started from the search results</comment>
+        <translation>Wiedergabe von: Suche „%1“</translation>
+    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
     <message>
-        <source>Tidal cannot be reached. Your library is shown as last saved on this computer.</source>
-        <translation>Tidal ist nicht erreichbar. Deine Mediathek wird so gezeigt, wie sie zuletzt auf diesem Rechner gespeichert wurde.</translation>
+        <source>Tidal cannot be reached. Your collection is shown as last saved on this computer.</source>
+        <translation>Tidal ist nicht erreichbar. Deine Sammlung wird so gezeigt, wie sie zuletzt auf diesem Rechner gespeichert wurde.</translation>
     </message>
     <message>
         <source>Tidal cannot be reached. Trying again by itself.</source>
@@ -1255,8 +1261,8 @@
         <translation>Diese Playlist konnte nicht geladen werden</translation>
     </message>
     <message>
-        <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.</source>
-        <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Bibliothek.</translation>
+        <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.</source>
+        <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Sammlung.</translation>
     </message>
     <message>
         <source>%1 hr %2 min</source>
@@ -1275,10 +1281,10 @@
         <translation>Playlist</translation>
     </message>
     <message numerus="yes">
-        <source>%Ln track(s) • %1</source>
+        <source>%Ln track(s) · %1</source>
         <translation>
-            <numerusform>%Ln Titel • %1</numerusform>
-            <numerusform>%Ln Titel • %1</numerusform>
+            <numerusform>%Ln Titel · %1</numerusform>
+            <numerusform>%Ln Titel · %1</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -1310,7 +1316,7 @@
         <translation>Änderungen konnten nicht gespeichert werden.</translation>
     </message>
     <message>
-        <source>Edit Playlist</source>
+        <source>Edit playlist</source>
         <translation>Playlist bearbeiten</translation>
     </message>
     <message>
@@ -1371,12 +1377,8 @@
         <translation>Jetzt läuft</translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation>Als Nächstes</translation>
-    </message>
-    <message>
-        <source>· Shuffled</source>
-        <translation>· Zufällig</translation>
     </message>
     <message>
         <source>Clear</source>
@@ -1405,6 +1407,16 @@
         <comment>button, hides the play queue</comment>
         <translation>Warteschlange schließen</translation>
     </message>
+    <message>
+        <source>Shuffled</source>
+        <comment>the queue is in shuffled order</comment>
+        <translation>Zufällig</translation>
+    </message>
+    <message>
+        <source>Next from: search “%1”</source>
+        <comment>the queue was started from the search results</comment>
+        <translation>Als Nächstes von: Suche „%1“</translation>
+    </message>
 </context>
 <context>
     <name>RadioPage</name>
@@ -1421,7 +1433,7 @@
         <translation>Radio</translation>
     </message>
     <message>
-        <source>Track Radio</source>
+        <source>Track radio</source>
         <translation>Titel-Radio</translation>
     </message>
     <message>
@@ -1528,7 +1540,7 @@
     </message>
     <message>
         <source>Loading more…</source>
-        <translation>Mehr wird geladen…</translation>
+        <translation>Weitere werden geladen…</translation>
     </message>
     <message>
         <source>End of results</source>
@@ -1640,7 +1652,7 @@
     </message>
     <message>
         <source>Found a bug, or want to ask for something? Either way works.</source>
-        <translation>Einen Fehler gefunden oder einen Wunsch? Beides geht.</translation>
+        <translation>Einen Fehler gefunden oder einen Wunsch? Beides ist willkommen.</translation>
     </message>
     <message>
         <source>Open a GitHub issue</source>
@@ -1654,7 +1666,7 @@
     </message>
     <message>
         <source>The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.</source>
-        <translation>Das Issue-Formular öffnet sich mit deiner Version, deinem System und beiden Qt-Versionen bereits darin. Die E-Mail öffnet sich adressiert an %1. Gesendet wird beides erst, wenn du es selbst sendest.</translation>
+        <translation>Das Issue-Formular enthält schon deine Version, dein System und beide Qt-Versionen. Die E-Mail ist an %1 adressiert. Abgeschickt wird beides erst, wenn du es selbst sendest.</translation>
     </message>
     <message>
         <source>Experimental</source>
@@ -1673,7 +1685,7 @@
         <translation>Abmelden?</translation>
     </message>
     <message>
-        <source>Playback stops and the queue is cleared. To listen again you sign in with your Tidal account.</source>
+        <source>Playback stops and the queue is cleared. To listen again, log in with your Tidal account.</source>
         <translation>Die Wiedergabe stoppt und die Warteschlange wird geleert. Zum Weiterhören meldest du dich wieder mit deinem Tidal-Konto an.</translation>
     </message>
     <message>
@@ -1688,7 +1700,7 @@
     </message>
     <message>
         <source>Let the colour in</source>
-        <translation>Farbe hereinlassen</translation>
+        <translation>Grautöne einfärben</translation>
     </message>
     <message>
         <source>Bars follow the music</source>
@@ -1696,11 +1708,11 @@
     </message>
     <message>
         <source>The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.</source>
-        <translation>Die kleinen Balken am laufenden Titel zeigen ein Spektrum dessen, was du hörst, statt sich von selbst zu bewegen. Beginnt mit dem nächsten Titel.</translation>
+        <translation>Die kleinen Balken beim laufenden Titel zeigen das Spektrum dessen, was du hörst, statt sich nach eigenem Muster zu bewegen. Gilt ab dem nächsten Titel.</translation>
     </message>
     <message>
         <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
-        <translation>Dein Bildschirm ist sehr fein aufgelöst und deine Arbeitsumgebung hat das nicht gemeldet, deshalb zeichnet Tidal Wave von sich aus mit %1x. Verschiebe den Regler, falls das nicht die gewünschte Größe ist.</translation>
+        <translation>Dein Bildschirm hat eine hohe Pixeldichte, die deine Arbeitsumgebung nicht meldet. Deshalb skaliert Tidal Wave selbst auf %1x. Verschiebe den Regler, falls dir diese Größe nicht passt.</translation>
     </message>
     <message>
         <source>The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.</source>
@@ -1725,7 +1737,7 @@
     </message>
     <message>
         <source>Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.</source>
-        <translation>Jedes Thema färbt seine Grautöne in seine eigene Farbe. Aus teilen sich alle sechs dieselben Grautöne und unterscheiden sich nur in der Akzentfarbe.</translation>
+        <translation>Jedes Design tönt seine Grautöne in der eigenen Farbe. Ist der Schalter aus, nutzen alle sechs dieselben Grautöne und unterscheiden sich nur in der Akzentfarbe.</translation>
     </message>
     <message>
         <source>Pure black</source>
@@ -1757,7 +1769,7 @@
     </message>
     <message>
         <source>Asked after lrclib.net, in this order: music.163.com gets the track&apos;s artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
-        <translation>Nach lrclib.net gefragt, in dieser Reihenfolge: music.163.com erhält Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
+        <translation>Werden nach lrclib.net gefragt, in dieser Reihenfolge: music.163.com erhält Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
     </message>
     <message>
         <source>Sync plain lyrics automatically</source>
@@ -1765,23 +1777,23 @@
     </message>
     <message>
         <source>Lyrics without timings are timed against the track&apos;s audio, here on this machine; nothing is sent for it. Timings it is unsure of are not shown, and the ones shown are marked as made here.</source>
-        <translation>Songtexte ohne Zeitangaben werden hier auf diesem Rechner am Ton des Titels ausgerichtet; dafür wird nichts gesendet. Unsichere Zeitangaben werden nicht gezeigt, und die gezeigten sind als hier erstellt gekennzeichnet.</translation>
+        <translation>Songtexte ohne Zeitangaben werden hier auf diesem Rechner am Ton des Titels ausgerichtet; dafür wird nichts gesendet. Zeitangaben, bei denen die Erkennung unsicher ist, werden nicht gezeigt; die übrigen sind als hier erstellt gekennzeichnet.</translation>
     </message>
     <message>
         <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
         <translation>Was diesen Rechner verlässt: Tidal (auth.tidal.com, api.tidal.com) erhält deine Anmeldung, jede Suche, die du durchführst, sowie jede Seite und jeden Titel, die du öffnest oder abspielst, zusammen mit deinem Zugriffstoken. resources.tidal.com liefert die Cover, ohne dass dabei ein Token mitgeschickt wird. Nur während einer Übertragung sieht dein lokales Netzwerk die mDNS-Erkennung und einen kurzlebigen HTTP-Server, der dem Gerät den aktuellen Titel ausliefert; dieser Server ist nicht authentifiziert, sodass alles in deinem Netzwerk ihn lesen kann, solange ein Titel übertragen wird. api.github.com erhält die Updateprüfung, höchstens einmal täglich und ohne Kontodaten; GitHub sieht deine IP-Adresse und welche Version du verwendest. Songtext-Seiten erhalten Angaben zu einem Titel wie unten beschrieben: lrclib.net, solange du es nicht abschaltest, die anderen erst, wenn du sie einschaltest.</translation>
     </message>
     <message>
-        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.</source>
-        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Mediathek; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your collection; lyrics found on other sites; and the timings made here for plain lyrics.</source>
+        <translation>Was hier gespeichert wird: deine Tidal-Tokens als unverschlüsseltes JSON, das nur du lesen kannst und das beim Abmelden gelöscht wird; deine Einstellungen, angehefteten Einträge und zuletzt gespielten Titel; ein zwischengespeicherter Index deiner Sammlung; Songtexte, die auf anderen Seiten gefunden wurden; und die hier erstellten Zeitangaben für einfache Songtexte.</translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
-        <translation>Songtexte von anderen Seiten, für einen Titel, zu dem Tidal keinen synchronisierten Songtext hat, über die Schalter unter Experimentell. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Lied mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, eines mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <translation>Songtexte von anderen Seiten gibt es für Titel, zu denen Tidal keinen synchronisierten Songtext hat; die Schalter dafür stehen unter „Experimentell“. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Titel mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, einer mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
     </message>
     <message>
         <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
-        <translation>Das Synchronisieren einfacher Songtexte, standardmäßig an, geschieht auf diesem Rechner: Der Ton des Titels, den die App zum Abspielen ohnehin heruntergeladen hat, wird hier analysiert, und nichts davon verlässt den Rechner. Die Zeitangaben werden neben den Songtexten gespeichert.</translation>
+        <translation>Das Synchronisieren einfacher Songtexte ist standardmäßig an und geschieht auf diesem Rechner: Der Ton des Titels, den die App zum Abspielen ohnehin heruntergeladen hat, wird hier analysiert, und nichts davon verlässt den Rechner. Die Zeitangaben werden neben den Songtexten gespeichert.</translation>
     </message>
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>
@@ -1825,11 +1837,11 @@
         <translation>Lossless (16 Bit)</translation>
     </message>
     <message>
-        <source>Play / Pause</source>
+        <source>Play / pause</source>
         <translation>Wiedergabe / Pause</translation>
     </message>
     <message>
-        <source>Next / Previous track</source>
+        <source>Next / previous track</source>
         <translation>Nächster / vorheriger Titel</translation>
     </message>
     <message>
@@ -1941,6 +1953,28 @@
         <source>%1 s</source>
         <translation>%1 s</translation>
     </message>
+    <message>
+        <source>Tidal account</source>
+        <translation>Tidal-Konto</translation>
+    </message>
+    <message>
+        <source>Logged in to Tidal</source>
+        <translation>Bei Tidal angemeldet</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <comment>button that shows the full privacy notice</comment>
+        <translation>Details</translation>
+    </message>
+    <message>
+        <source>Open the README</source>
+        <translation>README öffnen</translation>
+    </message>
+    <message>
+        <source>About</source>
+        <comment>settings section with the app&apos;s name and version</comment>
+        <translation>Über</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1975,16 +2009,16 @@
         <translation>Noch nichts gespeichert</translation>
     </message>
     <message>
-        <source>My Account</source>
-        <translation>Mein Konto</translation>
+        <source>Your account</source>
+        <translation>Dein Konto</translation>
     </message>
     <message>
         <source>Settings (%1)</source>
         <translation>Einstellungen (%1)</translation>
     </message>
     <message>
-        <source>Your library could not be loaded</source>
-        <translation>Deine Mediathek konnte nicht geladen werden</translation>
+        <source>Your collection could not be loaded</source>
+        <translation>Deine Sammlung konnte nicht geladen werden</translation>
     </message>
 </context>
 <context>
@@ -2045,12 +2079,12 @@
         <translation>Zu „%1“ hinzugefügt</translation>
     </message>
     <message>
-        <source>Could not add the song to “%1”</source>
+        <source>Could not add the track to “%1”</source>
         <comment>shown when adding a track to a playlist failed</comment>
         <translation>Titel konnte nicht zu „%1“ hinzugefügt werden</translation>
     </message>
     <message>
-        <source>Could not remove the song from the playlist</source>
+        <source>Could not remove the track from the playlist</source>
         <comment>shown when removing a track from a playlist failed</comment>
         <translation>Titel konnte nicht aus der Playlist entfernt werden</translation>
     </message>

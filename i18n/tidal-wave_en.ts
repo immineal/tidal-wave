@@ -77,15 +77,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Remove from library</source>
+        <source>Remove from collection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Removed from your library.</source>
+        <source>Removed from your collection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tidal would not remove it. It is still in your library.</source>
+        <source>Tidal would not remove it. It is still in your collection.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -188,7 +188,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Appears On</source>
+        <source>Appears on</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -196,7 +196,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Related Artists</source>
+        <source>Related artists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -260,7 +260,7 @@
 <context>
     <name>CollectionPage</name>
     <message>
-        <source>My Collection</source>
+        <source>Collection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -324,11 +324,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Liked Songs</source>
+        <source>Liked tracks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Remove from library</source>
+        <source>Remove from collection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -406,17 +406,17 @@
         </translation>
     </message>
     <message>
-        <source>Could not unlike the song</source>
+        <source>Could not unlike the track</source>
         <comment>shown when removing a track from favourites failed</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not like the song</source>
+        <source>Could not like the track</source>
         <comment>shown when adding a track to favourites failed</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not remove the album from your library</source>
+        <source>Could not remove the album from your collection</source>
         <comment>shown when removing an album from the library failed</comment>
         <translation type="unfinished"></translation>
     </message>
@@ -431,7 +431,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not remove the mix from your library</source>
+        <source>Could not remove the mix from your collection</source>
         <comment>shown when removing a mix from the library failed</comment>
         <translation type="unfinished"></translation>
     </message>
@@ -574,26 +574,26 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>My Mixes</source>
+        <source>Your mixes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Saved Albums</source>
+        <source>Saved albums</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your Playlists</source>
+        <source>Your playlists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Favorite Artists</source>
+        <source>Favourite artists</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>HorizontalSection</name>
     <message>
-        <source>View all</source>
+        <source>Show all</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -606,10 +606,6 @@
 </context>
 <context>
     <name>LibraryFinder</name>
-    <message>
-        <source>Find in library</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>Tracks</source>
         <translation type="unfinished"></translation>
@@ -630,11 +626,16 @@
         <source>Mixes</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Collection…</source>
+        <comment>placeholder of the field that filters the collection</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Desktop Tidal Client</source>
+        <source>Native desktop client for Tidal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -642,7 +643,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Sign in with your Tidal account</source>
+        <source>Log in with your Tidal account</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -850,15 +851,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>End of Track</source>
+        <source>End of track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Sleep Timer</source>
+        <source>Sleep timer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stop at End of Track</source>
+        <source>Stop at end of track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -891,7 +892,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel Sleep Timer</source>
+        <source>Cancel sleep timer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -903,12 +904,17 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>%1m</source>
         <comment>compact duration in minutes</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Playing from: search “%1”</source>
+        <comment>the track was started from the search results</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1055,7 +1061,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.</source>
+        <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1071,10 +1077,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <source>%Ln track(s) • %1</source>
+        <source>%Ln track(s) · %1</source>
         <translation>
-            <numerusform>%Ln track • %1</numerusform>
-            <numerusform>%Ln tracks • %1</numerusform>
+            <numerusform>%Ln track · %1</numerusform>
+            <numerusform>%Ln tracks · %1</numerusform>
         </translation>
     </message>
     <message numerus="yes">
@@ -1106,7 +1112,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Edit Playlist</source>
+        <source>Edit playlist</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1162,11 +1168,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up Next</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>· Shuffled</source>
+        <source>Up next</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1186,6 +1188,16 @@
         <source>Remove from queue</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Shuffled</source>
+        <comment>the queue is in shuffled order</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next from: search “%1”</source>
+        <comment>the queue was started from the search results</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RadioPage</name>
@@ -1202,7 +1214,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Track Radio</source>
+        <source>Track radio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1519,11 +1531,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your library; lyrics found on other sites; and the timings made here for plain lyrics.</source>
+        <source>What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your collection; lyrics found on other sites; and the timings made here for plain lyrics.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
+        <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1564,11 +1576,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Play / Pause</source>
+        <source>Play / pause</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Next / Previous track</source>
+        <source>Next / previous track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1624,6 +1636,28 @@
         <source>Each download asks for a file name and format, starting in this folder.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Tidal account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Logged in to Tidal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <comment>button that shows the full privacy notice</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the README</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About</source>
+        <comment>settings section with the app&apos;s name and version</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1654,7 +1688,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>My Account</source>
+        <source>Your account</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1713,12 +1747,12 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not add the song to “%1”</source>
+        <source>Could not add the track to “%1”</source>
         <comment>shown when adding a track to a playlist failed</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not remove the song from the playlist</source>
+        <source>Could not remove the track from the playlist</source>
         <comment>shown when removing a track from a playlist failed</comment>
         <translation type="unfinished"></translation>
     </message>

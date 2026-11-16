@@ -243,7 +243,7 @@ TestCase {
 
         compare(bridge.playlistHeaderReadsForTest(), 0,
                 "a refused add still went back for the playlist's header")
-        compare(row.lastConfirmation, qsTr("Could not add the song to “%1”").arg("Tape"),
+        compare(row.lastConfirmation, qsTr("Could not add the track to “%1”").arg("Tape"),
                 "a refused add was not reported, or was reported as a success")
 
         row.openPicker()
@@ -362,7 +362,7 @@ TestCase {
         compare(bridge.lastRemovedIndexForTest(), 0, "the removal was sent for the wrong row")
         compare(page.tracks.length, 1, "a refused removal took the song off the page anyway")
         compare(row.lastConfirmation,
-                qsTr("Could not remove the song from the playlist"),
+                qsTr("Could not remove the track from the playlist"),
                 "a refused removal said nothing, so it reads as a click that missed")
     }
 
@@ -381,7 +381,7 @@ TestCase {
                 + "confirmation and a tool tip over the gap is noise")
 
         row.confirmRemovedFromPlaylist(false)
-        compare(row.lastConfirmation, qsTr("Could not remove the song from the playlist"),
+        compare(row.lastConfirmation, qsTr("Could not remove the track from the playlist"),
                 "a refused removal said nothing, or said the wrong thing")
     }
 

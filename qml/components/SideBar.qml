@@ -724,7 +724,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     text: root.searching ? qsTr("No matches")
-                        : library.loadFailed ? qsTr("Your library could not be loaded")
+                        : library.loadFailed ? qsTr("Your collection could not be loaded")
                         : qsTr("Nothing saved yet")
                     color: Theme.textDim
                     font.pixelSize: 12
@@ -812,7 +812,7 @@ Item {
                             // Auth::displayNameFrom already picks the
                             // username over the email address.
                             text: auth.username.length > 0 ? auth.username
-                                                           : qsTr("My Account")
+                                                           : qsTr("Your account")
                             color: Theme.textSec
                             font.pixelSize: 12
                             elide: Text.ElideRight

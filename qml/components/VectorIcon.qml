@@ -148,6 +148,14 @@ Item {
                  + " M 15.2 7 V 17 M 18.4 4.5 V 19.5 M 21.6 9.5 V 14.5"
         case "artist":
             return "M 20 21 V 19 A 4 4 0 0 0 16 15 H 8 A 4 4 0 0 0 4 19 V 21 M 12 11 A 4 4 0 1 0 12 3 A 4 4 0 0 0 12 11 Z"
+        // The artist figure moved left, with a plus or a tick beside it, for
+        // Follow and Following. Like keeps the heart to itself.
+        case "artist-follow":
+            return "M 16 21 V 19 A 4 4 0 0 0 12 15 H 6 A 4 4 0 0 0 2 19 V 21 M 9 11 A 4 4 0 1 0 9 3 A 4 4 0 0 0 9 11 Z"
+                 + " M 19 8 V 14 M 16 11 H 22"
+        case "artist-following":
+            return "M 16 21 V 19 A 4 4 0 0 0 12 15 H 6 A 4 4 0 0 0 2 19 V 21 M 9 11 A 4 4 0 1 0 9 3 A 4 4 0 0 0 9 11 Z"
+                 + " M 16 11 L 18 13 L 22 9"
         case "settings":
             return "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M 12 15 A 3 3 0 1 1 12 9 A 3 3 0 0 1 12 15 Z"
         case "volume-mute":

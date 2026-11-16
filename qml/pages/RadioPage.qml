@@ -102,7 +102,7 @@ Rectangle {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: root.radioTitle || qsTr("Track Radio")
+                    text: root.radioTitle || qsTr("Track radio")
                     color: Theme.textPrimary
                     font.pixelSize: 22
                     font.bold: true

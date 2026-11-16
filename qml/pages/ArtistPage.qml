@@ -137,7 +137,7 @@ Rectangle {
         var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
         if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
-        return parts.filter(function (p) { return p.length > 0 }).join(" • ")
+        return parts.filter(function (p) { return p.length > 0 }).join(" · ")
     }
 
     // The cards of a row. Two that would still read the same add their length.
@@ -236,7 +236,7 @@ Rectangle {
                         PillButton {
                             objectName: "artistFollowPill"
                             text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            icon: root.isFollowing ? "heart-filled" : "heart"
+                            icon: root.isFollowing ? "artist-following" : "artist-follow"
                             accent: root.isFollowing
                             // On the action row, which has clear space above.
                             onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
@@ -375,7 +375,7 @@ Rectangle {
                     return root.sectionOf(a) === "f"
                 })
                 visible: appearances.length > 0
-                title: qsTr("Appears On")
+                title: qsTr("Appears on")
                 showViewAll: false
                 mediaType: "album"
                 items: root.releaseCards(appearances)
@@ -465,7 +465,7 @@ Rectangle {
                 objectName: "artistRelatedSection"
                 Layout.fillWidth: true
                 visible: root.similarArtists.length > 0
-                title: qsTr("Related Artists")
+                title: qsTr("Related artists")
                 mediaType: "artist"
                 showViewAll: false
                 items: root.similarArtists.map(function(a) {
