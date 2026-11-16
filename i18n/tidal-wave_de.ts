@@ -1035,6 +1035,16 @@
         <source>Download</source>
         <translation>Herunterladen</translation>
     </message>
+    <message>
+        <source>Custom length</source>
+        <comment>sleep timer slider, in minutes</comment>
+        <translation>Eigene Dauer</translation>
+    </message>
+    <message>
+        <source>%1 minutes</source>
+        <comment>sleep timer option, for a screen reader</comment>
+        <translation>%1 Minuten</translation>
+    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
@@ -1519,6 +1529,19 @@
     <message>
         <source>Remove “%1” from recent searches</source>
         <translation>„%1“ aus den letzten Suchen entfernen</translation>
+    </message>
+</context>
+<context>
+    <name>SeekBar</name>
+    <message>
+        <source>Position in track</source>
+        <comment>slider, seeks in the playing track</comment>
+        <translation>Position im Titel</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <comment>elapsed of total time</comment>
+        <translation>%1 von %2</translation>
     </message>
 </context>
 <context>
@@ -2041,6 +2064,13 @@
     <message>
         <source>Skip this version</source>
         <translation>Diese Version überspringen</translation>
+    </message>
+</context>
+<context>
+    <name>VolumeSlider</name>
+    <message>
+        <source>Volume</source>
+        <translation>Lautstärke</translation>
     </message>
 </context>
 </TS>

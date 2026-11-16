@@ -21,6 +21,40 @@ Item {
     property real value: 0.7
     signal moved(real v)
 
+    // Keyboard and screen reader steps. The value interface reads
+    // value/from/to/stepSize; moved() still carries every change.
+    readonly property real from: 0
+    readonly property real to: 1
+    readonly property real stepSize: 0.05
+    function stepBy(d) { moved(Math.max(0, Math.min(1, value + d))) }
+
+    activeFocusOnTab: true
+    Keys.onPressed: (event) => {
+        switch (event.key) {
+        case Qt.Key_Right: case Qt.Key_Up:   stepBy(stepSize); break
+        case Qt.Key_Left:  case Qt.Key_Down: stepBy(-stepSize); break
+        case Qt.Key_PageUp:   stepBy(4 * stepSize); break
+        case Qt.Key_PageDown: stepBy(-4 * stepSize); break
+        case Qt.Key_Home: moved(0); break
+        case Qt.Key_End:  moved(1); break
+        default: return
+        }
+        event.accepted = true
+    }
+    Accessible.role: Accessible.Slider
+    Accessible.name: qsTr("Volume")
+    Accessible.onIncreaseAction: stepBy(stepSize)
+    Accessible.onDecreaseAction: stepBy(-stepSize)
+
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -3
+        radius: Math.min(width, height) / 2
+        color: "transparent"
+        border.width: root.activeFocus ? 2 : 0
+        border.color: Theme.accent
+    }
+
     // The handle's centre travels between the two radii, not across the whole
     // track, so the handle never hangs outside the control at either end.
     readonly property real handleSize: 10

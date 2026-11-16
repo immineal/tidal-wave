@@ -327,6 +327,11 @@ Rectangle {
                     size: 18; iconColor: Theme.textSec
                     label: player.muted ? qsTr("Unmute") : qsTr("Mute")
                     onClicked: player.setMuted(!player.muted)
+                    // Focus shows the flyout, and the arrows move it, so the
+                    // volume does not need a pointer.
+                    Keys.onUpPressed:   volumeFlyout.slider.stepBy(volumeFlyout.slider.stepSize)
+                    Keys.onDownPressed: volumeFlyout.slider.stepBy(-volumeFlyout.slider.stepSize)
+                    Accessible.description: volPct.text
                 }
 
                 // The level, in words, at rest. Layout.preferredWidth and not
@@ -391,10 +396,11 @@ Rectangle {
 
     // ── the volume on hover ──────────────────────────────────────────────
     // Pointing at the speaker or the readout brings the slider up over the
-    // bar. Hover only, and it withdraws while the output menu is open: both
-    // draw upwards out of the bar and would otherwise overlap.
+    // bar, and so does keyboard focus on the speaker. It withdraws while the
+    // output menu is open: both draw upwards and would overlap.
     readonly property bool wantVolumeFlyout:
-        !outputBtn.menuVisible && (volBtn.hovered || volPctHov.hovered)
+        !outputBtn.menuVisible
+        && (volBtn.hovered || volPctHov.hovered || volBtn.activeFocus)
 
     VolumeFlyout {
         id: volumeFlyout
