@@ -171,7 +171,6 @@ TestCase {
 
     Component { id: backButtonC;     BackButton     { } }
     Component { id: loginC;          LoginPage      { anchors.fill: parent } }
-    Component { id: loadingOverlayC; LoadingOverlay { } }
 
     // ── the mechanism itself ─────────────────────────────────────────────
 
@@ -458,15 +457,15 @@ TestCase {
 
     // ── an indefinite "still working" indicator ──────────────────────────
 
-    // A spinner or a pulse must stand still under reduced motion and stay on
-    // screen. The login dots are measured: a RotationAnimator is driven by the
-    // render thread, which the offscreen platform never advances.
+    // The login's busy line and the pages' skeletons must stand still under
+    // reduced motion and stay on screen. Both move on the GUI thread, so the
+    // motion is measured, not read off a flag.
 
-    function visibleDots(page) {
-        var out = []
+    function visibleBusyLine(page) {
+        var out = null
         function walk(item) {
-            if (item.visible === false) return
-            if (item.objectName === "loginPulseDot") out.push(item)
+            if (out || item.visible === false) return
+            if (item.objectName === "busyLine") { out = item; return }
             var kids = item.children
             for (var i = 0; i < kids.length; ++i) walk(kids[i])
         }
@@ -478,7 +477,7 @@ TestCase {
 
     function test_indefinite_indicator(row) {
         app.setReducedMotionForTest(row.reduced)
-        // PendingDevice: the waiting state, with the pulsing dots.
+        // PendingDevice: the waiting state, with the busy line.
         auth.setStateForTest(1)
 
         var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
@@ -486,84 +485,65 @@ TestCase {
         verify(page, "LoginPage was not created")
         settle(holder)
 
-        var dots = visibleDots(page)
-        compare(dots.length, 3, "the waiting indicator is not three dots any more")
+        var line = visibleBusyLine(page)
+        verify(line, "the waiting state shows no busy line")
+        var seg = line.segment
+        verify(seg.visible && seg.width > 0 && seg.opacity > 0,
+               "reduced motion removed the busy indicator")
 
-        var dot = dots[0]
-        verify(dot.visible, "reduced motion removed the busy indicator")
-        verify(dot.opacity > 0,
-               "the indicator is invisible, which is the same as not being there")
-
+        var at = seg.x
         if (row.reduced) {
-            // Run once at zero length, which parks the dot fully lit.
-            compare(dot.opacity, 1,
-                    "reduced motion left the indicator at a half-faded resting value")
+            compare(at, Math.round((line.width - seg.width) / 2),
+                    "reduced motion left the segment somewhere other than the middle")
             wait(300)
-            compare(dot.opacity, 1, "the indicator is still pulsing under reduced motion")
+            compare(seg.x, at, "the busy line still moves under reduced motion")
             wait(300)
-            compare(dot.opacity, 1, "the indicator is still pulsing under reduced motion")
+            compare(seg.x, at, "the busy line still moves under reduced motion")
         } else {
-            // One full cycle is 800ms, so a change is due well inside that.
-            var at = dot.opacity
-            tryVerify(function () { return dot.opacity !== at },
-                      settleMs, "the indicator never pulsed with motion allowed")
+            tryVerify(function () { return seg.x !== at },
+                      settleMs, "the busy line never moved with motion allowed")
         }
     }
 
-    // The spinners' rotation cannot be measured here (see above), but
-    // reduced motion must leave the busy mark on screen.
-    function test_the_busy_spinner_is_still_on_screen() {
+    Component { id: skeletonC; Skeleton { } }
+
+    // Reduced motion leaves the skeleton on screen at full strength.
+    function test_the_skeleton_is_still_on_screen() {
         app.setReducedMotionForTest(true)
 
-        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 300 })
-        var overlay = createTemporaryObject(loadingOverlayC, holder, { loading: true })
-        verify(overlay, "the loading overlay was not created")
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var skel = createTemporaryObject(skeletonC, holder, { loading: true, kind: "detail" })
+        verify(skel, "the skeleton was not created")
         settle(holder)
 
-        var spinner = findByName(overlay, "loadingSpinner")
-        verify(spinner, "the overlay has no spinner")
-        verify(overlay.visible && spinner.visible,
-               "reduced motion removed the busy indicator instead of stilling it")
-        verify(spinner.width > 0 && spinner.height > 0,
-               "the spinner was collapsed to nothing")
-
-        // Read off the animation, since a clock cannot tell a zero-length turn
-        // from a finished one. Reduced motion sets the duration to zero and the
-        // loops to one: zero duration with Animation.Infinite is a spin loop.
-        var rot = findInData(overlay, "loadingSpinnerRotation")
-        verify(rot, "the spinner has no named rotation to check")
-        compare(rot.duration, 0,
-                "reduced motion left the spinner a turn to make")
-        compare(rot.loops, 1,
-                "a zero-length turn repeated forever is a spin loop, not stillness")
+        verify(skel.visible, "reduced motion removed the loading shapes")
+        verify(!skel.pulse.running, "the skeleton pulses under reduced motion")
+        compare(skel.shapes.opacity, 1, "the shapes rest half-faded")
+        wait(300)
+        compare(skel.shapes.opacity, 1, "the shapes still change under reduced motion")
     }
 
-    // Whether the spinner turns cannot be seen on this platform, so running
-    // is the proxy: on exactly while the overlay is on screen. An indefinite
-    // animation behind a hidden overlay would run for the life of the app.
-    function test_the_busy_spinner_runs_only_while_it_is_on_screen() {
+    // An indefinite animation behind a hidden skeleton would run for the
+    // life of the app, so the pulse runs exactly while it is on screen.
+    function test_the_skeleton_pulses_only_while_it_is_on_screen() {
         app.setReducedMotionForTest(false)
 
-        var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 300 })
-        var overlay = createTemporaryObject(loadingOverlayC, holder, { loading: false })
-        verify(overlay, "the loading overlay was not created")
+        var holder = createTemporaryObject(holderC, testCase, { width: 900, height: 700 })
+        var skel = createTemporaryObject(skeletonC, holder, { loading: false, kind: "cards" })
+        verify(skel, "the skeleton was not created")
         settle(holder)
+        verify(!skel.pulse.running, "the skeleton pulses while hidden")
 
-        var rot = findInData(overlay, "loadingSpinnerRotation")
-        verify(rot, "the spinner has no named rotation to check")
-
-        verify(!rot.running,
-               "the spinner is rotating while the overlay is hidden")
-
-        overlay.loading = true
+        skel.loading = true
         settle(holder)
-        verify(rot.running,
-               "the overlay is on screen and its spinner is not rotating")
+        verify(skel.pulse.running, "the skeleton is on screen and does not pulse")
+        var at = skel.shapes.opacity
+        tryVerify(function () { return skel.shapes.opacity !== at }, settleMs,
+                  "the pulse never changed anything")
 
-        overlay.loading = false
+        skel.loading = false
         settle(holder)
-        verify(!rot.running,
-               "the spinner kept rotating after the overlay was hidden")
+        verify(!skel.pulse.running, "the pulse kept running after the skeleton was hidden")
     }
 
     // The now-playing bars are the other indefinite indicator. Parked, they

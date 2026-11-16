@@ -367,7 +367,7 @@ Rectangle {
         title: root.playlistTitle
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 
     // The pin carries the labels and the artwork the page is showing, so the
     // sidebar row reads the same as the page it came from.

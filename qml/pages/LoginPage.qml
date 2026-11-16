@@ -93,34 +93,9 @@ Rectangle {
                         font.pixelSize: Theme.fontBody
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.space2
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: width / 2
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 0 && auth.hasSavedCredentials
-                                    PauseAnimation { duration: Theme.dur(index * Theme.motionMedium) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(Theme.motionSlow) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(Theme.motionSlow)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 0 && auth.hasSavedCredentials
                     }
                 }
 
@@ -256,34 +231,9 @@ Rectangle {
                         }
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.space2
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: width / 2
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 1
-                                    PauseAnimation { duration: Theme.dur(index * Theme.motionMedium) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(Theme.motionSlow) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(Theme.motionSlow)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 1
                     }
 
                     Text {

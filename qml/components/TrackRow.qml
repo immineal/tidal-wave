@@ -497,9 +497,9 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         color: Theme.accent
                     }
-                    // Still a visible busy mark under reduced motion, just a
-                    // still one; see LoadingOverlay for why it is shaped this
-                    // way rather than switched off.
+                    // Still a visible busy mark under reduced motion: one
+                    // zero-length turn leaves it still, where zero duration
+                    // against Animation.Infinite would be a spin loop.
                     RotationAnimator {
                         target: dlSpinner
                         from: 0; to: 360

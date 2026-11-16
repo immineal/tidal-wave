@@ -340,7 +340,7 @@ Rectangle {
             }
         }
 
-        Item { Layout.preferredHeight: Theme.space4 }
+        Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
         // Tracks Tab: virtualized ListView
         ListView {
@@ -804,5 +804,6 @@ Rectangle {
 
     NewPlaylistDialog { id: newPlaylistDialog }
 
-    LoadingOverlay { loading: root.loading || root.tabWaiting }
+    // Below the tabs, chips and sort, which stay in reach while it loads.
+    Skeleton { loading: root.loading || root.tabWaiting; kind: root.activeTab === 0 ? "rows" : "grid"; topInset: viewsTop.y }
 }

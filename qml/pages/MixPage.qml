@@ -126,10 +126,6 @@ Rectangle {
                 var p = hero.mapToItem(root, x, y)
                 root.showHeroPinMenu(p.x, p.y)
             }
-            // The queue confirmation is drawn just above the action row.
-            // Assigned, not bound: an id inside the list's header component is
-            // out of reach from the page root.
-            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
             Text {
                 visible: root.subtitle.length > 0
@@ -255,7 +251,7 @@ Rectangle {
         title: root.title
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 
     // The pin carries the labels and the artwork the page is showing, so the
     // sidebar row reads the same as the page it came from.

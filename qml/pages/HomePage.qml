@@ -284,5 +284,5 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "cards" }
 }

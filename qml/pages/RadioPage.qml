@@ -159,5 +159,5 @@ Rectangle {
         title: root.radioTitle || qsTr("Track radio")
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }
