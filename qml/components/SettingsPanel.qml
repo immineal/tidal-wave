@@ -348,7 +348,6 @@ Popup {
                     Toggle {
                         objectName: "settingsTintedToggle"
                         label: qsTr("Let the colour in")
-                        rainbow: true
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.tintedGreys
                         onToggled: prefs.tintedGreys = !prefs.tintedGreys
