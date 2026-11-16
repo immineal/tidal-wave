@@ -109,16 +109,6 @@ Rectangle {
         return a.section || "a"
     }
 
-    // Worded as AlbumPage.durationText().
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
-    }
-
     // Dolby Atmos and no stereo mode, as AlbumPage.atmosOnly() reads it.
     function atmosOnly(a) {
         var atmos = false, stereo = false
@@ -136,7 +126,7 @@ Rectangle {
         if (!a.titleShared) return a.year
         var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
-        if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
+        if (withLength && a.duration > 0) parts.push(Theme.lengthText(a.duration))
         return parts.filter(function (p) { return p.length > 0 }).join(" · ")
     }
 
@@ -155,9 +145,10 @@ Rectangle {
     }
 
     ScrollView {
+        id: artistScroll
         objectName: "artistContent"
         anchors.fill: parent
-        rightPadding: 14
+        rightPadding: Theme.space4
         contentWidth: availableWidth
         // Stated, because a ScrollView on Qt 6.5 works its content height
         // out once and does not follow the column as rows arrive.
@@ -172,102 +163,65 @@ Rectangle {
             width: parent.width
             spacing: 0
 
-            // Hero. Grows with its content, so a wrapped name or pill row fits.
-            Rectangle {
+            // No artwork tile: the photo is the whole hero's backdrop.
+            DetailHero {
+                id: hero
                 Layout.fillWidth: true
-                implicitHeight: Math.max(320, heroCol.implicitHeight + 56)
-                color: "transparent"
-                clip: true
-
-                Image {
-                    objectName: "artistHeroPhoto"
-                    anchors.fill: parent
-                    source: artistData.coverUrl750 ? "image://tidal/" + artistData.coverUrl750 : ""
-                    fillMode: Image.PreserveAspectCrop
-                    opacity: 0.4
-                    smooth: true
-                    mipmap: true
+                kind: qsTr("Artist")
+                title: artistData.name || ""
+                titleObjectName: "artistName"
+                titleLines: 2
+                showArt: false
+                backdropSource: artistData.coverUrl750 || ""
+                backdropObjectName: "artistHeroPhoto"
+                backdropOpacity: 0.4
+                onPinRequested: (x, y) => {
+                    var p = hero.mapToItem(root, x, y)
+                    root.showHeroPinMenu(p.x, p.y)
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        orientation: Gradient.Vertical
-                        GradientStop { position: 0.4; color: "transparent" }
-                        GradientStop { position: 1; color: Theme.bg }
-                    }
-                }
-
-                ColumnLayout {
-                    id: heroCol
-                    // Anchored right too, so a long name has room to wrap.
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: 28
-                    spacing: 8
-
-                    // No outline: the gradient above fades the photo to the
-                    // page colour behind the name.
-                    Text {
-                        objectName: "artistName"
-                        Layout.fillWidth: true
-                        text: artistData.name || ""
-                        color: Theme.textPrimary
-                        font.pixelSize: 36
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 2
-                        elide: Text.ElideRight
-                    }
-
-                    // A Flow, so the pills wrap when a translation widens them.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: 12
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                actions: [
+                    PillButton {
+                        text: qsTr("Play", "verb, button label")
+                        icon: "play"
+                        accent: true
+                        onClicked: if (topTracks.length > 0) root.playFrom(topTracks, 0)
+                    },
+                    PillButton {
+                        // Album's word, so it shares its translation.
+                        text: qsTranslate("AlbumPage", "Shuffle")
+                        icon: "shuffle"
+                        accent: false
+                        onClicked: {
+                            if (topTracks.length > 0) {
+                                player.setShuffle(true)
+                                root.playFrom(topTracks, Math.floor(Math.random() * topTracks.length))
+                            }
                         }
-
-                        PillButton {
-                            objectName: "artistFollowPill"
-                            text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            icon: root.isFollowing ? "artist-following" : "artist-follow"
-                            accent: root.isFollowing
-                            // On the action row, which has clear space above.
-                            onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
-                                                                      heroActions)
-                        }
+                    },
+                    PillButton {
+                        objectName: "artistFollowPill"
+                        text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
+                        icon: root.isFollowing ? "artist-following" : "artist-follow"
+                        accent: root.isFollowing
+                        // On the action row, which has clear space above.
+                        onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,
+                                                                  hero.actionRow)
                     }
-                }
-
-                // A right-click on the hero pins what the page is showing.
-                MouseArea {
-                    objectName: "heroPinArea"
-                    anchors.fill: parent
-                    acceptedButtons: Qt.RightButton
-                    onClicked: function (mouse) {
-                        var p = mapToItem(root, mouse.x, mouse.y)
-                        root.showHeroPinMenu(p.x, p.y)
-                    }
-                }
+                ]
             }
 
-            Item { height: 8 }
+            Item { height: Theme.space2 }
 
             RowLayout {
                 visible: root.topTracks.length > 0
                 Layout.fillWidth: true
-                Layout.leftMargin: 24
-                Layout.rightMargin: 24
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
                 Text {
                     text: qsTr("Popular")
                     color: Theme.textPrimary
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     Layout.fillWidth: true
                 }
@@ -276,7 +230,7 @@ Rectangle {
                     visible: root.topTracks.length > 5
                     text: root.showAllTracks ? qsTr("Show less") : qsTr("Show all")
                     color: showAllHov.hovered || activeFocus ? Theme.textPrimary : Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     font.underline: activeFocus
                     activeFocusOnTab: visible
                     Keys.onReturnPressed: root.showAllTracks = !root.showAllTracks
@@ -290,7 +244,7 @@ Rectangle {
                 }
             }
 
-            Item { height: 8; visible: root.topTracks.length > 0 }
+            Item { height: Theme.space2; visible: root.topTracks.length > 0 }
 
             // The top tracks are one tab stop; see TrackRow.rowGroup.
             QtObject { id: topTrackGroup; property int current: 0 }
@@ -301,8 +255,8 @@ Rectangle {
                     rowGroup: topTrackGroup
                     rowIndex: index
                     Layout.fillWidth: true
-                    Layout.leftMargin: 16
-                    Layout.rightMargin: 16
+                    Layout.leftMargin: Theme.space4
+                    Layout.rightMargin: Theme.space4
                     // Against the width this row would have with the sidebar
                     // out, so the column cannot reappear as the window
                     // narrows. See root.sidebarReclaim.
@@ -318,7 +272,7 @@ Rectangle {
                 }
             }
 
-            Item { height: 24; visible: root.topTracks.length > 0 }
+            Item { height: Theme.space6; visible: root.topTracks.length > 0 }
 
             HorizontalSection {
                 id: albumsSection
@@ -391,17 +345,17 @@ Rectangle {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                Layout.leftMargin: 24
-                Layout.rightMargin: 24
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
                 visible: (artistData.bio || "").length > 0
-                spacing: 8
+                spacing: Theme.space2
 
-                Item { height: 8 }
+                Item { height: Theme.space2 }
 
                 Text {
                     text: qsTr("About")
                     color: Theme.textPrimary
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                 }
 
@@ -418,7 +372,7 @@ Rectangle {
                     text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
                     linkColor: Theme.accentText
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontBody
                     wrapMode: Text.WordWrap
                     // Of the font's own line height, which is already ~1.35 em.
                     lineHeight: 1.15
@@ -449,7 +403,7 @@ Rectangle {
                     visible: root.bioExpanded || bioText.truncated
                     text: root.bioExpanded ? qsTr("Show less") : qsTr("Read more")
                     color: bioToggleHov.hovered ? Theme.textPrimary : Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     font.bold: true
                     Accessible.role: Accessible.Button
                     Accessible.name: text
@@ -458,7 +412,7 @@ Rectangle {
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
                 }
 
-                Item { height: 24 }
+                Item { height: Theme.space6 }
             }
 
             HorizontalSection {
@@ -474,7 +428,7 @@ Rectangle {
                 onItemClicked: function(i, item) { navigateTo("artist", { artistId: item.id }) }
             }
 
-            Item { height: 32 }
+            Item { height: Theme.space8 }
         }
     }
 
@@ -535,7 +489,7 @@ Rectangle {
         // No trackSource, so no queue actions: an artist is not a tracklist.
 
         // The hero's action row, which has the page above it to draw over.
-        confirmAnchor: heroActions
+        confirmAnchor: hero.actionRow
     }
 
     // What the page says when there is nothing to draw and a reason for it.
@@ -549,7 +503,7 @@ Rectangle {
         ColumnLayout {
             anchors.centerIn: parent
             width: Math.min(parent.width - 96, 420)
-            spacing: 10
+            spacing: Theme.space3
 
             VectorIcon {
                 Layout.alignment: Qt.AlignHCenter
@@ -559,7 +513,6 @@ Rectangle {
                 Layout.preferredHeight: 40
                 name: "artist"
                 color: Theme.textDim
-                strokeWidth: 1.5
             }
 
             Text {
@@ -568,7 +521,7 @@ Rectangle {
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("This artist is not available")
                 color: Theme.textPrimary
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontSection
                 font.bold: true
                 wrapMode: Text.WordWrap
             }
@@ -582,16 +535,17 @@ Rectangle {
                 // One long literal: lupdate cannot read a concatenation.
                 text: qsTr("Tidal would not serve the page for this artist. They may have been removed from the catalogue, or they may not be available where you are. Searching for the name often finds their releases anyway.")
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
         }
     }
 
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    DetailBar {
+        objectName: "artistStickyHeader"
+        flickable: artistScroll.contentItem
+        heroHeight: hero.height
+        title: artistData.name || ""
     }
 
     LoadingOverlay { loading: root.loading }

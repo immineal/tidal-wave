@@ -194,6 +194,42 @@ TestCase {
         compare(win.currentPage, "home", "Escape after leaving the finder did not go back")
     }
 
+    // The search fields on Search and in My Collection clear on Escape too.
+    // Only the sidebar's finder did, and Escape there went back instead.
+    function test_escape_in_a_page_search_field_clears_it_and_stays_data() {
+        return [
+            { tag: "search",     page: "search",     field: "searchPageBar" },
+            { tag: "collection", page: "collection", field: "collectionSearch" },
+        ]
+    }
+
+    function test_escape_in_a_page_search_field_clears_it_and_stays(row) {
+        var win = showApp()
+        openPage(win, row.page, {})
+        var bar = null
+        tryVerify(function () {
+            bar = findNamed(win.contentItem, row.field)
+            return bar !== null
+        }, 3000, "the " + row.page + " page has no search field")
+        bar.takeFocus()
+        keyClick(Qt.Key_A)
+        keyClick(Qt.Key_B)
+        compare(bar.text, "ab", "typing did not reach the field")
+
+        keyClick(Qt.Key_Escape)
+        compare(win.currentPage, row.page, "Escape in the field navigated back")
+        compare(bar.text, "", "Escape did not clear the field")
+
+        // Empty, it gives the keyboard up, and the next Escape is the window's,
+        // which closes the queue.
+        keyClick(Qt.Key_Escape)
+        compare(win.currentPage, row.page, "the Escape that left the field also went back")
+        verify(!bar.focused, "Escape in an empty field kept the focus")
+        win.queueOpen = true
+        keyClick(Qt.Key_Escape)
+        verify(!win.queueOpen, "Escape after leaving the field did not reach the window")
+    }
+
     // A picker opened on Now Playing outlived the switch into fullscreen and
     // floated over the page, where its button had gone.
     function test_the_output_picker_does_not_survive_fullscreen() {

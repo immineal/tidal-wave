@@ -19,7 +19,7 @@ Menu {
         NumberAnimation {
             property: "opacity"
             from: 0; to: 1
-            duration: Theme.dur(110)
+            duration: Theme.dur(Theme.motionFast)
             easing.type: Easing.OutCubic
         }
     }
@@ -27,7 +27,7 @@ Menu {
         NumberAnimation {
             property: "opacity"
             from: 1; to: 0
-            duration: Theme.dur(90)
+            duration: Theme.dur(Theme.motionFast)
             easing.type: Easing.InCubic
         }
     }
@@ -46,8 +46,8 @@ Menu {
         // Destructive. Tints the label and the icon red.
         property bool danger: false
 
-        leftPadding: 12
-        rightPadding: 12
+        leftPadding: Theme.space3
+        rightPadding: Theme.space3
 
         // The menu decides the gutter: every row reserves it when any row has
         // an icon, so the labels line up. Its own icon is asked first because
@@ -69,7 +69,7 @@ Menu {
                                                     : Theme.textPrimary
 
         contentItem: RowLayout {
-            spacing: entry.showsGutter ? 10 : 0
+            spacing: entry.showsGutter ? Theme.space2 : 0
             Item {
                 Layout.preferredWidth:  entry.showsGutter ? 16 : 0
                 Layout.preferredHeight: 16
@@ -79,14 +79,13 @@ Menu {
                     visible: entry.iconName !== ""
                     name: entry.iconName
                     color: entry.ink
-                    strokeWidth: 1.6
                 }
             }
             Text {
                 Layout.fillWidth: true
                 text: entry.text
                 color: entry.ink
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 verticalAlignment: Text.AlignVCenter
                 // Past Theme.menuWidth's maximum the label elides. Its
                 // implicitWidth is still the full label, which is what the menu
@@ -94,7 +93,7 @@ Menu {
                 elide: Text.ElideRight
             }
         }
-        background: Rectangle { color: entry.highlighted ? Theme.surfaceHov : "transparent" }
+        background: Rectangle { color: entry.highlighted ? Theme.hoverFill : "transparent" }
     }
 
     // ── queueing ───────────────────────────────────────────────────────
@@ -300,7 +299,7 @@ Menu {
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusPopup
+        radius: Theme.radiusLarge
     }
 
     // A hidden MenuItem still contributes its height to the menu, so every

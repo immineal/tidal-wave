@@ -311,10 +311,10 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        anchors.margins: 2
-        radius: Theme.radiusRow
+        anchors.margins: Theme.spaceHalf
+        radius: Theme.radiusMedium
         color: root.isCurrent ? Theme.accentSoft
-               : hov.hovered ? Theme.surfaceHov : "transparent"
+               : hov.hovered ? Theme.hoverFill : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
 
@@ -340,8 +340,8 @@ Item {
         }
 
         RowLayout {
-            anchors { fill: parent; leftMargin: 12; rightMargin: 28 }
-            spacing: 12
+            anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
+            spacing: Theme.space3
 
             // Track number / now playing indicator
             Item {
@@ -354,7 +354,7 @@ Item {
                     text: root.trackNum
                     // A paused current track keeps its number, in the accent.
                     color: root.isCurrent ? Theme.accentText : Theme.textDim
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                 }
                 VectorIcon.PlayingIndicator {
                     objectName: "trackRowPlayingIndicator"
@@ -379,7 +379,7 @@ Item {
 
             Rectangle {
                 visible: showCover
-                width: 36; height: 36; radius: Theme.radiusArt
+                width: 36; height: 36; radius: Theme.radiusSmall
                 color: Theme.surfaceHigh
                 clip: true
                 Image {
@@ -399,13 +399,13 @@ Item {
             // Title + artists
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 3
+                spacing: Theme.space1
                 Text {
                     objectName: "trackTitle"
                     Layout.fillWidth: true
                     text: root.titleText
                     color: root.isCurrent ? Theme.accentText : Theme.textPrimary
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontBody
                     elide: Text.ElideRight
                 }
                 // One hover target and one tab stop per artist. The row's
@@ -415,7 +415,7 @@ Item {
                     Layout.fillWidth: true
                     tabStops: false
                     namePrefix: "trackRow"
-                    fontPixelSize: 12
+                    fontPixelSize: Theme.fontMeta
                     artistList: root.artistList
                     joinedText: root.artistsText
                     fallbackArtistId: root.leadArtistId
@@ -430,7 +430,7 @@ Item {
                 Layout.preferredWidth: 160
                 text: root.albumText
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 elide: Text.ElideRight
             }
 
@@ -438,7 +438,7 @@ Item {
                 objectName: "trackDuration"
                 text: root.durationText
                 color: Theme.textDim
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 Layout.preferredWidth: Math.max(40, implicitWidth)
                 horizontalAlignment: Text.AlignRight
             }
@@ -456,12 +456,12 @@ Item {
                       ? qsTr("%1%").arg(score.toLocaleString(Qt.locale(), 'f', 0))
                       : ""
                 color: Theme.textDim
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMicro
                 Layout.preferredWidth: 40
                 horizontalAlignment: Text.AlignRight
                 ToolTip.visible: popHov.hovered && visible
                 ToolTip.text: qsTr("Popularity")
-                ToolTip.delay: 400
+                ToolTip.delay: Theme.tooltipDelay
                 HoverHandler { id: popHov }
             }
 
@@ -483,7 +483,6 @@ Item {
                     name: "download"
                     color: root.dlState === "error" ? Theme.redText : Theme.textSec
                     width: 16; height: 16
-                    strokeWidth: 1.8
                 }
                 VectorIcon {
                     anchors.centerIn: parent
@@ -491,7 +490,6 @@ Item {
                     name: "check"
                     color: Theme.green
                     width: 16; height: 16
-                    strokeWidth: 2
                 }
                 Item {
                     id: dlSpinner
@@ -499,7 +497,7 @@ Item {
                     width: 16; height: 16
                     visible: root.dlState === "busy"
                     Rectangle {
-                        width: 3; height: 7; radius: 1.5
+                        width: 3; height: 7; radius: width / 2
                         anchors.top: parent.top
                         anchors.horizontalCenter: parent.horizontalCenter
                         color: Theme.accent
@@ -510,7 +508,7 @@ Item {
                     RotationAnimator {
                         target: dlSpinner
                         from: 0; to: 360
-                        duration: Theme.dur(800)
+                        duration: Theme.dur(Theme.motionSlow * 2)
                         loops: Theme.reduceMotion ? 1 : Animation.Infinite
                         running: root.dlState === "busy"
                     }
@@ -521,7 +519,7 @@ Item {
                 // desyncs from the row's hover and makes the button flicker.
                 MouseArea {
                     anchors.fill: parent
-                    anchors.margins: -4
+                    anchors.margins: -Theme.space1
                     enabled: dlButton.shown && root.dlState !== "busy" && root.trackId > 0
                     cursorShape: Qt.PointingHandCursor
                     // The tick, still up after a save, opens the file's folder.
@@ -537,6 +535,7 @@ Item {
             // Context menu button, same reserved slot as the download button
             Item {
                 id: menuButton
+                objectName: "rowMenuButton"
                 readonly property bool shown: hov.hovered || root.activeFocus
                 opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
@@ -551,7 +550,7 @@ Item {
                 }
                 MouseArea {
                     anchors.fill: parent
-                    anchors.margins: -4
+                    anchors.margins: -Theme.space1
                     enabled: menuButton.shown
                     cursorShape: Qt.PointingHandCursor
                     onClicked: (m) => {
@@ -559,6 +558,10 @@ Item {
                         root.openMenu()
                     }
                 }
+                HoverHandler { id: menuHov }
+                ToolTip.visible: menuHov.hovered && menuButton.shown
+                ToolTip.text: qsTr("More options", "button on a track row, opens its menu")
+                ToolTip.delay: Theme.tooltipDelay
             }
         }
     }
@@ -674,7 +677,7 @@ Item {
             }
             implicitWidth: Theme.menuWidth(this)
             overlap: 0
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             // So a test can read the two queue labels without walking a
             // popup's contents, the way ContextMenu exposes its pin item.
@@ -693,7 +696,7 @@ Item {
                 height: visible ? implicitHeight : 0
                 // Room for the arrow, which the style draws beside the content
                 // item rather than inside it.
-                rightPadding: 12 + 18
+                rightPadding: Theme.space3 + Theme.space5
                 arrow: VectorIcon {
                     visible: artistSubRow.subMenu
                     x: artistSubRow.width - width - 12
@@ -701,7 +704,6 @@ Item {
                     width: 14; height: 14
                     name: "chevron-right"
                     color: artistSubRow.ink
-                    strokeWidth: 1.6
                 }
             }
 
@@ -847,7 +849,7 @@ Item {
                 enter: ContextMenu.OpenFade { }
                 exit:  ContextMenu.CloseFade { }
                 implicitWidth: Theme.menuWidth(this)
-                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+                background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
                 // Instantiator and not a Repeater: a Repeater is an Item, so a
                 // Menu would take it for an entry of its own. This is the shape
@@ -918,7 +920,7 @@ Item {
                 }, 50, 0)
             }
 
-            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+            background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             Column {
                 width: parent.width
@@ -927,16 +929,16 @@ Item {
                     width: parent.width
                     height: 52
                     Text {
-                        anchors.left: parent.left; anchors.leftMargin: 16
+                        anchors.left: parent.left; anchors.leftMargin: Theme.space4
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("Add to playlist")
-                        color: Theme.textPrimary; font.pixelSize: 15; font.bold: true
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true
                     }
                     // ── the way out ──────────────────────────────────────
                     Item {
                         id: pickerClose
                         objectName: "pickerCloseButton"
-                        anchors.right: parent.right; anchors.rightMargin: 10
+                        anchors.right: parent.right; anchors.rightMargin: Theme.space3
                         anchors.verticalCenter: parent.verticalCenter
                         width: 32
                         height: 32
@@ -950,7 +952,7 @@ Item {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: Theme.radiusButton
+                            radius: Theme.radiusMedium
                             color: "transparent"
                             border.width: pickerClose.activeFocus ? 2 : 0
                             border.color: Theme.accent
@@ -958,7 +960,7 @@ Item {
                         VectorIcon {
                             anchors.centerIn: parent
                             name: "x"
-                            width: 14; height: 14; strokeWidth: 1.8
+                            width: 14; height: 14
                             color: pickerClose.activeFocus ? Theme.accentText
                                  : pickerCloseHov.hovered ? Theme.textPrimary
                                  : Theme.textSec
@@ -987,9 +989,9 @@ Item {
 
                     Rectangle {
                         anchors.fill: parent
-                        anchors.margins: 4
-                        radius: Theme.radiusRow
-                        color: newPlHov.hovered ? Theme.surfaceHov : "transparent"
+                        anchors.margins: Theme.space1
+                        radius: Theme.radiusMedium
+                        color: newPlHov.hovered ? Theme.hoverFill : "transparent"
                         border.width: pickerNewRow.activeFocus ? 2 : 0
                         border.color: Theme.accent
 
@@ -998,18 +1000,18 @@ Item {
 
                         Row {
                             anchors.left: parent.left
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: Theme.space3
                             anchors.right: parent.right
-                            anchors.rightMargin: 12
+                            anchors.rightMargin: Theme.space3
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 10
+                            spacing: Theme.space3
 
                             // An outlined tile the size of the artwork below,
                             // so the labels line up, and plainly not a cover.
                             Rectangle {
                                 width: 28
                                 height: 28
-                                radius: Theme.radiusArt
+                                radius: Theme.radiusSmall
                                 color: "transparent"
                                 border.width: 1
                                 border.color: newPlHov.hovered ? Theme.accent : Theme.border
@@ -1018,7 +1020,6 @@ Item {
                                     name: "plus"
                                     width: 13
                                     height: 13
-                                    strokeWidth: 1.8
                                     color: newPlHov.hovered ? Theme.accentText : Theme.textDim
                                 }
                             }
@@ -1028,7 +1029,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: qsTr("New playlist…")
                                 color: Theme.textPrimary
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontMeta
                                 elide: Text.ElideRight
                             }
                         }
@@ -1069,19 +1070,19 @@ Item {
                         Accessible.onPressAction: choose()
                         Rectangle {
                             anchors.fill: parent
-                            anchors.margins: 4
-                            radius: Theme.radiusRow
-                            color: plHov2.hovered ? Theme.surfaceHov : "transparent"
+                            anchors.margins: Theme.space1
+                            radius: Theme.radiusMedium
+                            color: plHov2.hovered ? Theme.hoverFill : "transparent"
                             border.width: pickRow.activeFocus ? 2 : 0
                             border.color: Theme.accent
                             HoverHandler { id: plHov2 }
                             TapHandler { onTapped: pickRow.choose() }
                             Row {
-                                anchors.left: parent.left; anchors.leftMargin: 12
+                                anchors.left: parent.left; anchors.leftMargin: Theme.space3
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 10
+                                spacing: Theme.space3
                                 Rectangle {
-                                    width: 28; height: 28; radius: Theme.radiusArt; color: Theme.surface; clip: true
+                                    width: 28; height: 28; radius: Theme.radiusSmall; color: Theme.surface; clip: true
                                     Image {
                                         anchors.fill: parent
                                         source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
@@ -1092,17 +1093,17 @@ Item {
                                 }
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 1
+                                    spacing: Theme.spaceHalf
                                     Text {
                                         objectName: "pickerRowTitle"
-                                        text: model.title; color: Theme.textPrimary; font.pixelSize: 13
+                                        text: model.title; color: Theme.textPrimary; font.pixelSize: Theme.fontMeta
                                     }
                                     // Named so a test can read what the row
                                     // actually draws.
                                     Text {
                                         objectName: "pickerRowTrackCount"
                                         text: qsTr("%Ln track(s)", "", model.numTracks)
-                                        color: Theme.textSec; font.pixelSize: 11
+                                        color: Theme.textSec; font.pixelSize: Theme.fontMicro
                                     }
                                 }
                             }
@@ -1110,7 +1111,7 @@ Item {
                     }
                 }
 
-                Item { width: parent.width; height: 8 }
+                Item { width: parent.width; height: Theme.space2 }
             }
         }
     }

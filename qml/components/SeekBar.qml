@@ -56,7 +56,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: msToStr(_dragging ? _dragValue : position)
         color: Theme.textDim
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMicro
         horizontalAlignment: Text.AlignRight
     }
 
@@ -68,9 +68,9 @@ Item {
 
         Rectangle {
             id: track
-            anchors { left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; right: parent.right; leftMargin: Theme.space2; rightMargin: Theme.space2; verticalCenter: parent.verticalCenter }
             height: 3
-            radius: 2
+            radius: height / 2
             color: Theme.border
 
             Rectangle {
@@ -81,7 +81,7 @@ Item {
                 height: parent.height
                 radius: parent.radius
                 color: hov.hovered || _dragging || root.activeFocus ? Theme.accent : Theme.textSec
-                Behavior on color { ColorAnimation { duration: Theme.dur(120) } }
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
             }
 
             // Scrubber dot
@@ -90,10 +90,10 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width:  hov.hovered || _dragging || root.activeFocus ? 12 : 0
                 height: hov.hovered || _dragging || root.activeFocus ? 12 : 0
-                radius: 6
+                radius: width / 2
                 color: Theme.textPrimary
-                Behavior on width  { NumberAnimation { duration: Theme.dur(100) } }
-                Behavior on height { NumberAnimation { duration: Theme.dur(100) } }
+                Behavior on width  { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
+                Behavior on height { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
             }
         }
 
@@ -126,11 +126,11 @@ Item {
         id: durationLabel
         width: Math.max(36, implicitWidth)
         anchors.right: parent.right
-        anchors.rightMargin: 8
+        anchors.rightMargin: Theme.space2
         anchors.verticalCenter: parent.verticalCenter
         text: msToStr(duration)
         color: Theme.textDim
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMicro
     }
 
     function msToStr(ms) { return Theme.clock(ms) }

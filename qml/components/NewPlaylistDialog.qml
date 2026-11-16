@@ -100,12 +100,12 @@ Popup {
     closePolicy: root.busy
                  ? Popup.NoAutoClose
                  : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-    padding: 20
+    padding: Theme.space5
 
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusPopup
+        radius: Theme.radiusLarge
     }
 
     // The field is the only thing in here anyone wants, so it takes the focus
@@ -113,19 +113,19 @@ Popup {
     onOpened: nameField.forceActiveFocus()
 
     contentItem: ColumnLayout {
-        spacing: 12
+        spacing: Theme.space3
 
         // The heading and the way out, on one line.
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.space2
 
             Text {
                 objectName: "newPlaylistTitle"
                 Layout.fillWidth: true
                 text: qsTr("New playlist")
                 color: Theme.textPrimary
-                font.pixelSize: 16
+                font.pixelSize: Theme.fontTitle
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -141,7 +141,7 @@ Popup {
                 // the tab order; the opacity only shows it.
                 enabled: !root.busy
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 activeFocusOnTab: enabled
                 Keys.onReturnPressed: root.close()
                 Keys.onEnterPressed:  root.close()
@@ -152,7 +152,7 @@ Popup {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Theme.radiusButton
+                    radius: Theme.radiusMedium
                     color: "transparent"
                     border.width: dialogClose.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -160,7 +160,7 @@ Popup {
                 VectorIcon {
                     anchors.centerIn: parent
                     name: "x"
-                    width: 14; height: 14; strokeWidth: 1.8
+                    width: 14; height: 14
                     color: dialogClose.activeFocus ? Theme.accentText
                          : dialogCloseHov.hovered ? Theme.textPrimary
                          : Theme.textSec
@@ -181,7 +181,7 @@ Popup {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            radius: Theme.radiusField
+            radius: Theme.radiusLarge
             color: Theme.surface
             border.width: 1
             border.color: nameField.activeFocus ? Theme.accent : Theme.border
@@ -190,10 +190,10 @@ Popup {
                 id: nameField
                 objectName: "newPlaylistField"
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                anchors.leftMargin: Theme.space3
+                anchors.rightMargin: Theme.space3
                 color: Theme.textPrimary
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
                 selectionColor: Theme.accent
@@ -219,7 +219,7 @@ Popup {
                 visible: nameField.text.length === 0
                 text: qsTr("Playlist name")
                 color: Theme.textDim
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }
@@ -230,7 +230,7 @@ Popup {
         // two stacked lines would make the dialog jump twice.
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: Theme.space2
 
             Text {
                 objectName: "newPlaylistError"
@@ -238,7 +238,7 @@ Popup {
                 visible: root.errorText.length > 0
                 text: root.errorText
                 color: Theme.redText
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
@@ -258,15 +258,15 @@ Popup {
                         .arg(root.maxTitleLength)
                 color: nameField.text.length >= root.maxTitleLength
                        ? Theme.redText : Theme.textDim
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontMeta
             }
         }
 
         // ── the two buttons ──────────────────────────────────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 2
-            spacing: 10
+            Layout.topMargin: Theme.spaceHalf
+            spacing: Theme.space3
 
             Item { Layout.fillWidth: true }
 
@@ -279,7 +279,7 @@ Popup {
                 accent: false
                 enabled: !root.busy
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 Layout.preferredWidth:  implicitWidth
                 Layout.preferredHeight: implicitHeight
                 onClicked: root.close()
@@ -296,7 +296,7 @@ Popup {
                 accent: true
                 enabled: root.canSubmit
                 opacity: enabled ? 1 : 0.45
-                Behavior on opacity { NumberAnimation { duration: Theme.dur(110) } }
+                Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 Layout.preferredWidth:  implicitWidth
                 Layout.preferredHeight: implicitHeight
                 onClicked: root.submit()

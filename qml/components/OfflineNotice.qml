@@ -22,9 +22,9 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 24
-        anchors.rightMargin: 16
-        spacing: 12
+        anchors.leftMargin: Theme.space6
+        anchors.rightMargin: Theme.space4
+        spacing: Theme.space3
 
         VectorIcon {
             Layout.preferredWidth: 18
@@ -41,7 +41,7 @@ Rectangle {
                   ? qsTr("Tidal cannot be reached. Your collection is shown as last saved on this computer.")
                   : qsTr("Tidal cannot be reached. Trying again by itself.")
             color: Theme.textPrimary
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontMeta
         }
 
         PillButton {

@@ -155,12 +155,15 @@ TestCase {
         prefs.oledBlack = data.oled === true
         prefs.tintedGreys = data.tinted === true
         const palette = ThemePalette.current
+        // The palette's name for a fill, where QML names it by its job.
+        const qmlName = { surfaceHov: "selectedFill" }
         for (const key in palette) {
             if (key === "dark") continue
-            verify(Theme[key] !== undefined,
-                   data.name + ": Theme." + key + " is undefined")
-            compare(Theme[key].toString(), palette[key].toString(),
-                    data.name + ": Theme." + key + " does not match the palette")
+            const name = qmlName[key] || key
+            verify(Theme[name] !== undefined,
+                   data.name + ": Theme." + name + " is undefined")
+            compare(Theme[name].toString(), palette[key].toString(),
+                    data.name + ": Theme." + name + " does not match the palette")
         }
     }
 

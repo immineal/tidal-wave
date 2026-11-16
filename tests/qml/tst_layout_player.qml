@@ -2252,7 +2252,7 @@ TestCase {
 
     // ── where the volume's two homes change over ─────────────────────────
     // The window widths at which the cluster changes home, behind the 220px
-    // sidebar: 848, 1220 (where the page goes side by side) and 1332. The
+    // sidebar: 852, 1220 (where the page goes side by side) and 1336. The
     // answer at a width must not depend on how the page got there.
 
     // One turn of the event loop: a Window's width property moves on
@@ -2290,21 +2290,21 @@ TestCase {
         // up parts it does not own. Asked of a wide window: the transport's gap
         // tightens in a narrow column.
         compare(page.volumeStackWidth, 36, "the stack's budget")
-        compare(page.volumeClusterWidth, 78, "the cluster's budget")
+        compare(page.volumeClusterWidth, 80, "the cluster's budget")
         compare(page.transportSpacing, 16, "the transport's resting gap")
-        compare(page.transportWithVolumeWidth, 532,
+        compare(page.transportWithVolumeWidth, 536,
                 "what the transport row has to have to carry the cluster")
 
         verify(!widthAnswer(host, 600),
                "the narrowest window should use the own row")
         var up1 = firstWidthWhere(host, 601, 1219, true)
-        compare(up1, 848, "the stacked column picks the volume up at " + up1)
+        compare(up1, 852, "the stacked column picks the volume up at " + up1)
 
         var down = firstWidthWhere(host, up1 + 1, 1300, false)
         compare(down, 1220, "the page goes side by side at " + down)
 
         var up2 = firstWidthWhere(host, down + 1, 1700, true)
-        compare(up2, 1332, "the side-by-side column picks it up at " + up2)
+        compare(up2, 1336, "the side-by-side column picks it up at " + up2)
 
         // And it stays on the transport row from there up to a maximised 1920
         // window.
@@ -2563,7 +2563,7 @@ TestCase {
         verify(pill && content, "the sleep timer pill was not found")
         verify(pill.visible, "the sleep timer pill should be on screen")
 
-        // What the pill draws: Theme.radiusChip is a fully-round sentinel, and
+        // What the pill draws: Theme.radiusFull is a fully-round sentinel, and
         // Qt clamps it to half the shorter side.
         var r = Math.min(pill.radius, pill.height / 2, pill.width / 2)
         var lead  = content.mapToItem(pill, 0, 0).x
@@ -2926,7 +2926,7 @@ TestCase {
         var r = popupRectInWindow(host, popup)
         var p = pill.mapToItem(host.contentItem, 0, 0)
         var roomBelow = host.contentItem.height - (p.y + pill.height)
-        verify(roomBelow >= popup.height + 6,
+        verify(roomBelow >= popup.height + Theme.space2,
                "960x1200 was picked because the popup fits under the pill "
                + "there, but there are only " + roomBelow.toFixed(1)
                + "px under it for a " + popup.height.toFixed(1) + "px popup")
@@ -2935,8 +2935,8 @@ TestCase {
                + "the popup should still open downwards, but its top is at "
                + r.y.toFixed(1) + " and the pill ends at "
                + (p.y + pill.height).toFixed(1))
-        fuzzyCompare(r.y - (p.y + pill.height), 6, 0.5,
-                     "the popup opened below the pill but not 6px below it")
+        fuzzyCompare(r.y - (p.y + pill.height), Theme.space2, 0.5,
+                     "the popup opened below the pill but not a gap of Theme.space2 below it")
     }
 
     function test_sleep_timer_popup_flips_above_when_it_must() {
@@ -2947,7 +2947,7 @@ TestCase {
         var r = popupRectInWindow(host, popup)
         var p = pill.mapToItem(host.contentItem, 0, 0)
         var roomBelow = host.contentItem.height - (p.y + pill.height)
-        verify(roomBelow < popup.height + 6,
+        verify(roomBelow < popup.height + Theme.space2,
                "960x600 was picked because the popup does NOT fit under the "
                + "pill there, but there are " + roomBelow.toFixed(1)
                + "px under it for a " + popup.height.toFixed(1) + "px popup, "
@@ -2958,8 +2958,8 @@ TestCase {
                + "px tall, so it should open above the pill - but it ends at "
                + r.bottom.toFixed(1) + " and the pill starts at "
                + p.y.toFixed(1))
-        fuzzyCompare(p.y - r.bottom, 6, 0.5,
-                     "the popup opened above the pill but not 6px above it")
+        fuzzyCompare(p.y - r.bottom, Theme.space2, 0.5,
+                     "the popup opened above the pill but not a gap of Theme.space2 above it")
     }
 
     // ── queue panel ──────────────────────────────────────────────────────
