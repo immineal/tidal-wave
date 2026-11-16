@@ -23,6 +23,27 @@ Item {
     readonly property real rowSpace: Math.max(0, width - edgeInset)
     // Only for callers that want to know whether the row overflows at all.
     readonly property bool overflows: items.length * (cardSize + listSpacing) > rowSpace
+    // The whole cards between the two insets: what an arrow pages by.
+    readonly property int  visibleCards:
+        Math.max(1, Math.floor((width - 2 * edgeInset + listSpacing) / (cardSize + listSpacing)))
+
+    // The row's travel, from the first card to the last page.
+    readonly property real minX: hlist.originX
+    readonly property real maxX: Math.max(minX, hlist.originX + hlist.contentWidth - hlist.width)
+
+    function scrollTo(x) {
+        rowMove.stop()
+        hlist.contentX = Math.max(minX, Math.min(maxX, x))
+    }
+    // One page of whole cards, animated, landing on a card's edge.
+    function page(dir) {
+        var step = visibleCards * (cardSize + listSpacing)
+        var from = hlist.contentX - minX
+        var to = dir > 0 ? (Math.floor(from / step + 0.01) + 1) * step
+                         : (Math.ceil(from / step - 0.01) - 1) * step
+        rowMove.to = Math.max(minX, Math.min(maxX, minX + to))
+        rowMove.restart()
+    }
 
     signal itemClicked(int index, var item)
     signal itemPlayClicked(int index, var item)
@@ -57,6 +78,36 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
+            // Paging arrows, only on a row with more than fits. Held in a box
+            // of the label's height so the header keeps its own.
+            Item {
+                visible: root.overflows
+                implicitWidth: arrows.implicitWidth
+                implicitHeight: viewAll.implicitHeight
+                Layout.rightMargin: root.showViewAll ? Theme.space3 : 0
+                Row {
+                    id: arrows
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.space1
+                    IconButton {
+                        objectName: "sectionScrollBack"
+                        icon: "chevron-left"; size: 16
+                        label: qsTr("Scroll back", "arrow on a row of cards")
+                        enabled: hlist.contentX > root.minX + 0.5
+                        opacity: enabled ? 1 : 0.35
+                        onClicked: root.page(-1)
+                    }
+                    IconButton {
+                        objectName: "sectionScrollForward"
+                        icon: "chevron-right"; size: 16
+                        label: qsTr("Scroll forward", "arrow on a row of cards")
+                        enabled: hlist.contentX < root.maxX - 0.5
+                        opacity: enabled ? 1 : 0.35
+                        onClicked: root.page(1)
+                    }
+                }
+            }
+
             // The arrow is drawn beside the label, out of the icon set. It is
             // the only thing marking this grey line as a control.
             Item {
@@ -89,6 +140,7 @@ Item {
                         font.underline: viewAll.activeFocus
                     }
                     VectorIcon {
+                        objectName: "viewAllChevron"
                         anchors.verticalCenter: parent.verticalCenter
                         name: "chevron-right"
                         color: viewAll.ink
@@ -109,6 +161,21 @@ Item {
             Layout.fillWidth: true
             height: cardSize + 64 + (hbar.visible ? 8 : 0)
 
+            // A sideways drag moves the row, taking the grab from a card past
+            // the threshold so it never opens one. Its own item under the
+            // list and short of the scroll bar, which keeps its own drag.
+            Item {
+                anchors { left: hlist.left; right: hlist.right; top: hlist.top }
+                height: hlist.height - (hbar.visible ? hbar.height : 0)
+                DragHandler {
+                    target: null
+                    yAxis.enabled: false
+                    property real startX: 0
+                    onActiveChanged: if (active) { rowMove.stop(); startX = hlist.contentX }
+                    onTranslationChanged: if (active) root.scrollTo(startX - translation.x)
+                }
+            }
+
             ListView {
                 id: hlist
                 objectName: "sectionList"
@@ -123,7 +190,9 @@ Item {
                 header: Item { width: root.edgeInset; height: 1 }
                 footer: Item { width: root.edgeInset; height: 1 }
                 model: root.items
-                interactive: false  // let parent page handle wheel; users drag the scrollbar
+                // Not a Flickable gesture: a vertical wheel over the row must
+                // reach the page. The handlers below drag and wheel the row.
+                interactive: false
                 // Not tied to `interactive`: the row is one tab stop and
                 // Left/Right walk its cards.
                 keyNavigationEnabled: true
@@ -151,55 +220,54 @@ Item {
                     tabStop: ListView.isCurrentItem || hlist.currentIndex < 0
                     // A card the keyboard reaches is scrolled into view; the
                     // row does not follow its current item by itself here.
-                    onKeyboardOnChanged: if (keyboardOn) hlist.positionViewAtIndex(index, ListView.Contain)
+                    onKeyboardOnChanged: if (keyboardOn) { rowMove.stop(); hlist.positionViewAtIndex(index, ListView.Contain) }
                     onClicked:      root.itemClicked(index, modelData)
                     onPlayClicked:  root.itemPlayClicked(index, modelData)
                 }
             }
 
-            // Shift+wheel or native horizontal trackpad two-finger swipe
-            WheelHandler {
-                onWheel: (event) => {
-                    var hDelta = event.angleDelta.x
-                    var vDelta = event.angleDelta.y
-                    var hasShift = (event.modifiers & Qt.ShiftModifier) !== 0
-                    var effectiveDelta = (Math.abs(hDelta) > Math.abs(vDelta))
-                        ? hDelta
-                        : (hasShift ? vDelta : 0)
+            NumberAnimation {
+                id: rowMove
+                target: hlist; property: "contentX"
+                duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic
+            }
 
-                    if (effectiveDelta !== 0) {
-                        var maxX = Math.max(0, hlist.contentWidth - hlist.width)
-                        var newX = Math.max(0, Math.min(maxX, hlist.contentX - effectiveDelta * 0.8))
-                        if (newX !== hlist.contentX) {
-                            hlist.contentX = newX
-                            event.accepted = true
-                        } else {
-                            event.accepted = false
-                        }
-                    } else if (vDelta !== 0) {
-                        var p = root.parent
-                        var scrollParent = null
-                        while (p) {
-                            if (p.contentY !== undefined && p.contentHeight !== undefined && p.flickableDirection !== undefined) {
-                                scrollParent = p
-                                break
-                            }
-                            p = p.parent
-                        }
-                        if (scrollParent) {
-                            // From originY: a ListView with a header starts
-                            // above 0.
-                            var minY = scrollParent.originY
-                            var maxY = minY + Math.max(0, scrollParent.contentHeight - scrollParent.height)
-                            scrollParent.contentY = Math.max(minY, Math.min(maxY, scrollParent.contentY - vDelta))
-                            event.accepted = true
-                        } else {
-                            event.accepted = false
-                        }
-                    }
-                }
+            // A horizontal wheel or swipe and Shift+wheel move the row; a plain
+            // vertical wheel scrolls the page. Two handlers, because one
+            // WheelHandler only hears the wheel of its own orientation.
+            WheelHandler {
+                orientation: Qt.Horizontal
+                onWheel: (event) => root.wheel(event)
+            }
+            WheelHandler {
+                orientation: Qt.Vertical
+                onWheel: (event) => root.wheel(event)
             }
         }
+    }
+
+    function wheel(event) {
+        var hDelta = event.pixelDelta.x !== 0 ? event.pixelDelta.x : event.angleDelta.x
+        var vDelta = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y
+        var hasShift = (event.modifiers & Qt.ShiftModifier) !== 0
+        var sideways = Math.abs(hDelta) > Math.abs(vDelta) ? hDelta : (hasShift ? vDelta : 0)
+        if (sideways !== 0) {
+            var before = hlist.contentX
+            root.scrollTo(hlist.contentX - sideways)
+            event.accepted = hlist.contentX !== before
+            return
+        }
+        if (vDelta === 0) { event.accepted = false; return }
+        var p = root.parent
+        while (p && !(p.contentY !== undefined && p.contentHeight !== undefined
+                      && p.flickableDirection !== undefined))
+            p = p.parent
+        if (!p) { event.accepted = false; return }
+        // From originY: a ListView with a header starts above 0.
+        var minY = p.originY
+        var maxY = minY + Math.max(0, p.contentHeight - p.height)
+        p.contentY = Math.max(minY, Math.min(maxY, p.contentY - vDelta))
+        event.accepted = true
     }
 
     // Nothing sits over the whole section. A hoverEnabled MouseArea here would

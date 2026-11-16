@@ -264,6 +264,145 @@ TestCase {
                "repeat-one differs from repeat in only " + differ + " pixels at 18px")
     }
 
+    // ── 3. card rows: arrows, drag, the wheel, cards that hold still ─────
+
+    Component {
+        id: sectionHost
+        Window {
+            id: sWin
+            property alias section: sec
+            property alias page: flick
+            Flickable {
+                id: flick
+                anchors.fill: parent
+                contentHeight: 2000
+                flickableDirection: Flickable.VerticalFlick
+                HorizontalSection {
+                    id: sec
+                    width: sWin.width
+                    y: 40
+                    title: "Neu"
+                    mediaType: "album"
+                }
+            }
+        }
+    }
+
+    // "Show all" ends on the row's right inset, where the cards are clipped
+    // to, at every width. The cards keep their one size.
+    function test_show_all_ends_on_the_row_edge_data() {
+        var rows = []
+        for (var w = 560; w <= 1700; w += 37) rows.push({ tag: "" + w, w: w })
+        return rows
+    }
+
+    function test_show_all_ends_on_the_row_edge(row) {
+        var host = showHost(sectionHost, row.w, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        compare(sec.cardSize, 160, row.tag + ": the cards changed size")
+        var label = findByName(sec, "viewAllChevron")
+        verify(label, "the Show all chevron was not found")
+        var labelEnd = label.mapToItem(sec, label.width, 0).x
+        verify(Math.abs(labelEnd - (sec.width - sec.edgeInset)) <= 1,
+               row.tag + ": Show all ends at " + labelEnd.toFixed(1)
+               + " and the row at " + (sec.width - sec.edgeInset))
+    }
+
+    // Resizing the window moves no card: at the row's start each card keeps
+    // its x and its width, and the last one is simply cut off.
+    function test_cards_hold_still_while_the_window_resizes() {
+        var host = showHost(sectionHost, 1400, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        var list = findByName(sec, "sectionList")
+        function cards() {
+            var out = []
+            for (var i = 0; i < 3; ++i) {
+                var c = list.itemAtIndex(i)
+                verify(c, "card " + i + " was not built")
+                out.push({ x: c.mapToItem(sec, 0, 0).x, w: c.width })
+            }
+            return out
+        }
+        var first = cards()
+        for (var w = 1400; w >= 600; w -= 53) {
+            host.width = w
+            settle(host)
+            var now = cards()
+            for (var i = 0; i < 3; ++i) {
+                compare(now[i].x, first[i].x, "at " + w + "px card " + i + " moved")
+                compare(now[i].w, first[i].w, "at " + w + "px card " + i + " resized")
+            }
+        }
+    }
+
+    function test_the_arrows_page_by_whole_cards() {
+        var host = showHost(sectionHost, 900, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        var list = findByName(sec, "sectionList")
+        var back = findByName(sec, "sectionScrollBack")
+        var fwd = findByName(sec, "sectionScrollForward")
+        verify(back && fwd, "the row has no arrows")
+        verify(!back.enabled && fwd.enabled, "at the start only forward should work")
+        var step = sec.visibleCards * (sec.cardSize + sec.listSpacing)
+        var rest = list.contentX
+        mouseClick(fwd)
+        tryVerify(function () { return Math.abs(list.contentX - rest - step) < 0.5 }, 2000,
+                  "forward moved the row by " + (list.contentX - rest) + ", not " + step)
+        verify(back.enabled, "back stayed off after a page forward")
+        mouseClick(back)
+        tryVerify(function () { return Math.abs(list.contentX - rest) < 0.5 }, 2000,
+                  "back did not return to the start")
+        // Without overflow there is nothing to page.
+        sec.items = albums(2)
+        settle(host)
+        verify(!back.visible && !fwd.visible, "the arrows show on a row that fits")
+    }
+
+    function test_a_row_drags_sideways() {
+        var host = showHost(sectionHost, 900, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        var list = findByName(sec, "sectionList")
+        var rest = list.contentX
+        var y = list.height / 3
+        mousePress(list, 600, y)
+        for (var x = 580; x >= 200; x -= 20) mouseMove(list, x, y)
+        mouseRelease(list, 200, y)
+        tryVerify(function () { return !list.moving }, 3000)
+        verify(list.contentX - rest > 100, "a drag moved the row only by " + (list.contentX - rest))
+    }
+
+    function test_the_wheel_data() {
+        return [ { tag: "horizontal wheel moves the row", dx: -120, dy: 0, mods: Qt.NoModifier, row: true },
+                 { tag: "shift and wheel moves the row",  dx: 0, dy: -120, mods: Qt.ShiftModifier, row: true },
+                 { tag: "plain wheel moves the page",     dx: 0, dy: -120, mods: Qt.NoModifier, row: false } ]
+    }
+
+    function test_the_wheel(row) {
+        var host = showHost(sectionHost, 900, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        var list = findByName(sec, "sectionList")
+        var rest = list.contentX
+        mouseWheel(list, 300, list.height / 3, row.dx, row.dy, Qt.NoButton, row.mods)
+        settle(host)
+        if (row.row) {
+            verify(list.contentX > rest, row.tag + ": the row stayed at " + list.contentX)
+            compare(host.page.contentY, 0, row.tag + ": the page moved as well")
+        } else {
+            compare(list.contentX, rest, row.tag + ": the row moved")
+            verify(host.page.contentY > 0, row.tag + ": the page did not scroll")
+        }
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {

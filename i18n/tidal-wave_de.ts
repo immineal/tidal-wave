@@ -681,6 +681,16 @@
 <context>
     <name>HorizontalSection</name>
     <message>
+        <source>Scroll back</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Zurückblättern</translation>
+    </message>
+    <message>
+        <source>Scroll forward</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Weiterblättern</translation>
+    </message>
+    <message>
         <source>Show all</source>
         <translation>Alle anzeigen</translation>
     </message>
