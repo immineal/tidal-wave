@@ -7,6 +7,9 @@
 
 #include <QTest>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -143,6 +146,7 @@ public:
     int tracklistRequests = 0;
 
     int parkedTracklists() const { return m_parked.size(); }
+    using LibraryIndex::saveTrackCache;
 
     // Releases the oldest held tracklist reply. The indexer yields through a
     // zero timer between albums, so callers pump the loop afterwards.
@@ -2284,6 +2288,87 @@ private slots:
         QVERIFY(rowFor(lib.entries(), key).value(QStringLiteral("imageUrl")).toString().isEmpty());
     }
 
+    // ── the tracklist cache on disk ──────────────────────────────────────
+    // A fresh install indexes every saved album. The cache file is written in
+    // batches on a worker thread, so the GUI thread never serialises it.
+
+    void aRunKeepsItsProgressOnDiskAsItGoes() {
+        PinStore pins; pins.setUserId(kUser);
+        TestLibrary lib(&pins);
+        fillManyAlbums(lib, 300, 4);
+        lib.deferTracklists = true;
+        lib.setUserId(kUser);
+        lib.refresh();
+        QVERIFY(lib.indexing());
+        for (int i = 0; i < 150; ++i) {
+            lib.deliverOneTracklist();
+            while (lib.parkedTracklists() == 0) QCoreApplication::processEvents();
+        }
+        // Still indexing, and the half that is done is on disk: a crash or a
+        // kill now does not cost those requests again.
+        QVERIFY(lib.indexing());
+        QTRY_VERIFY_WITH_TIMEOUT(albumsOnDisk(kUser) >= 150, 15000);
+        lib.deliverAllTracklists();
+        QTRY_VERIFY(!lib.indexing());
+        QTRY_COMPARE_WITH_TIMEOUT(albumsOnDisk(kUser), 300, 15000);
+    }
+
+    void savingTheCacheBarelyHoldsTheGuiThread() {
+        constexpr int kAlbums = 3000;
+        constexpr int kTracks = 12;
+        PinStore pins; pins.setUserId(kUser);
+        qint64 endMs = 0;
+        qint64 savesMs = 0;
+        qint64 writesMs = 0;
+        constexpr int kSaves = 20;
+        {
+            TestLibrary lib(&pins);
+            fillManyAlbums(lib, kAlbums, kTracks);
+            lib.deferTracklists = true;
+            lib.setUserId(kUser);
+            lib.refresh();
+            // One request at a time: the next goes out once a reply is in.
+            for (int i = 0; i < kAlbums - 1; ++i) {
+                lib.deliverOneTracklist();
+                while (lib.parkedTracklists() == 0) QCoreApplication::processEvents();
+            }
+            // The last reply ends the run, which writes the whole cache.
+            QElapsedTimer t;
+            t.start();
+            lib.deliverOneTracklist();
+            while (lib.indexing()) QCoreApplication::processEvents();
+            endMs = t.elapsed();
+
+            // The write alone, as often as a busy run would ask for it.
+            t.start();
+            for (int i = 0; i < kSaves; ++i) lib.saveTrackCache();
+            writesMs = t.elapsed();
+
+            // Albums saved one after another, each indexed as it lands.
+            lib.deferTracklists = false;
+            QList<Album> fresh;
+            for (int i = 0; i < kSaves; ++i) {
+                const Album a = mkAlbum(900000 + i, QStringLiteral("Saved %1").arg(i), {});
+                lib.albumTracks[a.id] = {mkTrack(9000000 + i, QStringLiteral("Saved song %1").arg(i), a, {})};
+                fresh << a;
+            }
+            t.start();
+            for (const Album &a : std::as_const(fresh)) lib.addAlbum(a);
+            savesMs = t.elapsed();
+        }
+        // The library is gone and its last state is on disk.
+        QCOMPARE(albumsOnDisk(kUser), kAlbums + kSaves);
+
+        // Ending the run and saving an album also rebuild the index, which
+        // costs what it costs; only the write is held to a ceiling.
+        qInfo("%d albums of %d tracks, GUI thread: %lldms for %d cache writes, "
+              "%lldms to end the run, %lldms for %d saved albums",
+              kAlbums, kTracks, writesMs, kSaves, endMs, savesMs, kSaves);
+        QVERIFY2(writesMs < 10 * kSaves,
+                 qPrintable(QStringLiteral("%1 writes of the cache held the GUI thread for %2ms")
+                                .arg(kSaves).arg(writesMs)));
+    }
+
 private:
     static constexpr qint64 kUser      = 1001;
     static constexpr qint64 kOtherUser = 2002;
@@ -2359,6 +2444,29 @@ private:
         lib.albumTracks[300] = {mkTrack(701, QStringLiteral("Molvane Intro"), selfTitled, {molvane})};
         lib.albumTracks[320] = {mkTrack(700, QStringLiteral("Ocean Choir"), ocean, {various}),
                                 mkTrack(702, QStringLiteral("Ocean Drift"), ocean, {various})};
+    }
+
+    static void fillManyAlbums(TestLibrary &lib, int albums, int tracks) {
+        const Artist artist = mkArtist(77, QStringLiteral("Eine Band"));
+        lib.artists = {artist};
+        for (int i = 0; i < albums; ++i) {
+            const Album a = mkAlbum(500000 + i, QStringLiteral("Platte %1").arg(i), {artist}, tracks);
+            lib.albums << a;
+            QList<Track> list;
+            for (int n = 0; n < tracks; ++n)
+                list << mkTrack(qint64(5000000) + qint64(i) * 100 + n,
+                                QStringLiteral("Stück %1 von Platte %2").arg(n).arg(i), a, {artist});
+            lib.albumTracks[a.id] = list;
+        }
+    }
+
+    // The albums in the tracklist cache file, -1 when it cannot be read.
+    static int albumsOnDisk(qint64 uid) {
+        QFile f(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                + QStringLiteral("/library/albumtracks-%1.json").arg(uid));
+        if (!f.open(QIODevice::ReadOnly)) return -1;
+        return int(QJsonDocument::fromJson(f.readAll()).object()
+                       .value(QStringLiteral("albums")).toArray().size());
     }
 
     static void waitForIndex(TestLibrary &lib) {

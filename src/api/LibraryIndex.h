@@ -11,12 +11,14 @@
 #include <QVariantMap>
 
 #include <functional>
+#include <memory>
 
 #include "Models.h"
 
 class TidalClient;
 class TidalBridge;
 class PinStore;
+class QTimer;
 
 // The sidebar's model: every saved playlist, album, artist and mix in one flat
 // list, plus the local search index over them and over songs. Order is the
@@ -129,6 +131,10 @@ protected:
     virtual void fetchMixList     (MixesCb cb);
     virtual void fetchAlbumTracklist(qint64 albumId, TracksCb cb);
 
+    // Hands the cache as it stands to the writer thread; costs the GUI
+    // thread a copy of two shared lists. Protected so a test can time it.
+    void saveTrackCache();
+
 private:
     // One row of the sidebar, or one song in the search index. The folded and
     // collated forms are computed once, here.
@@ -198,7 +204,8 @@ private:
     // Drops the play times of songs that have left the library.
     void pruneSongPlays();
     void loadTrackCache();
-    void saveTrackCache() const;
+    // Saves within kTrackCacheSaveMs, however many albums land meanwhile.
+    void scheduleTrackCacheSave();
     QString trackCachePath() const;
     // The five lists as last loaded whole; see FavoritesCache.
     void saveLibraryCache() const;
@@ -236,6 +243,12 @@ private:
 
     QHash<QString, qint64> m_recents;            // "kind:id" to ms since epoch
     QHash<qint64, CachedAlbum> m_albumTrackCache;
+
+    // The writer, shared with the thread that writes; see LibraryIndex.cpp.
+    struct TrackCacheStore;
+    std::shared_ptr<TrackCacheStore> m_cacheStore;
+    QTimer *m_cacheTimer = nullptr;
+    bool    m_cacheDirty = false;
 
     QList<qint64> m_indexQueue;
     bool m_loading   = false;

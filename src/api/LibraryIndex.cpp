@@ -9,18 +9,23 @@
 
 #include <QCollator>
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QMutex>
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QThreadPool>
 #include <QTimer>
+#include <QWaitCondition>
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 using namespace Tidal;
 
@@ -35,6 +40,9 @@ constexpr auto kKindTrack    = "track";
 // Version of the on-disk tracklist cache. Bumping it discards every cache
 // written by an older build.
 constexpr int kCacheVersion = 1;
+// How long album tracklists that land are gathered before the cache is
+// written: at most one write per interval during an index run.
+constexpr int kTrackCacheSaveMs = 2000;
 
 // The parts of one refresh, for m_failedParts.
 enum Part { kPartPlaylists = 1, kPartAlbums = 2, kPartArtists = 4, kPartTracks = 8,
@@ -143,13 +151,122 @@ QString artistPictureUrl(const QString &picture, int size = 320) {
 
 } // namespace
 
+// At most one write in flight; a snapshot that arrives meanwhile replaces any
+// other that waits, so the latest state wins. As Player::QueueStore.
+struct LibraryIndex::TrackCacheStore {
+    struct Snapshot {
+        QString path;
+        qint64  userId = 0;
+        QHash<qint64, CachedAlbum> cache;   // shared with the GUI thread's copy
+        QList<Album> albums;
+    };
+
+    QMutex                  mutex;
+    QWaitCondition          idle;
+    bool                    busy = false;
+    std::optional<Snapshot> waiting;
+
+    static QByteArray encode(const Snapshot &s) {
+        QSet<qint64> stillSaved;
+        for (const Album &a : s.albums) stillSaved.insert(a.id);
+
+        QJsonArray albums;
+        for (auto it = s.cache.constBegin(); it != s.cache.constEnd(); ++it) {
+            // An unsaved album's tracklist is dropped, so the file stays bounded.
+            // With no album list loaded (offline, say) nothing is pruned.
+            if (!stillSaved.isEmpty() && !stillSaved.contains(it.key())) continue;
+
+            QJsonArray tracks;
+            for (const Entry &e : it.value().tracks) {
+                QJsonObject to;
+                to[QStringLiteral("i")] = double(e.id.toLongLong());
+                to[QStringLiteral("t")] = e.title;
+                to[QStringLiteral("s")] = e.subtitle;
+                to[QStringLiteral("c")] = e.imageUrl;
+                QJsonArray artistIds;
+                for (qint64 artistId : e.artistIds) artistIds.append(double(artistId));
+                to[QStringLiteral("r")] = artistIds;
+                tracks.append(to);
+            }
+
+            QJsonObject ao;
+            ao[QStringLiteral("id")]     = double(it.key());
+            ao[QStringLiteral("n")]      = it.value().numTracks;
+            ao[QStringLiteral("tracks")] = tracks;
+            albums.append(ao);
+        }
+
+        QJsonObject root;
+        root[QStringLiteral("version")] = kCacheVersion;
+        root[QStringLiteral("userId")]  = double(s.userId);
+        root[QStringLiteral("albums")]  = albums;
+        return QJsonDocument(root).toJson(QJsonDocument::Compact);
+    }
+
+    static void write(const Snapshot &s) {
+        QDir().mkpath(QFileInfo(s.path).absolutePath());
+        QSaveFile f(s.path);
+        if (!f.open(QIODevice::WriteOnly)) {
+            qWarning() << "LibraryIndex: could not save the tracklist cache to" << s.path
+                       << f.errorString();
+            return;
+        }
+        f.write(encode(s));
+        if (!f.commit())
+            qWarning() << "LibraryIndex: could not save the tracklist cache to" << s.path
+                       << f.errorString();
+    }
+
+    static void submit(const std::shared_ptr<TrackCacheStore> &store, Snapshot s) {
+        {
+            QMutexLocker lock(&store->mutex);
+            store->waiting = std::move(s);
+            if (store->busy) return;
+            store->busy = true;
+        }
+        QThreadPool::globalInstance()->start([store] {
+            for (;;) {
+                Snapshot next;
+                {
+                    QMutexLocker lock(&store->mutex);
+                    if (!store->waiting) {
+                        store->busy = false;
+                        store->idle.wakeAll();
+                        return;
+                    }
+                    next = std::move(*store->waiting);
+                    store->waiting.reset();
+                }
+                write(next);
+            }
+        });
+    }
+
+    // Waits for what is in flight and what waits behind it.
+    void flush() {
+        QMutexLocker lock(&mutex);
+        while (busy) idle.wait(&mutex);
+    }
+};
+
 LibraryIndex::LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent)
-    : QObject(parent), m_client(client), m_pins(pins) {
+    : QObject(parent), m_client(client), m_pins(pins),
+      m_cacheStore(std::make_shared<TrackCacheStore>()) {
     if (m_pins)
         connect(m_pins, &PinStore::changed, this, &LibraryIndex::rebuild);
+    m_cacheTimer = new QTimer(this);
+    m_cacheTimer->setSingleShot(true);
+    m_cacheTimer->setInterval(kTrackCacheSaveMs);
+    connect(m_cacheTimer, &QTimer::timeout, this, [this] {
+        if (m_cacheDirty) saveTrackCache();
+    });
 }
 
-LibraryIndex::~LibraryIndex() = default;
+// What landed since the last write goes out, and the quit waits for it.
+LibraryIndex::~LibraryIndex() {
+    if (m_cacheDirty) saveTrackCache();
+    m_cacheStore->flush();
+}
 
 QVariantList LibraryIndex::entries() const { return m_entries; }
 bool LibraryIndex::loading() const  { return m_loading; }
@@ -173,6 +290,8 @@ void LibraryIndex::setUserId(qint64 uid) {
     // Replies in flight for the previous account must not land in the new
     // one's index. What it had indexed is kept on disk.
     if (m_indexing) cancelIndexing();
+    // A save still gathering belongs to the account it was gathered for.
+    if (m_cacheDirty) saveTrackCache();
     ++m_indexGen;
     m_indexQueue.clear();
 
@@ -863,8 +982,6 @@ void LibraryIndex::indexOneAlbum(qint64 albumId) {
         if (!err.isEmpty()) return;
         const qsizetype was = m_trackEntries.size();
         indexAlbum(albumId, tracks);
-        // Written now, so the next launch does not fetch the tracklist again.
-        saveTrackCache();
         if (m_trackEntries.size() != was) emit entriesChanged();
     });
 }
@@ -900,6 +1017,8 @@ void LibraryIndex::indexAlbum(qint64 albumId, const QList<Track> &tracks) {
     cached.tracks.reserve(tracks.size());
     for (const Track &t : tracks) cached.tracks.append(entryFor(t, albumId));
     m_albumTrackCache.insert(albumId, cached);
+    // Kept as it goes, so a run cut short does not fetch these again.
+    scheduleTrackCacheSave();
 
     // Searchable right away, before the whole run is done.
     for (const Entry &e : cached.tracks) {
@@ -1002,49 +1121,18 @@ void LibraryIndex::loadTrackCache() {
     }
 }
 
-void LibraryIndex::saveTrackCache() const {
+void LibraryIndex::saveTrackCache() {
+    m_cacheDirty = false;
+    m_cacheTimer->stop();
     if (m_userId <= 0) return;
+    // Both copies share their data: nothing is serialised on this thread.
+    TrackCacheStore::submit(m_cacheStore, TrackCacheStore::Snapshot{
+        trackCachePath(), m_userId, m_albumTrackCache, m_albums });
+}
 
-    QSet<qint64> stillSaved;
-    for (const Album &a : m_albums) stillSaved.insert(a.id);
-
-    QJsonArray albums;
-    for (auto it = m_albumTrackCache.constBegin(); it != m_albumTrackCache.constEnd(); ++it) {
-        // An unsaved album's tracklist is dropped, so the file stays bounded.
-        // With no album list loaded (offline, say) nothing is pruned.
-        if (!stillSaved.isEmpty() && !stillSaved.contains(it.key())) continue;
-
-        QJsonArray tracks;
-        for (const Entry &e : it.value().tracks) {
-            QJsonObject to;
-            to[QStringLiteral("i")] = double(e.id.toLongLong());
-            to[QStringLiteral("t")] = e.title;
-            to[QStringLiteral("s")] = e.subtitle;
-            to[QStringLiteral("c")] = e.imageUrl;
-            QJsonArray artistIds;
-            for (qint64 artistId : e.artistIds) artistIds.append(double(artistId));
-            to[QStringLiteral("r")] = artistIds;
-            tracks.append(to);
-        }
-
-        QJsonObject ao;
-        ao[QStringLiteral("id")]     = double(it.key());
-        ao[QStringLiteral("n")]      = it.value().numTracks;
-        ao[QStringLiteral("tracks")] = tracks;
-        albums.append(ao);
-    }
-
-    QJsonObject root;
-    root[QStringLiteral("version")] = kCacheVersion;
-    root[QStringLiteral("userId")]  = double(m_userId);
-    root[QStringLiteral("albums")]  = albums;
-
-    const QString path = trackCachePath();
-    QDir().mkpath(QFileInfo(path).absolutePath());
-    QSaveFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return;
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-    f.commit();
+void LibraryIndex::scheduleTrackCacheSave() {
+    m_cacheDirty = true;
+    if (!m_cacheTimer->isActive()) m_cacheTimer->start();
 }
 
 // ── search ──────────────────────────────────────────────────────────────────
