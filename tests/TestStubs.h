@@ -2120,6 +2120,8 @@ public:
     }
 
 signals:
+    // As the real Application: a Tidal link handed over from outside.
+    void openRequested(const QString &kind, const QString &id);
     void reallyQuitChanged();
     void reducedMotionChanged();
 

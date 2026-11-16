@@ -757,6 +757,20 @@ ApplicationWindow {
 
     CastErrorTip { }
 
+    // A Tidal link from the command line or the desktop. Track links arrive
+    // as their album; each page loads its header from the id.
+    Connections {
+        target: app
+        function onOpenRequested(kind, id) {
+            switch (kind) {
+            case "album":    root.navigate("album",    { albumId: parseInt(id) }); break
+            case "artist":   root.navigate("artist",   { artistId: parseInt(id) }); break
+            case "playlist": root.navigate("playlist", { playlistUuid: id }); break
+            case "mix":      root.navigate("mix",      { mixId: id }); break
+            }
+        }
+    }
+
     // Over everything but popups: sees each press first, then turns it down so
     // it reaches the item under it. A parent's PointHandler misses presses a
     // MouseArea accepts.
