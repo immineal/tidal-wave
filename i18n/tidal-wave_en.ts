@@ -912,6 +912,11 @@
         <comment>compact duration in minutes</comment>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Playing from: search “%1”</source>
+        <comment>the track was started from the search results</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Player</name>
@@ -1186,6 +1191,11 @@
     <message>
         <source>Shuffled</source>
         <comment>the queue is in shuffled order</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next from: search “%1”</source>
+        <comment>the queue was started from the search results</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>

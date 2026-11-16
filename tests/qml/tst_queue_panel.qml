@@ -247,6 +247,19 @@ TestCase {
                "the context header does not name the playlist it came from")
     }
 
+    // A search is named as a search, not by its bare query.
+    function test_the_context_header_says_a_search() {
+        seedAll()
+        player.setPlaybackSource("search", "fontaines", "fontaines")
+        var host = showHost()
+        var panel = openPanel(host)
+
+        verify(headerLabels(panel).indexOf(
+                   qsTranslate("QueuePanel", "Next from: search “%1”",
+                               "the queue was started from the search results").arg("fontaines")) >= 0,
+               "the context header shows " + headerLabels(panel).join(" | "))
+    }
+
     // ── empty sections draw no header ────────────────────────────────────
 
     function test_an_empty_section_shows_no_header() {

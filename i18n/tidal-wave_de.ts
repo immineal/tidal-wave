@@ -1040,6 +1040,11 @@
         <comment>sleep timer option, for a screen reader</comment>
         <translation>%1 Minuten</translation>
     </message>
+    <message>
+        <source>Playing from: search “%1”</source>
+        <comment>the track was started from the search results</comment>
+        <translation>Wiedergabe von: Suche „%1“</translation>
+    </message>
 </context>
 <context>
     <name>OfflineNotice</name>
@@ -1398,6 +1403,11 @@
         <source>Shuffled</source>
         <comment>the queue is in shuffled order</comment>
         <translation>Zufällig</translation>
+    </message>
+    <message>
+        <source>Next from: search “%1”</source>
+        <comment>the queue was started from the search results</comment>
+        <translation>Als Nächstes von: Suche „%1“</translation>
     </message>
 </context>
 <context>

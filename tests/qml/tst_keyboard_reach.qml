@@ -232,6 +232,24 @@ TestCase {
         compare(host.navCalls[host.navCalls.length - 1], "album")
     }
 
+    // A search has no title of its own, so the link says it was a search
+    // rather than showing the bare query as if it were an album.
+    function test_playing_from_a_search_says_search() {
+        var host = show()
+        player.setPlaybackSource("search", "fontaines", "fontaines")
+        var page = place(host, npC)
+        var link = named(page, "nowPlayingSourceLink")
+        compare(link.text,
+                qsTranslate("NowPlayingPage", "Playing from: search “%1”",
+                            "the track was started from the search results").arg("fontaines"))
+        // And it goes back to that search.
+        link.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(host.navCalls[host.navCalls.length - 1], "search")
+        player.setPlaybackSource("album", "7788", "Nachtfahrt")
+        compare(link.text, qsTranslate("NowPlayingPage", "Playing from: %1").arg("Nachtfahrt"))
+    }
+
     // ── Radio and Artist ─────────────────────────────────────────────────
 
     function test_radio_back() {

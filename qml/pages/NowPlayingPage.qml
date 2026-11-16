@@ -1243,7 +1243,11 @@ Rectangle {
                                 Accessible.name: text
                                 Accessible.onPressAction: goToSource()
                                 font.underline: activeFocus
-                                text: qsTr("Playing from: %1").arg(player.sourceName)
+                                // A search has only its query for a name, so it says so.
+                                text: player.sourceType === "search"
+                                      ? qsTr("Playing from: search “%1”",
+                                             "the track was started from the search results").arg(player.sourceName)
+                                      : qsTr("Playing from: %1").arg(player.sourceName)
                                 color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: 12
                                 font.letterSpacing: 0.5
@@ -2455,6 +2459,7 @@ Rectangle {
         if (t === "mix")        return { page: "mix",        params: { mixId: player.sourceId } }
         if (t === "radio")      return { page: "radio",      params: { radioTitle: player.sourceName, trackId: Number(player.sourceId) } }
         if (t === "collection") return { page: "collection", params: { activeTab: 0 } }
+        if (t === "search")     return { page: "search",     params: { requestedQuery: player.sourceId } }
         return null
     }
     function goToSource() {
