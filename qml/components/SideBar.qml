@@ -347,20 +347,9 @@ Item {
         visible: root.tipRow !== null
         text: root.tipRow ? root.tipRow.tipText : ""
         delay: Theme.tooltipDelay
+        // The look is every tip's, from qml/style/ToolTip.qml.
         x: parent.width + Theme.space2
         y: Math.round((parent.height - height) / 2)
-        // Dressed like the app's menus and notices.
-        padding: Theme.space2
-        contentItem: Text {
-            text: sideTip.text
-            color: Theme.textPrimary
-            font.pixelSize: Theme.fontMeta
-        }
-        background: Rectangle {
-            color: Theme.surfaceHigh
-            border.color: Theme.border
-            radius: Theme.radiusMedium
-        }
     }
 
     ContextMenu {

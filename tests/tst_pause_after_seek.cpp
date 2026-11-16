@@ -189,6 +189,13 @@ private:
     QList<std::pair<qlonglong, StreamCb>> m_held;
 };
 
+// Events delivered so far. None between two reports means one call stack,
+// where no frame can be drawn.
+quint64 g_events = 0;
+struct EventCounter : QObject {
+    bool eventFilter(QObject *, QEvent *) override { ++g_events; return false; }
+};
+
 // What the Player and its backend said, in order, for a failure to quote.
 struct Heard {
     QStringList   said;
@@ -200,13 +207,25 @@ struct Heard {
     // Reports of buffering that the flag did not show.
     int           bufferingNotShown = 0;
     bool          ended = false;
+    // The flag fell short of a full buffer and rose again: in one call
+    // stack, where no frame is drawn between, or with events between, where
+    // the spinner can blank. Since the test last cleared these.
+    int           flips = 0;
+    int           blanks = 0;
+    bool          fell = false;
+    quint64       eventsAtFall = 0;
+
+    void clearFlips() { flips = blanks = 0; fell = false; }
 
     void listenTo(Player *p, QMediaPlayer *mp)
     {
         clock.start();
-        QObject::connect(p, &Player::loadingChanged, mp, [this](bool on) {
+        QObject::connect(p, &Player::loadingChanged, mp, [this, mp](bool on) {
             if (on) ++rises;
             note(on ? QStringLiteral("loading") : QStringLiteral("loaded"));
+            if (on && fell) ++(g_events == eventsAtFall ? flips : blanks);
+            fell = !on && mp->mediaStatus() != QMediaPlayer::BufferedMedia;
+            eventsAtFall = g_events;
         });
         QObject::connect(p, &Player::playingChanged, mp, [this](bool on) {
             note(on ? QStringLiteral("plays") : QStringLiteral("plays not"));
@@ -372,6 +391,7 @@ private slots:
                 inTidalsLayout(QByteArray::fromBase64(QByteArray(kProgSegmentsB64[i]))));
         QVERIFY(m_server.segments.at(1).mid(4, 4) == "moof");
         QVERIFY(m_server.listen(QHostAddress::LocalHost));
+        qApp->installEventFilter(new EventCounter);
 
         QString mpd = QString::fromUtf8(kManifest);
         mpd.replace(QStringLiteral("@BASE@"),
@@ -571,6 +591,37 @@ private slots:
         }, 10000), l.heard.after("the track did not start over").constData());
         QVERIFY2(l.heard.bufferingNotShown == 0,
                  l.heard.after("the start buffered and the flag was down").constData());
+    }
+
+    // A start reports Playing and then BufferingMedia, and the flag falls at
+    // the one and rises at the other. That must stay in one call stack, or
+    // the spinner can blank for a frame.
+    void aStartShowsItsLoadWithoutABreak_data()
+    {
+        QTest::addColumn<bool>("streamFirst");
+        QTest::newRow("as it comes")     << false;
+        QTest::newRow("streamed first") << true;
+    }
+
+    void aStartShowsItsLoadWithoutABreak()
+    {
+        QFETCH(bool, streamFirst);
+        if (const char *why = obstacle()) QSKIP(why);
+        Launch l;
+        QVERIFY(sounding(l, 1, streamFirst));
+        QVERIFY2(l.heard.blanks == 0,
+                 l.heard.after("the first start let the spinner blank").constData());
+
+        l.heard.note(QStringLiteral("next()"));
+        l.p().next();
+        QCOMPARE(l.mp()->playbackState(), QMediaPlayer::StoppedState);
+        l.heard.clearFlips();
+        l.press();
+        QVERIFY2(QTest::qWaitFor([&l] {
+            return l.plays() && l.mp()->position() >= 300 && !l.p().loading();
+        }, 10000), l.heard.after("the track did not start over").constData());
+        QVERIFY2(l.heard.blanks == 0,
+                 l.heard.after("the start over let the spinner blank").constData());
     }
 
     // What stays a load: buffering at a start, and buffering the backend

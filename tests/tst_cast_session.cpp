@@ -303,9 +303,11 @@ private slots:
         QSignalSpy gone(&session, &CastSession::disconnected);
         QSignalSpy up(&session, &CastSession::connected);
         QSignalSpy error(&session, &CastSession::error);
+        QSignalSpy ended(&session, &CastSession::endedOnDevice);
         receiver.send(ns, payload, source);
 
         QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 3000);
+        QCOMPARE(ended.count(), 1);
         QVERIFY(!session.isConnected());
         QTRY_COMPARE_WITH_TIMEOUT(receiver.peer->state(), QAbstractSocket::UnconnectedState,
                                   5000);
@@ -350,10 +352,13 @@ private slots:
         QVERIFY(connectTo(session, receiver));
         QSignalSpy gone(&session, &CastSession::disconnected);
         QSignalSpy error(&session, &CastSession::error);
+        QSignalSpy ended(&session, &CastSession::endedOnDevice);
 
         receiver.peer->abort();
 
         QTRY_COMPARE_WITH_TIMEOUT(gone.count(), 1, 3000);
+        // A dropped line is the network's, not the device ending the cast.
+        QCOMPARE(ended.count(), 0);
         QCOMPARE(error.count(), 1);
         QCOMPARE(error.first().at(0).toString(),
                  QStringLiteral("The connection to the cast device was lost."));
