@@ -17,6 +17,9 @@ Item {
     property bool   compact: false
     // Still clickable, drawn as "this will not do much right now".
     property bool   muted: false
+    // The glyph's own ink, for a state the label does not carry. Undefined
+    // follows the label.
+    property var    iconColor: undefined
     readonly property bool solidDanger: danger && accent
     readonly property bool quietDanger: danger && !accent
 
@@ -59,7 +62,7 @@ Item {
             VectorIcon {
                 id: pillIcon
                 name: root.icon
-                color: pillText.color
+                color: root.iconColor !== undefined ? root.iconColor : pillText.color
                 width: root.compact ? 13 : 14
                 height: width
                 anchors.verticalCenter: parent.verticalCenter

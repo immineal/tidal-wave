@@ -108,6 +108,20 @@ Rectangle {
     readonly property var albumArtistList:
         (albumData.artistList && albumData.artistList.length > 0) ? albumData.artistList : []
 
+    // Whether a track is credited to exactly the album's artists, in which
+    // case its row leaves the names out. By id where both lists have them.
+    function byAlbumArtists(t) {
+        var mine = (t && t.artistList) ? t.artistList : []
+        if (mine.length > 0 && root.albumArtistList.length > 0) {
+            if (mine.length !== root.albumArtistList.length) return false
+            for (var i = 0; i < mine.length; i++)
+                if (Number(mine[i].id) !== Number(root.albumArtistList[i].id)) return false
+            return true
+        }
+        var joined = albumData.artists || ""
+        return joined.length > 0 && t && t.artists === joined
+    }
+
     onAlbumIdChanged: if (albumId > 0) {
         root.unsaving = false
         root.unsaveDone = false
@@ -323,7 +337,10 @@ Rectangle {
                         text: root.isSaved ? qsTr("Saved", "state, album is in the library")
                                            : qsTr("Save", "verb, add album to the library")
                         icon: root.isSaved ? "heart-filled" : "heart"
-                        accent: root.isSaved
+                        // A state, not the page's main action: outlined,
+                        // with the heart filled in the accent.
+                        accent: false
+                        iconColor: root.isSaved ? Theme.accentText : undefined
                         // Anchored on the action row, which has clear space
                         // above it.
                         onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
@@ -370,6 +387,7 @@ Rectangle {
                 durationStr: modelData.durationStr
                 showAlbum:   false
                 showCover:   false
+                showArtists: !root.byAlbumArtists(modelData)
                 trackData:   modelData
                 onPlayRequested: root.playFrom(root.tracks, index)
             }

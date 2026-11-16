@@ -848,6 +848,43 @@ TestCase {
         panel.close()
     }
 
+    // ── 10. the album page ───────────────────────────────────────────────
+
+    Component { id: albumC; AlbumPage { anchors.fill: parent } }
+
+    function test_the_album_artist_is_not_repeated_under_every_track() {
+        var host = showHost(plainHost, 900, 1100)
+        var page = createTemporaryObject(albumC, host.pane)
+        page.albumId = 42
+        page.albumData = { id: 42, title: "Ein Album", artists: "Ein Interpret",
+                           artistId: 3, artistList: [{ id: 3, name: "Ein Interpret" }],
+                           numTracks: 3, duration: 600, coverUrl: "" }
+        var t = tracks(3)
+        t[2].artists = "Ein Interpret, Ein Gast"
+        t[2].artistList = [{ id: 3, name: "Ein Interpret" }, { id: 8, name: "Ein Gast" }]
+        page.tracks = t
+        settle(host)
+        var lines = collectByName(page, "trackRowArtistLine", [])
+        verify(lines.length === 3, "found " + lines.length + " artist lines")
+        verify(!lines[0].visible && !lines[1].visible,
+               "the album artist is repeated under its own tracks")
+        verify(lines[2].visible, "a guest's name was hidden with the album artist")
+    }
+
+    function test_saved_is_not_a_primary_action() {
+        bridge.setAlbumFavoriteForTest(42, true)
+        var host = showHost(plainHost, 900, 900)
+        var page = createTemporaryObject(albumC, host.pane)
+        page.albumId = 42
+        page.albumData = { id: 42, title: "Ein Album", artists: "Ein Interpret", coverUrl: "" }
+        page.tracks = tracks(2)
+        settle(host)
+        var pill = findByName(page, "albumSavePill")
+        verify(page.isSaved, "the album is not saved")
+        verify(!pill.accent, "Saved is drawn as a solid accent button")
+        bridge.setAlbumFavoriteForTest(42, false)
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
