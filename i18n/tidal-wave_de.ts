@@ -94,21 +94,6 @@
     </message>
 </context>
 <context>
-    <name>Application</name>
-    <message>
-        <source>Show</source>
-        <translation>Anzeigen</translation>
-    </message>
-    <message>
-        <source>Hide</source>
-        <translation>Ausblenden</translation>
-    </message>
-    <message>
-        <source>Quit</source>
-        <translation>Beenden</translation>
-    </message>
-</context>
-<context>
     <name>ArtistLinks</name>
     <message>
         <source>, </source>
@@ -1853,6 +1838,21 @@
             <numerusform>%n Titel</numerusform>
             <numerusform>%n Titel</numerusform>
         </translation>
+    </message>
+</context>
+<context>
+    <name>TrayMenu</name>
+    <message>
+        <source>Show</source>
+        <translation>Anzeigen</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation>Ausblenden</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Beenden</translation>
     </message>
 </context>
 <context>

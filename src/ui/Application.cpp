@@ -6,6 +6,7 @@
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
 #include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
@@ -942,19 +943,11 @@ void Application::createTrayIcon(const QIcon &icon) {
     m_trayIcon = new QSystemTrayIcon(trayArt, this);
     m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
-    QMenu *trayMenu = new QMenu();
-    QAction *showAction = trayMenu->addAction(tr("Show"));
-    connect(showAction, &QAction::triggered, this, &Application::showWindow);
-
-    QAction *hideAction = trayMenu->addAction(tr("Hide"));
-    connect(hideAction, &QAction::triggered, this, &Application::hideWindow);
-
-    trayMenu->addSeparator();
-
-    QAction *quitAction = trayMenu->addAction(tr("Quit"));
-    connect(quitAction, &QAction::triggered, this, &Application::quit);
-
-    m_trayIcon->setContextMenu(trayMenu);
+    m_trayMenu = new TrayMenu(this);
+    connect(m_trayMenu, &TrayMenu::showRequested, this, &Application::showWindow);
+    connect(m_trayMenu, &TrayMenu::hideRequested, this, &Application::hideWindow);
+    connect(m_trayMenu, &TrayMenu::quitRequested, this, &Application::quit);
+    m_trayIcon->setContextMenu(m_trayMenu->menu());
 
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {

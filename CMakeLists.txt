@@ -69,6 +69,7 @@ set(SOURCES
     src/ui/PinStore.cpp
     src/ui/Shortcuts.cpp
     src/ui/SignalWatcher.cpp
+    src/ui/TrayMenu.cpp
     src/api/LibraryIndex.cpp
 )
 
@@ -97,6 +98,7 @@ set(HEADERS
     src/ui/PinStore.h
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
+    src/ui/TrayMenu.h
     src/api/LibraryIndex.h
     src/api/PageEverything.h
 )
