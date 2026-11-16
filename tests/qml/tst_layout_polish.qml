@@ -690,6 +690,87 @@ TestCase {
                "the handle is " + bar.contentItem.height.toFixed(1) + "px for 5000 rows")
     }
 
+    // ── 8. the queue's drag handle ───────────────────────────────────────
+
+    Component {
+        id: queueHost
+        Window {
+            property alias panel: qp
+            QueuePanel { id: qp; anchors.fill: parent }
+        }
+    }
+
+    function seedQueue() {
+        player.setQueueForTest(tracks(3), 0)
+        player.setCurrentTrackForTest(track("Titel 0", 0))
+        var manual = []
+        for (var i = 0; i < 30; ++i) manual.push(track("Eigene " + i, 100 + i))
+        player.setManualForTest(manual)
+    }
+
+    function manualRows(panel) {
+        return collectByName(panel, "queueEntry", []).filter(function (e) {
+            return e.isManual && e.visible
+        })
+    }
+
+    function test_the_drag_handle_is_large_and_clear() {
+        seedQueue()
+        var host = showHost(queueHost, 900, 800)
+        settle(host)
+        var entry = manualRows(host.panel)[0]
+        var grip = findByName(entry, "queueDragGrip")
+        var area = findByName(entry, "queueDragArea")
+        verify(grip && area, "the grip or its drag area was not found")
+        verify(grip.width >= 20, "the grip is " + grip.width + "px")
+        verify(area.width >= 28 && area.height >= 28,
+               "the drag target is " + area.width + "x" + area.height)
+        compare(grip.opacity, 1, "the grip is faded at rest")
+        verify(Qt.colorEqual(grip.color, Theme.textSec), "the grip is drawn in " + grip.color)
+        player.setManualForTest([])
+    }
+
+    function test_dragging_a_row_body_does_not_scroll_the_queue() {
+        seedQueue()
+        var host = showHost(queueHost, 900, 600)
+        settle(host)
+        var list = findByName(host.panel, "queuePanelList")
+        list.contentY = 200
+        settle(host)
+        var y0 = list.contentY
+        // A row well inside the viewport, so the whole drag lands on the list.
+        var entry = manualRows(host.panel).filter(function (e) {
+            var top = e.mapToItem(list, 0, 0).y
+            return top > list.height / 2 && top < list.height - 2 * e.height
+        })[0]
+        verify(entry, "no manual row sits in the lower half of the list")
+        var x = entry.width * 0.6, y = entry.height / 2
+        mousePress(entry, x, y)
+        for (var d = 10; d <= 150; d += 10) mouseMove(entry, x, y - d)
+        mouseRelease(entry, x, y - 150)
+        settle(host)
+        compare(list.contentY, y0, "dragging a row's body scrolled the queue")
+        player.setManualForTest([])
+    }
+
+    // The jump pill moves between the two edges and keeps its size: once
+    // it stretched over the rows and took the clicks meant for them.
+    function test_the_jump_pill_keeps_its_size_on_either_edge() {
+        seedQueue()
+        var host = showHost(queueHost, 900, 600)
+        settle(host)
+        var list = findByName(host.panel, "queuePanelList")
+        var pill = findByName(host.panel, "queueJumpToCurrent")
+        var h = pill.height
+        list.contentY = list.contentHeight - list.height
+        settle(host)
+        list.contentY = 200
+        settle(host)
+        verify(pill.visible, "the pill is not shown with the current track scrolled away")
+        compare(pill.height, h, "the pill is " + pill.height + "px tall after moving edges")
+        player.setManualForTest([])
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
