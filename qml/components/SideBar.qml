@@ -1181,6 +1181,9 @@ Item {
                     width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
                     color: rowItem.pinned ? Theme.accentText : Theme.textDim
+                    // A Shape ignores the list's clip; drawn into a layer it is
+                    // clipped like an image, so a row under the footer stays hidden.
+                    layer.enabled: true
                     // Centred in the badge, which is itself held off the
                     // corner. One item drawn in two places, so a row costs one
                     // glyph.
