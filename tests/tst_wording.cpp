@@ -143,7 +143,7 @@ private slots:
         QVERIFY2(bad.isEmpty(), qPrintable("Title Case:\n  " + bad.join("\n  ")));
     }
 
-    // One noun per thing: a track, the collection, log in, show all, yours.
+    // One noun per thing: a track, the collection, log in, show all, mine.
     void englishHasOneWordPerThing() {
         const QList<QPair<QRegularExpression, QString>> rules = {
             { QRegularExpression(QStringLiteral("\\bsongs?\\b"),
@@ -153,7 +153,9 @@ private slots:
             { QRegularExpression(QStringLiteral("\\bsign(ed)? (in|out)\\b"),
                                  QRegularExpression::CaseInsensitiveOption), "log in" },
             { QRegularExpression(QStringLiteral("\\bView all\\b")), "Show all" },
-            { QRegularExpression(QStringLiteral("^My ")), "Your" },
+            // Labels for the listener's own things say "My"; sentences
+            // that speak to them keep "Your".
+            { QRegularExpression(QStringLiteral("^Your( \\S+){1,2}$")), "My" },
         };
         QStringList bad;
         for (const Entry &e : std::as_const(m_entries))

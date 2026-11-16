@@ -574,7 +574,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your mixes</source>
+        <source>My mixes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -582,7 +582,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your playlists</source>
+        <source>My playlists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1702,7 +1702,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your account</source>
+        <source>My account</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
