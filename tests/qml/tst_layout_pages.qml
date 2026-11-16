@@ -996,42 +996,82 @@ TestCase {
         settle(holder)
     }
 
-    // A square card's hover is a Play strip along the foot of the cover,
-    // with its word on it: not a round button in the corner, and nothing
-    // grows under the pointer.
-    function test_album_card_shows_a_play_strip_and_nothing_grows() {
+    // A card's hover dims the whole cover, corners included, and lays a plain
+    // play glyph in its middle: no disc behind it, nothing grows. The glyph
+    // plays; anywhere else on the cover opens the page.
+    function test_album_card_hover_dims_the_whole_cover_under_a_plain_glyph() {
+        app.setReducedMotionForTest(true)
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
+        // A white ground, so a corner the dim misses reads as bright.
+        Qt.createQmlObject('import QtQuick; Rectangle { anchors.fill: parent; color: "white" }',
+                           holder)
         var card = createTemporaryObject(mediaCardC, holder, {
-            x: 40, y: 40, cardSize: 160, mediaType: "album",
+            x: 40, y: 40, cardSize: 160, mediaType: "album", coverUrl: "cover-1",
             title: "Ein langer Albumtitel", subtitle: "Interpret"
         })
         verify(card, "the card was not created")
-        settle(holder)
-
         var art = findByName(card, "cardArt")
+        var img = findByName(card, "cardImage")
+        tryCompare(img, "status", Image.Ready, 2000, "the cover never loaded")
+        settle(holder)
         verify(art.radius < art.width / 2, "an album's art box was drawn as a disc")
+
+        // How dark the four corner pixels of the cover are.
+        function corners() {
+            var g = grabImage(holder), w = art.width, h = art.height, out = []
+            var pts = [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]]
+            for (var i = 0; i < pts.length; ++i) {
+                var px = g.pixel(40 + pts[i][0], 40 + pts[i][1])
+                out.push(3 - (px.r + px.g + px.b))
+            }
+            return out
+        }
+        var before = corners()
 
         mouseMove(holder, 40 + art.width / 2, 40 + art.height / 2)
         settle(holder)
+        var after = corners()
+        for (var i = 0; i < 4; ++i)
+            verify(after[i] > before[i] + 0.1,
+                   "corner " + i + " of the cover is not dimmed: " + before[i] + " -> " + after[i])
 
         var play = findByName(card, "cardPlayButton")
-        verify(play.visible, "the play button did not appear on hover")
-        var p = play.mapToItem(art, 0, 0)
-        compare(p.x, 0, "the play strip does not start at the cover's left edge")
-        compare(play.width, art.width, "the play strip does not span the cover")
-        compare(p.y + play.height, art.height, "the play strip does not sit on the cover's foot")
-        verify(play.height < art.height / 3, "the play strip covers too much of the cover")
-        verify(findByName(play, "cardPlayLabel"), "the play strip does not say Play")
+        verify(play.visible, "the play glyph did not appear on hover")
+        var c = play.mapToItem(art, play.width / 2, play.height / 2)
+        verify(Math.abs(c.x - art.width / 2) <= 1 && Math.abs(c.y - art.height / 2) <= 1,
+               "the play glyph is not in the middle of the cover")
+        verify(!findByName(card, "cardPlayFill"), "the glyph sits on a filled shape")
+        verify(!findByName(card, "cardPlayLabel"), "the glyph carries a word")
+        for (var k = 0; k < play.children.length; ++k) {
+            var ch = play.children[k]
+            if (ch.visible && ch.color !== undefined && ch.radius !== undefined)
+                verify(ch.color.a === 0, "a filled shape sits behind the glyph")
+        }
 
-        mouseMove(holder, 40 + p.x + play.width / 2, 40 + p.y + play.height / 2)
+        mouseMove(holder, 40 + c.x, 40 + c.y)
         settle(holder)
-        wait(Theme.motionMedium)
-        compare(play.scale, 1, "the play button grows under the pointer")
+        compare(play.scale, 1, "the play glyph grows under the pointer")
         compare(art.scale, 1, "the cover grows under the pointer")
         compare(card.scale, 1, "the card grows under the pointer")
 
+        var opened = 0, played = 0
+        card.clicked.connect(function () { opened++ })
+        card.playClicked.connect(function () { played++ })
+        mouseClick(holder, 40 + c.x, 40 + c.y)
+        compare(played, 1, "a click on the glyph did not play")
+        compare(opened, 0, "a click on the glyph opened the page")
+        mouseClick(holder, 40 + 12, 40 + 12)
+        compare(opened, 1, "a click on the cover away from the glyph did not open the page")
+        compare(played, 1, "a click away from the glyph played")
+
+        // The keyboard on the card dims it too.
         mouseMove(holder, -20, -20)
         settle(holder)
+        card.forceActiveFocus()
+        settle(holder)
+        var focused = corners()
+        verify(focused[0] > before[0] + 0.1, "the keyboard on the card does not dim it")
+        verify(play.visible, "the keyboard on the card does not show the glyph")
     }
 
     // The collection grid's dead space, measured on the live GridView. The
