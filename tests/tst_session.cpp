@@ -810,6 +810,38 @@ private slots:
         QVERIFY(rig.auth.username().isEmpty());
     }
 
+    // A session that ends takes the account's name with it, so the sidebar
+    // and the settings show no one until the next sign-in names someone.
+    void theNameGoesWithTheSession_data()
+    {
+        QTest::addColumn<bool>("signOut");
+        QTest::newRow("signed out")           << true;
+        QTest::newRow("refused at a refresh") << false;
+    }
+
+    void theNameGoesWithTheSession()
+    {
+        QFETCH(bool, signOut);
+        Rig rig;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QCOMPARE(rig.auth.username(), QStringLiteral("Robin"));
+        QSignalSpy named(&rig.auth, &Auth::usernameChanged);
+
+        if (signOut) {
+            rig.auth.logout();
+        } else {
+            rig.tidal.goodTokens.clear();
+            rig.tidal.tokenAnswer = FakeTidal::Refuse;
+            QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+            rig.send(QStringLiteral("get"), [](QString) {});
+            QTRY_COMPARE_WITH_TIMEOUT(expired.count(), 1, 5000);
+        }
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
+        QCOMPARE(rig.auth.username(), QString());
+        QCOMPARE(named.count(), 1);
+    }
+
     // The profile of the account before lands once another one signed in:
     // its name is not the new account's.
     void aProfileForTheAccountBeforeNamesNoOne()
