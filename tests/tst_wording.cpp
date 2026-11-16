@@ -89,6 +89,22 @@ private slots:
         QVERIFY2(bad.isEmpty(), qPrintable("not \"Sammlung\":\n  " + bad.join("\n  ")));
     }
 
+    // German lines the owner chose, so a later edit does not undo them.
+    void germanKeepsTheChosenLines() {
+        const QList<QPair<QString, QString>> chosen = {
+            { QStringLiteral("I've allowed access"), QStringLiteral("Ich habe zugestimmt") },
+        };
+        for (const auto &c : chosen) {
+            bool found = false;
+            for (const Entry &e : std::as_const(m_entries))
+                if (e.source == c.first) {
+                    found = true;
+                    QCOMPARE(e.german, c.second);
+                }
+            QVERIFY2(found, qPrintable("not in the catalogue: " + c.first));
+        }
+    }
+
     // Lines that were English turned word for word into German, kept here
     // so they do not come back.
     void germanHasNoWordForWordLines() {

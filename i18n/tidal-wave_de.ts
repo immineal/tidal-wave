@@ -1761,7 +1761,7 @@
     </message>
     <message>
         <source>I&apos;ve allowed access</source>
-        <translation>Zugriff ist erlaubt</translation>
+        <translation>Ich habe zugestimmt</translation>
     </message>
     <message>
         <source>Cancel</source>
