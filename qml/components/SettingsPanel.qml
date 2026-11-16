@@ -921,7 +921,7 @@ Popup {
                         }
                         Text {
                             objectName: "settingsLastfmNote"
-                            text: qsTr("A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to last.fm.")
+                            text: qsTr("A track counts once you have played half of it, or 4 minutes. Its title, first artist, album, length and the time you played it go to last.fm.")
                             color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -1360,7 +1360,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Last.fm, likewise only once you switch it on and connect: \"Connect with Last.fm\" opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, artists, album, length and track number, the app's own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.")
+                    text: qsTr("Last.fm, likewise only once you switch it on and connect: \"Connect with Last.fm\" opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, the first credited artist, album, length and track number, the app's own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded

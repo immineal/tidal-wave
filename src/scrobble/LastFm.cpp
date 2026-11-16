@@ -64,7 +64,8 @@ QByteArray LastFm::formBody(const Params &params) {
 }
 
 LastFm::Params LastFm::nowPlayingParams(const Listen &l) {
-    Params p{{QStringLiteral("artist"), l.artist}, {QStringLiteral("track"), l.title}};
+    // The lead artist only; ListenBrainz gets every credited artist.
+    Params p{{QStringLiteral("artist"), l.leadArtist()}, {QStringLiteral("track"), l.title}};
     if (!l.album.isEmpty())  p << qMakePair(QStringLiteral("album"), l.album);
     if (l.trackNumber > 0)   p << qMakePair(QStringLiteral("trackNumber"), QString::number(l.trackNumber));
     if (l.durationMs > 0)    p << qMakePair(QStringLiteral("duration"), QString::number(l.durationMs / 1000));
@@ -76,7 +77,7 @@ LastFm::Params LastFm::scrobbleParams(const QList<Listen> &listens) {
     for (qsizetype i = 0; i < listens.size(); ++i) {
         const Listen &l = listens.at(i);
         const auto at = [i](const char *name) { return QStringLiteral("%1[%2]").arg(QLatin1String(name)).arg(i); };
-        p << qMakePair(at("artist"), l.artist) << qMakePair(at("track"), l.title)
+        p << qMakePair(at("artist"), l.leadArtist()) << qMakePair(at("track"), l.title)
           << qMakePair(at("timestamp"), QString::number(l.listenedAt));
         if (!l.album.isEmpty())  p << qMakePair(at("album"), l.album);
         if (l.trackNumber > 0)   p << qMakePair(at("trackNumber"), QString::number(l.trackNumber));

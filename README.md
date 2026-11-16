@@ -338,7 +338,8 @@ named.
     the track or 4 minutes, whichever comes first, for tracks over 30 seconds
     (`src/scrobble/PlayTracker.cpp`). Both carry the artists, title, album, length, track
     number, ISRC and the track's `tidal.com` link, the app's name and version, and the
-    listen also the time you played it (`src/scrobble/ListenBrainz.cpp`). Every request
+    listen also the time you played it, with each credited artist also listed on its own
+    (`src/scrobble/ListenBrainz.cpp`). Every request
     carries your ListenBrainz token and the same `User-Agent` as the update check, so
     ListenBrainz sees your IP address. No Tidal token or id other than that link is sent.
 *   **Last.fm, only once you switch it on in Settings -> Scrobbling and connect.** The
@@ -348,8 +349,8 @@ named.
     allowed access there, `auth.getSession` fetches your session key and user name. After
     that `track.updateNowPlaying` and `track.scrobble`, at most 50 per call, go to
     `https://ws.audioscrobbler.com/2.0/` under the same rule as for ListenBrainz. They
-    carry the artists, title, album, length and track number and, for a scrobble, the time
-    you played it; no ISRC and no Tidal link (`src/scrobble/LastFm.cpp`). Every request
+    carry the first credited artist, title, album, length and track number and, for a
+    scrobble, the time you played it; no ISRC and no Tidal link (`src/scrobble/LastFm.cpp`). Every request
     carries the app's Last.fm API key, which is in the source, a signature made with the
     app's shared secret, also in the source, your session key and the same `User-Agent` as
     the update check, so Last.fm sees your IP address.

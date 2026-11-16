@@ -445,6 +445,28 @@ private slots:
     }
 
     // What is not known is left out, never sent empty.
+    // The joined names stay the artist; every credited artist is listed as
+    // well, and the list survives the queue file.
+    void everyArtistIsListed() {
+        const QVariantList artists = {
+            QVariantMap{{QStringLiteral("id"), 1}, {QStringLiteral("name"), QStringLiteral("Erika Mustermann")}},
+            QVariantMap{{QStringLiteral("id"), 2}, {QStringLiteral("name"), QStringLiteral("Max Muster")}},
+        };
+        const QVariantMap row = {
+            {QStringLiteral("id"), 7}, {QStringLiteral("title"), QStringLiteral("Weit weg")},
+            {QStringLiteral("artists"), QStringLiteral("Erika Mustermann, Max Muster")},
+            {QStringLiteral("artistList"), artists}, {QStringLiteral("duration"), 200},
+        };
+        Listen l = Listen::fromTrackMap(row);
+        l.listenedAt = 1'700'000'000;
+        for (const Listen &x : {l, Listen::fromStored(l.toStored())}) {
+            const QJsonObject meta = ListenBrainz::listenJson(x, true).value("track_metadata").toObject();
+            QCOMPARE(meta.value("artist_name").toString(), QStringLiteral("Erika Mustermann, Max Muster"));
+            const QJsonArray names = meta.value("additional_info").toObject().value("artist_names").toArray();
+            QCOMPARE(names, (QJsonArray{QStringLiteral("Erika Mustermann"), QStringLiteral("Max Muster")}));
+        }
+    }
+
     void emptyFieldsAreLeftOut() {
         Listen l;
         l.trackId = 9; l.artist = QStringLiteral("A"); l.title = QStringLiteral("T");

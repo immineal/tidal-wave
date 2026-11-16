@@ -308,6 +308,32 @@ private slots:
             QCOMPARE(value(QLatin1String(name)), QStringLiteral("<none>"));
     }
 
+    // Last.fm gets the first credited artist, also for a listen read back
+    // from the queue file.
+    void onlyTheLeadArtistGoesToLastFm() {
+        const QVariantList artists = {
+            QVariantMap{{QStringLiteral("id"), 1}, {QStringLiteral("name"), QStringLiteral("Erika Mustermann")}},
+            QVariantMap{{QStringLiteral("id"), 2}, {QStringLiteral("name"), QStringLiteral("Max Muster")}},
+        };
+        const QVariantMap row = {
+            {QStringLiteral("id"), 7}, {QStringLiteral("title"), QStringLiteral("Weit weg")},
+            {QStringLiteral("artists"), QStringLiteral("Erika Mustermann, Max Muster")},
+            {QStringLiteral("artistList"), artists}, {QStringLiteral("duration"), 200},
+        };
+        Listen l = Listen::fromTrackMap(row);
+        l.listenedAt = 1'700'000'000;
+        for (const Listen &x : {l, Listen::fromStored(l.toStored())}) {
+            const LastFm::Params s = LastFm::scrobbleParams({x});
+            QVERIFY(s.contains(qMakePair(QStringLiteral("artist[0]"), QStringLiteral("Erika Mustermann"))));
+            const LastFm::Params n = LastFm::nowPlayingParams(x);
+            QVERIFY(n.contains(qMakePair(QStringLiteral("artist"), QStringLiteral("Erika Mustermann"))));
+        }
+        // A listen with no list keeps the one name it has.
+        Listen bare = track(1, 200);
+        QVERIFY(LastFm::nowPlayingParams(bare).contains(
+            qMakePair(QStringLiteral("artist"), QStringLiteral("Erika Mustermann"))));
+    }
+
     void playingNowCarriesNoTimestamp() {
         const LastFm::Params p = LastFm::nowPlayingParams(track(1, 200));
         for (const auto &e : p) QVERIFY2(!e.first.startsWith(QLatin1String("timestamp")), qPrintable(e.first));
