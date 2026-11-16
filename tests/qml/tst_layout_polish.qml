@@ -852,7 +852,8 @@ TestCase {
 
     Component { id: albumC; AlbumPage { anchors.fill: parent } }
 
-    function test_the_album_artist_is_not_repeated_under_every_track() {
+    // Every row names its artists, also where they are the album's.
+    function test_every_album_track_names_its_artists() {
         var host = showHost(plainHost, 900, 1100)
         var page = createTemporaryObject(albumC, host.pane)
         page.albumId = 42
@@ -866,9 +867,8 @@ TestCase {
         settle(host)
         var lines = collectByName(page, "trackRowArtistLine", [])
         verify(lines.length === 3, "found " + lines.length + " artist lines")
-        verify(!lines[0].visible && !lines[1].visible,
-               "the album artist is repeated under its own tracks")
-        verify(lines[2].visible, "a guest's name was hidden with the album artist")
+        for (var i = 0; i < 3; ++i)
+            verify(lines[i].visible, "track " + (i + 1) + " shows no artist line")
     }
 
     function test_saved_is_not_a_primary_action() {

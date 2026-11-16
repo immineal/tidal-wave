@@ -27,9 +27,6 @@ Item {
     property bool   isPlaying: false
     property bool   showAlbum: true
     property bool   showCover: true
-    // Off where every row would repeat the same names, as on an album page
-    // whose tracks are all by the album's artist.
-    property bool   showArtists: true
     property var    trackData: null   // full track map (has albumId, id, etc.)
 
     // ── what a partial payload degrades to ──────────────────────────────
@@ -415,7 +412,6 @@ Item {
                 // name takes the left click and a right click reaches the menu.
                 ArtistLinks {
                     Layout.fillWidth: true
-                    visible: root.showArtists
                     tabStops: false
                     namePrefix: "trackRow"
                     fontPixelSize: Theme.fontMeta
