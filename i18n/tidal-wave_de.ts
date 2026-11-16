@@ -121,14 +121,6 @@
         <comment>verb, button label</comment>
         <translation>Abspielen</translation>
     </message>
-    <message>
-        <source>%1 hr %2 min</source>
-        <translation>%1 Std. %2 Min.</translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation>%1 Min.</translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s)</source>
         <translation>
@@ -1265,14 +1257,6 @@
         <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Sammlung.</translation>
     </message>
     <message>
-        <source>%1 hr %2 min</source>
-        <translation>%1 Std. %2 Min.</translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation>%1 Min.</translation>
-    </message>
-    <message>
         <source>This playlist was changed somewhere else, so nothing was removed. It has been reloaded.</source>
         <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts entfernt. Sie wurde neu geladen.</translation>
     </message>
@@ -1436,10 +1420,6 @@
         <source>Track radio</source>
         <translation>Titel-Radio</translation>
     </message>
-    <message>
-        <source>Play all</source>
-        <translation>Alle abspielen</translation>
-    </message>
 </context>
 <context>
     <name>SearchBar</name>
@@ -1508,8 +1488,8 @@
         <translation>Keine Playlists für „%1“</translation>
     </message>
     <message>
-        <source>Search failed: %1</source>
-        <translation>Suche fehlgeschlagen: %1</translation>
+        <source>Tidal could not answer this search.</source>
+        <translation>Tidal konnte diese Suche nicht beantworten.</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -1553,6 +1533,10 @@
     <message>
         <source>Remove “%1” from recent searches</source>
         <translation>„%1“ aus den letzten Suchen entfernen</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
     </message>
 </context>
 <context>
@@ -2041,6 +2025,11 @@
 </context>
 <context>
     <name>TrackRow</name>
+    <message>
+        <source>More options</source>
+        <comment>button on a track row, opens its menu</comment>
+        <translation>Weitere Optionen</translation>
+    </message>
     <message>
         <source>Unknown track</source>
         <translation>Unbekannter Titel</translation>

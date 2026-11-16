@@ -59,7 +59,7 @@ Item {
     // so the slide still runs and finishes in the frame it started.
     Behavior on panelWidth {
         enabled: !dragHandle.dragging
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // The slot does not animate until the window has said how wide it is: the
@@ -75,7 +75,7 @@ Item {
     // and any difference shows as page ground between the two edges.
     Behavior on reservedWidth {
         enabled: root.slotSettled && !dragHandle.dragging
-        NumberAnimation { duration: Theme.dur(170); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     function openSettings() { settingsPopup.open() }
@@ -237,7 +237,7 @@ Item {
     readonly property int coverPlainIcon: Math.round(coverSize * 0.56)
     // The row's own inset inside the panel, and where a row's content starts
     // once the sidebar is open. 16 is the sidebar's left inset throughout.
-    readonly property int rowInset:  8
+    readonly property int rowInset:  Theme.space2
     readonly property int coverLeft: 16
 
     // The pinned rows are the leading run of the library list: the data layer
@@ -386,7 +386,7 @@ Item {
         enabled: !root.navResetting
         // The chips on Collection travel on the same 140, so the two read as
         // one.
-        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // Which of the three rows the page is, or null: an album, Settings or Now
@@ -402,7 +402,7 @@ Item {
     // interceptor and cannot write through a read-only property.
     property real navPresence: currentNavItem !== null ? 1 : 0
     Behavior on navPresence {
-        NumberAnimation { duration: Theme.dur(140); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // Same gate as `slotSettled` above and for the same reason: the first
@@ -476,15 +476,15 @@ Item {
                 }
                 Text {
                     anchors.left: mark.right
-                    anchors.leftMargin: 8
+                    anchors.leftMargin: Theme.space2
                     anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: Theme.space3
                     anchors.verticalCenter: mark.verticalCenter
                     visible: root.showsWide
                     opacity: root.wideOpacity
                     text: "Tidal Wave"
                     color: Theme.textPrimary
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontBody
                     font.bold: true
                     font.letterSpacing: 1
                     elide: Text.ElideRight
@@ -524,8 +524,8 @@ Item {
                 color: Theme.border
                 height: 1
                 Layout.fillWidth: true
-                Layout.leftMargin: Math.round(14 + 2 * root.wideness)
-                Layout.rightMargin: Math.round(14 + 2 * root.wideness)
+                Layout.leftMargin: Math.round(Theme.space3 + Theme.space1 * root.wideness)
+                Layout.rightMargin: Math.round(Theme.space3 + Theme.space1 * root.wideness)
             }
             Item { Layout.fillWidth: true; Layout.preferredHeight: 14 }
 
@@ -536,8 +536,8 @@ Item {
             Item {
                 id: finderSlot
                 Layout.fillWidth: true
-                Layout.leftMargin: 12
-                Layout.rightMargin: 12
+                Layout.leftMargin: Theme.space3
+                Layout.rightMargin: Theme.space3
                 Layout.preferredHeight: Math.round(finder.implicitHeight * root.wideness)
 
                 LibraryFinder {
@@ -585,8 +585,8 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin:  root.rowInset
                     anchors.rightMargin: root.rowInset
-                    radius: Theme.radiusRow
-                    color: newPlaylistHov.hovered ? Theme.surfaceHov : "transparent"
+                    radius: Theme.radiusMedium
+                    color: newPlaylistHov.hovered ? Theme.hoverFill : "transparent"
                     border.width: newPlaylistRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
 
@@ -604,7 +604,7 @@ Item {
                         x: Math.round(root.coverLeft + (root.coverSize - width) / 2)
                            - root.rowInset
                         anchors.verticalCenter: parent.verticalCenter
-                        radius: Theme.radiusArt
+                        radius: Theme.radiusSmall
                         color: "transparent"
                         border.width: 1
                         border.color: newPlaylistHov.hovered ? Theme.accent : Theme.border
@@ -614,7 +614,6 @@ Item {
                             name: "plus"
                             width: 13
                             height: 13
-                            strokeWidth: 1.8
                             color: newPlaylistHov.hovered ? Theme.accentText : Theme.textDim
                         }
                     }
@@ -624,13 +623,13 @@ Item {
                         visible: root.showsWide
                         opacity: root.wideOpacity
                         anchors.left: plusTile.right
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: Theme.space3
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: Theme.space3
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("New playlist")
                         color: newPlaylistHov.hovered ? Theme.textPrimary : Theme.textSec
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontMeta
                         elide: Text.ElideRight
                     }
 
@@ -650,7 +649,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                bottomMargin: 8
+                bottomMargin: Theme.space2
                 model: libModel
                 // This list draws no selection, but a ListView still builds a
                 // highlight item and smooth-resizes it toward the current row,
@@ -691,7 +690,7 @@ Item {
                     NumberAnimation {
                         property: "opacity"
                         from: 0; to: 1
-                        duration: Theme.dur(140)
+                        duration: Theme.dur(Theme.motionMedium)
                         easing.type: Easing.OutCubic
                     }
                 }
@@ -705,7 +704,7 @@ Item {
                     x: 8
                     width: Math.max(0, libList.width - 16)
                     height: 2
-                    radius: 1
+                    radius: height / 2
                     z: 3
                     color: Theme.accent
                     y: (root.pinDragTo > root.pinDragFrom ? root.pinDragTo + 1 : root.pinDragTo)
@@ -727,7 +726,7 @@ Item {
                         : library.loadFailed ? qsTr("Your collection could not be loaded")
                         : qsTr("Nothing saved yet")
                     color: Theme.textDim
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontMeta
                 }
             }
         }
@@ -748,7 +747,7 @@ Item {
                 id: settingsRow
                 objectName: "sidebarSettingsRow"
                 anchors.fill: parent
-                anchors.margins: 6
+                anchors.margins: Theme.space2
 
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
@@ -759,9 +758,9 @@ Item {
 
                 Rectangle {
                     anchors.fill: parent
-                    anchors.leftMargin: 2
-                    anchors.rightMargin: 2
-                    radius: Theme.radiusRow
+                    anchors.leftMargin: Theme.spaceHalf
+                    anchors.rightMargin: Theme.spaceHalf
+                    radius: Theme.radiusMedium
                     color: settingsHover.hovered ? Theme.hoverFill : "transparent"
                     border.width: settingsRow.activeFocus ? 2 : 0
                     border.color: Theme.accent
@@ -773,7 +772,6 @@ Item {
                         color: settingsHover.hovered ? Theme.textPrimary : Theme.textSec
                         width: 18
                         height: 18
-                        strokeWidth: 1.8
                         anchors.verticalCenter: parent.verticalCenter
                         // 16 from the panel edge once open, centred in the
                         // rail, travelling on `wideness`. The row's own 8px of
@@ -788,11 +786,11 @@ Item {
                         visible: root.showsWide
                         opacity: root.wideOpacity
                         anchors.left: gearItem.right
-                        anchors.leftMargin: 12
+                        anchors.leftMargin: Theme.space3
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: Theme.space3
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 1
+                        spacing: Theme.spaceHalf
 
                         Text {
                             objectName: "sidebarSettingsLabel"
@@ -802,7 +800,7 @@ Item {
                             // catalogue holds it once.
                             text: qsTranslate("SettingsPanel", "Settings")
                             color: Theme.textPrimary
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontBody
                             elide: Text.ElideRight
                         }
                         Text {
@@ -814,7 +812,7 @@ Item {
                             text: auth.username.length > 0 ? auth.username
                                                            : qsTr("Your account")
                             color: Theme.textSec
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight
                         }
                     }
@@ -826,7 +824,7 @@ Item {
                     // only place the row says what it is.
                     ToolTip.visible: settingsHover.hovered
                     ToolTip.text: qsTr("Settings (%1)").arg(Shortcuts.display("settings"))
-                    ToolTip.delay: 450
+                    ToolTip.delay: Theme.tooltipDelay
                 }
             }
         }
@@ -840,7 +838,7 @@ Item {
             objectName: "navCurrentIndicator"
             x: 0
             width: 3
-            radius: 2
+            radius: width / 2
             color: Theme.accent
             opacity: root.navPresence
             visible: opacity > 0.001
@@ -914,7 +912,7 @@ Item {
         // The border itself, drawn by the handle so the two cannot drift apart.
         Rectangle {
             anchors.right: parent.right
-            anchors.rightMargin: 3
+            anchors.rightMargin: Theme.space1
             width: 1
             height: parent.height
             color: dragHandle.containsMouse || dragHandle.dragging ? Theme.accent : Theme.border
@@ -1059,7 +1057,7 @@ Item {
             property int rowIndex: rowItem.index
             visible: rowItem.blockBreak
             anchors.top: parent.top
-            anchors.topMargin: 5
+            anchors.topMargin: Theme.space1
             height: 1
             color: Theme.border
             // One rule for both shapes: it hugs the covers at the rail and
@@ -1078,8 +1076,8 @@ Item {
             anchors.leftMargin: root.rowInset
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
-            radius: Theme.radiusRow
-            color: rowItem.dragging || rowHov.hovered ? Theme.surfaceHov : "transparent"
+            radius: Theme.radiusMedium
+            color: rowItem.dragging || rowHov.hovered ? Theme.hoverFill : "transparent"
             border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
             border.color: Theme.accent
             // The lift. A transform rather than a y offset, because the row's
@@ -1117,7 +1115,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: root.coverSize
                 height: root.coverSize
-                radius: Theme.radiusArt
+                radius: Theme.radiusSmall
                 color: Theme.surfaceHigh
                 clip: true
 
@@ -1136,7 +1134,7 @@ Item {
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     opacity: status === Image.Ready ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Theme.dur(140) } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
                 }
 
                 // The type. One glyph either way, a corner mark over artwork or
@@ -1151,7 +1149,7 @@ Item {
                     anchors.bottomMargin: root.coverBadgeInset
                     width:  root.coverBadge
                     height: root.coverBadge
-                    radius: Theme.radiusBadge
+                    radius: Theme.radiusSmall
                     color: Theme.surface
                 }
 
@@ -1160,7 +1158,6 @@ Item {
                     name: root.glyphFor(rowItem.kind)
                     width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
-                    strokeWidth: rowItem.hasArt ? 1.5 : 1.6
                     color: rowItem.pinned ? Theme.accentText : Theme.textDim
                     // Centred in the badge, which is itself held off the
                     // corner. One item drawn in two places, so a row costs one
@@ -1194,15 +1191,15 @@ Item {
                 visible: root.showsWide
                 opacity: root.wideOpacity
                 anchors.left: cover.right
-                anchors.leftMargin: 10
+                anchors.leftMargin: Theme.space3
                 anchors.right: parent.right
                 // The grip's space is reserved whether or not it is showing,
                 // so the title does not jump when the pointer arrives.
-                anchors.rightMargin: rowItem.draggable ? 28 : 10
+                anchors.rightMargin: rowItem.draggable ? Theme.space8 : Theme.space3
                 anchors.verticalCenter: parent.verticalCenter
                 text: rowItem.title
                 color: Theme.textSec
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontMeta
                 elide: Text.ElideRight
             }
 
@@ -1216,14 +1213,13 @@ Item {
                 width: 16
                 height: parent.height
                 anchors.right: parent.right
-                anchors.rightMargin: 6
+                anchors.rightMargin: Theme.space2
 
                 VectorIcon {
                     anchors.centerIn: parent
                     name: "grip"
                     width: 12
                     height: 12
-                    strokeWidth: 1.5
                     color: rowItem.dragging ? Theme.accentText : Theme.textDim
                     opacity: rowHov.hovered || rowItem.dragging ? 1 : 0.45
                 }
@@ -1232,7 +1228,7 @@ Item {
                     id: dragArea
                     objectName: "pinDragArea"
                     anchors.fill: parent
-                    anchors.margins: -5          // 16 wide is a small target
+                    anchors.margins: -Theme.space1          // 16 wide is a small target
                     enabled: rowItem.draggable
                     cursorShape: rowItem.dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     // Otherwise the list reads the vertical drag as a flick
@@ -1274,7 +1270,7 @@ Item {
             ToolTip.visible: rowHov.hovered && !rowItem.dragging
             ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
                                                 : rowItem.title
-            ToolTip.delay: 450
+            ToolTip.delay: Theme.tooltipDelay
             readonly property string subtitleOf: rowItem.modelData.subtitle || ""
         }
     }
@@ -1307,15 +1303,15 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            anchors.topMargin: 2
-            anchors.bottomMargin: 2
-            radius: Theme.radiusRow
+            anchors.leftMargin: Theme.space2
+            anchors.rightMargin: Theme.space2
+            anchors.topMargin: Theme.spaceHalf
+            anchors.bottomMargin: Theme.spaceHalf
+            radius: Theme.radiusMedium
             color: navItem.current
-                   ? Theme.surfaceHov
+                   ? Theme.selectedFill
                    : sideHov.hovered ? Theme.hoverFill : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
             border.width: navItem.activeFocus ? 2 : 0
             border.color: Theme.accent
 
@@ -1324,7 +1320,7 @@ Item {
                 objectName: "navIcon"
                 name: navItem.icon
                 color: navItem.current ? Theme.accentText : Theme.textSec
-                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
                 anchors.verticalCenter: parent.verticalCenter
                 // 16 from the panel edge in the sidebar (8 here, inside the
                 // row's 8px inset), centred in the rail, and travelling
@@ -1338,14 +1334,14 @@ Item {
                 visible: root.showsWide
                 opacity: root.wideOpacity
                 anchors.left: navGlyph.right
-                anchors.leftMargin: 12
+                anchors.leftMargin: Theme.space3
                 anchors.right: parent.right
-                anchors.rightMargin: 10
+                anchors.rightMargin: Theme.space3
                 anchors.verticalCenter: parent.verticalCenter
                 text: navItem.label
                 color: navItem.current ? Theme.textPrimary : Theme.textSec
-                Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
-                font.pixelSize: 14
+                Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
+                font.pixelSize: Theme.fontBody
                 // Not animatable: a font weight is not a number Qt interpolates.
                 font.bold: navItem.current
                 elide: Text.ElideRight
@@ -1356,7 +1352,7 @@ Item {
 
             ToolTip.visible: sideHov.hovered && !root.showsWide
             ToolTip.text: navItem.label
-            ToolTip.delay: 450
+            ToolTip.delay: Theme.tooltipDelay
         }
     }
 }

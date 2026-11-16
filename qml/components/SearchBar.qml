@@ -2,10 +2,12 @@ import QtQuick
 import QtQuick.Layouts
 import TidalWave
 
+// The one search field. Escape empties it, and an empty one gives the
+// keyboard back, as in the sidebar's LibraryFinder.
 Rectangle {
     id: root
-    height: 40
-    radius: Theme.radiusField
+    implicitHeight: 40
+    radius: Theme.radiusLarge
     color: Theme.surfaceHigh
     border.color: focused ? Theme.accent : "transparent"
     border.width: 1
@@ -30,17 +32,16 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 12
+        anchors.leftMargin: Theme.space3
         // Less while the 32px clear target is there, so its cross keeps
         // the place a 14px button had.
-        anchors.rightMargin: clearBtn.visible ? 3 : 12
-        spacing: 8
+        anchors.rightMargin: clearBtn.visible ? Theme.space1 : Theme.space3
+        spacing: Theme.space2
         VectorIcon {
             name: "search"
             color: Theme.textDim
             width: 16
             height: 16
-            strokeWidth: 1.8
         }
         Item {
             Layout.fillWidth: true
@@ -50,9 +51,18 @@ Rectangle {
                 anchors.fill: parent
                 focus: true
                 color: Theme.textPrimary
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 verticalAlignment: TextInput.AlignVCenter
                 Keys.onReturnPressed: root.submitted(text)
+                // Claimed ahead of the window's Escape shortcut, which would
+                // otherwise take it and go back.
+                Keys.onShortcutOverride: (event) => {
+                    if (event.key === Qt.Key_Escape) event.accepted = true
+                }
+                Keys.onEscapePressed: {
+                    if (text.length > 0) text = ""
+                    else                 root.releaseFocus()
+                }
                 onTextChanged: root.textEdited(text)
             }
             Text {
@@ -60,7 +70,7 @@ Rectangle {
                 visible: input.text.length === 0
                 text: root.placeholder
                 color: Theme.textDim
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontBody
                 verticalAlignment: Text.AlignVCenter
             }
         }
@@ -79,7 +89,7 @@ Rectangle {
             Accessible.name: qsTr("Clear search", "button, empties the search field")
             Accessible.onPressAction: input.text = ""
             Rectangle {
-                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusButton; color: "transparent"
+                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusMedium; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0
                 border.color: Theme.accent
             }
@@ -88,7 +98,6 @@ Rectangle {
                 width: 14; height: 14
                 name: "x"
                 color: clearBtn.activeFocus ? Theme.accentText : Theme.textDim
-                strokeWidth: 1.8
             }
             MouseArea {
                 anchors.fill: parent

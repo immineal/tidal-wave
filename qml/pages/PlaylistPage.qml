@@ -49,17 +49,6 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
-    // translation can reorder or re-unit it instead of inheriting English order.
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
-    }
-
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
     // ── the one number on this page with no live source ──────────────────
@@ -170,193 +159,92 @@ Rectangle {
         model: root.tracks
         boundsBehavior: Flickable.StopAtBounds
 
-        header: Rectangle {
+        header: DetailHero {
+            id: hero
             width: tracksList.width
-            // Grows with its content, so a wrapped title, description or pill
-            // row is not cut off.
-            implicitHeight: Math.max(240, heroRow.implicitHeight + 48)
-            color: "transparent"
+            kind: qsTr("Playlist")
+            title: root.playlistTitle
+            artSource: root.coverUrl
+            // Without a cover of its own, the first four tracks' covers.
+            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            artIcon: "playlist"
+            onPinRequested: (x, y) => {
+                var p = hero.mapToItem(root, x, y)
+                root.showHeroPinMenu(p.x, p.y)
+            }
+            // The queue confirmation is drawn just above the action row.
+            // Assigned, not bound: an id inside the list's header component is
+            // out of reach from the page root.
+            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0; color: Theme.accentTint }
-                    GradientStop { position: 1; color: Theme.bg }
-                }
+            Text {
+                visible: root.playlistDescription.length > 0
+                Layout.fillWidth: true
+                text: root.playlistDescription
+                color: Theme.textSec
+                font.pixelSize: Theme.fontMeta
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
             }
 
-            RowLayout {
-                id: heroRow
-                anchors {
-                    left: parent.left; right: parent.right
-                    verticalCenter: parent.verticalCenter
-                    leftMargin: 64; rightMargin: 24
+            Text {
+                text: {
+                    // One complete sentence per case rather than glued
+                    // fragments, so a translation can reorder it.
+                    var n = root.tracks.length
+                    var d = root.playlistDuration
+                    // The count is the tracklist's, still on its way.
+                    if (root.loading && n === 0)
+                        return d > 0 ? Theme.lengthText(d) : ""
+                    return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(Theme.lengthText(d))
+                                 : qsTr("%Ln track(s)", "", n)
                 }
-                spacing: 24
-
-                Rectangle {
-                    objectName: "heroArt"
-                    width: 180
-                    height: 180
-                    radius: Theme.radiusArt
-                    color: Theme.accentWash
-                    clip: true
-                    Image {
-                        id: playlistCover
-                        objectName: "heroCover"
-                        anchors.fill: parent
-                        visible: root.coverUrl.length > 0
-                        source: root.coverUrl.length > 0 ? "image://tidal/" + root.coverUrl : ""
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                        opacity: status === Image.Ready ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Theme.dur(200) } }
-                    }
-                    Grid {
-                        id: collageGrid
-                        anchors.fill: parent
-                        columns: 2
-                        rows: 2
-                        visible: root.coverUrl.length === 0 && root.tracks.length >= 4
-                        Repeater {
-                            model: root.tracks.slice(0, 4)
-                            Image {
-                                width: 90
-                                height: 90
-                                source: (modelData && modelData.coverUrl) ? "image://tidal/" + modelData.coverUrl : ""
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                            }
-                        }
-                    }
-                    VectorIcon {
-                        visible: !playlistCover.visible && !collageGrid.visible
-                        anchors.centerIn: parent
-                        name: "playlist"
-                        color: Theme.accentText
-                        width: 64
-                        height: 64
-                        strokeWidth: 1.5
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                    spacing: 8
-
-                    Text {
-                        text: qsTr("Playlist")
-                        color: Theme.textSec
-                        font.pixelSize: 12
-                        font.bold: true
-                        font.letterSpacing: 1
-                    }
-
-                    Text {
-                        objectName: "heroTitle"
-                        Layout.fillWidth: true
-                        text: root.playlistTitle
-                        color: Theme.textPrimary
-                        font.pixelSize: 28
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Text {
-                        visible: root.playlistDescription.length > 0
-                        Layout.fillWidth: true
-                        text: root.playlistDescription
-                        color: Theme.textSec
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        text: {
-                            // One complete sentence per case rather than glued
-                            // fragments, so a translation can reorder it.
-                            var n = root.tracks.length
-                            var d = root.playlistDuration
-                            // The count is the tracklist's, still on its way.
-                            if (root.loading && n === 0)
-                                return d > 0 ? root.durationText(d) : ""
-                            return d > 0 ? qsTr("%Ln track(s) · %1", "", n).arg(root.durationText(d))
-                                         : qsTr("%Ln track(s)", "", n)
-                        }
-                        color: Theme.textSec
-                        font.pixelSize: 14
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                    }
-
-                    // A Flow, so the pills wrap in a narrow pane.
-                    Flow {
-                        id: heroActions
-                        Layout.fillWidth: true
-                        spacing: 12
-                        // The queue confirmation is drawn just above this row.
-                        // Assigned, not bound: an id inside the list's header
-                        // component is out of reach from the page root.
-                        Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = heroActions
-
-                        PillButton {
-                            text: qsTr("Play", "verb, button label")
-                            icon: "play"
-                            accent: true
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    root.playFrom(root.tracks, 0)
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            text: qsTr("Shuffle")
-                            icon: "shuffle"
-                            accent: false
-                            onClicked: {
-                                if (root.tracks.length > 0) {
-                                    bridge.markPlaylistPlayed(root.playlistUuid)
-                                    player.setShuffle(true)
-                                    root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
-                                }
-                            }
-                        }
-
-                        PillButton {
-                            objectName: "playlistEditButton"
-                            visible: root.playlistEditable
-                            text: qsTr("Edit")
-                            icon: "edit"
-                            accent: false
-                            onClicked: {
-                                editTitleField.text         = root.playlistTitle
-                                editDescField.text          = root.playlistDescription
-                                editPlaylistPopup.errorText = ""
-                                editPlaylistPopup.busy      = false
-                                editPlaylistPopup.open()
-                            }
-                        }
-                    }
-                }
+                color: Theme.textSec
+                font.pixelSize: Theme.fontBody
+                Layout.fillWidth: true
+                elide: Text.ElideRight
             }
 
-            // A right-click on the hero pins what the page is showing.
-            MouseArea {
-                objectName: "heroPinArea"
-                anchors.fill: parent
-                acceptedButtons: Qt.RightButton
-                onClicked: function (mouse) {
-                    var p = mapToItem(root, mouse.x, mouse.y)
-                    root.showHeroPinMenu(p.x, p.y)
+            actions: [
+                PillButton {
+                    text: qsTr("Play", "verb, button label")
+                    icon: "play"
+                    accent: true
+                    onClicked: {
+                        if (root.tracks.length > 0) {
+                            bridge.markPlaylistPlayed(root.playlistUuid)
+                            root.playFrom(root.tracks, 0)
+                        }
+                    }
+                },
+                PillButton {
+                    text: qsTr("Shuffle")
+                    icon: "shuffle"
+                    accent: false
+                    onClicked: {
+                        if (root.tracks.length > 0) {
+                            bridge.markPlaylistPlayed(root.playlistUuid)
+                            player.setShuffle(true)
+                            root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                        }
+                    }
+                },
+                PillButton {
+                    objectName: "playlistEditButton"
+                    visible: root.playlistEditable
+                    text: qsTr("Edit")
+                    icon: "edit"
+                    accent: false
+                    onClicked: {
+                        editTitleField.text         = root.playlistTitle
+                        editDescField.text          = root.playlistDescription
+                        editPlaylistPopup.errorText = ""
+                        editPlaylistPopup.busy      = false
+                        editPlaylistPopup.open()
+                    }
                 }
-            }
+            ]
         }
 
         delegate: TrackRow {
@@ -415,7 +303,7 @@ Rectangle {
                 visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
+                spacing: Theme.space3
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -425,7 +313,6 @@ Rectangle {
                     Layout.preferredHeight: 40
                     name: "playlist"
                     color: Theme.textDim
-                    strokeWidth: 1.5
                 }
 
                 Text {
@@ -434,7 +321,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("This playlist could not be loaded")
                     color: Theme.textPrimary
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -447,7 +334,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your collection either way.")
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.WordWrap
                 }
             }
@@ -459,11 +346,11 @@ Rectangle {
         }
     }
 
-    // Back button sits in a fixed bar that doesn't overlap the track list
-    Rectangle {
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 52; color: "transparent"
-        BackButton { anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 8 } }
+    DetailBar {
+        objectName: "playlistStickyHeader"
+        flickable: tracksList
+        heroHeight: tracksList.headerItem ? tracksList.headerItem.height : 280
+        title: root.playlistTitle
     }
 
     LoadingOverlay { loading: root.loading }
@@ -537,8 +424,8 @@ Rectangle {
         closePolicy: editPlaylistPopup.busy
                      ? Popup.NoAutoClose
                      : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-        padding: 20
-        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusPopup }
+        padding: Theme.space5
+        background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
         // Mirrors NewPlaylistDialog: the field goes read-only and both buttons
         // go quiet while the request is out.
@@ -550,15 +437,15 @@ Rectangle {
 
         Column {
             width: parent.width
-            spacing: 14
+            spacing: Theme.space4
 
-            Text { text: qsTr("Edit playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit playlist"); color: Theme.textPrimary; font.pixelSize: Theme.fontTitle; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
-            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Title"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 36; radius: Theme.radiusField
+                width: parent.width; height: 36; radius: Theme.radiusLarge
                 // The field's own activeFocus: a FocusScope that is a child of
                 // the TextInput never gains activeFocus with it.
                 color: Theme.surface
@@ -566,8 +453,8 @@ Rectangle {
                 TextInput {
                     id: editTitleField
                     objectName: "editPlaylistTitleField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
                     // The same cap the create dialog applies, so a title the
@@ -582,17 +469,17 @@ Rectangle {
                 }
             }
 
-            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: 12 }
+            Text { text: qsTr("Description"); color: Theme.textSec; font.pixelSize: Theme.fontMeta }
             Rectangle {
-                width: parent.width; height: 72; radius: Theme.radiusField
+                width: parent.width; height: 72; radius: Theme.radiusLarge
                 // See the title field for why this is not a FocusScope.
                 color: Theme.surface
                 border.color: editDescField.activeFocus ? Theme.accent : Theme.border
                 TextEdit {
                     id: editDescField
                     objectName: "editPlaylistDescField"
-                    anchors.fill: parent; anchors.margins: 8
-                    color: Theme.textPrimary; font.pixelSize: 14
+                    anchors.fill: parent; anchors.margins: Theme.space2
+                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                     wrapMode: TextEdit.WordWrap
                     selectByMouse: true
                     selectionColor: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
@@ -613,13 +500,13 @@ Rectangle {
                 visible: editPlaylistPopup.errorText.length > 0
                 text: editPlaylistPopup.errorText
                 color: Theme.redText
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontMeta
                 wrapMode: Text.WordWrap
             }
 
             RowLayout {
                 width: parent.width
-                spacing: 10
+                spacing: Theme.space3
                 // Away from Save, so it is not hit on the way there.
                 PillButton {
                     objectName: "editPlaylistDelete"

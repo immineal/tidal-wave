@@ -986,7 +986,7 @@ TestCase {
         // rounded container.
         var field = findByName(finder, "finderField")
         verify(field, "the finder has no input field")
-        compare(finder.radius, Theme.radiusField, "the field wants the generous rounding")
+        compare(finder.radius, Theme.radiusLarge, "the field wants the generous rounding")
         for (i = 0; i < chips.length; ++i) {
             var topLeft = chips[i].mapToItem(finder, 0, 0)
             verify(topLeft.x >= -0.5 && topLeft.x + chips[i].width <= finder.width + 0.5,
@@ -1363,7 +1363,7 @@ TestCase {
         // The square hero cover is a fixed size in a RowLayout that never
         // squeezes it. What comes and goes is the album column of the track rows.
         // ArtistPage has no square cover: its hero art is the backdrop.
-        var art = findByName(page, "heroArt")
+        var art = data.which === "artist" ? null : findByName(page, "heroArt")
         var artWidth = art ? art.width : 0
         if (art) verify(art.visible, "the " + data.tag + " hero art started out hidden")
 

@@ -9,5 +9,4 @@ VectorIcon {
     implicitHeight: 18
     width: 18
     height: 18
-    strokeWidth: 1.6
 }

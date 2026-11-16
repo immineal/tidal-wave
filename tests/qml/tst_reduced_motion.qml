@@ -381,27 +381,30 @@ TestCase {
 
         var btn = createTemporaryObject(backButtonC, testCase, { x: 40, y: 40 })
         verify(btn, "the back button was not created")
+        // The fill is drawn by the shared IconButton's disc.
+        var disc = findChild(btn, "iconButtonDisc")
+        verify(disc, "the back button has no disc")
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
+        tryVerify(function () { return sameColor(disc.color, btn.restFill) },
                   settleMs, "the button never settled on its resting fill")
 
         mouseMove(testCase, 58, 58)
         oneFrame()
 
         if (row.reduced) {
-            verify(sameColor(btn.color, btn.hoveredFill),
+            verify(sameColor(disc.color, btn.hoveredFill),
                    "reduced motion: the hover fill must be there on the next frame, got "
-                   + btn.color)
+                   + disc.color)
         } else {
-            verify(!sameColor(btn.color, btn.hoveredFill),
+            verify(!sameColor(disc.color, btn.hoveredFill),
                    "without reduced motion the hover fill jumped instead of fading")
-            tryVerify(function () { return sameColor(btn.color, btn.hoveredFill) },
+            tryVerify(function () { return sameColor(disc.color, btn.hoveredFill) },
                       settleMs, "the hover fade never finished")
         }
 
         mouseMove(testCase, 600, 600)
-        tryVerify(function () { return sameColor(btn.color, btn.restFill) },
+        tryVerify(function () { return sameColor(disc.color, btn.restFill) },
                   settleMs, "the fill never returned to rest")
     }
 
@@ -1031,15 +1034,26 @@ TestCase {
 
     function searchChipOf(tabs, i) { return tabs.children[i] }
 
-    // The pill itself, read off the item that is drawn: a lag between the
-    // host's markX/markW and the thing on screen would not show in the host's
-    // numbers.
-    function searchPillItem(tabs) { return findByName(tabs.parent, "searchTabPill") }
+    // The pill itself, read off what is drawn: a lag between the strip's
+    // markX/markW and the thing on screen would not show in its numbers.
+    // Every chip holds the whole pill as a slice, in a window that starts
+    // 2px outside the chip, so chip 0's slice reports all of it.
+    function searchPillItem(tabs) {
+        var chip0 = searchChipOf(tabs, 0)
+        var slice = chip0 ? findByName(chip0, "searchTabPillSlice") : null
+        if (!slice) return null
+        return {
+            get x()       { return chip0.x + slice.x - 2 },
+            get y()       { return chip0.y + slice.y - 2 },
+            get width()   { return slice.width },
+            get height()  { return slice.height },
+            get visible() { return slice.width > 0 && slice.height > 0 }
+        }
+    }
 
-    // A chip's box in the pill's own coordinates, so the two are comparable.
+    // A chip's box in the row's coordinates, as the pill's is.
     function searchChipBox(pill, chip) {
-        var p = chip.mapToItem(pill.parent, 0, 0)
-        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+        return { x: chip.x, y: chip.y, w: chip.width, h: chip.height }
     }
 
     // Whether the pill is exactly on this chip.
@@ -1083,7 +1097,7 @@ TestCase {
             // The chip's origin is mapped and the ink's offset added to it:
             // Qt 6.5 to 6.7 drop the fraction of a point given to
             // mapToItem(item, x, y), and the ink starts between pixels.
-            var o = chip.mapToItem(pill.parent, 0, 0)
+            var o = { x: chip.x, y: chip.y }
             var x0 = o.x + ink.x, x1 = x0 + ink.width
             var y0 = o.y + ink.y, y1 = y0 + ink.height
             if (x0 < pill.x - 0.5 || x1 > pill.x + pill.width + 0.5
@@ -1115,19 +1129,17 @@ TestCase {
         verify(all && tracks, "there are no chips to measure")
         compare(sPage.activeTab, 0, "the page did not open on the first tab")
 
-        // One pill for the six chips. One per chip could only cross-fade.
-        var pills = collectByName(sPage, "searchTabPill", [])
-        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
-        var pill = pills[0]
+        var pill = searchPillItem(tabs)
+        verify(pill, "there is no pill")
 
         tryVerify(function () { return searchPillOn(pill, all) }, settleMs,
                   "the pill never settled on the first chip: " + searchPillSays(pill))
-        // The chips carry no fill of their own. If one did, everything below
-        // could pass with two highlights on screen.
-        compare(all.color.a, 0,
-                "the current chip is filled as well as marked, got " + all.color)
-        compare(tracks.color.a, 0,
-                "a chip that is not current is painting something, got " + tracks.color)
+        // Every chip rests on the same surface, the current one too. If one
+        // were filled, everything below could pass with two highlights.
+        verify(sameColor(all.color, Theme.surfaceHigh),
+               "the current chip is filled as well as marked, got " + all.color)
+        verify(sameColor(tracks.color, Theme.surfaceHigh),
+               "a chip that is not current is painting something, got " + tracks.color)
         compare(searchInkIsOnTheAccent(tabs, pill), "",
                 "the ink is not where the accent is at rest")
 
