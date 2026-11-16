@@ -403,6 +403,71 @@ TestCase {
         }
     }
 
+    // ── 4. Now Playing ───────────────────────────────────────────────────
+
+    // What a reader keeps their place by: the text column and Up Next. The
+    // slot itself grows into the panel, which is the point.
+    function blocks(page) {
+        var info = findByName(page, "nowPlayingInfoColumn")
+        var upNext = findByName(page, "nowPlayingUpNextColumn")
+        return {
+            infoX: info.mapToItem(page, 0, 0).x, infoY: info.mapToItem(page, 0, 0).y,
+            upNextX: upNext.mapToItem(page, 0, 0).x, upNextY: upNext.mapToItem(page, 0, 0).y
+        }
+    }
+
+    function test_lyrics_open_in_place_data() {
+        return [ { tag: "side by side", w: 1280, h: 900 },
+                 { tag: "stacked",      w: 820,  h: 1100 } ]
+    }
+
+    function test_lyrics_open_in_place(row) {
+        seedNowPlaying("Ein Titel")
+        var host = showHost(npHost, row.w, row.h)
+        var page = host.page
+        settle(host)
+        var before = blocks(page)
+        page.showLyrics = true
+        tryVerify(function () { return page.lyricsness === 1 }, 2000)
+        settle(host)
+        var after = blocks(page)
+        for (var k in before)
+            verify(Math.abs(before[k] - after[k]) <= 0.5,
+                   row.tag + ": " + k + " moved from " + before[k].toFixed(1)
+                   + " to " + after[k].toFixed(1) + " when the lyrics opened")
+        var panel = findByName(page, "nowPlayingLyricsPanel")
+        verify(panel.visible && panel.width >= 280 && panel.height >= 280,
+               row.tag + ": the lyrics panel is " + panel.width + "x" + panel.height)
+        // And it stays clear of the text column.
+        var info = findByName(page, "nowPlayingInfoColumn")
+        var pr = panel.mapToItem(page, 0, 0)
+        var ir = info.mapToItem(page, 0, 0)
+        var apart = pr.x + panel.width <= ir.x + 0.5 || pr.y + panel.height <= ir.y + 0.5
+        verify(apart, row.tag + ": the lyrics panel overlaps the text column")
+        page.showLyrics = false
+    }
+
+    function test_fullscreen_art_uses_the_room() {
+        seedNowPlaying("Ein Titel")
+        var host = showHost(npHost, 1920, 1080)
+        host.fullScreen = true
+        settle(host)
+        var art = findByName(host.page, "nowPlayingArt")
+        verify(art.width >= 640, "fullscreen at 1920x1080 draws the art at " + art.width + "px")
+        var scroll = findByName(host.page, "nowPlayingScroll")
+        verify(!scroll.interactive, "the bigger art made the fullscreen page scroll")
+    }
+
+    function test_a_long_title_takes_two_lines_before_it_elides() {
+        seedNowPlaying("A Song Whose Title Takes Its Time Over Two Lines")
+        var host = showHost(npHost, 1280, 900)
+        settle(host)
+        var title = findByName(host.page, "nowPlayingTitle")
+        verify(title.implicitWidth > title.width, "the title fits on one line, nothing to test")
+        compare(title.lineCount, 2, "the title is on " + title.lineCount + " line(s)")
+        verify(!title.truncated, "the title elided although two lines hold it")
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
