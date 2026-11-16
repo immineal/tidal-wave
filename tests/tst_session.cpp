@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -85,10 +86,14 @@ public:
         return out;
     }
 
-    void releaseProfiles()
+    // Answers the held profile requests, or only those for `path`.
+    void releaseProfiles(const QString &path = {})
     {
-        for (const QPointer<QTcpSocket> &sock : std::exchange(heldProfiles, {}))
-            if (sock) answer(sock, 200, R"({"userId":7,"countryCode":"DE","firstName":"Robin"})");
+        const auto all = std::exchange(heldProfiles, {});
+        for (const auto &[sock, asked] : all) {
+            if (!path.isEmpty() && asked != path) { heldProfiles << qMakePair(sock, asked); continue; }
+            if (sock) answer(sock, 200, bodyFor(asked));
+        }
     }
 
     // Answers the token requests that Hold kept waiting.
@@ -106,6 +111,9 @@ public:
     // as on a loaded machine.
     bool        holdProfile = false;
     int         profileDelayMs = 50;
+    // Who the session is, and the name each profile answers with.
+    qint64      userId = 7;
+    QHash<qint64, QByteArray> names{{7, "Robin"}, {8, "Sam"}};
     int         tokenRequests = 0;
     int         refused = 0;            // 401 answers given by the API
     QList<Seen> api;
@@ -133,10 +141,10 @@ private:
         }
         api << seen;
         if (!refuseAll && goodTokens.contains(seen.bearer)) {
-            const QByteArray body = R"({"userId":7,"countryCode":"DE","firstName":"Robin"})";
+            const QByteArray body = bodyFor(seen.path);
             const bool profile = seen.path.startsWith(QLatin1String("/api/users/"));
             if (profile && holdProfile)
-                heldProfiles << sock;
+                heldProfiles << qMakePair(QPointer<QTcpSocket>(sock), seen.path);
             else if (profile && profileDelayMs > 0)
                 QTimer::singleShot(profileDelayMs, sock, [sock, body] { answer(sock, 200, body); });
             else
@@ -145,6 +153,15 @@ private:
             ++refused;
             answer(sock, 401, refusal);
         }
+    }
+
+    // A profile for the user in its path; anything else is the session's.
+    QByteArray bodyFor(const QString &path) const
+    {
+        const qint64 user = path.startsWith(QLatin1String("/api/users/"))
+            ? path.mid(11).toLongLong() : userId;
+        return "{\"userId\":" + QByteArray::number(user) + ",\"countryCode\":\"DE\","
+               "\"firstName\":\"" + names.value(user) + "\"}";
     }
 
     void issue(QTcpSocket *sock)
@@ -167,7 +184,7 @@ private:
     }
 
     QList<QTcpSocket *> held;
-    QList<QPointer<QTcpSocket>> heldProfiles;
+    QList<QPair<QPointer<QTcpSocket>, QString>> heldProfiles;
     int m_issued = 0;
 };
 
@@ -285,7 +302,7 @@ class TestSession : public QObject {
     }
 
     // A saved session whose token "old" expires `inSecs` from now.
-    void saveSession(qint64 inSecs)
+    void saveSession(qint64 inSecs, qint64 userId = 7)
     {
         QVERIFY(QDir(m_home->path()).mkpath(QStringLiteral(".config/tidal-wave")));
         QFile creds(credsPath());
@@ -296,7 +313,7 @@ class TestSession : public QObject {
             {QStringLiteral("expires_at"),
              Auth::expiryToString(QDateTime::fromSecsSinceEpoch(
                  QDateTime::currentSecsSinceEpoch() + inSecs))},
-            {QStringLiteral("user_id"),       7},
+            {QStringLiteral("user_id"),       userId},
             {QStringLiteral("country_code"),  QStringLiteral("DE")},
         }).toJson());
     }
@@ -791,6 +808,33 @@ private slots:
         QVERIFY2(!QFile::exists(credsPath()), qPrintable(QString::fromUtf8(
             QJsonDocument(savedCreds()).toJson(QJsonDocument::Compact))));
         QVERIFY(rig.auth.username().isEmpty());
+    }
+
+    // The profile of the account before lands once another one signed in:
+    // its name is not the new account's.
+    void aProfileForTheAccountBeforeNamesNoOne()
+    {
+        Rig rig;
+        rig.tidal.holdProfile = true;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        rig.auth.logout();
+
+        rig.tidal.userId = 8;
+        saveSession(3600, 8);
+        rig.auth.loadCredentials();
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
+        QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/8")).size(), 1, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(rig.auth.userId(), qint64(8), 5000);
+
+        rig.tidal.releaseProfiles(QStringLiteral("/api/users/7"));
+        QTest::qWait(200);
+        QCOMPARE(rig.auth.username(), QString());
+        QVERIFY(!savedCreds().contains(QStringLiteral("username"))
+                || savedCreds().value(QStringLiteral("username")).toString().isEmpty());
+
+        rig.tidal.releaseProfiles(QStringLiteral("/api/users/8"));
+        QTRY_COMPARE_WITH_TIMEOUT(rig.auth.username(), QStringLiteral("Sam"), 5000);
     }
 
     // Busy or down is no refusal of the refresh token, whatever the body
