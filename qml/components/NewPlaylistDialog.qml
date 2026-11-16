@@ -133,8 +133,8 @@ Popup {
             Item {
                 id: dialogClose
                 objectName: "newPlaylistClose"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
                 // Disabled while a create is in flight, like Cancel and Escape.
                 // `enabled: false` stops the handlers and takes the item out of

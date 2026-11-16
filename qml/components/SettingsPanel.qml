@@ -166,13 +166,27 @@ Popup {
                 Layout.fillWidth: true
             }
             Item {
+                id: settingsClose
                 objectName: "settingsClose"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                activeFocusOnTab: true
+                Keys.onReturnPressed: root.close()
+                Keys.onSpacePressed:  root.close()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("NewPlaylistDialog", "Close", "button, closes the dialog")
+                Accessible.onPressAction: root.close()
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusButton
+                    color: "transparent"
+                    border.width: settingsClose.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
                 VectorIcon {
                     anchors.centerIn: parent
                     name: "x"
-                    color: closeHov.hovered ? Theme.textPrimary : Theme.textSec
+                    color: closeHov.hovered || settingsClose.activeFocus ? Theme.textPrimary : Theme.textSec
                     width: 14; height: 14
                     strokeWidth: 1.8
                 }

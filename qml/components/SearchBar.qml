@@ -31,7 +31,9 @@ Rectangle {
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 12
-        anchors.rightMargin: 12
+        // Less while the 32px clear target is there, so its cross keeps
+        // the place a 14px button had.
+        anchors.rightMargin: clearBtn.visible ? 3 : 12
         spacing: 8
         VectorIcon {
             name: "search"
@@ -62,11 +64,13 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
             }
         }
+        // A 32px target round the 14px cross.
         Item {
             id: clearBtn
+            objectName: "searchClear"
             visible: input.text.length > 0
-            width: 14
-            height: 14
+            Layout.preferredWidth: 32
+            Layout.preferredHeight: 32
             Layout.alignment: Qt.AlignVCenter
             activeFocusOnTab: true
             Keys.onReturnPressed: input.text = ""
@@ -75,12 +79,13 @@ Rectangle {
             Accessible.name: qsTr("Clear search", "button, empties the search field")
             Accessible.onPressAction: input.text = ""
             Rectangle {
-                anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
+                anchors.centerIn: parent; width: 22; height: 22; radius: Theme.radiusButton; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0
                 border.color: Theme.accent
             }
             VectorIcon {
-                anchors.fill: parent
+                anchors.centerIn: parent
+                width: 14; height: 14
                 name: "x"
                 color: clearBtn.activeFocus ? Theme.accentText : Theme.textDim
                 strokeWidth: 1.8

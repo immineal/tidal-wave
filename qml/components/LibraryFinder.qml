@@ -96,7 +96,7 @@ Rectangle {
                 anchors.left: glass.right
                 anchors.leftMargin: 8
                 anchors.right: clearBtn.left
-                anchors.rightMargin: 6
+                anchors.rightMargin: -3
                 anchors.verticalCenter: parent.verticalCenter
                 height: parent.height
                 color: Theme.textPrimary
@@ -130,14 +130,28 @@ Rectangle {
             Item {
                 id: clearBtn
                 objectName: "finderClear"
+                // A 32px target; the 13px cross sits where it always did.
                 anchors.right: parent.right
-                anchors.rightMargin: 10
+                anchors.rightMargin: 0
                 anchors.verticalCenter: parent.verticalCenter
-                width: 13
-                height: 13
+                width: 32
+                height: 32
                 visible: input.text.length > 0
+                activeFocusOnTab: visible
+                Keys.onReturnPressed: input.text = ""
+                Keys.onSpacePressed:  input.text = ""
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("SearchBar", "Clear search", "button, empties the search field")
+                Accessible.onPressAction: input.text = ""
+                Rectangle {
+                    anchors.centerIn: parent; width: 22; height: 22
+                    radius: Theme.radiusButton; color: "transparent"
+                    border.width: clearBtn.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
                 VectorIcon {
-                    anchors.fill: parent
+                    anchors.centerIn: parent
+                    width: 13; height: 13
                     name: "x"
                     color: clearHov.hovered ? Theme.textPrimary : Theme.textDim
                     strokeWidth: 1.8

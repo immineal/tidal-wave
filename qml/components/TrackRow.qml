@@ -889,11 +889,14 @@ Item {
                     Item {
                         id: pickerClose
                         objectName: "pickerCloseButton"
-                        anchors.right: parent.right; anchors.rightMargin: 12
+                        anchors.right: parent.right; anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 26
-                        height: 26
+                        width: 32
+                        height: 32
                         activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTranslate("NewPlaylistDialog", "Close", "button, closes the dialog")
+                        Accessible.onPressAction: trackPicker.close()
                         Keys.onReturnPressed: trackPicker.close()
                         Keys.onEnterPressed:  trackPicker.close()
                         Keys.onSpacePressed:  trackPicker.close()

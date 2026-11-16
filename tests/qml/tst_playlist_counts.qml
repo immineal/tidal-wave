@@ -408,8 +408,8 @@ TestCase {
     // ── getting out of the two popups ────────────────────────────────────
     // Both popups close with Escape and carry SettingsPanel's close button,
     // with SearchBar's keyboard treatment. The hit area is asserted as a
-    // number.
-    readonly property int closeTargetPx: 26
+    // number: 32, the smallest target the app allows.
+    readonly property int closeTargetPx: 32
 
     function clickItem(host, item) {
         var at = item.mapToItem(host.contentItem, item.width / 2, item.height / 2)
