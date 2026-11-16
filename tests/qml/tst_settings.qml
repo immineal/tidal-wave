@@ -101,6 +101,28 @@ TestCase {
         function checkNow() { checkNowCount++ }
     }
 
+    // ScrobbleSink: the ListenBrainz account and its status, and the two
+    // invokables, counted.
+    QtObject {
+        id: scrobbleStub
+        property bool enabled: false
+        property bool connected: false
+        property string userName: ""
+        property bool checking: false
+        property bool authFailed: false
+        property string statusText: ""
+        property var signIns: []
+        property int disconnects: 0
+        signal accountChanged()
+        function signIn(token) { signIns = signIns.concat([token]) }
+        function disconnectAccount() {
+            disconnects++
+            connected = false
+            userName = ""
+            accountChanged()
+        }
+    }
+
     // ── fixtures ─────────────────────────────────────────────────────────
 
     function init() {
@@ -124,6 +146,14 @@ TestCase {
         audioStub.devices = threeDevices()
         updateStub.enabled = true
         updateStub.checkNowCount = 0
+        scrobbleStub.enabled = false
+        scrobbleStub.connected = false
+        scrobbleStub.userName = ""
+        scrobbleStub.checking = false
+        scrobbleStub.authFailed = false
+        scrobbleStub.statusText = ""
+        scrobbleStub.signIns = []
+        scrobbleStub.disconnects = 0
     }
 
     function cleanupTestCase() {
@@ -271,6 +301,7 @@ TestCase {
         panel.langSource   = i18nStub
         panel.deviceSource = audioStub
         panel.check        = updateStub
+        panel.scrobble     = scrobbleStub
 
         host.sidebar.openSettings()
         settle(host.contentItem)
@@ -1591,13 +1622,155 @@ TestCase {
         settle(panel.contentItem)
     }
 
+    // ── scrobbling ───────────────────────────────────────────────────────
+
+    // Off by default, and off it asks for nothing.
+    function test_scrobbling_starts_off_and_asks_for_nothing() {
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        verify(section, "there is no scrobbling section")
+        var toggle = findByName(section, "settingsScrobbleToggle")
+        verify(toggle && toggle.visible, "there is no scrobbling switch")
+        verify(!toggle.checked, "scrobbling is on before it was asked for")
+        verify(!findByName(section, "settingsScrobbleTokenRow").visible,
+               "the token is asked for while scrobbling is off")
+        verify(!findByName(section, "settingsScrobbleAccount").visible)
+        verify(findByName(section, "settingsScrobbleNote").text.indexOf("listenbrainz.org") !== -1,
+               "the switch does not say where the plays go")
+        h.panel.close()
+    }
+
+    function test_the_scrobbling_switch_turns_it_on() {
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        clickItem(h.panel, findByName(section, "settingsScrobbleToggle"))
+        compare(scrobbleStub.enabled, true, "the switch did not turn scrobbling on")
+        verify(findByName(section, "settingsScrobbleTokenRow").visible,
+               "on and with no account, the token is not asked for")
+        clickItem(h.panel, findByName(section, "settingsScrobbleToggle"))
+        compare(scrobbleStub.enabled, false)
+        h.panel.close()
+    }
+
+    // Masked as it is pasted, shown on request, and handed over by Connect
+    // or by Return.
+    function test_the_token_is_masked_and_handed_over() {
+        scrobbleStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var field = findByName(section, "settingsScrobbleToken")
+        verify(field && field.visible, "there is no token field")
+        compare(field.echoMode, TextInput.Password, "the token is not masked")
+
+        var show = findByName(section, "settingsScrobbleShowToken")
+        clickItem(h.panel, show)
+        compare(field.echoMode, TextInput.Normal, "Show does not show the token")
+        clickItem(h.panel, show)
+        compare(field.echoMode, TextInput.Password, "Hide does not mask it again")
+
+        field.text = "abc-123"
+        clickItem(h.panel, findByName(section, "settingsScrobbleConnect"))
+        compare(scrobbleStub.signIns, ["abc-123"], "Connect did not hand the token over")
+
+        field.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(scrobbleStub.signIns.length, 2, "Return in the field does not connect")
+
+        // Taken, it leaves the field.
+        scrobbleStub.connected = true
+        scrobbleStub.accountChanged()
+        compare(field.text, "")
+        h.panel.close()
+    }
+
+    function test_an_empty_token_is_not_sent() {
+        scrobbleStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        findByName(section, "settingsScrobbleToken").text = "   "
+        clickItem(h.panel, findByName(section, "settingsScrobbleConnect"))
+        compare(scrobbleStub.signIns.length, 0)
+        h.panel.close()
+    }
+
+    // Connected: whose account it is, the status line, and Disconnect.
+    function test_a_connected_account_shows_its_name_and_disconnect() {
+        scrobbleStub.enabled = true
+        scrobbleStub.connected = true
+        scrobbleStub.userName = "listener"
+        scrobbleStub.statusText = "2 listens waiting to be sent."
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        compare(findByName(section, "settingsScrobbleUser").text, "listener")
+        verify(!findByName(section, "settingsScrobbleTokenRow").visible,
+               "a connected account is asked for its token again")
+        var status = findByName(section, "settingsScrobbleStatus")
+        verify(status.visible)
+        compare(status.text, "2 listens waiting to be sent.")
+        clickItem(h.panel, findByName(section, "settingsScrobbleDisconnect"))
+        compare(scrobbleStub.disconnects, 1)
+        verify(findByName(section, "settingsScrobbleTokenRow").visible,
+               "after Disconnect the token is not asked for")
+        h.panel.close()
+    }
+
+    // A token ListenBrainz turned down: the field is back and the status
+    // says why.
+    function test_a_refused_token_asks_for_a_new_one() {
+        scrobbleStub.enabled = true
+        scrobbleStub.connected = true
+        scrobbleStub.userName = "listener"
+        scrobbleStub.authFailed = true
+        scrobbleStub.statusText = "ListenBrainz no longer accepts this token."
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        verify(findByName(section, "settingsScrobbleTokenRow").visible)
+        var status = findByName(section, "settingsScrobbleStatus")
+        verify(status.visible)
+        compare(status.color, Theme.redText)
+        h.panel.close()
+    }
+
+    // Each control is on the tab ring and tells a screen reader what it is.
+    function test_scrobbling_controls_are_reachable_and_named_data() {
+        return [
+            { tag: "switch",     name: "settingsScrobbleToggle",     role: Accessible.CheckBox,     connected: false },
+            { tag: "token",      name: "settingsScrobbleToken",      role: Accessible.EditableText, connected: false },
+            { tag: "show",       name: "settingsScrobbleShowToken",  role: Accessible.Button,       connected: false },
+            { tag: "connect",    name: "settingsScrobbleConnect",    role: Accessible.Button,       connected: false },
+            { tag: "token page", name: "settingsScrobbleTokenLink",  role: Accessible.Link,         connected: false },
+            { tag: "disconnect", name: "settingsScrobbleDisconnect", role: Accessible.Button,       connected: true },
+        ]
+    }
+    function test_scrobbling_controls_are_reachable_and_named(data) {
+        scrobbleStub.enabled = true
+        scrobbleStub.connected = data.connected
+        scrobbleStub.userName = data.connected ? "listener" : ""
+        var h = openPanel(minWindowW, minWindowH)
+        var item = findByName(sectionByKey(h.panel, "scrobbling"), data.name)
+        verify(item && item.visible, data.name + " is not shown")
+        verify(item.activeFocusOnTab, data.name + " cannot be reached with the keyboard")
+        verify(a11y.exposed(item), data.name + " is not exposed")
+        compare(a11y.role(item), data.role)
+        verify(a11y.name(item).length > 0, data.name + " has no accessible name")
+        h.panel.close()
+    }
+
+    function test_the_token_page_link_opens_listenbrainz() {
+        scrobbleStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var link = findByName(sectionByKey(h.panel, "scrobbling"), "settingsScrobbleTokenLink")
+        compare(urlFromClick(h.panel, link), "https://listenbrainz.org/settings/")
+        h.panel.close()
+    }
+
     // ── the order of the panel ───────────────────────────────────────────
 
     // Top to bottom, by where the sections land. The shortcuts sit above the
     // privacy notice, folded behind Details, and About closes the panel.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,window,playback,performance,updates,feedback,shortcuts,experimental,privacy,about"
+        "account,appearance,window,playback,scrobbling,performance,updates,feedback,shortcuts,experimental,privacy,about"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -1887,6 +2060,22 @@ TestCase {
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy block never says \"" + mustSay[j]
                    + "\" about the feedback routes")
+        h.panel.close()
+    }
+
+    // Scrobbling sends plays off the machine, so the privacy block says where,
+    // what goes with them, and that nothing goes until it is switched on.
+    function test_the_privacy_block_covers_listenbrainz() {
+        var h = openPanel(1280, 1200)
+        var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
+        var all = ""
+        for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
+        var mustSay = ["api.listenbrainz.org", "only once you switch it on",
+                       "the time you played it", "ListenBrainz user token",
+                       "disconnecting deletes"]
+        for (var j = 0; j < mustSay.length; j++)
+            verify(all.indexOf(mustSay[j]) !== -1,
+                   "the privacy block never says \"" + mustSay[j] + "\" about ListenBrainz")
         h.panel.close()
     }
 
