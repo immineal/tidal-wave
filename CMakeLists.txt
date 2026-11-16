@@ -76,6 +76,10 @@ set(SOURCES
     src/ui/TrackNotifier.cpp
     src/api/LibraryIndex.cpp
     src/api/FavoritesCache.cpp
+    src/scrobble/PlayTracker.cpp
+    src/scrobble/ListenBrainz.cpp
+    src/scrobble/ScrobbleSink.cpp
+    src/scrobble/Scrobbler.cpp
 )
 
 set(HEADERS
@@ -111,6 +115,12 @@ set(HEADERS
     src/api/LibraryIndex.h
     src/api/FavoritesCache.h
     src/api/PageEverything.h
+    src/scrobble/Listen.h
+    src/scrobble/PlayTracker.h
+    src/scrobble/ScrobbleService.h
+    src/scrobble/ListenBrainz.h
+    src/scrobble/ScrobbleSink.h
+    src/scrobble/Scrobbler.h
 )
 
 if(UNIX AND NOT APPLE)

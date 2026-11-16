@@ -31,6 +31,8 @@ class SignalWatcher;
 class TrayMenu;
 class RemoteControl;
 class TrackNotifier;
+class Scrobbler;
+class ScrobbleSink;
 
 class Application : public QObject {
     Q_OBJECT
@@ -231,6 +233,8 @@ private:
     TrayMenu    *m_trayMenu = nullptr;
     RemoteControl *m_remote = nullptr;
     TrackNotifier *m_notifier = nullptr;
+    Scrobbler   *m_scrobbler = nullptr;
+    ScrobbleSink *m_listenBrainz = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;

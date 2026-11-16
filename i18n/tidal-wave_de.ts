@@ -1442,6 +1442,52 @@
     </message>
 </context>
 <context>
+    <name>ScrobbleSink</name>
+    <message>
+        <source>Checking the token with %1…</source>
+        <translation>Token wird bei %1 geprüft…</translation>
+    </message>
+    <message>
+        <source>Nothing is waiting to be sent.</source>
+        <translation>Alles ist gesendet.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) waiting to be sent.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet auf den Versand.</numerusform>
+            <numerusform>%Ln Wiedergaben warten auf den Versand.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Try again in a moment.</source>
+        <translation>%1 ist nicht erreichbar. Versuch es gleich noch einmal.</translation>
+    </message>
+    <message>
+        <source>%1 does not know this token. Copy it again from your %1 settings.</source>
+        <translation>%1 kennt diesen Token nicht. Kopiere ihn noch einmal aus deinen %1-Einstellungen.</translation>
+    </message>
+    <message>
+        <source>%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.</source>
+        <translation>%1 nimmt diesen Token nicht mehr an, deshalb wird nichts gesendet. Füge einen neuen Token ein, um weiterzumachen.</translation>
+    </message>
+    <message>
+        <source>%1 asked to slow down. Listens wait here and go out later.</source>
+        <translation>%1 bittet um weniger Anfragen. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 has a problem on its side. Listens wait here and go out later.</source>
+        <translation>%1 hat gerade ein Problem. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Listens wait here and go out later.</source>
+        <translation>%1 ist nicht erreichbar. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 turned down the listen of &quot;%2&quot;.</source>
+        <translation>%1 hat die Wiedergabe von „%2“ abgelehnt.</translation>
+    </message>
+</context>
+<context>
     <name>SearchBar</name>
     <message>
         <source>Search…</source>
