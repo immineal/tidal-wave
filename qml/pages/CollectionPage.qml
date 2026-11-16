@@ -222,6 +222,8 @@ Rectangle {
                 onActivated: (index) => { root.activeTab = index }
             }
 
+            // Plain words with a line under the chosen one: the tab strip
+            // beside it already carries the row's one accent pill.
             Row {
                 visible: root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
@@ -234,10 +236,11 @@ Rectangle {
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusFull
-                        color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
-                        // One of three, so it reads as a radio button. The ring
-                        // is outside the pill, apart from the chosen fill.
+                        readonly property bool chosen: root.sortMode === index
+                        // Sized for the bold label, so choosing one moves nothing.
+                        height: 30; width: sortBoldWidth.implicitWidth + Theme.space4; radius: Theme.radiusMedium
+                        color: sortHov.hovered && !chosen ? Theme.hoverFill : "transparent"
+                        // One of three, so it reads as a radio button.
                         activeFocusOnTab: true
                         Keys.onReturnPressed: root.sortMode = index
                         Keys.onSpacePressed:  root.sortMode = index
@@ -250,17 +253,36 @@ Rectangle {
                         Accessible.onToggleAction: root.sortMode = index
                         Rectangle {
                             anchors.fill: parent
-                            anchors.margins: -Theme.space1
-                            radius: Theme.radiusFull
+                            radius: Theme.radiusMedium
                             color: "transparent"
                             border.width: sortPill.activeFocus ? 2 : 0
                             border.color: Theme.accent
                         }
                         Text {
                             id: sortLbl; anchors.centerIn: parent
+                            objectName: "collectionSortLabel"
                             text: modelData
-                            color: root.sortMode === index ? Theme.accentInk : Theme.textSec
+                            color: sortPill.chosen ? Theme.textPrimary : Theme.textSec
                             font.pixelSize: Theme.fontMeta
+                            font.bold: sortPill.chosen
+                        }
+                        Text {
+                            id: sortBoldWidth
+                            visible: false
+                            text: modelData
+                            font.pixelSize: Theme.fontMeta
+                            font.bold: true
+                        }
+                        Rectangle {
+                            objectName: "collectionSortUnderline"
+                            visible: sortPill.chosen
+                            anchors.horizontalCenter: sortLbl.horizontalCenter
+                            anchors.top: sortLbl.bottom
+                            anchors.topMargin: Theme.spaceHalf
+                            width: sortLbl.implicitWidth
+                            height: 2
+                            radius: height / 2
+                            color: Theme.accent
                         }
                         MouseArea {
                             anchors.fill: parent
