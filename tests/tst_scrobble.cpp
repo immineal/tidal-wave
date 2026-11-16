@@ -554,6 +554,35 @@ private slots:
         QCOMPARE(server.listensTaken(), 1);
     }
 
+    // Discard empties a kept queue, so the same account connecting again
+    // sends none of it. While connected there is nothing kept to discard.
+    void discardDropsTheKeptListens() {
+        FakeListenBrainz server;
+        auto s = connectedSink(server, 60'000);
+        QVERIFY(s);
+        server.answer = FakeListenBrainz::failing(503);
+        s->add(track(1, 200));
+        QTRY_VERIFY(!server.seen.isEmpty());
+        QCOMPARE(s->property("keptCount").toInt(), 0);
+        QVERIFY(QMetaObject::invokeMethod(s.get(), "discardKept"));
+        QCOMPARE(s->queuedCount(), 1);
+
+        s->disconnectAccount();
+        QCOMPARE(s->property("keptCount").toInt(), 1);
+        QVERIFY(QMetaObject::invokeMethod(s.get(), "discardKept"));
+        QCOMPARE(s->queuedCount(), 0);
+        QCOMPARE(s->property("keptCount").toInt(), 0);
+        QVERIFY(!QFile::exists(paths().queue));
+        QVERIFY2(s->statusText().isEmpty(), qPrintable(s->statusText()));
+
+        server.answer = FakeListenBrainz::fine;
+        server.seen.clear();
+        s->signIn(kToken);
+        QTRY_VERIFY(s->connected());
+        QTest::qWait(100);
+        QCOMPARE(server.submits().size(), 0);
+    }
+
     // Another account after a disconnect starts with an empty queue.
     void anotherAccountAfterDisconnectDropsTheKeptQueue() {
         FakeListenBrainz server;

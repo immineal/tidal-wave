@@ -397,7 +397,8 @@ named.
     yet accepted by each service, so a
     quit or an outage loses none, with the user name they belong to. It holds at most
     10000 and is removed once it is empty. Disconnecting keeps it, so the same account
-    connecting again sends them; connecting another account deletes it
+    connecting again sends them; connecting another account, or Discard next to the
+    count in Settings, deletes it
     (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
     lyrics found on another site, a note that a site called it an instrumental, or a note

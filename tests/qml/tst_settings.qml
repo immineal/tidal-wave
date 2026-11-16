@@ -113,8 +113,11 @@ TestCase {
         property string statusText: ""
         property var signIns: []
         property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
         signal accountChanged()
         function signIn(token) { signIns = signIns.concat([token]) }
+        function discardKept() { discards++; keptCount = 0 }
         function disconnectAccount() {
             disconnects++
             connected = false
@@ -138,7 +141,10 @@ TestCase {
         property int finishes: 0
         property int cancels: 0
         property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
         signal accountChanged()
+        function discardKept() { discards++; keptCount = 0 }
         function startBrowserSignIn() { starts++ }
         function finishBrowserSignIn() { finishes++ }
         function cancelBrowserSignIn() { cancels++; awaitingBrowser = false }
@@ -181,6 +187,8 @@ TestCase {
         scrobbleStub.statusText = ""
         scrobbleStub.signIns = []
         scrobbleStub.disconnects = 0
+        scrobbleStub.keptCount = 0
+        scrobbleStub.discards = 0
         lastfmStub.enabled = false
         lastfmStub.connected = false
         lastfmStub.userName = ""
@@ -193,6 +201,8 @@ TestCase {
         lastfmStub.finishes = 0
         lastfmStub.cancels = 0
         lastfmStub.disconnects = 0
+        lastfmStub.keptCount = 0
+        lastfmStub.discards = 0
     }
 
     function cleanupTestCase() {
@@ -1920,6 +1930,36 @@ TestCase {
         verify(a11y.exposed(item), data.name + " is not exposed")
         compare(a11y.role(item), data.role)
         verify(a11y.name(item).length > 0, data.name + " has no accessible name")
+        h.panel.close()
+    }
+
+    // Listens kept for an account that is not connected can be discarded,
+    // for either service, from beside the line that counts them.
+    function test_kept_listens_can_be_discarded_data() {
+        return [
+            { tag: "ListenBrainz", stub: "scrobble", link: "settingsScrobbleDiscard" },
+            { tag: "Last.fm",      stub: "lastfm",   link: "settingsLastfmDiscard" },
+        ]
+    }
+    function test_kept_listens_can_be_discarded(data) {
+        var stub = data.stub === "scrobble" ? scrobbleStub : lastfmStub
+        stub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var link = findByName(section, data.link)
+        verify(link, "there is no Discard link")
+        verify(!link.visible, "Discard is offered with nothing kept")
+        stub.keptCount = 2
+        stub.statusText = "2 listens kept until listener connects again."
+        settle(h.panel.contentItem)
+        verify(link.visible, "Discard is not offered for kept listens")
+        compare(link.text, "Discard")
+        verify(link.activeFocusOnTab, "Discard cannot be reached with the keyboard")
+        compare(a11y.role(link), Accessible.Link)
+        clickItem(h.panel, link)
+        compare(stub.discards, 1, "Discard did not empty the kept queue")
+        settle(h.panel.contentItem)
+        verify(!link.visible)
         h.panel.close()
     }
 

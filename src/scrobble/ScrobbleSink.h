@@ -32,6 +32,8 @@ class ScrobbleSink : public QObject {
     Q_PROPERTY(QString lastError   READ lastError   NOTIFY statusChanged)
     // The status line: what waits, and the last error.
     Q_PROPERTY(QString statusText  READ statusText  NOTIFY statusChanged)
+    // Listens kept for an account that is not connected now.
+    Q_PROPERTY(int     keptCount   READ keptCount   NOTIFY statusChanged)
     // Signed in through the browser rather than with a pasted token.
     Q_PROPERTY(bool    browserSignIn   READ browserSignIn   CONSTANT)
     // The browser is open at the page that allows access; finish or cancel.
@@ -66,6 +68,7 @@ public:
     bool    authFailed()  const { return m_authFailed; }
     QString lastError()   const { return m_lastError; }
     QString statusText()  const;
+    int     keptCount()   const { return connected() ? 0 : int(m_queue.size()); }
     bool    browserSignIn()   const { return m_service->hasBrowserSignIn(); }
     bool    awaitingBrowser() const { return !m_requestToken.isEmpty(); }
     QString signInPage()      const { return m_signInPage.toString(); }
@@ -75,6 +78,8 @@ public:
     // Forgets the secret. The listens that wait stay for the same account to
     // connect again; another account's sign-in drops them.
     Q_INVOKABLE void disconnectAccount();
+    // Drops the kept listens, so no account will send them.
+    Q_INVOKABLE void discardKept();
 
     // The browser sign-in: a request token and openPage(), then, once the
     // user has allowed it there, the session. Cancel drops the token.

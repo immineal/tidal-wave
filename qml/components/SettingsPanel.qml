@@ -874,13 +874,26 @@ Popup {
                 }
 
                 // What waits to be sent, and the last thing that went wrong.
-                Text {
-                    objectName: "settingsScrobbleStatus"
-                    visible: scrobbling.on && text.length > 0
-                    text: scrobbling.sink ? scrobbling.sink.statusText : ""
-                    color: scrobbling.refused ? Theme.redText : Theme.textDim
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                // Listens kept for an account not connected can be let go.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    Text {
+                        objectName: "settingsScrobbleStatus"
+                        visible: scrobbling.on && text.length > 0
+                        text: scrobbling.sink ? scrobbling.sink.statusText : ""
+                        color: scrobbling.refused ? Theme.redText : Theme.textDim
+                        font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    LinkLine {
+                        objectName: "settingsScrobbleDiscard"
+                        visible: scrobbling.on && scrobbling.sink ? scrobbling.sink.keptCount > 0 : false
+                        text: qsTr("Discard", "link that deletes the listens kept for an account")
+                        Layout.fillWidth: false
+                        Layout.alignment: Qt.AlignTop
+                        onActivated: if (scrobbling.sink) scrobbling.sink.discardKept()
+                    }
                 }
 
                 // Signed in through the browser: Connect opens Last.fm's page,
@@ -1004,13 +1017,25 @@ Popup {
                     }
                 }
 
-                Text {
-                    objectName: "settingsLastfmStatus"
-                    visible: lastfmBlock.on && text.length > 0
-                    text: lastfmBlock.sink ? lastfmBlock.sink.statusText : ""
-                    color: lastfmBlock.sink && lastfmBlock.sink.authFailed === true ? Theme.redText : Theme.textDim
-                    font.pixelSize: Theme.fontMeta
-                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    Text {
+                        objectName: "settingsLastfmStatus"
+                        visible: lastfmBlock.on && text.length > 0
+                        text: lastfmBlock.sink ? lastfmBlock.sink.statusText : ""
+                        color: lastfmBlock.sink && lastfmBlock.sink.authFailed === true ? Theme.redText : Theme.textDim
+                        font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    LinkLine {
+                        objectName: "settingsLastfmDiscard"
+                        visible: lastfmBlock.on && lastfmBlock.sink ? lastfmBlock.sink.keptCount > 0 : false
+                        text: qsTr("Discard", "link that deletes the listens kept for an account")
+                        Layout.fillWidth: false
+                        Layout.alignment: Qt.AlignTop
+                        onActivated: if (lastfmBlock.sink) lastfmBlock.sink.discardKept()
+                    }
                 }
             }
 
@@ -1331,7 +1356,7 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
-                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account deletes them.")
+                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account or \"Discard\" deletes them.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
@@ -1604,6 +1629,7 @@ Popup {
         property alias text: llText.text
         signal activated()
         implicitHeight: llText.implicitHeight
+        implicitWidth: llText.implicitWidth
         Layout.fillWidth: true
         activeFocusOnTab: true
         Keys.onReturnPressed: ll.activated()

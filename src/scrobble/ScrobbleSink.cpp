@@ -307,6 +307,15 @@ void ScrobbleSink::disconnectAccount() {
     emit statusChanged();
 }
 
+void ScrobbleSink::discardKept() {
+    if (connected() || m_queue.isEmpty()) return;
+    m_queue.clear();
+    m_queueUser.clear();
+    saveQueue();
+    emit queueChanged();
+    emit statusChanged();
+}
+
 void ScrobbleSink::add(const Listen &listen) {
     if (!m_enabled || !connected() || !listen.isValid()) return;
     m_queue.append(listen);
