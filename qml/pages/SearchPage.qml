@@ -36,6 +36,10 @@ Rectangle {
     // Whether that failure came with Tidal out of reach. Taken when the reply
     // lands: the bridge marks itself offline before it answers.
     property bool   errorOffline: false
+    // A later page that failed: which kind, and whether Tidal was out of
+    // reach. Said at the foot of that kind's list, where the listener is.
+    property int    moreFailedKind: -1
+    property bool   moreFailedOffline: false
 
     readonly property bool replied: query.length >= 2 && repliedFor === query
 
@@ -479,20 +483,53 @@ Rectangle {
                 Item {
                     objectName: "searchPagingStrip"
                     Layout.fillWidth: true
-                    height: visible ? 56 : 0
                     // "End of results" under three albums would be noise, so
                     // the end is only announced for a kind that paged.
+                    readonly property bool failed: root.moreFailedKind === root.activeTab
+                                                   && !root.loadingMore
+                    height: visible ? (failed ? moreFailColumn.implicitHeight + 32 : 56) : 0
                     visible: root.activeTab !== 0
-                             && (root.loadingMore
+                             && (root.loadingMore || failed
                                  || (!root._more[root.activeTab]
                                      && root.tabHits >= root.pageSize))
                     Text {
                         objectName: "searchPagingLabel"
                         anchors.centerIn: parent
+                        visible: !parent.failed
                         text: root.loadingMore ? qsTr("Loading more…")
                                                : qsTr("End of results")
                         color: Theme.textDim
                         font.pixelSize: Theme.fontMeta
+                    }
+                    Column {
+                        id: moreFailColumn
+                        anchors.centerIn: parent
+                        width: parent.width - 48
+                        spacing: Theme.space3
+                        visible: parent.failed
+                        Text {
+                            width: parent.width
+                            text: root.moreFailedOffline
+                                  ? qsTr("Tidal cannot be reached, so no more results could be loaded.")
+                                  : qsTr("Tidal could not load more results.")
+                            color: Theme.textSec
+                            font.pixelSize: Theme.fontBody
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        PillButton {
+                            objectName: "searchMoreRetry"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: qsTr("Try again")
+                            accent: false
+                            height: 32
+                            onClicked: {
+                                var kind = root.moreFailedKind
+                                root.moreFailedKind = -1
+                                root._setMore(kind, true)
+                                root.loadMore(kind)
+                            }
+                        }
                     }
                 }
 
@@ -1002,13 +1039,14 @@ Rectangle {
         bridge.search(q, function (results, err) {
             if (gen !== root._searchGen) return   // the query moved on
             root.loadingMore = false
+            root.moreFailedKind = -1
             if (err.length > 0) {
                 // The rows already on screen are still a true answer to this
                 // query, so they stay; what stops is the asking, which would
                 // otherwise retry on every pixel of scroll.
                 console.warn("Search failed:", err)
-                root.errorText = err
-                root.errorOffline = bridge.offline === true
+                root.moreFailedKind = kind
+                root.moreFailedOffline = bridge.offline === true
                 root._setMore(kind, false)
                 return
             }
@@ -1066,6 +1104,7 @@ Rectangle {
     }
 
     function _resetResults() {
+        moreFailedKind = -1
         tracks = []; albums = []; artists = []; playlists = []; mixes = []
         _seen = ({})
         _sent  = [0, 0, 0, 0, 0, 0]

@@ -231,6 +231,7 @@ TestCase {
 
     // The line a failed search shows; the raw reason goes to the log only.
     readonly property string failPhrase: "could not answer this search"
+    readonly property string morePhrase: "could not load more results"
 
     // Everything the page can say about the outcome of a search: the lines
     // above plus the one a failure prints. Returns the offending line, or an
@@ -956,16 +957,31 @@ TestCase {
 
         bridge.setSearchErrorForTest("Connection closed")
         scrollToBottom(win.page)
-        tryVerify(function () { return saysSomethingContaining(win.page, failPhrase) },
+        tryVerify(function () { return saysSomethingContaining(win.page, morePhrase) },
                   settleMs, "a failed page said nothing: " + visibleCopy(win.page))
         compare(win.page.tracks.length, 20,
                 "a failed page threw away the rows that had already arrived")
+        // Said where the listener is, at the foot of the list; the strip at
+        // the top would be scrolled out of view.
+        verify(!findByName(win.page, "searchErrorStrip").visible,
+               "a failed page put its message at the top of the list")
+        verify(findByName(win.page, "searchPagingStrip").visible)
 
         var settled = bridge.searchCountForTest()
         scrollToBottomAndDraw(win)
         wait(200)
         compare(bridge.searchCountForTest(), settled,
                 "the page retries the failed page on every pixel of scroll")
+
+        // Try again at the foot asks for that page once more.
+        bridge.setSearchErrorForTest("")
+        bridge.setSearchResultsForTest(fakeTracks(45), [], [], [])
+        var retry = findByName(win.page, "searchMoreRetry")
+        verify(retry && retry.visible, "no Try again at the foot of the list")
+        retry.clicked()
+        tryVerify(function () { return win.page.tracks.length > 20 }, settleMs,
+                  "Try again did not fetch the page")
+        verify(!saysSomethingContaining(win.page, morePhrase))
     }
 
     // The rows of a page exist when its reply lands and are positioned when

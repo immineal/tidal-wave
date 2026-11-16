@@ -810,7 +810,7 @@ Item {
                             // Auth::displayNameFrom already picks the
                             // username over the email address.
                             text: auth.username.length > 0 ? auth.username
-                                                           : qsTr("Your account")
+                                                           : qsTr("My account")
                             color: Theme.textSec
                             font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight
