@@ -1847,6 +1847,10 @@ QString Player::qualityLabel(const QString &code) const {
 }
 
 void Player::beginCast(CastSession *session) {
+    // Taken first, as below the backend lets go of the track: the device
+    // starts from where it is here, not from 0:00.
+    const qint64 here   = position();
+    const qint64 length = duration();
     m_castSession = session;
     // Muted as well as paused: a stream fetch that resolves after this point
     // must not play locally alongside the cast.
@@ -1856,8 +1860,8 @@ void Player::beginCast(CastSession *session) {
     const bool waited = m_preloadAdoptedBy != 0;
     cancelPreload();
     if (waited && m_loading) { setLoading(false); emit castTrackChanged(); }
-    m_castPosition = 0;
-    m_castDuration = duration();   // seed from current until the device reports
+    m_castPosition = here;
+    m_castDuration = length;   // seed from current until the device reports
     m_castPlaying  = true;
     tellPlaying();
 }

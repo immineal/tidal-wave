@@ -58,6 +58,22 @@ private slots:
     }
 
 #ifdef Q_OS_LINUX
+    // The bar shows where the track was here until the device says otherwise.
+    void theDeviceStartsFromTheLocalPosition() {
+        TidalApi api;
+        CountingClient client{&api};
+        Player p{&client};
+        QTest::qWait(30);
+        p.playTracks(rowsOf(2), 0);
+        p.seek(12000);
+        QCOMPARE(p.position(), qint64(12000));
+
+        CastSession device;
+        p.beginCast(&device);
+        QCOMPARE(p.position(), qint64(12000));
+        p.endCast();
+    }
+
     // Under repeat-one a track the device played out starts over there; a
     // press on Next would move on.
     void aTrackThatRanOutOnTheDeviceRepeatsUnderRepeatOne() {
