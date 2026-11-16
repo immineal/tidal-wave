@@ -1513,6 +1513,7 @@ void Player::joinProgress(DashFetcher *fetcher, qint64 bytes, int segments) {
 }
 
 bool Player::serveJoin(DashFetcher *fetcher, bool plays) {
+    if (!kStreamsJoins) return false;
     if (!m_stream) m_stream = new GrowingFileServer(this);
     const QString url = m_stream->serve(fetcher->tempFilePath(), QStringLiteral("audio/mp4"),
                                         fetcher->bytesReady());

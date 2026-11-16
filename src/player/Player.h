@@ -89,6 +89,10 @@ public:
     QString     audioFormat() const;
     // The badge text for a stream: format, bit depth and rate, or bit rate.
     static QString formatLabel(const StreamManifest &info);
+    // Whether a lossless track plays from the front of its join. Below 6.6 the
+    // FFmpeg backend opens a source inside setSource(), on the thread that
+    // GrowingFileServer answers on, so the open would wait for good.
+    static constexpr bool kStreamsJoins = QT_VERSION >= QT_VERSION_CHECK(6, 6, 0);
     // The loudness factor applied to the current track, 1.0 for none.
     double      trackGain() const;
     int          queueCount()    const { return m_queue.count(); }

@@ -319,7 +319,7 @@ private slots:
     // The headline: sound comes out after about the first two segments, not
     // after all seventeen.
     void aLosslessTrackSoundsBeforeItsJoinHasLanded() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         r.start();
@@ -343,7 +343,7 @@ private slots:
     // Site 4: the backend says one segment long; the bar, MPRIS and a cast
     // device are told the track's own length.
     void aGrowingStreamHasTheTracksLength() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         QSignalSpy lengths(&r.p(), &Player::durationChanged);
@@ -386,7 +386,7 @@ private slots:
     // Site 2: a seek while the stream grows is held, not swallowed, and the
     // track goes on from there once the file is whole.
     void aSeekDuringTheJoinPlaysFromThereOnceItLands() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         r.start();
@@ -406,7 +406,7 @@ private slots:
     // The policy for a seek past what has arrived: it waits, and gives up
     // with a sentence when the bytes do not come.
     void aSeekThatTheLinkNeverServesGivesUp() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         m_link.stallAt = 6;
         Rig r(&m_link);
         QVERIFY(r.audioUp());
@@ -425,7 +425,7 @@ private slots:
 
     // A seek once the whole file is on disk is a seek: no load, no pause.
     void aSeekAfterTheJoinLandedIsNoLoad() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         m_link.paceMs = 60;
         Rig r(&m_link);
         QVERIFY(r.audioUp());
@@ -443,7 +443,7 @@ private slots:
     // A pause in the same turn as a seek that swaps to the file holds, as it
     // does for a seek in a file.
     void aPauseDuringTheSwapToTheFileHolds() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         m_link.paceMs = 60;
         Rig r(&m_link);
         QVERIFY(r.audioUp());
@@ -464,7 +464,7 @@ private slots:
     // Site 3: the backend calls the stream seekable. A device swap that
     // finds the position elsewhere must not seek it.
     void aDeviceSwapDoesNotSeekTheStream() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         r.start();
@@ -486,7 +486,7 @@ private slots:
     // has the link. Its last segment is held, so it sounds past five
     // seconds, where a preload starts, before it lands.
     void noPreloadWhileTheCurrentJoinRuns() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         m_link.stallAt = kMediaSegments;
         Rig r(&m_link);
         QVERIFY(r.audioUp());
@@ -502,7 +502,7 @@ private slots:
     // Site 6: a stream that ends before its join landed did not reach the
     // end of the track. The queue stays, and it goes on from there.
     void aStreamCutShortDoesNotEndTheTrack() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         r.start(2);
@@ -526,7 +526,7 @@ private slots:
     // go, and the join lands for the device.
     void castingMidJoinTearsTheServerDown() {
 #ifdef Q_OS_LINUX
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         Rig r(&m_link);
         QVERIFY(r.audioUp());
         r.start();
@@ -552,7 +552,7 @@ private slots:
     // a step onto a track whose preload is still joining plays from the
     // front of that join, with no second request for it.
     void thePreloadPathStreamsAJoinStillUnderWay() {
-        if (const char *why = obstacle()) QSKIP(why);
+        if (const char *why = streamObstacle()) QSKIP(why);
         m_link.paceMs = 480;
         Rig r(&m_link);
         r.client.laneOf.insert(1, QStringLiteral("f"));
@@ -584,7 +584,27 @@ private slots:
         QCOMPARE(r.client.asked.count(2), 1);
     }
 
+    // Where the Player does not stream a join, the track waits for all of it.
+    void aTrackPlaysFromItsFileWhereNoJoinIsStreamed() {
+        if (Player::kStreamsJoins) QSKIP("this Qt streams a join; the cases above cover it");
+        if (const char *why = obstacle()) QSKIP(why);
+        Rig r(&m_link);
+        QVERIFY(r.audioUp());
+        r.start();
+        QTRY_VERIFY_WITH_TIMEOUT(r.plays() && r.mp()->position() > 0, 20000);
+        QVERIFY2(r.onFile(), qPrintable(r.mp()->source().toString()));
+        QVERIFY(r.joinedMs >= 0 && r.joinedMs <= r.firstSoundMs);
+        QVERIFY(!r.server());
+    }
+
 private:
+    // The cases that need a join streamed, which Player::kStreamsJoins gates.
+    static const char *streamObstacle() {
+        if (!Player::kStreamsJoins)
+            return "below Qt 6.6 the Player does not stream a join (Player::kStreamsJoins)";
+        return obstacle();
+    }
+
     static const char *obstacle() {
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
         if (QMediaDevices::audioOutputs().isEmpty())
