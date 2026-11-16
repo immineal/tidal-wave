@@ -1875,6 +1875,25 @@
         <source>Quit</source>
         <translation>Beenden</translation>
     </message>
+    <message>
+        <source>Reduce motion</source>
+        <translation>Bewegung reduzieren</translation>
+    </message>
+    <message>
+        <source>As the system says</source>
+        <comment>reduce motion: follow the desktop setting</comment>
+        <translation>Wie im System eingestellt</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <comment>reduce motion: always animate less</comment>
+        <translation>Ein</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>reduce motion: always animate</comment>
+        <translation>Aus</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>

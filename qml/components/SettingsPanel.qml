@@ -463,6 +463,23 @@ Popup {
                     value: prefs.language
                     onPicked: function (value) { prefs.language = value }
                 }
+
+                Text {
+                    text: qsTr("Reduce motion")
+                    color: Theme.textSec; font.pixelSize: 13
+                    Layout.topMargin: 4
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+                SettingSelect {
+                    objectName: "settingsReducedMotion"
+                    options: [
+                        { value: "system", label: qsTr("As the system says", "reduce motion: follow the desktop setting") },
+                        { value: "on",     label: qsTr("On", "reduce motion: always animate less") },
+                        { value: "off",    label: qsTr("Off", "reduce motion: always animate") }
+                    ]
+                    value: prefs.reducedMotion
+                    onPicked: function (value) { prefs.reducedMotion = value }
+                }
             }
 
 

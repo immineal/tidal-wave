@@ -62,6 +62,7 @@ set(SOURCES
     src/ui/ImageProvider.cpp
     src/ui/CoverColor.cpp
     src/ui/Prefs.cpp
+    src/ui/ReducedMotion.cpp
     src/ui/UpdateCheck.cpp
     src/ui/Feedback.cpp
     src/ui/ThemePalette.cpp
@@ -91,6 +92,7 @@ set(HEADERS
     src/ui/ImageProvider.h
     src/ui/CoverColor.h
     src/ui/Prefs.h
+    src/ui/ReducedMotion.h
     src/ui/UpdateCheck.h
     src/ui/Feedback.h
     src/ui/ThemePalette.h
@@ -260,6 +262,11 @@ target_link_libraries(tidalwave_qml PUBLIC
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(tidalwave_qml PUBLIC PkgConfig::AVAHI)
+endif()
+
+# ReducedMotion asks NSWorkspace through the Objective-C runtime.
+if(APPLE)
+    target_link_libraries(tidalwave_qml PUBLIC objc "-framework AppKit")
 endif()
 
 # ── Application ──────────────────────────────────────────────────────────────
