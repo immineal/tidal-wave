@@ -72,6 +72,8 @@ private slots:
         QTest::newRow("auth")      << "auth"      << qmlReachableNames(&Auth::staticMetaObject);
         // SettingsPanel reaches the listenBrainz context property as `scrobble`.
         QTest::newRow("scrobble")  << "scrobble"  << qmlReachableNames(&ScrobbleSink::staticMetaObject);
+        // And the lastFm one as `lastfm`.
+        QTest::newRow("lastfm")    << "lastfm"    << qmlReachableNames(&ScrobbleSink::staticMetaObject);
         // The C++ QML_SINGLETONs, which qml/ reaches by type name. `Theme` is
         // absent on purpose: it is qml/Theme.qml and has no C++ meta-object.
         QTest::newRow("Shortcuts")    << "Shortcuts"    << qmlReachableNames(&Shortcuts::staticMetaObject);
