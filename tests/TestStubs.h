@@ -829,7 +829,6 @@ public:
         }
         resolve(cb, res);
     }
-    Q_INVOKABLE void fetchRecentlyPlayed(QJSValue cb) { resolve(cb, emptyArray()); }
 
     // Local filters over the already-loaded favourites, used by CollectionPage's
     // search field and HomePage's refresh. All four answer from lists a test can

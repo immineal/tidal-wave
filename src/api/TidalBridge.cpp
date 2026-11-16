@@ -904,12 +904,6 @@ void TidalBridge::fetchTrackCredits(qlonglong trackId, QJSValue cb) {
     });
 }
 
-void TidalBridge::fetchRecentlyPlayed(QJSValue cb) {
-    m_client->fetchRecentlyPlayed([this, cb](QList<Track> tracks, QString err) mutable {
-        call(cb, { qjsEngine(this)->toScriptValue(tracksToList(tracks)),
-                   qjsEngine(this)->toScriptValue(err) });
-    });
-}
 
 QVariantList TidalBridge::searchFavoriteTracks(const QString &query) const {
     QVariantList list;

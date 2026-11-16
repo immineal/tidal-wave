@@ -58,7 +58,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 16
 
-            // Same drawn arrow as BackButton and PageHeader.
+            // Same drawn arrow as BackButton.
             VectorIcon {
                 name: "chevron-left"
                 color: Theme.textSec

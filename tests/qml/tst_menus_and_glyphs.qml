@@ -142,10 +142,6 @@ TestCase {
         HorizontalSection { width: 900 }
     }
     Component {
-        id: pageHeaderC
-        PageHeader { width: 500 }
-    }
-    Component {
         id: pillC
         PillButton { }
     }
@@ -279,7 +275,6 @@ TestCase {
             { tag: "SideBar",           c: sidebarC    },
             { tag: "PlayerBar",         c: playerBarC  },
             { tag: "HorizontalSection", c: sectionC    },
-            { tag: "PageHeader",        c: pageHeaderC },
             { tag: "CollectionPage",    c: collectionC },
             { tag: "AlbumPage",         c: albumPageC  },
             { tag: "PlaylistPage",      c: playlistPageC },
