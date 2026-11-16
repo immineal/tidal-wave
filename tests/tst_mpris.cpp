@@ -325,6 +325,9 @@ private slots:
     // Raise sets off inside the program is nothing a client is shown.
     void theRootInterfaceHasNoSignals() {
         Launch a;
+        // Audio comes up on the first turn of the loop, inside the call's wait;
+        // on a loaded machine that alone can outlast the call's timeout.
+        QVERIFY(a.audioUp());
         const QDBusMessage reply = desk().call(
             QStringLiteral("org.freedesktop.DBus.Introspectable"), QStringLiteral("Introspect"));
         QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);

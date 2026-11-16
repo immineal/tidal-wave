@@ -1422,6 +1422,52 @@
     </message>
 </context>
 <context>
+    <name>ScrobbleSink</name>
+    <message>
+        <source>Checking the token with %1…</source>
+        <translation>Token wird bei %1 geprüft…</translation>
+    </message>
+    <message>
+        <source>Nothing is waiting to be sent.</source>
+        <translation>Alles ist gesendet.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) waiting to be sent.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet auf den Versand.</numerusform>
+            <numerusform>%Ln Wiedergaben warten auf den Versand.</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Try again in a moment.</source>
+        <translation>%1 ist nicht erreichbar. Versuch es gleich noch einmal.</translation>
+    </message>
+    <message>
+        <source>%1 does not know this token. Copy it again from your %1 settings.</source>
+        <translation>%1 kennt diesen Token nicht. Kopiere ihn noch einmal aus deinen %1-Einstellungen.</translation>
+    </message>
+    <message>
+        <source>%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.</source>
+        <translation>%1 nimmt diesen Token nicht mehr an, deshalb wird nichts gesendet. Füge einen neuen Token ein, um weiterzumachen.</translation>
+    </message>
+    <message>
+        <source>%1 asked to slow down. Listens wait here and go out later.</source>
+        <translation>%1 bittet um weniger Anfragen. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 has a problem on its side. Listens wait here and go out later.</source>
+        <translation>%1 hat gerade ein Problem. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 could not be reached. Listens wait here and go out later.</source>
+        <translation>%1 ist nicht erreichbar. Die Wiedergaben warten hier und werden später gesendet.</translation>
+    </message>
+    <message>
+        <source>%1 turned down the listen of &quot;%2&quot;.</source>
+        <translation>%1 hat die Wiedergabe von „%2“ abgelehnt.</translation>
+    </message>
+</context>
+<context>
     <name>SearchBar</name>
     <message>
         <source>Search…</source>
@@ -1607,6 +1653,50 @@
         <translation>Audioausgabe</translation>
     </message>
     <message>
+        <source>Scrobbling</source>
+        <translation>Scrobbling</translation>
+    </message>
+    <message>
+        <source>Send what you play to ListenBrainz</source>
+        <translation>Gehörtes an ListenBrainz senden</translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to listenbrainz.org.</source>
+        <translation>Ein Titel zählt, sobald du die Hälfte davon oder 4 Minuten gehört hast. Name, Künstler, Album und Länge des Titels und wann du ihn gehört hast, gehen an listenbrainz.org.</translation>
+    </message>
+    <message>
+        <source>Connected to ListenBrainz</source>
+        <translation>Mit ListenBrainz verbunden</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the ListenBrainz token</comment>
+        <translation>Trennen</translation>
+    </message>
+    <message>
+        <source>ListenBrainz user token</source>
+        <translation>ListenBrainz-Benutzertoken</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <comment>button that masks the token again</comment>
+        <translation>Ausblenden</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <comment>button that shows the token in plain text</comment>
+        <translation>Anzeigen</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <comment>button that checks the ListenBrainz token</comment>
+        <translation>Verbinden</translation>
+    </message>
+    <message>
+        <source>Your token is on your ListenBrainz settings page</source>
+        <translation>Deinen Token findest du in deinen ListenBrainz-Einstellungen</translation>
+    </message>
+    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>
@@ -1663,6 +1753,10 @@
     <message>
         <source>Tidal Wave has no analytics and no telemetry.</source>
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
+    </message>
+    <message>
+        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.</source>
+        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben; beim Trennen wird beides gelöscht.</translation>
     </message>
     <message>
         <source>Log out?</source>

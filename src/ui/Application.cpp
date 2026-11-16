@@ -11,6 +11,9 @@
 #include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
+#include "scrobble/ListenBrainz.h"
+#include "scrobble/ScrobbleSink.h"
+#include "scrobble/Scrobbler.h"
 #include "api/LibraryIndex.h"
 #ifdef Q_OS_LINUX
 #include "cast/CastManager.h"
@@ -790,6 +793,12 @@ int Application::run(int argc, char **argv) {
         });
     });
     setUpTrackNotifier();
+    // Local play and casting alike; each service keeps its own queue.
+    auto *listenBrainz = new ListenBrainz;
+    m_listenBrainz = new ScrobbleSink(listenBrainz, ScrobbleSink::defaultPaths(listenBrainz->key()), this);
+    m_scrobbler = new Scrobbler(this);
+    m_scrobbler->addSink(m_listenBrainz);
+    m_scrobbler->attach(m_player);
     // This launch's own options wait like a second launch's; the window
     // shows itself.
     LaunchRequest own = launch.request;
@@ -891,6 +900,7 @@ int Application::run(int argc, char **argv) {
     // Not "update": QQuickItem and QQuickWindow have an update() slot, which
     // an unqualified name in QML finds before the context property.
     ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
+    ctx->setContextProperty(QStringLiteral("listenBrainz"), m_listenBrainz);
 
     // loadFromModule() arrived in Qt 6.5. The URL is the same component; its
     // prefix has to match RESOURCE_PREFIX in CMakeLists.txt, and a wrong one

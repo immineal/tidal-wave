@@ -1223,6 +1223,16 @@
     </message>
 </context>
 <context>
+    <name>ScrobbleSink</name>
+    <message numerus="yes">
+        <source>%Ln listen(s) waiting to be sent.</source>
+        <translation>
+            <numerusform>%Ln listen waiting to be sent.</numerusform>
+            <numerusform>%Ln listens waiting to be sent.</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>SearchBar</name>
     <message>
         <source>Search…</source>
