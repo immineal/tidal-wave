@@ -76,6 +76,30 @@ private slots:
         QVERIFY2(bad.isEmpty(), qPrintable("not \"Sammlung\":\n  " + bad.join("\n  ")));
     }
 
+    // Lines that were English turned word for word into German, kept here
+    // so they do not come back.
+    void germanHasNoWordForWordLines() {
+        const QStringList calques = {
+            QStringLiteral("hereinlassen"),          // "Let the colour in"
+            QStringLiteral("Aus teilen"),            // "Off, all six share"
+            QStringLiteral("Jedes Thema"),           // the heading says "Design"
+            QStringLiteral("Nach lrclib.net gefragt"),
+            QStringLiteral(", standardmäßig an,"),
+            QStringLiteral(", über die Schalter unter"),
+            QStringLiteral("sehr fein aufgelöst"),
+            QStringLiteral("bereits darin"),
+            QStringLiteral("Nichts passt zu"),
+            QStringLiteral("Mehr wird geladen"),
+            QStringLiteral("nicht mehr existieren"),
+        };
+        QStringList bad;
+        for (const Entry &e : std::as_const(m_entries))
+            for (const QString &c : calques)
+                if (e.german.contains(c))
+                    bad << show(e, c);
+        QVERIFY2(bad.isEmpty(), qPrintable("word for word:\n  " + bad.join("\n  ")));
+    }
+
 private:
     QList<Entry> m_entries;
 };

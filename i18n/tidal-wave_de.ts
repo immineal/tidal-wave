@@ -417,7 +417,7 @@
     </message>
     <message>
         <source>Nothing matches &quot;%1&quot;</source>
-        <translation>Nichts passt zu „%1“</translation>
+        <translation>Keine Treffer für „%1“</translation>
     </message>
     <message>
         <source>Try other words, or clear the search to see everything.</source>
@@ -798,7 +798,7 @@
     </message>
     <message>
         <source>Tidal would not serve its tracks. A mix is rebuilt for you every day, so one that was saved or pinned a while ago may no longer exist.</source>
-        <translation>Tidal liefert seine Titel nicht aus. Ein Mix wird jeden Tag neu für dich zusammengestellt, deshalb kann einer, der vor einiger Zeit gespeichert oder angepinnt wurde, nicht mehr existieren.</translation>
+        <translation>Tidal liefert seine Titel nicht aus. Ein Mix wird jeden Tag neu für dich zusammengestellt, deshalb gibt es einen, der vor einiger Zeit gespeichert oder angeheftet wurde, vielleicht nicht mehr.</translation>
     </message>
     <message>
         <source>Mix</source>
@@ -1520,7 +1520,7 @@
     </message>
     <message>
         <source>Loading more…</source>
-        <translation>Mehr wird geladen…</translation>
+        <translation>Weitere werden geladen…</translation>
     </message>
     <message>
         <source>End of results</source>
@@ -1632,7 +1632,7 @@
     </message>
     <message>
         <source>Found a bug, or want to ask for something? Either way works.</source>
-        <translation>Einen Fehler gefunden oder einen Wunsch? Beides geht.</translation>
+        <translation>Einen Fehler gefunden oder einen Wunsch? Beides ist willkommen.</translation>
     </message>
     <message>
         <source>Open a GitHub issue</source>
@@ -1646,7 +1646,7 @@
     </message>
     <message>
         <source>The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.</source>
-        <translation>Das Issue-Formular öffnet sich mit deiner Version, deinem System und beiden Qt-Versionen bereits darin. Die E-Mail öffnet sich adressiert an %1. Gesendet wird beides erst, wenn du es selbst sendest.</translation>
+        <translation>Das Issue-Formular enthält schon deine Version, dein System und beide Qt-Versionen. Die E-Mail ist an %1 adressiert. Abgeschickt wird beides erst, wenn du es selbst sendest.</translation>
     </message>
     <message>
         <source>Experimental</source>
@@ -1680,7 +1680,7 @@
     </message>
     <message>
         <source>Let the colour in</source>
-        <translation>Farbe hereinlassen</translation>
+        <translation>Grautöne einfärben</translation>
     </message>
     <message>
         <source>Bars follow the music</source>
@@ -1688,11 +1688,11 @@
     </message>
     <message>
         <source>The little bars on the playing track show a spectrum of what you are hearing, instead of moving on their own. Starts with the next track.</source>
-        <translation>Die kleinen Balken am laufenden Titel zeigen ein Spektrum dessen, was du hörst, statt sich von selbst zu bewegen. Beginnt mit dem nächsten Titel.</translation>
+        <translation>Die kleinen Balken beim laufenden Titel zeigen das Spektrum dessen, was du hörst, statt sich nach eigenem Muster zu bewegen. Gilt ab dem nächsten Titel.</translation>
     </message>
     <message>
         <source>Your screen is dense and your desktop did not say so, so Tidal Wave is drawing at %1x on its own. Move the slider if that is not the size you want.</source>
-        <translation>Dein Bildschirm ist sehr fein aufgelöst und deine Arbeitsumgebung hat das nicht gemeldet, deshalb zeichnet Tidal Wave von sich aus mit %1x. Verschiebe den Regler, falls das nicht die gewünschte Größe ist.</translation>
+        <translation>Dein Bildschirm hat eine hohe Pixeldichte, die deine Arbeitsumgebung nicht meldet. Deshalb skaliert Tidal Wave selbst auf %1x. Verschiebe den Regler, falls dir diese Größe nicht passt.</translation>
     </message>
     <message>
         <source>The interface size is being set outside Tidal Wave (QT_SCALE_FACTOR), so this slider does nothing. Unset it to choose the size here.</source>
@@ -1717,7 +1717,7 @@
     </message>
     <message>
         <source>Each theme tints its greys towards its own colour. Off, all six share one set of greys and differ only by the accent.</source>
-        <translation>Jedes Thema färbt seine Grautöne in seine eigene Farbe. Aus teilen sich alle sechs dieselben Grautöne und unterscheiden sich nur in der Akzentfarbe.</translation>
+        <translation>Jedes Design tönt seine Grautöne in der eigenen Farbe. Ist der Schalter aus, nutzen alle sechs dieselben Grautöne und unterscheiden sich nur in der Akzentfarbe.</translation>
     </message>
     <message>
         <source>Pure black</source>
@@ -1749,7 +1749,7 @@
     </message>
     <message>
         <source>Asked after lrclib.net, in this order: music.163.com gets the track&apos;s artist and title; lyrics.kugou.com its artist, title and length; genius.com its artist and title. music.163.com and lyrics.kugou.com are servers in China.</source>
-        <translation>Nach lrclib.net gefragt, in dieser Reihenfolge: music.163.com erhält Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
+        <translation>Werden nach lrclib.net gefragt, in dieser Reihenfolge: music.163.com erhält Interpret und Titel; lyrics.kugou.com Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China.</translation>
     </message>
     <message>
         <source>Sync plain lyrics automatically</source>
@@ -1757,7 +1757,7 @@
     </message>
     <message>
         <source>Lyrics without timings are timed against the track&apos;s audio, here on this machine; nothing is sent for it. Timings it is unsure of are not shown, and the ones shown are marked as made here.</source>
-        <translation>Songtexte ohne Zeitangaben werden hier auf diesem Rechner am Ton des Titels ausgerichtet; dafür wird nichts gesendet. Unsichere Zeitangaben werden nicht gezeigt, und die gezeigten sind als hier erstellt gekennzeichnet.</translation>
+        <translation>Songtexte ohne Zeitangaben werden hier auf diesem Rechner am Ton des Titels ausgerichtet; dafür wird nichts gesendet. Zeitangaben, bei denen die Erkennung unsicher ist, werden nicht gezeigt; die übrigen sind als hier erstellt gekennzeichnet.</translation>
     </message>
     <message>
         <source>What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track&apos;s details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.</source>
@@ -1769,11 +1769,11 @@
     </message>
     <message>
         <source>Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track&apos;s artist, title, album and length. With &quot;Lyrics from more sites&quot; on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app&apos;s name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a song with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.</source>
-        <translation>Songtexte von anderen Seiten, für einen Titel, zu dem Tidal keinen synchronisierten Songtext hat, über die Schalter unter Experimentell. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Lied mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, eines mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
+        <translation>Songtexte von anderen Seiten gibt es für Titel, zu denen Tidal keinen synchronisierten Songtext hat; die Schalter dafür stehen unter „Experimentell“. Standardmäßig wird nur lrclib.net gefragt und erhält Interpret, Titel, Album und Länge des Titels. Ist „Songtexte von weiteren Seiten“ an, folgen in dieser Reihenfolge: music.163.com (NetEase Cloud Music) erhält Interpret und Titel; lyrics.kugou.com (KuGou) Interpret, Titel und Länge; genius.com Interpret und Titel. music.163.com und lyrics.kugou.com sind Server in China. Die Suche endet bei der ersten Seite mit synchronisiertem Songtext. Jede gefragte Seite sieht deine IP-Adresse sowie Name und Version der App. Gefragt wird nur, solange „Jetzt läuft“ offen ist. Was die Seiten finden, wird auf diesem Rechner gespeichert: Ein Titel mit synchronisiertem Songtext wird nicht noch einmal nachgeschlagen, einer mit einfachem Songtext oder ohne Songtext nach 30 Tagen erneut.</translation>
     </message>
     <message>
         <source>Syncing plain lyrics, on by default, happens on this machine: the track&apos;s audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.</source>
-        <translation>Das Synchronisieren einfacher Songtexte, standardmäßig an, geschieht auf diesem Rechner: Der Ton des Titels, den die App zum Abspielen ohnehin heruntergeladen hat, wird hier analysiert, und nichts davon verlässt den Rechner. Die Zeitangaben werden neben den Songtexten gespeichert.</translation>
+        <translation>Das Synchronisieren einfacher Songtexte ist standardmäßig an und geschieht auf diesem Rechner: Der Ton des Titels, den die App zum Abspielen ohnehin heruntergeladen hat, wird hier analysiert, und nichts davon verlässt den Rechner. Die Zeitangaben werden neben den Songtexten gespeichert.</translation>
     </message>
     <message>
         <source>The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.</source>
