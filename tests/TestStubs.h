@@ -661,7 +661,9 @@ public:
         if (m_addToPlaylistOk) {
             QVariantList &rows = m_serverPlaylists[uuid];
             noteServerPlaylistWrite(uuid);
-            rows.insert(qBound(0, index, int(rows.size())), double(trackId));
+            // No index: the end, as the real call without toIndex.
+            rows.insert(index < 0 ? int(rows.size()) : qBound(0, index, int(rows.size())),
+                        double(trackId));
         }
         resolveOk(cb, m_addToPlaylistOk);
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
@@ -2148,11 +2150,18 @@ public:
     Q_INVOKABLE int scanCountForTest() const { return m_scanCount; }
     Q_INVOKABLE QString lastConnectIdForTest() const { return m_lastConnectId; }
     Q_INVOKABLE void emitErrorForTest(const QString &msg) { emit error(msg); }
+    // What CastManager does when the device ends the cast itself.
+    Q_INVOKABLE void endOnDeviceForTest() {
+        const QString name = m_deviceName;
+        emit endedOnDevice(name);
+        disconnect();
+    }
 
 signals:
     void devicesChanged();
     void connectedChanged();
     void error(const QString &msg);
+    void endedOnDevice(const QString &deviceName);
 
 private:
     QVariantList m_devices;

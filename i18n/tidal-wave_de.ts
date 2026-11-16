@@ -337,6 +337,11 @@
         <translation>Gespeicherte Einträge suchen…</translation>
     </message>
     <message>
+        <source>Surprise me</source>
+        <comment>opens a random album, artist, playlist or mix of the tab</comment>
+        <translation>Überrasch mich</translation>
+    </message>
+    <message>
         <source>New playlist</source>
         <translation>Neue Playlist</translation>
     </message>
@@ -610,6 +615,53 @@
     </message>
 </context>
 <context>
+    <name>DuplicateAddDialog</name>
+    <message>
+        <source>Some are already in “%1”</source>
+        <comment>dialog heading, some of the tracks to add are in the playlist</comment>
+        <translation>Einige sind schon in „%1“</translation>
+    </message>
+    <message>
+        <source>Already in “%1”</source>
+        <comment>dialog heading, the track to add is in the playlist</comment>
+        <translation>Schon in „%1“</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln of these %1 tracks are in it already.</source>
+        <translation>
+            <numerusform>%Ln von diesen %1 Titeln ist schon darin.</numerusform>
+            <numerusform>%Ln von diesen %1 Titeln sind schon darin.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>All %Ln tracks are in it already. Add them anyway?</source>
+        <translation>
+            <numerusform>Alle %Ln Titel sind schon darin. Trotzdem hinzufügen?</numerusform>
+            <numerusform>Alle %Ln Titel sind schon darin. Trotzdem hinzufügen?</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Add anyway?</source>
+        <comment>the track is in the playlist already</comment>
+        <translation>Trotzdem hinzufügen?</translation>
+    </message>
+    <message>
+        <source>Add all</source>
+        <comment>adds every track, the ones in the playlist again too</comment>
+        <translation>Alle hinzufügen</translation>
+    </message>
+    <message>
+        <source>Add anyway</source>
+        <comment>adds a track the playlist holds already</comment>
+        <translation>Trotzdem hinzufügen</translation>
+    </message>
+    <message>
+        <source>Add new ones</source>
+        <comment>adds only the tracks the playlist does not hold</comment>
+        <translation>Nur neue hinzufügen</translation>
+    </message>
+</context>
+<context>
     <name>Edits</name>
     <message>
         <source>Still undoing the last change</source>
@@ -672,9 +724,17 @@
         <translation>Mix in deiner Sammlung gespeichert</translation>
     </message>
     <message>
-        <source>Already in “%1”</source>
-        <comment>the track is in the playlist already; nothing was added</comment>
-        <translation>Schon in „%1“</translation>
+        <source>Could not add the tracks to “%1”</source>
+        <comment>shown when adding several tracks to a playlist failed</comment>
+        <translation>Die Titel konnten nicht zu „%1“ hinzugefügt werden</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln track(s) added to “%1”</source>
+        <comment>confirmation after adding several tracks to a playlist</comment>
+        <translation>
+            <numerusform>%Ln Titel zu „%1“ hinzugefügt</numerusform>
+            <numerusform>%Ln Titel zu „%1“ hinzugefügt</numerusform>
+        </translation>
     </message>
     <message>
         <source>Taken out of “%1” again</source>
@@ -896,6 +956,11 @@
     <message>
         <source>%1 – %2 · Tidal Wave</source>
         <translation>%1 – %2 · Tidal Wave</translation>
+    </message>
+    <message>
+        <source>Casting ended on %1</source>
+        <comment>the cast device ended the cast itself</comment>
+        <translation>Übertragung auf %1 beendet</translation>
     </message>
 </context>
 <context>

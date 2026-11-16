@@ -40,6 +40,8 @@ signals:
     void devicesChanged();
     void connectedChanged();
     void error(const QString &msg);
+    // The device ended the cast, not the user; deviceName is the one it was on.
+    void endedOnDevice(const QString &deviceName);
 
 private slots:
     void onDeviceFound(const QString &id, const QString &name, const QString &host, int port);

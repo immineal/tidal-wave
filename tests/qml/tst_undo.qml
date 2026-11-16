@@ -34,6 +34,8 @@ TestCase {
     }
 
     function cleanup() {
+        Edits.answerDuplicates("cancel")
+        bridge.useCatalogueForTest("")
         Edits.retryDelaysMs = [500, 1000, 2000, 4000]
         Edits.clearHistory()
     }
@@ -176,13 +178,174 @@ TestCase {
         compare(Toasts.text, "Taken out of “Tape” again")
     }
 
-    function test_a_track_already_there_is_not_added_twice() {
+    // ── a track the playlist holds already: asked first ──────────────────
+
+    function test_a_track_already_there_is_asked_about_first() {
         bridge.setServerPlaylistForTest("pl-1", [11, 12])
         Edits.addToPlaylist("pl-1", "Tape", 12)
         settleEdits()
-        compare(bridge.addToPlaylistCallsForTest(), 0, "the add went out anyway")
-        compare(Toasts.text, "Already in “Tape”")
+        compare(bridge.addToPlaylistCallsForTest(), 0, "the add went out before the answer")
+        compare(bridge.lastRestoredForTest(), "", "the add went out before the answer")
+        var q = Edits.duplicateQuestion
+        verify(q, "nothing was asked")
+        compare(q.title, "Tape")
+        compare(q.dupes, 1)
+        compare(q.total, 1)
+        compare(q.fresh, null, "a lone track offered to add only the new ones")
+
+        Edits.answerDuplicates("cancel")
+        settleEdits()
+        compare(Edits.duplicateQuestion, null)
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12], "a turned-down add was written")
         compare(Edits.count, 0)
+        verify(!Toasts.shown, "a turned-down add said something")
+    }
+
+    function test_add_anyway_adds_it_again_and_undo_takes_one_out() {
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        var said = null
+        Edits.addToPlaylist("pl-1", "Tape", 12, function (ok, message) { said = message })
+        settleEdits()
+        Edits.answerDuplicates("all")
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 12], "Add anyway did not add it")
+        compare(Toasts.text, "Added to “Tape”")
+        compare(said, "Added to “Tape”")
+        compare(Edits.count, 1)
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12], "the undo did not take the second one out")
+        compare(Toasts.text, "Taken out of “Tape” again")
+    }
+
+    function test_several_some_there_add_only_the_new_ones() {
+        verify(bridge.useCatalogueForTest("en"), "the English catalogue did not load")
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13, 14])
+        settleEdits()
+        var q = Edits.duplicateQuestion
+        verify(q, "nothing was asked")
+        compare(q.dupes, 1)
+        compare(q.total, 3)
+        verify(q.fresh, "no way to add only the new ones")
+        Edits.answerDuplicates("new")
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13, 14])
+        compare(Toasts.text, "2 tracks added to “Tape”")
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12], "the undo left some behind")
+        compare(Toasts.text, "Taken out of “Tape” again")
+    }
+
+    function test_several_some_there_add_all() {
+        verify(bridge.useCatalogueForTest("en"), "the English catalogue did not load")
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13, 14])
+        settleEdits()
+        Edits.answerDuplicates("all")
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 12, 13, 14])
+        compare(Toasts.text, "3 tracks added to “Tape”")
+        Edits.undoLast()
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12])
+    }
+
+    function test_several_none_there_are_added_without_asking() {
+        verify(bridge.useCatalogueForTest("en"), "the English catalogue did not load")
+        bridge.setServerPlaylistForTest("pl-1", [11])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13])
+        settleEdits()
+        compare(Edits.duplicateQuestion, null, "a question with nothing to ask")
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13])
+        compare(Toasts.text, "2 tracks added to “Tape”")
+    }
+
+    // The question as DuplicateAddDialog puts it, and its buttons.
+    Component { id: dupDialogC; DuplicateAddDialog { } }
+
+    function dialogButton(dialog, name) {
+        var b = findChild(dialog.contentItem, name)
+        verify(b && b.visible, "the dialog has no " + name)
+        return b
+    }
+
+    function test_the_dialog_asks_about_one_track() {
+        var dialog = createTemporaryObject(dupDialogC, testCase)
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addToPlaylist("pl-1", "Tape", 12)
+        settleEdits()
+        tryVerify(function () { return dialog.opened }, 2000, "the dialog did not open")
+        compare(dialog.heading, "Already in “Tape”")
+        compare(dialog.text, "Add anyway?")
+        compare(dialogButton(dialog, "confirmDialogConfirm").text, "Add anyway")
+        verify(!findChild(dialog.contentItem, "confirmDialogAlt").visible,
+               "a lone track offered a choice it has not got")
+        var add = dialogButton(dialog, "confirmDialogConfirm")
+        mouseClick(add, add.width / 2, add.height / 2)
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 12])
+        verify(!dialog.visible, "the dialog stayed up")
+    }
+
+    function test_the_dialog_cancel_adds_nothing() {
+        var dialog = createTemporaryObject(dupDialogC, testCase)
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addToPlaylist("pl-1", "Tape", 12)
+        settleEdits()
+        tryVerify(function () { return dialog.opened }, 2000, "the dialog did not open")
+        var cancel = dialogButton(dialog, "confirmDialogCancel")
+        mouseClick(cancel, cancel.width / 2, cancel.height / 2)
+        settleEdits()
+        compare(Edits.duplicateQuestion, null, "the question outlived the dialog")
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12])
+    }
+
+    function test_the_dialog_asks_about_several() {
+        var dialog = createTemporaryObject(dupDialogC, testCase)
+        bridge.setServerPlaylistForTest("pl-1", [11, 12, 13])
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13, 14, 15])
+        settleEdits()
+        tryVerify(function () { return dialog.opened }, 2000, "the dialog did not open")
+        compare(dialog.heading, "Some are already in “Tape”")
+        compare(dialog.text, "2 of these 4 tracks are in it already.")
+        compare(dialogButton(dialog, "confirmDialogConfirm").text, "Add all")
+        var fresh = dialogButton(dialog, "confirmDialogAlt")
+        compare(fresh.text, "Add new ones")
+        mouseClick(fresh, fresh.width / 2, fresh.height / 2)
+        settleEdits()
+        compare(bridge.serverPlaylistForTest("pl-1"), [11, 12, 13, 14, 15])
+    }
+
+    function test_the_dialog_in_german() {
+        verify(bridge.useCatalogueForTest("de"), "the German catalogue did not load")
+        var dialog = createTemporaryObject(dupDialogC, testCase)
+        bridge.setServerPlaylistForTest("pl-1", [11, 12])
+        Edits.addToPlaylist("pl-1", "Tape", 12)
+        settleEdits()
+        tryVerify(function () { return dialog.opened }, 2000, "the dialog did not open")
+        compare(dialog.heading, "Schon in „Tape“")
+        compare(dialog.text, "Trotzdem hinzufügen?")
+        compare(dialogButton(dialog, "confirmDialogConfirm").text, "Trotzdem hinzufügen")
+        Edits.answerDuplicates("cancel")
+        Edits.addTracksToPlaylist("pl-1", "Tape", [12, 13, 14])
+        settleEdits()
+        tryVerify(function () { return dialog.opened }, 2000, "the dialog did not open again")
+        compare(dialog.heading, "Einige sind schon in „Tape“")
+        compare(dialog.text, "1 von diesen 3 Titeln ist schon darin.")
+        compare(dialogButton(dialog, "confirmDialogConfirm").text, "Alle hinzufügen")
+        compare(dialogButton(dialog, "confirmDialogAlt").text, "Nur neue hinzufügen")
+        // Three German answers in a row still fit inside the dialog.
+        var cancel = dialogButton(dialog, "confirmDialogCancel")
+        var all = dialogButton(dialog, "confirmDialogConfirm")
+        var left = cancel.mapToItem(dialog.contentItem, 0, 0).x
+        var right = all.mapToItem(dialog.contentItem, all.width, 0).x
+        verify(left >= 0 && right <= dialog.contentItem.width + 0.5,
+               "the buttons run from " + left + " to " + right + " in a "
+               + dialog.contentItem.width + " px dialog")
+        Edits.answerDuplicates("cancel")
+        bridge.useCatalogueForTest("")
     }
 
     function test_remove_from_a_playlist_then_undo() {

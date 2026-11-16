@@ -256,11 +256,36 @@ private slots:
         QVERIFY(r.castTo(QStringLiteral("device-1")));
 
         QSignalSpy error(&r.manager, &CastManager::error);
+        QSignalSpy ended(&r.manager, &CastManager::endedOnDevice);
         first.send(kConnection, QJsonObject{{"type", "CLOSE"}}, kTransport);
         QTRY_VERIFY_WITH_TIMEOUT(!r.manager.connected(), 3000);
         QVERIFY(!r.player.casting());
         QCOMPARE(r.manager.deviceName(), QString());
         QCOMPARE(error.count(), 0);
+        // Said once, with the name of the device it was on.
+        QCOMPARE(ended.count(), 1);
+        QCOMPARE(ended.first().at(0).toString(), QStringLiteral("Kitchen"));
+    }
+
+    // Ended here, by leaving or by picking another device: the device did
+    // nothing, so nothing says it did.
+    void aCastEndedHereIsNotEndedOnTheDevice()
+    {
+        FakeReceiver first, second;
+        QVERIFY(first.listen(QHostAddress::LocalHost));
+        QVERIFY(second.listen(QHostAddress::LocalHost));
+        Rig r;
+        QVERIFY(r.start());
+        QVERIFY(r.add(QStringLiteral("device-1"), QStringLiteral("Kitchen"), first.serverPort()));
+        QVERIFY(r.add(QStringLiteral("device-2"), QStringLiteral("Study"), second.serverPort()));
+        QSignalSpy ended(&r.manager, &CastManager::endedOnDevice);
+
+        QVERIFY(r.castTo(QStringLiteral("device-1")));
+        QVERIFY(r.castTo(QStringLiteral("device-2")));
+        r.manager.disconnect();
+        QVERIFY(!r.manager.connected());
+        QTest::qWait(300);
+        QCOMPARE(ended.count(), 0);
     }
 
     // A track that is ready once the cast server has stopped: the sentence

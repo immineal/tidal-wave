@@ -83,9 +83,17 @@ void Auth::endSession() {
     m_accessToken.clear();
     m_api->setAccessToken({});
     clearCredentials();
+    forgetUsername();
     answerRefused(false);
     emit sessionExpired();
     setState(State::LoggedOut);
+}
+
+// The name is the account's, so it goes with the session.
+void Auth::forgetUsername() {
+    if (m_username.isEmpty()) return;
+    m_username.clear();
+    emit usernameChanged();
 }
 
 void Auth::setState(State s) {
@@ -400,6 +408,7 @@ void Auth::logout() {
     m_userId = 0;
     m_api->setAccessToken({});
     clearCredentials();
+    forgetUsername();
     answerRefused(false);
     emit loggedOut();
     setState(State::LoggedOut);

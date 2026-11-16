@@ -323,6 +323,20 @@ Rectangle {
                 }
             }
 
+            // A pick from what the tab shows now, field filter included.
+            PillButton {
+                objectName: "collectionSurpriseButton"
+                text: root.activeTab === 0 ? qsTranslate("AlbumPage", "Shuffle")
+                                           : qsTr("Surprise me", "opens a random album, artist, playlist or mix of the tab")
+                icon: "shuffle"
+                accent: false
+                enabled: root.tabCount > 0
+                opacity: enabled ? 1 : 0.45
+                Layout.preferredWidth:  implicitWidth
+                Layout.preferredHeight: 36
+                onClicked: root.surprise()
+            }
+
             PillButton {
                 objectName: "collectionNewPlaylistButton"
                 // A Layout skips an invisible child outright, so the field
@@ -438,7 +452,7 @@ Rectangle {
                     // only rebuilt when the removal lands.
                     onRemoveRequested: root.favoriteAction.toggleAlbum(albumDelegate.modelData.id, true,
                                                                       albumDelegate)
-                    onClicked: navigateTo("album", { albumId: modelData.id })
+                    onClicked: root.openAlbum(modelData)
                     onPlayClicked: {
                         bridge.fetchAlbumTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return
@@ -508,7 +522,7 @@ Rectangle {
                     // As on the album grid above.
                     onRemoveRequested: root.favoriteAction.toggleArtist(artistDelegate.modelData.id, true,
                                                                        artistDelegate)
-                    onClicked: navigateTo("artist", { artistId: modelData.id })
+                    onClicked: root.openArtist(modelData)
                 }
             }
 
@@ -560,14 +574,7 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "playlist"
                     itemId: modelData.uuid || ""
-                    onClicked: navigateTo("playlist", {
-                        playlistUuid: modelData.uuid,
-                        playlistTitle: modelData.title,
-                        coverUrl: modelData.coverUrl || "",
-                        playlistDescription: modelData.description || "",
-                        playlistDuration: modelData.duration || 0,
-                        playlistType: modelData.type || ""
-                    })
+                    onClicked: root.openPlaylist(modelData)
                     onPlayClicked: {
                         bridge.markPlaylistPlayed(modelData.uuid)
                         bridge.fetchPlaylistTracks(modelData.uuid, function(tracks, err) {
@@ -651,7 +658,7 @@ Rectangle {
                     coverUrl: modelData.coverUrl || ""
                     mediaType: "mix"
                     itemId: "" + modelData.id
-                    onClicked: navigateTo("mix", { mixId: modelData.id, title: modelData.title, subtitle: modelData.subtitle, coverUrl: modelData.coverUrl, mixType: modelData.mixType || "" })
+                    onClicked: root.openMix(modelData)
                     onPlayClicked: {
                         bridge.fetchMixTracks(modelData.id, function(tracks, err) {
                             if (err || tracks.length === 0) return
@@ -805,6 +812,58 @@ Rectangle {
 
     function navigateTo(page, params) {
         Window.window.navigate(page, params)
+    }
+
+    // What a card's click opens; Surprise me opens the same.
+    function openAlbum(m)  { navigateTo("album", { albumId: m.id }) }
+    function openArtist(m) { navigateTo("artist", { artistId: m.id }) }
+    function openPlaylist(m) {
+        navigateTo("playlist", {
+            playlistUuid: m.uuid,
+            playlistTitle: m.title,
+            coverUrl: m.coverUrl || "",
+            playlistDescription: m.description || "",
+            playlistDuration: m.duration || 0,
+            playlistType: m.type || ""
+        })
+    }
+    function openMix(m) {
+        navigateTo("mix", { mixId: m.id, title: m.title, subtitle: m.subtitle,
+                            coverUrl: m.coverUrl, mixType: m.mixType || "" })
+    }
+
+    // The tab's rows as shown: the field's filter and the chosen order.
+    function shownItems() {
+        switch (root.activeTab) {
+        case 0: return tracksList.sortedTracks
+        case 1: return albumsGrid.sortedAlbums
+        case 2: return artistsGrid.sortedArtists
+        case 3: return playlistsGrid.sortedPlaylists
+        case 4: return root.filteredMixes
+        }
+        return []
+    }
+
+    // Tracks: all of them, shuffled, from a random one, as a detail page's
+    // Shuffle does. The other tabs: open one at random.
+    function surprise() {
+        var items = root.shownItems()
+        if (!items || items.length === 0) return
+        var pick = Math.floor(Math.random() * items.length)
+        switch (root.activeTab) {
+        case 0:
+            player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
+            // The track's album stands in, as for a row's play.
+            if (Number(items[pick].albumId) > 0)
+                library.markPlayed("album", "" + items[pick].albumId)
+            player.setShuffle(true)
+            player.playTracks(items, pick)
+            break
+        case 1: root.openAlbum(items[pick]); break
+        case 2: root.openArtist(items[pick]); break
+        case 3: root.openPlaylist(items[pick]); break
+        case 4: root.openMix(items[pick]); break
+        }
     }
 
     // Both "New playlist" buttons open the one dialog. Nothing is reloaded on

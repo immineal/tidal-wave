@@ -250,6 +250,51 @@ private slots:
         QVERIFY2(hits.isEmpty(), describe(hits, "tooltipDelay").constData());
     }
 
+    // Every tip is the style's ToolTip (qml/style). A tip that dresses itself,
+    // or a file that imports a stock style by name, gets the plain system look
+    // back the next time the shared one changes.
+    void toolTipsWearTheStyle() {
+        static const QRegularExpression stock(QStringLiteral(
+            "^\\s*import\\s+QtQuick\\.Controls\\.(Basic|Fusion|Material|Universal|Imagine|"
+            "FluentWinUI3|Windows|macOS|iOS)\\b"));
+        static const QRegularExpression opening(QStringLiteral("(?<![\\w.])ToolTip\\s*\\{"));
+        static const QRegularExpression dressing(QStringLiteral("\\b(background|contentItem)\\s*:"));
+        QList<Hit> hits;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            const QString rel = QDir(qmlDir()).relativeFilePath(path);
+            if (rel.startsWith(QLatin1String("style/"))) continue;   // where the look lives
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            int depth = 0, tipDepth = -1, tipLine = 0;
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString code = codeOf(lines.at(i));
+                if (stock.match(code).hasMatch()) hits.append({rel, i + 1, lines.at(i).trimmed()});
+                const auto open = opening.match(code);
+                for (int c = 0; c < code.size(); ++c) {
+                    if (tipDepth < 0 && open.hasMatch() && c == open.capturedEnd() - 1) {
+                        tipDepth = depth;
+                        tipLine = i + 1;
+                    }
+                    if (code.at(c) == QLatin1Char('{')) ++depth;
+                    else if (code.at(c) == QLatin1Char('}') && --depth == tipDepth) tipDepth = -1;
+                }
+                if (tipDepth >= 0 && dressing.match(code).hasMatch())
+                    hits.append({rel, i + 1, QStringLiteral("(ToolTip from line %1) ").arg(tipLine)
+                                             + lines.at(i).trimmed()});
+            }
+        }
+        QVERIFY2(QFile::exists(qmlDir() + QStringLiteral("/style/ToolTip.qml")),
+                 "qml/style/ToolTip.qml is gone, so no tip wears the app's look");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("dress a tip of their own or import a stock style, "
+                                             "where qml/style/ToolTip.qml is the one look"))
+                     .constData());
+    }
+
     // The selected fill is stronger than the hover wash. A hover drawn in it
     // makes a row look chosen.
     void hoverIsNeverTheSelectedFill() {
