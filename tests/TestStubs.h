@@ -1633,6 +1633,7 @@ class StubPlayer : public QObject {
     Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle NOTIFY shuffleChanged)
     Q_PROPERTY(int repeatMode READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString audioQuality READ audioQuality NOTIFY currentTrackChanged)
+    Q_PROPERTY(QString audioFormat READ audioFormat NOTIFY currentTrackChanged)
     Q_PROPERTY(int queueCount READ queueCount NOTIFY queueChanged)
     Q_PROPERTY(int queueIndex READ queueIndex NOTIFY currentIndexChanged)
     Q_PROPERTY(QVariantList queueTracks READ queueTracks NOTIFY queueChanged)
@@ -1674,6 +1675,7 @@ public:
     bool         shuffle() const { return m_shuffle; }
     int          repeatMode() const { return m_repeatMode; }
     QString      audioQuality() const { return m_audioQuality; }
+    QString      audioFormat() const { return m_audioFormat; }
     int          queueCount() const { return int(m_queue.size()); }
     int          queueIndex() const { return m_index; }
     QVariantList queueTracks() const { return m_queue; }
@@ -1920,6 +1922,10 @@ public:
         m_audioQuality = q;
         emit currentTrackChanged();
     }
+    Q_INVOKABLE void setAudioFormatForTest(const QString &f) {
+        m_audioFormat = f;
+        emit currentTrackChanged();
+    }
     Q_INVOKABLE void setQueueForTest(const QVariantList &tracks, int index = -1) {
         m_queue = tracks;
         m_index = index;
@@ -1966,6 +1972,7 @@ private:
     bool         m_shuffle = false;
     int          m_repeatMode = 0;
     QString      m_audioQuality;
+    QString      m_audioFormat;
     QVariantList m_queue;
     QVariantList m_recentlyPlayed;
     int          m_index = -1;
@@ -2249,6 +2256,12 @@ class StubPrefs : public QObject {
     Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
     Q_PROPERTY(QString reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
+    // The playback switches, with the real Prefs' defaults.
+    Q_PROPERTY(bool normalizeLoudness MEMBER m_normalizeLoudness NOTIFY normalizeLoudnessChanged)
+    Q_PROPERTY(bool autoplay MEMBER m_autoplay NOTIFY autoplayChanged)
+    Q_PROPERTY(bool crossfade MEMBER m_crossfade NOTIFY crossfadeChanged)
+    Q_PROPERTY(int crossfadeSeconds MEMBER m_crossfadeSeconds NOTIFY crossfadeSecondsChanged)
+    Q_PROPERTY(bool crossfadeAvailable MEMBER m_crossfadeAvailable CONSTANT)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -2386,6 +2399,10 @@ signals:
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
     void reducedMotionChanged();
+    void normalizeLoudnessChanged();
+    void autoplayChanged();
+    void crossfadeChanged();
+    void crossfadeSecondsChanged();
 
 private:
     QString m_reducedMotion = QStringLiteral("system");
@@ -2409,6 +2426,11 @@ private:
     bool    m_lyricsLrclib = true;
     bool    m_lyricsOtherSites = false;
     bool    m_lyricsAutoSync = true;
+    bool    m_normalizeLoudness = true;
+    bool    m_autoplay = true;
+    bool    m_crossfade = false;
+    int     m_crossfadeSeconds = 5;
+    bool    m_crossfadeAvailable = true;
     QString m_version = QStringLiteral("0.4.0");
 };
 

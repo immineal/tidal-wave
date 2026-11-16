@@ -42,6 +42,9 @@ class Player : public QObject {
     Q_PROPERTY(bool       shuffle      READ shuffle WRITE setShuffle  NOTIFY shuffleChanged)
     Q_PROPERTY(int        repeatMode   READ repeatMode WRITE setRepeatMode NOTIFY repeatModeChanged)
     Q_PROPERTY(QString    audioQuality READ audioQuality NOTIFY currentTrackChanged)
+    // The stream's real format, such as "24-bit / 96 kHz FLAC" or "AAC 320 kbps".
+    // Empty until a stream was given.
+    Q_PROPERTY(QString    audioFormat  READ audioFormat  NOTIFY currentTrackChanged)
     Q_PROPERTY(int        queueCount      READ queueCount      NOTIFY queueChanged)
     // Its own notifier: an advance must not republish the whole queue.
     Q_PROPERTY(int        queueIndex      READ queueIndex      NOTIFY currentIndexChanged)
@@ -83,6 +86,11 @@ public:
     QString     audioQuality()const;
     // Maps a Tidal quality code such as HI_RES_LOSSLESS to its label.
     Q_INVOKABLE QString qualityLabel(const QString &code) const;
+    QString     audioFormat() const;
+    // The badge text for a stream: format, bit depth and rate, or bit rate.
+    static QString formatLabel(const StreamManifest &info);
+    // The loudness factor applied to the current track, 1.0 for none.
+    double      trackGain() const;
     int          queueCount()    const { return m_queue.count(); }
     int          queueIndex()    const { return m_index; }
     QVariantList queueTracks()   const;
@@ -271,6 +279,57 @@ private slots:
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
 
 private:
+    // Connects a backend's signals; only the one in m_player is listened to.
+    void wirePlayer(QMediaPlayer *mp);
+    void onPositionChanged(qint64 pos);
+
+    // ── Gapless track changes ───────────────────────────────────────────
+    // m_other is the second backend: idle, armed with the next track's file,
+    // or retiring, playing out the track that was just left.
+    enum class Other { Idle, Armed, Retiring };
+    void armOther();
+    // Armed, loaded, and still for the row that comes next.
+    bool otherFits() const;
+    void disarmOther();
+    void finishRetire();
+    // Both; dropOutput also deletes its output, for a device change.
+    void releaseOther(bool dropOutput = false);
+    void otherStatusChanged(QMediaPlayer::MediaStatus status);
+    void   notePosition(qint64 pos);
+    // Where the current track is now, from the reports and the clock.
+    qint64 playedNow(qint64 reported) const;
+    static constexpr int kOffsetsKept   = 32;
+    static constexpr int kOffsetsNeeded = 4;
+    // Starts a timer for the moment the next track is to start.
+    void planHandover(qint64 pos);
+    // ended: the current track has run out already.
+    void fireHandover(bool ended);
+    void handOver(int fadeMs, qint64 oldLeftMs);
+    void fadeStep();
+    // The crossfade for the coming change, 0 for a gapless one.
+    int  crossfadeMs() const;
+    // How long before the end a gapless change starts the next backend: what
+    // the FFmpeg backend takes to sound, measured by tst_gapless.
+    static constexpr qint64 kStartLeadMs  = 15;
+    // How long ahead of that moment the timer is set.
+    static constexpr qint64 kPlanAheadMs  = 1500;
+    static constexpr int    kFadeStepMs   = 20;
+    static constexpr int    kRetireSlackMs = 2000;
+
+    // ── Loudness ────────────────────────────────────────────────────────
+    double gainFor(const StreamManifest &info, int row) const;
+    // The row plays as part of its album, in the album's order.
+    bool   albumInOrder(int row) const;
+    // Sets both outputs from the volume, the gains and the fades.
+    void   applyLevel();
+
+    // ── Autoplay ────────────────────────────────────────────────────────
+    bool autoplayOn() const;
+    void maybeAutoplay();
+    // resume: the queue has run out and goes on once the rows have come.
+    void requestAutoplay(bool resume);
+    void appendAutoplay(qlonglong seed, const QList<Track> &tracks);
+
     struct Entry {
         QVariantMap track;
         // The user put this row here. Shuffle and playTracks() leave it alone,
@@ -304,7 +363,7 @@ private:
     // A preload's file arrived, or with null its attempt ended.
     void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
     // The current track's file is on disk: hands it to the backend.
-    void playFile(QTemporaryFile *file, const QString &quality);
+    void playFile(QTemporaryFile *file, const QString &quality, const StreamManifest &info);
 
     // ── Progressive start ───────────────────────────────────────────────
     // A lossless track plays from the front of its join, served over
@@ -608,4 +667,41 @@ private:
     void dropAudioFile(QTemporaryFile *&f);
     QNetworkReply       *m_preloadDownload = nullptr;
     DashFetcher         *m_preloadDash     = nullptr;
+    // What the manifests said, without the manifest itself.
+    StreamManifest       m_streamInfo;
+    StreamManifest       m_preloadInfo;
+
+    // The second backend; see armOther(). Its objects live under the holder,
+    // so that findChild() on the Player finds the one that plays.
+    QObject             *m_otherHolder = nullptr;
+    QMediaPlayer        *m_other       = nullptr;
+    QAudioOutput        *m_otherOut    = nullptr;
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    QAudioBufferOutput  *m_otherTap    = nullptr;
+#endif
+    Other                m_otherRole   = Other::Idle;
+    qlonglong            m_armedId     = 0;
+    QString              m_armedFile;
+    // The file and the served stream the retiring track still reads.
+    QTemporaryFile      *m_otherFile   = nullptr;
+    bool                 m_otherServes = false;
+    // Loudness factors and fade factors of the two outputs.
+    double               m_gain        = 1.0;
+    double               m_fade        = 1.0;
+    double               m_otherGain   = 1.0;
+    double               m_otherFade   = 1.0;
+    QTimer              *m_handoverTimer = nullptr;
+    QTimer              *m_fadeTimer     = nullptr;
+    QTimer              *m_retireTimer   = nullptr;
+    QElapsedTimer        m_fadeClock;
+    // Clock minus reported position, one per report; see notePosition().
+    QElapsedTimer        m_wall;
+    QList<qint64>        m_offsets;
+    int                  m_fadeMs        = 0;
+    // The backend that took over reports buffering, which is no load.
+    bool                 m_handoffSettling = false;
+
+    // The track whose radio was asked for, once per track.
+    qlonglong            m_autoplayFor     = 0;
+    bool                 m_autoplayResume  = false;
 };

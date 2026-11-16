@@ -112,7 +112,23 @@ TestCase {
                 "an unrecognised tier was swallowed instead of being shown")
     }
 
+    // ── the real format, once the stream has said it ────────────────────────
+
+    function test_the_player_bar_badge_shows_the_format() {
+        player.setAudioFormatForTest("24-bit / 96 kHz FLAC")
+        var page = build("bar", "HI_RES_LOSSLESS")
+        compare(badgeText(page).text, "24-bit / 96 kHz FLAC")
+        verify(badgeText(page).font.pixelSize >= 11, "the bar badge is too small to read")
+    }
+
+    function test_the_now_playing_badge_shows_tier_and_format() {
+        player.setAudioFormatForTest("AAC 320 kbps")
+        var page = build("np", "HIGH")
+        compare(badgeText(page).text, "High · AAC 320 kbps")
+    }
+
     function cleanup() {
         player.setAudioQualityForTest("HI_RES_LOSSLESS")
+        player.setAudioFormatForTest("")
     }
 }

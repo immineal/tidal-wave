@@ -11,6 +11,7 @@
 #include <QMediaDevices>
 #include <QAudio>
 #include <QFileInfo>
+#include <QLocale>
 #include <QMutex>
 #include <QSaveFile>
 #include <QScopeGuard>
@@ -30,6 +31,7 @@
 #include <QAudioBufferOutput>
 #endif
 #include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <utility>
 #include <QRandomGenerator>
@@ -78,67 +80,92 @@ void Player::initAudio() {
     // the default at construction and never notices a later change.
     m_audioOut = new QAudioOutput(resolveAudioDevice(), this);
     m_player->setAudioOutput(m_audioOut);
-    m_audioOut->setVolume(outputVolume(m_pendingVolume));
     m_audioOut->setMuted(m_pendingMuted);
+    applyLevel();
 
     // Needs an instance: audioOutputsChanged is not a static signal.
     m_devices = new QMediaDevices(this);
     connect(m_devices, &QMediaDevices::audioOutputsChanged,
             this, &Player::onAudioOutputsChanged);
 
-    connect(m_player, &QMediaPlayer::mediaStatusChanged,
-            this, &Player::onMediaStatusChanged);
-    connect(m_player, &QMediaPlayer::playbackStateChanged,
-            this, &Player::onPlaybackStateChanged);
-    connect(m_player, &QMediaPlayer::errorOccurred,
-            this, &Player::onErrorOccurred);
-    connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
-        if (m_rebinding) return;   // a swap's transient positions are not seeks
-        // Nor those of a source swap, which start from 0 before its seek.
-        if (m_swapping) return;
-        // A stream cut short reports the stated length as it ends.
-        if (streamGrowing() && pos >= m_streamLengthMs) return;
-        if (m_streamServed) m_streamPos = pos;
-        // Now and then in play, for a session that ends without a pause.
-        if (m_positionSaved.elapsed() > kPositionSaveMs
-            && m_player->playbackState() == QMediaPlayer::PlayingState) {
-            m_positionSaved.start();
-            schedulePersist();
-        }
-#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
-        // A queue that ended is at its start for all who ask position(). The
-        // backend's reports from before the end can still arrive after it.
-        if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
-#endif
-        // Only while it plays: a paused track may never be played on.
-        // duration(): a growing stream has no length of its own.
-        if (duration() > 0 && pos >= kPreloadAfterMs
-            && m_player->playbackState() == QMediaPlayer::PlayingState)
-            preloadNext();
-        emit positionChanged(pos);
-    });
-    connect(m_player, &QMediaPlayer::durationChanged,
-            this, [this] { emit durationChanged(duration()); });
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     m_standTimer = new QTimer(this);
     m_standTimer->setInterval(kStandCheckMs);
     connect(m_standTimer, &QTimer::timeout, this, &Player::wakeStandingBackend);
-    connect(m_player, &QMediaPlayer::playbackStateChanged, this,
-            [this](QMediaPlayer::PlaybackState state) {
+#endif
+    wirePlayer(m_player);
+
+    applySpectrumTap();
+}
+
+void Player::wirePlayer(QMediaPlayer *mp) {
+    // Two backends take turns at a track change; only the one that plays the
+    // current track speaks for it. The other one only says it is done.
+    connect(mp, &QMediaPlayer::mediaStatusChanged, this, [this, mp](QMediaPlayer::MediaStatus s) {
+        if (mp == m_player) onMediaStatusChanged(s);
+        else                otherStatusChanged(s);
+    });
+    connect(mp, &QMediaPlayer::playbackStateChanged, this, [this, mp](QMediaPlayer::PlaybackState s) {
+        if (mp == m_player) onPlaybackStateChanged(s);
+    });
+    connect(mp, &QMediaPlayer::errorOccurred, this, [this, mp](QMediaPlayer::Error e, const QString &msg) {
+        if (mp == m_player) { onErrorOccurred(e, msg); return; }
+        qWarning() << "Player: the backend for the track change failed:" << msg;
+        QTimer::singleShot(0, this, [this] { releaseOther(); });
+    });
+    connect(mp, &QMediaPlayer::positionChanged, this, [this, mp](qint64 pos) {
+        if (mp == m_player) onPositionChanged(pos);
+    });
+    connect(mp, &QMediaPlayer::durationChanged, this, [this, mp] {
+        if (mp == m_player) emit durationChanged(duration());
+    });
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    connect(mp, &QMediaPlayer::playbackStateChanged, this,
+            [this, mp](QMediaPlayer::PlaybackState state) {
+        if (mp != m_player) return;
         if (state != QMediaPlayer::PlayingState) { m_standTimer->stop(); return; }
         // A seek moved it, and the watch counts from where it is now.
         backendStands();
         m_standTimer->start();
     });
 #endif
+}
 
-    applySpectrumTap();
+void Player::onPositionChanged(qint64 pos) {
+    if (m_rebinding) return;   // a swap's transient positions are not seeks
+    // Nor those of a source swap, which start from 0 before its seek.
+    if (m_swapping) return;
+    // A stream cut short reports the stated length as it ends.
+    if (streamGrowing() && pos >= m_streamLengthMs) return;
+    if (m_streamServed) m_streamPos = pos;
+    notePosition(pos);
+    // Now and then in play, for a session that ends without a pause.
+    if (m_positionSaved.elapsed() > kPositionSaveMs
+        && m_player->playbackState() == QMediaPlayer::PlayingState) {
+        m_positionSaved.start();
+        schedulePersist();
+    }
+#if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
+    // A queue that ended is at its start for all who ask position(). The
+    // backend's reports from before the end can still arrive after it.
+    if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
+#endif
+    // Only while it plays: a paused track may never be played on.
+    // duration(): a growing stream has no length of its own.
+    if (duration() > 0 && pos >= kPreloadAfterMs
+        && m_player->playbackState() == QMediaPlayer::PlayingState) {
+        maybeAutoplay();
+        preloadNext();
+        planHandover(pos);
+    }
+    emit positionChanged(pos);
 }
 
 Player::~Player() {
     // The debounced save may still be pending, and position() needs the player.
     savePlaybackState();
     flushPlaybackState();
+    releaseOther();
     cancelPreload();
     // Before the join goes: the server reads its file.
     if (m_stream) m_stream->stop();
@@ -158,11 +185,17 @@ Player::~Player() {
     if (m_player) m_player->setAudioOutput(nullptr);
     delete m_audioOut;
     m_audioOut = nullptr;
+    if (m_other) m_other->setAudioOutput(nullptr);
+    delete m_otherOut;
+    m_otherOut = nullptr;
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
     // Same ordering rule as the output above.
     if (m_player) m_player->setAudioBufferOutput(nullptr);
     delete m_bufferOut;
     m_bufferOut = nullptr;
+    if (m_other) m_other->setAudioBufferOutput(nullptr);
+    delete m_otherTap;
+    m_otherTap = nullptr;
 #endif
 }
 
@@ -173,11 +206,19 @@ Player::~Player() {
 
 void Player::setPrefs(Prefs *prefs) {
     if (m_prefs == prefs) return;
-    if (m_prefs) disconnect(m_prefs, &Prefs::audioDeviceChanged, this, nullptr);
+    if (m_prefs) disconnect(m_prefs, nullptr, this, nullptr);
     m_prefs = prefs;
     if (m_prefs) {
         connect(m_prefs, &Prefs::audioDeviceChanged, this, [this] { applyAudioDevice(); });
+        connect(m_prefs, &Prefs::normalizeLoudnessChanged, this, [this] {
+            if (m_otherRole == Other::Armed) m_otherGain = gainFor(m_preloadInfo, m_preloadIndex);
+            applyLevel();
+        });
+        // A track change already planned is planned again.
+        connect(m_prefs, &Prefs::crossfadeChanged, this, [this] { if (m_handoverTimer) m_handoverTimer->stop(); });
+        connect(m_prefs, &Prefs::crossfadeSecondsChanged, this, [this] { if (m_handoverTimer) m_handoverTimer->stop(); });
     }
+    applyLevel();
     applyAudioDevice();
     // The analyser reads its switch off this object by property name.
     if (m_spectrum) m_spectrum->setPrefsSource(m_prefs);
@@ -276,22 +317,27 @@ void Player::applySpectrumTap() {
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
     if (!m_player) return;   // initAudio() calls this again on the way up
     const bool want = m_spectrum && m_spectrum->enabled();
-    if (want == (m_bufferOut != nullptr)) return;
-
-    if (want) {
-        m_bufferOut = new QAudioBufferOutput(this);
-        // Queued: the backend may emit this from its decoding thread and the
-        // analyser is main-thread only. QAudioBuffer is implicitly shared.
-        connect(m_bufferOut, &QAudioBufferOutput::audioBufferReceived,
-                m_spectrum.data(), &SpectrumAnalyzer::processBuffer,
-                Qt::QueuedConnection);
-        m_player->setAudioBufferOutput(m_bufferOut);
-    } else {
-        m_player->setAudioBufferOutput(nullptr);
-        delete m_bufferOut;
-        m_bufferOut = nullptr;
-        if (m_spectrum) m_spectrum->reset();
-    }
+    // Each backend has a tap of its own: one tap cannot serve two players.
+    const auto apply = [this, want](QMediaPlayer *mp, QAudioBufferOutput *&tap) {
+        if (!mp || want == (tap != nullptr)) return;
+        if (want) {
+            tap = new QAudioBufferOutput(mp->parent());
+            // Queued: the backend may emit this from its decoding thread and the
+            // analyser is main-thread only. QAudioBuffer is implicitly shared.
+            connect(tap, &QAudioBufferOutput::audioBufferReceived,
+                    m_spectrum.data(), &SpectrumAnalyzer::processBuffer,
+                    Qt::QueuedConnection);
+            mp->setAudioBufferOutput(tap);
+        } else {
+            mp->setAudioBufferOutput(nullptr);
+            delete tap;
+            tap = nullptr;
+        }
+    };
+    const bool had = m_bufferOut != nullptr;
+    apply(m_player, m_bufferOut);
+    apply(m_other, m_otherTap);
+    if (had && !want && m_spectrum) m_spectrum->reset();
 #endif
 }
 
@@ -309,7 +355,7 @@ Player::AudioState Player::captureAudioState() const {
 void Player::restoreAudioState(const AudioState &state) {
     if (m_audioOut) {
         m_pendingVolume = state.volume;
-        m_audioOut->setVolume(outputVolume(state.volume));
+        applyLevel();
         // The live value: while casting the local output is force-muted and
         // must stay that way across a swap, whatever m_pendingMuted says.
         m_audioOut->setMuted(state.muted);
@@ -326,6 +372,8 @@ void Player::restoreAudioState(const AudioState &state) {
 
 void Player::rebindAudioOutput(const QAudioDevice &device) {
     if (!m_player) return;
+    // The other backend's output is made anew for the device when next needed.
+    releaseOther(true);
 
     const AudioState state = captureAudioState();
     m_rebinding = true;
@@ -336,7 +384,7 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 #endif
 
     auto *fresh = new QAudioOutput(device, this);
-    fresh->setVolume(outputVolume(state.volume));
+    fresh->setVolume(float(qMin(1.0, outputVolume(state.volume) * m_gain * m_fade)));
     fresh->setMuted(state.muted);
 
     // Detach, delete the old output outright, then attach. A destroyed output
@@ -464,6 +512,7 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
         emit sourceChanged();
     }
     m_pendingSource = false;
+    m_autoplayFor   = 0;
 
     // The manual queue is the user's own list and survives a new context.
     // Rows behind the cursor have played and go with the old one.
@@ -618,6 +667,7 @@ void Player::jumpToQueue(int index) {
 }
 
 void Player::clearQueue() {
+    releaseOther();
     cancelPreload();
     dropStream();
     if (m_player) m_player->stop();
@@ -640,6 +690,7 @@ void Player::removeFromQueue(int index) {
         setIndex(m_index - 1);
     } else if (index == m_index) {
         if (m_queue.isEmpty()) {
+            releaseOther();
             dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
@@ -746,10 +797,13 @@ void Player::playPause() {
         tellPlaying();
         return;
     }
-    if (m_player->playbackState() == QMediaPlayer::PlayingState)
+    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+        // The end of the track before, or its fade, stops with the pause.
+        finishRetire();
         m_player->pause();
-    else
+    } else {
         startBackend();
+    }
 }
 
 void Player::next(bool heldPaused) {
@@ -759,7 +813,13 @@ void Player::next(bool heldPaused) {
 void Player::stepForward(bool heldPaused, bool wait) {
     if (!m_player) return;
     const int n = nextIndex();
-    if (n < 0) { m_player->stop(); setStopped(true); return; }
+    if (n < 0) {
+        m_player->stop();
+        setStopped(true);
+        // Autoplay goes on once the radio for this track has come.
+        if (!heldPaused && autoplayOn()) requestAutoplay(true);
+        return;
+    }
     // A queue of one row under repeat goes round to the same row.
     if (n == m_index) { startOver(heldPaused); return; }
     stepTo(n);
@@ -839,6 +899,9 @@ void Player::seek(qint64 ms) {
     }
 #endif
     if (!m_player) return;
+    // The track change is planned again from the new position.
+    if (m_handoverTimer) m_handoverTimer->stop();
+    m_offsets.clear();
     // A target at or past the end is the end of the track, and the queue
     // moves on as it does when a track has played out. The backend of Qt 6.5
     // and later would stay there and report no end. A paused player waits.
@@ -1039,7 +1102,7 @@ void Player::setVolume(double v) {
 #ifdef Q_OS_LINUX
     if (casting() && m_castSession) m_castSession->setVolume(m_pendingVolume);
 #endif
-    if (m_audioOut) m_audioOut->setVolume(outputVolume(m_pendingVolume));
+    applyLevel();
     emit volumeChanged(m_pendingVolume);
     schedulePersist();
 }
@@ -1049,13 +1112,47 @@ void Player::setMuted(bool m) {
     // While casting the local output stays force-muted; endCast() re-applies
     // the preference.
     if (m_audioOut && !casting()) m_audioOut->setMuted(m);
+    if (m_otherOut && !casting()) m_otherOut->setMuted(m);
     emit mutedChanged(m);
     schedulePersist();
+}
+
+// ─── Loudness ──────────────────────────────────────
+// Tidal's ReplayGain for the track, or for the album while one plays in its
+// own order, as Spotify does. The output cannot go past full scale, so a gain
+// above 0 dB only shows below full volume. The peak caps it short of clipping.
+
+bool Player::albumInOrder(int row) const {
+    if (m_shuffle || m_sourceType != QLatin1String("album") || row < 0 || row >= m_queue.count())
+        return false;
+    const Entry &e = m_queue.at(row);
+    return !e.manual
+        && QString::number(e.track.value(QStringLiteral("albumId")).toLongLong()) == m_sourceId;
+}
+
+double Player::gainFor(const StreamManifest &info, int row) const {
+    if (!m_prefs || !m_prefs->normalizeLoudness()) return 1.0;
+    const bool album = albumInOrder(row) && info.replayGainAlbum != 0.0;
+    const double db   = album ? info.replayGainAlbum : info.replayGainTrack;
+    const double peak = album ? info.peakAlbum : info.peakTrack;
+    double factor = std::pow(10.0, db / 20.0);
+    if (peak > 0.0) factor = qMin(factor, 1.0 / peak);
+    return factor;
+}
+
+double Player::trackGain() const { return m_gain; }
+
+void Player::applyLevel() {
+    const double level = outputVolume(m_pendingVolume);
+    m_gain = gainFor(m_streamInfo, m_index);
+    if (m_audioOut) m_audioOut->setVolume(float(qMin(1.0, level * m_gain * m_fade)));
+    if (m_otherOut) m_otherOut->setVolume(float(qMin(1.0, level * m_otherGain * m_otherFade)));
 }
 
 void Player::setShuffle(bool s) {
     m_shuffle = s;
     reorderContext();
+    applyLevel();
     emit shuffleChanged(s);
     emit queueChanged();
     schedulePersist();
@@ -1221,6 +1318,8 @@ void Player::dropCurrentLoad() {
     if (m_loadTimer) m_loadTimer->stop();
     if (m_seekWait) m_seekWait->stop();
     m_swapping = false;
+    // A track change under way or planned ends with the track it led to.
+    releaseOther();
     // First: the server reads the file that goes below.
     dropStream();
     if (m_player) {
@@ -1251,6 +1350,7 @@ void Player::restOn(int index, Travel travel) {
     setLoading(false);
     tellPlaying();
     m_streamedQuality.clear();
+    m_streamInfo = {};
     if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
         m_pendingSeek = 0;
     m_currentTrack = trackFromMap(m_queue[index].track);
@@ -1275,6 +1375,9 @@ void Player::startLoad(int index, bool wait) {
     const qlonglong rowId = m_queue[index].track.value("id").toLongLong();
     QTemporaryFile *same = nullptr;
     const QString sameQuality = m_streamedQuality;
+    const StreamManifest sameInfo = m_streamInfo;
+    // Autoplay waits for no queue the user has moved on from.
+    m_autoplayResume = false;
     if (!casting() && m_mpdTempFile && rowId == m_currentTrack.id && !m_loadOwed
         && !m_player->source().isEmpty()) {
         same = m_mpdTempFile;
@@ -1288,6 +1391,7 @@ void Player::startLoad(int index, bool wait) {
     tellPlaying();
 
     m_streamedQuality.clear();
+    m_streamInfo = {};
     m_loadOwed = false;
     // A position held for a track that never loaded does not carry to another.
     if (m_queue[index].track.value("id").toLongLong() != m_currentTrack.id)
@@ -1310,7 +1414,7 @@ void Player::startLoad(int index, bool wait) {
 
     if (same) {
         noteRecentlyPlayed(m_queue[index].track);
-        playFile(same, sameQuality);
+        playFile(same, sameQuality, sameInfo);
         return;
     }
     // A file on disk costs nothing, so it is taken at once. Anything that
@@ -1366,15 +1470,19 @@ bool Player::adoptPreload(quint64 serial) {
     if (!m_preloadTempFile) return false;
     QTemporaryFile *file = m_preloadTempFile;
     const QString quality = m_preloadQuality;
+    const StreamManifest info = m_preloadInfo;
     m_preloadTempFile = nullptr;
     cancelPreload();
-    playFile(file, quality);
+    playFile(file, quality, info);
     return true;
 }
 
-void Player::playFile(QTemporaryFile *file, const QString &quality) {
+void Player::playFile(QTemporaryFile *file, const QString &quality, const StreamManifest &info) {
+    m_offsets.clear();
     m_mpdTempFile     = file;
     m_streamedQuality = quality;
+    m_streamInfo      = info;
+    applyLevel();
     emit currentTrackChanged();
     // Still loading until the media status says the file is open.
     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
@@ -1469,10 +1577,13 @@ void Player::takeOverPreloadJoin() {
     DashFetcher *fetcher = std::exchange(m_preloadDash, nullptr);
     if (!fetcher) return;
     const QString quality = m_preloadQuality;
+    const StreamManifest info = m_preloadInfo;
     // Not deleted here: m_preloadDash is already null.
     cancelPreload();
     m_dash = fetcher;
     m_streamedQuality = quality;
+    m_streamInfo      = info;
+    applyLevel();
     emit currentTrackChanged();
     followJoin(m_loadSerial, fetcher);
     if (fetcher->segmentsReady() >= 2)
@@ -1558,13 +1669,16 @@ void Player::preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file)
     }
     if (waiting && waiting == m_loadSerial && m_loading && m_currentTrack.id == trackId) {
         const QString quality = m_preloadQuality;
+        const StreamManifest info = m_preloadInfo;
         cancelPreload();
-        playFile(file, quality);
+        playFile(file, quality, info);
         return;
     }
     m_preloadTempFile = file;
     m_preloadReady    = true;
     emit audioFileReady(trackId, true);
+    // The next track waits in a backend of its own for the end of this one.
+    armOther();
 }
 
 void Player::noteRecentlyPlayed(const QVariantMap &track) {
@@ -1663,6 +1777,9 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                 return;
             }
             m_streamedQuality = manifest.codec;
+            m_streamInfo      = manifest;
+            m_streamInfo.url.clear();
+            applyLevel();
             emit currentTrackChanged();
 
             if (manifest.type == StreamManifest::BTS) {
@@ -1745,9 +1862,12 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         // Qt reports this on the pause or the start that follows a seek, and
         // before 6.11.2 nothing after it. A paused track waits for no buffer.
         if (m_swapping || m_seekedLoaded || state == QMediaPlayer::PausedState) break;
+        // A track that took over at a track change had its file loaded.
+        if (m_handoffSettling) break;
         setLoading(true); break;
     case QMediaPlayer::BufferedMedia:
     case QMediaPlayer::LoadedMedia:
+        m_handoffSettling = false;
         // The backend reports a track loaded before it starts it. A load
         // that plays stays one until then.
         if (!m_loadPlays || casting()) setLoading(false);
@@ -1776,11 +1896,19 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             break;
         }
         setLoading(false);
+        m_handoffSettling = false;
+        // The next track waits loaded and starts now, late but without a load.
+        if (otherFits()) { fireHandover(true); break; }
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
         // track over once it was stopped at its end. The last track of a queue
         // is left there, where position() answers with the start.
-        if (followingIndex() < 0) { setStopped(true); emit positionChanged(0); break; }
+        if (followingIndex() < 0) {
+            setStopped(true);
+            emit positionChanged(0);
+            if (autoplayOn()) requestAutoplay(true);
+            break;
+        }
 #endif
         trackEnded();
         break;
@@ -1795,6 +1923,9 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
 void Player::onPlaybackStateChanged(QMediaPlayer::PlaybackState state) {
     // A stopped backend fills its buffer anew when it starts.
     if (state == QMediaPlayer::StoppedState) m_seekedLoaded = false;
+    // Planned against a clock that has stopped.
+    if (state != QMediaPlayer::PlayingState && m_handoverTimer) m_handoverTimer->stop();
+    if (state != QMediaPlayer::PlayingState) m_offsets.clear();
     if (m_rebinding) return;   // rebindAudioOutput() reports the settled state
     if (m_seekToggling) return;   // the state a seek started in is the one it ends in
     // Audio is coming out, so the load is over even if a media status was
@@ -1815,6 +1946,7 @@ void Player::stop() {
     }
 #endif
     if (!m_player) return;
+    finishRetire();
     if ((m_loading || m_swapping) && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // The load under way comes up paused.
         m_loadPlays = false;
@@ -1892,6 +2024,8 @@ void Player::dropAudioFile(QTemporaryFile *&f) {
 }
 
 void Player::cancelPreload() {
+    // The backend that waits with the preload's file lets go of it first.
+    disarmOther();
     // Before the abort: it runs the download's callback at once, and with a
     // new generation that callback drops out and records no failed preload.
     ++m_preloadGen;
@@ -1913,6 +2047,7 @@ void Player::cancelPreload() {
     m_preloadReady     = false;
     m_preloadLookingUp = false;
     m_preloadQuality   = {};
+    m_preloadInfo      = {};
 }
 
 void Player::preloadGaveUp(qlonglong trackId) {
@@ -2019,6 +2154,8 @@ void Player::requestPreload(quint64 gen, int next, qlonglong trackId, bool twinS
         }
 
         m_preloadQuality = manifest.codec;
+        m_preloadInfo    = manifest;
+        m_preloadInfo.url.clear();
 
         if (manifest.type == StreamManifest::BTS) {
             m_preloadDownload = m_client->fetchRaw(QUrl(manifest.url), [this, gen, trackId](QByteArray data, QString dlErr) {
@@ -2084,6 +2221,32 @@ QString Player::audioQuality() const {
     return QStringLiteral("LOSSLESS");
 }
 
+QString Player::audioFormat() const {
+    if (m_streamedQuality.isEmpty()) return {};
+    return formatLabel(m_streamInfo);
+}
+
+QString Player::formatLabel(const StreamManifest &info) {
+    const QString format = info.format.toUpper();
+    const QString tier   = info.codec;
+    const bool lossless = format.startsWith(QLatin1String("FLAC"))
+        || (format.isEmpty() && (tier == QLatin1String("LOSSLESS") || tier == QLatin1String("HI_RES_LOSSLESS")));
+    if (lossless) {
+        if (info.bitDepth <= 0 || info.sampleRate <= 0) return QStringLiteral("FLAC");
+        // 44.1, 48, 96, 192: as many decimals as the rate needs.
+        const QString khz = QLocale().toString(info.sampleRate / 1000.0, 'g', 4);
+        return tr("%1-bit / %2 kHz FLAC").arg(info.bitDepth).arg(khz);
+    }
+    const bool he = format.startsWith(QLatin1String("HEAAC"))
+        || (format.isEmpty() && tier == QLatin1String("LOW"));
+    // The manifest's bandwidth where it has one, else the tier's stated rate.
+    int kbps = info.bandwidth > 0 ? (info.bandwidth + 500) / 1000 : 0;
+    if (kbps == 0) kbps = tier == QLatin1String("LOW") ? 96 : tier == QLatin1String("HIGH") ? 320 : 0;
+    const QString name = he ? QStringLiteral("HE-AAC") : QStringLiteral("AAC");
+    if (format.isEmpty() && tier != QLatin1String("LOW") && tier != QLatin1String("HIGH")) return {};
+    return kbps > 0 ? tr("%1 %2 kbps").arg(name).arg(kbps) : name;
+}
+
 QString Player::qualityLabel(const QString &code) const {
     // The tier names Tidal's own apps show.
     if (code == QStringLiteral("HI_RES_LOSSLESS")) return tr("Max");
@@ -2099,6 +2262,7 @@ void Player::beginCast(CastSession *session) {
     const qint64 here   = position();
     const qint64 length = duration();
     m_castSession = session;
+    releaseOther();
     // Muted as well as paused: a stream fetch that resolves after this point
     // must not play locally alongside the cast.
     if (m_player) m_player->pause();
@@ -2691,6 +2855,7 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         m_queue.removeAt(m_index);
 
         if (m_queue.isEmpty()) {
+            releaseOther();
             dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
@@ -2773,4 +2938,319 @@ void Player::notePassedOver(const QString &title, bool runEnded) {
         said = tr("Several tracks are not available and were skipped.");
     }
     setLoadError(said);
+}
+
+// ─── Gapless track changes ─────────────────────────
+// QMediaPlayer cannot queue a next source, so a second backend loads the
+// next track's file and starts on the current one's last moment, or a
+// crossfade earlier. The two then swap roles; the old one plays out.
+
+void Player::armOther() {
+    if (m_otherRole != Other::Idle || !m_player || !m_audioOut || casting()) return;
+    if (!m_preloadReady || !m_preloadTempFile || m_preloadAdoptedBy) return;
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    // Qt 6.4 opens a sink by the name of an output that may be gone by the
+    // time it plays, and waits on it for good: the change goes the old way.
+    return;
+#endif
+    const int next = followingIndex();
+    if (next < 0 || next == m_index || next != m_preloadIndex
+        || !rowAheadIs(next, m_preloadTrackId))
+        return;
+    if (!m_otherHolder) m_otherHolder = new QObject(this);
+    if (!m_other) {
+        m_other = new QMediaPlayer(m_otherHolder);
+        wirePlayer(m_other);
+    }
+    if (!m_otherOut) {
+        m_otherOut = new QAudioOutput(m_audioOut->device(), m_otherHolder);
+        m_other->setAudioOutput(m_otherOut);
+    }
+    m_otherOut->setMuted(m_audioOut->isMuted());
+    m_otherGain = gainFor(m_preloadInfo, next);
+    m_otherFade = 1.0;
+    applyLevel();
+    applySpectrumTap();
+    m_otherRole = Other::Armed;
+    m_armedId   = m_preloadTrackId;
+    m_armedFile = m_preloadTempFile->fileName();
+    m_other->setSource(QUrl::fromLocalFile(m_armedFile));
+}
+
+bool Player::otherFits() const {
+    if (m_otherRole != Other::Armed || !m_other || casting()) return false;
+    const QMediaPlayer::MediaStatus s = m_other->mediaStatus();
+    if (s != QMediaPlayer::LoadedMedia && s != QMediaPlayer::BufferedMedia) return false;
+    const int next = followingIndex();
+    return m_preloadReady && m_preloadTempFile && m_preloadTempFile->fileName() == m_armedFile
+        && m_preloadTrackId == m_armedId && next == m_preloadIndex && next != m_index
+        && rowAheadIs(next, m_armedId);
+}
+
+void Player::disarmOther() {
+    if (m_otherRole != Other::Armed) return;
+    if (m_handoverTimer) m_handoverTimer->stop();
+    m_otherRole = Other::Idle;
+    m_armedId   = 0;
+    m_armedFile.clear();
+    m_other->stop();
+    m_other->setSource(QUrl());
+}
+
+void Player::finishRetire() {
+    if (m_otherRole != Other::Retiring) return;
+    if (m_retireTimer) m_retireTimer->stop();
+    if (m_fadeTimer) m_fadeTimer->stop();
+    m_otherRole = Other::Idle;
+    m_other->stop();
+    m_other->setSource(QUrl());
+    dropAudioFile(m_otherFile);
+    // The server served the track before; the current one never uses it.
+    if (m_otherServes && !m_streamServed && m_stream) m_stream->stop();
+    m_otherServes = false;
+    m_otherFade = 1.0;
+    m_fade      = 1.0;
+    applyLevel();
+}
+
+void Player::releaseOther(bool dropOutput) {
+    disarmOther();
+    finishRetire();
+    if (dropOutput && m_other && m_otherOut) {
+        m_other->setAudioOutput(nullptr);
+        delete m_otherOut;
+        m_otherOut = nullptr;
+    }
+}
+
+void Player::otherStatusChanged(QMediaPlayer::MediaStatus status) {
+    if (m_otherRole == Other::Retiring
+        && (status == QMediaPlayer::EndOfMedia || status == QMediaPlayer::InvalidMedia))
+        QTimer::singleShot(0, this, [this] { finishRetire(); });
+    else if (m_otherRole == Other::Armed && status == QMediaPlayer::InvalidMedia)
+        QTimer::singleShot(0, this, [this] { disarmOther(); });
+}
+
+int Player::crossfadeMs() const {
+    if (!m_prefs || !m_prefs->crossfade()) return 0;
+    const int next = followingIndex();
+    if (m_index < 0 || next < 0 || next >= m_queue.count()) return 0;
+    // An album that plays in its own order keeps its gapless joins, as
+    // Strawberry's default does.
+    const qlonglong here  = m_queue.at(m_index).track.value(QStringLiteral("albumId")).toLongLong();
+    const qlonglong there = m_queue.at(next).track.value(QStringLiteral("albumId")).toLongLong();
+    if (!m_shuffle && here != 0 && here == there) return 0;
+    // At most half of either track.
+    qint64 ms = qint64(m_prefs->crossfadeSeconds()) * 1000;
+    const qint64 length = m_player ? m_player->duration() : 0;
+    const qint64 nextLength = qint64(m_queue.at(next).track.value(QStringLiteral("duration")).toInt()) * 1000;
+    if (length > 0) ms = qMin(ms, length / 2);
+    if (nextLength > 0) ms = qMin(ms, nextLength / 2);
+    return int(qMax<qint64>(0, ms));
+}
+
+// The backend reports its position in steps of a decoded block, some 90 ms
+// apart and late by a varying amount. The earliest report over the last few
+// seconds, carried on by the clock, says where it is between reports.
+void Player::notePosition(qint64 pos) {
+    if (!m_wall.isValid()) m_wall.start();
+    if (m_player->playbackState() != QMediaPlayer::PlayingState) { m_offsets.clear(); return; }
+    m_offsets.append(m_wall.elapsed() - pos);
+    if (m_offsets.size() > kOffsetsKept) m_offsets.removeFirst();
+}
+
+qint64 Player::playedNow(qint64 reported) const {
+    if (m_offsets.size() < kOffsetsNeeded || !m_wall.isValid()) return reported;
+    const qint64 off = *std::min_element(m_offsets.cbegin(), m_offsets.cend());
+    return qMax(reported, m_wall.elapsed() - off);
+}
+
+void Player::planHandover(qint64 pos) {
+    if (m_otherRole == Other::Idle && m_preloadReady) armOther();
+    if (m_otherRole != Other::Armed || (m_handoverTimer && m_handoverTimer->isActive())) return;
+    if (m_player->playbackState() != QMediaPlayer::PlayingState || streamGrowing()) return;
+    const qint64 length = m_player->duration() > 0 ? m_player->duration() : duration();
+    if (length <= 0) return;
+    const int fade = crossfadeMs();
+    const qint64 lead = fade > 0 ? fade : kStartLeadMs;
+    const qint64 left = length - playedNow(pos);
+    if (left > lead + kPlanAheadMs) return;
+    if (!m_handoverTimer) {
+        m_handoverTimer = new QTimer(this);
+        m_handoverTimer->setSingleShot(true);
+        m_handoverTimer->setTimerType(Qt::PreciseTimer);
+        connect(m_handoverTimer, &QTimer::timeout, this, [this] { fireHandover(false); });
+    }
+    m_handoverTimer->start(int(qMax<qint64>(0, left - lead)));
+}
+
+void Player::fireHandover(bool ended) {
+    if (!otherFits()) { disarmOther(); return; }
+    if (!ended && m_player->playbackState() != QMediaPlayer::PlayingState) return;
+    const qint64 left = qMax<qint64>(0, m_player->duration() - playedNow(m_player->position()));
+    // Planned off an older estimate: set again from this one.
+    const qint64 lead = crossfadeMs() > 0 ? crossfadeMs() : kStartLeadMs;
+    if (!ended && left > lead + 2) { m_handoverTimer->start(int(left - lead)); return; }
+    const int fade = ended ? 0 : int(qMin<qint64>(crossfadeMs(), left));
+    m_otherFade = fade > 0 ? 0.0 : 1.0;
+    applyLevel();
+    m_other->play();
+    handOver(fade, ended ? 0 : left);
+}
+
+void Player::handOver(int fadeMs, qint64 oldLeftMs) {
+    QMediaPlayer *was = m_player;
+    QAudioOutput *wasOut = m_audioOut;
+    m_player   = m_other;
+    m_audioOut = m_otherOut;
+    m_other    = was;
+    m_otherOut = wasOut;
+    // The one that plays is the Player's own child, where findChild() looks first.
+    m_player->setParent(this);
+    m_audioOut->setParent(this);
+    m_other->setParent(m_otherHolder);
+    m_otherOut->setParent(m_otherHolder);
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    std::swap(m_bufferOut, m_otherTap);
+    if (m_bufferOut) m_bufferOut->setParent(this);
+    if (m_otherTap) m_otherTap->setParent(m_otherHolder);
+#endif
+    m_otherGain = m_gain;
+    m_otherFade = 1.0;
+    m_fade      = fadeMs > 0 ? 0.0 : 1.0;
+    m_otherRole = Other::Retiring;
+    m_otherFile = std::exchange(m_mpdTempFile, nullptr);
+    // A stream the old track plays from is served until it has played out.
+    m_otherServes    = m_streamServed;
+    m_streamServed   = false;
+    m_streamWhole    = false;
+    m_streamPos      = 0;
+    m_streamLengthMs = 0;
+    m_swapping       = false;
+    m_seekedLoaded   = false;
+    m_handoffSettling = true;
+    m_offsets.clear();
+    m_armedId = 0;
+    m_armedFile.clear();
+
+    // The queue moves on to the row the file was fetched for.
+    const int next = m_preloadIndex;
+    QTemporaryFile *file = std::exchange(m_preloadTempFile, nullptr);
+    const QString quality = m_preloadQuality;
+    const StreamManifest info = m_preloadInfo;
+    cancelPreload();
+    ++m_loadSerial;
+    if (m_loadTimer) m_loadTimer->stop();
+    if (m_seekWait) m_seekWait->stop();
+    m_loadPlays       = false;
+    m_restorePaused   = false;
+    m_loadOwed        = false;
+    m_pendingSeek     = 0;
+    m_preloadFailedId = 0;
+    m_droppedRun      = 0;
+    m_keptRun         = 0;
+    setLoadError(QString());
+    stepTo(next);
+    m_currentTrack    = trackFromMap(m_queue[m_index].track);
+    m_mpdTempFile     = file;
+    m_streamedQuality = quality;
+    m_streamInfo      = info;
+    setLoading(false);
+    setStopped(false);
+    noteRecentlyPlayed(m_queue[m_index].track);
+    applyLevel();
+    emit currentTrackChanged();
+    emit durationChanged(duration());
+    emit positionChanged(0);
+    tellPlaying();
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+    backendStands();
+    m_standTimer->start();
+#endif
+
+    if (fadeMs > 0) {
+        m_fadeMs = fadeMs;
+        m_fadeClock.start();
+        if (!m_fadeTimer) {
+            m_fadeTimer = new QTimer(this);
+            m_fadeTimer->setInterval(kFadeStepMs);
+            connect(m_fadeTimer, &QTimer::timeout, this, &Player::fadeStep);
+        }
+        m_fadeTimer->start();
+    }
+    // Should the old backend never say it ended.
+    if (!m_retireTimer) {
+        m_retireTimer = new QTimer(this);
+        m_retireTimer->setSingleShot(true);
+        connect(m_retireTimer, &QTimer::timeout, this, [this] { finishRetire(); });
+    }
+    m_retireTimer->start(int(oldLeftMs) + kRetireSlackMs);
+    emit audioFileReady(m_currentTrack.id, false);
+    schedulePersist();
+}
+
+void Player::fadeStep() {
+    const double t = m_fadeMs > 0 ? qMin(1.0, double(m_fadeClock.elapsed()) / m_fadeMs) : 1.0;
+    // Equal power, so the sum holds its loudness through the middle.
+    m_fade = std::sin(t * M_PI / 2.0);
+    if (m_otherRole == Other::Retiring) m_otherFade = std::cos(t * M_PI / 2.0);
+    if (t >= 1.0) {
+        m_fadeTimer->stop();
+        m_fade = 1.0;
+    }
+    applyLevel();
+}
+
+// ─── Autoplay ──────────────────────────────────────
+// Where the queue would end, the radio of its last track goes on after it,
+// fetched while that track plays so the change to it is gapless too.
+
+bool Player::autoplayOn() const {
+    return m_prefs && m_prefs->autoplay() && m_repeatMode == 0 && !casting();
+}
+
+void Player::maybeAutoplay() {
+    if (!autoplayOn() || m_index < 0 || nextIndex() >= 0) return;
+    requestAutoplay(false);
+}
+
+void Player::requestAutoplay(bool resume) {
+    if (m_index < 0 || m_index >= m_queue.count()) return;
+    const qlonglong seed = m_currentTrack.id;
+    if (seed <= 0) return;
+    if (resume) m_autoplayResume = true;
+    if (m_autoplayFor == seed) return;   // asked once per track
+    m_autoplayFor = seed;
+    QPointer<Player> self(this);
+    m_client->fetchTrackRadio(seed, [self, seed](QList<Track> tracks, QString err) {
+        if (!self) return;
+        if (!err.isEmpty()) qWarning() << "Player: no autoplay, the radio failed:" << err;
+        self->appendAutoplay(seed, tracks);
+    });
+}
+
+void Player::appendAutoplay(qlonglong seed, const QList<Track> &tracks) {
+    const bool resume = std::exchange(m_autoplayResume, false);
+    // The queue moved on, or no longer ends here.
+    if (m_currentTrack.id != seed || nextIndex() >= 0) return;
+    QSet<qlonglong> have;
+    int natural = -1;
+    for (const Entry &e : std::as_const(m_queue)) {
+        have.insert(e.track.value(QStringLiteral("id")).toLongLong());
+        natural = qMax(natural, e.natural);
+    }
+    int added = 0;
+    for (const Track &t : tracks) {
+        if (t.id <= 0 || have.contains(t.id)) continue;
+        have.insert(t.id);
+        QVariantMap row = TidalBridge::trackToMap(t);
+        row[QStringLiteral("autoplay")] = true;
+        m_queue.append(Entry{ row, false, ++natural });
+        ++added;
+    }
+    if (added == 0) return;
+    emit queueChanged();
+    schedulePersist();
+    // The queue had already run out: it goes on now.
+    if (resume && m_stopped) stepForward(false, false);
 }

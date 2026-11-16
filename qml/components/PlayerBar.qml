@@ -171,7 +171,7 @@ Rectangle {
                 Rectangle {
                     objectName: "qualityBadge"
                     visible: hasTrack && player.audioQuality.length > 0
-                    height: 16; width: ql.implicitWidth + 8; radius: Theme.radiusBadge
+                    height: 18; width: ql.implicitWidth + 8; radius: Theme.radiusBadge
                     color: {
                         var q = player.audioQuality
                         if (q === "HI_RES_LOSSLESS") return Theme.accentWash
@@ -181,8 +181,10 @@ Rectangle {
                     Text {
                         id: ql; objectName: "qualityBadgeText"
                         anchors.centerIn: parent
-                        text: player.qualityLabel(player.audioQuality)
-                        color: Theme.textPrimary; font.pixelSize: 9; font.bold: true
+                        // The real format where the stream said it, else the tier.
+                        text: player.audioFormat.length > 0
+                              ? player.audioFormat : player.qualityLabel(player.audioQuality)
+                        color: Theme.textPrimary; font.pixelSize: 11; font.bold: true
                     }
                 }
             }

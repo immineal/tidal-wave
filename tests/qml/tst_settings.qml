@@ -1183,6 +1183,59 @@ TestCase {
         h.panel.close()
     }
 
+    // The playback switches, with the defaults of a fresh install.
+    function test_playback_switches_data() {
+        return [
+            { tag: "loudness", key: "normalizeLoudness", toggle: "settingsNormalizeToggle", fresh: true },
+            { tag: "autoplay", key: "autoplay", toggle: "settingsAutoplayToggle", fresh: true },
+            { tag: "crossfade", key: "crossfade", toggle: "settingsCrossfadeToggle", fresh: false },
+        ]
+    }
+
+    function test_playback_switches(data) {
+        prefs[data.key] = data.fresh
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, data.toggle)
+        verify(toggle, "there is no switch " + data.toggle)
+        compare(toggle.checked, data.fresh)
+        scrollTo(h.panel, toggle)
+        clickItem(h.panel, toggle)
+        compare(prefs[data.key], !data.fresh, "the switch did not change the setting")
+        clickItem(h.panel, toggle)
+        compare(prefs[data.key], data.fresh)
+        h.panel.close()
+    }
+
+    // The length shows only with the crossfade on, and writes whole seconds.
+    function test_the_crossfade_length_follows_its_switch() {
+        prefs.crossfade = false
+        prefs.crossfadeSeconds = 5
+        var h = openPanel(1280, 1200)
+        var slider = findByName(h.panel.contentItem, "settingsCrossfadeSlider")
+        verify(slider, "there is no crossfade length")
+        verify(!slider.visible, "the length shows with the crossfade off")
+        prefs.crossfade = true
+        verify(slider.visible, "the length is hidden with the crossfade on")
+        compare(slider.from, 1)
+        compare(slider.to, 12)
+        compare(slider.value, 5)
+        compare(findByName(h.panel.contentItem, "settingsCrossfadeValue").text, "5 s")
+        scrollTo(h.panel, slider)
+        slider.forceActiveFocus()
+        keyClick(Qt.Key_Right)
+        compare(prefs.crossfadeSeconds, 6, "the slider did not write the length")
+        prefs.crossfade = false
+        h.panel.close()
+    }
+
+    function test_the_loudness_switch_says_what_it_does() {
+        var h = openPanel(1280, 1200)
+        var note = findByName(h.panel.contentItem, "settingsNormalizeNote")
+        verify(note && note.visible, "the loudness switch has no line saying what it does")
+        verify(note.text.indexOf("album") !== -1, "the note never says how an album plays")
+        h.panel.close()
+    }
+
     // Qt picks the scene graph backend once at startup, so the note is always
     // visible in the panel.
     function test_restart_note_is_always_visible() {

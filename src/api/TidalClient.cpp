@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QMetaObject>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QThreadPool>
 #include <QSet>
 #include <algorithm>
@@ -903,8 +904,12 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
     m.type     = StreamManifest::MPD;
     m.mimeType = QStringLiteral("application/dash+xml");
     m.url      = QString::fromUtf8(body);
-    m.replayGainTrack = attrs["trackAudioNormalizationData"].toObject()["replayGain"].toDouble();
-    m.replayGainAlbum = attrs["albumAudioNormalizationData"].toObject()["replayGain"].toDouble();
+    const QJsonObject trackNorm = attrs["trackAudioNormalizationData"].toObject();
+    const QJsonObject albumNorm = attrs["albumAudioNormalizationData"].toObject();
+    m.replayGainTrack = trackNorm["replayGain"].toDouble();
+    m.replayGainAlbum = albumNorm["replayGain"].toDouble();
+    m.peakTrack       = trackNorm["peakAmplitude"].toDouble();
+    m.peakAlbum       = albumNorm["peakAmplitude"].toDouble();
 
     // Format, sample rate and bit depth live only in the Representation id:
     // "FLAC,44100,16", or a bare "AACLC" with neither number.
@@ -921,6 +926,10 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
         if (end > from) {
             const QStringList bits = m.url.mid(from, end - from).split(QLatin1Char(','));
             if (!bits.first().isEmpty()) format = bits.first();
+            // The Representation's bandwidth, for the bit rate of a lossy stream.
+            const QRegularExpression bw(QStringLiteral("bandwidth=\"(\\d+)\""));
+            const QRegularExpressionMatch hit = bw.match(m.url, at);
+            if (hit.hasMatch()) m.bandwidth = hit.captured(1).toInt();
             // Left at the CD defaults when the id has no usable numbers:
             // Downloader picks its PCM width off bitDepth.
             if (bits.size() >= 3) {
@@ -932,7 +941,8 @@ StreamManifest TidalClient::parseTrackManifests(const QJsonObject &root, QString
             }
         }
     }
-    m.codec = tierForFormat(format);
+    m.codec  = tierForFormat(format);
+    m.format = format;
     return m;
 }
 
@@ -1048,6 +1058,8 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
             m.bitDepth   = root["bitDepth"].toInt(16);
             m.replayGainTrack = root["trackReplayGain"].toDouble();
             m.replayGainAlbum = root["albumReplayGain"].toDouble();
+            m.peakTrack       = root["trackPeakAmplitude"].toDouble();
+            m.peakAlbum       = root["albumPeakAmplitude"].toDouble();
 
             QString mimeType = root["manifestMimeType"].toString();
             QByteArray manifestB64 = root["manifest"].toString().toUtf8();
@@ -1061,6 +1073,12 @@ void TidalClient::fetchStreamManifest(qint64 trackId, AudioQuality quality, Stre
                     m.type     = StreamManifest::BTS;
                     m.url      = urls[0].toString();
                     m.mimeType = bts["mimeType"].toString();
+                    // "mp4a.40.5" is HE-AAC, "mp4a.40.2" AAC LC, else "flac".
+                    const QString codecs = bts["codecs"].toString().toLower();
+                    m.format = codecs.startsWith(QLatin1String("flac")) ? QStringLiteral("FLAC")
+                             : codecs == QLatin1String("mp4a.40.5")     ? QStringLiteral("HEAACV1")
+                             : codecs.startsWith(QLatin1String("mp4a")) ? QStringLiteral("AACLC")
+                                                                        : QString();
                 }
             } else {
                 // MPD: the MPEG-DASH manifest XML itself.

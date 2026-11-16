@@ -24,6 +24,10 @@ constexpr auto kLyricsLrclib = "lyrics/lrclib";
 constexpr auto kLyricsOtherSites = "lyrics/otherSites";
 constexpr auto kLyricsAutoSync = "lyrics/autoSync";
 constexpr auto kReducedMotion = "ui/reducedMotion";
+constexpr auto kNormalizeLoudness = "playback/normalizeLoudness";
+constexpr auto kAutoplay = "playback/autoplay";
+constexpr auto kCrossfade = "playback/crossfade";
+constexpr auto kCrossfadeSeconds = "playback/crossfadeSeconds";
 
 // A choice made with the old switch holds for both new ones; written back
 // at once so it is not applied again over a later change.
@@ -59,9 +63,15 @@ Prefs::Prefs(QObject *parent)
     , m_lyricsOtherSites(m_settings.value(kLyricsOtherSites, false).toBool())
     , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
     , m_reducedMotion(m_settings.value(kReducedMotion, QStringLiteral("system")).toString())
+    // On by default, as in Tidal's and Spotify's own apps.
+    , m_normalizeLoudness(m_settings.value(kNormalizeLoudness, true).toBool())
+    , m_autoplay(m_settings.value(kAutoplay, true).toBool())
+    , m_crossfade(m_settings.value(kCrossfade, false).toBool())
+    , m_crossfadeSeconds(m_settings.value(kCrossfadeSeconds, 5).toInt())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
+    m_crossfadeSeconds = std::clamp(m_crossfadeSeconds, minCrossfadeSeconds, maxCrossfadeSeconds);
 
     // A theme name from an older build is migrated and written back at once.
     // Left in the file, the migration would run on every launch and undo a
@@ -190,6 +200,35 @@ void Prefs::setReducedMotion(const QString &v) {
     m_reducedMotion = v;
     m_settings.setValue(kReducedMotion, v);
     emit reducedMotionChanged();
+}
+
+void Prefs::setNormalizeLoudness(bool v) {
+    if (v == m_normalizeLoudness) return;
+    m_normalizeLoudness = v;
+    m_settings.setValue(kNormalizeLoudness, v);
+    emit normalizeLoudnessChanged();
+}
+
+void Prefs::setAutoplay(bool v) {
+    if (v == m_autoplay) return;
+    m_autoplay = v;
+    m_settings.setValue(kAutoplay, v);
+    emit autoplayChanged();
+}
+
+void Prefs::setCrossfade(bool v) {
+    if (v == m_crossfade) return;
+    m_crossfade = v;
+    m_settings.setValue(kCrossfade, v);
+    emit crossfadeChanged();
+}
+
+void Prefs::setCrossfadeSeconds(int v) {
+    v = std::clamp(v, minCrossfadeSeconds, maxCrossfadeSeconds);
+    if (v == m_crossfadeSeconds) return;
+    m_crossfadeSeconds = v;
+    m_settings.setValue(kCrossfadeSeconds, v);
+    emit crossfadeSecondsChanged();
 }
 
 QString Prefs::appVersion() const {

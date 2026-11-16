@@ -1153,6 +1153,14 @@
         <source>Low</source>
         <translation>Low</translation>
     </message>
+    <message>
+        <source>%1-bit / %2 kHz FLAC</source>
+        <translation>%1 Bit / %2 kHz FLAC</translation>
+    </message>
+    <message>
+        <source>%1 %2 kbps</source>
+        <translation>%1 %2 kbit/s</translation>
+    </message>
 </context>
 <context>
     <name>PlayerBar</name>
@@ -1908,6 +1916,30 @@
         <source>Off</source>
         <comment>reduce motion: always animate</comment>
         <translation>Aus</translation>
+    </message>
+    <message>
+        <source>Normalize loudness</source>
+        <translation>Lautstärke angleichen</translation>
+    </message>
+    <message>
+        <source>Plays every track about as loud as the others, by Tidal&apos;s own measure. An album played in its order keeps its own balance.</source>
+        <translation>Spielt jeden Titel etwa so laut wie die anderen, nach Tidals eigener Messung. Ein Album, das in seiner Reihenfolge läuft, behält sein eigenes Verhältnis.</translation>
+    </message>
+    <message>
+        <source>Autoplay similar tracks when the queue ends</source>
+        <translation>Ähnliche Titel abspielen, wenn die Warteschlange endet</translation>
+    </message>
+    <message>
+        <source>Crossfade between tracks</source>
+        <translation>Zwischen Titeln überblenden</translation>
+    </message>
+    <message>
+        <source>Crossfade length</source>
+        <translation>Dauer der Überblendung</translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
     </message>
 </context>
 <context>

@@ -194,7 +194,7 @@ public:
     virtual void deletePlaylist          (const QString &uuid,  std::function<void(bool)> cb);
 
     // Track features
-    void fetchTrackRadio(qint64 trackId, TracksCallback cb);
+    virtual void fetchTrackRadio(qint64 trackId, TracksCallback cb);
     void fetchLyrics    (qint64 trackId, std::function<void(QString, bool, QString)> cb);
     // Three GETs behind one call. See TrackCredits in Models.h.
     void fetchTrackCredits(qint64 trackId,
