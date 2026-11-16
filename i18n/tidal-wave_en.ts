@@ -92,6 +92,11 @@
         <source>Removing…</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Disc %1</source>
+        <comment>heading over one disc&apos;s tracks on an album page</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Application</name>

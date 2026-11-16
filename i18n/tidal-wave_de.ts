@@ -92,6 +92,11 @@
         <source>Dolby Atmos, plays in stereo</source>
         <translation>Dolby Atmos, Wiedergabe in Stereo</translation>
     </message>
+    <message>
+        <source>Disc %1</source>
+        <comment>heading over one disc&apos;s tracks on an album page</comment>
+        <translation>CD %1</translation>
+    </message>
 </context>
 <context>
     <name>Application</name>
