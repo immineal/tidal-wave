@@ -504,6 +504,12 @@ Item {
         activeFocusOnTab: actionable
         Keys.onReturnPressed: root.activate(kind, slot)
         Keys.onSpacePressed:  root.activate(kind, slot)
+        Accessible.role: isHeader ? Accessible.StaticText : Accessible.ListItem
+        Accessible.name: isHeader ? headerText
+                                  : qsTranslate("TrackRow", "%1, %2",
+                                                "track row for a screen reader: title, artists")
+                                        .arg(titleText).arg(artistsText)
+        Accessible.onPressAction: if (actionable) root.activate(kind, slot)
 
         // ── the section heading ──────────────────────────────────────────
         Item {

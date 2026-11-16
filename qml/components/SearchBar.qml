@@ -71,6 +71,9 @@ Rectangle {
             activeFocusOnTab: true
             Keys.onReturnPressed: input.text = ""
             Keys.onSpacePressed:  input.text = ""
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("Clear search", "button, empties the search field")
+            Accessible.onPressAction: input.text = ""
             Rectangle {
                 anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                 border.width: clearBtn.activeFocus ? 2 : 0

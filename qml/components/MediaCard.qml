@@ -78,6 +78,12 @@ Item {
     activeFocusOnTab: true
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed:  root.clicked()
+    Accessible.role: Accessible.Button
+    Accessible.name: root.subtitle.length > 0
+                     ? qsTr("%1, %2", "card for a screen reader: title, subtitle")
+                           .arg(root.title).arg(root.subtitle)
+                     : root.title
+    Accessible.onPressAction: root.clicked()
 
     Rectangle {
         id: imgRect

@@ -576,6 +576,9 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: newPlaylistDialog.openEmpty()
                 Keys.onSpacePressed:  newPlaylistDialog.openEmpty()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("New playlist")
+                Accessible.onPressAction: newPlaylistDialog.openEmpty()
 
                 Rectangle {
                     anchors.fill: parent
@@ -749,6 +752,9 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("SettingsPanel", "Settings")
+                Accessible.onPressAction: root.openSettings()
 
                 Rectangle {
                     anchors.fill: parent
@@ -1023,6 +1029,10 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: root.open(kind, itemId, modelData)
         Keys.onSpacePressed:  root.open(kind, itemId, modelData)
+        Accessible.role: Accessible.ListItem
+        Accessible.name: rowItem.title
+        Accessible.description: rowItem.modelData.subtitle || ""
+        Accessible.onPressAction: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData)
 
         Rectangle {
             objectName: "pinnedBlockBreak"
@@ -1270,6 +1280,10 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: activated()
         Keys.onSpacePressed:  activated()
+        Accessible.role: Accessible.PageTab
+        Accessible.name: navItem.label
+        Accessible.selected: navItem.current
+        Accessible.onPressAction: navItem.activated()
 
         Rectangle {
             anchors.fill: parent

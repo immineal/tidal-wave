@@ -285,6 +285,10 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: { root.activeTab = index }
                         Keys.onSpacePressed:  { root.activeTab = index }
+                        Accessible.role: Accessible.PageTab
+                        Accessible.name: tl.text
+                        Accessible.selected: root.activeTab === index
+                        Accessible.onPressAction: root.activeTab = index
 
                         // Whether the accent's copy of the label covers every
                         // pixel the chip's own copy occupies.

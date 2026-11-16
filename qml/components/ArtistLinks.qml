@@ -18,6 +18,9 @@ Item {
     property real   fallbackArtistId: 0
     property int    fontPixelSize: 12
     property string namePrefix: ""
+    // Off inside a list row, where a stop per name would multiply the tab
+    // presses by the row count; the row's menu has "Go to artist".
+    property bool   tabStops: true
 
     readonly property var credits:
         (artistList && artistList.length > 0) ? artistList : []
@@ -61,9 +64,12 @@ Item {
         font.pixelSize: root.fontPixelSize
         elide: Text.ElideRight
         font.underline: fallbackHit.containsMouse
-        activeFocusOnTab: visible && root.fallbackArtistId > 0
+        activeFocusOnTab: root.tabStops && visible && root.fallbackArtistId > 0
         Keys.onReturnPressed: root.openArtist(root.fallbackArtistId)
         Keys.onSpacePressed:  root.openArtist(root.fallbackArtistId)
+        Accessible.role: root.fallbackArtistId > 0 ? Accessible.Link : Accessible.StaticText
+        Accessible.name: text
+        Accessible.onPressAction: root.openArtist(root.fallbackArtistId)
 
         Rectangle {
             // Tracks the words, not the column the Text fills, so the ring and
@@ -137,9 +143,12 @@ Item {
                     // Tab reaches each artist in turn rather than one blob, and
                     // skips a credit with no id because there is nowhere for it
                     // to go.
-                    activeFocusOnTab: credit.linkable
+                    activeFocusOnTab: root.tabStops && credit.linkable
                     Keys.onReturnPressed: root.openArtist(Number(credit.modelData.id))
                     Keys.onSpacePressed:  root.openArtist(Number(credit.modelData.id))
+                    Accessible.role: credit.linkable ? Accessible.Link : Accessible.StaticText
+                    Accessible.name: credit.modelData.name
+                    Accessible.onPressAction: root.openArtist(Number(credit.modelData.id))
 
                     Rectangle {
                         x: -4; y: -4

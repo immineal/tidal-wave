@@ -151,6 +151,9 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: auth.startDeviceFlow()
                         Keys.onSpacePressed:  auth.startDeviceFlow()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Log in with Tidal")
+                        Accessible.onPressAction: auth.startDeviceFlow()
 
                         Text {
                             anchors.centerIn: parent
@@ -206,6 +209,9 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: app.openUrl(auth.verificationUrl)
                         Keys.onSpacePressed:  app.openUrl(auth.verificationUrl)
+                        Accessible.role: Accessible.Link
+                        Accessible.name: auth.verificationUrl || "tidal.com/link"
+                        Accessible.onPressAction: app.openUrl(auth.verificationUrl)
                         Text {
                             anchors.centerIn: parent
                             text: auth.verificationUrl || "tidal.com/link"
@@ -297,6 +303,9 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: auth.cancelDeviceFlow()
                         Keys.onSpacePressed:  auth.cancelDeviceFlow()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: cancelText.text
+                        Accessible.onPressAction: auth.cancelDeviceFlow()
                         MouseArea {
                             anchors.fill: parent
                             anchors.margins: -6

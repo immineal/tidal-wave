@@ -1319,7 +1319,11 @@ Rectangle {
                         // Download button, shown while a track is playing.
                         Item {
                             id: npDownloadBtn
+                            objectName: "nowPlayingDownloadButton"
                             visible: root.hasTrack
+                            Accessible.role: Accessible.Button
+                            Accessible.name: qsTr("Download")
+                            Accessible.onPressAction: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track)
                             Layout.preferredWidth: 44
                             Layout.preferredHeight: 44
                             activeFocusOnTab: root.dlState !== "busy"
@@ -1374,6 +1378,8 @@ Rectangle {
                             icon: root.isLiked ? "heart-filled" : "heart"
                             size: 24
                             active: root.isLiked
+                            label: root.isLiked ? qsTranslate("PlayerBar", "Unlike track")
+                                                : qsTranslate("PlayerBar", "Like track")
                             // On the row: CtrlBtn has its own hover tool tip,
                             // and two uses of the shared one fight.
                             onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked,
@@ -1883,7 +1889,9 @@ Rectangle {
                             objectName: "nowPlayingTransportRow"
                             anchors.fill: parent
                             spacing: root.transportSpacing
-                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; checkable: true
+                                      label: qsTranslate("PlayerBar", "Shuffle")
+                                      onClicked: player.setShuffle(!player.shuffle) }
                             // The cluster's counterweight, which keeps play in
                             // the middle. Invisible, not zero-width: a RowLayout
                             // keeps the spacing of a zero-width child.
@@ -1893,7 +1901,9 @@ Rectangle {
                                 Layout.preferredWidth: root.volumeClusterWidth
                             }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
+                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28
+                                      label: qsTranslate("PlayerBar", "Previous track")
+                                      onClicked: player.previous() }
                             Rectangle {
                                 id: npPlayPause
                                 objectName: "nowPlayingPlayButton"
@@ -1903,6 +1913,10 @@ Rectangle {
                                 activeFocusOnTab: true
                                 Keys.onReturnPressed: player.playPause()
                                 Keys.onSpacePressed:  player.playPause()
+                                Accessible.role: Accessible.Button
+                                Accessible.name: player.playing ? qsTranslate("PlayerBar", "Pause")
+                                                                : qsTranslate("PlayerBar", "Play")
+                                Accessible.onPressAction: player.playPause()
                                 VectorIcon {
                                     anchors.centerIn: parent
                                     name: player.playing ? "pause" : "play"
@@ -1916,9 +1930,15 @@ Rectangle {
                                 TapHandler   { onTapped: player.playPause() }
                                 PlayerBar.LoadErrorTip { }
                             }
-                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
+                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28
+                                      label: qsTranslate("PlayerBar", "Next track")
+                                      onClicked: player.next() }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0
+                                      label: player.repeatMode === 2 ? qsTranslate("PlayerBar", "Repeat: one track")
+                                           : player.repeatMode === 1 ? qsTranslate("PlayerBar", "Repeat: all")
+                                                                     : qsTranslate("PlayerBar", "Repeat: off")
+                                      onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
 
                             // The volume, where the row can hold it. Invisible,
                             // not folded: a Layout drops an invisible child and
@@ -2031,7 +2051,21 @@ Rectangle {
         width: chipLabel.implicitWidth + 16
         height: 26; radius: Theme.radiusChip
         color: chip.on ? Theme.accent : Theme.artScrimStrong
-        border.color: chip.on ? "transparent" : Theme.artBorder
+        // The focus ring is the text colour, not the accent: an "on" chip is
+        // already filled with the accent.
+        border.width: chip.activeFocus ? 2 : 1
+        border.color: chip.activeFocus ? Theme.textPrimary
+                    : chip.on ? "transparent" : Theme.artBorder
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: chip.toggled()
+        Keys.onSpacePressed:  chip.toggled()
+        Accessible.role: Accessible.Button
+        Accessible.name: chip.label
+        Accessible.checkable: true
+        Accessible.checked: chip.on
+        Accessible.onPressAction: chip.toggled()
+        Accessible.onToggleAction: chip.toggled()
 
         Text {
             id: chipLabel
@@ -2078,6 +2112,9 @@ Rectangle {
         activeFocusOnTab: true
         Keys.onReturnPressed: cb.activated()
         Keys.onSpacePressed:  cb.activated()
+        Accessible.role: Accessible.Button
+        Accessible.name: cb.tip
+        Accessible.onPressAction: cb.activated()
 
         Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
         Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
@@ -2177,6 +2214,10 @@ Rectangle {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: player.setMuted(!player.muted)
                 Keys.onSpacePressed:  player.setMuted(!player.muted)
+                Accessible.role: Accessible.Button
+                Accessible.name: player.muted ? qsTranslate("PlayerBar", "Unmute")
+                                              : qsTranslate("PlayerBar", "Mute")
+                Accessible.onPressAction: player.setMuted(!player.muted)
                 Rectangle {
                     anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                     border.width: muteBtn.activeFocus ? 2 : 0
@@ -2241,11 +2282,20 @@ Rectangle {
     component CtrlBtn : Item {
         id: ctrlBtn
         property string icon; property int size: 24; property bool active: false
+        // The screen reader's name for it, and whether `active` is a state.
+        property string label
+        property bool checkable: false
         signal clicked()
         width: size+20; height: size+20
         activeFocusOnTab: true
         Keys.onReturnPressed: clicked()
         Keys.onSpacePressed:  clicked()
+        Accessible.role: Accessible.Button
+        Accessible.name: ctrlBtn.label
+        Accessible.checkable: ctrlBtn.checkable
+        Accessible.checked: ctrlBtn.active
+        Accessible.onPressAction: ctrlBtn.clicked()
+        Accessible.onToggleAction: ctrlBtn.clicked()
         Rectangle {
             anchors.fill: parent
             radius: width / 2

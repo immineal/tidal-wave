@@ -202,6 +202,17 @@ Item {
     activeFocusOnTab: true
     Keys.onReturnPressed: root.activate()
     Keys.onSpacePressed:  root.activate()
+
+    // Read as one line of a list: what the eye takes from the title and the
+    // names. Press is what a click does.
+    Accessible.role: Accessible.ListItem
+    Accessible.name: qsTr("%1, %2", "track row for a screen reader: title, artists")
+                         .arg(root.titleText).arg(root.artistsText)
+    Accessible.description: root.albumText.length > 0
+                            ? qsTr("%1, %2", "track row for a screen reader: album, length")
+                                  .arg(root.albumText).arg(root.durationText)
+                            : root.durationText
+    Accessible.onPressAction: root.activate()
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             root.menuRequested(width / 2, height / 2)

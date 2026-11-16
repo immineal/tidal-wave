@@ -324,6 +324,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsTintedToggle"
+                        label: qsTr("Let the colour in")
                         rainbow: true
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.tintedGreys
@@ -358,6 +359,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsOledToggle"
+                        label: qsTr("Pure black")
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.oledBlack
                         onToggled: prefs.oledBlack = !prefs.oledBlack
@@ -391,6 +393,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsCoverGradientToggle"
+                        label: qsTr("Colour fullscreen Now Playing from the cover")
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.coverGradient
                         onToggled: prefs.coverGradient = !prefs.coverGradient
@@ -427,6 +430,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsSpectrumToggle"
+                        label: qsTr("Bars follow the music")
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.spectrumBars
                         onToggled: prefs.spectrumBars = !prefs.spectrumBars
@@ -463,6 +467,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsQuitOnCloseToggle"
+                        label: qsTr("Closing the window quits Tidal Wave")
                         checked: prefs.quitOnClose
                         onToggled: prefs.quitOnClose = !prefs.quitOnClose
                     }
@@ -551,6 +556,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsHwAccelToggle"
+                        label: qsTr("Hardware acceleration")
                         // prefs.softwareRendering is the inverse: true means
                         // draw on the CPU.
                         checked: !prefs.softwareRendering
@@ -645,6 +651,7 @@ Popup {
                     }
                     Toggle {
                         objectName: "settingsUpdateToggle"
+                        label: qsTr("Check for updates automatically")
                         checked: root.updatesOn
                         onToggled: if (root.check) root.check.enabled = !root.check.enabled
                     }
@@ -1001,6 +1008,7 @@ Popup {
         }
         Toggle {
             objectName: lyricsSwitch.toggleName
+            label: lyricsSwitch.title
             Layout.alignment: Qt.AlignVCenter
             checked: lyricsSwitch.checked
             onToggled: lyricsSwitch.toggled()
@@ -1038,6 +1046,9 @@ Popup {
         opacity: muted ? 0.5 : 1
         Keys.onReturnPressed: btn.activated()
         Keys.onSpacePressed:  btn.activated()
+        Accessible.role: Accessible.Button
+        Accessible.name: btn.label
+        Accessible.onPressAction: btn.activated()
 
         Rectangle {
             anchors.fill: parent
@@ -1084,6 +1095,8 @@ Popup {
         id: tg
         property bool checked: false
         property bool rainbow: false
+        // What a screen reader calls the switch: the title beside it.
+        property string label: ""
         signal toggled()
 
         implicitWidth: 38
@@ -1091,6 +1104,12 @@ Popup {
         activeFocusOnTab: true
         Keys.onReturnPressed: tg.toggled()
         Keys.onSpacePressed:  tg.toggled()
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: tg.label
+        Accessible.checkable: true
+        Accessible.checked: tg.checked
+        Accessible.onPressAction: tg.toggled()
+        Accessible.onToggleAction: tg.toggled()
 
         // Seven stops a sixth of the wheel apart, so the first and last share a
         // hue and the strip joins with no seam. Lightness 0.55, not 0.5: the
@@ -1201,6 +1220,12 @@ Popup {
         activeFocusOnTab: true
         Keys.onReturnPressed: prefs.theme = tile.themeName
         Keys.onSpacePressed:  prefs.theme = tile.themeName
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: tile.label
+        Accessible.checkable: true
+        Accessible.checked: tile.selected
+        Accessible.onPressAction: prefs.theme = tile.themeName
+        Accessible.onToggleAction: prefs.theme = tile.themeName
 
         Rectangle {
             anchors.fill: parent

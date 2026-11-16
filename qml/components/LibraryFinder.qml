@@ -190,6 +190,12 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: root.toggleKind(chip.kind)
                         Keys.onSpacePressed:  root.toggleKind(chip.kind)
+                        Accessible.role: Accessible.Button
+                        Accessible.name: chip.label
+                        Accessible.checkable: true
+                        Accessible.checked: chip.selected
+                        Accessible.onPressAction: root.toggleKind(chip.kind)
+                        Accessible.onToggleAction: root.toggleKind(chip.kind)
 
                         border.width: chip.activeFocus ? 2 : 0
                         border.color: Theme.accent

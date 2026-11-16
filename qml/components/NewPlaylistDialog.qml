@@ -146,6 +146,9 @@ Popup {
                 Keys.onReturnPressed: root.close()
                 Keys.onEnterPressed:  root.close()
                 Keys.onSpacePressed:  root.close()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Close", "button, closes the dialog")
+                Accessible.onPressAction: root.close()
 
                 Rectangle {
                     anchors.fill: parent

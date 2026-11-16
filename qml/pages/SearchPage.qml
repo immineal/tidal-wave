@@ -333,6 +333,10 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: root.activeTab = index
                         Keys.onSpacePressed:  root.activeTab = index
+                        Accessible.role: Accessible.PageTab
+                        Accessible.name: modelData
+                        Accessible.selected: root.activeTab === index
+                        Accessible.onPressAction: root.activeTab = index
                         Text {
                             id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
                             text: modelData
@@ -438,6 +442,9 @@ Rectangle {
                         activeFocusOnTab: true
                         Keys.onReturnPressed: bridge.clearRecentSearches()
                         Keys.onSpacePressed:  bridge.clearRecentSearches()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: clearAllText.text
+                        Accessible.onPressAction: bridge.clearRecentSearches()
                         Text {
                             id: clearAllText
                             anchors.fill: parent
@@ -505,6 +512,9 @@ Rectangle {
                                 activeFocusOnTab: true
                                 Keys.onReturnPressed: bridge.removeRecentSearch(recentRow.modelData)
                                 Keys.onSpacePressed:  bridge.removeRecentSearch(recentRow.modelData)
+                                Accessible.role: Accessible.Button
+                                Accessible.name: qsTr("Remove “%1” from recent searches").arg(recentRow.modelData)
+                                Accessible.onPressAction: bridge.removeRecentSearch(recentRow.modelData)
                                 Rectangle {
                                     anchors.fill: parent; anchors.margins: -4
                                     radius: Theme.radiusButton; color: "transparent"

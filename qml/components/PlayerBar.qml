@@ -196,8 +196,9 @@ Rectangle {
                 icon: root.isLiked ? "heart-filled" : "heart"
                 size: 16
                 iconColor: root.isLiked ? Theme.accentText : Theme.textSec
+                label: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
                 ToolTip.visible: likeTipHov.hovered
-                ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
+                ToolTip.text: label
                 ToolTip.delay: 600
                 HoverHandler { id: likeTipHov }
                 // Anchored on the bar, not on this button. The three ToolTip
@@ -218,8 +219,20 @@ Rectangle {
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter; spacing: 8
 
-                IconButton { icon: "shuffle"; size: 18; iconColor: player.shuffle ? Theme.accent : Theme.textSec; onClicked: player.setShuffle(!player.shuffle) }
-                IconButton { icon: "previous"; size: 22; iconColor: Theme.textPrimary; onClicked: player.previous() }
+                IconButton {
+                    objectName: "playerBarShuffle"
+                    icon: "shuffle"; size: 18
+                    label: qsTr("Shuffle")
+                    checkable: true; checked: player.shuffle
+                    iconColor: player.shuffle ? Theme.accent : Theme.textSec
+                    onClicked: player.setShuffle(!player.shuffle)
+                }
+                IconButton {
+                    objectName: "playerBarPrevious"
+                    icon: "previous"; size: 22; iconColor: Theme.textPrimary
+                    label: qsTr("Previous track")
+                    onClicked: player.previous()
+                }
 
                 Rectangle {
                     id: playPauseBtn
@@ -230,6 +243,9 @@ Rectangle {
                     activeFocusOnTab: true
                     Keys.onReturnPressed: player.playPause()
                     Keys.onSpacePressed:  player.playPause()
+                    Accessible.role: Accessible.Button
+                    Accessible.name: player.playing ? qsTr("Pause") : qsTr("Play")
+                    Accessible.onPressAction: player.playPause()
                     VectorIcon {
                         anchors.centerIn: parent
                         name: player.playing ? "pause" : "play"
@@ -253,8 +269,17 @@ Rectangle {
                     LoadErrorTip { }
                 }
 
-                IconButton { icon: "next"; size: 22; iconColor: Theme.textPrimary; onClicked: player.next() }
                 IconButton {
+                    objectName: "playerBarNext"
+                    icon: "next"; size: 22; iconColor: Theme.textPrimary
+                    label: qsTr("Next track")
+                    onClicked: player.next()
+                }
+                IconButton {
+                    objectName: "playerBarRepeat"
+                    label: player.repeatMode === 2 ? qsTr("Repeat: one track")
+                         : player.repeatMode === 1 ? qsTr("Repeat: all")
+                                                   : qsTr("Repeat: off")
                     icon: player.repeatMode === 2 ? "repeat-one" : "repeat"
                     size: 18
                     iconColor: player.repeatMode > 0 ? Theme.accentText : Theme.textSec
@@ -300,6 +325,7 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
                     size: 18; iconColor: Theme.textSec
+                    label: player.muted ? qsTr("Unmute") : qsTr("Mute")
                     onClicked: player.setMuted(!player.muted)
                 }
 
@@ -343,8 +369,9 @@ Rectangle {
                 icon: "chevron-up"
                 size: 18
                 iconColor: Theme.textSec
+                label: qsTr("Open Now Playing", "player bar button, opens the full-page player")
                 ToolTip.visible: nowPlayingTipHov.hovered
-                ToolTip.text: qsTr("Open Now Playing", "player bar button, opens the full-page player")
+                ToolTip.text: label
                 ToolTip.delay: 600
                 HoverHandler { id: nowPlayingTipHov }
                 onClicked: root.showNowPlaying()
@@ -352,7 +379,9 @@ Rectangle {
 
             IconButton {
                 id: queueBtn
+                objectName: "playerBarQueueButton"
                 Layout.leftMargin: 8
+                label: qsTr("Queue", "noun, opens the play queue")
                 icon: "queue"; size: 20
                 iconColor: Theme.textSec
                 onClicked: root.showQueue()
@@ -566,10 +595,16 @@ Rectangle {
         onHostFullScreenChanged: menu.close()
         onVisibleChanged: if (!visible) menu.close()
 
-        function openMenu() {
+        // From the keyboard the first row takes the focus, so the arrows and
+        // Enter work at once; a click leaves no ring on a row.
+        function openMenu(fromKeyboard) {
             picker.reloadDevices()
             if (picker.castSource) picker.castSource.startScan()
             menu.open()
+            if (fromKeyboard === true) {
+                var first = menuContent.nextItemInFocusChain(true)
+                if (first) first.forceActiveFocus(Qt.TabFocusReason)
+            }
         }
 
         // Picking a local output while casting has to stop the cast as well,
@@ -590,8 +625,11 @@ Rectangle {
         height: Math.max(size + 12, 32)
 
         activeFocusOnTab: true
-        Keys.onReturnPressed: picker.openMenu()
-        Keys.onSpacePressed:  picker.openMenu()
+        Keys.onReturnPressed: picker.openMenu(true)
+        Keys.onSpacePressed:  picker.openMenu(true)
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Audio output", "player bar button, picks a speaker or a cast target")
+        Accessible.onPressAction: picker.openMenu()
 
         ToolTip.visible: outHov.hovered
         ToolTip.text: qsTr("Audio output", "player bar button, picks a speaker or a cast target")
@@ -711,6 +749,23 @@ Rectangle {
         implicitHeight: 36
         radius: Theme.radiusRow
         color: orowHov.hovered ? Theme.surfaceHov : "transparent"
+        border.width: orow.activeFocus ? 2 : 0
+        border.color: Theme.accent
+
+        // Tab and the arrows walk the rows, Enter picks one.
+        activeFocusOnTab: true
+        Keys.onReturnPressed: orow.selected()
+        Keys.onEnterPressed:  orow.selected()
+        Keys.onSpacePressed:  orow.selected()
+        Keys.onUpPressed:   orow.nextItemInFocusChain(false).forceActiveFocus()
+        Keys.onDownPressed: orow.nextItemInFocusChain(true).forceActiveFocus()
+        Accessible.role: Accessible.RadioButton
+        Accessible.name: orow.fullLabel
+        Accessible.checkable: true
+        Accessible.checked: orow.active
+        Accessible.onPressAction: orow.selected()
+        Accessible.onToggleAction: orow.selected()
+
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 8
@@ -778,6 +833,10 @@ Rectangle {
         property string icon
         property color  iconColor: Theme.textSec
         property int    size: 18
+        // What a screen reader says for it; the glyph says nothing.
+        property string label
+        property bool   checkable: false
+        property bool   checked: false
         // The speaker's hover drives the volume flyout, which is not a child
         // of the button and so cannot see the handler below.
         readonly property alias hovered: hov.hovered
@@ -788,6 +847,12 @@ Rectangle {
         activeFocusOnTab: true
         Keys.onReturnPressed: clicked()
         Keys.onSpacePressed:  clicked()
+        Accessible.role: Accessible.Button
+        Accessible.name: iconBtn.label
+        Accessible.checkable: iconBtn.checkable
+        Accessible.checked: iconBtn.checked
+        Accessible.onPressAction: iconBtn.clicked()
+        Accessible.onToggleAction: iconBtn.clicked()
 
         Rectangle {
             anchors.fill: parent

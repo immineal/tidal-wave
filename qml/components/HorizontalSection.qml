@@ -69,6 +69,9 @@ Item {
                 activeFocusOnTab: root.showViewAll
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
+                Accessible.role: Accessible.Link
+                Accessible.name: qsTr("View all: %1", "link to the full list of a section").arg(root.title)
+                Accessible.onPressAction: root.viewAllClicked()
 
                 readonly property color ink: viewAll.activeFocus ? Theme.accentText : Theme.textSec
 
