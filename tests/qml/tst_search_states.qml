@@ -100,6 +100,6 @@ TestCase {
         verify(label && label.visible, "the failure was not shown")
         verify(label.text.indexOf("Host") === -1, "the raw Qt error is on screen: " + label.text)
         verify(label.text.indexOf("cannot be reached") !== -1, "it did not say why: " + label.text)
-        verify(!Qt.colorEqual(label.color, Theme.red), "being offline is shown as an alarm")
+        verify(!Qt.colorEqual(label.color, Theme.redText), "being offline is shown as an alarm")
     }
 }

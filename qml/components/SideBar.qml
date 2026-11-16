@@ -611,7 +611,7 @@ Item {
                             width: 13
                             height: 13
                             strokeWidth: 1.8
-                            color: newPlaylistHov.hovered ? Theme.accent : Theme.textDim
+                            color: newPlaylistHov.hovered ? Theme.accentText : Theme.textDim
                         }
                     }
 
@@ -1131,7 +1131,7 @@ Item {
                     width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
                     strokeWidth: rowItem.hasArt ? 1.5 : 1.6
-                    color: rowItem.pinned ? Theme.accent : Theme.textDim
+                    color: rowItem.pinned ? Theme.accentText : Theme.textDim
                     // Centred in the badge, which is itself held off the
                     // corner. One item drawn in two places, so a row costs one
                     // glyph.
@@ -1194,7 +1194,7 @@ Item {
                     width: 12
                     height: 12
                     strokeWidth: 1.5
-                    color: rowItem.dragging ? Theme.accent : Theme.textDim
+                    color: rowItem.dragging ? Theme.accentText : Theme.textDim
                     opacity: rowHov.hovered || rowItem.dragging ? 1 : 0.45
                 }
 
@@ -1289,7 +1289,7 @@ Item {
                 id: navGlyph
                 objectName: "navIcon"
                 name: navItem.icon
-                color: navItem.current ? Theme.accent : Theme.textSec
+                color: navItem.current ? Theme.accentText : Theme.textSec
                 Behavior on color { ColorAnimation { duration: Theme.dur(140) } }
                 anchors.verticalCenter: parent.verticalCenter
                 // 16 from the panel edge in the sidebar (8 here, inside the

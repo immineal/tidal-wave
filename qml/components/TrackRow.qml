@@ -254,7 +254,7 @@ Item {
                     visible: !root.playsNow && !hov.hovered
                     text: root.trackNum
                     // A paused current track keeps its number, in the accent.
-                    color: root.isCurrent ? Theme.accent : Theme.textDim
+                    color: root.isCurrent ? Theme.accentText : Theme.textDim
                     font.pixelSize: 13
                 }
                 VectorIcon.PlayingIndicator {
@@ -305,7 +305,7 @@ Item {
                     objectName: "trackTitle"
                     Layout.fillWidth: true
                     text: root.titleText
-                    color: root.isCurrent ? Theme.accent : Theme.textPrimary
+                    color: root.isCurrent ? Theme.accentText : Theme.textPrimary
                     font.pixelSize: 14
                     elide: Text.ElideRight
                 }
@@ -380,7 +380,7 @@ Item {
                     anchors.centerIn: parent
                     visible: root.dlState === "idle" || root.dlState === "error"
                     name: "download"
-                    color: root.dlState === "error" ? Theme.red : Theme.textSec
+                    color: root.dlState === "error" ? Theme.redText : Theme.textSec
                     width: 16; height: 16
                     strokeWidth: 1.8
                 }
@@ -839,7 +839,7 @@ Item {
                             anchors.centerIn: parent
                             name: "x"
                             width: 14; height: 14; strokeWidth: 1.8
-                            color: pickerClose.activeFocus ? Theme.accent
+                            color: pickerClose.activeFocus ? Theme.accentText
                                  : pickerCloseHov.hovered ? Theme.textPrimary
                                  : Theme.textSec
                         }
@@ -889,7 +889,7 @@ Item {
                                     width: 13
                                     height: 13
                                     strokeWidth: 1.8
-                                    color: newPlHov.hovered ? Theme.accent : Theme.textDim
+                                    color: newPlHov.hovered ? Theme.accentText : Theme.textDim
                                 }
                             }
                             Text {

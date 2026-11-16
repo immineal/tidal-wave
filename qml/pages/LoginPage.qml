@@ -176,7 +176,7 @@ Rectangle {
                         Layout.preferredHeight: errorMeasure.implicitHeight
                         visible: errorMessage.length > 0
                         text: errorMessage
-                        color: Theme.red
+                        color: Theme.redText
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
@@ -209,7 +209,7 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text: auth.verificationUrl || "tidal.com/link"
-                            color: Theme.accent
+                            color: Theme.accentText
                             font.pixelSize: 14
                             font.bold: true
                         }
@@ -291,7 +291,7 @@ Rectangle {
                         id: cancelText
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("Cancel")
-                        color: cancelText.activeFocus ? Theme.accent : Theme.textSec
+                        color: cancelText.activeFocus ? Theme.accentText : Theme.textSec
                         font.pixelSize: 13
                         font.underline: cancelText.activeFocus
                         activeFocusOnTab: true

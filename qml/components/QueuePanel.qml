@@ -309,7 +309,7 @@ Item {
                     Text {
                         visible: player.shuffle
                         text: qsTr("· Shuffled")
-                        color: Theme.accent; font.pixelSize: 12
+                        color: Theme.accentText; font.pixelSize: 12
                     }
                     Item { width: 8 }
                     // Clears the manual queue and only that: the history and
@@ -533,7 +533,7 @@ Item {
                 text: entry.headerText
                 // The manual queue is the one the user built, so it is the one
                 // the eye should land on; the rest are captions.
-                color: entry.kind === "manualHeader" ? Theme.accent : Theme.textDim
+                color: entry.kind === "manualHeader" ? Theme.accentText : Theme.textDim
                 font.pixelSize: 11
                 font.bold: true
                 elide: Text.ElideRight
@@ -609,7 +609,7 @@ Item {
                         name: "grip"
                         width: root.iconSize; height: root.iconSize
                         strokeWidth: 1.5
-                        color: entry.dragging ? Theme.accent : Theme.textDim
+                        color: entry.dragging ? Theme.accentText : Theme.textDim
                         opacity: qHov.hovered || entry.dragging ? 1 : 0.45
                     }
 
@@ -681,7 +681,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: entry.titleText
-                        color: entry.isCurrent ? Theme.accent : Theme.textPrimary
+                        color: entry.isCurrent ? Theme.accentText : Theme.textPrimary
                         font.pixelSize: 13
                         font.bold: entry.isCurrent
                         elide: Text.ElideRight

@@ -65,7 +65,7 @@ Menu {
         }
 
         readonly property color ink: !entry.enabled ? Theme.textDim
-                                   : entry.danger   ? Theme.red
+                                   : entry.danger   ? Theme.redText
                                                     : Theme.textPrimary
 
         contentItem: RowLayout {

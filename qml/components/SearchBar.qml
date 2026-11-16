@@ -79,7 +79,7 @@ Rectangle {
             VectorIcon {
                 anchors.fill: parent
                 name: "x"
-                color: clearBtn.activeFocus ? Theme.accent : Theme.textDim
+                color: clearBtn.activeFocus ? Theme.accentText : Theme.textDim
                 strokeWidth: 1.8
             }
             MouseArea {

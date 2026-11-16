@@ -1094,7 +1094,7 @@ TestCase {
 
         var ico = iconOf(found)
         var label = collectTexts(found, [])[0]
-        compare("" + ico.color, "" + Theme.red,
+        compare("" + ico.color, "" + Theme.redText,
                 '"' + found.text + '" draws its icon in ' + ico.color + ', not the danger red')
         compare("" + ico.color, "" + label.color,
                 "the icon and the label have drifted apart")

@@ -71,7 +71,7 @@ TestCase {
         verify(row.isCurrent, "the paused track lost its place as the current one")
         verify(!row.playsNow, "the paused track is shown as playing")
         var title = findByName(row, "trackTitle")
-        verify(Qt.colorEqual(title.color, Theme.accent), "the paused track's title lost its accent")
+        verify(Qt.colorEqual(title.color, Theme.accentText), "the paused track's title lost its accent")
         verify(!findByName(row, "trackRowPlayingIndicator").visible,
                "the paused track shows the moving bars")
         verify(findByName(row, "trackRowNumber").visible, "the paused track shows no number")

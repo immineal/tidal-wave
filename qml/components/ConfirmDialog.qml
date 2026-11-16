@@ -86,7 +86,7 @@ Popup {
             Layout.fillWidth: true
             visible: root.errorText.length > 0
             text: root.errorText
-            color: Theme.red
+            color: Theme.redText
             font.pixelSize: 12
             wrapMode: Text.WordWrap
         }

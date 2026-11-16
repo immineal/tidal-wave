@@ -159,7 +159,7 @@ Rectangle {
                         visible: mixCover.status !== Image.Ready
                         anchors.centerIn: parent
                         name: "mix"
-                        color: Theme.accent
+                        color: Theme.accentText
                         width: 64
                         height: 64
                         strokeWidth: 1.5

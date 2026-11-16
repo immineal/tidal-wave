@@ -1334,7 +1334,7 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: root.dlState === "idle" || root.dlState === "error"
                                 name: "download"
-                                color: root.dlState === "error" ? Theme.red
+                                color: root.dlState === "error" ? Theme.redText
                                        : (npDlHov.hovered ? Theme.textPrimary : Theme.textSec)
                                 width: 24; height: 24; strokeWidth: 1.5
                             }
@@ -1489,7 +1489,7 @@ Rectangle {
                                 VectorIcon {
                                     objectName: "nowPlayingSleepTimerIcon"
                                     name: "clock"
-                                    color: root.sleepTimerActive ? Theme.accent : Theme.textSec
+                                    color: root.sleepTimerActive ? Theme.accentText : Theme.textSec
 
                                     // Heavier than VectorIcon's 1.8 default, which
                                     // draws too thin a line at this size.
@@ -1519,7 +1519,7 @@ Rectangle {
                                             ? Math.ceil(sleepClockRuler.implicitWidth)
                                             : implicitWidth
                                     horizontalAlignment: Text.AlignHCenter
-                                    color: root.sleepTimerActive ? Theme.accent : Theme.textSec
+                                    color: root.sleepTimerActive ? Theme.accentText : Theme.textSec
                                     font.pixelSize: 11
                                     font.bold: root.sleepTimerActive
                                 }
@@ -1644,7 +1644,7 @@ Rectangle {
                                         spacing: 6
                                         VectorIcon {
                                             name: "track"
-                                            color: Theme.accent
+                                            color: Theme.accentText
                                             width: 12
                                             height: 12
                                         }
@@ -1794,7 +1794,7 @@ Rectangle {
                                     Text {
                                         anchors.centerIn: parent
                                         text: qsTr("Cancel Sleep Timer")
-                                        color: Theme.red
+                                        color: Theme.redText
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
@@ -2256,7 +2256,7 @@ Rectangle {
         VectorIcon {
             anchors.centerIn: parent
             name: parent.icon
-            color: parent.active ? Theme.accent : hov.hovered ? Theme.textPrimary : Theme.textSec
+            color: parent.active ? Theme.accentText : hov.hovered ? Theme.textPrimary : Theme.textSec
             width: parent.size
             height: parent.size
             strokeWidth: 1.5

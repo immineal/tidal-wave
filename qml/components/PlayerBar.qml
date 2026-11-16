@@ -195,7 +195,7 @@ Rectangle {
                 visible: root.hasTrack
                 icon: root.isLiked ? "heart-filled" : "heart"
                 size: 16
-                iconColor: root.isLiked ? Theme.accent : Theme.textSec
+                iconColor: root.isLiked ? Theme.accentText : Theme.textSec
                 ToolTip.visible: likeTipHov.hovered
                 ToolTip.text: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
                 ToolTip.delay: 600
@@ -257,7 +257,7 @@ Rectangle {
                 IconButton {
                     icon: player.repeatMode === 2 ? "repeat-one" : "repeat"
                     size: 18
-                    iconColor: player.repeatMode > 0 ? Theme.accent : Theme.textSec
+                    iconColor: player.repeatMode > 0 ? Theme.accentText : Theme.textSec
                     onClicked: player.setRepeatMode((player.repeatMode + 1) % 3)
                 }
             }
@@ -608,7 +608,7 @@ Rectangle {
         VectorIcon {
             anchors.centerIn: parent
             name: picker.casting ? "cast" : "speaker"
-            color: picker.casting ? Theme.accent
+            color: picker.casting ? Theme.accentText
                  : outHov.hovered ? Theme.textPrimary : Theme.textSec
             width: picker.size
             height: picker.size
@@ -716,13 +716,13 @@ Rectangle {
             anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 8
             VectorIcon {
                 name: orow.glyph; width: 16; height: 16; strokeWidth: 1.6
-                color: orow.active ? Theme.accent : Theme.textSec
+                color: orow.active ? Theme.accentText : Theme.textSec
             }
             Text {
                 id: orowLabel
                 objectName: "outputRowLabel"
                 Layout.fillWidth: true; text: orow.label
-                color: orow.active ? Theme.accent : Theme.textPrimary
+                color: orow.active ? Theme.accentText : Theme.textPrimary
                 // The middle, not the right. What tells two outputs on the
                 // same card apart is the socket at the end of the name, and
                 // elide-right is the one mode that is guaranteed to delete it.
@@ -730,7 +730,7 @@ Rectangle {
             }
             VectorIcon {
                 visible: orow.active; name: "check"
-                width: 14; height: 14; strokeWidth: 2; color: Theme.accent
+                width: 14; height: 14; strokeWidth: 2; color: Theme.accentText
             }
         }
         HoverHandler { id: orowHov; cursorShape: Qt.PointingHandCursor }

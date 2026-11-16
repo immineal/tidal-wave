@@ -70,7 +70,7 @@ Item {
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
 
-                readonly property color ink: viewAll.activeFocus ? Theme.accent : Theme.textSec
+                readonly property color ink: viewAll.activeFocus ? Theme.accentText : Theme.textSec
 
                 Row {
                     id: viewAllRow

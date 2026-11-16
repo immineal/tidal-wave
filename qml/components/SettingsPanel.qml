@@ -1065,7 +1065,7 @@ Popup {
             Text {
                 id: btnLabel
                 text: btn.label
-                color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.red)
+                color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.redText)
                                   : Theme.textPrimary
                 font.pixelSize: 12
                 anchors.verticalCenter: parent.verticalCenter
@@ -1263,7 +1263,7 @@ Popup {
             VectorIcon {
                 name: "check"
                 visible: tile.selected
-                color: Theme.accent
+                color: Theme.accentText
                 // Layout.*, not width/height: the row would otherwise lay it
                 // out at VectorIcon's 24px implicit size.
                 Layout.preferredWidth: 14

@@ -158,7 +158,7 @@ Popup {
                     anchors.centerIn: parent
                     name: "x"
                     width: 14; height: 14; strokeWidth: 1.8
-                    color: dialogClose.activeFocus ? Theme.accent
+                    color: dialogClose.activeFocus ? Theme.accentText
                          : dialogCloseHov.hovered ? Theme.textPrimary
                          : Theme.textSec
                 }
@@ -234,7 +234,7 @@ Popup {
                 Layout.fillWidth: true
                 visible: root.errorText.length > 0
                 text: root.errorText
-                color: Theme.red
+                color: Theme.redText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
             }
@@ -254,7 +254,7 @@ Popup {
                         .arg(nameField.text.length)
                         .arg(root.maxTitleLength)
                 color: nameField.text.length >= root.maxTitleLength
-                       ? Theme.red : Theme.textDim
+                       ? Theme.redText : Theme.textDim
                 font.pixelSize: 12
             }
         }

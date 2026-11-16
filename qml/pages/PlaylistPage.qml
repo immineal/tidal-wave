@@ -235,7 +235,7 @@ Rectangle {
                         visible: !playlistCover.visible && !collageGrid.visible
                         anchors.centerIn: parent
                         name: "playlist"
-                        color: Theme.accent
+                        color: Theme.accentText
                         width: 64
                         height: 64
                         strokeWidth: 1.5
@@ -612,7 +612,7 @@ Rectangle {
                 // a binding loop.
                 visible: editPlaylistPopup.errorText.length > 0
                 text: editPlaylistPopup.errorText
-                color: Theme.red
+                color: Theme.redText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
             }

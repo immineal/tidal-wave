@@ -555,7 +555,7 @@ Rectangle {
                     : root.unsaveRefused ? qsTr("Tidal would not remove it. It is still in your library.")
                     : root.unsaving      ? qsTr("Removing…")
                     : ""
-                color: root.unsaveRefused ? Theme.red : Theme.textSec
+                color: root.unsaveRefused ? Theme.redText : Theme.textSec
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap
             }

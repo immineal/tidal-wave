@@ -77,7 +77,7 @@ Rectangle {
                 anchors.leftMargin: 11
                 anchors.verticalCenter: parent.verticalCenter
                 name: "search"
-                color: root.focused ? Theme.accent : Theme.textDim
+                color: root.focused ? Theme.accentText : Theme.textDim
                 width: 15
                 height: 15
                 strokeWidth: 1.8
@@ -201,7 +201,7 @@ Rectangle {
                             width: 15
                             height: 15
                             strokeWidth: 1.6
-                            color: chip.selected ? Theme.accent
+                            color: chip.selected ? Theme.accentText
                                                  : chipHov.hovered ? Theme.textPrimary : Theme.textDim
                         }
 

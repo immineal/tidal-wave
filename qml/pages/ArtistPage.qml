@@ -404,7 +404,7 @@ Rectangle {
                     Layout.maximumWidth: Math.ceil(bioMetrics.averageCharacterWidth * 75)
                     text: root.formatBio(artistData.bio || "")
                     color: Theme.textSec
-                    linkColor: Theme.accent
+                    linkColor: Theme.accentText
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
                     // Of the font's own line height, which is already ~1.35 em.

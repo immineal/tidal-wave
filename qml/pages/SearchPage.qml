@@ -443,7 +443,7 @@ Rectangle {
                             anchors.fill: parent
                             text: qsTr("Clear all")
                             color: clearAll.activeFocus || clearAllMA.containsMouse
-                                   ? Theme.accent : Theme.textSec
+                                   ? Theme.accentText : Theme.textSec
                             font.pixelSize: 13
                             font.underline: clearAll.activeFocus
                         }
@@ -515,7 +515,7 @@ Rectangle {
                                     anchors.fill: parent
                                     name: "x"
                                     color: dropRecent.activeFocus || dropMA.containsMouse
-                                           ? Theme.accent : Theme.textDim
+                                           ? Theme.accentText : Theme.textDim
                                     strokeWidth: 1.8
                                 }
                                 MouseArea {
@@ -575,7 +575,7 @@ Rectangle {
                         text: root.errorOffline
                               ? qsTr("Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.")
                               : qsTr("Search failed: %1").arg(root.errorText)
-                        color: root.errorOffline ? Theme.textSec : Theme.red
+                        color: root.errorOffline ? Theme.textSec : Theme.redText
                         font.pixelSize: 15
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter

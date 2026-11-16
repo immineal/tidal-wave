@@ -123,7 +123,7 @@ TestCase {
         var bars  = findByName(row, "trackRowPlayingIndicator")
         var title = findByName(row, "trackTitle")
         verify(bars && title, "the row has no playing indicator or no title")
-        return bars.visible && Qt.colorEqual(title.color, Theme.accent)
+        return bars.visible && Qt.colorEqual(title.color, Theme.accentText)
     }
 
     // ── the tests ────────────────────────────────────────────────────────
