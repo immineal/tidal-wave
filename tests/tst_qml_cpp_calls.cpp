@@ -22,6 +22,7 @@
 #include "player/Player.h"
 #include "ui/ThemePalette.h"
 #include "ui/Feedback.h"
+#include "scrobble/ScrobbleSink.h"
 
 namespace {
 
@@ -69,6 +70,8 @@ private slots:
         QTest::newRow("bridge")    << "bridge"    << qmlReachableNames(&TidalBridge::staticMetaObject);
         QTest::newRow("prefs")     << "prefs"     << qmlReachableNames(&Prefs::staticMetaObject);
         QTest::newRow("auth")      << "auth"      << qmlReachableNames(&Auth::staticMetaObject);
+        // SettingsPanel reaches the listenBrainz context property as `scrobble`.
+        QTest::newRow("scrobble")  << "scrobble"  << qmlReachableNames(&ScrobbleSink::staticMetaObject);
         // The C++ QML_SINGLETONs, which qml/ reaches by type name. `Theme` is
         // absent on purpose: it is qml/Theme.qml and has no C++ meta-object.
         QTest::newRow("Shortcuts")    << "Shortcuts"    << qmlReachableNames(&Shortcuts::staticMetaObject);

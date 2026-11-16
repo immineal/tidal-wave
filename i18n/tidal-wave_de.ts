@@ -1673,6 +1673,50 @@
         <translation>Audioausgabe</translation>
     </message>
     <message>
+        <source>Scrobbling</source>
+        <translation>Scrobbling</translation>
+    </message>
+    <message>
+        <source>Send what you play to ListenBrainz</source>
+        <translation>Gehörtes an ListenBrainz senden</translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to listenbrainz.org.</source>
+        <translation>Ein Titel zählt, sobald du die Hälfte davon oder 4 Minuten gehört hast. Name, Künstler, Album und Länge des Titels und wann du ihn gehört hast, gehen an listenbrainz.org.</translation>
+    </message>
+    <message>
+        <source>Connected to ListenBrainz</source>
+        <translation>Mit ListenBrainz verbunden</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the ListenBrainz token</comment>
+        <translation>Trennen</translation>
+    </message>
+    <message>
+        <source>ListenBrainz user token</source>
+        <translation>ListenBrainz-Benutzertoken</translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <comment>button that masks the token again</comment>
+        <translation>Ausblenden</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <comment>button that shows the token in plain text</comment>
+        <translation>Anzeigen</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <comment>button that checks the ListenBrainz token</comment>
+        <translation>Verbinden</translation>
+    </message>
+    <message>
+        <source>Your token is on your ListenBrainz settings page</source>
+        <translation>Deinen Token findest du in deinen ListenBrainz-Einstellungen</translation>
+    </message>
+    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>

@@ -18,6 +18,7 @@ Popup {
     property var deviceSource: (typeof player      !== "undefined") ? player      : null
     property var check:        (typeof updateCheck !== "undefined") ? updateCheck : null
     property var downloads:    (typeof downloader  !== "undefined") ? downloader  : null
+    property var scrobble:     (typeof listenBrainz !== "undefined") ? listenBrainz : null
 
     // The effective language, when there is something to ask. Both lists below
     // come back from C++ with translated labels, so they have to be rebuilt
@@ -712,6 +713,167 @@ Popup {
                         color: Theme.textDim; font.pixelSize: 11
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
+                }
+            }
+
+
+            // ── scrobbling ───────────────────────────────────────────────
+            // ListenBrainz, off by default. A token is checked with the
+            // service before it is kept; src/scrobble does the sending.
+            Section {
+                id: scrobbling
+                heading: qsTr("Scrobbling")
+                key: "scrobbling"
+
+                readonly property var sink: root.scrobble
+                readonly property bool on: sink ? sink.enabled === true : false
+                readonly property bool linked: sink ? sink.connected === true : false
+                readonly property bool refused: sink ? sink.authFailed === true : false
+                property bool showToken: false
+
+                function submitToken() {
+                    if (root.scrobble && tokenField.text.trim().length > 0) root.scrobble.signIn(tokenField.text)
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: qsTr("Send what you play to ListenBrainz")
+                            color: Theme.textPrimary; font.pixelSize: 14
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsScrobbleNote"
+                            text: qsTr("A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to listenbrainz.org.")
+                            color: Theme.textDim; font.pixelSize: 11
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsScrobbleToggle"
+                        label: qsTr("Send what you play to ListenBrainz")
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: scrobbling.on
+                        onToggled: if (scrobbling.sink) scrobbling.sink.enabled = !scrobbling.on
+                    }
+                }
+
+                // The account the token belongs to, and the way to let go of it.
+                RowLayout {
+                    objectName: "settingsScrobbleAccount"
+                    visible: scrobbling.on && scrobbling.linked
+                    Layout.fillWidth: true
+                    spacing: 12
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text {
+                            objectName: "settingsScrobbleUser"
+                            text: scrobbling.sink ? scrobbling.sink.userName : ""
+                            color: Theme.textPrimary
+                            font.pixelSize: 14; font.bold: true
+                            elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                        Text {
+                            text: qsTr("Connected to ListenBrainz")
+                            color: Theme.textDim; font.pixelSize: 12
+                            elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                    }
+                    PanelButton {
+                        objectName: "settingsScrobbleDisconnect"
+                        label: qsTr("Disconnect", "button that forgets the ListenBrainz token")
+                        Layout.alignment: Qt.AlignVCenter
+                        onActivated: if (root.scrobble) root.scrobble.disconnectAccount()
+                    }
+                }
+
+                // The token, masked unless asked to show it. Again after a
+                // refusal, so a new one can be pasted.
+                ColumnLayout {
+                    objectName: "settingsScrobbleTokenRow"
+                    visible: scrobbling.on && (!scrobbling.linked || scrobbling.refused)
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    // A token that was taken is not left in the field.
+                    Connections {
+                        target: scrobbling.sink
+                        ignoreUnknownSignals: true
+                        function onAccountChanged() { tokenField.text = "" }
+                    }
+
+                    Text {
+                        text: qsTr("ListenBrainz user token")
+                        color: Theme.textSec; font.pixelSize: 13
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 30
+                            radius: Theme.radiusField
+                            color: Theme.surface
+                            border.width: tokenField.activeFocus ? 2 : 1
+                            border.color: tokenField.activeFocus ? Theme.accent : Theme.border
+                            TextInput {
+                                id: tokenField
+                                objectName: "settingsScrobbleToken"
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                color: Theme.textPrimary
+                                font.pixelSize: 13
+                                clip: true
+                                selectByMouse: true
+                                selectionColor: Theme.accent
+                                selectedTextColor: Theme.accentInk
+                                verticalAlignment: TextInput.AlignVCenter
+                                echoMode: scrobbling.showToken ? TextInput.Normal : TextInput.Password
+                                readOnly: scrobbling.sink ? scrobbling.sink.checking === true : false
+                                activeFocusOnTab: true
+                                Accessible.role: Accessible.EditableText
+                                Accessible.name: qsTr("ListenBrainz user token")
+                                Keys.onReturnPressed: scrobbling.submitToken()
+                                Keys.onEnterPressed:  scrobbling.submitToken()
+                            }
+                        }
+                        PanelButton {
+                            objectName: "settingsScrobbleShowToken"
+                            label: scrobbling.showToken
+                                ? qsTr("Hide", "button that masks the token again")
+                                : qsTr("Show", "button that shows the token in plain text")
+                            onActivated: scrobbling.showToken = !scrobbling.showToken
+                        }
+                        PanelButton {
+                            objectName: "settingsScrobbleConnect"
+                            label: qsTr("Connect", "button that checks the ListenBrainz token")
+                            muted: tokenField.text.trim().length === 0
+                                   || (scrobbling.sink ? scrobbling.sink.checking === true : false)
+                            onActivated: scrobbling.submitToken()
+                        }
+                    }
+                    LinkLine {
+                        objectName: "settingsScrobbleTokenLink"
+                        text: qsTr("Your token is on your ListenBrainz settings page")
+                        onActivated: app.openUrl("https://listenbrainz.org/settings/")
+                    }
+                }
+
+                // What waits to be sent, and the last thing that went wrong.
+                Text {
+                    objectName: "settingsScrobbleStatus"
+                    visible: scrobbling.on && text.length > 0
+                    text: scrobbling.sink ? scrobbling.sink.statusText : ""
+                    color: scrobbling.refused ? Theme.redText : Theme.textDim
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
 
