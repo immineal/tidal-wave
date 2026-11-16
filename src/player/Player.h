@@ -304,6 +304,8 @@ private:
     qint64 playedNow(qint64 reported) const;
     static constexpr int kOffsetsKept   = 32;
     static constexpr int kOffsetsNeeded = 4;
+    // A drift of the offsets below this, per ms of clock, is report jitter.
+    static constexpr double kDriftFloor = 0.02;
     // Starts a timer for the moment the next track is to start.
     void planHandover(qint64 pos);
     // ended: the current track has run out already.
@@ -700,7 +702,8 @@ private:
     QElapsedTimer        m_fadeClock;
     // Clock minus reported position, one per report; see notePosition().
     QElapsedTimer        m_wall;
-    QList<qint64>        m_offsets;
+    struct Offset { qint64 at; qint64 off; };
+    QList<Offset>        m_offsets;
     int                  m_fadeMs        = 0;
     // The backend that took over reports buffering, which is no load.
     bool                 m_handoffSettling = false;

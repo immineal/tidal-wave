@@ -3056,14 +3056,36 @@ int Player::crossfadeMs() const {
 void Player::notePosition(qint64 pos) {
     if (!m_wall.isValid()) m_wall.start();
     if (m_player->playbackState() != QMediaPlayer::PlayingState) { m_offsets.clear(); return; }
-    m_offsets.append(m_wall.elapsed() - pos);
+    const qint64 at = m_wall.elapsed();
+    m_offsets.append(Offset{ at, at - pos });
     if (m_offsets.size() > kOffsetsKept) m_offsets.removeFirst();
 }
 
 qint64 Player::playedNow(qint64 reported) const {
     if (m_offsets.size() < kOffsetsNeeded || !m_wall.isValid()) return reported;
-    const qint64 off = *std::min_element(m_offsets.cbegin(), m_offsets.cend());
-    return qMax(reported, m_wall.elapsed() - off);
+    // On Qt 6.6 to 6.8 the position starts ahead of the sound and closes in
+    // slowly, so the offsets climb. A clear climb is fitted and carried on,
+    // through the latest report on it: every report is ahead of the sound.
+    double meanAt = 0, meanOff = 0;
+    for (const Offset &o : m_offsets) { meanAt += double(o.at); meanOff += double(o.off); }
+    meanAt /= m_offsets.size();
+    meanOff /= m_offsets.size();
+    double sxx = 0, sxy = 0;
+    for (const Offset &o : m_offsets) {
+        sxx += (o.at - meanAt) * (o.at - meanAt);
+        sxy += (o.at - meanAt) * (o.off - meanOff);
+    }
+    double drift = sxx > 0 ? sxy / sxx : 0.0;
+    if (drift < kDriftFloor) drift = 0.0;
+    double base = 0;
+    bool first = true;
+    for (const Offset &o : m_offsets) {
+        const double r = double(o.off) - drift * (o.at - meanAt);
+        if (first || (drift > 0 ? r > base : r < base)) base = r;
+        first = false;
+    }
+    const qint64 now = m_wall.elapsed();
+    return qMax(reported, now - qint64(std::llround(base + drift * (now - meanAt))));
 }
 
 void Player::planHandover(qint64 pos) {
