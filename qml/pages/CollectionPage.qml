@@ -328,7 +328,7 @@ Rectangle {
                 objectName: "collectionSurpriseButton"
                 text: root.activeTab === 0 ? qsTranslate("AlbumPage", "Shuffle")
                                            : qsTr("Surprise me", "opens a random album, artist, playlist or mix of the tab")
-                icon: root.activeTab === 0 ? "shuffle" : "dice"
+                icon: "shuffle"
                 accent: false
                 enabled: root.tabCount > 0
                 opacity: enabled ? 1 : 0.45
