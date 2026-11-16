@@ -646,18 +646,6 @@
 </context>
 <context>
     <name>HomePage</name>
-    <message>
-        <source>Good morning</source>
-        <translation>Guten Morgen</translation>
-    </message>
-    <message>
-        <source>Good afternoon</source>
-        <translation>Guten Tag</translation>
-    </message>
-    <message>
-        <source>Good evening</source>
-        <translation>Guten Abend</translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s)</source>
         <translation>
@@ -668,6 +656,21 @@
     <message>
         <source>Artist</source>
         <translation>Künstler</translation>
+    </message>
+    <message>
+        <source>Now playing</source>
+        <comment>Home, over the track that plays</comment>
+        <translation>Läuft gerade</translation>
+    </message>
+    <message>
+        <source>Continue listening</source>
+        <comment>Home, over the paused track</comment>
+        <translation>Weiterhören</translation>
+    </message>
+    <message>
+        <source>Recently played</source>
+        <comment>Home, the row of things played here lately</comment>
+        <translation>Zuletzt gehört</translation>
     </message>
     <message>
         <source>Your mixes</source>

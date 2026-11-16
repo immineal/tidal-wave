@@ -571,15 +571,18 @@
 <context>
     <name>HomePage</name>
     <message>
-        <source>Good morning</source>
+        <source>Recently played</source>
+        <comment>Home, the row of things played here lately</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Good afternoon</source>
+        <source>Continue listening</source>
+        <comment>Home, over the paused track</comment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Good evening</source>
+        <source>Now playing</source>
+        <comment>Home, over the track that plays</comment>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
