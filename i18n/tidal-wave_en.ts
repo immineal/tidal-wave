@@ -1509,6 +1509,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>For the dark themes. Saves power on OLED screens.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation type="unfinished"></translation>
     </message>

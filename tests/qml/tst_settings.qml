@@ -523,9 +523,10 @@ TestCase {
 
     // ── 1b. the pure-black switch ────────────────────────────────────────
 
-    // The switch belongs to the dark themes. On a light theme it is hidden,
-    // since there is no way to enable it there.
-    function test_the_pure_black_switch_is_hidden_on_a_light_theme_data() {
+    // The switch belongs to the dark themes. On a light theme it stays in
+    // place, switched off, with a note saying why: a theme change never
+    // moves the rows below it.
+    function test_the_pure_black_switch_is_off_on_a_light_theme_data() {
         return [
             { tag: "sky",  name: "sky" },
             { tag: "sand", name: "sand" },
@@ -533,15 +534,23 @@ TestCase {
         ]
     }
 
-    function test_the_pure_black_switch_is_hidden_on_a_light_theme(row) {
-        prefs.theme = row.name
+    function test_the_pure_black_switch_is_off_on_a_light_theme(row) {
+        prefs.theme = "sea"
         var h = openPanel(1280, 1200)
+        var block = findByName(h.panel.contentItem, "settingsOledBlock")
+        verify(block && block.visible, "the pure-black block is not there")
+        var below = block.mapToItem(h.panel.contentItem, 0, block.height).y
 
+        prefs.theme = row.name
+        settle(h.panel.contentItem)
         var toggle = findByName(h.panel.contentItem, "settingsOledToggle")
-        verify(toggle, "the switch was removed rather than hidden")
-        verify(!toggle.visible, row.name + " still shows the pure-black switch")
+        verify(toggle && toggle.visible, row.name + " hides the pure-black switch")
+        verify(!toggle.enabled, row.name + " offers a switch that cannot work there")
         var note = findByName(h.panel.contentItem, "settingsOledNote")
-        verify(note && !note.visible, row.name + " still shows the switch's note")
+        verify(note && note.visible && note.text.length > 0,
+               row.name + " does not say why the switch is off")
+        compare(block.mapToItem(h.panel.contentItem, 0, block.height).y, below,
+                "choosing " + row.name + " moved the rows below the switch")
 
         h.panel.close()
     }
@@ -1471,19 +1480,19 @@ TestCase {
         check("as opened")
         var dark = column.height
 
-        // A light theme hides the pure-black switch and its note.
+        // The privacy notice's Details adds rows and takes them away.
+        var details = findByName(h.panel.contentItem, "settingsPrivacyDetails")
+        details.expanded = true
+        settle(h.panel.contentItem)
+        verify(column.height > dark, "Details added no rows")
+        check("with the notice open")
         scrollToEnd(h.panel)
-        prefs.theme = "sky"
+        details.expanded = false
         settle(h.panel.contentItem)
-        verify(column.height < dark, "the light theme took no row away")
-        check("with a row gone")
+        compare(column.height, dark, "closing Details left rows behind")
+        check("with the notice closed")
         fuzzyCompare(column.mapToItem(flick, 0, column.height).y, flick.height, 0.5,
-                     "a row left and the panel did not follow its rows up")
-
-        prefs.theme = "sea"
-        settle(h.panel.contentItem)
-        compare(column.height, dark, "the dark theme did not bring the row back")
-        check("with the row back")
+                     "rows left and the panel did not follow its rows up")
 
         h.host.height = 1200
         settle(h.panel.contentItem)

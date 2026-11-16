@@ -1742,6 +1742,10 @@
         <translation>Spart Strom auf OLED-Bildschirmen.</translation>
     </message>
     <message>
+        <source>For the dark themes. Saves power on OLED screens.</source>
+        <translation>Für die dunklen Designs. Spart Strom auf OLED-Bildschirmen.</translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation>Der Systemstandard ist derzeit %1.</translation>
     </message>

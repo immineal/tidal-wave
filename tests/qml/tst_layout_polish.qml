@@ -771,6 +771,83 @@ TestCase {
         player.setManualForTest([])
     }
 
+    // ── 9. Settings ──────────────────────────────────────────────────────
+
+    function settingsFlick(panel) {
+        return findByName(panel.contentItem, "settingsScroll").contentItem
+    }
+
+    function test_settings_opens_at_the_top() {
+        var host = showHost(settingsHost, 1100, 800)
+        var panel = host.sidebar.settingsPanel
+        host.sidebar.openSettings()
+        settle(host)
+        settingsFlick(panel).contentY = 600
+        settle(host)
+        panel.close()
+        settle(host)
+        host.sidebar.openSettings()
+        settle(host)
+        compare(settingsFlick(panel).contentY, 0, "Settings reopened where it was left")
+        panel.close()
+    }
+
+    function test_a_wheel_notch_scrolls_settings_a_useful_step() {
+        var host = showHost(settingsHost, 1100, 800)
+        var panel = host.sidebar.settingsPanel
+        host.sidebar.openSettings()
+        settle(host)
+        var sv = findByName(panel.contentItem, "settingsScroll")
+        var flick = sv.contentItem
+        mouseWheel(sv, sv.width / 2, sv.height / 2, 0, -120)
+        wait(400)
+        settle(host)
+        // A fixed step, not wheelScrollLines: at one line per notch the
+        // default is about 20px, which is what made the panel feel stuck.
+        verify(flick.contentY >= 80 && flick.contentY <= 160,
+               "one notch moved Settings by " + flick.contentY.toFixed(1) + "px")
+        panel.close()
+    }
+
+    function test_the_shortcut_list_is_in_columns() {
+        var host = showHost(settingsHost, 1100, 900)
+        var panel = host.sidebar.settingsPanel
+        host.sidebar.openSettings()
+        settle(host)
+        var keys = collectByName(panel.contentItem, "settingsShortcutKey", [])
+        var texts = collectByName(panel.contentItem, "settingsShortcutText", [])
+        verify(keys.length > 5 && keys.length === texts.length, "the shortcut table was not found")
+        var kx = keys[0].mapToItem(panel.contentItem, 0, 0).x
+        var tx = texts[0].mapToItem(panel.contentItem, 0, 0).x
+        for (var i = 1; i < keys.length; ++i) {
+            compare(keys[i].mapToItem(panel.contentItem, 0, 0).x, kx, "key " + i + " is off the column")
+            compare(texts[i].mapToItem(panel.contentItem, 0, 0).x, tx, "description " + i + " is off the column")
+            verify(texts[i].mapToItem(panel.contentItem, 0, 0).x >= keys[i].mapToItem(panel.contentItem, keys[i].width, 0).x,
+                   "description " + i + " overlaps its key")
+        }
+        panel.close()
+    }
+
+    function test_a_light_theme_keeps_the_pure_black_row() {
+        var host = showHost(settingsHost, 1100, 900)
+        var panel = host.sidebar.settingsPanel
+        host.sidebar.openSettings()
+        settle(host)
+        var block = findByName(panel.contentItem, "settingsOledBlock")
+        var kids = block.parent.children
+        var next = null
+        for (var i = 0; i < kids.length - 1; ++i) if (kids[i] === block) next = kids[i + 1]
+        verify(next, "nothing follows the pure-black row")
+        var y0 = next.mapToItem(panel.contentItem, 0, 0).y
+        prefs.theme = "sky"
+        settle(host)
+        verify(block.visible, "a light theme hid the pure-black row")
+        var toggle = findByName(panel.contentItem, "settingsOledToggle")
+        verify(!toggle.enabled, "the switch can be used on a light theme")
+        compare(next.mapToItem(panel.contentItem, 0, 0).y, y0, "the rows below moved")
+        panel.close()
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
