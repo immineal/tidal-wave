@@ -463,6 +463,11 @@
         <translation>Die Markierung „Gefällt mir“ konnte nicht entfernt werden</translation>
     </message>
     <message>
+        <source>Removed from your liked tracks</source>
+        <comment>confirmation after unliking a track</comment>
+        <translation>Aus deinen Lieblingstiteln entfernt</translation>
+    </message>
+    <message>
         <source>Could not like the track</source>
         <comment>shown when adding a track to favourites failed</comment>
         <translation>Titel konnte nicht mit „Gefällt mir“ markiert werden</translation>
@@ -471,6 +476,11 @@
         <source>Could not remove the album from your collection</source>
         <comment>shown when removing an album from the library failed</comment>
         <translation>Album konnte nicht aus der Sammlung entfernt werden</translation>
+    </message>
+    <message>
+        <source>Album removed from your collection</source>
+        <comment>confirmation after removing an album from the library</comment>
+        <translation>Album aus deiner Sammlung entfernt</translation>
     </message>
     <message>
         <source>Could not save the album</source>
@@ -483,9 +493,19 @@
         <translation>Künstler konnte nicht entfolgt werden</translation>
     </message>
     <message>
+        <source>You no longer follow this artist</source>
+        <comment>confirmation after unfollowing an artist</comment>
+        <translation>Du folgst diesem Künstler nicht mehr</translation>
+    </message>
+    <message>
         <source>Could not remove the mix from your collection</source>
         <comment>shown when removing a mix from the library failed</comment>
         <translation>Mix konnte nicht aus der Sammlung entfernt werden</translation>
+    </message>
+    <message>
+        <source>Mix removed from your collection</source>
+        <comment>confirmation after removing a mix from the library</comment>
+        <translation>Mix aus deiner Sammlung entfernt</translation>
     </message>
     <message>
         <source>Could not save the mix</source>
@@ -1261,6 +1281,16 @@
         <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts entfernt. Sie wurde neu geladen.</translation>
     </message>
     <message>
+        <source>Removed from “%1”</source>
+        <comment>confirmation after removing a track from a playlist</comment>
+        <translation>Aus „%1“ entfernt</translation>
+    </message>
+    <message>
+        <source>Could not put the track back</source>
+        <comment>shown when undoing a removal from a playlist failed</comment>
+        <translation>Der Titel konnte nicht zurückgelegt werden</translation>
+    </message>
+    <message>
         <source>Playlist</source>
         <translation>Playlist</translation>
     </message>
@@ -1359,6 +1389,11 @@
     <message>
         <source>Now Playing</source>
         <translation>Jetzt läuft</translation>
+    </message>
+    <message>
+        <source>Queue cleared</source>
+        <comment>confirmation after emptying the play queue</comment>
+        <translation>Warteschlange geleert</translation>
     </message>
     <message>
         <source>Up next</source>
@@ -2021,6 +2056,14 @@
     <message>
         <source>Tidal returned only a preview of this track, not the whole track.</source>
         <translation>Tidal hat von diesem Titel nur eine Vorschau geliefert, nicht den ganzen Titel.</translation>
+    </message>
+</context>
+<context>
+    <name>Toasts</name>
+    <message>
+        <source>Undo</source>
+        <comment>button on a confirmation, takes back what was just done</comment>
+        <translation>Rückgängig</translation>
     </message>
 </context>
 <context>

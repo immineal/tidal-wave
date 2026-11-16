@@ -57,4 +57,7 @@ ApplicationWindow {
         id: contentHolder
         anchors.fill: parent
     }
+
+    // Main.qml's toast, so a scene shows the confirmation the app would.
+    ToastHost { anchors.fill: parent; z: 100 }
 }

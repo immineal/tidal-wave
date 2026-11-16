@@ -389,6 +389,26 @@
 </context>
 <context>
     <name>ContextMenu</name>
+    <message>
+        <source>Mix removed from your collection</source>
+        <comment>confirmation after removing a mix from the library</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You no longer follow this artist</source>
+        <comment>confirmation after unfollowing an artist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album removed from your collection</source>
+        <comment>confirmation after removing an album from the library</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed from your liked tracks</source>
+        <comment>confirmation after unliking a track</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
@@ -1057,6 +1077,16 @@
 <context>
     <name>PlaylistPage</name>
     <message>
+        <source>Could not put the track back</source>
+        <comment>shown when undoing a removal from a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed from “%1”</source>
+        <comment>confirmation after removing a track from a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This playlist could not be loaded</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1139,6 +1169,11 @@
 </context>
 <context>
     <name>QueuePanel</name>
+    <message>
+        <source>Queue cleared</source>
+        <comment>confirmation after emptying the play queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Queue</source>
         <comment>noun, the play queue</comment>
@@ -1853,6 +1888,14 @@
     </message>
     <message>
         <source>Skip this version</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Toasts</name>
+    <message>
+        <source>Undo</source>
+        <comment>button on a confirmation, takes back what was just done</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>

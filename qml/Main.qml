@@ -765,6 +765,9 @@ ApplicationWindow {
                     open:        root.queueOpen
                     onDismissed: root.queueOpen = false
                 }
+
+                // Over the page and the queue, at the foot of the content.
+                ToastHost { anchors.fill: parent }
             }
         }
 

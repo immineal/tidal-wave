@@ -288,6 +288,8 @@ private slots:
         // duplicate in during the audit.
         QTest::newRow("add a song")       << 10 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101&onArtifactNotFound=FAIL&onDupes=SKIP}";
         QTest::newRow("delete playlist")  << 11 << "DELETE /api/playlists/pl-tape-1?countryCode=DE";
+        // The undo of a removal: back at its row, even as a duplicate.
+        QTest::newRow("put a song back")  << 12 << "POST /api/playlists/pl-tape-1/items [If-None-Match: \"v1\"] {trackIds=101&onArtifactNotFound=FAIL&onDupes=ADD&toIndex=3}";
     }
 
     void everyWriteHasItsKnownShape()
@@ -312,6 +314,7 @@ private slots:
         case 9:  c.editPlaylist(kUuid, QStringLiteral("Tape 2"), QStringLiteral("Side B"), answered); break;
         case 10: c.addTrackToPlaylist(kUuid, 101, answered); break;
         case 11: c.deletePlaylist(kUuid, answered); break;
+        case 12: c.restoreTrackToPlaylist(kUuid, 101, 3, answered); break;
         }
         QTRY_VERIFY_WITH_TIMEOUT(done && rig.settled(), 5000);
         QCOMPARE(rig.tidal.writes(), QStringList{line});

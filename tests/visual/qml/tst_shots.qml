@@ -982,6 +982,7 @@ TestCase {
         settle(pw.contentItem, 500)
         shot(pw.contentItem, "toast_removed_" + row.theme)
         pw.destroy()
+        Toasts.dismiss()
     }
 
     // The pointer on a short sidebar row, then on one whose name is cut off.
@@ -1010,7 +1011,7 @@ TestCase {
         shot(win.contentItem, "sidebar_tip_short_" + row.theme)
         var longRow = null
         for (var k = 0; k < rows.length; ++k)
-            if (rows[k].text.indexOf("Very Long") === 0) longRow = rows[k].parent
+            if (rows[k].text.indexOf("Very Long") >= 0) longRow = rows[k].parent
         verify(longRow)
         mouseMove(longRow, longRow.width / 2, longRow.height / 2)
         wait(Theme.tooltipDelay + 300)

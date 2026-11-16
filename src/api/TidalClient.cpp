@@ -1149,6 +1149,27 @@ void TidalClient::addTrackToPlaylist(const QString &uuid, qint64 trackId,
         });
 }
 
+// python-tidal's add() with a position: toIndex, and ADD so a row that was a
+// duplicate comes back as one.
+void TidalClient::restoreTrackToPlaylist(const QString &uuid, qint64 trackId, int toIndex,
+    std::function<void(bool)> cb)
+{
+    m_api->getEtag(QStringLiteral("playlists/%1").arg(uuid),
+        [this, uuid, trackId, toIndex, cb](QString etag, QString err) {
+            if (!err.isEmpty()) { cb(false); return; }
+            QUrlQuery form;
+            form.addQueryItem("trackIds",           QString::number(trackId));
+            form.addQueryItem("onArtifactNotFound", "FAIL");
+            form.addQueryItem("onDupes",            "ADD");
+            if (toIndex >= 0) form.addQueryItem("toIndex", QString::number(toIndex));
+            m_api->postApiFormEtag(QStringLiteral("playlists/%1/items").arg(uuid), form, etag,
+                [this, uuid, cb](QJsonObject, QString e) {
+                    if (e.isEmpty()) m_playlistEtags.remove(uuid);
+                    cb(e.isEmpty());
+                });
+        });
+}
+
 // `playlists/<uuid>/items?fromIndex=` answers 405. The row's own path with
 // order=INDEX is the form Tidal takes, and the tracks listing indexes the same.
 void TidalClient::removeTrackFromPlaylist(const QString &uuid, int itemIndex,

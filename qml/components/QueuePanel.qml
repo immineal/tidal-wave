@@ -46,6 +46,19 @@ Item {
     // the layout guard in tests/qml/tst_layout_player.qml.
     readonly property int iconSize: 16
 
+    // Empties what the user lined up, and offers it back: the rows are
+    // copied first, and Undo puts them in front again in the same order.
+    function clearQueue() {
+        // Copied out: a list read off a property re-reads it on access, and
+        // would be empty by the time Undo runs.
+        var q = player.queueManual, saved = []
+        for (var i = 0; i < q.length; i++) saved.push(q[i])
+        if (saved.length === 0) return
+        player.clearManual()
+        Toasts.undoable(qsTr("Queue cleared", "confirmation after emptying the play queue"),
+                        function () { player.playNext(saved) })
+    }
+
     // ── the model ────────────────────────────────────────────────────────
     // One list and two boundaries, all gated on `visible` so a closed panel
     // holds no copy of the queue.
@@ -392,11 +405,11 @@ Item {
                         implicitWidth: Math.max(32, clearText.implicitWidth + 12)
                         implicitHeight: 32
                         activeFocusOnTab: true
-                        Keys.onReturnPressed: player.clearManual()
-                        Keys.onSpacePressed:  player.clearManual()
+                        Keys.onReturnPressed: root.clearQueue()
+                        Keys.onSpacePressed:  root.clearQueue()
                         Accessible.role: Accessible.Button
                         Accessible.name: qsTr("Clear queue", "button, empties the play queue")
-                        Accessible.onPressAction: player.clearManual()
+                        Accessible.onPressAction: root.clearQueue()
                         Rectangle {
                             anchors.fill: parent
                             radius: Theme.radiusMedium
@@ -415,7 +428,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: player.clearManual()
+                            onClicked: root.clearQueue()
                         }
                     }
                     // The way out besides Escape and a click beside the panel.

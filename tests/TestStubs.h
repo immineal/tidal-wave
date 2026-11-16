@@ -640,6 +640,14 @@ public:
         // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
+    // Records the row a removal's undo puts back; answers as an add does.
+    Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
+                                            QJSValue cb) {
+        m_lastRestored = QStringLiteral("%1 %2 %3").arg(uuid).arg(trackId).arg(index);
+        resolveOk(cb, m_addToPlaylistOk);
+        if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
+    }
+    Q_INVOKABLE QString lastRestoredForTest() const { return m_lastRestored; }
     // The answer is settable, so a removal the server refuses can be tested.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         m_lastRemovedPlaylist = uuid;
@@ -944,6 +952,7 @@ public:
         m_lastAddedPlaylist.clear();
         m_lastAddedTrackId   = 0;
         m_addToPlaylistCalls = 0;
+        m_lastRestored.clear();
         m_addToPlaylistOk    = true;
     }
     Q_INVOKABLE void    resetEditPlaylistForTest() {
@@ -1564,6 +1573,7 @@ private:
     QString   m_lastAddedPlaylist;
     qlonglong m_lastAddedTrackId   = 0;
     int       m_addToPlaylistCalls = 0;
+    QString   m_lastRestored;
     bool      m_addToPlaylistOk    = true;
     int     m_userPlaylistFetches = 0;
     int     m_lastUserPlaylistLimit  = -1;

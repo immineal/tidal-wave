@@ -332,6 +332,25 @@ Item {
                                data.subtitle || "", data.imageUrl || "")
     }
 
+    // ── the one tip for rows and rail icons ──────────────────────────────
+    // Beside the row it names, centred on it: above, Qt's place for a tip,
+    // it covered the row the pointer was about to move to.
+    property Item tipRow: null
+    function claimTip(row, wants) {
+        if (wants) root.tipRow = row
+        else if (root.tipRow === row) root.tipRow = null
+    }
+    ToolTip {
+        id: sideTip
+        objectName: "sidebarTip"
+        parent: root.tipRow || root
+        visible: root.tipRow !== null
+        text: root.tipRow ? root.tipRow.tipText : ""
+        delay: Theme.tooltipDelay
+        x: parent.width + Theme.space2
+        y: Math.round((parent.height - height) / 2)
+    }
+
     ContextMenu {
         id: pinContextMenu
         objectName: "sidebarPinMenu"
@@ -1267,14 +1286,14 @@ Item {
                 }
             }
 
-            // On every row, not only the truncated ones: in the rail the
-            // title is not on screen at all, so this is the only place the
-            // name is said.
-            ToolTip.visible: rowHov.hovered && !rowItem.dragging
-            ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
-                                                : rowItem.title
-            ToolTip.delay: Theme.tooltipDelay
+            // Said only where the name is not on screen whole: in the rail,
+            // or cut off in the open panel. Drawn by root's sideTip.
             readonly property string subtitleOf: rowItem.modelData.subtitle || ""
+            readonly property string tipText: subtitleOf.length > 0
+                                              ? rowItem.title + " · " + subtitleOf : rowItem.title
+            readonly property bool wantsTip: rowHov.hovered && !rowItem.dragging
+                                             && (!root.showsWide || rowTitle.truncated)
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 
@@ -1353,9 +1372,10 @@ Item {
             HoverHandler { id: sideHov; cursorShape: Qt.PointingHandCursor }
             TapHandler   { onTapped: navItem.activated() }
 
-            ToolTip.visible: sideHov.hovered && !root.showsWide
-            ToolTip.text: navItem.label
-            ToolTip.delay: Theme.tooltipDelay
+            // In the rail only, where the label is not drawn.
+            readonly property string tipText: navItem.label
+            readonly property bool wantsTip: sideHov.hovered && !root.showsWide
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 }

@@ -111,9 +111,23 @@ Rectangle {
     readonly property string staleRemovalText:
         qsTr("This playlist was changed somewhere else, so nothing was removed. It has been reloaded.")
     function reloadAfterStaleRemoval() {
-        tracksList.ToolTip.show(root.staleRemovalText, 5000)
+        Toasts.show(root.staleRemovalText)
         loadPlaylistHeader(root.playlistUuid)
         reloadTracks()
+    }
+
+    // A removal that landed says so, and Undo puts the track back at its row.
+    // The page reloads once the count changes; see onPlaylistStatsRefreshed.
+    function offerUndoRemoval(uuid, title, trackId, index) {
+        Toasts.undoable(qsTr("Removed from “%1”",
+                             "confirmation after removing a track from a playlist").arg(title),
+                        function () {
+            bridge.restoreTrackToPlaylist(uuid, trackId, index, function (ok) {
+                if (ok !== true)
+                    Toasts.show(qsTr("Could not put the track back",
+                                     "shown when undoing a removal from a playlist failed"))
+            })
+        })
     }
 
     function loadPlaylist() {
@@ -172,10 +186,6 @@ Rectangle {
                 var p = hero.mapToItem(root, x, y)
                 root.showHeroPinMenu(p.x, p.y)
             }
-            // The queue confirmation is drawn just above the action row.
-            // Assigned, not bound: an id inside the list's header component is
-            // out of reach from the page root.
-            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
             Text {
                 visible: root.playlistDescription.length > 0
@@ -275,12 +285,16 @@ Rectangle {
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 var requested = root.playlistUuid
                 var row = playlistTrackRow
+                var trackId = Number(modelData.id)
+                var named = root.playlistTitle
                 bridge.removeTrackFromPlaylist(requested, itemIndex, function(ok, stale, index) {
                     if (requested !== root.playlistUuid) return
                     if (stale === true) { Qt.callLater(root.reloadAfterStaleRemoval); return }
                     // Before the list is touched, which rebuilds the rows. An
                     // earlier splice may have destroyed this one already.
                     if (row) row.confirmRemovedFromPlaylist(ok === true)
+                    if (ok === true && trackId > 0)
+                        root.offerUndoRemoval(requested, named, trackId, index)
                     if (ok === true && index >= 0 && index < root.tracks.length) {
                         // The row the server took out, not itemIndex when an
                         // earlier removal landed in between.

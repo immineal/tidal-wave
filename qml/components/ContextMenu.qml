@@ -116,15 +116,6 @@ Menu {
     // yet. The callback may never run. Null offers neither action.
     property var trackSource: null
 
-    // The item the confirmation is drawn above, so a host passes a part of
-    // itself with room above it. Falls back to the item the menu pops up on.
-    property Item confirmAnchor: null
-
-    // How long the confirmation stays readable. Not Theme.dur(): it is a
-    // dwell time, not an animation, and dur() collapses to 0 under reduced
-    // motion, which ToolTip reads as "never time out".
-    readonly property int confirmMs: 2000
-
     // So a test can read the labels without walking a popup's contents.
     readonly property alias playNextItem:   playNextEntry
     readonly property alias addToQueueItem: addToQueueEntry
@@ -143,45 +134,38 @@ Menu {
     }
 
     // Says the queueing worked, so nobody clicks again and queues it twice.
-    // The tool tip takes no focus, blocks nothing and times out by itself.
     function _confirm(n, atFront) {
-        var at = root.confirmAnchor || root.parent
-        if (!at) return
-        at.ToolTip.show(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", n)
-                                : qsTr("%Ln track(s) added to queue", "queue confirmation", n),
-                        root.confirmMs)
+        Toasts.show(atFront ? qsTr("%Ln track(s) added to play next", "queue confirmation", n)
+                            : qsTr("%Ln track(s) added to queue", "queue confirmation", n))
     }
 
     // ── a favourite the server can refuse ────────────────────────────────
-    // The favourite call, and a word when it comes back refused. It writes no
-    // state: the hearts read back through the bridge, which changes its caches
-    // only on a yes. Silent on success, which the heart already shows.
+    // The favourite call, and a word when it comes back. It writes no state:
+    // the hearts read back through the bridge, which changes its caches only
+    // on a yes. A like or a save is silent on success, which the heart shows;
+    // taking one away says so, with Undo, which puts it back.
     component FavoriteAction : QtObject {
         id: fav
 
-        // Its own copy of the dwell. An inline component does not share the
-        // enclosing file's id scope, so root.confirmMs is a ReferenceError
-        // here. Not Theme.dur(), which is 0 under reduced motion.
-        property int confirmMs: 2000
-
-        // What the last reply said, or "" when it was accepted, kept because
-        // the shared tool tip cannot be read back. Cleared when a call goes
-        // out, so the value never belongs to the previous press.
+        // What the last refusal said, or "" when the reply was a yes, so a
+        // test can read it. Cleared when a call goes out.
         property string lastMessage: ""
 
-        // The bool is the state now, which the press undoes. `anchor` is what
-        // the refusal is drawn above, per call because delegates are recycled.
-        // It must not bind ToolTip.visible, text or delay: one tip per window.
+        // The bool is the state now, which the press undoes. `anchor` is kept
+        // for the callers; the word goes to the one toast.
         function toggleTrack(trackId, liked, anchor) {
             if (!(trackId > 0)) return
             fav.lastMessage = ""
             if (liked) bridge.removeTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not unlike the track",
-                                              "shown when removing a track from favourites failed"))
+                fav._removed(ok, qsTr("Could not unlike the track",
+                                      "shown when removing a track from favourites failed"),
+                             qsTr("Removed from your liked tracks",
+                                  "confirmation after unliking a track"),
+                             function () { fav.toggleTrack(trackId, false) })
             })
             else       bridge.addTrackFavorite(trackId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not like the track",
-                                              "shown when adding a track to favourites failed"))
+                fav._refused(ok, qsTr("Could not like the track",
+                                      "shown when adding a track to favourites failed"))
             })
         }
 
@@ -189,12 +173,15 @@ Menu {
             if (!(albumId > 0)) return
             fav.lastMessage = ""
             if (saved) bridge.removeAlbumFavorite(albumId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the album from your collection",
-                                              "shown when removing an album from the library failed"))
+                fav._removed(ok, qsTr("Could not remove the album from your collection",
+                                      "shown when removing an album from the library failed"),
+                             qsTr("Album removed from your collection",
+                                  "confirmation after removing an album from the library"),
+                             function () { fav.toggleAlbum(albumId, false) })
             })
             else       bridge.addAlbumFavorite(albumId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not save the album",
-                                              "shown when saving an album to the library failed"))
+                fav._refused(ok, qsTr("Could not save the album",
+                                      "shown when saving an album to the library failed"))
             })
         }
 
@@ -202,12 +189,15 @@ Menu {
             if (!(artistId > 0)) return
             fav.lastMessage = ""
             if (following) bridge.removeArtistFavorite(artistId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not unfollow the artist",
-                                              "shown when unfollowing an artist failed"))
+                fav._removed(ok, qsTr("Could not unfollow the artist",
+                                      "shown when unfollowing an artist failed"),
+                             qsTr("You no longer follow this artist",
+                                  "confirmation after unfollowing an artist"),
+                             function () { fav.toggleArtist(artistId, false) })
             })
             else           bridge.addArtistFavorite(artistId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not follow the artist",
-                                              "shown when following an artist failed"))
+                fav._refused(ok, qsTr("Could not follow the artist",
+                                      "shown when following an artist failed"))
             })
         }
 
@@ -219,23 +209,30 @@ Menu {
             // A track radio is a mix to Tidal and to this call, so the message
             // names the mix even on a page whose heading reads "Radio".
             if (saved) bridge.removeMixFavorite(mixId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not remove the mix from your collection",
-                                              "shown when removing a mix from the library failed"))
+                fav._removed(ok, qsTr("Could not remove the mix from your collection",
+                                      "shown when removing a mix from the library failed"),
+                             qsTr("Mix removed from your collection",
+                                  "confirmation after removing a mix from the library"),
+                             function () { fav.toggleMix(mixId, false) })
             })
             else       bridge.addMixFavorite(mixId, function (ok) {
-                fav._refused(ok, anchor, qsTr("Could not save the mix",
-                                              "shown when saving a mix to the library failed"))
+                fav._refused(ok, qsTr("Could not save the mix",
+                                      "shown when saving a mix to the library failed"))
             })
         }
 
         // Only an explicit true counts as accepted. A reply that never arrived
         // leaves the argument undefined, and that must not read as success.
-        function _refused(ok, anchor, message) {
-            if (ok === true) return
-            // Recorded first: a grid delegate can be destroyed between the
-            // press and the reply, which leaves `anchor` null.
+        function _refused(ok, message) {
+            if (ok === true) return true
             fav.lastMessage = message
-            if (anchor) anchor.ToolTip.show(message, fav.confirmMs)
+            Toasts.show(message)
+            return false
+        }
+
+        function _removed(ok, refusal, done, undo) {
+            if (!fav._refused(ok, refusal)) return
+            Toasts.undoable(done, undo)
         }
     }
 

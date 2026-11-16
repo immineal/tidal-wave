@@ -724,6 +724,14 @@ void TidalBridge::addTracksToPlaylist(const QString &uuid, qlonglong trackId, QJ
     });
 }
 
+void TidalBridge::restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
+                                         QJSValue cb) {
+    m_client->restoreTrackToPlaylist(uuid, trackId, index, [this, uuid, cb](bool success) mutable {
+        call(cb, { success });
+        if (success) refreshPlaylistMeta(uuid);
+    });
+}
+
 void TidalBridge::removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
     m_removals[uuid].append({itemIndex, false, cb});
     if (!m_removing.contains(uuid)) nextRemoval(uuid);

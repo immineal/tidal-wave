@@ -158,6 +158,9 @@ public:
     // function(ok). On success both re-read the playlist's header and merge it
     // into both caches: see refreshPlaylistMeta.
     Q_INVOKABLE void addTracksToPlaylist   (const QString &uuid, qlonglong trackId, QJSValue cb);
+    // function(ok). Undoes a removal: the track goes back in at `index`.
+    Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
+                                            QJSValue cb);
     // function(ok, stale, index). Removals of one playlist go out one at a
     // time, and `itemIndex` is the row as the page showed it when asked:
     // `index` is the row to take out once earlier removals have landed, -1

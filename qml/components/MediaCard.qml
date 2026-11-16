@@ -303,9 +303,6 @@ Item {
         id: cardMenu
         objectName: "cardPinMenu"
         trackSource: root.canQueue ? root.fetchTracks : null
-        // The tile has room above it on every page that shows one, and the
-        // confirmation belongs next to the thing it is about.
-        confirmAnchor: root
         removeLabel: root.removeLabel
         onRemoveRequested: root.removeRequested()
     }

@@ -616,18 +616,13 @@ Item {
         }
     }
 
-    // The same confirmation the shared ContextMenu gives, drawn over the row
-    // the user just acted on. The dwell is not Theme.dur(); see
-    // ContextMenu.confirmMs.
-    readonly property int confirmMs: 2000
-
-    // What the last confirmation said, kept because the shared tool tip cannot
-    // be read back. A test checks a failed add is not reported as a success.
+    // What the last confirmation said, so a test can check a failed add is
+    // not reported as a success. The words go to the one toast.
     property string lastConfirmation: ""
 
     function confirm(text) {
         root.lastConfirmation = text
-        ToolTip.show(text, root.confirmMs)
+        Toasts.show(text)
     }
 
     function confirmQueued(atFront) {
