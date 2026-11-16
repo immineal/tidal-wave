@@ -548,6 +548,46 @@ Popup {
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 12
+                    visible: prefs.crossfadeAvailable
+                    Text {
+                        text: qsTr("Crossfade between tracks")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Toggle {
+                        objectName: "settingsCrossfadeToggle"
+                        checked: prefs.crossfade
+                        onToggled: prefs.crossfade = !prefs.crossfade
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    visible: prefs.crossfadeAvailable && prefs.crossfade
+                    Text {
+                        text: qsTr("Crossfade length")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Text {
+                        objectName: "settingsCrossfadeValue"
+                        text: qsTr("%1 s").arg(prefs.crossfadeSeconds)
+                        color: Theme.textSec; font.pixelSize: 13
+                    }
+                    Slider {
+                        objectName: "settingsCrossfadeSlider"
+                        Layout.preferredWidth: 140
+                        from: 1; to: 12; stepSize: 1
+                        snapMode: Slider.SnapAlways
+                        value: prefs.crossfadeSeconds
+                        onMoved: prefs.crossfadeSeconds = Math.round(value)
+                    }
+                }
+
                 // Hidden where there is nothing to choose between, which is
                 // every box with no audio backend at all.
                 ColumnLayout {

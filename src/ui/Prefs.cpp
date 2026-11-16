@@ -24,6 +24,8 @@ constexpr auto kLyricsLrclib = "lyrics/lrclib";
 constexpr auto kLyricsOtherSites = "lyrics/otherSites";
 constexpr auto kLyricsAutoSync = "lyrics/autoSync";
 constexpr auto kNormalizeLoudness = "playback/normalizeLoudness";
+constexpr auto kCrossfade = "playback/crossfade";
+constexpr auto kCrossfadeSeconds = "playback/crossfadeSeconds";
 
 // A choice made with the old switch holds for both new ones; written back
 // at once so it is not applied again over a later change.
@@ -60,9 +62,12 @@ Prefs::Prefs(QObject *parent)
     , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
     // On by default, as in Tidal's and Spotify's own apps.
     , m_normalizeLoudness(m_settings.value(kNormalizeLoudness, true).toBool())
+    , m_crossfade(m_settings.value(kCrossfade, false).toBool())
+    , m_crossfadeSeconds(m_settings.value(kCrossfadeSeconds, 5).toInt())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
+    m_crossfadeSeconds = std::clamp(m_crossfadeSeconds, minCrossfadeSeconds, maxCrossfadeSeconds);
 
     // A theme name from an older build is migrated and written back at once.
     // Left in the file, the migration would run on every launch and undo a
@@ -190,6 +195,21 @@ void Prefs::setNormalizeLoudness(bool v) {
     m_normalizeLoudness = v;
     m_settings.setValue(kNormalizeLoudness, v);
     emit normalizeLoudnessChanged();
+}
+
+void Prefs::setCrossfade(bool v) {
+    if (v == m_crossfade) return;
+    m_crossfade = v;
+    m_settings.setValue(kCrossfade, v);
+    emit crossfadeChanged();
+}
+
+void Prefs::setCrossfadeSeconds(int v) {
+    v = std::clamp(v, minCrossfadeSeconds, maxCrossfadeSeconds);
+    if (v == m_crossfadeSeconds) return;
+    m_crossfadeSeconds = v;
+    m_settings.setValue(kCrossfadeSeconds, v);
+    emit crossfadeSecondsChanged();
 }
 
 QString Prefs::appVersion() const {

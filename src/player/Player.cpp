@@ -213,6 +213,9 @@ void Player::setPrefs(Prefs *prefs) {
             if (m_otherRole == Other::Armed) m_otherGain = gainFor(m_preloadInfo, m_preloadIndex);
             applyLevel();
         });
+        // A track change already planned is planned again.
+        connect(m_prefs, &Prefs::crossfadeChanged, this, [this] { if (m_handoverTimer) m_handoverTimer->stop(); });
+        connect(m_prefs, &Prefs::crossfadeSecondsChanged, this, [this] { if (m_handoverTimer) m_handoverTimer->stop(); });
     }
     applyLevel();
     applyAudioDevice();
@@ -380,7 +383,7 @@ void Player::rebindAudioOutput(const QAudioDevice &device) {
 #endif
 
     auto *fresh = new QAudioOutput(device, this);
-    fresh->setVolume(float(qMin(1.0, outputVolume(state.volume) * m_gain)));
+    fresh->setVolume(float(qMin(1.0, outputVolume(state.volume) * m_gain * m_fade)));
     fresh->setMuted(state.muted);
 
     // Detach, delete the old output outright, then attach. A destroyed output
@@ -793,7 +796,7 @@ void Player::playPause() {
         return;
     }
     if (m_player->playbackState() == QMediaPlayer::PlayingState) {
-        // The end of the track before stops with the pause.
+        // The end of the track before, or its fade, stops with the pause.
         finishRetire();
         m_player->pause();
     } else {
@@ -1134,8 +1137,8 @@ double Player::trackGain() const { return m_gain; }
 void Player::applyLevel() {
     const double level = outputVolume(m_pendingVolume);
     m_gain = gainFor(m_streamInfo, m_index);
-    if (m_audioOut) m_audioOut->setVolume(float(qMin(1.0, level * m_gain)));
-    if (m_otherOut) m_otherOut->setVolume(float(qMin(1.0, level * m_otherGain)));
+    if (m_audioOut) m_audioOut->setVolume(float(qMin(1.0, level * m_gain * m_fade)));
+    if (m_otherOut) m_otherOut->setVolume(float(qMin(1.0, level * m_otherGain * m_otherFade)));
 }
 
 void Player::setShuffle(bool s) {
@@ -2924,8 +2927,8 @@ void Player::notePassedOver(const QString &title, bool runEnded) {
 
 // ─── Gapless track changes ─────────────────────────
 // QMediaPlayer cannot queue a next source, so a second backend loads the
-// next track's file and starts on the current one's last moment. The two
-// then swap roles, and the old one plays out what its sink still holds.
+// next track's file and starts on the current one's last moment, or a
+// crossfade earlier. The two then swap roles; the old one plays out.
 
 void Player::armOther() {
     if (m_otherRole != Other::Idle || !m_player || !m_audioOut || casting()) return;
@@ -2950,6 +2953,7 @@ void Player::armOther() {
     }
     m_otherOut->setMuted(m_audioOut->isMuted());
     m_otherGain = gainFor(m_preloadInfo, next);
+    m_otherFade = 1.0;
     applyLevel();
     applySpectrumTap();
     m_otherRole = Other::Armed;
@@ -2981,6 +2985,7 @@ void Player::disarmOther() {
 void Player::finishRetire() {
     if (m_otherRole != Other::Retiring) return;
     if (m_retireTimer) m_retireTimer->stop();
+    if (m_fadeTimer) m_fadeTimer->stop();
     m_otherRole = Other::Idle;
     m_other->stop();
     m_other->setSource(QUrl());
@@ -2988,6 +2993,8 @@ void Player::finishRetire() {
     // The server served the track before; the current one never uses it.
     if (m_otherServes && !m_streamServed && m_stream) m_stream->stop();
     m_otherServes = false;
+    m_otherFade = 1.0;
+    m_fade      = 1.0;
     applyLevel();
 }
 
@@ -3007,6 +3014,24 @@ void Player::otherStatusChanged(QMediaPlayer::MediaStatus status) {
         QTimer::singleShot(0, this, [this] { finishRetire(); });
     else if (m_otherRole == Other::Armed && status == QMediaPlayer::InvalidMedia)
         QTimer::singleShot(0, this, [this] { disarmOther(); });
+}
+
+int Player::crossfadeMs() const {
+    if (!m_prefs || !m_prefs->crossfade()) return 0;
+    const int next = followingIndex();
+    if (m_index < 0 || next < 0 || next >= m_queue.count()) return 0;
+    // An album that plays in its own order keeps its gapless joins, as
+    // Strawberry's default does.
+    const qlonglong here  = m_queue.at(m_index).track.value(QStringLiteral("albumId")).toLongLong();
+    const qlonglong there = m_queue.at(next).track.value(QStringLiteral("albumId")).toLongLong();
+    if (!m_shuffle && here != 0 && here == there) return 0;
+    // At most half of either track.
+    qint64 ms = qint64(m_prefs->crossfadeSeconds()) * 1000;
+    const qint64 length = m_player ? m_player->duration() : 0;
+    const qint64 nextLength = qint64(m_queue.at(next).track.value(QStringLiteral("duration")).toInt()) * 1000;
+    if (length > 0) ms = qMin(ms, length / 2);
+    if (nextLength > 0) ms = qMin(ms, nextLength / 2);
+    return int(qMax<qint64>(0, ms));
 }
 
 // The backend reports its position in steps of a decoded block, some 90 ms
@@ -3031,15 +3056,17 @@ void Player::planHandover(qint64 pos) {
     if (m_player->playbackState() != QMediaPlayer::PlayingState || streamGrowing()) return;
     const qint64 length = m_player->duration() > 0 ? m_player->duration() : duration();
     if (length <= 0) return;
+    const int fade = crossfadeMs();
+    const qint64 lead = fade > 0 ? fade : kStartLeadMs;
     const qint64 left = length - playedNow(pos);
-    if (left > kStartLeadMs + kPlanAheadMs) return;
+    if (left > lead + kPlanAheadMs) return;
     if (!m_handoverTimer) {
         m_handoverTimer = new QTimer(this);
         m_handoverTimer->setSingleShot(true);
         m_handoverTimer->setTimerType(Qt::PreciseTimer);
         connect(m_handoverTimer, &QTimer::timeout, this, [this] { fireHandover(false); });
     }
-    m_handoverTimer->start(int(qMax<qint64>(0, left - kStartLeadMs)));
+    m_handoverTimer->start(int(qMax<qint64>(0, left - lead)));
 }
 
 void Player::fireHandover(bool ended) {
@@ -3047,15 +3074,16 @@ void Player::fireHandover(bool ended) {
     if (!ended && m_player->playbackState() != QMediaPlayer::PlayingState) return;
     const qint64 left = qMax<qint64>(0, m_player->duration() - playedNow(m_player->position()));
     // Planned off an older estimate: set again from this one.
-    if (!ended && left > kStartLeadMs + 2) {
-        m_handoverTimer->start(int(left - kStartLeadMs));
-        return;
-    }
+    const qint64 lead = crossfadeMs() > 0 ? crossfadeMs() : kStartLeadMs;
+    if (!ended && left > lead + 2) { m_handoverTimer->start(int(left - lead)); return; }
+    const int fade = ended ? 0 : int(qMin<qint64>(crossfadeMs(), left));
+    m_otherFade = fade > 0 ? 0.0 : 1.0;
+    applyLevel();
     m_other->play();
-    handOver(ended ? 0 : left);
+    handOver(fade, ended ? 0 : left);
 }
 
-void Player::handOver(qint64 oldLeftMs) {
+void Player::handOver(int fadeMs, qint64 oldLeftMs) {
     QMediaPlayer *was = m_player;
     QAudioOutput *wasOut = m_audioOut;
     m_player   = m_other;
@@ -3073,6 +3101,8 @@ void Player::handOver(qint64 oldLeftMs) {
     if (m_otherTap) m_otherTap->setParent(m_otherHolder);
 #endif
     m_otherGain = m_gain;
+    m_otherFade = 1.0;
+    m_fade      = fadeMs > 0 ? 0.0 : 1.0;
     m_otherRole = Other::Retiring;
     m_otherFile = std::exchange(m_mpdTempFile, nullptr);
     // A stream the old track plays from is served until it has played out.
@@ -3123,6 +3153,16 @@ void Player::handOver(qint64 oldLeftMs) {
     m_standTimer->start();
 #endif
 
+    if (fadeMs > 0) {
+        m_fadeMs = fadeMs;
+        m_fadeClock.start();
+        if (!m_fadeTimer) {
+            m_fadeTimer = new QTimer(this);
+            m_fadeTimer->setInterval(kFadeStepMs);
+            connect(m_fadeTimer, &QTimer::timeout, this, &Player::fadeStep);
+        }
+        m_fadeTimer->start();
+    }
     // Should the old backend never say it ended.
     if (!m_retireTimer) {
         m_retireTimer = new QTimer(this);
@@ -3134,3 +3174,14 @@ void Player::handOver(qint64 oldLeftMs) {
     schedulePersist();
 }
 
+void Player::fadeStep() {
+    const double t = m_fadeMs > 0 ? qMin(1.0, double(m_fadeClock.elapsed()) / m_fadeMs) : 1.0;
+    // Equal power, so the sum holds its loudness through the middle.
+    m_fade = std::sin(t * M_PI / 2.0);
+    if (m_otherRole == Other::Retiring) m_otherFade = std::cos(t * M_PI / 2.0);
+    if (t >= 1.0) {
+        m_fadeTimer->stop();
+        m_fade = 1.0;
+    }
+    applyLevel();
+}

@@ -31,6 +31,7 @@ constexpr int    kRate      = 44100;
 constexpr double kTone      = 0.5;     // amplitude of each track's sine
 constexpr int    kFirstMs   = 7000;    // past the preload's five seconds
 constexpr int    kSecondMs  = 2500;
+constexpr int    kLongMs    = 9000;    // room for a crossfade after the preload
 // A sine at kTone dips below this for a few samples at each crossing; a
 // run longer than kGapRunMs of it is a gap.
 constexpr double kQuiet     = 0.02;
@@ -71,13 +72,13 @@ public:
     }
 };
 
-QVariantMap row(qlonglong id, int ms) {
+QVariantMap row(qlonglong id, int ms, qlonglong albumId = 7) {
     QVariantMap t;
     t[QStringLiteral("id")]         = id;
     t[QStringLiteral("title")]      = QStringLiteral("T%1").arg(id);
     t[QStringLiteral("artists")]    = QStringLiteral("Artist");
     t[QStringLiteral("albumTitle")] = QStringLiteral("Album");
-    t[QStringLiteral("albumId")]    = qlonglong(7);
+    t[QStringLiteral("albumId")]    = albumId;
     t[QStringLiteral("duration")]   = (ms + 999) / 1000;
     return t;
 }
@@ -164,6 +165,7 @@ private slots:
         };
         QVERIFY(write(QStringLiteral("a.wav"), toneWav(kFirstMs, 1000.0)));
         QVERIFY(write(QStringLiteral("b.wav"), toneWav(kSecondMs, 1500.0)));
+        QVERIFY(write(QStringLiteral("c.wav"), toneWav(kLongMs, 1000.0)));
     }
 
     void init() { QSettings().clear(); }
@@ -171,7 +173,7 @@ private slots:
     // Two tracks of a queue follow each other with no silence in between:
     // the second is started on the first one's last sample.
     void theNextTrackFollowsWithoutAGap() {
-        const Measured m = play();
+        const Measured m = play(1, kFirstMs, 7, false);
         if (QTest::currentTestFailed() || m.soundMs == 0) return;
         QVERIFY2(m.gapMs <= kMaxGapMs,
                  qPrintable(QStringLiteral("%1 ms of silence between the tracks").arg(m.gapMs)));
@@ -182,22 +184,50 @@ private slots:
         QVERIFY2(cut <= kMaxCutMs, qPrintable(QStringLiteral("%1 ms were cut off").arg(cut)));
     }
 
+    // Crossfade on, between tracks of two albums: the two sound together for
+    // most of the fade, and there is still no silence.
+    void aCrossfadeOverlapsTheTracks() {
+        const Measured m = play(3, kLongMs, 8, true);
+        if (QTest::currentTestFailed() || m.soundMs == 0) return;
+        QVERIFY2(m.gapMs <= kMaxGapMs,
+                 qPrintable(QStringLiteral("%1 ms of silence in the crossfade").arg(m.gapMs)));
+        // 1.5 s, half the second track; both are louder than one for 70 % of it.
+        QVERIFY2(m.overlapMs > 800 && m.overlapMs < 1500,
+                 qPrintable(QStringLiteral("the tracks overlapped for %1 ms").arg(m.overlapMs)));
+    }
+
+    // Crossfade on, within one album played in order: gapless, as before.
+    void anAlbumInOrderIsNotCrossfaded() {
+        const Measured m = play(1, kFirstMs, 7, true);
+        if (QTest::currentTestFailed() || m.soundMs == 0) return;
+        QVERIFY2(m.gapMs <= kMaxGapMs,
+                 qPrintable(QStringLiteral("%1 ms of silence between the tracks").arg(m.gapMs)));
+        QVERIFY2(m.overlapMs <= kMaxOverlapMs,
+                 qPrintable(QStringLiteral("the tracks overlapped for %1 ms").arg(m.overlapMs)));
+        const double cut = kFirstMs + kSecondMs + m.gapMs - m.overlapMs - m.soundMs;
+        QVERIFY2(cut <= kMaxCutMs, qPrintable(QStringLiteral("%1 ms were cut off").arg(cut)));
+    }
+
 private:
-    // Plays tracks 1 and 2 and records what the sink played.
-    Measured play() {
-        const int first = 1, firstMs = kFirstMs;
+    // Plays track `first` of album `firstAlbum`, `firstMs` long, then track 2
+    // of album 7, the album that plays, and records what the sink played.
+    Measured play(qlonglong first, int firstMs, qlonglong firstAlbum, bool crossfade) {
         const QAudioDevice sink = nullSink();
         if (sink.isNull()) { QTest::qSkip("needs a null sink called tests_null: run under tests/with-null-sink.sh", __FILE__, __LINE__); return {}; }
 
         Prefs prefs;
         prefs.setAudioDevice(QString::fromUtf8(sink.id()));
         prefs.setNormalizeLoudness(false);
+        prefs.setCrossfade(crossfade);
+        prefs.setCrossfadeSeconds(2);
         TidalApi api;
         FileClient client{&api};
         client.files[1] = m_dir.filePath(QStringLiteral("a.wav"));
         client.files[2] = m_dir.filePath(QStringLiteral("b.wav"));
+        client.files[3] = m_dir.filePath(QStringLiteral("c.wav"));
         Player player{&client};
         player.setPrefs(&prefs);
+        player.setPlaybackSource(QStringLiteral("album"), QStringLiteral("7"), QStringLiteral("Album"));
         [&] { QTRY_VERIFY_WITH_TIMEOUT(player.findChild<QMediaPlayer *>(), 10000); }();
         if (QTest::currentTestFailed()) return {};
         // Never louder than this anywhere but on the null sink.
@@ -214,7 +244,7 @@ private:
         connect(&player, &Player::currentTrackChanged, this, [&] {
             if (player.currentTrackMap().value(QStringLiteral("id")).toLongLong() == 2) secondPlayed = true;
         });
-        player.playTracks(QVariantList{ row(first, firstMs), row(2, kSecondMs) }, 0);
+        player.playTracks(QVariantList{ row(first, firstMs, firstAlbum), row(2, kSecondMs) }, 0);
         [&] {
             QTRY_VERIFY_WITH_TIMEOUT(secondPlayed, firstMs + 8000);
             QTRY_VERIFY_WITH_TIMEOUT(player.stopped(), kSecondMs + 8000);

@@ -2233,6 +2233,9 @@ class StubPrefs : public QObject {
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
     // The playback switches, with the real Prefs' defaults.
     Q_PROPERTY(bool normalizeLoudness MEMBER m_normalizeLoudness NOTIFY normalizeLoudnessChanged)
+    Q_PROPERTY(bool crossfade MEMBER m_crossfade NOTIFY crossfadeChanged)
+    Q_PROPERTY(int crossfadeSeconds MEMBER m_crossfadeSeconds NOTIFY crossfadeSecondsChanged)
+    Q_PROPERTY(bool crossfadeAvailable MEMBER m_crossfadeAvailable CONSTANT)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -2364,6 +2367,8 @@ signals:
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
     void normalizeLoudnessChanged();
+    void crossfadeChanged();
+    void crossfadeSecondsChanged();
 
 private:
     QString m_theme    = QStringLiteral("sea");
@@ -2387,7 +2392,9 @@ private:
     bool    m_lyricsOtherSites = false;
     bool    m_lyricsAutoSync = true;
     bool    m_normalizeLoudness = true;
-
+    bool    m_crossfade = false;
+    int     m_crossfadeSeconds = 5;
+    bool    m_crossfadeAvailable = true;
     QString m_version = QStringLiteral("0.4.0");
 };
 

@@ -1754,6 +1754,18 @@
         <source>Plays every track about as loud as the others, by Tidal&apos;s own measure. An album played in its order keeps its own balance.</source>
         <translation>Spielt jeden Titel etwa so laut wie die anderen, nach Tidals eigener Messung. Ein Album, das in seiner Reihenfolge läuft, behält sein eigenes Verhältnis.</translation>
     </message>
+    <message>
+        <source>Crossfade between tracks</source>
+        <translation>Zwischen Titeln überblenden</translation>
+    </message>
+    <message>
+        <source>Crossfade length</source>
+        <translation>Dauer der Überblendung</translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation>%1 s</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>

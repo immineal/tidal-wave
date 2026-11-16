@@ -1187,6 +1187,7 @@ TestCase {
     function test_playback_switches_data() {
         return [
             { tag: "loudness", key: "normalizeLoudness", toggle: "settingsNormalizeToggle", fresh: true },
+            { tag: "crossfade", key: "crossfade", toggle: "settingsCrossfadeToggle", fresh: false },
         ]
     }
 
@@ -1201,6 +1202,28 @@ TestCase {
         compare(prefs[data.key], !data.fresh, "the switch did not change the setting")
         clickItem(h.panel, toggle)
         compare(prefs[data.key], data.fresh)
+        h.panel.close()
+    }
+
+    // The length shows only with the crossfade on, and writes whole seconds.
+    function test_the_crossfade_length_follows_its_switch() {
+        prefs.crossfade = false
+        prefs.crossfadeSeconds = 5
+        var h = openPanel(1280, 1200)
+        var slider = findByName(h.panel.contentItem, "settingsCrossfadeSlider")
+        verify(slider, "there is no crossfade length")
+        verify(!slider.visible, "the length shows with the crossfade off")
+        prefs.crossfade = true
+        verify(slider.visible, "the length is hidden with the crossfade on")
+        compare(slider.from, 1)
+        compare(slider.to, 12)
+        compare(slider.value, 5)
+        compare(findByName(h.panel.contentItem, "settingsCrossfadeValue").text, "5 s")
+        scrollTo(h.panel, slider)
+        slider.forceActiveFocus()
+        keyClick(Qt.Key_Right)
+        compare(prefs.crossfadeSeconds, 6, "the slider did not write the length")
+        prefs.crossfade = false
         h.panel.close()
     }
 

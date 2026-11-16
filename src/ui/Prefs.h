@@ -56,6 +56,11 @@ class Prefs : public QObject {
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
     // Tidal's ReplayGain applied to each track. On by default.
     Q_PROPERTY(bool normalizeLoudness READ normalizeLoudness WRITE setNormalizeLoudness NOTIFY normalizeLoudnessChanged)
+    // Crossfade at a track change, off by default, over crossfadeSeconds.
+    Q_PROPERTY(bool crossfade READ crossfade WRITE setCrossfade NOTIFY crossfadeChanged)
+    Q_PROPERTY(int crossfadeSeconds READ crossfadeSeconds WRITE setCrossfadeSeconds NOTIFY crossfadeSecondsChanged)
+    // The crossfade rides on the gapless change, which needs Qt 6.5.
+    Q_PROPERTY(bool crossfadeAvailable READ crossfadeAvailable CONSTANT)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -68,6 +73,8 @@ public:
     static constexpr int railBreakpoint  = 820;
     // Width of that rail.
     static constexpr int railWidth       = 68;
+    static constexpr int minCrossfadeSeconds = 1;
+    static constexpr int maxCrossfadeSeconds = 12;
 
     QString theme() const        { return m_theme; }
     bool    oledBlack() const    { return m_oledBlack; }
@@ -85,6 +92,9 @@ public:
     bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
     bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
     bool    normalizeLoudness() const { return m_normalizeLoudness; }
+    bool    crossfade() const         { return m_crossfade; }
+    int     crossfadeSeconds() const  { return m_crossfadeSeconds; }
+    bool    crossfadeAvailable() const { return QT_VERSION >= QT_VERSION_CHECK(6, 5, 0); }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -102,6 +112,8 @@ public:
     void setLyricsOtherSites(bool v);
     void setLyricsAutoSync(bool v);
     void setNormalizeLoudness(bool v);
+    void setCrossfade(bool v);
+    void setCrossfadeSeconds(int v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -128,6 +140,8 @@ signals:
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
     void normalizeLoudnessChanged();
+    void crossfadeChanged();
+    void crossfadeSecondsChanged();
 
 private:
     QSettings m_settings;
@@ -147,4 +161,6 @@ private:
     bool      m_lyricsOtherSites;
     bool      m_lyricsAutoSync;
     bool      m_normalizeLoudness;
+    bool      m_crossfade;
+    int       m_crossfadeSeconds;
 };

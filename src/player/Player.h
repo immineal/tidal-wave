@@ -304,19 +304,23 @@ private:
     void planHandover(qint64 pos);
     // ended: the current track has run out already.
     void fireHandover(bool ended);
-    void handOver(qint64 oldLeftMs);
+    void handOver(int fadeMs, qint64 oldLeftMs);
+    void fadeStep();
+    // The crossfade for the coming change, 0 for a gapless one.
+    int  crossfadeMs() const;
     // How long before the end a gapless change starts the next backend: what
     // the FFmpeg backend takes to sound, measured by tst_gapless.
     static constexpr qint64 kStartLeadMs  = 15;
     // How long ahead of that moment the timer is set.
     static constexpr qint64 kPlanAheadMs  = 1500;
+    static constexpr int    kFadeStepMs   = 20;
     static constexpr int    kRetireSlackMs = 2000;
 
     // ── Loudness ────────────────────────────────────────────────────────
     double gainFor(const StreamManifest &info, int row) const;
     // The row plays as part of its album, in the album's order.
     bool   albumInOrder(int row) const;
-    // Sets both outputs from the volume and the gains.
+    // Sets both outputs from the volume, the gains and the fades.
     void   applyLevel();
 
     struct Entry {
@@ -674,14 +678,19 @@ private:
     // The file and the served stream the retiring track still reads.
     QTemporaryFile      *m_otherFile   = nullptr;
     bool                 m_otherServes = false;
-    // Loudness factors of the two outputs.
+    // Loudness factors and fade factors of the two outputs.
     double               m_gain        = 1.0;
+    double               m_fade        = 1.0;
     double               m_otherGain   = 1.0;
+    double               m_otherFade   = 1.0;
     QTimer              *m_handoverTimer = nullptr;
+    QTimer              *m_fadeTimer     = nullptr;
     QTimer              *m_retireTimer   = nullptr;
+    QElapsedTimer        m_fadeClock;
     // Clock minus reported position, one per report; see notePosition().
     QElapsedTimer        m_wall;
     QList<qint64>        m_offsets;
+    int                  m_fadeMs        = 0;
     // The backend that took over reports buffering, which is no load.
     bool                 m_handoffSettling = false;
 };
