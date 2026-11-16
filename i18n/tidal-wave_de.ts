@@ -1956,6 +1956,11 @@
 <context>
     <name>TrackRow</name>
     <message>
+        <source>More options</source>
+        <comment>button on a track row, opens its menu</comment>
+        <translation>Weitere Optionen</translation>
+    </message>
+    <message>
         <source>Unknown track</source>
         <translation>Unbekannter Titel</translation>
     </message>

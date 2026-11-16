@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import TidalWave
 
 Item {
@@ -207,6 +208,9 @@ Item {
                 Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
                 HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
                 TapHandler   { onTapped: root.playClicked() }
+                ToolTip.visible: playHov.hovered
+                ToolTip.text: Accessible.name
+                ToolTip.delay: Theme.tooltipDelay
             }
         }
 

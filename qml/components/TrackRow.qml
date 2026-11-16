@@ -535,6 +535,7 @@ Item {
             // Context menu button, same reserved slot as the download button
             Item {
                 id: menuButton
+                objectName: "rowMenuButton"
                 readonly property bool shown: hov.hovered || root.activeFocus
                 opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
@@ -557,6 +558,10 @@ Item {
                         root.openMenu()
                     }
                 }
+                HoverHandler { id: menuHov }
+                ToolTip.visible: menuHov.hovered && menuButton.shown
+                ToolTip.text: qsTr("More options", "button on a track row, opens its menu")
+                ToolTip.delay: Theme.tooltipDelay
             }
         }
     }
