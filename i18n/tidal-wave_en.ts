@@ -1636,6 +1636,28 @@
         <source>Each download asks for a file name and format, starting in this folder.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Tidal account</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Logged in to Tidal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <comment>button that shows the full privacy notice</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the README</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>About</source>
+        <comment>settings section with the app&apos;s name and version</comment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>

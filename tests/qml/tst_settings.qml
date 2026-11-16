@@ -1438,13 +1438,113 @@ TestCase {
         h.panel.close()
     }
 
+    // ── account and about ────────────────────────────────────────────────
+
+    function sectionByKey(panel, key) {
+        var sections = collectByName(panel.contentItem, "settingsSection", [])
+        for (var i = 0; i < sections.length; ++i)
+            if (sections[i].key === key) return sections[i]
+        return null
+    }
+
+    // Account is the account: who is logged in, and the way out.
+    function test_account_shows_the_user_and_log_out() {
+        var h = openPanel(1280, 1200)
+        var account = sectionByKey(h.panel, "account")
+        verify(account, "there is no account section")
+        var name = findByName(account, "settingsAccountName")
+        verify(name && name.visible, "the account section names nobody")
+        compare(name.text, "robin")
+        var out = findByName(account, "settingsLogOut")
+        verify(out && out.visible, "Log out is not under Account")
+        verify(out.activeFocusOnTab, "Log out cannot be reached with the keyboard")
+        compare(findByName(account, "settingsVersion"), null,
+                "the version is under Account, which is about the account")
+        h.panel.close()
+    }
+
+    // No display name is known yet: the line still says who is logged in to
+    // what, with no address and no blank.
+    function test_account_without_a_name_still_says_logged_in() {
+        auth.setUsernameForTest("")
+        var h = openPanel(1280, 1200)
+        var name = findByName(sectionByKey(h.panel, "account"), "settingsAccountName")
+        verify(name.text.length > 0, "an account with no display name shows a blank")
+        h.panel.close()
+    }
+
+    function test_about_shows_the_version() {
+        var h = openPanel(1280, 1200)
+        var about = sectionByKey(h.panel, "about")
+        verify(about, "there is no About section")
+        var line = findByName(about, "settingsVersion")
+        verify(line, "About has no version line")
+        verify(line.text.indexOf(prefs.appVersion()) !== -1, "the version line says " + line.text)
+        h.panel.close()
+    }
+
+    // The long privacy paragraphs fold behind Details. The first line stays,
+    // and the control is a button a keyboard and a screen reader can press.
+    function test_privacy_details_fold_and_unfold() {
+        var h = openPanel(1280, 1200)
+        var privacy = sectionByKey(h.panel, "privacy")
+        var parts = collectByName(privacy, "settingsPrivacyText", [])
+        var details = findByName(privacy, "settingsPrivacyDetails")
+        verify(details, "the privacy section has no Details control")
+        verify(details.activeFocusOnTab, "Details cannot be reached with the keyboard")
+        compare(a11y.role(details), Accessible.Button)
+        verify(a11y.name(details).length > 0, "Details has no accessible name")
+
+        verify(parts[0].visible, "the one-line summary is folded away too")
+        for (var i = 1; i < parts.length; ++i)
+            verify(!parts[i].visible, "a long privacy paragraph shows before Details is opened")
+
+        scrollTo(h.panel, details)
+        details.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        settle(h.panel.contentItem)
+        for (i = 0; i < parts.length; ++i)
+            verify(parts[i].visible, "Details opened, and a paragraph is still hidden")
+
+        keyClick(Qt.Key_Space)
+        settle(h.panel.contentItem)
+        verify(!parts[parts.length - 1].visible, "Details does not fold again")
+
+        verify(a11y.press(details), "a screen reader cannot press Details")
+        settle(h.panel.contentItem)
+        verify(parts[parts.length - 1].visible, "pressing Details as a screen reader does nothing")
+        h.panel.close()
+    }
+
+    // The notice points at the README's full version, so it links to it.
+    function test_the_readme_is_a_link() {
+        var h = openPanel(1280, 1200)
+        openDetails(h.panel)
+        var link = findByName(sectionByKey(h.panel, "privacy"), "settingsReadmeLink")
+        verify(link && link.visible, "the README is named and not linked")
+        verify(link.activeFocusOnTab, "the README link cannot be reached with the keyboard")
+        compare(a11y.role(link), Accessible.Link)
+        var url = urlFromClick(h.panel, link)
+        compare(url, Feedback.privacyUrl())
+        verify(url.indexOf("https://github.com/") === 0 && url.indexOf("#privacy") > 0,
+               "the README link goes to " + url)
+        h.panel.close()
+    }
+
+    function openDetails(panel) {
+        var details = findByName(panel.contentItem, "settingsPrivacyDetails")
+        verify(details, "the privacy section has no Details control")
+        if (!details.expanded) details.activated()
+        settle(panel.contentItem)
+    }
+
     // ── the order of the panel ───────────────────────────────────────────
 
     // Top to bottom, by where the sections land. The shortcuts sit above the
-    // privacy notice, which is long prose and the natural end of the panel.
+    // privacy notice, folded behind Details, and About closes the panel.
     // Asserted as the whole list, so no section can be moved quietly.
     readonly property string sectionOrder:
-        "account,appearance,window,playback,performance,updates,feedback,shortcuts,experimental,privacy"
+        "account,appearance,window,playback,performance,updates,feedback,shortcuts,experimental,privacy,about"
 
     function test_sections_are_in_order() {
         var h = openPanel(1280, 1200)
@@ -1487,9 +1587,9 @@ TestCase {
                + " and the privacy note at y=" + py.toFixed(0)
                + "; the shortcuts belong above the note, clear of it")
 
-        // And the note really is the end of the panel.
+        // And nothing but About comes after the note.
         for (i = 0; i < sections.length; ++i)
-            verify(sections[i] === privacy
+            verify(sections[i] === privacy || sections[i].key === "about"
                    || sections[i].mapToItem(h.panel.contentItem, 0, 0).y < py,
                    "\"" + sections[i].heading + "\" sits below the privacy note")
 
@@ -1741,6 +1841,7 @@ TestCase {
 
     function test_privacy_text_is_present() {
         var h = openPanel(1280, 1200)
+        openDetails(h.panel)
         var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
         verify(parts.length >= 5,
                "the privacy block is " + parts.length + " paragraphs; the text is five")
@@ -1771,6 +1872,7 @@ TestCase {
     // has to be reachable by scrolling.
     function test_privacy_text_scrolls_into_view() {
         var h = openPanel(minWindowW, minWindowH)
+        openDetails(h.panel)
         var flick = scrollerOf(h.panel)
         verify(flick.contentHeight > flick.height,
                "the panel content is " + flick.contentHeight.toFixed(0)

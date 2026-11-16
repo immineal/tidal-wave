@@ -261,6 +261,7 @@ Popup {
             spacing: 0
 
             // ── account ──────────────────────────────────────────────────
+            // Who is logged in, and the way out, which asks first.
             Section {
                 heading: qsTr("Account")
                 key: "account"
@@ -271,21 +272,28 @@ Popup {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 1
+                        // The display name Auth reads with the session, never
+                        // an email address; empty until that answer is in.
                         Text {
-                            text: "Tidal Wave"; color: Theme.textPrimary
+                            objectName: "settingsAccountName"
+                            text: auth.username.length > 0 ? auth.username
+                                                           : qsTr("Tidal account")
+                            color: Theme.textPrimary
                             font.pixelSize: 14; font.bold: true
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                         Text {
-                            objectName: "settingsVersion"
-                            // The "v" is written here and not in the
-                            // translatable string: it belongs to the version
-                            // number, and prefs.appVersion() is bare.
-                            readonly property string ver: prefs.appVersion()
-                            text: qsTr("Version %1").arg(ver.length > 0 ? "v" + ver : ver)
+                            text: qsTr("Logged in to Tidal")
                             color: Theme.textDim; font.pixelSize: 12
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
+                    }
+                    PanelButton {
+                        objectName: "settingsLogOut"
+                        label: qsTr("Log out")
+                        danger: true
+                        Layout.alignment: Qt.AlignVCenter
+                        onActivated: logOutDialog.ask()
                     }
                 }
             }
@@ -911,9 +919,9 @@ Popup {
 
 
             // ── privacy ──────────────────────────────────────────────────
-            // Last on purpose: a wall of prose reads as the end of the panel,
-            // and tst_settings pins the order. One translatable string per
-            // paragraph, so a translator is never handed half-sentences.
+            // The one-line summary, and the full notice behind Details. One
+            // translatable string per paragraph, so a translator is never
+            // handed half-sentences. tst_settings pins the order.
             Section {
                 heading: qsTr("Privacy")
                 key: "privacy"
@@ -921,43 +929,71 @@ Popup {
                 PrivacyLine {
                     text: qsTr("Tidal Wave has no analytics and no telemetry.")
                 }
+                DetailsToggle {
+                    id: privacyDetails
+                    objectName: "settingsPrivacyDetails"
+                }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("What leaves this machine: Tidal (auth.tidal.com, api.tidal.com) gets your login, every search you make, and every page and track you open or play, with your access token. resources.tidal.com serves cover art, with no token attached. While casting only, your local network sees mDNS discovery and a short-lived HTTP server that serves the current track to the device; it is not authenticated, so anything on your network can read it while a track is casting. api.github.com gets the update check, at most once a day, with no account data; GitHub sees your IP address and which version you run. Lyrics sites get a track's details as set out below: lrclib.net unless you switch it off, the others only once you switch them on.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("What is kept here: your Tidal tokens as plain JSON readable only by you, deleted when you log out; your settings, pinned items and recently played; a cached index of your collection; lyrics found on other sites; and the timings made here for plain lyrics.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("Lyrics from other sites, for a track Tidal has no synced lyrics for, with the switches under Experimental. By default only lrclib.net is asked, and it gets the track's artist, title, album and length. With \"Lyrics from more sites\" on, these follow in this order: music.163.com (NetEase Cloud Music) gets the artist and title; lyrics.kugou.com (KuGou) the artist, title and length; genius.com the artist and title. music.163.com and lyrics.kugou.com are servers in China. The asking stops at the first site with synced lyrics. Each site asked sees your IP address and the app's name and version. Sites are asked only while Now Playing is open. What they find is kept on this machine: a track with synced lyrics is not looked up again, and one with plain lyrics or none is asked again after 30 days.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("Syncing plain lyrics, on by default, happens on this machine: the track's audio, which the app has downloaded to play it anyway, is analysed here, and nothing about it leaves the machine. The timings are kept next to the lyrics.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("Feedback: the two buttons under Feedback above hand a URL to your browser or to your mail client and do nothing else. Tidal Wave opens no connection of its own for them and sends nothing. Nothing leaves this machine until you send it in that program, and then it goes to whichever of the two you picked: a GitHub issue, which is public, or the tidal-wave@linu.li mailbox. What is filled in for you is the app version, the operating system and the two Qt versions - no account data, and nothing about what you have played.")
                 }
                 PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("The full version, with the source file behind every line, is at the bottom of the README.")
+                }
+                LinkLine {
+                    objectName: "settingsReadmeLink"
+                    visible: privacyDetails.expanded
+                    text: qsTr("Open the README")
+                    onActivated: app.openUrl(Feedback.privacyUrl())
                 }
             }
 
-            // ── signing out ────────────────────────────────────
-            // Not in the Account card and not a setting, so no heading and no
-            // card. Full width and alone below the last section, so it cannot
-            // be hit by accident on the way past.
-            PanelButton {
-                objectName: "settingsLogOut"
-                label: qsTr("Log out")
-                danger: true
-                Layout.fillWidth: true
-                Layout.leftMargin: root.sideMargin
-                Layout.rightMargin: root.sideMargin
-                Layout.topMargin: 28
+            // ── about ────────────────────────────────────────────────────
+            Section {
+                heading: qsTr("About", "settings section with the app's name and version")
+                key: "about"
                 Layout.bottomMargin: 20
-                onActivated: logOutDialog.ask()
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text {
+                        text: "Tidal Wave"; color: Theme.textPrimary
+                        font.pixelSize: 14; font.bold: true
+                        elide: Text.ElideRight; Layout.fillWidth: true
+                    }
+                    Text {
+                        objectName: "settingsVersion"
+                        // The "v" is written here and not in the
+                        // translatable string: it belongs to the version
+                        // number, and prefs.appVersion() is bare.
+                        readonly property string ver: prefs.appVersion()
+                        text: qsTr("Version %1").arg(ver.length > 0 ? "v" + ver : ver)
+                        color: Theme.textDim; font.pixelSize: 12
+                        elide: Text.ElideRight; Layout.fillWidth: true
+                    }
+                }
             }
         }
     }
@@ -1120,6 +1156,83 @@ Popup {
         lineHeight: 1.25
         wrapMode: Text.Wrap
         Layout.fillWidth: true
+    }
+
+    // Shows and hides what follows it. A button that says whether it is
+    // open, by its chevron and to a screen reader.
+    component DetailsToggle : Item {
+        id: dt
+        property bool expanded: false
+        signal activated()
+        onActivated: dt.expanded = !dt.expanded
+
+        implicitWidth: dtRow.implicitWidth + 8
+        implicitHeight: 28
+        Layout.preferredWidth: implicitWidth
+        activeFocusOnTab: true
+        Keys.onReturnPressed: dt.activated()
+        Keys.onSpacePressed:  dt.activated()
+        Accessible.role: Accessible.Button
+        Accessible.name: dtLabel.text
+        Accessible.checkable: true
+        Accessible.checked: dt.expanded
+        Accessible.onPressAction: dt.activated()
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusButton
+            color: dtHov.hovered ? Theme.surfaceHov : "transparent"
+            border.width: dt.activeFocus ? 2 : 0
+            border.color: Theme.accent
+        }
+        Row {
+            id: dtRow
+            anchors.verticalCenter: parent.verticalCenter
+            x: 4
+            spacing: 4
+            Text {
+                id: dtLabel
+                text: qsTr("Details", "button that shows the full privacy notice")
+                color: Theme.accentText
+                font.pixelSize: 12
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            VectorIcon {
+                name: dt.expanded ? "chevron-up" : "chevron-down"
+                color: dtLabel.color
+                width: 12; height: 12
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        HoverHandler { id: dtHov; cursorShape: Qt.PointingHandCursor }
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: dt.activated() }
+    }
+
+    // A line of text that opens a page in the browser. An Item around the
+    // Text, as PanelButton is: a TapHandler declared on a Text itself is
+    // never handed the tap inside a Popup.
+    component LinkLine : Item {
+        id: ll
+        property alias text: llText.text
+        signal activated()
+        implicitHeight: llText.implicitHeight
+        Layout.fillWidth: true
+        activeFocusOnTab: true
+        Keys.onReturnPressed: ll.activated()
+        Keys.onSpacePressed:  ll.activated()
+        Accessible.role: Accessible.Link
+        Accessible.name: llText.text
+        Accessible.onPressAction: ll.activated()
+        Text {
+            id: llText
+            width: parent.width
+            color: llHov.hovered || ll.activeFocus ? Theme.textPrimary : Theme.accentText
+            font.pixelSize: 12
+            font.underline: true
+            wrapMode: Text.Wrap
+        }
+        HoverHandler { id: llHov; cursorShape: Qt.PointingHandCursor }
+        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: ll.activated() }
     }
 
     // A flat dialog-sized button with a focus ring. PillButton is the hero-page

@@ -32,6 +32,9 @@ public:
     // The project's mailbox, the only address in the app.
     Q_INVOKABLE QString mailAddress() const;
 
+    // The privacy notice in full, the README's section on GitHub.
+    Q_INVOKABLE QString privacyUrl() const;
+
     // The four facts the issue body carries.
     Q_INVOKABLE QString appVersion() const;
     Q_INVOKABLE QString operatingSystem() const;

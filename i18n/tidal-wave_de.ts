@@ -1921,6 +1921,28 @@
         <comment>reduce motion: always animate</comment>
         <translation>Aus</translation>
     </message>
+    <message>
+        <source>Tidal account</source>
+        <translation>Tidal-Konto</translation>
+    </message>
+    <message>
+        <source>Logged in to Tidal</source>
+        <translation>Bei Tidal angemeldet</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <comment>button that shows the full privacy notice</comment>
+        <translation>Details</translation>
+    </message>
+    <message>
+        <source>Open the README</source>
+        <translation>README öffnen</translation>
+    </message>
+    <message>
+        <source>About</source>
+        <comment>settings section with the app&apos;s name and version</comment>
+        <translation>Über</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
