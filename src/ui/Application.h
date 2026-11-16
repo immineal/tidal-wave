@@ -202,6 +202,8 @@ private:
     // Called at startup when a tray exists, and again from the D-Bus watcher
     // if one turns up later.
     void createTrayIcon(const QIcon &icon);
+    // Relabels the tray menu after the window or the player changed.
+    void refreshTray();
     void checkFavorites(qint64 minGapMs);
 
     Prefs       *m_prefs  = nullptr;

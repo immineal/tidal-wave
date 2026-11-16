@@ -13,15 +13,21 @@ class QMenu;
 class TrayMenu : public QObject {
     Q_OBJECT
 public:
+    // What the labels follow. Application fills it in.
+    struct State {
+        bool windowShown = false;
+    };
+
     explicit TrayMenu(QObject *parent = nullptr);
     ~TrayMenu() override;
 
     QMenu *menu() const { return m_menu.get(); }
+    void setState(const State &state);
 
 signals:
-    void showRequested();
-    void hideRequested();
+    void toggleWindowRequested();
     void quitRequested();
+    void aboutToShow();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -30,7 +36,7 @@ private:
     void retranslate();
 
     std::unique_ptr<QMenu> m_menu;
-    QAction *m_show = nullptr;
-    QAction *m_hide = nullptr;
+    State    m_state;
+    QAction *m_toggleWindow = nullptr;
     QAction *m_quit = nullptr;
 };

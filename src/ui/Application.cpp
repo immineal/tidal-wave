@@ -895,6 +895,13 @@ int Application::run(int argc, char **argv) {
 #endif
     if (m_engine->rootObjects().isEmpty()) return -1;
 
+    // The tray's window entry follows the window.
+    if (auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+        connect(window, &QWindow::visibleChanged, this, &Application::refreshTray);
+        connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
+    }
+    refreshTray();
+
     // After the engine, so the request is never ahead of the first frame.
     m_update->startupCheck();
 
@@ -944,10 +951,13 @@ void Application::createTrayIcon(const QIcon &icon) {
     m_trayIcon->setToolTip(QStringLiteral("Tidal Wave"));
 
     m_trayMenu = new TrayMenu(this);
-    connect(m_trayMenu, &TrayMenu::showRequested, this, &Application::showWindow);
-    connect(m_trayMenu, &TrayMenu::hideRequested, this, &Application::hideWindow);
+    connect(m_trayMenu, &TrayMenu::toggleWindowRequested, this, &Application::toggleWindow);
     connect(m_trayMenu, &TrayMenu::quitRequested, this, &Application::quit);
+    // Also at opening, since a window manager can hide or minimise the window
+    // without a signal the app watches.
+    connect(m_trayMenu, &TrayMenu::aboutToShow, this, &Application::refreshTray);
     m_trayIcon->setContextMenu(m_trayMenu->menu());
+    refreshTray();
 
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
@@ -956,6 +966,20 @@ void Application::createTrayIcon(const QIcon &icon) {
     });
 
     m_trayIcon->show();
+}
+
+void Application::refreshTray() {
+    if (!m_trayMenu)
+        return;
+    TrayMenu::State state;
+    if (m_engine && !m_engine->rootObjects().isEmpty()) {
+        if (const auto *window = qobject_cast<QWindow *>(m_engine->rootObjects().first())) {
+            // As toggleWindow() sees it: a minimised window is brought back.
+            state.windowShown = window->isVisible()
+                             && window->windowState() != Qt::WindowMinimized;
+        }
+    }
+    m_trayMenu->setState(state);
 }
 
 #ifdef Q_OS_MACOS

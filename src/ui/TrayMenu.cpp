@@ -7,13 +7,11 @@
 #include <QMenu>
 
 TrayMenu::TrayMenu(QObject *parent) : QObject(parent), m_menu(std::make_unique<QMenu>()) {
-    m_show = m_menu->addAction(QString());
-    m_show->setObjectName(QStringLiteral("trayShow"));
-    connect(m_show, &QAction::triggered, this, &TrayMenu::showRequested);
-
-    m_hide = m_menu->addAction(QString());
-    m_hide->setObjectName(QStringLiteral("trayHide"));
-    connect(m_hide, &QAction::triggered, this, &TrayMenu::hideRequested);
+    // One entry for the window: a Hide next to an already hidden window did
+    // nothing.
+    m_toggleWindow = m_menu->addAction(QString());
+    m_toggleWindow->setObjectName(QStringLiteral("trayToggleWindow"));
+    connect(m_toggleWindow, &QAction::triggered, this, &TrayMenu::toggleWindowRequested);
 
     m_menu->addSeparator();
 
@@ -21,12 +19,18 @@ TrayMenu::TrayMenu(QObject *parent) : QObject(parent), m_menu(std::make_unique<Q
     m_quit->setObjectName(QStringLiteral("trayQuit"));
     connect(m_quit, &QAction::triggered, this, &TrayMenu::quitRequested);
 
+    connect(m_menu.get(), &QMenu::aboutToShow, this, &TrayMenu::aboutToShow);
     // A catalogue installed or removed reaches every widget as LanguageChange.
     m_menu->installEventFilter(this);
     retranslate();
 }
 
 TrayMenu::~TrayMenu() = default;
+
+void TrayMenu::setState(const State &state) {
+    m_state = state;
+    retranslate();
+}
 
 bool TrayMenu::eventFilter(QObject *watched, QEvent *event) {
     if (watched == m_menu.get() && event->type() == QEvent::LanguageChange)
@@ -35,7 +39,6 @@ bool TrayMenu::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void TrayMenu::retranslate() {
-    m_show->setText(tr("Show"));
-    m_hide->setText(tr("Hide"));
+    m_toggleWindow->setText(m_state.windowShown ? tr("Hide") : tr("Show"));
     m_quit->setText(tr("Quit"));
 }

@@ -47,6 +47,34 @@ private slots:
         QTRY_COMPARE(action(tray, "trayQuit")->text(), QStringLiteral("Quit"));
     }
 
+    // One entry for the window, not a Show beside a Hide that does nothing.
+    void oneEntryForTheWindow() {
+        TrayMenu tray;
+        int windowItems = 0;
+        for (QAction *a : tray.menu()->actions()) {
+            if (a->text() == QLatin1String("Show") || a->text() == QLatin1String("Hide"))
+                ++windowItems;
+        }
+        QCOMPARE(windowItems, 1);
+    }
+
+    void theWindowEntrySaysWhatItDoes() {
+        TrayMenu tray;
+        QAction *toggle = action(tray, "trayToggleWindow");
+        QVERIFY(toggle);
+        TrayMenu::State s;
+        s.windowShown = false;
+        tray.setState(s);
+        QCOMPARE(toggle->text(), QStringLiteral("Show"));
+        s.windowShown = true;
+        tray.setState(s);
+        QCOMPARE(toggle->text(), QStringLiteral("Hide"));
+
+        QSignalSpy toggled(&tray, &TrayMenu::toggleWindowRequested);
+        toggle->trigger();
+        QCOMPARE(toggled.count(), 1);
+    }
+
 private:
     QTemporaryDir m_dir;
 };
