@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <QHash>
 #include <QTemporaryFile>
+#include <QElapsedTimer>
 #include <functional>
 #include <memory>
 #include "api/TidalClient.h"
@@ -225,6 +226,8 @@ public:
     // Public so the tests can round-trip them.
     void savePlaybackState();
     void restorePlaybackState();
+    // Waits until the queue's rows are written out.
+    void flushPlaybackState();
 
 signals:
     void playingChanged     (bool playing);
@@ -420,7 +423,6 @@ private:
 
     // Debounces the writes.
     void schedulePersist();
-    QByteArray serializeQueue() const;
     QString    settingsPrefix() const;
 
     TidalClient         *m_client;
@@ -519,6 +521,16 @@ private:
     QTimer              *m_persistTimer  = nullptr;
     // Set while restorePlaybackState() runs, so it does not save what it read.
     bool                 m_suspendPersist = false;
+    // Writes the rows off the GUI thread; see Player.cpp.
+    struct QueueStore;
+    std::shared_ptr<QueueStore> m_queueStore;
+    // The rows changed since they were last handed to the store.
+    bool                 m_rowsDirty      = true;
+    // Numbers each write of the rows; the cursor names the one it goes with.
+    quint64              m_rowsGeneration = 0;
+    // Since the position was last saved, for a save now and then in play.
+    QElapsedTimer        m_positionSaved;
+    static constexpr qint64 kPositionSaveMs = 30000;
     // The load under way comes up paused: pause was pressed while it loads.
     bool                 m_restorePaused  = false;
     // A load is under way and ends in playback. Lowered with the loading flag.

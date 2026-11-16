@@ -7,6 +7,10 @@
 #include <QTest>
 #include <QAudio>
 #include <QAudioOutput>
+#include <QDataStream>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include <QHash>
@@ -140,6 +144,9 @@ private slots:
 
     void init() {
         QSettings().clear();   // every test starts from a fresh install
+        const QDir dir = rowsDir();
+        for (const QString &f : dir.entryList({ QStringLiteral("queue-*") }, QDir::Files))
+            QFile::remove(dir.filePath(f));
     }
 
     // ── the knobs ───────────────────────────────────────────────────────────
@@ -657,24 +664,28 @@ private slots:
 
     // ── a stale or enormous queue must not slow the launch ──────────────────
 
-    // What quitting costs and what the next launch costs. The window around the
-    // cursor is capped, so a 5000-row playlist stays cheap at both ends. The
-    // ceiling is far above the capped cost and far below the uncapped one.
-    void anEnormousQueueCostsNeitherEndAnythingNoticeable() {
-        constexpr int kHuge = 5000;
-        constexpr qint64 kCeilingMs = 250;
+    // The whole queue comes back, however long, and saving it costs the GUI
+    // thread next to nothing: the rows are written on a worker.
+    void anEnormousQueueComesBackWholeAndCostsTheGuiThreadNothing() {
+        constexpr int kHuge = 10000;
+        constexpr qint64 kCeilingMs = 50;
 
-        qint64 saveMs = 0;
+        qint64 saveMs = 0, writtenMs = 0;
+        QList<qlonglong> expected;
         {
             Launch a;
             QVERIFY(a.settle());
             a.p().playTracks(contextOf(1000, kHuge), kHuge / 2);
             a.p().addToQueue(contextOf(90000, 20));
+            a.p().seek(42000);
+            expected = ids(a.p().queueTracks());
 
             QElapsedTimer t;
             t.start();
             a.p().savePlaybackState();
             saveMs = t.elapsed();
+            a.p().flushPlaybackState();
+            writtenMs = t.elapsed();
         }
 
         QElapsedTimer t;
@@ -683,29 +694,98 @@ private slots:
         const qint64 restoreMs = t.elapsed();
         Player &player = b.p();
 
-        const int stored =
-            QSettings().value(QStringLiteral("user_%1/playback/queue").arg(kUser))
-                .toByteArray().size();
+        qint64 stored = 0;
+        const QFileInfoList files = rowsDir()
+            .entryInfoList({ QStringLiteral("queue-*") }, QDir::Files);
+        for (const QFileInfo &f : files) stored += f.size();
 
-        qInfo("a %d-row queue: %lldms to save, %lldms to come back, %d bytes stored, %d rows kept",
-              kHuge, saveMs, restoreMs, stored, player.queueCount());
+        qInfo("a %d-row queue: %lldms of the GUI thread to save, %lldms until written, "
+              "%lldms to come back, %lld bytes stored, %d rows kept",
+              kHuge + 20, saveMs, writtenMs, restoreMs, stored, player.queueCount());
 
         QVERIFY2(saveMs < kCeilingMs,
-                 qPrintable(QStringLiteral("saving a %1-row queue took %2ms")
+                 qPrintable(QStringLiteral("saving a %1-row queue held the GUI thread for %2ms")
                                 .arg(kHuge).arg(saveMs)));
-        QVERIFY2(restoreMs < kCeilingMs,
+        QVERIFY2(restoreMs < 1000,
                  qPrintable(QStringLiteral("coming back to a %1-row queue took %2ms")
                                 .arg(kHuge).arg(restoreMs)));
 
-        // Capped, and still a usable session: what was playing, some of what
-        // led up to it, everything the user queued, and plenty of what is next.
-        QVERIFY2(player.queueCount() < kHuge,
-                 "the whole queue was stored, so it can grow without limit");
+        QCOMPARE(ids(player.queueTracks()), expected);
         QCOMPARE(currentId(player), 1000 + kHuge / 2);
         QCOMPARE(player.manualCount(), 20);
-        QVERIFY(player.queuePlayed().count()  > 0);
-        QVERIFY(player.queueContext().count() > 100);
+        QCOMPARE(player.position(), qint64(42000));
         QVERIFY(b.settle());
+    }
+
+    // A move along the queue saves the cursor and leaves the rows alone.
+    void aStepSavesTheCursorAndNotTheRows() {
+        Launch a;
+        QVERIFY(a.settle());
+        a.p().playTracks(contextOf(1000, 50), 0);
+        a.p().savePlaybackState();
+        const QString key = QStringLiteral("user_%1/playback/queueGeneration").arg(kUser);
+        const qulonglong first = QSettings().value(key).toULongLong();
+
+        a.p().next();
+        a.p().seek(5000);
+        a.p().savePlaybackState();
+        QCOMPARE(QSettings().value(key).toULongLong(), first);
+
+        a.p().addToQueue(one(9001));
+        a.p().savePlaybackState();
+        QCOMPARE(QSettings().value(key).toULongLong(), first + 1);
+    }
+
+    // Saves in quick succession: the last state is the one that lands.
+    void theLastOfManySavesWins() {
+        {
+            Launch a;
+            QVERIFY(a.settle());
+            a.p().playTracks(contextOf(1000, 3000), 0);
+            for (int i = 0; i < 20; ++i) {
+                a.p().addToQueue(one(9000 + i));
+                a.p().savePlaybackState();
+            }
+        }
+        Launch b;
+        QVERIFY(b.settle());
+        QCOMPARE(b.p().manualCount(), 20);
+        QCOMPARE(b.p().queueCount(), 3020);
+        QCOMPARE(ids(b.p().queueManual()).constLast(), qlonglong(9019));
+    }
+
+    // The window of rows an earlier version kept in the settings comes back,
+    // and the next save moves it into the file.
+    void aQueueSavedByAnEarlierVersionComesBack() {
+        const QString p = QStringLiteral("user_%1/playback/").arg(kUser);
+        {
+            QByteArray raw;
+            QDataStream out(&raw, QIODevice::WriteOnly);
+            out.setVersion(QDataStream::Qt_6_0);
+            out << quint32(1) << qint32(4);
+            for (qlonglong id : { 1000, 1001, 9001, 1002 })
+                out << trackOf(id, QStringLiteral("T%1").arg(id)) << (id == 9001)
+                    << qint32(id == 9001 ? -1 : int(id - 1000));
+            out << qint32(1) << qint32(1) << qint64(7000);
+            QSettings s;
+            s.setValue(p + QStringLiteral("queue"), qCompress(raw, 6));
+        }
+        {
+            Launch b;
+            QVERIFY(b.settle());
+            QCOMPARE(ids(b.p().queueTracks()), (QList<qlonglong>{1000, 1001, 9001, 1002}));
+            QCOMPARE(currentId(b.p()), 1001);
+            QCOMPARE(ids(b.p().queueManual()), (QList<qlonglong>{9001}));
+            QCOMPARE(b.p().position(), qint64(7000));
+            b.p().savePlaybackState();
+        }
+        QVERIFY(!QSettings().contains(p + QStringLiteral("queue")));
+        Launch c;
+        QVERIFY(c.settle());
+        QCOMPARE(ids(c.p().queueTracks()), (QList<qlonglong>{1000, 1001, 9001, 1002}));
+        QCOMPARE(currentId(c.p()), 1001);
+        QCOMPARE(c.p().manualCount(), 1);
+        QCOMPARE(c.p().position(), qint64(7000));
     }
 
     // A value written by another build, or a corrupted one, must not take the
@@ -722,6 +802,27 @@ private slots:
         QCOMPARE(a.p().queueCount(), 0);
         QCOMPARE(a.p().queueIndex(), -1);
         QCOMPARE(a.p().shuffle(), true);   // the readable parts still apply
+    }
+
+    // Nor does a rows file cut short or written by something else.
+    void aDamagedRowsFileIsIgnored() {
+        {
+            Launch a;
+            QVERIFY(a.settle());
+            a.p().playTracks(contextOf(1000, 200), 3);
+            a.p().savePlaybackState();
+        }
+        const QStringList files = rowsDir().entryList({ QStringLiteral("queue-*") }, QDir::Files);
+        QCOMPARE(files.size(), 1);
+        QFile f(rowsDir().filePath(files.constFirst()));
+        QVERIFY(f.open(QIODevice::ReadWrite));
+        QVERIFY(f.resize(f.size() / 2));
+        f.close();
+
+        Launch b;
+        QVERIFY(b.settle());
+        QCOMPARE(b.p().queueCount(), 0);
+        QCOMPARE(b.p().queueIndex(), -1);
     }
 
     // A restore that lands in the middle of a session would pull the queue out
@@ -767,6 +868,9 @@ private slots:
     }
 
 private:
+    // The rows are saved beside the settings file.
+    static QDir rowsDir() { return QFileInfo(QSettings().fileName()).absoluteDir(); }
+
     QTemporaryDir m_settingsDir;
 };
 
