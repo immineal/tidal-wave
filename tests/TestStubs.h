@@ -2427,7 +2427,7 @@ private:
     bool    m_lyricsOtherSites = false;
     bool    m_lyricsAutoSync = true;
     bool    m_normalizeLoudness = true;
-    bool    m_autoplay = true;
+    bool    m_autoplay = false;
     bool    m_crossfade = false;
     int     m_crossfadeSeconds = 5;
     bool    m_crossfadeAvailable = true;
