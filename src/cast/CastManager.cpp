@@ -22,6 +22,10 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     connect(m_session, &CastSession::connected,    this, &CastManager::onSessionConnected);
     connect(m_session, &CastSession::disconnected, this, &CastManager::onSessionDisconnected);
     connect(m_session, &CastSession::error, this, [this](const QString &m) { emit error(m); });
+    // Before disconnected(), which clears the name.
+    connect(m_session, &CastSession::endedOnDevice, this, [this] {
+        if (m_connected && !m_deviceName.isEmpty()) emit endedOnDevice(m_deviceName);
+    });
 
     // Device media status → Player (feeds the existing position/duration/playing UI).
     connect(m_session, &CastSession::positionChanged, this,

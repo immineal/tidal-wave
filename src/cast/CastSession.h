@@ -47,6 +47,8 @@ public:
 signals:
     void connected();               // receiver launched + virtual connection open
     void disconnected();
+    // The device ended the cast itself, just before disconnected().
+    void endedOnDevice();
     void error(const QString &msg);
     void playingChanged(bool playing);
     void positionChanged(double sec);
