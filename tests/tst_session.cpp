@@ -102,9 +102,10 @@ public:
     bool        refuseAll = false;      // 401 for a good token as well
     QByteArray  refusal = kExpired;
     TokenAnswer tokenAnswer = Issue;
-    // The profile answer waits for releaseProfiles(), or comes this late.
+    // The profile answer waits for releaseProfiles(), or comes this late,
+    // as on a loaded machine.
     bool        holdProfile = false;
-    int         profileDelayMs = 0;
+    int         profileDelayMs = 50;
     int         tokenRequests = 0;
     int         refused = 0;            // 401 answers given by the API
     QList<Seen> api;
@@ -301,13 +302,16 @@ class TestSession : public QObject {
     }
 
     // Signs in from a saved session and waits until the start-up requests
-    // (sessions, users/7) are answered.
+    // (sessions, users/7) are answered and the name they bring is saved.
     void signIn(Rig &rig, qint64 expiresInSecs = 3600)
     {
         saveSession(expiresInSecs);
         rig.auth.loadCredentials();
         QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
         QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/7")).size(), 1, 5000);
+        // The server has seen the request; its answer lands and is saved later.
+        if (!rig.tidal.holdProfile)
+            QTRY_COMPARE_WITH_TIMEOUT(rig.auth.username(), QStringLiteral("Robin"), 5000);
         QTest::qWait(20);
         rig.tidal.api.clear();
     }
