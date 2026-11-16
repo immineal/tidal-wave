@@ -384,10 +384,31 @@ Rectangle {
                     Rectangle {
                         required property string modelData
                         required property int    index
-                        objectName: index === 0 ? "collectionSortDefault" : ""
+                        id: sortPill
+                        objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
                         height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusChip
                         color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
+                        // One of three, so it reads as a radio button. The ring
+                        // is outside the pill, apart from the chosen fill.
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: root.sortMode = index
+                        Keys.onSpacePressed:  root.sortMode = index
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: modelData
+                        Accessible.description: hint
+                        Accessible.checkable: true
+                        Accessible.checked: root.sortMode === index
+                        Accessible.onPressAction: root.sortMode = index
+                        Accessible.onToggleAction: root.sortMode = index
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            radius: Theme.radiusChip
+                            color: "transparent"
+                            border.width: sortPill.activeFocus ? 2 : 0
+                            border.color: Theme.accent
+                        }
                         Text {
                             id: sortLbl; anchors.centerIn: parent
                             text: modelData
@@ -400,7 +421,7 @@ Rectangle {
                             onClicked: root.sortMode = index
                         }
                         HoverHandler { id: sortHov }
-                        ToolTip.visible: hint.length > 0 && sortHov.hovered
+                        ToolTip.visible: hint.length > 0 && (sortHov.hovered || sortPill.activeFocus)
                         ToolTip.text: hint
                         ToolTip.delay: 600
                     }
@@ -520,7 +541,9 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                // A FocusScope, so the grid's focus on its current cell lands on
+                // the card inside; the grid is one tab stop and the arrows walk it.
                 id: albumDelegate
                 width: albumsGrid.cellWidth
                 height: albumsGrid.cellHeight
@@ -528,6 +551,9 @@ Rectangle {
                 required property int index
 
                 MediaCard {
+                    focus: true
+                    tabStop: albumDelegate.GridView.isCurrentItem || albumDelegate.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) albumDelegate.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(albumsGrid.cellWidth)
                     title: modelData.title
@@ -586,7 +612,7 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
                 id: artistDelegate
                 width: artistsGrid.cellWidth
                 height: artistsGrid.cellHeight
@@ -594,6 +620,9 @@ Rectangle {
                 required property int index
 
                 MediaCard {
+                    focus: true
+                    tabStop: artistDelegate.GridView.isCurrentItem || artistDelegate.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) artistDelegate.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(artistsGrid.cellWidth)
                     title: modelData.name
@@ -641,10 +670,14 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                id: playlistsGridCell
                 width: playlistsGrid.cellWidth
                 height: playlistsGrid.cellHeight
                 MediaCard {
+                    focus: true
+                    tabStop: playlistsGridCell.GridView.isCurrentItem || playlistsGridCell.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) playlistsGridCell.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     objectName: "collectionPlaylistCard"
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(playlistsGrid.cellWidth)
@@ -727,10 +760,14 @@ Rectangle {
             Component.onCompleted: contentX = -leftMargin
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Item {
+            delegate: FocusScope {
+                id: mixesGridCell
                 width: mixesGrid.cellWidth
                 height: mixesGrid.cellHeight
                 MediaCard {
+                    focus: true
+                    tabStop: mixesGridCell.GridView.isCurrentItem || mixesGridCell.GridView.view.currentIndex < 0
+                    onKeyboardOnChanged: if (keyboardOn) mixesGridCell.GridView.view.positionViewAtIndex(index, GridView.Contain)
                     anchors.centerIn: parent
                     cardSize: root.gridCardSize(mixesGrid.cellWidth)
                     title: modelData.title

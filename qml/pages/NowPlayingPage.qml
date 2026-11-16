@@ -1234,9 +1234,17 @@ Rectangle {
                             // mix or liked songs it started from.
                             Text {
                                 id: sourceLink
+                                objectName: "nowPlayingSourceLink"
                                 visible: hasTrack && player.sourceName.length > 0
+                                activeFocusOnTab: visible
+                                Keys.onReturnPressed: goToSource()
+                                Keys.onSpacePressed:  goToSource()
+                                Accessible.role: Accessible.Link
+                                Accessible.name: text
+                                Accessible.onPressAction: goToSource()
+                                font.underline: activeFocus
                                 text: qsTr("Playing from: %1").arg(player.sourceName)
-                                color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
+                                color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: 12
                                 font.letterSpacing: 0.5
                                 elide: Text.ElideRight

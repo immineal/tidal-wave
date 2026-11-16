@@ -923,15 +923,25 @@ Item {
                 // First in the popup: the list underneath scrolls, and a
                 // row at the bottom of a scrolling list is rarely seen.
                 Item {
+                    id: pickerNewRow
                     objectName: "pickerNewPlaylistRow"
                     width: parent.width
                     height: 44
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: root.openNewPlaylist()
+                    Keys.onEnterPressed:  root.openNewPlaylist()
+                    Keys.onSpacePressed:  root.openNewPlaylist()
+                    Accessible.role: Accessible.Button
+                    Accessible.name: pickerNewLabel.text
+                    Accessible.onPressAction: root.openNewPlaylist()
 
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: 4
                         radius: Theme.radiusRow
                         color: newPlHov.hovered ? Theme.surfaceHov : "transparent"
+                        border.width: pickerNewRow.activeFocus ? 2 : 0
+                        border.color: Theme.accent
 
                         HoverHandler { id: newPlHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler  { onTapped: root.openNewPlaylist() }
@@ -963,6 +973,7 @@ Item {
                                 }
                             }
                             Text {
+                                id: pickerNewLabel
                                 objectName: "pickerNewPlaylistLabel"
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: qsTr("New playlist…")
@@ -986,24 +997,35 @@ Item {
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: Item {
+                        id: pickRow
                         width: plPickerList.width
                         height: 44
+                        function choose() {
+                            var intoTitle = model.title
+                            bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
+                                                       function (ok) {
+                                root.confirmAddedToPlaylist(ok === true, intoTitle)
+                            })
+                            trackPicker.close()
+                        }
+                        // One tab stop for the list, the current row; the
+                        // ListView walks it with Up and Down.
+                        activeFocusOnTab: activeFocus || ListView.isCurrentItem || plPickerList.currentIndex < 0
+                        Keys.onReturnPressed: choose()
+                        Keys.onEnterPressed:  choose()
+                        Keys.onSpacePressed:  choose()
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: model.title
+                        Accessible.onPressAction: choose()
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: 4
                             radius: Theme.radiusRow
                             color: plHov2.hovered ? Theme.surfaceHov : "transparent"
+                            border.width: pickRow.activeFocus ? 2 : 0
+                            border.color: Theme.accent
                             HoverHandler { id: plHov2 }
-                            TapHandler {
-                                onTapped: {
-                                    var intoTitle = model.title
-                                    bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
-                                                               function (ok) {
-                                        root.confirmAddedToPlaylist(ok === true, intoTitle)
-                                    })
-                                    trackPicker.close()
-                                }
-                            }
+                            TapHandler { onTapped: pickRow.choose() }
                             Row {
                                 anchors.left: parent.left; anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter

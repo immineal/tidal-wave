@@ -272,10 +272,18 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Text {
+                    objectName: "artistShowAllTracks"
                     visible: root.topTracks.length > 5
                     text: root.showAllTracks ? qsTr("Show less") : qsTr("Show all")
-                    color: showAllHov.hovered ? Theme.textPrimary : Theme.textSec
+                    color: showAllHov.hovered || activeFocus ? Theme.textPrimary : Theme.textSec
                     font.pixelSize: 13
+                    font.underline: activeFocus
+                    activeFocusOnTab: visible
+                    Keys.onReturnPressed: root.showAllTracks = !root.showAllTracks
+                    Keys.onSpacePressed:  root.showAllTracks = !root.showAllTracks
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    Accessible.onPressAction: root.showAllTracks = !root.showAllTracks
                     HoverHandler { id: showAllHov }
                     TapHandler { onTapped: root.showAllTracks = !root.showAllTracks }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
