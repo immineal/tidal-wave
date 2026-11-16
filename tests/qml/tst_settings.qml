@@ -803,12 +803,18 @@ TestCase {
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
         verify(toggle && toggle.checked, "a stored on came back off")
+        var rainbow = findByName(toggle, "toggleRainbow")
+        verify(rainbow && rainbow.visible,
+               "the switch is on and its track is not a rainbow")
         h.panel.close()
 
         prefs.tintedGreys = false
         var h2 = openPanel(1280, 1200)
         var toggle2 = findByName(h2.panel.contentItem, "settingsTintedToggle")
         verify(toggle2 && !toggle2.checked, "a stored off came back on")
+        var rainbow2 = findByName(toggle2, "toggleRainbow")
+        verify(rainbow2 && !rainbow2.visible,
+               "the switch is off and still painted as a rainbow")
         h2.panel.close()
     }
 
@@ -817,33 +823,119 @@ TestCase {
         if (!item) return out
         if (item.color !== undefined && item.border !== undefined)
             out.push({ color: String(item.color), border: item.border.width,
+                       visible: item.visible,
                        gradient: !!item.gradient && item.visible })
         for (var i = 0; i < item.children.length; i++) toggleFills(item.children[i], out)
         return out
     }
 
-    // The colour switch is the standard switch: on, it paints exactly what
-    // the pure-black switch paints on, and no gradient anywhere.
-    function test_the_colour_switch_is_drawn_like_every_other_switch() {
+    // grabImage() crops at an item's position in its parent, so the window's
+    // content item is grabbed, twice as the first comes back blank, and the
+    // item is read in window coordinates, `pad` pixels past its edge.
+    function pixelsOf(item, pad) {
+        var root = item.Window.window.contentItem
+        grabImage(root)
+        var img = grabImage(root)
+        var p = item.mapToItem(null, 0, 0)
+        var out = []
+        for (var y = -pad; y < item.height + pad; y++)
+            for (var x = -pad; x < item.width + pad; x++)
+                out.push(String(img.pixel(Math.round(p.x) + x, Math.round(p.y) + y)))
+        return out
+    }
+
+    // Checked, the colour switch is a still glass rainbow with no frame, the
+    // white knob on top, and its glow kept clear of the words beside it.
+    function test_the_rainbow_is_a_still_picture_with_no_frame() {
+        app.setReducedMotionForTest(false)
         prefs.theme = "sea"
         prefs.tintedGreys = true
-        prefs.oledBlack = true
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
+        verify(toggle && toggle.checked)
+        verify(!toggle.activeFocus, "this case assumes the toggle is not focused")
+        var rainbow = findByName(toggle, "toggleRainbow")
+        verify(rainbow && rainbow.visible)
+        tryCompare(rainbow, "status", Image.Ready)
+        verify(rainbow.sourceSize.width > 0, "the rainbow picture did not load")
+
+        // No solid fill or ring around it: the picture is the control.
+        var fills = toggleFills(toggle, [])
+        compare(fills[0].color, String(Qt.rgba(0, 0, 0, 0)),
+                "the track paints a fill under the rainbow")
+        compare(fills[0].border, 0,
+                "the rainbow switch has a " + fills[0].border + "px frame around it")
+
+        // Still: two looks 400ms apart are the same picture, and it is a
+        // picture: more than a handful of colours.
+        var first = pixelsOf(toggle, 4)
+        var distinct = {}
+        for (var k = 0; k < first.length; k++) distinct[first[k]] = true
+        verify(Object.keys(distinct).length > 100,
+               "the rainbow paints " + Object.keys(distinct).length + " colours")
+        wait(400)
+        compare(pixelsOf(toggle, 4), first, "the rainbow is animating")
+
+        // The knob is white in the middle, not tinted by the glass under it.
+        var knob = fills[1]
+        compare(knob.color, String(Theme.accentInk), "the knob is not white")
+        var w = toggle.width + 8
+        compare(first[(4 + toggle.height / 2) * w + 4 + toggle.width - 11],
+                String(Theme.accentInk), "the knob's middle is not white")
+
+        // The glow stays inside the gap to the label.
+        var label = findByName(h.panel.contentItem, "settingsTintedLabel")
+        var note = findByName(h.panel.contentItem, "settingsTintedNote")
+        var glowLeft = rainbow.mapToItem(null, 0, 0).x
+        verify(glowLeft >= label.mapToItem(null, label.width, 0).x
+               && glowLeft >= note.mapToItem(null, note.width, 0).x,
+               "the rainbow's glow reaches over the words beside it")
+
+        // Reduced motion leaves it exactly as it is.
+        app.setReducedMotionForTest(true)
+        compare(pixelsOf(toggle, 4), first, "reduced motion changed the rainbow")
+        app.setReducedMotionForTest(false)
+
+        clickItem(h.panel, toggle)
+        verify(!rainbow.visible, "the switch is off and still a rainbow")
+        compare(toggleFills(toggle, [])[0].border, 1,
+                "switched off, the toggle lost the border every other toggle has")
+
+        // No other switch carries the picture.
+        var black = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(black && black.visible)
+        verify(!findByName(black, "toggleRainbow"),
+               "the pure-black switch is painted as a rainbow")
+        h.panel.close()
+    }
+
+    // Off, the colour switch is the standard switch: the same fills, the same
+    // border and the same pixels as the pure-black switch when that is off.
+    function test_the_colour_switch_off_looks_like_every_other_switch() {
+        prefs.theme = "sea"
+        prefs.tintedGreys = false
+        prefs.oledBlack = false
         var h = openPanel(1280, 1200)
         var tinted = findByName(h.panel.contentItem, "settingsTintedToggle")
         var black  = findByName(h.panel.contentItem, "settingsOledToggle")
-        verify(tinted && tinted.checked && black && black.checked)
+        verify(tinted && !tinted.checked && black && !black.checked)
         verify(!tinted.activeFocus && !black.activeFocus)
+        // Let the knob finish any slide before the pixels are compared.
+        wait(Theme.dur(Theme.motionFast) + 100)
 
         var a = toggleFills(tinted, [])
         var b = toggleFills(black, [])
-        for (var i = 0; i < a.length; i++)
-            verify(!a[i].gradient, "the colour switch still paints a gradient")
         compare(a.length, b.length, "the two switches are built differently")
         for (var j = 0; j < a.length; j++) {
+            verify(!a[j].gradient, "the colour switch paints a gradient while off")
             compare(a[j].color, b[j].color, "fill " + j + " differs from the standard switch")
             compare(a[j].border, b[j].border, "border " + j + " differs from the standard switch")
+            compare(a[j].visible, b[j].visible, "fill " + j + " shows on one switch only")
         }
-        prefs.oledBlack = false
+        var rainbow = findByName(tinted, "toggleRainbow")
+        verify(rainbow && !rainbow.visible, "the rainbow shows while the switch is off")
+        compare(pixelsOf(tinted, 4), pixelsOf(black, 4),
+                "off, the colour switch does not look like the standard switch")
         h.panel.close()
     }
 

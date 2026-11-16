@@ -248,6 +248,9 @@ qt_add_qml_module(tidalwave_qml
     RESOURCES
         assets/icon.png
         assets/icon.svg
+        assets/toggle-rainbow.png
+        assets/toggle-rainbow@2x.png
+        assets/toggle-rainbow@3x.png
 )
 
 # Qt 6.4's qmlcachegen emits AOT code that reads a property off a null
