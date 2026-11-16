@@ -323,7 +323,10 @@ Rectangle {
                         text: root.isSaved ? qsTr("Saved", "state, album is in the library")
                                            : qsTr("Save", "verb, add album to the library")
                         icon: root.isSaved ? "heart-filled" : "heart"
-                        accent: root.isSaved
+                        // A state, not the page's main action: outlined,
+                        // with the heart filled in the accent.
+                        accent: false
+                        iconColor: root.isSaved ? Theme.accentText : undefined
                         // Anchored on the action row, which has clear space
                         // above it.
                         onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,

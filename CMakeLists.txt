@@ -218,6 +218,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/VolumeSlider.qml
         qml/components/SeekBar.qml
         qml/components/QueuePanel.qml
+        qml/components/QualityBadge.qml
         qml/components/UpdatePrompt.qml
         qml/components/CastErrorTip.qml
         qml/components/OfflineNotice.qml

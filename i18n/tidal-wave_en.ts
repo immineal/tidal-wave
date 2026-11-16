@@ -593,6 +593,16 @@
 <context>
     <name>HorizontalSection</name>
     <message>
+        <source>Scroll back</source>
+        <comment>arrow on a row of cards</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scroll forward</source>
+        <comment>arrow on a row of cards</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show all</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1517,6 +1527,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>For the dark themes. Saves power on OLED screens.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1737,14 +1751,6 @@
     </message>
     <message>
         <source>Unknown artist</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1%</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Popularity</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">

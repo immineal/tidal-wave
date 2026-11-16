@@ -132,6 +132,7 @@ QVariantMap TidalBridge::trackToMap(const Track &t) {
     m["albumCover"]  = t.album.cover;
     m["coverUrl"]    = t.coverUrl(320);
     m["coverUrl80"]  = t.coverUrl(80);
+    m["coverUrl1280"] = t.coverUrl(1280);
     m["duration"]    = t.duration;
     m["trackNumber"] = t.trackNumber;
     m["volumeNumber"] = t.discNumber;

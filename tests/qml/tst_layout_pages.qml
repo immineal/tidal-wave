@@ -682,7 +682,7 @@ TestCase {
         var row = createTemporaryObject(trackRowC, holder, {
             width: w, trackNum: 1, title: t.title, artists: t.artists,
             albumTitle: t.albumTitle, durationStr: t.durationStr,
-            showPopularity: true, trackData: t
+            trackData: t
         })
         verify(row, "the row was not created")
         settle(holder)
@@ -698,17 +698,6 @@ TestCase {
         var narrow = makeRow(639)
         verify(!findByName(narrow, "trackAlbumColumn").visible,
                "the album column still shows at a row width of 639")
-    }
-
-    function test_trackrow_hides_popularity_below_560() {
-        var wide = makeRow(600)
-        var pop = findByName(wide, "trackPopularityColumn")
-        verify(pop, "the popularity column was not found")
-        verify(pop.visible, "popularity is hidden at a row width of 600")
-
-        var narrow = makeRow(559)
-        verify(!findByName(narrow, "trackPopularityColumn").visible,
-               "popularity still shows at a row width of 559")
     }
 
     function test_trackrow_fits_at_every_width() {
@@ -807,15 +796,18 @@ TestCase {
             verify(cell >= page.gridMinCell,
                    "@" + w + ": cells of " + cell + ", under the " + page.gridMinCell
                    + " a cover plus two lines needs")
-            verify(left >= page.gridEdge && right >= page.gridEdge,
-                   "@" + w + ": insets of " + left + " and " + right + " eat into the pane inset")
+            // A cell holds half a gutter each side of its card, so the first
+            // card starts on the pane inset and the last ends inside it.
+            var half = page.gridGutter / 2
+            compare(left + half, page.gridEdge,
+                    "@" + w + ": the first card starts at " + (left + half) + ", off the inset")
+            verify(right + half >= page.gridEdge,
+                   "@" + w + ": the last card ends " + (right + half) + "px from the edge")
             // The guarantee: the columns and the two insets are exactly the
             // pane, so the last column cannot be sitting past the right edge.
             compare(left + cols * cell + right, w,
                     "@" + w + ": " + cols + " x " + cell + " between insets of " + left
                     + " and " + right + " does not add up to " + w)
-            verify(Math.abs(left - right) <= 1,
-                   "@" + w + ": the two outer gutters are " + left + " and " + right)
             verify(page.gridCardSize(cell) <= cell - 1,
                    "@" + w + ": a " + page.gridCardSize(cell) + "px card in a " + cell + "px cell")
         }
@@ -856,9 +848,13 @@ TestCase {
                 seen++
             }
             verify(seen >= grid.columns, "@" + w + ": only " + seen + " cards were realized")
-            verify(Math.abs(leftGutter - (grid.width - rightEdge)) <= 1,
-                   "@" + w + ": the gutters are " + leftGutter.toFixed(1) + " on the left and "
-                   + (grid.width - rightEdge).toFixed(1) + " on the right")
+            // The first card on the title's inset; the rounding goes right.
+            var gx = grid.mapToItem(live, 0, 0).x
+            verify(Math.abs(gx + leftGutter - live.gridEdge) <= 0.5,
+                   "@" + w + ": the first card starts at " + (gx + leftGutter).toFixed(1))
+            verify(live.width - (gx + rightEdge) >= live.gridEdge - 0.5,
+                   "@" + w + ": the last card ends " + (live.width - gx - rightEdge).toFixed(1)
+                   + "px from the edge")
         }
     }
 

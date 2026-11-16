@@ -139,7 +139,6 @@ Item {
     // Playlist context: set when TrackRow is inside a PlaylistPage
     property string playlistUuid: ""
     property int    trackItemIndex: -1  // 0-based position in playlist
-    property bool   showPopularity: false
     // Download state for this row: "idle" | "busy" | "done" | "error"
     property string dlState: "idle"
     property string dlError: ""
@@ -148,11 +147,9 @@ Item {
     // A sentence to read, so it stays up as long as LoadErrorTip's.
     readonly property int dlErrorDwellMs: 6000
 
-    // Column breakpoints, measured against the row's own width, not the
-    // window's. The fixed columns add up to 472px with all of them on, so the
-    // album column goes first at 640 and popularity at 560.
+    // The column breakpoint, measured against the row's own width, not the
+    // window's. The album column is the first to go.
     readonly property int albumBreakpoint: 640
-    readonly property int popularityBreakpoint: 560
 
     // Reads the row's hover state from outside, e.g. so a layout test can
     // check the title does not move when the pointer enters.
@@ -343,9 +340,11 @@ Item {
             anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
             spacing: Theme.space3
 
-            // Track number / now playing indicator
+            // Track number / now playing indicator. Wide enough for four
+            // digits, so a long collection's numbers stay in their gutter.
+            TextMetrics { id: numberRoom; font.pixelSize: Theme.fontMeta; text: "0000" }
             Item {
-                width: 24
+                Layout.preferredWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     objectName: "trackRowNumber"
@@ -427,7 +426,9 @@ Item {
             Text {
                 objectName: "trackAlbumColumn"
                 visible: showAlbum && root.width >= root.albumBreakpoint
-                Layout.preferredWidth: 160
+                // A share of a wide row, so a long album name is not cut
+                // short beside an empty title column.
+                Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
                 text: root.albumText
                 color: Theme.textSec
                 font.pixelSize: Theme.fontMeta
@@ -441,28 +442,6 @@ Item {
                 font.pixelSize: Theme.fontMeta
                 Layout.preferredWidth: Math.max(40, implicitWidth)
                 horizontalAlignment: Text.AlignRight
-            }
-
-            // Popularity, shown only when showPopularity is true (Search page)
-            Text {
-                id: popText
-                objectName: "trackPopularityColumn"
-                readonly property real score:
-                    root.trackData ? Number(root.trackData.popularity) : NaN
-                visible: root.showPopularity && root.width >= root.popularityBreakpoint
-                         && isFinite(score) && score > 0
-                // Guarded, or a payload without the field prints "NaN%".
-                text: (isFinite(score) && score > 0)
-                      ? qsTr("%1%").arg(score.toLocaleString(Qt.locale(), 'f', 0))
-                      : ""
-                color: Theme.textDim
-                font.pixelSize: Theme.fontMicro
-                Layout.preferredWidth: 40
-                horizontalAlignment: Text.AlignRight
-                ToolTip.visible: popHov.hovered && visible
-                ToolTip.text: qsTr("Popularity")
-                ToolTip.delay: Theme.tooltipDelay
-                HoverHandler { id: popHov }
             }
 
             // Download button, shown on hover and kept while busy, done or in
@@ -891,6 +870,8 @@ Item {
             anchors.centerIn: Overlay.overlay
             width: 340
             modal: true
+            // Dims the app behind, as the queue panel does. Fusion's own is faint.
+            Overlay.modal: Rectangle { color: Theme.scrim }
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
             padding: 0

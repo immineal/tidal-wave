@@ -681,6 +681,16 @@
 <context>
     <name>HorizontalSection</name>
     <message>
+        <source>Scroll back</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Zurückblättern</translation>
+    </message>
+    <message>
+        <source>Scroll forward</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Weiterblättern</translation>
+    </message>
+    <message>
         <source>Show all</source>
         <translation>Alle anzeigen</translation>
     </message>
@@ -1834,6 +1844,10 @@
         <translation>Spart Strom auf OLED-Bildschirmen.</translation>
     </message>
     <message>
+        <source>For the dark themes. Saves power on OLED screens.</source>
+        <translation>Für die dunklen Designs. Spart Strom auf OLED-Bildschirmen.</translation>
+    </message>
+    <message>
         <source>The system default is currently %1.</source>
         <translation>Der Systemstandard ist derzeit %1.</translation>
     </message>
@@ -2139,14 +2153,6 @@
     <message>
         <source>Unknown artist</source>
         <translation>Unbekannter Künstler</translation>
-    </message>
-    <message>
-        <source>%1%</source>
-        <translation>%1 %</translation>
-    </message>
-    <message>
-        <source>Popularity</source>
-        <translation>Beliebtheit</translation>
     </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>

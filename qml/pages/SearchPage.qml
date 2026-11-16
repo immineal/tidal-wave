@@ -613,7 +613,6 @@ Rectangle {
                         durationStr:    root.tracks[index].durationStr
                         coverUrl:       root.tracks[index].coverUrl80
                         trackData:      root.tracks[index]
-                        showPopularity: true
                         // Declares "search" as the source so the player bar
                         // stops naming the previous one. markPlayed() drops it,
                         // so nothing is recorded as played.

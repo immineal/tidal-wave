@@ -53,7 +53,12 @@ Popup {
                 ? deviceSource.availableAudioDevices() : []
     }
 
-    onAboutToShow: root.reloadAudioDevices()
+    // Opens at the top every time: the panel is a list of settings, not a
+    // document to come back to a place in.
+    onAboutToShow: {
+        root.reloadAudioDevices()
+        scroller.contentItem.contentY = scroller.contentItem.originY
+    }
 
     // And again whenever the set of devices changes while the panel is up.
     // ignoreUnknownSignals because `deviceSource` is injected: a test double
@@ -124,6 +129,8 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
+    // Dims the app behind, as the queue panel does. Fusion's own is faint.
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     // The sheet the cards sit on, which has to be a step below them or a raised
     // card is invisible.
@@ -136,6 +143,8 @@ Popup {
     // Margins every section shares, so a section is one ColumnLayout and not a
     // set of four numbers copied six times.
     readonly property int sideMargin: Theme.space5
+    // A notch scrolls the system's lines per notch, as other desktop apps do.
+    readonly property real wheelStep: Qt.styleHints.wheelScrollLines * Theme.wheelLine
 
     // The panel's own ground at a given alpha. "transparent" is transparent
     // *black*, which greys a fade out on the two light themes.
@@ -260,6 +269,21 @@ Popup {
             width: scroller.availableWidth
             spacing: 0
 
+            // A notch moves the panel by wheelStep. Inside the content, so it
+            // hears the wheel before the Flickable and after a slider.
+            WheelHandler {
+                target: null
+                onWheel: (event) => {
+                    var f = scroller.contentItem
+                    var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y
+                                                      : event.angleDelta.y / 120 * root.wheelStep
+                    if (dy === 0) { event.accepted = false; return }
+                    var top = f.originY
+                    var end = top + Math.max(0, f.contentHeight - f.height)
+                    f.contentY = Math.max(top, Math.min(end, f.contentY - dy))
+                }
+            }
+
             // ── account ──────────────────────────────────────────────────
             // Who is logged in, and the way out, which asks first.
             Section {
@@ -356,12 +380,11 @@ Popup {
                     }
                 }
 
-                // The pure-black switch. Gone, not greyed out, on a light
-                // theme: a disabled control invites working out how to enable
-                // it. Full width, so it is not read as a seventh palette.
+                // The pure-black switch. Kept but switched off on a light theme,
+                // with a note, so a theme change never moves the rows below.
+                // Full width, so it is not read as a seventh palette.
                 RowLayout {
                     objectName: "settingsOledBlock"
-                    visible: ThemePalette.isDark
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spaceHalf
                     spacing: Theme.space3
@@ -376,7 +399,9 @@ Popup {
                         }
                         Text {
                             objectName: "settingsOledNote"
-                            text: qsTr("Saves power on OLED screens.")
+                            text: ThemePalette.isDark
+                                  ? qsTr("Saves power on OLED screens.")
+                                  : qsTr("For the dark themes. Saves power on OLED screens.")
                             color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
@@ -385,6 +410,8 @@ Popup {
                         objectName: "settingsOledToggle"
                         label: qsTr("Pure black")
                         Layout.alignment: Qt.AlignVCenter
+                        enabled: ThemePalette.isDark
+                        opacity: enabled ? 1 : 0.4
                         checked: prefs.oledBlack
                         onToggled: prefs.oledBlack = !prefs.oledBlack
                     }
@@ -1084,8 +1111,15 @@ Popup {
                 // The keys are named by id. The sequences live in the Shortcuts
                 // table in src/ui/Shortcuts.cpp, which Main.qml also binds
                 // from, and QKeySequence names them for this platform.
-                Repeater {
-                    model: [
+                // Keys in one column and what they do in another, each as
+                // wide as its widest entry, so the descriptions line up.
+                GridLayout {
+                    id: shortcutTable
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: Theme.space3
+                    rowSpacing: Theme.space2
+                    readonly property var rows: [
                         { ids: ["playPause"],                       d: qsTr("Play / pause") },
                         { ids: ["next", "previous"],                d: qsTr("Next / previous track") },
                         { ids: ["seekForward", "seekBack"],         d: qsTr("Seek forward / back 10s") },
@@ -1103,29 +1137,47 @@ Popup {
                         { ids: ["newPlaylist"],                     d: qsTr("New playlist") },
                         { ids: ["quit"],                            d: qsTr("Quit") }
                     ]
-                    delegate: RowLayout {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: Theme.space3
-                        Rectangle {
-                            color: Theme.surface; radius: Theme.radiusSmall
-                            border.color: Theme.border
-                            implicitWidth: shortcutLabel.implicitWidth + 14
-                            implicitHeight: 22
-                            Text {
-                                id: shortcutLabel; anchors.centerIn: parent
-                                text: modelData.ids.map(function (id) {
-                                          return Shortcuts.display(id)
-                                      }).join(" / ")
-                                color: Theme.textPrimary
-                                font.pixelSize: Theme.fontMicro
-                                font.family: Shortcuts.monospaceFamily()
+
+                    Repeater {
+                        model: shortcutTable.rows
+                        delegate: Item {
+                            required property var modelData
+                            required property int index
+                            Layout.row: index; Layout.column: 0
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            implicitWidth: keyCap.implicitWidth
+                            implicitHeight: keyCap.implicitHeight
+                            Rectangle {
+                                id: keyCap
+                                objectName: "settingsShortcutKey"
+                                color: Theme.surface; radius: Theme.radiusSmall
+                                border.color: Theme.border
+                                implicitWidth: shortcutLabel.implicitWidth + 14
+                                implicitHeight: 22
+                                width: implicitWidth; height: implicitHeight
+                                Text {
+                                    id: shortcutLabel; anchors.centerIn: parent
+                                    text: modelData.ids.map(function (id) {
+                                              return Shortcuts.display(id)
+                                          }).join(" / ")
+                                    color: Theme.textPrimary
+                                    font.pixelSize: Theme.fontMicro
+                                    font.family: Shortcuts.monospaceFamily()
+                                }
                             }
                         }
-                        Text {
+                    }
+                    Repeater {
+                        model: shortcutTable.rows
+                        delegate: Text {
+                            required property var modelData
+                            required property int index
+                            Layout.row: index; Layout.column: 1
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            objectName: "settingsShortcutText"
                             text: modelData.d; color: Theme.textSec
                             font.pixelSize: Theme.fontMeta; wrapMode: Text.Wrap
-                            Layout.fillWidth: true
                         }
                     }
                 }
