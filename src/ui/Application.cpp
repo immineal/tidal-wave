@@ -6,6 +6,7 @@
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
+#include "ui/RemoteControl.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
 #include "api/LibraryIndex.h"
@@ -45,6 +46,7 @@
 #include <QTimer>
 #include <QWindow>
 #include <chrono>
+#include <cstdio>
 
 using namespace std::chrono_literals;
 #include <QMenu>
@@ -659,14 +661,21 @@ int Application::run(int argc, char **argv) {
     const QIcon appIcon = loadAppIcon();
     QApplication::setWindowIcon(appIcon);
 
-    const QString socketName = singleInstanceSocketName();
-    QLocalSocket socket;
-    socket.connectToServer(socketName);
-    if (socket.waitForConnected(500)) {
-        socket.write("show");
-        socket.waitForBytesWritten(500);
-        return 0; // an instance is already running
+    // main() passes the argv QApplication has taken its own options out of
+    // (-platform and the like). Test children pass only the program name.
+    QStringList arguments;
+    for (int i = 0; i < argc; ++i)
+        arguments << QString::fromLocal8Bit(argv[i]);
+    const RemoteControl::Parsed launch = RemoteControl::parseArguments(arguments);
+    if (launch.exit) {
+        std::fputs(launch.output.toLocal8Bit().constData(), stdout);
+        std::fputs(launch.error.toLocal8Bit().constData(), stderr);
+        return launch.exitCode;
     }
+
+    const QString socketName = singleInstanceSocketName();
+    if (RemoteControl::sendToRunning(socketName, launch.request))
+        return 0; // an instance is already running and has the request
 
     // Earlier runs leave their audio in the temp directory. Swept only while
     // no other instance holds this lock, whatever socket it listens on.
@@ -677,18 +686,11 @@ int Application::run(int argc, char **argv) {
             qInfo("tidal-wave: removed %d temp file(s) left by an earlier run", n);
     }
 
+    m_remote = new RemoteControl(this);
+    connect(m_remote, &RemoteControl::showRequested, this, &Application::showWindow);
     QLocalServer *server = new QLocalServer(QCoreApplication::instance());
     if (claimSingleInstanceSocket(server, socketName)) {
-        connect(server, &QLocalServer::newConnection, this, [this, server]() {
-            QLocalSocket *clientSocket = server->nextPendingConnection();
-            connect(clientSocket, &QLocalSocket::readyRead, this, [this, clientSocket]() {
-                QByteArray data = clientSocket->readAll();
-                if (data == "show") {
-                    this->showWindow();
-                }
-                clientSocket->disconnectFromServer();
-            });
-        });
+        m_remote->listen(server);
     } else {
         // Carry on without the lock: the app still works, a second launch
         // just opens a second window. Say so on stderr.
@@ -788,6 +790,15 @@ int Application::run(int argc, char **argv) {
     // Raise takes the way back that the tray's Show item takes.
     connect(m_mpris, &MprisManager::raiseRequested, this, &Application::showWindow);
 #endif
+    // The same calls as the tray and the player bar.
+    connect(m_remote, &RemoteControl::playPauseRequested, m_player, [this] { m_player->playPause(); });
+    connect(m_remote, &RemoteControl::nextRequested, m_player, [this] { m_player->next(); });
+    connect(m_remote, &RemoteControl::previousRequested, m_player, [this] { m_player->previous(); });
+    // This launch's own options wait like a second launch's; the window
+    // shows itself.
+    LaunchRequest own = launch.request;
+    own.show = false;
+    m_remote->submit(own);
 
     connect(m_auth, &Auth::loginSucceeded, this, [this]() {
         m_client->setUserId(m_auth->userId());
@@ -901,6 +912,17 @@ int Application::run(int argc, char **argv) {
         connect(window, &QWindow::windowStateChanged, this, &Application::refreshTray);
     }
     refreshTray();
+
+    // Requests from the command line act once there is a session and a page.
+    // Queued, so the player's audio set-up and the sign-in page change are
+    // done first.
+    const auto updateReady = [this] {
+        m_remote->setReady(m_auth->state() == Auth::State::LoggedIn);
+    };
+    connect(m_auth, &Auth::stateChanged, this, [this, updateReady] {
+        QTimer::singleShot(0, this, updateReady);
+    });
+    QTimer::singleShot(0, this, updateReady);
 
     // After the engine, so the request is never ahead of the first frame.
     m_update->startupCheck();

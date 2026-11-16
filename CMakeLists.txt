@@ -70,6 +70,7 @@ set(SOURCES
     src/ui/Shortcuts.cpp
     src/ui/SignalWatcher.cpp
     src/ui/TrayMenu.cpp
+    src/ui/RemoteControl.cpp
     src/api/LibraryIndex.cpp
 )
 
@@ -99,6 +100,7 @@ set(HEADERS
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
     src/ui/TrayMenu.h
+    src/ui/RemoteControl.h
     src/api/LibraryIndex.h
     src/api/PageEverything.h
 )

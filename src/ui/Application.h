@@ -29,6 +29,7 @@ class PinStore;
 class LibraryIndex;
 class SignalWatcher;
 class TrayMenu;
+class RemoteControl;
 
 class Application : public QObject {
     Q_OBJECT
@@ -223,6 +224,7 @@ private:
     MprisManager*m_mpris  = nullptr;
     QSystemTrayIcon *m_trayIcon = nullptr;
     TrayMenu    *m_trayMenu = nullptr;
+    RemoteControl *m_remote = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;

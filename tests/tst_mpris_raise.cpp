@@ -95,7 +95,8 @@ int runChild(int argc, char **argv)
     });
     poll->start();
 
-    return app.run(argc, argv);
+    // Only the program name: the rest is this harness's, not the app's options.
+    return app.run(1, argv);
 }
 
 } // namespace
