@@ -17,6 +17,7 @@ Popup {
     property var langSource:   (typeof i18n        !== "undefined") ? i18n        : null
     property var deviceSource: (typeof player      !== "undefined") ? player      : null
     property var check:        (typeof updateCheck !== "undefined") ? updateCheck : null
+    property var downloads:    (typeof downloader  !== "undefined") ? downloader  : null
 
     // The effective language, when there is something to ask. Both lists below
     // come back from C++ with translated labels, so they have to be rebuilt
@@ -529,6 +530,41 @@ Popup {
                         // at right now, so "System default" is not a guess.
                         text: qsTr("The system default is currently %1.").arg(root.defaultDeviceLabel)
                         visible: root.defaultDeviceLabel.length > 0
+                        color: Theme.textDim; font.pixelSize: 11
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                }
+
+                // Where the save dialog of a track download opens.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 5
+                    visible: root.downloads !== null
+
+                    Text {
+                        text: qsTr("Download folder")
+                        color: Theme.textSec; font.pixelSize: 13
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Text {
+                            objectName: "settingsDownloadFolder"
+                            text: root.downloads ? root.downloads.folder : ""
+                            color: Theme.textPrimary; font.pixelSize: 13
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+                        }
+                        PanelButton {
+                            objectName: "settingsDownloadFolderButton"
+                            label: qsTr("Change…", "button that picks another download folder")
+                            onActivated: if (root.downloads) root.downloads.chooseFolder()
+                        }
+                    }
+                    Text {
+                        text: qsTr("Each download asks for a file name and format, starting in this folder.")
                         color: Theme.textDim; font.pixelSize: 11
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }

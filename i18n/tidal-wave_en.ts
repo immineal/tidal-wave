@@ -508,6 +508,10 @@
         <source>Download cancelled</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>Feedback</name>
@@ -1607,6 +1611,19 @@
         <source>Go back</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change…</source>
+        <comment>button that picks another download folder</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each download asks for a file name and format, starting in this folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1767,6 +1784,11 @@
             <numerusform>%n track</numerusform>
             <numerusform>%n tracks</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded track</comment>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

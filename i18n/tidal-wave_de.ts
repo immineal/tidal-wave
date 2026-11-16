@@ -599,6 +599,10 @@
         <source>Download cancelled</source>
         <translation>Download abgebrochen</translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation>Download-Ordner</translation>
+    </message>
 </context>
 <context>
     <name>Feedback</name>
@@ -1750,6 +1754,19 @@
         <source>Go back</source>
         <translation>Zurück</translation>
     </message>
+    <message>
+        <source>Download folder</source>
+        <translation>Download-Ordner</translation>
+    </message>
+    <message>
+        <source>Change…</source>
+        <comment>button that picks another download folder</comment>
+        <translation>Ändern…</translation>
+    </message>
+    <message>
+        <source>Each download asks for a file name and format, starting in this folder.</source>
+        <translation>Jeder Download fragt nach Dateiname und Format und beginnt in diesem Ordner.</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1925,6 +1942,11 @@
             <numerusform>%n Titel</numerusform>
             <numerusform>%n Titel</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Show in folder</source>
+        <comment>opens the file manager at a downloaded track</comment>
+        <translation>Im Ordner anzeigen</translation>
     </message>
 </context>
 <context>

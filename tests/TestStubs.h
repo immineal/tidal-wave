@@ -2136,8 +2136,19 @@ private:
 // track and emits downloadStarted/downloadFinished.
 class StubDownloader : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
 public:
     explicit StubDownloader(QObject *parent = nullptr) : QObject(parent) {}
+
+    QString folder() const { return m_folder; }
+    void setFolder(const QString &dir) {
+        if (dir == m_folder) return;
+        m_folder = dir;
+        emit folderChanged();
+    }
+    Q_INVOKABLE void chooseFolder() { ++m_chooseCalls; }
+    Q_INVOKABLE QString savedPath(qlonglong id) const { return m_saved.value(id); }
+    Q_INVOKABLE void showInFolder(const QString &path) { m_shown.append(path); }
 
     Q_INVOKABLE void downloadTrack(const QVariantMap &track) {
         m_lastTrack = track;
@@ -2156,6 +2167,7 @@ public:
     }
     Q_INVOKABLE void emitDownloadFinishedForTest(qlonglong id, const QString &path) {
         m_active.remove(id);
+        m_saved.insert(id, path);
         emit downloadFinished(id, path);
     }
     Q_INVOKABLE void emitDownloadErrorForTest(qlonglong id, const QString &msg) {
@@ -2163,8 +2175,15 @@ public:
         emit downloadError(id, msg);
     }
     Q_INVOKABLE QVariantMap lastTrackForTest() const { return m_lastTrack; }
+    Q_INVOKABLE QStringList shownInFolderForTest() const { return m_shown; }
+    Q_INVOKABLE int chooseFolderCallsForTest() const { return m_chooseCalls; }
+    Q_INVOKABLE void resetForTest() {
+        m_active.clear(); m_saved.clear(); m_shown.clear(); m_chooseCalls = 0;
+        m_lastTrack.clear();
+    }
 
 signals:
+    void folderChanged();
     void downloadStarted(qlonglong id);
     void downloadFinished(qlonglong id, const QString &path);
     void downloadError(qlonglong id, const QString &msg);
@@ -2172,6 +2191,10 @@ signals:
 private:
     QSet<qlonglong> m_active;
     QVariantMap     m_lastTrack;
+    QString         m_folder = QStringLiteral("/home/someone/Music");
+    QHash<qlonglong, QString> m_saved;
+    QStringList     m_shown;
+    int             m_chooseCalls = 0;
 };
 
 // ─── image provider ─────────────────────────────────────────────────────────

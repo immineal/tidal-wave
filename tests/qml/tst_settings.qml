@@ -1847,4 +1847,23 @@ TestCase {
         compare(trackChip.label, "Tracks",
                 "the chip is labelled \"" + trackChip.label + "\"")
     }
+
+    // ── downloads ────────────────────────────────────────────────────────
+
+    function test_the_download_folder_is_shown_and_can_be_changed() {
+        downloader.resetForTest()
+        downloader.folder = "/home/someone/Musik"
+        var h = openPanel(1280, 1200)
+        var label = findByName(h.panel.contentItem, "settingsDownloadFolder")
+        verify(label, "Settings shows no download folder")
+        compare(label.text, "/home/someone/Musik")
+        var button = findByName(h.panel.contentItem, "settingsDownloadFolderButton")
+        verify(button, "there is no button to change the download folder")
+        button.activated()
+        compare(downloader.chooseFolderCallsForTest(), 1, "the button did not open a folder picker")
+        // A folder picked, or a save made elsewhere, shows at once.
+        downloader.folder = "/home/someone/Downloads"
+        compare(label.text, "/home/someone/Downloads")
+        h.panel.close()
+    }
 }
