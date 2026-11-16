@@ -337,6 +337,11 @@
         <translation>Gespeicherte Einträge suchen…</translation>
     </message>
     <message>
+        <source>Surprise me</source>
+        <comment>opens a random album, artist, playlist or mix of the tab</comment>
+        <translation>Überrasch mich</translation>
+    </message>
+    <message>
         <source>New playlist</source>
         <translation>Neue Playlist</translation>
     </message>

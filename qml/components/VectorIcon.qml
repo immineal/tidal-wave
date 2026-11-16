@@ -263,6 +263,9 @@ Item {
             return "M 2.5 7.5 V 5 A 1.5 1.5 0 0 1 4 3.5 H 20 A 1.5 1.5 0 0 1 21.5 5 V 18 A 1.5 1.5 0 0 1 20 19.5 H 14.5"
                  + " M 2.5 14.7 A 4.8 4.8 0 0 1 7.3 19.5"
                  + " M 2.5 11 A 8.5 8.5 0 0 1 11 19.5"
+        // A die showing five: a rounded square, the pips filled in _accentFor.
+        case "dice":
+            return "M 6 3 H 18 A 3 3 0 0 1 21 6 V 18 A 3 3 0 0 1 18 21 H 6 A 3 3 0 0 1 3 18 V 6 A 3 3 0 0 1 6 3 Z"
         // A bin: lid, handle, tapered body, two ribs. The ribs stop it reading
         // as a cup at 16px.
         case "trash":
@@ -279,6 +282,12 @@ Item {
         case "queue":  return "M 16.5 14.6 L 22 18 L 16.5 21.4 Z"
         case "mix":    return "M 13.7 12 A 1.7 1.7 0 1 0 10.3 12 A 1.7 1.7 0 1 0 13.7 12 Z"
         case "cast":   return "M 3.7 19.5 A 1.2 1.2 0 1 0 1.3 19.5 A 1.2 1.2 0 1 0 3.7 19.5 Z"
+        case "dice":
+            return "M 9.5 7.5 A 2 2 0 1 0 5.5 7.5 A 2 2 0 1 0 9.5 7.5 Z"
+                 + " M 18.5 7.5 A 2 2 0 1 0 14.5 7.5 A 2 2 0 1 0 18.5 7.5 Z"
+                 + " M 14 12 A 2 2 0 1 0 10 12 A 2 2 0 1 0 14 12 Z"
+                 + " M 9.5 16.5 A 2 2 0 1 0 5.5 16.5 A 2 2 0 1 0 9.5 16.5 Z"
+                 + " M 18.5 16.5 A 2 2 0 1 0 14.5 16.5 A 2 2 0 1 0 18.5 16.5 Z"
         // A solid disc with the "1" cut out of it, which still reads at 18px
         // where a stroked "1" was a speck.
         case "repeat-one":
