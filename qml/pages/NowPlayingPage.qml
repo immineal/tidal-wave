@@ -764,21 +764,16 @@ Rectangle {
                     // Album art. A square of its own size centred in the slot:
                     // the slot stops being square when a panel opens, and
                     // stretched artwork would show in the crossfade.
-                    Rectangle {
+                    CoverArt {
                         objectName: "nowPlayingArt"
                         anchors.centerIn: parent
                         width:  root.coverSize
                         height: root.coverSize
-                        radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
                         opacity: 1 - root.panelness
                         visible: opacity > 0.01
-                        Image {
-                            anchors.fill: parent
-                            // The large rendition where the map has it: the
-                            // 320px one goes soft at 420 and more.
-                            source: hasTrack ? "image://tidal/" + (track.coverUrl1280 || track.coverUrl) : ""
-                            fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                        }
+                        // The large rendition where the map has it: the
+                        // 320px one goes soft at 420 and more.
+                        source: hasTrack ? (track.coverUrl1280 || track.coverUrl || "") : ""
                     }
 
                     // Lyrics panel. This one does take the whole slot, which is
@@ -1074,7 +1069,6 @@ Rectangle {
                                             color: Theme.textDim
                                             font.pixelSize: creditsPanel.labelSize
                                             font.bold: true
-                                            font.letterSpacing: 1
                                             horizontalAlignment: creditsPanel.align
                                             wrapMode: Text.WordWrap
                                         }
@@ -1266,7 +1260,6 @@ Rectangle {
                                       : qsTr("Playing from: %1").arg(player.sourceName)
                                 color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: Theme.fontMeta
-                                font.letterSpacing: 0.5
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                                 HoverHandler { id: sourceLinkHov; cursorShape: Qt.PointingHandCursor }
@@ -2103,7 +2096,6 @@ Rectangle {
                             color: Theme.textDim
                             font.pixelSize: Theme.fontMicro
                             font.bold: true
-                            font.letterSpacing: 1
                         }
 
                         Repeater {
@@ -2116,13 +2108,9 @@ Rectangle {
                                 Layout.bottomMargin: Theme.space1
                                 spacing: Theme.space3
                                 property var upTrack: modelData
-                                Rectangle {
-                                    width: 44; height: 44; radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: upTrack && upTrack.coverUrl80 ? "image://tidal/" + upTrack.coverUrl80 : ""
-                                        fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                                    }
+                                CoverArt {
+                                    width: 44; height: 44
+                                    source: upTrack && upTrack.coverUrl80 ? upTrack.coverUrl80 : ""
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: Theme.space1

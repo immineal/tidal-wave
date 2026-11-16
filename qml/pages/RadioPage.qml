@@ -64,7 +64,7 @@ Rectangle {
             width: trackList.width
             kind: qsTr("Radio")
             title: root.radioTitle || qsTr("Track radio")
-            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
             artIcon: "waves"
 
             actions: [
@@ -159,5 +159,5 @@ Rectangle {
         title: root.radioTitle || qsTr("Track radio")
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }

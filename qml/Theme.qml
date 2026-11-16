@@ -117,6 +117,9 @@ QtObject {
     readonly property int menuMaxWidth: 420
     // Air left between a menu at full width and the window edge.
     readonly property int menuWindowMargin: 12
+    // The gap between a menu's edge and its entries, so an entry's rounded
+    // highlight sits inside the menu's rounder corners.
+    readonly property int menuPadding: space1
 
     function menuWidth(menu) {
         if (!menu) return menuMinWidth

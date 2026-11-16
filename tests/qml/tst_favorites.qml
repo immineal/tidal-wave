@@ -85,6 +85,8 @@ TestCase {
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: mixC;        MixPage        { anchors.fill: parent } }
     Component { id: iconC;       VectorIcon     { } }
+    // Where the messages are drawn, as in Main.qml.
+    ToastHost { id: toastHost; anchors.fill: parent; z: 10 }
 
     // NowPlayingPage reaches its sleep timer and fullscreen toggle through
     // Window.window, so it cannot be instantiated bare. Being a separate
@@ -264,9 +266,10 @@ TestCase {
         bridge.setFavoriteTracksListForTest([])
         bridge.setUserPlaylistsForTest([])
         bridge.setMixFavoriteForTest(testCase.mixId, false)
-        // One shared tool tip serves the whole window, so a leftover from the
-        // last test would pass for the next one's message.
-        testCase.ToolTip.toolTip.close()
+        // One toast serves the whole window, so a leftover from the last
+        // test would pass for the next one's message.
+        Toasts.dismiss()
+        Toasts.plainMs = 600
     }
 
     // ── the fixture itself ───────────────────────────────────────────────
@@ -369,44 +372,41 @@ TestCase {
     }
 
     // The message has to reach the screen as well as the property the other
-    // tests read. ToolTip.show() writes to the one shared tool tip of the
-    // anchor's window, which here is this TestCase's.
+    // tests read: the one toast, drawn by the host.
     function test_a_refusal_reaches_the_screen_and_goes_away() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()
         var btn = named(bar, "playerLikeButton")
-        var tip = testCase.ToolTip.toolTip
-        verify(tip, "there is no shared tool tip to say anything with")
-        verify(!tip.visible, "the tool tip was already up before the press")
+        var tip = toastHost.card
+        verify(!tip.visible, "the toast was already up before the press")
 
         bridge.setFavoriteOkForTest(false)
         clickCenter(btn)
 
         tryVerify(function () { return tip.visible }, 2000,
                   "a refused like never reached the screen")
-        compare(tip.text, testCase.likeFailed, "the tool tip said something else")
+        compare(Toasts.text, testCase.likeFailed, "the toast said something else")
+        verify(!toastHost.actionButton.visible, "a refusal offered Undo")
         verify(!tip.activeFocus, "the refusal took focus")
-        verify(!tip.modal, "the refusal blocked the window")
         tryVerify(function () { return !tip.visible }, 5000,
                   "the refusal never went away on its own")
     }
 
-    function test_an_accepted_like_puts_nothing_on_the_screen() {
+    // A like Tidal has confirmed says so, with Undo; see tst_undo.
+    function test_an_accepted_like_is_said_with_undo() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()
         var btn = named(bar, "playerLikeButton")
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
 
         clickCenter(btn)
 
         tryVerify(function () { return bar.isLiked }, 2000,
                   "an accepted like never filled the heart")
-        // A tool tip comes up only after the attached delay of the item it is
-        // anchored to, and the longest one in this app is 600ms. The wait has to
-        // outlast it, or the check passes while the tool tip is on its way.
-        wait(1200)
-        verify(!tip.visible, "a successful like put a tool tip on the screen: "
-               + tip.text)
+        tryVerify(function () { return tip.visible }, 2000, "a confirmed like said nothing")
+        compare(Toasts.text, "Added to your liked tracks")
+        verify(toastHost.actionButton.visible, "a confirmed like offered no Undo")
+        Edits.clearHistory()
     }
 
     // ── TrackRow: Like / Unlike in the row menu ──────────────────────────
@@ -891,10 +891,10 @@ TestCase {
     // which has to count as refused.
     function test_an_undefined_answer_counts_as_refused() {
         var bar = makeBar()
-        bar.favoriteAction._refused(undefined, bar, "nope")
+        bar.favoriteAction._refused(undefined, "nope")
         compare(bar.favoriteAction.lastMessage, "nope",
                 "an undefined answer was taken for a success")
-        bar.favoriteAction._refused(true, bar, "nope again")
+        bar.favoriteAction._refused(true, "nope again")
         compare(bar.favoriteAction.lastMessage, "nope",
                 "a true answer was taken for a failure")
     }

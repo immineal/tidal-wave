@@ -373,7 +373,6 @@ Popup {
                     Toggle {
                         objectName: "settingsTintedToggle"
                         label: qsTr("Let the colour in")
-                        rainbow: true
                         Layout.alignment: Qt.AlignVCenter
                         checked: prefs.tintedGreys
                         onToggled: prefs.tintedGreys = !prefs.tintedGreys
@@ -1134,6 +1133,7 @@ Popup {
                         { ids: ["queue"],                           d: qsTr("Toggle queue") },
                         { ids: ["back", "escape"],                  d: qsTr("Go back") },
                         { ids: ["settings"],                        d: qsTr("Settings") },
+                        { ids: ["undo"],                            d: qsTr("Undo the last change", "shortcut, takes back a like, a removal or a cleared queue") },
                         { ids: ["newPlaylist"],                     d: qsTr("New playlist") },
                         { ids: ["quit"],                            d: qsTr("Quit") }
                     ]
@@ -1391,7 +1391,7 @@ Popup {
             Text {
                 text: sec.heading
                 color: Theme.textDim
-                font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
+                font.pixelSize: Theme.fontMicro; font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             },

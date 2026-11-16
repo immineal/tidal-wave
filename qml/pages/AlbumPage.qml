@@ -245,10 +245,6 @@ Rectangle {
                     var p = hero.mapToItem(root, x, y)
                     root.showHeroPinMenu(p.x, p.y)
                 }
-                // The queue confirmation is drawn above the action row.
-                // Assigned, not bound: an id inside the list's header
-                // component is out of reach from the root.
-                Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
                 // One hover target and one tab stop per artist, so a featured
                 // credit opens the guest rather than the lead.
@@ -547,5 +543,5 @@ Rectangle {
         trackSource: root.allTracks
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }

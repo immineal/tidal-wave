@@ -1130,5 +1130,6 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    LoadingOverlay { loading: root.loading }
+    // Below the search field, which keeps the keyboard while results load.
+    Skeleton { loading: root.loading; kind: "cards"; topInset: searchBar.y + searchBar.height }
 }
