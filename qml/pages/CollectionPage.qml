@@ -192,7 +192,7 @@ Rectangle {
         Item { Layout.preferredHeight: 24 }
         Text {
             Layout.leftMargin: 24
-            text: qsTr("My Collection")
+            text: qsTr("Collection")
             color: Theme.textPrimary
             font.pixelSize: 28; font.bold: true
         }
@@ -501,7 +501,7 @@ Rectangle {
                 coverUrl:    modelData.coverUrl80
                 trackData:   modelData
                 onPlayRequested: {
-                    player.setPlaybackSource("collection", "tracks", qsTr("Liked Songs"))
+                    player.setPlaybackSource("collection", "tracks", qsTr("Liked tracks"))
                     // "Liked Songs" is not a kind the sidebar orders and
                     // markPlayed() drops it, so the track's album stands in.
                     // Recorded after the source so it is the newer of the two.

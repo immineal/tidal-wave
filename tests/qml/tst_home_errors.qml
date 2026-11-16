@@ -1,4 +1,4 @@
-// HomePage when a fetch fails. "My Mixes" never stands over nothing: a failed
+// HomePage when a fetch fails. "Your mixes" never stands over nothing: a failed
 // mixes row says it could not load and offers a retry, and it loads again by
 // itself once Tidal answers. The other rows hide while empty. The bridge stub
 // is from tests/TestStubs.h.
@@ -73,8 +73,8 @@ TestCase {
 
     function test_no_mixes_and_no_error_shows_no_empty_row() {
         var page = makeHome()
-        compare(visibleTexts(page, []).indexOf("My Mixes"), -1,
-                "\"My Mixes\" stands over nothing")
+        compare(visibleTexts(page, []).indexOf("Your mixes"), -1,
+                "\"Your mixes\" stands over nothing")
     }
 
     function test_failed_rows_load_again_once_online() {

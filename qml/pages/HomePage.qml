@@ -172,7 +172,7 @@ Rectangle {
                     Layout.fillWidth: true
                     // Over nothing it reads as an account without mixes.
                     visible: mixes.length > 0
-                    title: qsTr("My Mixes")
+                    title: qsTr("Your mixes")
                     items: root.mixes
                     mediaType: "mix"
                     onItemClicked: (idx, item) => navigateTo("mix", {
@@ -203,7 +203,7 @@ Rectangle {
                     Layout.rightMargin: 24
                     spacing: 8
                     Text {
-                        text: qsTr("My Mixes")
+                        text: qsTr("Your mixes")
                         color: Theme.textPrimary
                         font.pixelSize: 20
                         font.bold: true
@@ -233,7 +233,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: recentAlbums.length > 0
-                    title: qsTr("Saved Albums")
+                    title: qsTr("Saved albums")
                     items: root.recentAlbums
                     mediaType: "album"
                     onItemClicked: (idx, item) => navigateTo("album", { albumId: item.id })
@@ -250,7 +250,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: playlists.length > 0
-                    title: qsTr("Your Playlists")
+                    title: qsTr("Your playlists")
                     items: root.playlists
                     mediaType: "playlist"
                     onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
@@ -268,7 +268,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: artists.length > 0
-                    title: qsTr("Favorite Artists")
+                    title: qsTr("Favourite artists")
                     items: root.artists
                     mediaType: "artist"
                     onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })

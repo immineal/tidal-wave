@@ -173,7 +173,7 @@
         <translation>Singles &amp; EPs</translation>
     </message>
     <message>
-        <source>Appears On</source>
+        <source>Appears on</source>
         <translation>Erscheint auf</translation>
     </message>
     <message>
@@ -185,7 +185,7 @@
         <translation>Mehr lesen</translation>
     </message>
     <message>
-        <source>Related Artists</source>
+        <source>Related artists</source>
         <translation>Ähnliche Künstler</translation>
     </message>
     <message>
@@ -269,8 +269,8 @@
 <context>
     <name>CollectionPage</name>
     <message>
-        <source>My Collection</source>
-        <translation>Meine Sammlung</translation>
+        <source>Collection</source>
+        <translation>Sammlung</translation>
     </message>
     <message>
         <source>Tracks</source>
@@ -349,7 +349,7 @@
         <translation>Neue Playlist</translation>
     </message>
     <message>
-        <source>Liked Songs</source>
+        <source>Liked tracks</source>
         <translation>Lieblingstitel</translation>
     </message>
     <message>
@@ -658,19 +658,19 @@
         <translation>Künstler</translation>
     </message>
     <message>
-        <source>My Mixes</source>
-        <translation>Meine Mixe</translation>
+        <source>Your mixes</source>
+        <translation>Deine Mixe</translation>
     </message>
     <message>
-        <source>Saved Albums</source>
+        <source>Saved albums</source>
         <translation>Gespeicherte Alben</translation>
     </message>
     <message>
-        <source>Your Playlists</source>
+        <source>Your playlists</source>
         <translation>Deine Playlists</translation>
     </message>
     <message>
-        <source>Favorite Artists</source>
+        <source>Favourite artists</source>
         <translation>Lieblingskünstler</translation>
     </message>
     <message>
@@ -735,7 +735,7 @@
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Desktop Tidal Client</source>
+        <source>Native desktop client for Tidal</source>
         <translation>Nativer Tidal-Client für den Desktop</translation>
     </message>
     <message>
@@ -964,15 +964,15 @@
         <translation>Download fehlgeschlagen. Zum Wiederholen klicken.</translation>
     </message>
     <message>
-        <source>End of Track</source>
+        <source>End of track</source>
         <translation>Titelende</translation>
     </message>
     <message>
-        <source>Sleep Timer</source>
+        <source>Sleep timer</source>
         <translation>Sleep-Timer</translation>
     </message>
     <message>
-        <source>Stop at End of Track</source>
+        <source>Stop at end of track</source>
         <translation>Am Titelende stoppen</translation>
     </message>
     <message>
@@ -1005,7 +1005,7 @@
         <translation>Blendet die letzten 30 s aus</translation>
     </message>
     <message>
-        <source>Cancel Sleep Timer</source>
+        <source>Cancel sleep timer</source>
         <translation>Sleep-Timer abbrechen</translation>
     </message>
     <message>
@@ -1017,7 +1017,7 @@
         <translation>%1 %</translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation>Als Nächstes</translation>
     </message>
     <message>
@@ -1302,7 +1302,7 @@
         <translation>Änderungen konnten nicht gespeichert werden.</translation>
     </message>
     <message>
-        <source>Edit Playlist</source>
+        <source>Edit playlist</source>
         <translation>Playlist bearbeiten</translation>
     </message>
     <message>
@@ -1363,7 +1363,7 @@
         <translation>Jetzt läuft</translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation>Als Nächstes</translation>
     </message>
     <message>
@@ -1413,7 +1413,7 @@
         <translation>Radio</translation>
     </message>
     <message>
-        <source>Track Radio</source>
+        <source>Track radio</source>
         <translation>Titel-Radio</translation>
     </message>
     <message>
@@ -1817,11 +1817,11 @@
         <translation>Lossless (16 Bit)</translation>
     </message>
     <message>
-        <source>Play / Pause</source>
+        <source>Play / pause</source>
         <translation>Wiedergabe / Pause</translation>
     </message>
     <message>
-        <source>Next / Previous track</source>
+        <source>Next / previous track</source>
         <translation>Nächster / vorheriger Titel</translation>
     </message>
     <message>
@@ -1943,8 +1943,8 @@
         <translation>Noch nichts gespeichert</translation>
     </message>
     <message>
-        <source>My Account</source>
-        <translation>Mein Konto</translation>
+        <source>Your account</source>
+        <translation>Dein Konto</translation>
     </message>
     <message>
         <source>Settings (%1)</source>

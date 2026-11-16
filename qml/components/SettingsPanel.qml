@@ -829,8 +829,8 @@ Popup {
                 // from, and QKeySequence names them for this platform.
                 Repeater {
                     model: [
-                        { ids: ["playPause"],                       d: qsTr("Play / Pause") },
-                        { ids: ["next", "previous"],                d: qsTr("Next / Previous track") },
+                        { ids: ["playPause"],                       d: qsTr("Play / pause") },
+                        { ids: ["next", "previous"],                d: qsTr("Next / previous track") },
                         { ids: ["seekForward", "seekBack"],         d: qsTr("Seek forward / back 10s") },
                         { ids: ["volumeUp", "volumeDown"],          d: qsTr("Volume up / down") },
                         { ids: ["mute"],                            d: qsTr("Mute") },

@@ -203,7 +203,7 @@ Item {
     // does. A radio or a one-off play has nothing to name.
     readonly property string contextHeading:
         contextName.length > 0 ? qsTr("Next from: %1").arg(contextName)
-                               : qsTr("Up Next")
+                               : qsTr("Up next")
 
     function contextGlyph(type) {
         switch (type) {

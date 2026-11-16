@@ -42,7 +42,7 @@ Rectangle {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Native Desktop Tidal Client")
+                text: qsTr("Native desktop client for Tidal")
                 color: Theme.textSec
                 font.pixelSize: 14
             }

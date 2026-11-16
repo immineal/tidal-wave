@@ -5,6 +5,7 @@
 
 #include <QTest>
 #include <QFile>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QXmlStreamReader>
 
@@ -52,6 +53,16 @@ QString show(const Entry &e, const QString &text) {
     return QStringLiteral("[%1] %2").arg(e.context, text.left(90));
 }
 
+// Proper names, and the names of the app's own pages and Settings sections
+// where a sentence refers to them. Removed before the case check.
+const QStringList kNames = {
+    QStringLiteral("Tidal Wave"), QStringLiteral("TIDAL Music AS"), QStringLiteral("Tidal"),
+    QStringLiteral("Now Playing"), QStringLiteral("Dolby Atmos"),
+    QStringLiteral("NetEase Cloud Music"), QStringLiteral("China"),
+    QStringLiteral("Home / Search / Collection"), QStringLiteral("Experimental"),
+    QStringLiteral("Feedback"), QStringLiteral("Hi-Res"), QStringLiteral("Qt"),
+};
+
 } // namespace
 
 class TestWording : public QObject {
@@ -98,6 +109,37 @@ private slots:
                 if (e.german.contains(c))
                     bad << show(e, c);
         QVERIFY2(bad.isEmpty(), qPrintable("word for word:\n  " + bad.join("\n  ")));
+    }
+
+    // Sentence case: after the first word, only names and acronyms start
+    // with a capital. A new sentence, or a quoted label, starts over.
+    void englishIsInSentenceCase() {
+        static const QRegularExpression word(QStringLiteral("[A-Za-z][A-Za-z'-]*"));
+        QStringList bad;
+        for (const Entry &e : std::as_const(m_entries)) {
+            QString s = e.source;
+            for (const QString &n : kNames)
+                s.replace(n, QString(n.size(), QLatin1Char('x')));
+            bool start = true;
+            int last = 0;
+            for (auto it = word.globalMatch(s); it.hasNext();) {
+                const auto m = it.next();
+                const QString between = s.mid(last, m.capturedStart() - last);
+                last = m.capturedEnd();
+                if (between.contains(QRegularExpression(QStringLiteral("[.?!]\\s")))
+                    || between.contains(QLatin1Char('"')) || between.contains(u'“'))
+                    start = true;
+                const QString w = m.captured();
+                const bool percent = between.endsWith(QLatin1Char('%'));
+                const bool acronym = w.size() == 1
+                    || w.mid(1).contains(QRegularExpression(QStringLiteral("[A-Z]")));
+                if (!start && !percent && !acronym && w.at(0).isUpper())
+                    bad << show(e, e.source);
+                start = false;
+            }
+        }
+        bad.removeDuplicates();
+        QVERIFY2(bad.isEmpty(), qPrintable("Title Case:\n  " + bad.join("\n  ")));
     }
 
 private:

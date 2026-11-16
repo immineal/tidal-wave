@@ -1520,8 +1520,8 @@ Rectangle {
                                     id: sleepLabel
                                     objectName: "nowPlayingSleepTimerLabel"
                                     text: root.sleepTimerActive ?
-                                          (root.sleepStopAtEndOfTrack ? qsTr("End of Track") : root.formatSleepTime(root.sleepTimeLeft)) :
-                                          qsTr("Sleep Timer")
+                                          (root.sleepStopAtEndOfTrack ? qsTr("End of track") : root.formatSleepTime(root.sleepTimeLeft)) :
+                                          qsTr("Sleep timer")
                                     // The pill is sized from this label. While
                                     // counting it holds the widest clock of its
                                     // shape, "mm:ss" or "h:mm:ss".
@@ -1647,7 +1647,7 @@ Rectangle {
                             spacing: 12
 
                             Text {
-                                text: qsTr("Sleep Timer")
+                                text: qsTr("Sleep timer")
                                 color: Theme.textPrimary
                                 font.pixelSize: 14
                                 font.bold: true
@@ -1705,7 +1705,7 @@ Rectangle {
                                         }
                                         Text {
                                             id: endOfTrackText
-                                            text: qsTr("Stop at End of Track")
+                                            text: qsTr("Stop at end of track")
                                             color: Theme.textPrimary
                                             font.pixelSize: 12
                                             font.bold: true
@@ -1892,7 +1892,7 @@ Rectangle {
                                     Text {
                                         id: cancelText
                                         anchors.centerIn: parent
-                                        text: qsTr("Cancel Sleep Timer")
+                                        text: qsTr("Cancel sleep timer")
                                         color: Theme.redText
                                         font.pixelSize: 12
                                         font.bold: true
@@ -2098,7 +2098,7 @@ Rectangle {
                         Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
 
                         Text {
-                            text: qsTr("Up Next")
+                            text: qsTr("Up next")
                             color: Theme.textDim
                             font.pixelSize: 11
                             font.bold: true

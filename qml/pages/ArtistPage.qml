@@ -375,7 +375,7 @@ Rectangle {
                     return root.sectionOf(a) === "f"
                 })
                 visible: appearances.length > 0
-                title: qsTr("Appears On")
+                title: qsTr("Appears on")
                 showViewAll: false
                 mediaType: "album"
                 items: root.releaseCards(appearances)
@@ -465,7 +465,7 @@ Rectangle {
                 objectName: "artistRelatedSection"
                 Layout.fillWidth: true
                 visible: root.similarArtists.length > 0
-                title: qsTr("Related Artists")
+                title: qsTr("Related artists")
                 mediaType: "artist"
                 showViewAll: false
                 items: root.similarArtists.map(function(a) {

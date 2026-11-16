@@ -552,7 +552,7 @@ Rectangle {
             width: parent.width
             spacing: 14
 
-            Text { text: qsTr("Edit Playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
+            Text { text: qsTr("Edit playlist"); color: Theme.textPrimary; font.pixelSize: 16; font.bold: true }
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 

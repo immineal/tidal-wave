@@ -188,7 +188,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Appears On</source>
+        <source>Appears on</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -196,7 +196,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Related Artists</source>
+        <source>Related artists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -260,7 +260,7 @@
 <context>
     <name>CollectionPage</name>
     <message>
-        <source>My Collection</source>
+        <source>Collection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -324,7 +324,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Liked Songs</source>
+        <source>Liked tracks</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -574,19 +574,19 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>My Mixes</source>
+        <source>Your mixes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Saved Albums</source>
+        <source>Saved albums</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Your Playlists</source>
+        <source>Your playlists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Favorite Artists</source>
+        <source>Favourite artists</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -634,7 +634,7 @@
 <context>
     <name>LoginPage</name>
     <message>
-        <source>Native Desktop Tidal Client</source>
+        <source>Native desktop client for Tidal</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -850,15 +850,15 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>End of Track</source>
+        <source>End of track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Sleep Timer</source>
+        <source>Sleep timer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stop at End of Track</source>
+        <source>Stop at end of track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -891,7 +891,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel Sleep Timer</source>
+        <source>Cancel sleep timer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -903,7 +903,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1106,7 +1106,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Edit Playlist</source>
+        <source>Edit playlist</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1162,7 +1162,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Up Next</source>
+        <source>Up next</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1202,7 +1202,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Track Radio</source>
+        <source>Track radio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1564,11 +1564,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Play / Pause</source>
+        <source>Play / pause</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Next / Previous track</source>
+        <source>Next / previous track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1654,7 +1654,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>My Account</source>
+        <source>Your account</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
