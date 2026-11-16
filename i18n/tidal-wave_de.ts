@@ -1755,6 +1755,10 @@
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
     </message>
     <message>
+        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.</source>
+        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben; beim Trennen wird beides gelöscht.</translation>
+    </message>
+    <message>
         <source>Log out?</source>
         <translation>Abmelden?</translation>
     </message>

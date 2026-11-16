@@ -1200,6 +1200,10 @@ Popup {
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded
+                    text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.")
+                }
+                PrivacyLine {
+                    visible: privacyDetails.expanded
                     text: qsTr("The update check can be switched off above. Tidal Wave never downloads or installs an update by itself. It only opens the release page in your browser.")
                 }
                 PrivacyLine {

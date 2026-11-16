@@ -330,6 +330,17 @@ named.
     switch just before it goes out; switching a site off aborts its request under way,
     and switching both off ends the lookup. No `QNetworkAccessManager` for it exists
     until the first lookup.
+*   **ListenBrainz, only once you switch on Settings -> Scrobbling and connect.** Nothing
+    goes until then; the switch is off by default (`src/scrobble/ScrobbleSink.cpp`).
+    Connecting sends the user token you paste to
+    `https://api.listenbrainz.org/1/validate-token`. After that, `/1/submit-listens` gets a
+    "playing now" note when a track starts and a listen once it counts, which is after half
+    the track or 4 minutes, whichever comes first, for tracks over 30 seconds
+    (`src/scrobble/PlayTracker.cpp`). Both carry the artists, title, album, length, track
+    number, ISRC and the track's `tidal.com` link, the app's name and version, and the
+    listen also the time you played it (`src/scrobble/ListenBrainz.cpp`). Every request
+    carries your ListenBrainz token and the same `User-Agent` as the update check, so
+    ListenBrainz sees your IP address. No Tidal token or id other than that link is sent.
 *   **Nothing, for timing plain lyrics.** "Sync plain lyrics automatically" (on by
     default) analyses the track's audio file, which the player has downloaded to play it
     anyway, on a low-priority thread of the app (`src/lyricsync/AutoSync.cpp`). It makes
@@ -354,15 +365,23 @@ named.
     anything running as you can read it, and the refresh token is enough to use your
     account. Logging out deletes it. Note the lowercase directory name: this is not the
     same place as the settings below.
+*   **`~/.config/tidal-wave/scrobbling-listenbrainz.json`**, next to it, holds your
+    ListenBrainz user token and user name once you connect, written the same way: plain
+    JSON, readable and writable by your user only (`ScrobbleSink::saveSecret`).
+    Disconnecting deletes it.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
     language, sidebar width, audio output device, software rendering flag and the
     three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
     download folder (`src/player/Downloader.cpp`), your pinned items and recently played
-    list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), and the
-    update check's state (`src/ui/UpdateCheck.cpp`).
+    list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), the
+    update check's state (`src/ui/UpdateCheck.cpp`), and the scrobbling switch
+    (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.local/share/TidalWave/Tidal Wave/`** (`QStandardPaths::AppDataLocation`) holds
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
-    that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`).
+    that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`), and
+    `scrobble-queue-listenbrainz.json`, the listens not yet accepted by ListenBrainz, so a
+    quit or an outage loses none. It holds at most 10000, is removed once it is empty, and
+    disconnecting deletes it (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.cache/TidalWave/Tidal Wave/lyrics/`** holds one file per Tidal track id with the
     lyrics found on another site, a note that a site called it an instrumental, or a note
     that none were found, so that a song is looked up once. A "none found" note is

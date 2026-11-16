@@ -2063,6 +2063,22 @@ TestCase {
         h.panel.close()
     }
 
+    // Scrobbling sends plays off the machine, so the privacy block says where,
+    // what goes with them, and that nothing goes until it is switched on.
+    function test_the_privacy_block_covers_listenbrainz() {
+        var h = openPanel(1280, 1200)
+        var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
+        var all = ""
+        for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
+        var mustSay = ["api.listenbrainz.org", "only once you switch it on",
+                       "the time you played it", "ListenBrainz user token",
+                       "disconnecting deletes"]
+        for (var j = 0; j < mustSay.length; j++)
+            verify(all.indexOf(mustSay[j]) !== -1,
+                   "the privacy block never says \"" + mustSay[j] + "\" about ListenBrainz")
+        h.panel.close()
+    }
+
     // ── 7. the privacy block ─────────────────────────────────────────────
 
     function test_privacy_text_is_present() {
