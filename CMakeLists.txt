@@ -72,6 +72,7 @@ set(SOURCES
     src/ui/TrayMenu.cpp
     src/ui/RemoteControl.cpp
     src/ui/TidalLink.cpp
+    src/ui/TrackNotifier.cpp
     src/api/LibraryIndex.cpp
 )
 
@@ -103,6 +104,7 @@ set(HEADERS
     src/ui/TrayMenu.h
     src/ui/RemoteControl.h
     src/ui/TidalLink.h
+    src/ui/TrackNotifier.h
     src/api/LibraryIndex.h
     src/api/PageEverything.h
 )

@@ -1616,6 +1616,14 @@
         <translation>Solange dies aus ist, wird das Fenster beim Schließen nur ausgeblendet und das Tray-Symbol holt es zurück. Ohne Tray-Symbol beendet Schließen immer das Programm.</translation>
     </message>
     <message>
+        <source>Show a notification when a new track starts</source>
+        <translation>Benachrichtigung anzeigen, wenn ein neuer Titel beginnt</translation>
+    </message>
+    <message>
+        <source>Not while the Tidal Wave window is in front.</source>
+        <translation>Nicht, solange das Fenster von Tidal Wave im Vordergrund ist.</translation>
+    </message>
+    <message>
         <source>Lossless (16-bit)</source>
         <translation>Lossless (16 Bit)</translation>
     </message>

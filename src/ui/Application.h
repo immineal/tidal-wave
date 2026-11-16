@@ -30,6 +30,7 @@ class LibraryIndex;
 class SignalWatcher;
 class TrayMenu;
 class RemoteControl;
+class TrackNotifier;
 
 class Application : public QObject {
     Q_OBJECT
@@ -208,6 +209,7 @@ private:
     void createTrayIcon(const QIcon &icon);
     // Relabels the tray menu after the window or the player changed.
     void refreshTray();
+    void setUpTrackNotifier();
     void checkFavorites(qint64 minGapMs);
 
     Prefs       *m_prefs  = nullptr;
@@ -228,6 +230,7 @@ private:
     QSystemTrayIcon *m_trayIcon = nullptr;
     TrayMenu    *m_trayMenu = nullptr;
     RemoteControl *m_remote = nullptr;
+    TrackNotifier *m_notifier = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;

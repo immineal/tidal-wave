@@ -476,6 +476,28 @@ Popup {
                     color: Theme.textDim; font.pixelSize: 11
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 12
+                    Text {
+                        text: qsTr("Show a notification when a new track starts")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Toggle {
+                        objectName: "settingsTrackNotificationsToggle"
+                        checked: prefs.trackNotifications
+                        onToggled: prefs.trackNotifications = !prefs.trackNotifications
+                    }
+                }
+                Text {
+                    objectName: "settingsTrackNotificationsNote"
+                    text: qsTr("Not while the Tidal Wave window is in front.")
+                    color: Theme.textDim; font.pixelSize: 11
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
             }
 
 

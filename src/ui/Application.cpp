@@ -7,6 +7,7 @@
 #include "ui/Prefs.h"
 #include "ui/ThemePalette.h"
 #include "ui/RemoteControl.h"
+#include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
 #include "api/LibraryIndex.h"
@@ -56,6 +57,10 @@ using namespace std::chrono_literals;
 #include <QEvent>
 #include <QUrl>
 #include <QQuickStyle>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPixmap>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>   // getuid(), for the per-user socket name
@@ -800,6 +805,7 @@ int Application::run(int argc, char **argv) {
             done(err.isEmpty() ? t.album.id : 0);
         });
     });
+    setUpTrackNotifier();
     // This launch's own options wait like a second launch's; the window
     // shows itself.
     LaunchRequest own = launch.request;
@@ -1001,6 +1007,50 @@ void Application::createTrayIcon(const QIcon &icon) {
     });
 
     m_trayIcon->show();
+}
+
+void Application::setUpTrackNotifier() {
+    m_notifier = new TrackNotifier(this);
+    m_notifier->setEnabled([prefs = m_prefs] { return prefs->trackNotifications(); });
+    m_notifier->setWindowActive([this] {
+        const auto roots = m_engine ? m_engine->rootObjects() : QList<QObject *>();
+        const auto *window = roots.isEmpty() ? nullptr : qobject_cast<QWindow *>(roots.first());
+        return window && window->isVisible() && window->isActive();
+    });
+#ifdef Q_OS_LINUX
+    // Built on first use, so nothing talks to the notification server while
+    // the setting is off.
+    m_notifier->setSender([this, send = std::shared_ptr<TrackNotifier::Sender>()]
+                          (const TrackNotifier::Notification &n) mutable {
+        if (!send)
+            send = std::make_shared<TrackNotifier::Sender>(
+                TrackNotifier::freedesktopSender(QDBusConnection::sessionBus(), this));
+        (*send)(n);
+    });
+#else
+    m_notifier->setSender([this](const TrackNotifier::Notification &n) {
+        if (!m_trayIcon) return;
+        const QIcon icon = n.cover.isNull() ? QIcon() : QIcon(QPixmap::fromImage(n.cover));
+        m_trayIcon->showMessage(n.title, n.body, icon, 5000);
+    });
+#endif
+    // The image provider's cache belongs to the QML loader thread, so this is
+    // a fetch of its own: one small JPEG per track, only while the setting is on.
+    auto *nam = new QNetworkAccessManager(this);
+    m_notifier->setCoverFetcher([nam](const QUrl &url, std::function<void(const QImage &)> done) {
+        QNetworkRequest request(url);
+        request.setTransferTimeout(3000);
+        QNetworkReply *reply = nam->get(request);
+        connect(reply, &QNetworkReply::finished, reply, [reply, done] {
+            QImage image;
+            if (reply->error() == QNetworkReply::NoError) image.loadFromData(reply->readAll());
+            reply->deleteLater();
+            done(image);
+        });
+    });
+    const auto feed = [this] { m_notifier->update(m_player->currentTrackMap(), m_player->playing()); };
+    connect(m_player, &Player::currentTrackChanged, this, feed);
+    connect(m_player, &Player::playingChanged, this, feed);
 }
 
 void Application::refreshTray() {

@@ -2137,6 +2137,7 @@ class StubPrefs : public QObject {
     Q_PROPERTY(QString audioDevice READ audioDevice WRITE setAudioDevice NOTIFY audioDeviceChanged)
     Q_PROPERTY(bool softwareRendering READ softwareRendering WRITE setSoftwareRendering NOTIFY softwareRenderingChanged)
     Q_PROPERTY(bool quitOnClose READ quitOnClose WRITE setQuitOnClose NOTIFY quitOnCloseChanged)
+    Q_PROPERTY(bool trackNotifications READ trackNotifications WRITE setTrackNotifications NOTIFY trackNotificationsChanged)
     // The fullscreen Now Playing background pulled out of the cover art. On by
     // default, as in the real Prefs.
     Q_PROPERTY(bool coverGradient READ coverGradient WRITE setCoverGradient NOTIFY coverGradientChanged)
@@ -2172,6 +2173,7 @@ public:
     QString audioDevice() const  { return m_audioDevice; }
     bool    softwareRendering() const { return m_softwareRendering; }
     bool    quitOnClose() const       { return m_quitOnClose; }
+    bool    trackNotifications() const { return m_trackNotifications; }
     bool    coverGradient() const     { return m_coverGradient; }
     bool    spectrumBars() const      { return m_spectrumBars; }
     bool    lyricsLrclib() const      { return m_lyricsLrclib; }
@@ -2218,6 +2220,11 @@ public:
         if (v == m_quitOnClose) return;
         m_quitOnClose = v;
         emit quitOnCloseChanged();
+    }
+    void setTrackNotifications(bool v) {
+        if (v == m_trackNotifications) return;
+        m_trackNotifications = v;
+        emit trackNotificationsChanged();
     }
     void setCoverGradient(bool v) {
         if (v == m_coverGradient) return;
@@ -2266,6 +2273,7 @@ signals:
     void audioDeviceChanged();
     void softwareRenderingChanged();
     void quitOnCloseChanged();
+    void trackNotificationsChanged();
     void coverGradientChanged();
     void spectrumBarsChanged();
     void lyricsLrclibChanged();
@@ -2286,6 +2294,7 @@ private:
     QString m_audioDevice;
     bool    m_softwareRendering = false;
     bool    m_quitOnClose = false;
+    bool    m_trackNotifications = false;
     bool    m_coverGradient = true;
     bool    m_spectrumBars = false;
     // As a fresh install has them.

@@ -15,6 +15,7 @@ constexpr auto kAudioDev = "audio/outputDevice";
 constexpr auto kSoftRender = "ui/softwareRendering";
 constexpr auto kUiScale    = "ui/scaleFactor";
 constexpr auto kQuitOnClose = "ui/quitOnClose";
+constexpr auto kTrackNotifications = "ui/trackNotifications";
 constexpr auto kCoverGradient = "ui/coverGradient";
 constexpr auto kSpectrumBars = "ui/spectrumBars";
 // The one switch for all lyrics sites before they were split.
@@ -48,6 +49,7 @@ Prefs::Prefs(QObject *parent)
     , m_softwareRendering(m_settings.value(kSoftRender, false).toBool())
     , m_uiScale(m_settings.value(kUiScale, 0.0).toDouble())
     , m_quitOnClose(m_settings.value(kQuitOnClose, false).toBool())
+    , m_trackNotifications(m_settings.value(kTrackNotifications, false).toBool())
     // A missing key means on, the state of a fresh install.
     , m_coverGradient(m_settings.value(kCoverGradient, true).toBool())
     // Opt in: a missing key means off.
@@ -136,6 +138,13 @@ void Prefs::setQuitOnClose(bool v) {
     m_quitOnClose = v;
     m_settings.setValue(kQuitOnClose, v);
     emit quitOnCloseChanged();
+}
+
+void Prefs::setTrackNotifications(bool v) {
+    if (v == m_trackNotifications) return;
+    m_trackNotifications = v;
+    m_settings.setValue(kTrackNotifications, v);
+    emit trackNotificationsChanged();
 }
 
 void Prefs::setCoverGradient(bool v) {

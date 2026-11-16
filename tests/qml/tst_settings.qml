@@ -113,6 +113,7 @@ TestCase {
         prefs.audioDevice = ""
         prefs.softwareRendering = false
         prefs.quitOnClose = false
+        prefs.trackNotifications = false
         prefs.setSidebarWidthForTest(sidebarWidth)
         app.setReducedMotionForTest(true)
         auth.setUsernameForTest("robin")
@@ -964,6 +965,24 @@ TestCase {
                 "switching it back off must clear prefs.quitOnClose")
         verify(!toggle.checked)
 
+        h.panel.close()
+    }
+
+    // Off by default; the switch reads the setting and writes it back.
+    function test_track_notification_switch_writes_prefs() {
+        var h = openPanel(1280, 1200)
+        var toggle = findByName(h.panel.contentItem, "settingsTrackNotificationsToggle")
+        verify(toggle, "there is no switch for track-change notifications")
+        verify(!toggle.checked, "track-change notifications should be off by default")
+
+        clickItem(h.panel, toggle)
+        compare(prefs.trackNotifications, true,
+                "switching it on must set prefs.trackNotifications")
+        verify(toggle.checked, "the switch did not follow the setting")
+
+        clickItem(h.panel, toggle)
+        compare(prefs.trackNotifications, false,
+                "switching it back off must clear prefs.trackNotifications")
         h.panel.close()
     }
 
