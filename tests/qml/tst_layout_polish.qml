@@ -792,7 +792,7 @@ TestCase {
         panel.close()
     }
 
-    function test_a_wheel_notch_scrolls_settings_a_useful_step() {
+    function test_a_wheel_notch_scrolls_settings_by_the_system_lines() {
         var host = showHost(settingsHost, 1100, 800)
         var panel = host.sidebar.settingsPanel
         host.sidebar.openSettings()
@@ -802,10 +802,13 @@ TestCase {
         mouseWheel(sv, sv.width / 2, sv.height / 2, 0, -120)
         wait(400)
         settle(host)
-        // A fixed step, not wheelScrollLines: at one line per notch the
-        // default is about 20px, which is what made the panel feel stuck.
-        verify(flick.contentY >= 80 && flick.contentY <= 160,
-               "one notch moved Settings by " + flick.contentY.toFixed(1) + "px")
+        // The system's lines per notch, each one Theme.wheelLine tall, as
+        // other desktop apps scroll.
+        var step = Qt.styleHints.wheelScrollLines * Theme.wheelLine
+        verify(step > 0, "no wheel step to compare with")
+        verify(Math.abs(flick.contentY - step) <= 1,
+               "one notch moved Settings by " + flick.contentY.toFixed(1) + "px, where "
+               + Qt.styleHints.wheelScrollLines + " lines are " + step + "px")
         panel.close()
     }
 

@@ -142,7 +142,8 @@ Popup {
     // Margins every section shares, so a section is one ColumnLayout and not a
     // set of four numbers copied six times.
     readonly property int sideMargin: Theme.space5
-    readonly property int wheelStep: 96
+    // A notch scrolls the system's lines per notch, as other desktop apps do.
+    readonly property real wheelStep: Qt.styleHints.wheelScrollLines * Theme.wheelLine
 
     // The panel's own ground at a given alpha. "transparent" is transparent
     // *black*, which greys a fade out on the two light themes.
@@ -267,9 +268,8 @@ Popup {
             width: scroller.availableWidth
             spacing: 0
 
-            // A notch moves the panel a fixed step of about three rows; Qt's
-            // own is near 20px at one line per notch. Inside the content, so
-            // it hears the wheel before the Flickable and after a slider.
+            // A notch moves the panel by wheelStep. Inside the content, so it
+            // hears the wheel before the Flickable and after a slider.
             WheelHandler {
                 target: null
                 onWheel: (event) => {
