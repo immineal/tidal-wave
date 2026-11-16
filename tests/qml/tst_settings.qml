@@ -113,8 +113,41 @@ TestCase {
         property string statusText: ""
         property var signIns: []
         property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
         signal accountChanged()
         function signIn(token) { signIns = signIns.concat([token]) }
+        function discardKept() { discards++; keptCount = 0 }
+        function disconnectAccount() {
+            disconnects++
+            connected = false
+            userName = ""
+            accountChanged()
+        }
+    }
+
+    // ScrobbleSink for Last.fm: the browser sign-in's three steps, counted.
+    QtObject {
+        id: lastfmStub
+        property bool enabled: false
+        property bool connected: false
+        property string userName: ""
+        property bool checking: false
+        property bool authFailed: false
+        property bool awaitingBrowser: false
+        property string signInPage: ""
+        property string statusText: ""
+        property int starts: 0
+        property int finishes: 0
+        property int cancels: 0
+        property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
+        signal accountChanged()
+        function discardKept() { discards++; keptCount = 0 }
+        function startBrowserSignIn() { starts++ }
+        function finishBrowserSignIn() { finishes++ }
+        function cancelBrowserSignIn() { cancels++; awaitingBrowser = false }
         function disconnectAccount() {
             disconnects++
             connected = false
@@ -154,6 +187,22 @@ TestCase {
         scrobbleStub.statusText = ""
         scrobbleStub.signIns = []
         scrobbleStub.disconnects = 0
+        scrobbleStub.keptCount = 0
+        scrobbleStub.discards = 0
+        lastfmStub.enabled = false
+        lastfmStub.connected = false
+        lastfmStub.userName = ""
+        lastfmStub.checking = false
+        lastfmStub.authFailed = false
+        lastfmStub.awaitingBrowser = false
+        lastfmStub.signInPage = ""
+        lastfmStub.statusText = ""
+        lastfmStub.starts = 0
+        lastfmStub.finishes = 0
+        lastfmStub.cancels = 0
+        lastfmStub.disconnects = 0
+        lastfmStub.keptCount = 0
+        lastfmStub.discards = 0
     }
 
     function cleanupTestCase() {
@@ -302,6 +351,7 @@ TestCase {
         panel.deviceSource = audioStub
         panel.check        = updateStub
         panel.scrobble     = scrobbleStub
+        panel.lastfm       = lastfmStub
 
         host.sidebar.openSettings()
         settle(host.contentItem)
@@ -554,9 +604,10 @@ TestCase {
 
     // ── 1b. the pure-black switch ────────────────────────────────────────
 
-    // The switch belongs to the dark themes. On a light theme it is hidden,
-    // since there is no way to enable it there.
-    function test_the_pure_black_switch_is_hidden_on_a_light_theme_data() {
+    // The switch belongs to the dark themes. On a light theme it stays in
+    // place, switched off, with a note saying why: a theme change never
+    // moves the rows below it.
+    function test_the_pure_black_switch_is_off_on_a_light_theme_data() {
         return [
             { tag: "sky",  name: "sky" },
             { tag: "sand", name: "sand" },
@@ -564,15 +615,23 @@ TestCase {
         ]
     }
 
-    function test_the_pure_black_switch_is_hidden_on_a_light_theme(row) {
-        prefs.theme = row.name
+    function test_the_pure_black_switch_is_off_on_a_light_theme(row) {
+        prefs.theme = "sea"
         var h = openPanel(1280, 1200)
+        var block = findByName(h.panel.contentItem, "settingsOledBlock")
+        verify(block && block.visible, "the pure-black block is not there")
+        var below = block.mapToItem(h.panel.contentItem, 0, block.height).y
 
+        prefs.theme = row.name
+        settle(h.panel.contentItem)
         var toggle = findByName(h.panel.contentItem, "settingsOledToggle")
-        verify(toggle, "the switch was removed rather than hidden")
-        verify(!toggle.visible, row.name + " still shows the pure-black switch")
+        verify(toggle && toggle.visible, row.name + " hides the pure-black switch")
+        verify(!toggle.enabled, row.name + " offers a switch that cannot work there")
         var note = findByName(h.panel.contentItem, "settingsOledNote")
-        verify(note && !note.visible, row.name + " still shows the switch's note")
+        verify(note && note.visible && note.text.length > 0,
+               row.name + " does not say why the switch is off")
+        compare(block.mapToItem(h.panel.contentItem, 0, block.height).y, below,
+                "choosing " + row.name + " moved the rows below the switch")
 
         h.panel.close()
     }
@@ -809,85 +868,124 @@ TestCase {
         h2.panel.close()
     }
 
-    // The track is a rainbow, and it holds still: the gradient is static,
-    // and an animation on it fails this.
-    function test_the_rainbow_is_static_and_has_no_frame_around_it() {
-        app.setReducedMotionForTest(false)
-        prefs.tintedGreys = true
+    // Every fill a toggle paints, and whether any of it is a gradient.
+    function toggleFills(item, out) {
+        if (!item) return out
+        if (item.color !== undefined && item.border !== undefined)
+            out.push({ color: String(item.color), border: item.border.width,
+                       visible: item.visible,
+                       gradient: !!item.gradient && item.visible })
+        for (var i = 0; i < item.children.length; i++) toggleFills(item.children[i], out)
+        return out
+    }
 
+    // grabImage() crops at an item's position in its parent, so the window's
+    // content item is grabbed, twice as the first comes back blank, and the
+    // item is read in window coordinates, `pad` pixels past its edge.
+    function pixelsOf(item, pad) {
+        var root = item.Window.window.contentItem
+        grabImage(root)
+        var img = grabImage(root)
+        var p = item.mapToItem(null, 0, 0)
+        var out = []
+        for (var y = -pad; y < item.height + pad; y++)
+            for (var x = -pad; x < item.width + pad; x++)
+                out.push(String(img.pixel(Math.round(p.x) + x, Math.round(p.y) + y)))
+        return out
+    }
+
+    // Checked, the colour switch is a still glass rainbow with no frame, the
+    // white knob on top, and its glow kept clear of the words beside it.
+    function test_the_rainbow_is_a_still_picture_with_no_frame() {
+        app.setReducedMotionForTest(false)
+        prefs.theme = "sea"
+        prefs.tintedGreys = true
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
         verify(toggle && toggle.checked)
+        verify(!toggle.activeFocus, "this case assumes the toggle is not focused")
         var rainbow = findByName(toggle, "toggleRainbow")
         verify(rainbow && rainbow.visible)
+        tryCompare(rainbow, "status", Image.Ready)
+        verify(rainbow.sourceSize.width > 0, "the rainbow picture did not load")
 
-        // Seven stops round the wheel, the first and the last on the same hue so
-        // the strip joins up, which leaves six distinct colours.
-        verify(rainbow.gradient, "the rainbow track carries no gradient")
-        compare(rainbow.gradient.stops.length, 7, "the rainbow has the wrong number of stops")
+        // No solid fill or ring around it: the picture is the control.
+        var fills = toggleFills(toggle, [])
+        compare(fills[0].color, String(Qt.rgba(0, 0, 0, 0)),
+                "the track paints a fill under the rainbow")
+        compare(fills[0].border, 0,
+                "the rainbow switch has a " + fills[0].border + "px frame around it")
+
+        // Still: two looks 400ms apart are the same picture, and it is a
+        // picture: more than a handful of colours.
+        var first = pixelsOf(toggle, 4)
         var distinct = {}
-        for (var k = 0; k < 7; k++)
-            distinct[String(rainbow.gradient.stops[k].color)] = true
-        compare(Object.keys(distinct).length, 6,
-                "the rainbow is " + Object.keys(distinct).length + " colours")
-
-        // Still. Sampled over a span long enough to catch a slow animation.
-        var before = []
-        for (var b = 0; b < 7; b++) before.push(String(rainbow.gradient.stops[b].color))
+        for (var k = 0; k < first.length; k++) distinct[first[k]] = true
+        verify(Object.keys(distinct).length > 100,
+               "the rainbow paints " + Object.keys(distinct).length + " colours")
         wait(400)
-        for (var c = 0; c < 7; c++)
-            compare(String(rainbow.gradient.stops[c].color), before[c],
-                    "stop " + c + " moved: the rainbow is animating again")
+        compare(pixelsOf(toggle, 4), first, "the rainbow is animating")
 
-        // No solid ring around it: the gradient is the control. Focus is the
-        // one exception.
-        var track = rainbow.parent
-        verify(!toggle.activeFocus, "this half of the case assumes the toggle is not focused")
-        compare(track.border.width, 0,
-                "the rainbow switch has a " + track.border.width + "px frame around it")
+        // The knob is white in the middle, not tinted by the glass under it.
+        var knob = fills[1]
+        compare(knob.color, String(Theme.accentInk), "the knob is not white")
+        var w = toggle.width + 8
+        compare(first[(4 + toggle.height / 2) * w + 4 + toggle.width - 11],
+                String(Theme.accentInk), "the knob's middle is not white")
+
+        // The glow stays inside the gap to the label.
+        var label = findByName(h.panel.contentItem, "settingsTintedLabel")
+        var note = findByName(h.panel.contentItem, "settingsTintedNote")
+        var glowLeft = rainbow.mapToItem(null, 0, 0).x
+        verify(glowLeft >= label.mapToItem(null, label.width, 0).x
+               && glowLeft >= note.mapToItem(null, note.width, 0).x,
+               "the rainbow's glow reaches over the words beside it")
+
+        // Reduced motion leaves it exactly as it is.
+        app.setReducedMotionForTest(true)
+        compare(pixelsOf(toggle, 4), first, "reduced motion changed the rainbow")
+        app.setReducedMotionForTest(false)
 
         clickItem(h.panel, toggle)
         verify(!rainbow.visible, "the switch is off and still a rainbow")
-        // Off, it is an ordinary toggle again and gets its ordinary border back.
-        compare(track.border.width, 1,
+        compare(toggleFills(toggle, [])[0].border, 1,
                 "switched off, the toggle lost the border every other toggle has")
 
-        // No other switch in the panel is painted as a rainbow.
-        prefs.theme = "sea"
+        // No other switch carries the picture.
         var black = findByName(h.panel.contentItem, "settingsOledToggle")
         verify(black && black.visible)
-        var strayRainbow = findByName(black, "toggleRainbow")
-        verify(strayRainbow && !strayRainbow.visible,
+        verify(!findByName(black, "toggleRainbow"),
                "the pure-black switch is painted as a rainbow")
-
         h.panel.close()
     }
 
-    // The rainbow is identical under reduced motion: the reduced-motion path
-    // must not take the colour away.
-    function test_reduced_motion_keeps_the_rainbow_exactly_as_it_is() {
-        prefs.tintedGreys = true
-
-        app.setReducedMotionForTest(false)
-        var normal = openPanel(1280, 1200)
-        var t1 = findByName(normal.panel.contentItem, "settingsTintedToggle")
-        var r1 = findByName(t1, "toggleRainbow")
-        verify(r1 && r1.visible)
-        var stops = []
-        for (var i = 0; i < 7; i++) stops.push(String(r1.gradient.stops[i].color))
-        normal.panel.close()
-
-        app.setReducedMotionForTest(true)
+    // Off, the colour switch is the standard switch: the same fills, the same
+    // border and the same pixels as the pure-black switch when that is off.
+    function test_the_colour_switch_off_looks_like_every_other_switch() {
+        prefs.theme = "sea"
+        prefs.tintedGreys = false
+        prefs.oledBlack = false
         var h = openPanel(1280, 1200)
-        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
-        verify(toggle && toggle.checked)
-        var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible,
-               "reduced motion removed the rainbow instead of leaving it alone")
-        for (var j = 0; j < 7; j++)
-            compare(String(rainbow.gradient.stops[j].color), stops[j],
-                    "stop " + j + " differs under reduced motion")
+        var tinted = findByName(h.panel.contentItem, "settingsTintedToggle")
+        var black  = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(tinted && !tinted.checked && black && !black.checked)
+        verify(!tinted.activeFocus && !black.activeFocus)
+        // Let the knob finish any slide before the pixels are compared.
+        wait(Theme.dur(Theme.motionFast) + 100)
 
+        var a = toggleFills(tinted, [])
+        var b = toggleFills(black, [])
+        compare(a.length, b.length, "the two switches are built differently")
+        for (var j = 0; j < a.length; j++) {
+            verify(!a[j].gradient, "the colour switch paints a gradient while off")
+            compare(a[j].color, b[j].color, "fill " + j + " differs from the standard switch")
+            compare(a[j].border, b[j].border, "border " + j + " differs from the standard switch")
+            compare(a[j].visible, b[j].visible, "fill " + j + " shows on one switch only")
+        }
+        var rainbow = findByName(tinted, "toggleRainbow")
+        verify(rainbow && !rainbow.visible, "the rainbow shows while the switch is off")
+        compare(pixelsOf(tinted, 4), pixelsOf(black, 4),
+                "off, the colour switch does not look like the standard switch")
         h.panel.close()
     }
 
@@ -1218,7 +1316,7 @@ TestCase {
     function test_playback_switches_data() {
         return [
             { tag: "loudness", key: "normalizeLoudness", toggle: "settingsNormalizeToggle", fresh: true },
-            { tag: "autoplay", key: "autoplay", toggle: "settingsAutoplayToggle", fresh: true },
+            { tag: "autoplay", key: "autoplay", toggle: "settingsAutoplayToggle", fresh: false },
             { tag: "crossfade", key: "crossfade", toggle: "settingsCrossfadeToggle", fresh: false },
         ]
     }
@@ -1502,19 +1600,19 @@ TestCase {
         check("as opened")
         var dark = column.height
 
-        // A light theme hides the pure-black switch and its note.
+        // The privacy notice's Details adds rows and takes them away.
+        var details = findByName(h.panel.contentItem, "settingsPrivacyDetails")
+        details.expanded = true
+        settle(h.panel.contentItem)
+        verify(column.height > dark, "Details added no rows")
+        check("with the notice open")
         scrollToEnd(h.panel)
-        prefs.theme = "sky"
+        details.expanded = false
         settle(h.panel.contentItem)
-        verify(column.height < dark, "the light theme took no row away")
-        check("with a row gone")
+        compare(column.height, dark, "closing Details left rows behind")
+        check("with the notice closed")
         fuzzyCompare(column.mapToItem(flick, 0, column.height).y, flick.height, 0.5,
-                     "a row left and the panel did not follow its rows up")
-
-        prefs.theme = "sea"
-        settle(h.panel.contentItem)
-        compare(column.height, dark, "the dark theme did not bring the row back")
-        check("with the row back")
+                     "rows left and the panel did not follow its rows up")
 
         h.host.height = 1200
         settle(h.panel.contentItem)
@@ -1761,6 +1859,155 @@ TestCase {
         var h = openPanel(1280, 1200)
         var link = findByName(sectionByKey(h.panel, "scrobbling"), "settingsScrobbleTokenLink")
         compare(urlFromClick(h.panel, link), "https://listenbrainz.org/settings/")
+        h.panel.close()
+    }
+
+    // ── Last.fm ──────────────────────────────────────────────────────────
+
+    // Beside ListenBrainz in the same section, off by default and with a
+    // switch of its own.
+    function test_lastfm_sits_beside_listenbrainz_and_starts_off() {
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var lb = findByName(section, "settingsScrobbleToggle")
+        var fm = findByName(section, "settingsLastfmToggle")
+        verify(lb && lb.visible, "the ListenBrainz switch is gone")
+        verify(fm && fm.visible, "there is no Last.fm switch")
+        verify(!fm.checked, "Last.fm is on before it was asked for")
+        verify(!findByName(section, "settingsLastfmConnect").visible,
+               "Connect is offered while Last.fm is off")
+        verify(!findByName(section, "settingsLastfmAccount").visible)
+        verify(findByName(section, "settingsLastfmNote").text.indexOf("last.fm") !== -1,
+               "the switch does not say where the plays go")
+        h.panel.close()
+    }
+
+    function test_the_lastfm_switch_turns_it_on_alone() {
+        scrobbleStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        clickItem(h.panel, findByName(section, "settingsLastfmToggle"))
+        compare(lastfmStub.enabled, true, "the switch did not turn Last.fm on")
+        compare(scrobbleStub.enabled, true, "the Last.fm switch changed ListenBrainz")
+        verify(findByName(section, "settingsLastfmConnect").visible,
+               "on and with no account, Connect with Last.fm is not offered")
+        clickItem(h.panel, findByName(section, "settingsLastfmToggle"))
+        compare(lastfmStub.enabled, false)
+        compare(scrobbleStub.enabled, true)
+        h.panel.close()
+    }
+
+    // Connect opens the browser step; then "I've allowed access" finishes
+    // it, and Cancel goes back.
+    function test_connect_with_lastfm_goes_through_the_browser() {
+        lastfmStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var connect = findByName(section, "settingsLastfmConnect")
+        compare(connect.text, "Connect with Last.fm")
+        clickItem(h.panel, connect)
+        compare(lastfmStub.starts, 1, "Connect with Last.fm did not start the sign-in")
+
+        lastfmStub.awaitingBrowser = true
+        settle(h.panel.contentItem)
+        verify(!connect.visible, "Connect stays while the browser step waits")
+        var finish = findByName(section, "settingsLastfmFinish")
+        verify(finish && finish.visible, "there is no way to say access was allowed")
+        compare(finish.text, "I've allowed access")
+        clickItem(h.panel, finish)
+        compare(lastfmStub.finishes, 1)
+
+        clickItem(h.panel, findByName(section, "settingsLastfmCancel"))
+        compare(lastfmStub.cancels, 1)
+        settle(h.panel.contentItem)
+        verify(connect.visible, "after Cancel, Connect with Last.fm is not back")
+        h.panel.close()
+    }
+
+    // The page can be opened again if the browser did not come up.
+    function test_the_lastfm_page_link_opens_the_page_again() {
+        lastfmStub.enabled = true
+        lastfmStub.awaitingBrowser = true
+        lastfmStub.signInPage = "https://www.last.fm/api/auth/?api_key=k&token=t"
+        var h = openPanel(1280, 1200)
+        var link = findByName(sectionByKey(h.panel, "scrobbling"), "settingsLastfmPageLink")
+        verify(link && link.visible)
+        compare(urlFromClick(h.panel, link), "https://www.last.fm/api/auth/?api_key=k&token=t")
+        h.panel.close()
+    }
+
+    function test_a_connected_lastfm_account_shows_its_name_and_disconnect() {
+        lastfmStub.enabled = true
+        lastfmStub.connected = true
+        lastfmStub.userName = "listener"
+        lastfmStub.statusText = "Nothing is waiting to be sent."
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        compare(findByName(section, "settingsLastfmUser").text, "listener")
+        verify(!findByName(section, "settingsLastfmConnect").visible)
+        var status = findByName(section, "settingsLastfmStatus")
+        verify(status.visible)
+        compare(status.text, "Nothing is waiting to be sent.")
+        clickItem(h.panel, findByName(section, "settingsLastfmDisconnect"))
+        compare(lastfmStub.disconnects, 1)
+        verify(findByName(section, "settingsLastfmConnect").visible,
+               "after Disconnect, Connect with Last.fm is not offered")
+        h.panel.close()
+    }
+
+    function test_lastfm_controls_are_reachable_and_named_data() {
+        return [
+            { tag: "switch",     name: "settingsLastfmToggle",     role: Accessible.CheckBox, connected: false, waiting: false },
+            { tag: "connect",    name: "settingsLastfmConnect",    role: Accessible.Button,   connected: false, waiting: false },
+            { tag: "finish",     name: "settingsLastfmFinish",     role: Accessible.Button,   connected: false, waiting: true },
+            { tag: "cancel",     name: "settingsLastfmCancel",     role: Accessible.Button,   connected: false, waiting: true },
+            { tag: "page",       name: "settingsLastfmPageLink",   role: Accessible.Link,     connected: false, waiting: true },
+            { tag: "disconnect", name: "settingsLastfmDisconnect", role: Accessible.Button,   connected: true,  waiting: false },
+        ]
+    }
+    function test_lastfm_controls_are_reachable_and_named(data) {
+        lastfmStub.enabled = true
+        lastfmStub.connected = data.connected
+        lastfmStub.userName = data.connected ? "listener" : ""
+        lastfmStub.awaitingBrowser = data.waiting
+        lastfmStub.signInPage = data.waiting ? "https://www.last.fm/api/auth/?api_key=k&token=t" : ""
+        var h = openPanel(minWindowW, minWindowH)
+        var item = findByName(sectionByKey(h.panel, "scrobbling"), data.name)
+        verify(item && item.visible, data.name + " is not shown")
+        verify(item.activeFocusOnTab, data.name + " cannot be reached with the keyboard")
+        verify(a11y.exposed(item), data.name + " is not exposed")
+        compare(a11y.role(item), data.role)
+        verify(a11y.name(item).length > 0, data.name + " has no accessible name")
+        h.panel.close()
+    }
+
+    // Listens kept for an account that is not connected can be discarded,
+    // for either service, from beside the line that counts them.
+    function test_kept_listens_can_be_discarded_data() {
+        return [
+            { tag: "ListenBrainz", stub: "scrobble", link: "settingsScrobbleDiscard" },
+            { tag: "Last.fm",      stub: "lastfm",   link: "settingsLastfmDiscard" },
+        ]
+    }
+    function test_kept_listens_can_be_discarded(data) {
+        var stub = data.stub === "scrobble" ? scrobbleStub : lastfmStub
+        stub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var link = findByName(section, data.link)
+        verify(link, "there is no Discard link")
+        verify(!link.visible, "Discard is offered with nothing kept")
+        stub.keptCount = 2
+        stub.statusText = "2 listens kept until listener connects again."
+        settle(h.panel.contentItem)
+        verify(link.visible, "Discard is not offered for kept listens")
+        compare(link.text, "Discard")
+        verify(link.activeFocusOnTab, "Discard cannot be reached with the keyboard")
+        compare(a11y.role(link), Accessible.Link)
+        clickItem(h.panel, link)
+        compare(stub.discards, 1, "Discard did not empty the kept queue")
+        settle(h.panel.contentItem)
+        verify(!link.visible)
         h.panel.close()
     }
 
@@ -2072,10 +2319,24 @@ TestCase {
         for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
         var mustSay = ["api.listenbrainz.org", "only once you switch it on",
                        "the time you played it", "ListenBrainz user token",
-                       "disconnecting deletes"]
+                       "deletes the token", "logging out of Tidal", "the listens stay until the same account connects again"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy block never says \"" + mustSay[j] + "\" about ListenBrainz")
+        h.panel.close()
+    }
+
+    function test_the_privacy_block_covers_lastfm() {
+        var h = openPanel(1280, 1200)
+        var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
+        var all = ""
+        for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
+        var mustSay = ["ws.audioscrobbler.com", "Connect with Last.fm\" opens last.fm in your browser",
+                       "your session key", "do not go to Last.fm",
+                       "disconnecting or logging out of Tidal deletes the key"]
+        for (var j = 0; j < mustSay.length; j++)
+            verify(all.indexOf(mustSay[j]) !== -1,
+                   "the privacy block never says \"" + mustSay[j] + "\" about Last.fm")
         h.panel.close()
     }
 

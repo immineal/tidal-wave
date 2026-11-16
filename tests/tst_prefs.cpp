@@ -44,6 +44,8 @@ private slots:
         QCOMPARE(p.softwareRendering(), false);        // GPU path by default
         // Closing the window hides it in the tray by default.
         QCOMPARE(p.quitOnClose(), false);
+        // The queue ends where the listener left it unless they ask for more.
+        QCOMPARE(p.autoplay(), false);
         // The default width has to be inside the range the drag handle allows,
         // or the sidebar jumps on the first drag.
         QVERIFY(p.sidebarWidth() >= Prefs::minSidebarWidth);

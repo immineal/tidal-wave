@@ -63,19 +63,19 @@ const Spec kSpecs[] = {
     { "sky",  "Sky",  false,
       "#FFFFFF", "#F2F5F8", "#E6EBF0", "#C1C8D0", "#CFD9E2", 26,
       "#08111A", "#4C5A66", "#798591",
-      "#0178A0", "#015877", "#FFFFFF", "#017096",
-      "#C0392B", "#FFFFFF", "#BE3729", "#1B7F4B" },
+      "#0074B5", "#005A8C", "#FFFFFF", "#006CAD",
+      "#C51B32", "#FFFFFF", "#C51B32", "#1B7F4B" },
 
     { "sand", "Sand", false,
-      "#F6F6E0", "#EBEACC", "#DFDFB9", "#C1C18F", "#C1C193", 26,
+      "#F9F4E8", "#EFE7D8", "#E4DBC8", "#C8BCA3", "#C8BCA5", 26,
       "#1B1913", "#5D564A", "#837B6C",
       "#2F6F4E", "#22543A", "#FFFFFF", "#2B6B4B",
       "#A8342A", "#FFFFFF", "#A8342A", "#4F7A35" },
 
-    // Sand and Clay keep distinct hues even at the near-white background;
-    // groundsAreTellableApart() in tests/tst_theme.cpp holds the distance.
+    // Sand is a warm paper, Clay a light blush; the two sit close, by choice.
+    // lightGroundsAreTellableApart() in tests/tst_theme.cpp holds the floor.
     { "clay", "Clay", false,
-      "#FFEDE4", "#FFE0D4", "#FFD1C2", "#E7AC99", "#FAC2B0", 26,
+      "#F8EFEA", "#F3E4DE", "#EED7CF", "#D2B4AB", "#E6CAC1", 26,
       "#241510", "#6E4F3E", "#96705D",
       "#B4481C", "#8A3310", "#FFFFFF", "#A63B09",
       "#B3302A", "#FFFFFF", "#B12E29", "#3F7A3A" },

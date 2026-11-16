@@ -270,6 +270,37 @@ TestCase {
         app.setReducedMotionForTest(false)
     }
 
+    // The sign-in code sits inside its box with room on every side, however
+    // wide the code and the font set it: the border never crosses a glyph.
+    function test_login_code_fits_its_box_data() {
+        return [ { tag: "Tidal's shape", code: "WXYZ-1234", px: 0 },
+                 { tag: "wide letters",  code: "MWMW-WMWM", px: 0 },
+                 { tag: "a larger font", code: "WXYZ-1234", px: 40 } ]
+    }
+    function test_login_code_fits_its_box(row) {
+        app.setReducedMotionForTest(true)
+        auth.setDeviceCodeForTest(row.code, "https://link.tidal.com/" + row.code)
+        auth.setStateForTest(1)
+        var page = makePane(loginC, 640)
+        var code = findByName(page, "loginDeviceCode")
+        verify(code, "the code was not found")
+        if (row.px > 0) code.font.pixelSize = row.px
+        settle(page)
+        settle(page)
+        var box = code.parent
+        compare(code.text, row.code)
+        var left = code.mapToItem(box, 0, 0)
+        var pad = Theme.space3
+        verify(left.x >= pad && left.x + code.contentWidth <= box.width - pad,
+               "the code runs from " + left.x.toFixed(1) + " to "
+               + (left.x + code.contentWidth).toFixed(1) + " in a box "
+               + box.width.toFixed(1) + " wide")
+        verify(left.y >= 0 && left.y + code.contentHeight <= box.height,
+               "the code is taller than its box")
+        auth.setStateForTest(2)
+        app.setReducedMotionForTest(false)
+    }
+
     // ── blanket audit: the four hero pages ──────────────────────────────────
 
     function test_album_page_fits() {
@@ -682,7 +713,7 @@ TestCase {
         var row = createTemporaryObject(trackRowC, holder, {
             width: w, trackNum: 1, title: t.title, artists: t.artists,
             albumTitle: t.albumTitle, durationStr: t.durationStr,
-            showPopularity: true, trackData: t
+            trackData: t
         })
         verify(row, "the row was not created")
         settle(holder)
@@ -698,17 +729,6 @@ TestCase {
         var narrow = makeRow(639)
         verify(!findByName(narrow, "trackAlbumColumn").visible,
                "the album column still shows at a row width of 639")
-    }
-
-    function test_trackrow_hides_popularity_below_560() {
-        var wide = makeRow(600)
-        var pop = findByName(wide, "trackPopularityColumn")
-        verify(pop, "the popularity column was not found")
-        verify(pop.visible, "popularity is hidden at a row width of 600")
-
-        var narrow = makeRow(559)
-        verify(!findByName(narrow, "trackPopularityColumn").visible,
-               "popularity still shows at a row width of 559")
     }
 
     function test_trackrow_fits_at_every_width() {
@@ -807,15 +827,18 @@ TestCase {
             verify(cell >= page.gridMinCell,
                    "@" + w + ": cells of " + cell + ", under the " + page.gridMinCell
                    + " a cover plus two lines needs")
-            verify(left >= page.gridEdge && right >= page.gridEdge,
-                   "@" + w + ": insets of " + left + " and " + right + " eat into the pane inset")
+            // A cell holds half a gutter each side of its card, so the first
+            // card starts on the pane inset and the last ends inside it.
+            var half = page.gridGutter / 2
+            compare(left + half, page.gridEdge,
+                    "@" + w + ": the first card starts at " + (left + half) + ", off the inset")
+            verify(right + half >= page.gridEdge,
+                   "@" + w + ": the last card ends " + (right + half) + "px from the edge")
             // The guarantee: the columns and the two insets are exactly the
             // pane, so the last column cannot be sitting past the right edge.
             compare(left + cols * cell + right, w,
                     "@" + w + ": " + cols + " x " + cell + " between insets of " + left
                     + " and " + right + " does not add up to " + w)
-            verify(Math.abs(left - right) <= 1,
-                   "@" + w + ": the two outer gutters are " + left + " and " + right)
             verify(page.gridCardSize(cell) <= cell - 1,
                    "@" + w + ": a " + page.gridCardSize(cell) + "px card in a " + cell + "px cell")
         }
@@ -856,9 +879,13 @@ TestCase {
                 seen++
             }
             verify(seen >= grid.columns, "@" + w + ": only " + seen + " cards were realized")
-            verify(Math.abs(leftGutter - (grid.width - rightEdge)) <= 1,
-                   "@" + w + ": the gutters are " + leftGutter.toFixed(1) + " on the left and "
-                   + (grid.width - rightEdge).toFixed(1) + " on the right")
+            // The first card on the title's inset; the rounding goes right.
+            var gx = grid.mapToItem(live, 0, 0).x
+            verify(Math.abs(gx + leftGutter - live.gridEdge) <= 0.5,
+                   "@" + w + ": the first card starts at " + (gx + leftGutter).toFixed(1))
+            verify(live.width - (gx + rightEdge) >= live.gridEdge - 0.5,
+                   "@" + w + ": the last card ends " + (live.width - gx - rightEdge).toFixed(1)
+                   + "px from the edge")
         }
     }
 
@@ -996,30 +1023,82 @@ TestCase {
         settle(holder)
     }
 
-    function test_album_card_keeps_its_corner_play_button() {
+    // A card's hover dims the whole cover, corners included, and lays a plain
+    // play glyph in its middle: no disc behind it, nothing grows. The glyph
+    // plays; anywhere else on the cover opens the page.
+    function test_album_card_hover_dims_the_whole_cover_under_a_plain_glyph() {
+        app.setReducedMotionForTest(true)
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
+        // A white ground, so a corner the dim misses reads as bright.
+        Qt.createQmlObject('import QtQuick; Rectangle { anchors.fill: parent; color: "white" }',
+                           holder)
         var card = createTemporaryObject(mediaCardC, holder, {
-            x: 40, y: 40, cardSize: 160, mediaType: "album",
+            x: 40, y: 40, cardSize: 160, mediaType: "album", coverUrl: "cover-1",
             title: "Ein langer Albumtitel", subtitle: "Interpret"
         })
         verify(card, "the card was not created")
-        settle(holder)
-
         var art = findByName(card, "cardArt")
+        var img = findByName(card, "cardImage")
+        tryCompare(img, "status", Image.Ready, 2000, "the cover never loaded")
+        settle(holder)
         verify(art.radius < art.width / 2, "an album's art box was drawn as a disc")
+
+        // How dark the four corner pixels of the cover are.
+        function corners() {
+            var g = grabImage(holder), w = art.width, h = art.height, out = []
+            var pts = [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]]
+            for (var i = 0; i < pts.length; ++i) {
+                var px = g.pixel(40 + pts[i][0], 40 + pts[i][1])
+                out.push(3 - (px.r + px.g + px.b))
+            }
+            return out
+        }
+        var before = corners()
 
         mouseMove(holder, 40 + art.width / 2, 40 + art.height / 2)
         settle(holder)
+        var after = corners()
+        for (var i = 0; i < 4; ++i)
+            verify(after[i] > before[i] + 0.1,
+                   "corner " + i + " of the cover is not dimmed: " + before[i] + " -> " + after[i])
 
         var play = findByName(card, "cardPlayButton")
-        verify(play.visible, "the play button did not appear on hover")
-        var p = play.mapToItem(art, 0, 0)
-        verify(p.x + play.width > art.width * 0.6 && p.y + play.height > art.height * 0.6,
-               "the play button left the bottom right corner (" + p.x.toFixed(1)
-               + "," + p.y.toFixed(1) + ")")
+        verify(play.visible, "the play glyph did not appear on hover")
+        var c = play.mapToItem(art, play.width / 2, play.height / 2)
+        verify(Math.abs(c.x - art.width / 2) <= 1 && Math.abs(c.y - art.height / 2) <= 1,
+               "the play glyph is not in the middle of the cover")
+        verify(!findByName(card, "cardPlayFill"), "the glyph sits on a filled shape")
+        verify(!findByName(card, "cardPlayLabel"), "the glyph carries a word")
+        for (var k = 0; k < play.children.length; ++k) {
+            var ch = play.children[k]
+            if (ch.visible && ch.color !== undefined && ch.radius !== undefined)
+                verify(ch.color.a === 0, "a filled shape sits behind the glyph")
+        }
 
+        mouseMove(holder, 40 + c.x, 40 + c.y)
+        settle(holder)
+        compare(play.scale, 1, "the play glyph grows under the pointer")
+        compare(art.scale, 1, "the cover grows under the pointer")
+        compare(card.scale, 1, "the card grows under the pointer")
+
+        var opened = 0, played = 0
+        card.clicked.connect(function () { opened++ })
+        card.playClicked.connect(function () { played++ })
+        mouseClick(holder, 40 + c.x, 40 + c.y)
+        compare(played, 1, "a click on the glyph did not play")
+        compare(opened, 0, "a click on the glyph opened the page")
+        mouseClick(holder, 40 + 12, 40 + 12)
+        compare(opened, 1, "a click on the cover away from the glyph did not open the page")
+        compare(played, 1, "a click away from the glyph played")
+
+        // The keyboard on the card dims it too.
         mouseMove(holder, -20, -20)
         settle(holder)
+        card.forceActiveFocus()
+        settle(holder)
+        var focused = corners()
+        verify(focused[0] > before[0] + 0.1, "the keyboard on the card does not dim it")
+        verify(play.visible, "the keyboard on the card does not show the glyph")
     }
 
     // The collection grid's dead space, measured on the live GridView. The

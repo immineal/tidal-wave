@@ -245,10 +245,6 @@ Rectangle {
                     var p = hero.mapToItem(root, x, y)
                     root.showHeroPinMenu(p.x, p.y)
                 }
-                // The queue confirmation is drawn above the action row.
-                // Assigned, not bound: an id inside the list's header
-                // component is out of reach from the root.
-                Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
                 // One hover target and one tab stop per artist, so a featured
                 // credit opens the guest rather than the lead.
@@ -323,7 +319,10 @@ Rectangle {
                         text: root.isSaved ? qsTr("Saved", "state, album is in the library")
                                            : qsTr("Save", "verb, add album to the library")
                         icon: root.isSaved ? "heart-filled" : "heart"
-                        accent: root.isSaved
+                        // A state, not the page's main action: outlined,
+                        // with the heart filled in the accent.
+                        accent: false
+                        iconColor: root.isSaved ? Theme.accentText : undefined
                         // Anchored on the action row, which has clear space
                         // above it.
                         onClicked: root.favoriteAction.toggleAlbum(root.albumId, root.isSaved,
@@ -544,5 +543,5 @@ Rectangle {
         trackSource: root.allTracks
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }

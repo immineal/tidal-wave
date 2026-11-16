@@ -51,6 +51,15 @@ Rectangle {
 
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
+    // An undo, or a change Tidal did not confirm, moved rows this page did
+    // not move itself: the rows are read again.
+    Connections {
+        target: Edits
+        function onPlaylistChanged(uuid) {
+            if (uuid === root.playlistUuid && root.playlistUuid.length > 0) root.reloadTracks()
+        }
+    }
+
     // ── the one number on this page with no live source ──────────────────
     // The length arrives once with the header, so it is refreshed from the
     // bridge's cache when this playlist's contents change. Not on
@@ -111,7 +120,7 @@ Rectangle {
     readonly property string staleRemovalText:
         qsTr("This playlist was changed somewhere else, so nothing was removed. It has been reloaded.")
     function reloadAfterStaleRemoval() {
-        tracksList.ToolTip.show(root.staleRemovalText, 5000)
+        Toasts.show(root.staleRemovalText)
         loadPlaylistHeader(root.playlistUuid)
         reloadTracks()
     }
@@ -165,17 +174,13 @@ Rectangle {
             kind: qsTr("Playlist")
             title: root.playlistTitle
             artSource: root.coverUrl
-            // Without a cover of its own, the first four tracks' covers.
-            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            // Without a cover of its own, the tracks' covers; see DetailHero.
+            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
             artIcon: "playlist"
             onPinRequested: (x, y) => {
                 var p = hero.mapToItem(root, x, y)
                 root.showHeroPinMenu(p.x, p.y)
             }
-            // The queue confirmation is drawn just above the action row.
-            // Assigned, not bound: an id inside the list's header component is
-            // out of reach from the page root.
-            Component.onCompleted: if (heroPinMenu) heroPinMenu.confirmAnchor = hero.actionRow
 
             Text {
                 visible: root.playlistDescription.length > 0
@@ -275,7 +280,12 @@ Rectangle {
             onRemoveFromPlaylistRequested: function(itemIndex) {
                 var requested = root.playlistUuid
                 var row = playlistTrackRow
-                bridge.removeTrackFromPlaylist(requested, itemIndex, function(ok, stale, index) {
+                var trackId = Number(modelData.id)
+                var named = root.playlistTitle
+                var had = root.tracks.filter(function (t) { return Number(t.id) === trackId }).length
+                // Edits confirms it with Tidal before it says so and offers Undo.
+                Edits.removeFromPlaylist(requested, named, trackId, itemIndex, had,
+                                         function(ok, stale, index) {
                     if (requested !== root.playlistUuid) return
                     if (stale === true) { Qt.callLater(root.reloadAfterStaleRemoval); return }
                     // Before the list is touched, which rebuilds the rows. An
@@ -353,7 +363,7 @@ Rectangle {
         title: root.playlistTitle
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 
     // The pin carries the labels and the artwork the page is showing, so the
     // sidebar row reads the same as the page it came from.
@@ -418,6 +428,8 @@ Rectangle {
         anchors.centerIn: Overlay.overlay
         width: 400
         modal: true
+        // Dims the app behind, as the queue panel does. Fusion's own is faint.
+        Overlay.modal: Rectangle { color: Theme.scrim }
         focus: true
         // No way out of the dialog while a request is out, so the user can
         // always tell whether the rename took.

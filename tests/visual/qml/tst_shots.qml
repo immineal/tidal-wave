@@ -281,7 +281,7 @@ TestCase {
                         coverUrl: S.track(2).coverUrl; trackData: S.track(2)
                     }
                     TrackRow {
-                        width: col.width; trackNum: 4; showPopularity: true
+                        width: col.width; trackNum: 4
                         title: S.track(3).title; artists: S.track(3).artists
                         albumTitle: S.track(3).albumTitle; durationStr: S.track(3).durationStr
                         coverUrl: S.track(3).coverUrl; trackData: S.track(3)
@@ -428,6 +428,23 @@ TestCase {
             width: testCase.pageWidth; height: 700; visible: true
             property alias page: pg
             CollectionPage { id: pg; anchors.fill: parent }
+        }
+    }
+
+    Component {
+        id: homeC
+        ShotWindow {
+            width: testCase.pageWidth; height: 900; visible: true
+            property alias page: pg
+            HomePage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
+        id: loginC
+        ShotWindow {
+            width: testCase.pageWidth; height: 700; visible: true
+            property alias page: pg
+            LoginPage { id: pg; anchors.fill: parent }
         }
     }
 
@@ -814,5 +831,351 @@ TestCase {
         settle(win.contentItem, 500)
         shot(win.contentItem, "sleep_" + row.theme)
         win.destroy()
+    }
+
+    // Two card rows at the page width, the last card cut off at the edge.
+    Component {
+        id: rowsC
+        ShotWindow {
+            width: testCase.pageWidth; height: 560; visible: true
+            property alias first: a
+            property alias second: b
+            Column {
+                y: 16; width: parent.width; spacing: 24
+                HorizontalSection { id: a; title: "Recently played"; mediaType: "album" }
+                HorizontalSection { id: b; title: "My playlists"; mediaType: "playlist" }
+            }
+        }
+    }
+    function test_21_cardRows_data() { return test_02_sidebar_data() }
+    function test_21_cardRows(row) {
+        prefs.theme = row.theme
+        var win = rowsC.createObject(testCase)
+        verify(win)
+        win.first.items = S.albums(6).concat(S.albums(6))
+        win.second.items = S.playlists(4)
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "cardrows_" + row.theme)
+        // One card along, so both edge arrows show.
+        win.first.scrollTo(win.first.minX + win.first.cardSize + win.first.listSpacing)
+        settle(win.contentItem, 300)
+        shot(win.contentItem, "cardrows_scrolled_" + row.theme)
+        win.destroy()
+    }
+
+    // The queue with a manual section long enough to show the grips.
+    Component {
+        id: queueC
+        ShotWindow {
+            width: 420; height: 760; visible: true
+            QueuePanel { anchors.fill: parent }
+        }
+    }
+    function test_22_queue_data() { return test_02_sidebar_data() }
+    function test_22_queue(row) {
+        prefs.theme = row.theme
+        player.setManualForTest(S.tracks(4))
+        var win = queueC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "queue_" + row.theme)
+        win.destroy()
+        player.setManualForTest([])
+    }
+
+    // Settings scrolled to the shortcut table.
+    function test_23_settingsShortcuts_data() { return test_02_sidebar_data() }
+    function test_23_settingsShortcuts(row) {
+        prefs.theme = row.theme
+        var win = settingsC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 200)
+        win.sidebar.openSettings()
+        settle(win.contentItem, 400)
+        var panel = win.sidebar.settingsPanel
+        var flick = findByName(panel.contentItem, "settingsScroll").contentItem
+        var key = findByName(flick.contentItem, "settingsShortcutKey")
+        verify(key, "the shortcut table was not found")
+        var pos = key.mapToItem(flick.contentItem, 0, 0)
+        flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, pos.y - 80))
+        settle(win.contentItem, 400)
+        shot(win.contentItem, "settings_shortcuts_" + row.theme)
+        panel.close()
+        win.destroy()
+    }
+
+    // Now Playing with the lyrics open, windowed and stacked.
+    function test_24_nowPlayingLyrics_data() { return test_02_sidebar_data() }
+    function test_24_nowPlayingLyrics(row) {
+        prefs.theme = row.theme
+        bridge.setLyricsForTest("The tide came in at four\nAnd took the pier lights out\n"
+                                + "We stood where the rails had been\nCounting the boats by sound\n"
+                                + "Nobody said a word\nThe radio said rain", false)
+        var comps = [nowPlayingWideC, nowPlayingC]
+        var names = ["nowplaying_lyrics_wide_", "nowplaying_lyrics_"]
+        for (var i = 0; i < comps.length; ++i) {
+            var win = comps[i].createObject(testCase)
+            verify(win)
+            settle(win.contentItem, 400)
+            win.page.showLyrics = true
+            settle(win.contentItem, 700)
+            shot(win.page, names[i] + row.theme)
+            win.destroy()
+        }
+    }
+
+    // Fullscreen Now Playing on a 1920x1080 screen.
+    Component {
+        id: nowPlayingFullC
+        ShotWindow {
+            id: fw
+            width: 1920; height: 1080; visible: true
+            property bool fullScreen: true
+            function toggleFullScreen() { fullScreen = !fullScreen }
+            property alias page: pg
+            NowPlayingPage { id: pg; anchors.fill: parent }
+        }
+    }
+    function test_25_nowPlayingFullscreen_data() { return test_02_sidebar_data() }
+    function test_25_nowPlayingFullscreen(row) {
+        prefs.theme = row.theme
+        var win = nowPlayingFullC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 600)
+        shot(win.page, "nowplaying_fullscreen_" + row.theme)
+        win.destroy()
+    }
+
+    // ── design pass 2 ────────────────────────────────────────────────────
+
+    function allThemes_data() {
+        var rows = []
+        for (var i = 0; i < S.allThemes.length; ++i)
+            rows.push({ tag: S.allThemes[i], theme: S.allThemes[i] })
+        return rows
+    }
+    function pair_data() { return [{ tag: "sea", theme: "sea" }, { tag: "sky", theme: "sky" }] }
+
+    function cardItems(list, type) {
+        var out = []
+        for (var i = 0; i < list.length; ++i)
+            out.push({ id: list[i].id || list[i].uuid, title: list[i].title || list[i].name,
+                       subtitle: list[i].artists || list[i].subtitle || "",
+                       coverUrl: list[i].coverUrl, type: type })
+        return out
+    }
+    function fillHome(page) {
+        page.mixes = cardItems(S.mixes(5), "mix")
+        page.recentAlbums = cardItems(S.albums(6), "album")
+        page.playlists = cardItems(S.playlists(5), "playlist")
+        page.artists = cardItems(S.artists(5), "artist")
+    }
+
+    // Home: the header over the rows, and a card under the pointer.
+    function test_21_home_data() { return allThemes_data() }
+    function test_21_home(row) {
+        prefs.theme = row.theme
+        player.setPlayingForTest(false)
+        var win = homeC.createObject(testCase)
+        verify(win)
+        fillHome(win.page)
+        settle(win.contentItem, 600)
+        shot(win.page, "home_" + row.theme)
+
+        var art = findByName(win.page, "cardArt")
+        verify(art, "no card on Home")
+        mouseMove(art, art.width / 2, art.height / 2)
+        settle(win.contentItem, 400)
+        shot(win.page, "home_hover_" + row.theme)
+        win.destroy()
+        player.setPlayingForTest(true)
+    }
+
+    // A row's menu, open, with the pointer on one of its entries.
+    function test_22_menu_data() { return pair_data() }
+    function test_22_menu(row) {
+        prefs.theme = row.theme
+        var win = trackRowsC.createObject(testCase)
+        verify(win)
+        win.width = 820; win.height = 700
+        var r = win.hoverRow
+        r.playlistUuid = "uuid-0"
+        r.trackItemIndex = 2
+        settle(win.contentItem, 300)
+        mouseMove(r, r.width * 0.6, r.height / 2)
+        r.openMenu()
+        settle(win.contentItem, 400)
+        var m = r.rowMenu
+        verify(m, "the row menu did not open")
+        var entry = m.itemAt(2)
+        if (entry) mouseMove(entry, entry.width / 2, entry.height / 2)
+        settle(win.contentItem, 300)
+        shot(win.contentItem, "menu_" + row.theme)
+        m.close()
+        win.destroy()
+    }
+
+    // Each page while it is still loading.
+    function test_23_loading_data() { return pair_data() }
+    function test_23_loading(row) {
+        prefs.theme = row.theme
+        var w1 = albumC.createObject(testCase)
+        verify(w1)
+        w1.page.albumId = 42
+        w1.page.loading = true
+        settle(w1.contentItem, 500)
+        shot(w1.page, "loading_album_" + row.theme)
+        w1.destroy()
+
+        var w2 = homeC.createObject(testCase)
+        verify(w2)
+        w2.page.mixes = []; w2.page.recentAlbums = []; w2.page.playlists = []; w2.page.artists = []
+        w2.page.loading = true
+        settle(w2.contentItem, 500)
+        shot(w2.page, "loading_home_" + row.theme)
+        w2.destroy()
+
+        bridge.setKindLoadingForTest("albums", true)
+        var w3 = collectionTallC.createObject(testCase)
+        verify(w3)
+        w3.page.activeTab = 1
+        w3.page.filteredAlbums = []
+        settle(w3.contentItem, 500)
+        shot(w3.page, "loading_collection_" + row.theme)
+        w3.destroy()
+        bridge.setKindLoadingForTest("albums", false)
+
+        var w4 = playlistC.createObject(testCase)
+        verify(w4)
+        w4.page.playlistTitle = "Late Night Drive"
+        w4.page.loading = true
+        settle(w4.contentItem, 500)
+        shot(w4.page, "loading_playlist_" + row.theme)
+        w4.destroy()
+    }
+
+    // The two waiting states of the sign-in card.
+    function test_24_login_data() { return pair_data() }
+    function test_24_login(row) {
+        prefs.theme = row.theme
+        auth.setDeviceCodeForTest("WXYZ-1234", "https://link.tidal.com/WXYZ1234")
+        auth.setStateForTest(1)
+        var win = loginC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 700)
+        shot(win.page, "login_waiting_" + row.theme)
+        win.destroy()
+        auth.setStateForTest(2)
+    }
+
+    // A confirmation, and a removal from a playlist.
+    function test_25_toast_data() { return allThemes_data() }
+    function test_25_toast(row) {
+        prefs.theme = row.theme
+        var win = trackRowsC.createObject(testCase)
+        verify(win)
+        win.width = 820; win.height = 420
+        settle(win.contentItem, 300)
+        win.hoverRow.addToPlaylist("uuid-0", "Late Night Drive")
+        settle(win.contentItem, 400)
+        shot(win.contentItem, "toast_added_" + row.theme)
+        win.destroy()
+
+        var pw = playlistC.createObject(testCase)
+        verify(pw)
+        pw.page.playlistUuid = "uuid-0"
+        pw.page.playlistEditable = true
+        pw.page.playlistTitle = "Late Night Drive"
+        pw.page.loading = false
+        pw.page.tracks = S.tracks(8)
+        settle(pw.contentItem, 400)
+        var prow = findByName(pw.page, "playlistTrackRow")
+        verify(prow)
+        prow.removeFromPlaylistRequested(prow.trackItemIndex)
+        settle(pw.contentItem, 500)
+        shot(pw.contentItem, "toast_removed_" + row.theme)
+        pw.destroy()
+        Toasts.dismiss()
+        Edits.clearHistory()
+    }
+
+    // The pointer on a short sidebar row, then on one whose name is cut off.
+    function test_26_sidebarTip_data() { return pair_data() }
+    function test_26_sidebarTip(row) {
+        prefs.theme = row.theme
+        var entries = S.libraryEntries()
+        entries[3].title = "A Very Long Artist Name That Will Not Fit Here"
+        library.setEntriesForTest(entries)
+        var win = sidebarC.createObject(testCase)
+        verify(win)
+        win.height = 700
+        settle(win.contentItem, 500)
+        var rows = []
+        function walk(it) {
+            if (!it) return
+            if (it.objectName === "libraryRowTitle") rows.push(it)
+            for (var i = 0; i < it.children.length; ++i) walk(it.children[i])
+        }
+        walk(win.sidebar)
+        verify(rows.length > 4, "no library rows")
+        var shortRow = rows[2].parent
+        mouseMove(shortRow, shortRow.width / 2, shortRow.height / 2)
+        wait(Theme.tooltipDelay + 300)
+        settle(win.contentItem, 200)
+        shot(win.contentItem, "sidebar_tip_short_" + row.theme)
+        var longRow = null
+        for (var k = 0; k < rows.length; ++k)
+            if (rows[k].text.indexOf("Very Long") >= 0) longRow = rows[k].parent
+        verify(longRow)
+        mouseMove(longRow, longRow.width / 2, longRow.height / 2)
+        wait(Theme.tooltipDelay + 300)
+        settle(win.contentItem, 200)
+        shot(win.contentItem, "sidebar_tip_long_" + row.theme)
+        win.destroy()
+        library.setEntriesForTest(S.libraryEntries())
+    }
+
+    // A playlist with no cover of its own, whose first tracks share covers,
+    // and rows, a player bar and a card with no cover at all.
+    function test_27_covers_data() { return pair_data() }
+    function test_27_covers(row) {
+        prefs.theme = row.theme
+        var t = S.tracks(8)
+        var covers = ["cover/1", "cover/1", "cover/2", "cover/1", "cover/2", "cover/3", "cover/1", "cover/2"]
+        for (var i = 0; i < t.length; ++i) { t[i].coverUrl = covers[i]; t[i].coverUrl80 = covers[i] }
+        var win = playlistC.createObject(testCase)
+        verify(win)
+        win.page.playlistUuid = "uuid-0"
+        win.page.playlistTitle = "Two Albums"
+        win.page.coverUrl = ""
+        win.page.loading = false
+        win.page.tracks = t
+        settle(win.contentItem, 500)
+        shot(win.page, "mosaic_three_" + row.theme)
+        covers = ["cover/1", "cover/1", "cover/2", "cover/1", "cover/2", "cover/1", "cover/1", "cover/2"]
+        t = S.tracks(8)
+        for (var j = 0; j < t.length; ++j) { t[j].coverUrl = covers[j]; t[j].coverUrl80 = covers[j] }
+        win.page.tracks = t
+        settle(win.contentItem, 500)
+        shot(win.page, "mosaic_two_" + row.theme)
+        win.destroy()
+
+        var bare = S.tracks(6)
+        for (var k = 0; k < bare.length; ++k) { bare[k].coverUrl = ""; bare[k].coverUrl80 = ""; bare[k].albumCover = "" }
+        player.setQueueForTest(bare, 1)
+        player.setCurrentTrackForTest(bare[1])
+        var bw = playerBarC.createObject(testCase)
+        verify(bw)
+        settle(bw.contentItem, 400)
+        shot(bw.bar, "nocover_playerbar_" + row.theme)
+        bw.destroy()
+
+        var rw = trackRowsC.createObject(testCase)
+        verify(rw)
+        var kids = rw.rows.children
+        for (var n = 0; n < kids.length; ++n) kids[n].coverUrl = ""
+        settle(rw.contentItem, 400)
+        shot(rw.rows, "nocover_rows_" + row.theme)
+        rw.destroy()
     }
 }

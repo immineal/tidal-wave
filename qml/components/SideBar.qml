@@ -332,6 +332,37 @@ Item {
                                data.subtitle || "", data.imageUrl || "")
     }
 
+    // ── the one tip for rows and rail icons ──────────────────────────────
+    // Beside the row it names, centred on it: above, Qt's place for a tip,
+    // it covered the row the pointer was about to move to.
+    property Item tipRow: null
+    function claimTip(row, wants) {
+        if (wants) root.tipRow = row
+        else if (root.tipRow === row) root.tipRow = null
+    }
+    ToolTip {
+        id: sideTip
+        objectName: "sidebarTip"
+        parent: root.tipRow || root
+        visible: root.tipRow !== null
+        text: root.tipRow ? root.tipRow.tipText : ""
+        delay: Theme.tooltipDelay
+        x: parent.width + Theme.space2
+        y: Math.round((parent.height - height) / 2)
+        // Dressed like the app's menus and notices.
+        padding: Theme.space2
+        contentItem: Text {
+            text: sideTip.text
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontMeta
+        }
+        background: Rectangle {
+            color: Theme.surfaceHigh
+            border.color: Theme.border
+            radius: Theme.radiusMedium
+        }
+    }
+
     ContextMenu {
         id: pinContextMenu
         objectName: "sidebarPinMenu"
@@ -486,7 +517,6 @@ Item {
                     color: Theme.textPrimary
                     font.pixelSize: Theme.fontBody
                     font.bold: true
-                    font.letterSpacing: 1
                     elide: Text.ElideRight
                 }
             }
@@ -810,7 +840,7 @@ Item {
                             // Auth::displayNameFrom already picks the
                             // username over the email address.
                             text: auth.username.length > 0 ? auth.username
-                                                           : qsTr("Your account")
+                                                           : qsTr("My account")
                             color: Theme.textSec
                             font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight
@@ -1000,6 +1030,8 @@ Item {
 
         readonly property string kind:   modelData.kind
         readonly property string itemId: modelData.id
+        readonly property bool menuOpen: pinContextMenu.visible && pinContextMenu.pinKind === kind
+                                         && pinContextMenu.pinId === itemId
         readonly property string title:  modelData.title
         readonly property bool   pinned: modelData.pinned === true
         readonly property bool   hasArt: (modelData.imageUrl || "").length > 0
@@ -1077,7 +1109,9 @@ Item {
             anchors.rightMargin: root.rowInset
             height: root.libRowHeight
             radius: Theme.radiusMedium
-            color: rowItem.dragging || rowHov.hovered ? Theme.hoverFill : "transparent"
+            // Marked while its menu is open too, so the menu says which row.
+            color: rowItem.dragging || rowHov.hovered || rowItem.menuOpen
+                   ? Theme.hoverFill : "transparent"
             border.width: rowItem.activeFocus || rowItem.dragging ? 2 : 0
             border.color: Theme.accent
             // The lift. A transform rather than a y offset, because the row's
@@ -1159,6 +1193,9 @@ Item {
                     width:  rowItem.hasArt ? root.coverBadgeIcon : root.coverPlainIcon
                     height: width
                     color: rowItem.pinned ? Theme.accentText : Theme.textDim
+                    // A Shape ignores the list's clip; drawn into a layer it is
+                    // clipped like an image, so a row under the footer stays hidden.
+                    layer.enabled: true
                     // Centred in the badge, which is itself held off the
                     // corner. One item drawn in two places, so a row costs one
                     // glyph.
@@ -1264,14 +1301,14 @@ Item {
                 }
             }
 
-            // On every row, not only the truncated ones: in the rail the
-            // title is not on screen at all, so this is the only place the
-            // name is said.
-            ToolTip.visible: rowHov.hovered && !rowItem.dragging
-            ToolTip.text: subtitleOf.length > 0 ? rowItem.title + " · " + subtitleOf
-                                                : rowItem.title
-            ToolTip.delay: Theme.tooltipDelay
+            // Said only where the name is not on screen whole: in the rail,
+            // or cut off in the open panel. Drawn by root's sideTip.
             readonly property string subtitleOf: rowItem.modelData.subtitle || ""
+            readonly property string tipText: subtitleOf.length > 0
+                                              ? rowItem.title + " · " + subtitleOf : rowItem.title
+            readonly property bool wantsTip: rowHov.hovered && !rowItem.dragging
+                                             && (!root.showsWide || rowTitle.truncated)
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 
@@ -1350,9 +1387,10 @@ Item {
             HoverHandler { id: sideHov; cursorShape: Qt.PointingHandCursor }
             TapHandler   { onTapped: navItem.activated() }
 
-            ToolTip.visible: sideHov.hovered && !root.showsWide
-            ToolTip.text: navItem.label
-            ToolTip.delay: Theme.tooltipDelay
+            // In the rail only, where the label is not drawn.
+            readonly property string tipText: navItem.label
+            readonly property bool wantsTip: sideHov.hovered && !root.showsWide
+            onWantsTipChanged: root.claimTip(this, wantsTip)
         }
     }
 }

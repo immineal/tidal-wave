@@ -487,9 +487,6 @@ Rectangle {
         id: heroPinMenu
         objectName: "heroPinMenu"
         // No trackSource, so no queue actions: an artist is not a tracklist.
-
-        // The hero's action row, which has the page above it to draw over.
-        confirmAnchor: hero.actionRow
     }
 
     // What the page says when there is nothing to draw and a reason for it.
@@ -548,5 +545,5 @@ Rectangle {
         title: artistData.name || ""
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "detail" }
 }

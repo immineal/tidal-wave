@@ -186,6 +186,10 @@ public:
     void editPlaylist            (const QString &uuid,  const QString &title,
                                   const QString &description, std::function<void(bool)> cb);
     virtual void addTrackToPlaylist     (const QString &uuid,  qint64 trackId, std::function<void(bool)> cb);
+    // Puts a removed row back at `toIndex`, a duplicate or not: the undo of
+    // removeTrackFromPlaylist.
+    virtual void restoreTrackToPlaylist (const QString &uuid,  qint64 trackId, int toIndex,
+                                         std::function<void(bool)> cb);
     // Takes out the row at `itemIndex`, sending the ETag of the version
     // fetchPlaylist() last read, so a view that has gone stale is refused.
     virtual void removeTrackFromPlaylist (const QString &uuid,  int itemIndex,

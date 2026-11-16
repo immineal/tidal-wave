@@ -139,7 +139,6 @@ Item {
     // Playlist context: set when TrackRow is inside a PlaylistPage
     property string playlistUuid: ""
     property int    trackItemIndex: -1  // 0-based position in playlist
-    property bool   showPopularity: false
     // Download state for this row: "idle" | "busy" | "done" | "error"
     property string dlState: "idle"
     property string dlError: ""
@@ -148,11 +147,9 @@ Item {
     // A sentence to read, so it stays up as long as LoadErrorTip's.
     readonly property int dlErrorDwellMs: 6000
 
-    // Column breakpoints, measured against the row's own width, not the
-    // window's. The fixed columns add up to 472px with all of them on, so the
-    // album column goes first at 640 and popularity at 560.
+    // The column breakpoint, measured against the row's own width, not the
+    // window's. The album column is the first to go.
     readonly property int albumBreakpoint: 640
-    readonly property int popularityBreakpoint: 560
 
     // Reads the row's hover state from outside, e.g. so a layout test can
     // check the title does not move when the pointer enters.
@@ -309,12 +306,16 @@ Item {
             event.accepted = root.moveToRow(rowIndex - 1)
     }
 
+    // The row keeps its hover mark while its menu is open, so the menu
+    // still says which row it is about once the pointer is on it.
+    readonly property bool menuOpen: menuLoader.item ? menuLoader.item.visible : false
+
     Rectangle {
         anchors.fill: parent
         anchors.margins: Theme.spaceHalf
         radius: Theme.radiusMedium
         color: root.isCurrent ? Theme.accentSoft
-               : hov.hovered ? Theme.hoverFill : "transparent"
+               : hov.hovered || root.menuOpen ? Theme.hoverFill : "transparent"
         border.width: root.activeFocus ? 2 : 0
         border.color: Theme.accent
 
@@ -343,9 +344,11 @@ Item {
             anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
             spacing: Theme.space3
 
-            // Track number / now playing indicator
+            // Track number / now playing indicator. Wide enough for four
+            // digits, so a long collection's numbers stay in their gutter.
+            TextMetrics { id: numberRoom; font.pixelSize: Theme.fontMeta; text: "0000" }
             Item {
-                width: 24
+                Layout.preferredWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     objectName: "trackRowNumber"
@@ -377,23 +380,14 @@ Item {
                 }
             }
 
-            Rectangle {
+            // Decoded at twice the 36px box, not the 320px the URL serves.
+            // Safe on a crop only because this art is square.
+            CoverArt {
                 visible: showCover
-                width: 36; height: 36; radius: Theme.radiusSmall
-                color: Theme.surfaceHigh
-                clip: true
-                Image {
-                    objectName: "trackRowCover"
-                    anchors.fill: parent
-                    source: root.coverText.length > 0 ? "image://tidal/" + root.coverText : ""
-                    // Decoded at twice the 36px box, not the 320px the URL
-                    // serves. Both dimensions: width alone reaches the provider
-                    // as 72x0. Safe on a crop only because this art is square.
-                    sourceSize: Qt.size(72, 72)
-                    fillMode: Image.PreserveAspectCrop
-                    smooth: true
-                    mipmap: true
-                }
+                width: 36; height: 36
+                imageName: "trackRowCover"
+                source: root.coverText
+                decodeSize: Qt.size(72, 72)
             }
 
             // Title + artists
@@ -427,7 +421,9 @@ Item {
             Text {
                 objectName: "trackAlbumColumn"
                 visible: showAlbum && root.width >= root.albumBreakpoint
-                Layout.preferredWidth: 160
+                // A share of a wide row, so a long album name is not cut
+                // short beside an empty title column.
+                Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
                 text: root.albumText
                 color: Theme.textSec
                 font.pixelSize: Theme.fontMeta
@@ -441,28 +437,6 @@ Item {
                 font.pixelSize: Theme.fontMeta
                 Layout.preferredWidth: Math.max(40, implicitWidth)
                 horizontalAlignment: Text.AlignRight
-            }
-
-            // Popularity, shown only when showPopularity is true (Search page)
-            Text {
-                id: popText
-                objectName: "trackPopularityColumn"
-                readonly property real score:
-                    root.trackData ? Number(root.trackData.popularity) : NaN
-                visible: root.showPopularity && root.width >= root.popularityBreakpoint
-                         && isFinite(score) && score > 0
-                // Guarded, or a payload without the field prints "NaN%".
-                text: (isFinite(score) && score > 0)
-                      ? qsTr("%1%").arg(score.toLocaleString(Qt.locale(), 'f', 0))
-                      : ""
-                color: Theme.textDim
-                font.pixelSize: Theme.fontMicro
-                Layout.preferredWidth: 40
-                horizontalAlignment: Text.AlignRight
-                ToolTip.visible: popHov.hovered && visible
-                ToolTip.text: qsTr("Popularity")
-                ToolTip.delay: Theme.tooltipDelay
-                HoverHandler { id: popHov }
             }
 
             // Download button, shown on hover and kept while busy, done or in
@@ -502,9 +476,9 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         color: Theme.accent
                     }
-                    // Still a visible busy mark under reduced motion, just a
-                    // still one; see LoadingOverlay for why it is shaped this
-                    // way rather than switched off.
+                    // Still a visible busy mark under reduced motion: one
+                    // zero-length turn leaves it still, where zero duration
+                    // against Animation.Infinite would be a spin loop.
                     RotationAnimator {
                         target: dlSpinner
                         from: 0; to: 360
@@ -612,27 +586,20 @@ Item {
                 const title = (playlist && playlist.title) ? playlist.title : ""
                 // A playlist made from here gets the song straight away.
                 if (uuid.length > 0 && root.trackId > 0) {
-                    bridge.addTracksToPlaylist(uuid, root.trackId, function (ok) {
-                        root.confirmAddedToPlaylist(ok === true, title)
-                    })
+                    root.addToPlaylist(uuid, title)
                 }
                 if (pickerLoader.item) pickerLoader.item.close()
             }
         }
     }
 
-    // The same confirmation the shared ContextMenu gives, drawn over the row
-    // the user just acted on. The dwell is not Theme.dur(); see
-    // ContextMenu.confirmMs.
-    readonly property int confirmMs: 2000
-
-    // What the last confirmation said, kept because the shared tool tip cannot
-    // be read back. A test checks a failed add is not reported as a success.
+    // What the last confirmation said, so a test can check a failed add is
+    // not reported as a success. The words go to the one toast.
     property string lastConfirmation: ""
 
     function confirm(text) {
         root.lastConfirmation = text
-        ToolTip.show(text, root.confirmMs)
+        Toasts.show(text)
     }
 
     function confirmQueued(atFront) {
@@ -640,13 +607,13 @@ Item {
                              : qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
-    // The same for the picker, for an existing playlist and for one made on
-    // the spot. Reports what the server said, not what was asked for.
-    function confirmAddedToPlaylist(ok, title) {
-        root.confirm(ok ? qsTr("Added to “%1”",
-                               "confirmation after adding a track to a playlist").arg(title)
-                        : qsTr("Could not add the track to “%1”",
-                               "shown when adding a track to a playlist failed").arg(title))
+    // The picker's add, to an existing playlist or one made on the spot.
+    // Edits says what happened once Tidal shows it; this keeps the words.
+    function addToPlaylist(uuid, title, trackId) {
+        var id = trackId !== undefined ? trackId : root.trackId
+        Edits.addToPlaylist(uuid, title, id, function (ok, message) {
+            root.lastConfirmation = message
+        })
     }
 
     // The removal side, and the refusal only: on success the row leaving the
@@ -677,6 +644,7 @@ Item {
             }
             implicitWidth: Theme.menuWidth(this)
             overlap: 0
+            padding: Theme.menuPadding
             background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
             // Qt 6.4 leaves the keyboard on the window when a menu closes;
@@ -754,6 +722,41 @@ Item {
                     root.confirmQueued(false)
                 }
             }
+            // Opens MixPage by the mix id, where the hero's Save pill can put
+            // the station in the library and take it out again. See
+            // root.startRadio().
+            ContextMenu.Entry {
+                objectName: "startRadioMenuItem"
+                text: qsTr("Start radio")
+                // What the queue heading already draws for a radio source;
+                // see QueuePanel.contextGlyph.
+                iconName: "waves"
+                enabled: root.trackId > 0
+                onTriggered: root.startRadio()
+            }
+            ContextMenu.Separator { }
+            ContextMenu.Entry {
+                objectName: "likeMenuItem"
+                text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
+                                   : qsTr("Like", "verb, add to favourites")
+                // Filled is the state it is in, so it is the row that undoes
+                // it, the same pairing the pin row uses.
+                iconName: root.isLiked ? "heart-filled" : "heart"
+                enabled: root.trackId > 0
+                // Over the row, not the menu entry: the menu has closed by the
+                // time a refusal comes back, and a tool tip anchored to a
+                // destroyed popup item has nowhere to draw.
+                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
+            }
+            ContextMenu.Entry {
+                text: qsTr("Add to playlist")
+                // The plus, not a second list glyph. "Add to queue" above it
+                // already draws a list, and two lists one row apart at 16px
+                // are one smudge twice.
+                iconName: "plus"
+                enabled: root.trackId > 0
+                onTriggered: root.openPicker()
+            }
             ContextMenu.Entry {
                 text: qsTr("Download…")
                 iconName: "download"
@@ -769,54 +772,7 @@ Item {
                 enabled: root.savedFile !== ""
                 onTriggered: downloader.showInFolder(root.savedFile)
             }
-            ContextMenu.Entry {
-                text: qsTr("Add to playlist")
-                // The plus, not a second list glyph. "Add to queue" above it
-                // already draws a list, and two lists one row apart at 16px
-                // are one smudge twice.
-                iconName: "plus"
-                enabled: root.trackId > 0
-                onTriggered: root.openPicker()
-            }
-            ContextMenu.Entry {
-                objectName: "removeFromPlaylistMenuItem"
-                text: qsTr("Remove from playlist")
-                danger: true
-                iconName: "trash"
-                visible: root.playlistUuid.length > 0
-                height: visible ? implicitHeight : 0
-                enabled: root.trackData !== null && root.playlistUuid.length > 0
-                onTriggered: {
-                    if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
-                        root.removeFromPlaylistRequested(root.trackItemIndex)
-                }
-            }
-            // Opens MixPage by the mix id, where the hero's Save pill can put
-            // the station in the library and take it out again. See
-            // root.startRadio().
-            ContextMenu.Entry {
-                objectName: "startRadioMenuItem"
-                text: qsTr("Start radio")
-                // What the queue heading already draws for a radio source;
-                // see QueuePanel.contextGlyph.
-                iconName: "waves"
-                enabled: root.trackId > 0
-                onTriggered: root.startRadio()
-            }
-            ContextMenu.Entry {
-                objectName: "likeMenuItem"
-                text: root.isLiked ? qsTr("Unlike", "verb, remove from favourites")
-                                   : qsTr("Like", "verb, add to favourites")
-                // Filled is the state it is in, so it is the row that undoes
-                // it, the same pairing the pin row uses.
-                iconName: root.isLiked ? "heart-filled" : "heart"
-                enabled: root.trackId > 0
-                // Over the row, not the menu entry: the menu has closed by the
-                // time a refusal comes back, and a tool tip anchored to a
-                // destroyed popup item has nowhere to draw.
-                onTriggered: root.favoriteAction.toggleTrack(root.trackId, root.isLiked, root)
-            }
-            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
+            ContextMenu.Separator { }
             ContextMenu.Entry {
                 text: qsTr("Go to album")
                 iconName: "album"
@@ -861,6 +817,7 @@ Item {
                 enter: ContextMenu.OpenFade { }
                 exit:  ContextMenu.CloseFade { }
                 implicitWidth: Theme.menuWidth(this)
+                padding: Theme.menuPadding
                 background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
 
                 // Instantiator and not a Repeater: a Repeater is an Item, so a
@@ -880,7 +837,6 @@ Item {
                     onObjectRemoved: (index, object) => artistSubMenu.removeItem(object)
                 }
             }
-            MenuSeparator { contentItem: Rectangle { height: 1; color: Theme.border } }
             // No "/browse/" in the link: tidal.com redirects /browse/track/<id>
             // to /track/<id>, so the short form is the canonical one.
             ContextMenu.Entry {
@@ -890,6 +846,21 @@ Item {
                 onTriggered: {
                     if (root.trackId > 0)
                         bridge.copyToClipboard("https://tidal.com/track/" + root.trackId)
+                }
+            }
+            // Last, under a rule of its own: the one row that costs something.
+            ContextMenu.Separator { shown: root.playlistUuid.length > 0 }
+            ContextMenu.Entry {
+                objectName: "removeFromPlaylistMenuItem"
+                text: qsTr("Remove from playlist")
+                danger: true
+                iconName: "trash"
+                visible: root.playlistUuid.length > 0
+                height: visible ? implicitHeight : 0
+                enabled: root.trackData !== null && root.playlistUuid.length > 0
+                onTriggered: {
+                    if (root.trackData && root.playlistUuid.length > 0 && root.trackItemIndex >= 0)
+                        root.removeFromPlaylistRequested(root.trackItemIndex)
                 }
             }
         }
@@ -903,6 +874,8 @@ Item {
             anchors.centerIn: Overlay.overlay
             width: 340
             modal: true
+            // Dims the app behind, as the queue panel does. Fusion's own is faint.
+            Overlay.modal: Rectangle { color: Theme.scrim }
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
             padding: 0
@@ -1064,11 +1037,8 @@ Item {
                         width: plPickerList.width
                         height: 44
                         function choose() {
-                            var intoTitle = model.title
-                            bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
-                                                       function (ok) {
-                                root.confirmAddedToPlaylist(ok === true, intoTitle)
-                            })
+                            root.addToPlaylist(model.uuid, model.title,
+                                               trackPicker.pendingTrackId)
                             trackPicker.close()
                         }
                         // One tab stop for the list, the current row; the
@@ -1093,15 +1063,12 @@ Item {
                                 anchors.left: parent.left; anchors.leftMargin: Theme.space3
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: Theme.space3
-                                Rectangle {
-                                    width: 28; height: 28; radius: Theme.radiusSmall; color: Theme.surface; clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
-                                        // 28px box, doubled; see the row cover above.
-                                        sourceSize: Qt.size(56, 56)
-                                        fillMode: Image.PreserveAspectCrop; smooth: true
-                                    }
+                                // 28px box, doubled; see the row cover above.
+                                CoverArt {
+                                    width: 28; height: 28; color: Theme.surface
+                                    source: model.coverUrl || ""
+                                    glyph: "playlist"
+                                    decodeSize: Qt.size(56, 56)
                                 }
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter

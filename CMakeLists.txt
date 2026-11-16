@@ -78,6 +78,7 @@ set(SOURCES
     src/api/FavoritesCache.cpp
     src/scrobble/PlayTracker.cpp
     src/scrobble/ListenBrainz.cpp
+    src/scrobble/LastFm.cpp
     src/scrobble/ScrobbleSink.cpp
     src/scrobble/Scrobbler.cpp
 )
@@ -119,6 +120,7 @@ set(HEADERS
     src/scrobble/PlayTracker.h
     src/scrobble/ScrobbleService.h
     src/scrobble/ListenBrainz.h
+    src/scrobble/LastFm.h
     src/scrobble/ScrobbleSink.h
     src/scrobble/Scrobbler.h
 )
@@ -184,7 +186,7 @@ qt_add_library(tidalwave_qml STATIC
     ${HEADERS}
 )
 
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Toasts.qml qml/Edits.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(tidalwave_qml
     URI TidalWave
@@ -198,6 +200,8 @@ qt_add_qml_module(tidalwave_qml
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave
     QML_FILES
         qml/Theme.qml
+        qml/Toasts.qml
+        qml/Edits.qml
         qml/Main.qml
         qml/components/PlayerBar.qml
         qml/components/SideBar.qml
@@ -212,12 +216,14 @@ qt_add_qml_module(tidalwave_qml
         qml/components/PillButton.qml
         qml/components/NavIcon.qml
         qml/components/HorizontalSection.qml
-        qml/components/LoadingOverlay.qml
+        qml/components/Skeleton.qml
+        qml/components/BusyLine.qml
         qml/components/ContextMenu.qml
         qml/components/SearchBar.qml
         qml/components/VolumeSlider.qml
         qml/components/SeekBar.qml
         qml/components/QueuePanel.qml
+        qml/components/QualityBadge.qml
         qml/components/UpdatePrompt.qml
         qml/components/CastErrorTip.qml
         qml/components/OfflineNotice.qml
@@ -229,6 +235,8 @@ qt_add_qml_module(tidalwave_qml
         qml/components/TabStrip.qml
         qml/components/DetailHero.qml
         qml/components/DetailBar.qml
+        qml/components/CoverArt.qml
+        qml/components/ToastHost.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml
@@ -242,6 +250,9 @@ qt_add_qml_module(tidalwave_qml
     RESOURCES
         assets/icon.png
         assets/icon.svg
+        assets/toggle-rainbow.png
+        assets/toggle-rainbow@2x.png
+        assets/toggle-rainbow@3x.png
 )
 
 # Qt 6.4's qmlcachegen emits AOT code that reads a property off a null

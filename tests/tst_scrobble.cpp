@@ -17,6 +17,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <functional>
 #include <memory>
 
@@ -72,6 +73,8 @@ public:
         int status = 200;
         QByteArray body = R"({"status":"ok"})";
         QList<QPair<QByteArray, QByteArray>> headers;
+        // Held back this long, as a slow server would.
+        int delayMs = 0;
     };
 
     // The token is valid and every listen taken.
@@ -125,9 +128,11 @@ public:
                                      "Content-Type: application/json\r\n";
                     for (const auto &h : a.headers) out += h.first + ": " + h.second + "\r\n";
                     out += "Content-Length: " + QByteArray::number(a.body.size()) + "\r\n\r\n" + a.body;
-                    sock->write(out);
-                    sock->flush();
-                    sock->disconnectFromHost();
+                    QTimer::singleShot(a.delayMs, sock, [sock, out] {
+                        sock->write(out);
+                        sock->flush();
+                        sock->disconnectFromHost();
+                    });
                 });
                 connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
             }
@@ -440,6 +445,28 @@ private slots:
     }
 
     // What is not known is left out, never sent empty.
+    // The joined names stay the artist; every credited artist is listed as
+    // well, and the list survives the queue file.
+    void everyArtistIsListed() {
+        const QVariantList artists = {
+            QVariantMap{{QStringLiteral("id"), 1}, {QStringLiteral("name"), QStringLiteral("Erika Mustermann")}},
+            QVariantMap{{QStringLiteral("id"), 2}, {QStringLiteral("name"), QStringLiteral("Max Muster")}},
+        };
+        const QVariantMap row = {
+            {QStringLiteral("id"), 7}, {QStringLiteral("title"), QStringLiteral("Weit weg")},
+            {QStringLiteral("artists"), QStringLiteral("Erika Mustermann, Max Muster")},
+            {QStringLiteral("artistList"), artists}, {QStringLiteral("duration"), 200},
+        };
+        Listen l = Listen::fromTrackMap(row);
+        l.listenedAt = 1'700'000'000;
+        for (const Listen &x : {l, Listen::fromStored(l.toStored())}) {
+            const QJsonObject meta = ListenBrainz::listenJson(x, true).value("track_metadata").toObject();
+            QCOMPARE(meta.value("artist_name").toString(), QStringLiteral("Erika Mustermann, Max Muster"));
+            const QJsonArray names = meta.value("additional_info").toObject().value("artist_names").toArray();
+            QCOMPARE(names, (QJsonArray{QStringLiteral("Erika Mustermann"), QStringLiteral("Max Muster")}));
+        }
+    }
+
     void emptyFieldsAreLeftOut() {
         Listen l;
         l.trackId = 9; l.artist = QStringLiteral("A"); l.title = QStringLiteral("T");
@@ -519,19 +546,110 @@ private slots:
         QVERIFY(!QFile::exists(paths().secret));
     }
 
-    void disconnectForgetsTheTokenAndTheQueue() {
+    // Disconnect forgets the token and keeps what was not sent; the same
+    // account connecting again sends it, after a restart too.
+    void disconnectKeepsTheQueueForTheSameAccount() {
+        FakeListenBrainz server;
+        {
+            auto s = connectedSink(server, 60'000);
+            QVERIFY(s);
+            server.answer = FakeListenBrainz::failing(503);
+            s->add(track(1, 200));
+            QTRY_VERIFY(!server.seen.isEmpty());
+            QVERIFY(QFile::exists(paths().queue));
+            s->disconnectAccount();
+            QVERIFY(!s->connected());
+            QVERIFY(!QFile::exists(paths().secret));
+            QCOMPARE(s->queuedCount(), 1);
+            QVERIFY(QFile::exists(paths().queue));
+            QVERIFY2(s->statusText().contains(kUser), qPrintable(s->statusText()));
+        }
+        server.answer = FakeListenBrainz::fine;
+        server.seen.clear();
+        auto s = sink(server);
+        QVERIFY(!s->connected());
+        QCOMPARE(s->queuedCount(), 1);
+        QTest::qWait(100);
+        QCOMPARE(server.seen.size(), 0);
+        s->signIn(kToken);
+        QTRY_COMPARE(s->queuedCount(), 0);
+        QCOMPARE(server.listensTaken(), 1);
+    }
+
+    // Discard empties a kept queue, so the same account connecting again
+    // sends none of it. While connected there is nothing kept to discard.
+    void discardDropsTheKeptListens() {
         FakeListenBrainz server;
         auto s = connectedSink(server, 60'000);
         QVERIFY(s);
         server.answer = FakeListenBrainz::failing(503);
         s->add(track(1, 200));
         QTRY_VERIFY(!server.seen.isEmpty());
-        QVERIFY(QFile::exists(paths().queue));
+        QCOMPARE(s->property("keptCount").toInt(), 0);
+        QVERIFY(QMetaObject::invokeMethod(s.get(), "discardKept"));
+        QCOMPARE(s->queuedCount(), 1);
+
         s->disconnectAccount();
-        QVERIFY(!s->connected());
+        QCOMPARE(s->property("keptCount").toInt(), 1);
+        QVERIFY(QMetaObject::invokeMethod(s.get(), "discardKept"));
         QCOMPARE(s->queuedCount(), 0);
-        QVERIFY(!QFile::exists(paths().secret));
+        QCOMPARE(s->property("keptCount").toInt(), 0);
         QVERIFY(!QFile::exists(paths().queue));
+        QVERIFY2(s->statusText().isEmpty(), qPrintable(s->statusText()));
+
+        server.answer = FakeListenBrainz::fine;
+        server.seen.clear();
+        s->signIn(kToken);
+        QTRY_VERIFY(s->connected());
+        QTest::qWait(100);
+        QCOMPARE(server.submits().size(), 0);
+    }
+
+    // Another account after a disconnect starts with an empty queue.
+    void anotherAccountAfterDisconnectDropsTheKeptQueue() {
+        FakeListenBrainz server;
+        auto s = connectedSink(server, 60'000);
+        QVERIFY(s);
+        server.answer = FakeListenBrainz::failing(503);
+        s->add(track(1, 200));
+        QTRY_VERIFY(!server.seen.isEmpty());
+        s->disconnectAccount();
+        QCOMPARE(s->queuedCount(), 1);
+        server.seen.clear();
+        server.answer = [](const FakeListenBrainz::Request &r) {
+            if (r.path == "/1/validate-token")
+                return FakeListenBrainz::Reply{200, R"({"code":200,"message":"Token valid.","valid":true,"user_name":"someone-else"})", {}};
+            return FakeListenBrainz::Reply{};
+        };
+        s->signIn(QStringLiteral("other-token"));
+        QTRY_COMPARE(s->userName(), QStringLiteral("someone-else"));
+        QCOMPARE(s->queuedCount(), 0);
+        QVERIFY(!QFile::exists(paths().queue));
+        QTest::qWait(100);
+        QCOMPARE(server.submits().size(), 0);
+    }
+
+    // A batch on its way when Disconnect is pressed: its answer still counts,
+    // so the same account connecting again does not send it twice.
+    void aBatchAnsweredAfterDisconnectIsNotSentTwice() {
+        FakeListenBrainz server;
+        auto s = connectedSink(server);
+        QVERIFY(s);
+        server.answer = [](const FakeListenBrainz::Request &r) {
+            FakeListenBrainz::Reply a = FakeListenBrainz::fine(r);
+            a.delayMs = 300;
+            return a;
+        };
+        s->add(track(1, 200));
+        QTRY_COMPARE(server.seen.size(), 1);
+        s->disconnectAccount();
+        QCOMPARE(s->queuedCount(), 1);
+        QTRY_COMPARE(s->queuedCount(), 0);
+        server.answer = FakeListenBrainz::fine;
+        s->signIn(kToken);
+        QTRY_VERIFY(s->connected());
+        QTest::qWait(100);
+        QCOMPARE(server.listensTaken(), 1);
     }
 
     // Off, nothing is recorded and nothing goes out.

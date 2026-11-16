@@ -42,12 +42,20 @@ double luminanceForLightness(double l);
 // everything opaque. Invalid for a null or fully transparent image.
 QColor dominant(const QImage &image);
 
+// A yellow (OKLCH hue 70 to 125 degrees) with 70% of its chroma; any other
+// colour unchanged. Clamped darker at full strength, yellow reads olive.
+QColor calmYellow(const QColor &c);
+
 // Clamps `c` into the CIE L* band spanned by two palette grounds. A tint
 // between two grounds that both clear a text contrast threshold clears it
 // too. Mixes towards black or white in linear light; the result is in band.
 QColor clampToBand(const QColor &c, const QColor &bg, const QColor &limit);
 
-// dominant() then clampToBand().
+// The page tint for a cover colour: calmYellow() first when the band is dark
+// (both grounds darker than mid grey), then clampToBand().
+QColor bandTint(const QColor &c, const QColor &bg, const QColor &limit);
+
+// dominant() then bandTint().
 QColor tint(const QImage &image, const QColor &bg, const QColor &limit);
 
 } // namespace coverart

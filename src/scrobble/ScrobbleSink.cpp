@@ -71,7 +71,10 @@ void ScrobbleSink::load() {
     const QJsonObject account = readObject(m_paths.secret);
     m_secret = account.value(QStringLiteral("secret")).toString();
     m_user   = account.value(QStringLiteral("user_name")).toString();
-    const QJsonArray rows = readObject(m_paths.queue).value(QStringLiteral("listens")).toArray();
+    const QJsonObject queue = readObject(m_paths.queue);
+    m_queueUser = queue.value(QStringLiteral("user_name")).toString();
+    if (m_queueUser.isEmpty()) m_queueUser = m_user;
+    const QJsonArray rows = queue.value(QStringLiteral("listens")).toArray();
     for (const auto &v : rows) {
         const Listen l = Listen::fromStored(v.toObject());
         if (l.isValid()) m_queue.append(l);
@@ -87,6 +90,7 @@ void ScrobbleSink::saveQueue() {
     for (const Listen &l : std::as_const(m_queue)) rows.append(l.toStored());
     QJsonObject doc;
     doc[QStringLiteral("version")] = 1;
+    if (!m_queueUser.isEmpty()) doc[QStringLiteral("user_name")] = m_queueUser;
     doc[QStringLiteral("listens")] = rows;
     if (!writeFile(m_paths.queue, QJsonDocument(doc).toJson(QJsonDocument::Compact), false))
         qWarning() << "Scrobbling: could not write the queue to" << m_paths.queue;
@@ -123,8 +127,17 @@ void ScrobbleSink::setAuthFailed(bool failed) {
 }
 
 QString ScrobbleSink::statusText() const {
-    if (m_checking) return tr("Checking the token with %1…").arg(serviceName());
-    if (!connected()) return m_lastError;
+    if (m_checking)
+        return browserSignIn() ? tr("Waiting for %1…").arg(serviceName())
+                               : tr("Checking the token with %1…").arg(serviceName());
+    if (!connected()) {
+        if (m_queue.isEmpty()) return m_lastError;
+        QString kept = m_queueUser.isEmpty()
+            ? tr("%Ln listen(s) kept until you connect again.", nullptr, int(m_queue.size()))
+            : tr("%Ln listen(s) kept until %1 connects again.", nullptr, int(m_queue.size())).arg(m_queueUser);
+        if (!m_lastError.isEmpty()) kept += QLatin1Char(' ') + m_lastError;
+        return kept;
+    }
     QString line = m_queue.isEmpty()
         ? tr("Nothing is waiting to be sent.")
         : tr("%Ln listen(s) waiting to be sent.", nullptr, int(m_queue.size()));
@@ -135,14 +148,11 @@ QString ScrobbleSink::statusText() const {
 void ScrobbleSink::signIn(const QString &raw) {
     const QString secret = raw.trimmed();
     if (secret.isEmpty() || m_checking) return;
-    m_checking = true;
-    emit checkingChanged();
-    emit statusChanged();
+    setChecking(true);
     const int generation = m_generation;
     m_service->verify(secret, [this, secret, generation](const ScrobbleReply &r, const QString &user) {
         if (generation != m_generation) return;
-        m_checking = false;
-        emit checkingChanged();
+        setChecking(false);
         if (r.kind != ScrobbleReply::Ok) {
             qInfo().noquote() << "Scrobbling:" << serviceName() << "did not take the token:" << r.detail;
             setError(r.kind == ScrobbleReply::Retry
@@ -151,49 +161,157 @@ void ScrobbleSink::signIn(const QString &raw) {
             emit statusChanged();
             return;
         }
-        // Another account's listens are not this one's to send.
-        if (!m_user.isEmpty() && user != m_user && !m_queue.isEmpty()) {
-            m_queue.clear();
-            saveQueue();
-            emit queueChanged();
-        }
-        m_secret = secret;
-        m_user   = user;
-        // An answer still out was for the old token and is not waited for.
-        ++m_generation;
-        m_busy = false;
-        if (!saveSecret())
-            qWarning() << "Scrobbling: could not save the account to" << m_paths.secret;
-        // The user acted, so no backoff is waited out; the check was a call.
-        m_failures = 0;
-        m_notBefore = m_clock.elapsed() + m_spacingMs;
-        setAuthFailed(false);
-        setError(QString());
-        emit accountChanged();
-        emit statusChanged();
-        pump();
+        accept(secret, user);
     });
 }
 
-void ScrobbleSink::disconnectAccount() {
+void ScrobbleSink::setChecking(bool on) {
+    if (on == m_checking) return;
+    m_checking = on;
+    emit checkingChanged();
+    emit statusChanged();
+}
+
+void ScrobbleSink::accept(const QString &secret, const QString &user) {
+    // Another account's listens are not this one's to send.
+    if (!m_queueUser.isEmpty() && user != m_queueUser && !m_queue.isEmpty()) {
+        m_queue.clear();
+        emit queueChanged();
+    }
+    m_queueUser = user;
+    saveQueue();
+    m_secret = secret;
+    m_user   = user;
+    // An answer still out was for the old secret and is not waited for.
     ++m_generation;
-    const bool wasChecking = m_checking;
-    m_checking = false;
+    m_busy = false;
+    if (!saveSecret())
+        qWarning() << "Scrobbling: could not save the account to" << m_paths.secret;
+    // The user acted, so no backoff is waited out; the check was a call.
+    m_failures = 0;
+    m_notBefore = m_clock.elapsed() + m_spacingMs;
+    setAuthFailed(false);
+    setError(QString());
+    emit accountChanged();
+    emit statusChanged();
+    pump();
+}
+
+void ScrobbleSink::endBrowserStep() {
+    if (m_requestToken.isEmpty() && m_signInPage.isEmpty()) return;
+    m_requestToken.clear();
+    m_signInPage.clear();
+    emit signInChanged();
+}
+
+void ScrobbleSink::startBrowserSignIn() {
+    if (!browserSignIn() || m_checking) return;
+    endBrowserStep();
+    setError(QString());
+    setChecking(true);
+    const int generation = m_generation;
+    m_service->beginSignIn([this, generation](const ScrobbleReply &r, const QString &token, const QUrl &page) {
+        if (generation != m_generation) return;
+        setChecking(false);
+        if (r.kind != ScrobbleReply::Ok) {
+            qInfo().noquote() << "Scrobbling:" << serviceName() << "gave no sign-in token:" << r.detail;
+            setError(r.kind == ScrobbleReply::Retry
+                ? tr("%1 could not be reached. Try again in a moment.").arg(serviceName())
+                : tr("%1 turned down the sign-in. Try again later.").arg(serviceName()));
+            emit statusChanged();
+            return;
+        }
+        m_requestToken = token;
+        m_signInPage = page;
+        emit signInChanged();
+        emit openPage(page);
+    });
+}
+
+void ScrobbleSink::finishBrowserSignIn() {
+    if (m_requestToken.isEmpty() || m_checking) return;
+    setChecking(true);
+    const int generation = m_generation;
+    m_service->finishSignIn(m_requestToken, [this, generation](const ScrobbleReply &r, const QString &secret,
+                                                               const QString &user) {
+        if (generation != m_generation) return;
+        setChecking(false);
+        switch (r.kind) {
+        case ScrobbleReply::Ok:
+            endBrowserStep();
+            accept(secret, user);
+            return;
+        case ScrobbleReply::Pending:
+            setError(tr("Access to %1 has not been allowed yet. Allow it on the page in your browser, then try again.").arg(serviceName()));
+            break;
+        case ScrobbleReply::Retry:
+            setError(tr("%1 could not be reached. Try again in a moment.").arg(serviceName()));
+            break;
+        case ScrobbleReply::AuthFailed:
+        case ScrobbleReply::Rejected:
+            qInfo().noquote() << "Scrobbling:" << serviceName() << "gave no session:" << r.detail;
+            endBrowserStep();
+            setError(tr("This sign-in has run out. Connect with %1 again.").arg(serviceName()));
+            break;
+        }
+        emit statusChanged();
+    });
+}
+
+void ScrobbleSink::cancelBrowserSignIn() {
+    if (!m_checking && !awaitingBrowser()) return;
+    // A late answer to the step under way changes nothing.
+    ++m_generation;
+    m_busy = false;
+    setChecking(false);
+    endBrowserStep();
+    setError(QString());
+    emit statusChanged();
+}
+
+void ScrobbleSink::refused() {
+    if (browserSignIn()) {
+        // A session key that is gone does not come back: sign in again.
+        qInfo() << "Scrobbling:" << serviceName() << "ended the session";
+        dropAccount();
+        setAuthFailed(true);
+        setError(tr("%1 ended the connection, so nothing is sent. Connect again to go on.").arg(serviceName()));
+        emit accountChanged();
+        emit statusChanged();
+        return;
+    }
+    setAuthFailed(true);
+    setError(tr("%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.").arg(serviceName()));
+}
+
+void ScrobbleSink::dropAccount() {
+    ++m_generation;
+    setChecking(false);
+    endBrowserStep();
     m_secret.clear();
     m_user.clear();
     QFile::remove(m_paths.secret);
-    m_queue.clear();
-    saveQueue();
     m_pendingNow.reset();
     m_timer->stop();
     m_busy = false;
     m_failures = 0;
     m_notBefore = 0;
     m_singlesLeft = 0;
+}
+
+void ScrobbleSink::disconnectAccount() {
+    dropAccount();
     setAuthFailed(false);
     setError(QString());
-    if (wasChecking) emit checkingChanged();
     emit accountChanged();
+    emit statusChanged();
+}
+
+void ScrobbleSink::discardKept() {
+    if (connected() || m_queue.isEmpty()) return;
+    m_queue.clear();
+    m_queueUser.clear();
+    saveQueue();
     emit queueChanged();
     emit statusChanged();
 }
@@ -238,10 +356,7 @@ void ScrobbleSink::pump() {
             m_busy = false;
             holdFor(qMax<qint64>(m_spacingMs, qint64(r.waitSec) * 1000));
             // Never retried, as both services ask; a refused token shows here too.
-            if (r.kind == ScrobbleReply::AuthFailed) {
-                setAuthFailed(true);
-                setError(tr("%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.").arg(serviceName()));
-            }
+            if (r.kind == ScrobbleReply::AuthFailed) refused();
             pump();
         });
         return;
@@ -251,28 +366,46 @@ void ScrobbleSink::pump() {
 
 void ScrobbleSink::sendBatch() {
     const int cap = m_singlesLeft > 0 ? 1 : m_service->maxBatch();
-    const int count = int(qMin<qsizetype>(cap, m_queue.size()));
+    const QList<Listen> batch = m_queue.mid(0, cap);
     m_busy = true;
     const int generation = m_generation;
-    m_service->submit(m_secret, m_queue.mid(0, count), [this, count, generation](const ScrobbleReply &r) {
-        batchDone(count, generation, r);
+    m_service->submit(m_secret, batch, [this, batch, generation](const ScrobbleReply &r) {
+        batchDone(batch, generation, r);
     });
 }
 
+bool ScrobbleSink::removeSent(const QList<Listen> &sent) {
+    bool any = false;
+    for (const Listen &l : sent) {
+        const qsizetype i = m_queue.indexOf(l);
+        if (i >= 0) { m_queue.removeAt(i); any = true; }
+    }
+    return any;
+}
+
 QString ScrobbleSink::retryText(const ScrobbleReply &r) const {
-    if (r.detail.startsWith(QLatin1String("HTTP 429")))
+    if (r.slowDown || r.detail.startsWith(QLatin1String("HTTP 429")))
         return tr("%1 asked to slow down. Listens wait here and go out later.").arg(serviceName());
     if (r.detail.startsWith(QLatin1String("HTTP ")))
         return tr("%1 has a problem on its side. Listens wait here and go out later.").arg(serviceName());
     return tr("%1 could not be reached. Listens wait here and go out later.").arg(serviceName());
 }
 
-void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) {
-    if (generation != m_generation) return;
+void ScrobbleSink::batchDone(const QList<Listen> &batch, int generation, const ScrobbleReply &r) {
+    if (generation != m_generation) {
+        // Taken after a disconnect: sent, so the next connect does not send it again.
+        if (r.kind == ScrobbleReply::Ok && removeSent(batch)) {
+            saveQueue();
+            emit queueChanged();
+            emit statusChanged();
+        }
+        return;
+    }
     m_busy = false;
+    const int count = int(batch.size());
     switch (r.kind) {
     case ScrobbleReply::Ok:
-        m_queue.erase(m_queue.begin(), m_queue.begin() + qMin<qsizetype>(count, m_queue.size()));
+        removeSent(batch);
         saveQueue();
         m_failures = 0;
         if (m_singlesLeft > 0) --m_singlesLeft;
@@ -280,6 +413,7 @@ void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) 
         holdFor(qMax<qint64>(m_spacingMs, qint64(r.waitSec) * 1000));
         emit queueChanged();
         break;
+    case ScrobbleReply::Pending:
     case ScrobbleReply::Retry: {
         qInfo().noquote() << "Scrobbling:" << serviceName() << "will be asked again:" << r.detail;
         qint64 wait = qint64(r.waitSec) * 1000;
@@ -293,8 +427,7 @@ void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) 
     }
     case ScrobbleReply::AuthFailed:
         qInfo().noquote() << "Scrobbling:" << serviceName() << "refused the token:" << r.detail;
-        setAuthFailed(true);
-        setError(tr("%1 no longer accepts this token, so nothing is sent. Paste a new token to go on.").arg(serviceName()));
+        refused();
         break;
     case ScrobbleReply::Rejected:
         qWarning().noquote() << "Scrobbling:" << serviceName() << "refused" << count << "listens:" << r.detail;
@@ -304,7 +437,8 @@ void ScrobbleSink::batchDone(int count, int generation, const ScrobbleReply &r) 
             m_singlesLeft = count;
         } else {
             if (m_singlesLeft > 0) --m_singlesLeft;
-            const Listen dropped = m_queue.takeFirst();
+            const Listen dropped = batch.first();
+            removeSent(batch);
             saveQueue();
             setError(tr("%1 turned down the listen of \"%2\".").arg(serviceName(), dropped.title), true);
             emit queueChanged();
