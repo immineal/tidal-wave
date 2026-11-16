@@ -123,7 +123,7 @@ TestCase {
         var host = open(row.tab)
         var b = button(host)
         compare(b.text, "Surprise me")
-        compare(b.icon, "dice")
+        compare(b.icon, "shuffle")
         verify(b.enabled, "the button is off with items on show")
 
         for (var i = 0; i < 12; ++i) press(b)
