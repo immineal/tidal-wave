@@ -236,7 +236,7 @@ Rectangle {
                         PillButton {
                             objectName: "artistFollowPill"
                             text: root.isFollowing ? qsTr("Following") : qsTr("Follow")
-                            icon: root.isFollowing ? "heart-filled" : "heart"
+                            icon: root.isFollowing ? "artist-following" : "artist-follow"
                             accent: root.isFollowing
                             // On the action row, which has clear space above.
                             onClicked: root.favoriteAction.toggleArtist(root.artistId, root.isFollowing,

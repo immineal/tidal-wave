@@ -84,6 +84,7 @@ TestCase {
     Component { id: artistC;     ArtistPage     { anchors.fill: parent } }
     Component { id: collectionC; CollectionPage { anchors.fill: parent } }
     Component { id: mixC;        MixPage        { anchors.fill: parent } }
+    Component { id: iconC;       VectorIcon     { } }
 
     // NowPlayingPage reaches its sleep timer and fullscreen toggle through
     // Window.window, so it cannot be instantiated bare. Being a separate
@@ -673,6 +674,24 @@ TestCase {
         compare(page.isFollowing, false, "a refused follow marked the artist as followed")
         compare(pill.text, qsTranslate("ArtistPage", "Follow"),
                 "a refused follow turned the pill into Following")
+    }
+
+    // Follow is not Like, so it does not draw Like's heart. Both states draw
+    // a glyph of their own.
+    function test_follow_draws_a_person_not_the_heart() {
+        var page = makeArtistPage()
+        var pill = named(page, "artistFollowPill")
+        var probe = createTemporaryObject(iconC, testCase)
+        var unfollowed = pill.icon
+        verify(unfollowed.indexOf("heart") === -1, "Follow draws \"" + unfollowed + "\", Like's glyph")
+        verify(probe._pathFor(unfollowed).length > 0, "\"" + unfollowed + "\" draws nothing")
+
+        clickCenter(pill)
+        tryVerify(function () { return page.isFollowing }, 2000, "the follow never landed")
+        var followed = pill.icon
+        verify(followed.indexOf("heart") === -1, "Following draws \"" + followed + "\", Like's glyph")
+        verify(probe._pathFor(followed).length > 0, "\"" + followed + "\" draws nothing")
+        verify(followed !== unfollowed, "Follow and Following draw the same glyph")
     }
 
     function test_the_artist_page_says_nothing_when_the_follow_lands() {
