@@ -738,19 +738,19 @@ Popup {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: Theme.spaceHalf
                         Text {
                             text: qsTr("Send what you play to ListenBrainz")
-                            color: Theme.textPrimary; font.pixelSize: 14
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                         Text {
                             objectName: "settingsScrobbleNote"
                             text: qsTr("A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to listenbrainz.org.")
-                            color: Theme.textDim; font.pixelSize: 11
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
                             wrapMode: Text.Wrap; Layout.fillWidth: true
                         }
                     }
@@ -768,28 +768,29 @@ Popup {
                     objectName: "settingsScrobbleAccount"
                     visible: scrobbling.on && scrobbling.linked
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: Theme.space3
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 1
+                        spacing: Theme.spaceHalf
                         Text {
                             objectName: "settingsScrobbleUser"
                             text: scrobbling.sink ? scrobbling.sink.userName : ""
                             color: Theme.textPrimary
-                            font.pixelSize: 14; font.bold: true
+                            font.pixelSize: Theme.fontBody; font.bold: true
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                         Text {
                             text: qsTr("Connected to ListenBrainz")
-                            color: Theme.textDim; font.pixelSize: 12
+                            color: Theme.textDim; font.pixelSize: Theme.fontMeta
                             elide: Text.ElideRight; Layout.fillWidth: true
                         }
                     }
-                    PanelButton {
+                    PillButton {
+                        compact: true; accent: false
                         objectName: "settingsScrobbleDisconnect"
-                        label: qsTr("Disconnect", "button that forgets the ListenBrainz token")
+                        text: qsTr("Disconnect", "button that forgets the ListenBrainz token")
                         Layout.alignment: Qt.AlignVCenter
-                        onActivated: if (root.scrobble) root.scrobble.disconnectAccount()
+                        onClicked: if (root.scrobble) root.scrobble.disconnectAccount()
                     }
                 }
 
@@ -799,7 +800,7 @@ Popup {
                     objectName: "settingsScrobbleTokenRow"
                     visible: scrobbling.on && (!scrobbling.linked || scrobbling.refused)
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: Theme.space2
 
                     // A token that was taken is not left in the field.
                     Connections {
@@ -810,27 +811,29 @@ Popup {
 
                     Text {
                         text: qsTr("ListenBrainz user token")
-                        color: Theme.textSec; font.pixelSize: 13
+                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
                         wrapMode: Text.Wrap; Layout.fillWidth: true
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Theme.space2
+                        // Drawn like the new-playlist name field, at the
+                        // compact pills' height so the row lines up.
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 30
-                            radius: Theme.radiusField
+                            Layout.preferredHeight: 32
+                            radius: Theme.radiusLarge
                             color: Theme.surface
-                            border.width: tokenField.activeFocus ? 2 : 1
+                            border.width: 1
                             border.color: tokenField.activeFocus ? Theme.accent : Theme.border
                             TextInput {
                                 id: tokenField
                                 objectName: "settingsScrobbleToken"
                                 anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
+                                anchors.leftMargin: Theme.space3
+                                anchors.rightMargin: Theme.space3
                                 color: Theme.textPrimary
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontBody
                                 clip: true
                                 selectByMouse: true
                                 selectionColor: Theme.accent
@@ -845,19 +848,21 @@ Popup {
                                 Keys.onEnterPressed:  scrobbling.submitToken()
                             }
                         }
-                        PanelButton {
+                        PillButton {
+                            compact: true; accent: false
                             objectName: "settingsScrobbleShowToken"
-                            label: scrobbling.showToken
+                            text: scrobbling.showToken
                                 ? qsTr("Hide", "button that masks the token again")
                                 : qsTr("Show", "button that shows the token in plain text")
-                            onActivated: scrobbling.showToken = !scrobbling.showToken
+                            onClicked: scrobbling.showToken = !scrobbling.showToken
                         }
-                        PanelButton {
+                        PillButton {
+                            compact: true; accent: false
                             objectName: "settingsScrobbleConnect"
-                            label: qsTr("Connect", "button that checks the ListenBrainz token")
+                            text: qsTr("Connect", "button that checks the ListenBrainz token")
                             muted: tokenField.text.trim().length === 0
                                    || (scrobbling.sink ? scrobbling.sink.checking === true : false)
-                            onActivated: scrobbling.submitToken()
+                            onClicked: scrobbling.submitToken()
                         }
                     }
                     LinkLine {
@@ -873,7 +878,7 @@ Popup {
                     visible: scrobbling.on && text.length > 0
                     text: scrobbling.sink ? scrobbling.sink.statusText : ""
                     color: scrobbling.refused ? Theme.redText : Theme.textDim
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
             }
