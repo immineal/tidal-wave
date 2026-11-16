@@ -121,14 +121,6 @@
         <comment>verb, button label</comment>
         <translation>Abspielen</translation>
     </message>
-    <message>
-        <source>%1 hr %2 min</source>
-        <translation>%1 Std. %2 Min.</translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation>%1 Min.</translation>
-    </message>
     <message numerus="yes">
         <source>%Ln track(s)</source>
         <translation>
@@ -1249,14 +1241,6 @@
     <message>
         <source>Tidal would not serve its tracks. Whoever made it may have deleted it or made it private, and a playlist saved before that stays in your library either way.</source>
         <translation>Tidal liefert ihre Titel nicht aus. Wer sie erstellt hat, hat sie möglicherweise gelöscht oder auf privat gestellt; eine vorher gespeicherte Playlist bleibt so oder so in deiner Bibliothek.</translation>
-    </message>
-    <message>
-        <source>%1 hr %2 min</source>
-        <translation>%1 Std. %2 Min.</translation>
-    </message>
-    <message>
-        <source>%1 min</source>
-        <translation>%1 Min.</translation>
     </message>
     <message>
         <source>This playlist was changed somewhere else, so nothing was removed. It has been reloaded.</source>

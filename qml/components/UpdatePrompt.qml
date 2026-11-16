@@ -85,49 +85,6 @@ Popup {
         radius: Theme.radiusLarge
     }
 
-    // A flat button, local to this dialog. PillButton is the hero-page pill and
-    // is sized for that job; these are dialog-sized and need a focus ring.
-    component ActionButton: Item {
-        id: btn
-        property string label: ""
-        property bool   primary: false
-        signal activated()
-
-        implicitWidth:  Math.max(84, btnLabel.implicitWidth + 28)
-        implicitHeight: 34
-        activeFocusOnTab: true
-        Accessible.role: Accessible.Button
-        Accessible.name: btn.label
-        Accessible.onPressAction: btn.activated()
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radiusMedium
-            color: btn.primary ? (btnHover.hovered ? Theme.accentDim : Theme.accent)
-                               : (btnHover.hovered ? Qt.tint(Theme.surface, Theme.hoverFill) : Theme.surface)
-            border.width: btn.activeFocus ? 2 : (btn.primary ? 0 : 1)
-            border.color: btn.activeFocus ? Theme.accent : Theme.border
-        }
-
-        Text {
-            id: btnLabel
-            anchors.centerIn: parent
-            text: btn.label
-            color: btn.primary ? Theme.accentInk : Theme.textPrimary
-            font.pixelSize: Theme.fontMeta
-            font.bold: btn.primary
-        }
-
-        HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
-        // Exclusive on press, as in SettingsPanel: a passive grab can leak
-        // through a modal Popup to the page beneath.
-        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: btn.activated() }
-
-        Keys.onReturnPressed: btn.activated()
-        Keys.onEnterPressed:  btn.activated()
-        Keys.onSpacePressed:  btn.activated()
-    }
-
     contentItem: ColumnLayout {
         spacing: Theme.space3
 
@@ -169,22 +126,26 @@ Popup {
             Layout.topMargin: Theme.space1
             spacing: Theme.space2
 
-            ActionButton {
+            PillButton {
                 id: openBtn
-                label: qsTr("Open release")
-                primary: true
+                compact: true
+                text: qsTr("Open release")
                 focus: true
-                onActivated: root.openRelease()
+                onClicked: root.openRelease()
             }
-            ActionButton {
+            PillButton {
                 id: laterBtn
-                label: qsTr("Later")
-                onActivated: root.postpone()
+                compact: true
+                accent: false
+                text: qsTr("Later")
+                onClicked: root.postpone()
             }
-            ActionButton {
+            PillButton {
                 id: skipBtn
-                label: qsTr("Skip this version")
-                onActivated: root.skipVersion()
+                compact: true
+                accent: false
+                text: qsTr("Skip this version")
+                onClicked: root.skipVersion()
             }
         }
     }

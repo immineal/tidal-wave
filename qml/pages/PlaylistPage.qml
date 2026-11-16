@@ -49,17 +49,6 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
-    // translation can reorder or re-unit it instead of inheriting English order.
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
-    }
-
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
     // ── the one number on this page with no live source ──────────────────
@@ -283,8 +272,8 @@ Rectangle {
                             var d = root.playlistDuration
                             // The count is the tracklist's, still on its way.
                             if (root.loading && n === 0)
-                                return d > 0 ? root.durationText(d) : ""
-                            return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(root.durationText(d))
+                                return d > 0 ? Theme.lengthText(d) : ""
+                            return d > 0 ? qsTr("%Ln track(s) • %1", "", n).arg(Theme.lengthText(d))
                                          : qsTr("%Ln track(s)", "", n)
                         }
                         color: Theme.textSec

@@ -1878,7 +1878,7 @@ TestCase {
         compare(label.text, "/home/someone/Musik")
         var button = findByName(h.panel.contentItem, "settingsDownloadFolderButton")
         verify(button, "there is no button to change the download folder")
-        button.activated()
+        button.clicked()
         compare(downloader.chooseFolderCallsForTest(), 1, "the button did not open a folder picker")
         // A folder picked, or a save made elsewhere, shows at once.
         downloader.folder = "/home/someone/Downloads"

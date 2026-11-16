@@ -159,4 +159,16 @@ QtObject {
         if (h > 0) return h + ":" + (m < 10 ? "0" : "") + m + ":" + ss
         return m + ":" + ss
     }
+
+    // A length in seconds as a sentence reads it, "1 hr 5 min" or "42 min",
+    // for the detail pages' totals. Whole strings, so a translation can
+    // reorder them; kept in AlbumPage's context, where they were translated.
+    function lengthText(seconds) {
+        var loc  = Qt.locale()
+        var hrs  = Math.floor(seconds / 3600)
+        var mins = Math.floor((seconds % 3600) / 60)
+        return hrs > 0
+            ? qsTranslate("AlbumPage", "%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
+            : qsTranslate("AlbumPage", "%1 min").arg(mins.toLocaleString(loc, 'f', 0))
+    }
 }

@@ -185,7 +185,6 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.space6
             Layout.rightMargin: Theme.space6
-            height: 46
             placeholder: qsTr("Search tracks, albums, artists, playlists…")
             onTextEdited: (text) => {
                 root.query = text
@@ -205,190 +204,21 @@ Rectangle {
 
         Item { height: Theme.space3 }
 
-        // ── the tab bar, and its highlight as one pill that travels ──────
-        // One pill that moves between the chips. A Row lays out every visible
-        // child, so the pill is the row's sibling inside this host Item.
-        Item {
-            id: tabsHost
-            objectName: "searchTabsHost"
+        // ── the tab bar ──────────────────────────────────────────────────
+        TabStrip {
+            id: searchTabs
+            namePrefix: "search"
             visible: root.showsResults
+            // A tab changed while the row is off screen must not start a
+            // travel that plays when the row comes back.
+            animate: visible
+            Layout.fillWidth: true
             Layout.leftMargin: Theme.space6
-            // The row is the whole of this item's size. A plain Item has no
-            // implicit size of its own, and a ColumnLayout asks for one.
-            implicitWidth:  searchTabsRow.implicitWidth
-            implicitHeight: searchTabsRow.implicitHeight
-
-            // Which chip the pill is leaving, which it is arriving at, and how
-            // far along it is. Only `markT` is animated: the geometry is a lerp
-            // between the two chips' live boxes, so a layout change is instant.
-            property Item markFrom: null
-            property Item markTo:   null
-            property real markT:    1
-            // The reset to 0 that starts a travel is the one write to markT
-            // that must not animate, or the pill would run backwards to the
-            // chip it is already on before setting off.
-            property bool markResetting: false
-            // The first placement is an initialisation, not a move. Without the
-            // gate the pill would grow out of the row's left edge every time a
-            // query brings the row back.
-            property bool markSettled: false
-
-            Behavior on markT {
-                enabled: !tabsHost.markResetting
-                NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
-            }
-
-            // The end it set off from, or the destination itself when there is
-            // none, which makes the lerp degenerate. That covers the first
-            // placement and a model rebuild.
-            readonly property Item markA: markFrom ? markFrom : markTo
-            readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
-            readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
-            readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
-            readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
-
-            function retarget(animate) {
-                var next = searchTabsRepeater.itemAt(root.activeTab)
-                if (next === null || next === tabsHost.markTo) return
-                tabsHost.markFrom = (animate && tabsHost.markTo !== null) ? tabsHost.markTo : next
-                tabsHost.markTo   = next
-                tabsHost.markResetting = true
-                tabsHost.markT = 0
-                tabsHost.markResetting = false
-                tabsHost.markT = 1
-            }
-
-            // `visible` in the condition as well as the gate: a tab changed
-            // while the row is off screen must not start a travel that plays
-            // when the row comes back.
-            Connections {
-                target: root
-                function onActiveTabChanged() {
-                    tabsHost.retarget(tabsHost.markSettled && tabsHost.visible)
-                }
-            }
-
-            Component.onCompleted: {
-                retarget(false)
-                Qt.callLater(function () { tabsHost.markSettled = true })
-            }
-
-            // Behind the chips, which rest on nothing, so the pill reads as the
-            // fill. Behind because a chip's hover tint is opaque; see the
-            // chip's colour below.
-            Rectangle {
-                objectName: "searchTabPill"
-                x: tabsHost.markX
-                y: tabsHost.markY
-                width:  tabsHost.markW
-                height: tabsHost.markH
-                radius: Theme.radiusFull
-                color: Theme.accent
-                visible: width > 0 && height > 0
-            }
-
-            Row {
-                id: searchTabsRow
-                objectName: "searchTabsRow"
-                spacing: Theme.space1
-                Repeater {
-                    id: searchTabsRepeater
-                    model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
-                            qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
-                    // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive. A language
-                    // change rebuilds all six.
-                    onItemAdded: function (index, item) { tabsHost.retarget(false) }
-                    Rectangle {
-                        id: searchTab
-                        required property string modelData
-                        required property int    index
-                        height: 30; width: tabLabel.implicitWidth + 24; radius: Theme.radiusFull
-                        // The pill behind the row marks the current chip. The
-                        // hover tint drops out on any chip the pill is over:
-                        // A tint over the pill would muddy its accent.
-                        color: tabMA.containsMouse && !searchTab.pillOverlaps
-                               ? Theme.hoverFill : "transparent"
-                        // The chip must not snap while the results fade.
-                        Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
-
-                        // Whether any part of the pill is over this chip.
-                        // Horizontal only: the row does not wrap.
-                        readonly property bool pillOverlaps:
-                               tabsHost.markW > 0
-                            && tabsHost.markX < searchTab.x + searchTab.width
-                            && tabsHost.markX + tabsHost.markW > searchTab.x
-
-                        // Whether the accent's copy of the label covers every pixel
-                        // the chip's own copy occupies.
-                        readonly property bool labelFullyInked:
-                               inkWindow.visible
-                            && inkWindow.x <= tabLabel.x
-                            && inkWindow.x + inkWindow.width  >= tabLabel.x + tabLabel.width
-                            && inkWindow.y <= tabLabel.y
-                            && inkWindow.y + inkWindow.height >= tabLabel.y + tabLabel.height
-
-                        border.width: searchTab.activeFocus ? 2 : 0
-                        border.color: Theme.accent
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: root.activeTab = index
-                        Keys.onSpacePressed:  root.activeTab = index
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: modelData
-                        Accessible.selected: root.activeTab === index
-                        Accessible.onPressAction: root.activeTab = index
-                        Text {
-                            id: tabLabel; objectName: "searchTabLabel"; anchors.centerIn: parent
-                            text: modelData
-                            // Always the ink of the bare row. The accent's ink
-                            // is the copy below.
-                            color: Theme.textSec
-                            // Hidden where the copy covers every pixel of it:
-                            // two Texts in one place blend at the glyphs'
-                            // antialiased edge.
-                            visible: !searchTab.labelFullyInked
-                            font.pixelSize: Theme.fontMeta
-                        }
-
-                        // The label again in the accent's ink, clipped to the
-                        // pill, so every glyph pixel is on the fill its ink was
-                        // chosen for. The two inks cannot cross-fade legibly.
-                        Item {
-                            id: inkWindow
-                            objectName: "searchTabInk"
-                            // The pill in this chip's coordinates, clamped so
-                            // it is empty when the pill is elsewhere. Not
-                            // `top`/`bottom`: Item has those as final members.
-                            readonly property real coveredLeft:   Math.max(0, tabsHost.markX - searchTab.x)
-                            readonly property real coveredRight:  Math.min(searchTab.width, tabsHost.markX + tabsHost.markW - searchTab.x)
-                            readonly property real coveredTop:    Math.max(0, tabsHost.markY - searchTab.y)
-                            readonly property real coveredBottom: Math.min(searchTab.height, tabsHost.markY + tabsHost.markH - searchTab.y)
-                            x: coveredLeft
-                            y: coveredTop
-                            width:  Math.max(0, coveredRight - coveredLeft)
-                            height: Math.max(0, coveredBottom - coveredTop)
-                            clip: true
-                            visible: width > 0 && height > 0
-                            Text {
-                                objectName: "searchTabInkLabel"
-                                x: tabLabel.x - inkWindow.x
-                                y: tabLabel.y - inkWindow.y
-                                text: tabLabel.text
-                                font: tabLabel.font
-                                color: Theme.accentInk
-                            }
-                        }
-
-                        MouseArea {
-                            id: tabMA
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.activeTab = index
-                        }
-                    }
-                }
-            }
+            Layout.rightMargin: Theme.space6
+            model: [qsTr("All"), qsTr("Tracks"), qsTr("Albums"),
+                    qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+            currentIndex: root.activeTab
+            onActivated: (index) => { root.activeTab = index }
         }
 
         Item { height: Theme.space2 }

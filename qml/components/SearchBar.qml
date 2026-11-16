@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import TidalWave
 
+// The one search field. Escape empties it, and an empty one gives the
+// keyboard back, as in the sidebar's LibraryFinder.
 Rectangle {
     id: root
-    height: 40
+    implicitHeight: 40
     radius: Theme.radiusLarge
     color: Theme.surfaceHigh
     border.color: focused ? Theme.accent : "transparent"
@@ -52,6 +54,15 @@ Rectangle {
                 font.pixelSize: Theme.fontBody
                 verticalAlignment: TextInput.AlignVCenter
                 Keys.onReturnPressed: root.submitted(text)
+                // Claimed ahead of the window's Escape shortcut, which would
+                // otherwise take it and go back.
+                Keys.onShortcutOverride: (event) => {
+                    if (event.key === Qt.Key_Escape) event.accepted = true
+                }
+                Keys.onEscapePressed: {
+                    if (text.length > 0) text = ""
+                    else                 root.releaseFocus()
+                }
                 onTextChanged: root.textEdited(text)
             }
             Text {

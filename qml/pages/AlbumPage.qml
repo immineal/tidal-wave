@@ -76,17 +76,6 @@ Rectangle {
         player.playTracks(list, i)
     }
 
-    // "1 hr 4 min" / "52 min". Each case is a whole translatable string, so a
-    // translation can reorder or re-unit it instead of inheriting English order.
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
-    }
-
     // The release day in the reader's own date order and language: the locale's
     // long format without the weekday. Anything that is not a full ISO date
     // comes back untouched. NowPlayingPage.releaseDateText() is the same.
@@ -342,7 +331,7 @@ Rectangle {
                                 if (released) parts.push(released)
                                 else if (albumData.year) parts.push(albumData.year)
                                 if (albumData.numTracks) parts.push(qsTr("%Ln track(s)", "", albumData.numTracks))
-                                if (albumData.duration > 0) parts.push(root.durationText(albumData.duration))
+                                if (albumData.duration > 0) parts.push(Theme.lengthText(albumData.duration))
                                 // Raw API codes like HI_RES_LOSSLESS never reach the user
                                 if (root.atmosOnly(albumData)) parts.push(qsTr("Dolby Atmos, plays in stereo"))
                                 else parts.push(root.soundOf(albumData))

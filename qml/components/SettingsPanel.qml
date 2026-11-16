@@ -614,10 +614,11 @@ Popup {
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
                         }
-                        PanelButton {
+                        PillButton {
+                            compact: true; accent: false
                             objectName: "settingsDownloadFolderButton"
-                            label: qsTr("Change…", "button that picks another download folder")
-                            onActivated: if (root.downloads) root.downloads.chooseFolder()
+                            text: qsTr("Change…", "button that picks another download folder")
+                            onClicked: if (root.downloads) root.downloads.chooseFolder()
                         }
                     }
                     Text {
@@ -753,13 +754,14 @@ Popup {
                     color: Theme.textDim; font.pixelSize: Theme.fontMicro
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
-                PanelButton {
+                PillButton {
+                    compact: true; accent: false
                     objectName: "settingsCheckNowButton"
-                    label: qsTr("Check now")
+                    text: qsTr("Check now")
                     // checkNow() is a no-op while the switch is off, so the
                     // button says as much instead of silently doing nothing.
                     muted: !root.updatesOn
-                    onActivated: if (root.check) root.check.checkNow()
+                    onClicked: if (root.check) root.check.checkNow()
                 }
             }
 
@@ -784,20 +786,22 @@ Popup {
                     Layout.fillWidth: true
                     spacing: Theme.space3
 
-                    PanelButton {
+                    PillButton {
+                        compact: true; accent: false
                         objectName: "settingsIssueButton"
                         // A globe, for the one that opens a web page.
                         // VectorIcon has no GitHub mark and no bug.
                         icon: "globe"
-                        label: qsTr("Open a GitHub issue", "button that opens the browser at a new issue")
-                        onActivated: app.openUrl(Feedback.issueUrl())
+                        text: qsTr("Open a GitHub issue", "button that opens the browser at a new issue")
+                        onClicked: app.openUrl(Feedback.issueUrl())
                     }
-                    PanelButton {
+                    PillButton {
+                        compact: true; accent: false
                         objectName: "settingsEmailButton"
                         // The pencil on a sheet: the glyph set has no envelope.
                         icon: "edit"
-                        label: qsTr("Send an email", "button that opens the user's mail client")
-                        onActivated: app.openUrl(Feedback.mailUrl())
+                        text: qsTr("Send an email", "button that opens the user's mail client")
+                        onClicked: app.openUrl(Feedback.mailUrl())
                     }
                     // Keeps the two buttons at their own width, left-aligned,
                     // rather than stretching them across the card.
@@ -947,16 +951,17 @@ Popup {
             // Not in the Account card and not a setting, so no heading and no
             // card. Full width and alone below the last section, so it cannot
             // be hit by accident on the way past.
-            PanelButton {
+            PillButton {
+                compact: true; accent: false
                 objectName: "settingsLogOut"
-                label: qsTr("Log out")
+                text: qsTr("Log out")
                 danger: true
                 Layout.fillWidth: true
                 Layout.leftMargin: root.sideMargin
                 Layout.rightMargin: root.sideMargin
                 Layout.topMargin: Theme.space8
                 Layout.bottomMargin: Theme.space5
-                onActivated: logOutDialog.ask()
+                onClicked: logOutDialog.ask()
             }
         }
     }
@@ -1119,146 +1124,6 @@ Popup {
         lineHeight: 1.25
         wrapMode: Text.Wrap
         Layout.fillWidth: true
-    }
-
-    // A flat dialog-sized button with a focus ring. PillButton is the hero-page
-    // pill and is sized for that job.
-    component PanelButton : Item {
-        id: btn
-        property string label: ""
-        // A VectorIcon name, never a character. Empty leaves a plain text
-        // button: the Row below skips an invisible child.
-        property string icon: ""
-        property bool danger: false
-        // Still clickable, drawn as "this will not do much right now".
-        property bool muted: false
-        signal activated()
-
-        implicitWidth:  btnContent.implicitWidth + 20
-        implicitHeight: 30
-        Layout.preferredWidth: implicitWidth
-        activeFocusOnTab: true
-        opacity: muted ? 0.5 : 1
-        Keys.onReturnPressed: btn.activated()
-        Keys.onSpacePressed:  btn.activated()
-        Accessible.role: Accessible.Button
-        Accessible.name: btn.label
-        Accessible.onPressAction: btn.activated()
-
-        Rectangle {
-            anchors.fill: parent
-            radius: Theme.radiusMedium
-            color: btn.danger && btnHov.hovered ? Theme.red
-                 : btnHov.hovered               ? Qt.tint(Theme.surface, Theme.hoverFill)
-                                                : Theme.surface
-            border.width: btn.activeFocus ? 2 : 1
-            border.color: btn.activeFocus ? Theme.accent
-                        : btn.danger && btnHov.hovered ? Theme.red
-                                                       : Theme.border
-        }
-        Row {
-            id: btnContent
-            anchors.centerIn: parent
-            spacing: Theme.space2
-            VectorIcon {
-                name: btn.icon
-                visible: btn.icon !== ""
-                color: btnLabel.color
-                width: 13; height: 13
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Text {
-                id: btnLabel
-                text: btn.label
-                color: btn.danger ? (btnHov.hovered ? Theme.redInk : Theme.redText)
-                                  : Theme.textPrimary
-                font.pixelSize: Theme.fontMeta
-                anchors.verticalCenter: parent.verticalCenter
-            }
-        }
-        HoverHandler { id: btnHov; cursorShape: Qt.PointingHandCursor }
-        // Exclusive on press: a passive TapHandler in a scrolled Flickable inside
-        // a modal Popup lets the press through to the page beneath (Qt 6.4-6.12).
-        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: btn.activated() }
-    }
-
-    // An on/off switch; Qt Quick Controls' Switch brings a style of its own.
-    // With `rainbow` set, a checked track is a static rainbow gradient with no
-    // animation, so nothing runs behind an open Popup.
-    component Toggle : Item {
-        id: tg
-        property bool checked: false
-        property bool rainbow: false
-        // What a screen reader calls the switch: the title beside it.
-        property string label: ""
-        signal toggled()
-
-        implicitWidth: 38
-        implicitHeight: 22
-        activeFocusOnTab: true
-        Keys.onReturnPressed: tg.toggled()
-        Keys.onSpacePressed:  tg.toggled()
-        Accessible.role: Accessible.CheckBox
-        Accessible.name: tg.label
-        Accessible.checkable: true
-        Accessible.checked: tg.checked
-        Accessible.onPressAction: tg.toggled()
-        Accessible.onToggleAction: tg.toggled()
-
-        // Seven stops a sixth of the wheel apart, so the first and last share a
-        // hue and the strip joins with no seam. Lightness 0.55, not 0.5: the
-        // knob on top is white, and a darker yellow reads as a smudge under it.
-        function rainbowStop(i) {
-            return Qt.hsla(i / 6, 0.9, 0.55, 1)
-        }
-
-        Rectangle {
-            id: track
-            anchors.fill: parent
-            radius: Theme.radiusFull
-            color: tg.checked ? Theme.accent : Theme.surface
-            // The rainbow carries no resting border: a thin solid ring around a
-            // gradient reads as a frame bolted onto it. Focus still draws its
-            // ring.
-            readonly property bool showingRainbow: tg.rainbow && tg.checked
-            border.width: tg.activeFocus ? 2 : (showingRainbow ? 0 : 1)
-            border.color: tg.activeFocus ? Theme.accent
-                        : tg.checked     ? Theme.accent : Theme.border
-
-            // Inside the border rather than over it, so the focus ring is still
-            // a ring and not a rainbow with a gap in it.
-            Rectangle {
-                objectName: "toggleRainbow"
-                visible: tg.rainbow && tg.checked
-                anchors.fill: parent
-                anchors.margins: track.border.width
-                radius: Theme.radiusFull
-                gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0;       color: tg.rainbowStop(0) }
-                    GradientStop { position: 1 / 6;   color: tg.rainbowStop(1) }
-                    GradientStop { position: 2 / 6;   color: tg.rainbowStop(2) }
-                    GradientStop { position: 3 / 6;   color: tg.rainbowStop(3) }
-                    GradientStop { position: 4 / 6;   color: tg.rainbowStop(4) }
-                    GradientStop { position: 5 / 6;   color: tg.rainbowStop(5) }
-                    GradientStop { position: 1;       color: tg.rainbowStop(6) }
-                }
-            }
-
-            Rectangle {
-                width: parent.height - 6
-                height: width
-                radius: Theme.radiusFull
-                y: 3
-                x: tg.checked ? parent.width - width - 3 : 3
-                color: tg.checked ? Theme.accentInk : Theme.textSec
-                Behavior on x {
-                    NumberAnimation { duration: Theme.dur(Theme.motionFast); easing.type: Easing.OutCubic }
-                }
-            }
-        }
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
-        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: tg.toggled() }
     }
 
     // One column of the picker: the dark palettes or the light ones, in table

@@ -18,7 +18,7 @@ Rectangle {
 
     // Fixed rather than derived from the children: the children fill this item,
     // so measuring them to size it would be a loop.
-    readonly property int fieldHeight: 36
+    readonly property int fieldHeight: 40
     readonly property int chipRowHeight: 32
 
     // ── how five icon chips are made to fit any sidebar ──────────────────
@@ -85,8 +85,8 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "search"
                 color: root.focused ? Theme.accentText : Theme.textDim
-                width: 15
-                height: 15
+                width: 16
+                height: 16
             }
 
             TextInput {
@@ -99,7 +99,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 height: parent.height
                 color: Theme.textPrimary
-                font.pixelSize: Theme.fontMeta
+                font.pixelSize: Theme.fontBody
                 clip: true
                 selectByMouse: true
                 selectionColor: Theme.accent
@@ -121,7 +121,7 @@ Rectangle {
                 visible: input.text.length === 0
                 text: root.placeholder
                 color: Theme.textDim
-                font.pixelSize: Theme.fontMeta
+                font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
             }

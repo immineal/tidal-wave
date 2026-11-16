@@ -195,15 +195,11 @@ Rectangle {
                 visible: root.hasTrack
                 icon: root.isLiked ? "heart-filled" : "heart"
                 size: 16
-                iconColor: root.isLiked ? Theme.accentText : Theme.textSec
+                active: root.isLiked
                 label: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
-                ToolTip.visible: likeTipHov.hovered
-                ToolTip.text: label
-                ToolTip.delay: Theme.tooltipDelay
-                HoverHandler { id: likeTipHov }
-                // Anchored on the bar, not on this button. The three ToolTip
-                // lines above bind the shared tool tip, so anchored here the
-                // hint's delay, visibility and text would apply to the refusal.
+                // Anchored on the bar, not on this button: IconButton binds the
+                // shared tool tip, so anchored here its delay, visibility and
+                // text would apply to the refusal.
                 onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
             }
         }
@@ -223,8 +219,7 @@ Rectangle {
                     objectName: "playerBarShuffle"
                     icon: "shuffle"; size: 18
                     label: qsTr("Shuffle")
-                    checkable: true; checked: player.shuffle
-                    iconColor: player.shuffle ? Theme.accent : Theme.textSec
+                    checkable: true; active: player.shuffle
                     onClicked: player.setShuffle(!player.shuffle)
                 }
                 IconButton {
@@ -281,7 +276,7 @@ Rectangle {
                                                    : qsTr("Repeat: off")
                     icon: player.repeatMode === 2 ? "repeat-one" : "repeat"
                     size: 18
-                    iconColor: player.repeatMode > 0 ? Theme.accentText : Theme.textSec
+                    active: player.repeatMode > 0
                     onClicked: player.setRepeatMode((player.repeatMode + 1) % 3)
                 }
             }
@@ -322,8 +317,10 @@ Rectangle {
                     id: volBtn
                     objectName: "playerBarVolumeButton"
                     Layout.alignment: Qt.AlignHCenter
-                    icon: player.muted ? "vol-mute" : (player.volume < 0.3 ? "vol-low" : player.volume < 0.7 ? "vol-mid" : "vol-high")
-                    size: 18; iconColor: Theme.textSec
+                    icon: player.muted ? "volume-mute" : (player.volume < 0.3 ? "volume-low" : player.volume < 0.7 ? "volume-mid" : "volume-high")
+                    size: 18
+                    // The flyout is what its hover brings up.
+                    showTip: false
                     label: player.muted ? qsTr("Unmute") : qsTr("Mute")
                     onClicked: player.setMuted(!player.muted)
                     // Focus shows the flyout, and the arrows move it, so the
@@ -374,10 +371,6 @@ Rectangle {
                 size: 18
                 iconColor: Theme.textSec
                 label: qsTr("Open Now Playing", "player bar button, opens the full-page player")
-                ToolTip.visible: nowPlayingTipHov.hovered
-                ToolTip.text: label
-                ToolTip.delay: Theme.tooltipDelay
-                HoverHandler { id: nowPlayingTipHov }
                 onClicked: root.showNowPlaying()
             }
 
@@ -832,55 +825,4 @@ Rectangle {
         onOnScreenChanged: sync()
     }
 
-    component IconButton : Item {
-        id: iconBtn
-        property string icon
-        property color  iconColor: Theme.textSec
-        property int    size: 18
-        // What a screen reader says for it; the glyph says nothing.
-        property string label
-        property bool   checkable: false
-        property bool   checked: false
-        // The speaker's hover drives the volume flyout, which is not a child
-        // of the button and so cannot see the handler below.
-        readonly property alias hovered: hov.hovered
-        signal clicked()
-        width: Math.max(size + 12, 32)
-        height: Math.max(size + 12, 32)
-
-        activeFocusOnTab: true
-        Keys.onReturnPressed: clicked()
-        Keys.onSpacePressed:  clicked()
-        Accessible.role: Accessible.Button
-        Accessible.name: iconBtn.label
-        Accessible.checkable: iconBtn.checkable
-        Accessible.checked: iconBtn.checked
-        Accessible.onPressAction: iconBtn.clicked()
-        Accessible.onToggleAction: iconBtn.clicked()
-
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: "transparent"
-            border.width: iconBtn.activeFocus ? 2 : 0
-            border.color: Theme.accent
-        }
-
-        VectorIcon {
-            anchors.centerIn: parent
-            name: {
-                if (icon === "vol-mute") return "volume-mute"
-                if (icon === "vol-low") return "volume-low"
-                if (icon === "vol-mid") return "volume-mid"
-                if (icon === "vol-high") return "volume-high"
-                return icon
-            }
-            color: hov.hovered ? Theme.textPrimary : iconColor
-            width: size
-            height: size
-        }
-
-        HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: parent.clicked() }
-    }
 }

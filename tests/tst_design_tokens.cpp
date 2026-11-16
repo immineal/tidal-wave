@@ -133,8 +133,12 @@ class TestDesignTokens : public QObject {
     }
 
     static QByteArray describe(const QList<Hit> &hits, const char *token) {
-        QString s = QStringLiteral("%1 line(s) use a literal where qml/Theme.qml has %2:")
-                        .arg(hits.size()).arg(QLatin1String(token));
+        return report(hits, QStringLiteral("use a literal where qml/Theme.qml has %1")
+                                .arg(QLatin1String(token)));
+    }
+
+    static QByteArray report(const QList<Hit> &hits, const QString &what) {
+        QString s = QStringLiteral("%1 line(s) %2:").arg(hits.size()).arg(what);
         for (const Hit &h : hits)
             s += QStringLiteral("\n  qml/%1:%2  %3").arg(h.file).arg(h.line).arg(h.text);
         return s.toUtf8();
@@ -242,6 +246,28 @@ private slots:
                     && code.contains(QRegularExpression(QStringLiteral("[Hh]ov(ered)?\\b|containsMouse"))));
         });
         QVERIFY2(hits.isEmpty(), describe(hits, "hoverFill for a hover").constData());
+    }
+
+    // One version of each control, in qml/components. A page that grows its
+    // own copy drifts from the shared one in size, hover and focus.
+    void controlsAreDefinedOnce() {
+        static const QRegularExpression local(QStringLiteral(
+            "^\\s*component\\s+(IconButton|CtrlBtn|ChromeButton|Toggle|PanelButton|"
+            "ActionButton|SearchField|TabStrip)\\b"));
+        const auto hits = scan([](const QString &code) { return local.match(code).hasMatch(); });
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("build their own copy of a control in qml/components"))
+                     .constData());
+    }
+
+    // Lengths are formatted in Theme.clock() and Theme.lengthText() only.
+    void lengthsHaveOneFormatter() {
+        const auto hits = scan([](const QString &code) {
+            return code.contains(QRegularExpression(QStringLiteral("%\\s*3600\\b")));
+        });
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("format a length that Theme.clock() or Theme.lengthText() should"))
+                     .constData());
     }
 
     // The checks above must see a literal when there is one.

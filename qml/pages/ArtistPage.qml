@@ -109,16 +109,6 @@ Rectangle {
         return a.section || "a"
     }
 
-    // Worded as AlbumPage.durationText().
-    function durationText(seconds) {
-        var loc  = Qt.locale()
-        var hrs  = Math.floor(seconds / 3600)
-        var mins = Math.floor((seconds % 3600) / 60)
-        return hrs > 0
-            ? qsTr("%1 hr %2 min").arg(hrs.toLocaleString(loc, 'f', 0)).arg(mins.toLocaleString(loc, 'f', 0))
-            : qsTr("%1 min").arg(mins.toLocaleString(loc, 'f', 0))
-    }
-
     // Dolby Atmos and no stereo mode, as AlbumPage.atmosOnly() reads it.
     function atmosOnly(a) {
         var atmos = false, stereo = false
@@ -136,7 +126,7 @@ Rectangle {
         if (!a.titleShared) return a.year
         var tracks = a.numTracks > 0 ? qsTr("%Ln track(s)", "", a.numTracks) : ""
         var parts = root.atmosOnly(a) ? [tracks, qsTr("Dolby Atmos")] : [a.year || "", tracks]
-        if (withLength && a.duration > 0) parts.push(root.durationText(a.duration))
+        if (withLength && a.duration > 0) parts.push(Theme.lengthText(a.duration))
         return parts.filter(function (p) { return p.length > 0 }).join(" • ")
     }
 

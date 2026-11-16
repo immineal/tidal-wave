@@ -708,22 +708,28 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: Theme.space3
 
-                ChromeButton {
+                IconButton {
                     objectName: "nowPlayingCollapse"
                     icon: "chevron-down"
-                    tip: qsTr("Close Now Playing", "returns to the page you came from")
-                    onActivated: Window.window.goBack()
+                    backed: true
+                    pad: Theme.space5
+                    iconColor: Theme.textPrimary
+                    label: qsTr("Close Now Playing", "returns to the page you came from")
+                    onClicked: Window.window.goBack()
                 }
 
                 Item { Layout.fillWidth: true }
 
-                ChromeButton {
+                IconButton {
                     objectName: "nowPlayingFullscreen"
                     icon: root.fullScreen ? "fullscreen-exit" : "fullscreen"
-                    tip: root.fullScreen
+                    backed: true
+                    pad: Theme.space5
+                    iconColor: Theme.textPrimary
+                    label: root.fullScreen
                          ? qsTr("Leave fullscreen", "button, restores the window")
                          : qsTr("Fullscreen", "button, fills the screen with this page")
-                    onActivated: root.toggleFullScreen()
+                    onClicked: root.toggleFullScreen()
                 }
             }
 
@@ -1379,17 +1385,17 @@ Rectangle {
                             ToolTip.delay: Theme.tooltipDelay
                         }
 
-                        CtrlBtn {
+                        IconButton {
                             id: npLikeBtn
                             objectName: "nowPlayingLikeButton"
                             visible: root.hasTrack
                             icon: root.isLiked ? "heart-filled" : "heart"
-                            size: 24
+                            size: 24; pad: Theme.space5
                             active: root.isLiked
                             label: root.isLiked ? qsTranslate("PlayerBar", "Unlike track")
                                                 : qsTranslate("PlayerBar", "Like track")
-                            // On the row: CtrlBtn has its own hover tool tip,
-                            // and two uses of the shared one fight.
+                            // On the row: IconButton has its own hover tool
+                            // tip, and two uses of the shared one fight.
                             onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked,
                                                                       npTransportRow)
                         }
@@ -1450,7 +1456,7 @@ Rectangle {
                                            + trailPad
                             radius: cornerRadius
 
-                            // Rest and hover as a pair, as on ChromeButton.
+                            // Rest and hover as a pair, as on a backed IconButton.
                             // Counting, the hover is the accent at 0.36:
                             // accentTint to accentWash is too small a step.
                             readonly property color restFill:
@@ -1939,23 +1945,16 @@ Rectangle {
                                     Layout.fillWidth: true
                                 }
                             
-                                Rectangle {
-                                    width: 34
-                                    height: 18
-                                    radius: Theme.radiusFull
-                                    color: root.sleepFadeOut ? Theme.accent : Theme.surface
-                                    border.color: fadeRow.activeFocus ? Theme.textPrimary : Theme.border
-                                    border.width: fadeRow.activeFocus ? 2 : 1
-                                
-                                    Rectangle {
-                                        x: root.sleepFadeOut ? 17 : 1
-                                        y: 1
-                                        width: 16
-                                        height: 16
-                                        radius: width / 2
-                                        color: root.sleepFadeOut ? Theme.accentInk : Theme.textPrimary
-                                        Behavior on x { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
-                                    }
+                                // The row is the keyboard's target and the
+                                // screen reader's checkbox, so the switch is
+                                // only drawn here.
+                                Toggle {
+                                    objectName: "nowPlayingSleepFadeToggle"
+                                    activeFocusOnTab: false
+                                    Accessible.ignored: true
+                                    showFocus: fadeRow.activeFocus
+                                    checked: root.sleepFadeOut
+                                    onToggled: fadeRow.toggle()
                                 }
                             
                                 // Handlers, not a MouseArea: the whole row is
@@ -1991,7 +1990,7 @@ Rectangle {
                             objectName: "nowPlayingTransportRow"
                             anchors.fill: parent
                             spacing: root.transportSpacing
-                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; checkable: true
+                            IconButton { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; pad: Theme.space5; active: player.shuffle; checkable: true
                                       label: qsTranslate("PlayerBar", "Shuffle")
                                       onClicked: player.setShuffle(!player.shuffle) }
                             // The cluster's counterweight, which keeps play in
@@ -2003,7 +2002,7 @@ Rectangle {
                                 Layout.preferredWidth: root.volumeClusterWidth
                             }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28
+                            IconButton { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; pad: Theme.space5
                                       label: qsTranslate("PlayerBar", "Previous track")
                                       onClicked: player.previous() }
                             Rectangle {
@@ -2031,11 +2030,11 @@ Rectangle {
                                 TapHandler   { onTapped: player.playPause() }
                                 PlayerBar.LoadErrorTip { }
                             }
-                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28
+                            IconButton { objectName: "nowPlayingNext"; icon: "next"; size: 28; pad: Theme.space5
                                       label: qsTranslate("PlayerBar", "Next track")
                                       onClicked: player.next() }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0
+                            IconButton { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; pad: Theme.space5; active: player.repeatMode > 0
                                       label: player.repeatMode === 2 ? qsTranslate("PlayerBar", "Repeat: one track")
                                            : player.repeatMode === 1 ? qsTranslate("PlayerBar", "Repeat: all")
                                                                      : qsTranslate("PlayerBar", "Repeat: off")
@@ -2185,59 +2184,6 @@ Rectangle {
             onTapped: chip.toggled()
         }
     }
-
-    // A disc-backed icon button for the page's own chrome, as
-    // components/BackButton.qml: stacked, on a short window this row scrolls
-    // over the artwork, where a bare glyph loses its edge.
-    component ChromeButton : Rectangle {
-        id: cb
-        property string icon
-        property string tip
-        signal activated()
-
-        implicitWidth: 36
-        implicitHeight: 36
-        radius: width / 2
-        readonly property color restFill:
-            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.55)
-        readonly property color hoveredFill:
-            Qt.rgba(Theme.surfaceHigh.r, Theme.surfaceHigh.g, Theme.surfaceHigh.b, 0.90)
-        color: cbHov.hovered ? cb.hoveredFill : cb.restFill
-
-        // The focus ring takes over the border entirely, so a focused button
-        // is never ambiguous against a merely hovered one.
-        border.width: cb.activeFocus ? 2 : 1
-        border.color: cb.activeFocus ? Theme.accent
-                    : (cbHov.hovered ? Theme.textSec : Theme.border)
-
-        activeFocusOnTab: true
-        Keys.onReturnPressed: cb.activated()
-        Keys.onSpacePressed:  cb.activated()
-        Accessible.role: Accessible.Button
-        Accessible.name: cb.tip
-        Accessible.onPressAction: cb.activated()
-
-        Behavior on color        { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
-        Behavior on border.color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
-
-        VectorIcon {
-            anchors.centerIn: parent
-            name: cb.icon
-            color: Theme.textPrimary
-            width: 18; height: 18
-        }
-
-        ToolTip.visible: cbHov.hovered && cb.tip.length > 0
-        ToolTip.text: cb.tip
-        ToolTip.delay: Theme.tooltipDelay
-
-        HoverHandler { id: cbHov; cursorShape: Qt.PointingHandCursor }
-        // ReleaseWithinBounds: a DragThreshold TapHandler takes only a passive
-        // grab, so anything underneath answers the same tap.
-        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds
-                       onTapped: cb.activated() }
-    }
-
     component SleepOptionBtn : Rectangle {
         id: optBtn
         objectName: "nowPlayingSleepOption"
@@ -2392,41 +2338,6 @@ Rectangle {
             sliderLength:    root.volumeSliderLength
             sliderThickness: root.volumeSliderThickness
         }
-    }
-
-    component CtrlBtn : Item {
-        id: ctrlBtn
-        property string icon; property int size: 24; property bool active: false
-        // The screen reader's name for it, and whether `active` is a state.
-        property string label
-        property bool checkable: false
-        signal clicked()
-        width: size+20; height: size+20
-        activeFocusOnTab: true
-        Keys.onReturnPressed: clicked()
-        Keys.onSpacePressed:  clicked()
-        Accessible.role: Accessible.Button
-        Accessible.name: ctrlBtn.label
-        Accessible.checkable: ctrlBtn.checkable
-        Accessible.checked: ctrlBtn.active
-        Accessible.onPressAction: ctrlBtn.clicked()
-        Accessible.onToggleAction: ctrlBtn.clicked()
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: "transparent"
-            border.width: ctrlBtn.activeFocus ? 2 : 0
-            border.color: Theme.accent
-        }
-        VectorIcon {
-            anchors.centerIn: parent
-            name: parent.icon
-            color: parent.active ? Theme.accentText : hov.hovered ? Theme.textPrimary : Theme.textSec
-            width: parent.size
-            height: parent.size
-        }
-        HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: parent.clicked() }
     }
 
     // ─── Artist links ──────────────────────────────────────────────────

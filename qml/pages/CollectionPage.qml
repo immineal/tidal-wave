@@ -204,175 +204,22 @@ Rectangle {
             Layout.rightMargin: Theme.space6
             spacing: Theme.space4
 
-            // A Flow, not a Row: five tab labels with counts are wider than the
-            // pane at 640, so they wrap. The sort pills stay right.
-            Flow {
+            // It wraps: five tab labels with counts are wider than the pane
+            // at 640. The sort pills stay right.
+            TabStrip {
                 id: tabsRow
-                objectName: "collectionTabsRow"
+                namePrefix: "collection"
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                spacing: Theme.space1
-
-                // ── the highlight, as one pill that travels ────────────────
-                // One pill that moves between the chips. Only `markT` is
-                // animated: the geometry is read live off the two chips, whose
-                // widths change with every count.
-                property Item markFrom: null
-                property Item markTo:   null
-                property real markT:    1
-                // The reset to 0 that starts a travel is the one write to markT
-                // that must not animate, or the pill would run backwards to the
-                // chip it is already on before setting off.
-                property bool markResetting: false
-                // The first placement is an initialisation, not a move. Without
-                // the gate the pill would grow out of the row's left edge on
-                // every visit to the page.
-                property bool markSettled: false
-
-                Behavior on markT {
-                    enabled: !tabsRow.markResetting
-                    NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
+                model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
+                labelFor: function (index, name) {
+                    var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
+                    // Tab name followed by how many items it holds
+                    return qsTr("%1 (%2)").arg(name)
+                                          .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
                 }
-
-                // The end it set off from, or the destination itself when there
-                // is none, which makes the lerp degenerate. That covers the
-                // first placement and a model rebuild.
-                readonly property Item markA: markFrom ? markFrom : markTo
-                readonly property real markX: markTo ? markA.x + (markTo.x - markA.x) * markT : 0
-                readonly property real markY: markTo ? markA.y + (markTo.y - markA.y) * markT : 0
-                readonly property real markW: markTo ? markA.width  + (markTo.width  - markA.width)  * markT : 0
-                readonly property real markH: markTo ? markA.height + (markTo.height - markA.height) * markT : 0
-
-                function retarget(animate) {
-                    var next = tabsRepeater.itemAt(root.activeTab)
-                    if (next === null || next === tabsRow.markTo) return
-                    tabsRow.markFrom = (animate && tabsRow.markTo !== null) ? tabsRow.markTo : next
-                    tabsRow.markTo   = next
-                    tabsRow.markResetting = true
-                    tabsRow.markT = 0
-                    tabsRow.markResetting = false
-                    tabsRow.markT = 1
-                }
-
-                // Inside the row, not on the page's root: activeTab can arrive
-                // as an initial property, before this row exists.
-                Connections {
-                    target: root
-                    function onActiveTabChanged() { tabsRow.retarget(tabsRow.markSettled) }
-                }
-
-                Component.onCompleted: {
-                    retarget(false)
-                    Qt.callLater(function () { tabsRow.markSettled = true })
-                }
-
-                Repeater {
-                    id: tabsRepeater
-                    model: [qsTr("Tracks"), qsTr("Albums"), qsTr("Artists"), qsTr("Playlists"), qsTr("Mixes")]
-                    // itemAt() is a function call and not a dependency, so the
-                    // pill is aimed again as the chips arrive.
-                    onItemAdded: function (index, item) { tabsRow.retarget(false) }
-                    Rectangle {
-                        id: collectionTab
-                        required property string modelData
-                        required property int    index
-                        height: 34; width: tl.implicitWidth + 24; radius: Theme.radiusFull
-                        // Every chip rests on the same surface, including the
-                        // current one. The pill marks it, drawn here in slices.
-                        color: Theme.surfaceHigh
-                        border.width: collectionTab.activeFocus ? 2 : 0
-                        border.color: Theme.accent
-                        activeFocusOnTab: true
-                        Keys.onReturnPressed: { root.activeTab = index }
-                        Keys.onSpacePressed:  { root.activeTab = index }
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: tl.text
-                        Accessible.selected: root.activeTab === index
-                        Accessible.onPressAction: root.activeTab = index
-
-                        // Whether the accent's copy of the label covers every
-                        // pixel the chip's own copy occupies.
-                        readonly property bool labelFullyInked:
-                               inkWindow.visible
-                            && inkWindow.x <= tl.x
-                            && inkWindow.x + inkWindow.width  >= tl.x + tl.width
-                            && inkWindow.y <= tl.y
-                            && inkWindow.y + inkWindow.height >= tl.y + tl.height
-
-                        // This chip's slice of the pill: a Flow lays out
-                        // anything added to it. The clip reaches 2px past the
-                        // chip, half the row's gap, so the slices meet.
-                        Item {
-                            anchors.fill: parent
-                            anchors.margins: -Theme.spaceHalf
-                            clip: true
-                            Rectangle {
-                                objectName: "collectionTabPillSlice"
-                                x: tabsRow.markX - collectionTab.x + 2
-                                y: tabsRow.markY - collectionTab.y + 2
-                                width:  tabsRow.markW
-                                height: tabsRow.markH
-                                radius: Theme.radiusFull
-                                color: Theme.accent
-                            }
-                        }
-
-                        Text {
-                            id: tl; objectName: "collectionTabLabel"; anchors.centerIn: parent
-                            text: {
-                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
-                                // Tab name followed by how many items it holds
-                                return qsTr("%1 (%2)").arg(modelData)
-                                                      .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
-                            }
-                            // Always the ink of the resting surface. The
-                            // accent's ink is the copy below.
-                            color: Theme.textSec
-                            // Hidden where the copy covers every pixel of it:
-                            // two Texts in one place blend at the glyphs'
-                            // antialiased edge.
-                            visible: !collectionTab.labelFullyInked
-                            // A font weight does not interpolate, so it lands
-                            // in the frame of the click.
-                            font.pixelSize: Theme.fontBody; font.bold: root.activeTab === index
-                        }
-
-                        // The label again in the accent's ink, clipped to the
-                        // pill, so every glyph pixel is on the fill its ink was
-                        // chosen for. The two inks cannot cross-fade legibly.
-                        Item {
-                            id: inkWindow
-                            objectName: "collectionTabInk"
-                            // The pill in this chip's coordinates, clamped on
-                            // both axes since the row wraps. Not
-                            // `top`/`bottom`: Item has those as final members.
-                            readonly property real coveredLeft:   Math.max(0, tabsRow.markX - collectionTab.x)
-                            readonly property real coveredRight:  Math.min(collectionTab.width, tabsRow.markX + tabsRow.markW - collectionTab.x)
-                            readonly property real coveredTop:    Math.max(0, tabsRow.markY - collectionTab.y)
-                            readonly property real coveredBottom: Math.min(collectionTab.height, tabsRow.markY + tabsRow.markH - collectionTab.y)
-                            x: coveredLeft
-                            y: coveredTop
-                            width:  Math.max(0, coveredRight - coveredLeft)
-                            height: Math.max(0, coveredBottom - coveredTop)
-                            clip: true
-                            visible: width > 0 && height > 0
-                            Text {
-                                objectName: "collectionTabInkLabel"
-                                x: tl.x - inkWindow.x
-                                y: tl.y - inkWindow.y
-                                text: tl.text
-                                font: tl.font
-                                color: Theme.accentInk
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.activeTab = index }
-                        }
-                    }
-                }
+                currentIndex: root.activeTab
+                onActivated: (index) => { root.activeTab = index }
             }
 
             Row {
@@ -449,7 +296,6 @@ Rectangle {
                               qsTr("Search mixes…")
                              ][root.activeTab] || qsTr("Search saved items…")
                 Layout.fillWidth: true
-                Layout.preferredHeight: 36
                 onTextEdited: (txt) => {
                     root.searchPattern = txt
                     root.updateFilteredContent()

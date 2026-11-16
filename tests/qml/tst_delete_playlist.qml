@@ -249,7 +249,7 @@ TestCase {
         tryVerify(function () { return panel.visible }, settleMs)
         var button = findByName(panel.contentItem, "settingsLogOut")
         verify(button, "Settings has no Log out")
-        button.activated()
+        button.clicked()
         var dlg = panel.logOutConfirm
         tryVerify(function () { return dlg.visible }, settleMs, "Log out asked nothing")
         compare(auth.state, 2, "Log out acted before the answer")
@@ -258,7 +258,7 @@ TestCase {
         tryVerify(function () { return !dlg.visible }, settleMs)
         compare(auth.state, 2, "Cancel logged out")
 
-        button.activated()
+        button.clicked()
         tryVerify(function () { return dlg.visible }, settleMs)
         mouseClick(inDialog(dlg, "confirmDialogConfirm"))
         tryVerify(function () { return auth.state === 0 }, settleMs, "confirming did not log out")

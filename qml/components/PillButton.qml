@@ -1,9 +1,9 @@
 import QtQuick
 import TidalWave
 
-// Shared pill-shaped action button (Play / Shuffle / etc.) used across
-// Album, Artist, Playlist and Mix pages. Keyboard accessible (Tab to
-// focus, Enter/Space to activate) with a visible focus ring.
+// The one text button: the detail pages' Play and Shuffle, every dialog's
+// answers, the settings panel's actions. `compact` is the smaller size for a
+// panel row. Tab focuses it, Enter or Space presses it.
 Item {
     id: root
 
@@ -11,18 +11,25 @@ Item {
     // A VectorIcon name, never a character.
     property string icon: ""
     property bool   accent: true
-    // For the one button of a dialog that destroys something. Wins over accent.
+    // For the one button of a dialog that destroys something: solid red.
+    // With accent off it stays outlined and turns red only on hover.
     property bool   danger: false
+    property bool   compact: false
+    // Still clickable, drawn as "this will not do much right now".
+    property bool   muted: false
+    readonly property bool solidDanger: danger && accent
+    readonly property bool quietDanger: danger && !accent
 
     // Sized to its label, because German runs long on exactly these words.
     // The minimum keeps a short label from collapsing to a stub.
-    readonly property int hPadding: 18
-    readonly property int minWidth: 96
+    readonly property int hPadding: compact ? Theme.space3 : Theme.space5
+    readonly property int minWidth: compact ? 0 : 96
 
     signal clicked()
 
     implicitWidth: Math.max(minWidth, content.implicitWidth + 2 * hPadding)
-    implicitHeight: 40
+    implicitHeight: compact ? 32 : 40
+    opacity: muted ? 0.5 : 1
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: root.text
@@ -33,14 +40,16 @@ Item {
         radius: Theme.radiusFull
         // An accent pill lifts toward its own brighter shade on hover; an
         // outlined one fills, since darkening its border alone is too quiet.
-        color: root.danger
+        color: root.solidDanger
                ? (hover.hovered ? Qt.lighter(Theme.red, 1.12) : Theme.red)
+               : root.quietDanger && hover.hovered ? Theme.red
                : root.accent
                ? (hover.hovered ? Qt.lighter(Theme.accent, 1.18) : Theme.accent)
                : (hover.hovered ? Qt.tint(Theme.surfaceHigh, Theme.hoverFill) : Theme.surfaceHigh)
         Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
-        border.width: root.activeFocus ? 2 : (root.accent || root.danger ? 0 : 1)
+        border.width: root.activeFocus ? 2 : (root.accent ? 0 : 1)
         border.color: root.activeFocus ? Theme.accent
+                    : root.quietDanger && hover.hovered ? Theme.red
                     : (hover.hovered && !root.accent ? Theme.textSec : Theme.border)
 
         Row {
@@ -51,18 +60,31 @@ Item {
                 id: pillIcon
                 name: root.icon
                 color: pillText.color
-                width: 14
-                height: 14
+                width: root.compact ? 13 : 14
+                height: width
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.icon !== ""
             }
-            Text { id: pillText; objectName: "pillLabel"; text: root.text;  color: root.danger ? Theme.redInk : root.accent ? Theme.accentInk : Theme.textPrimary; font.pixelSize: Theme.fontBody; font.bold: root.accent || root.danger; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                id: pillText
+                objectName: "pillLabel"
+                text: root.text
+                color: root.solidDanger ? Theme.redInk
+                     : root.quietDanger ? (hover.hovered ? Theme.redInk : Theme.redText)
+                     : root.accent      ? Theme.accentInk : Theme.textPrimary
+                font.pixelSize: root.compact ? Theme.fontMeta : Theme.fontBody
+                font.bold: root.accent
+                anchors.verticalCenter: parent.verticalCenter
+            }
         }
 
         HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: root.clicked() }
+        // Exclusive on press: a passive grab in a scrolled Flickable inside a
+        // modal Popup lets the press through to the page beneath.
+        TapHandler   { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: root.clicked() }
     }
 
     Keys.onReturnPressed: root.clicked()
+    Keys.onEnterPressed:  root.clicked()
     Keys.onSpacePressed:  root.clicked()
 }

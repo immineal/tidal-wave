@@ -1607,18 +1607,27 @@ TestCase {
 
     readonly property var tabWidths: [1280, 1100, 900, 740]
 
+    // The pill as drawn, in the row's coordinates. Every chip holds the whole
+    // pill as a slice, in a window that starts 2px outside the chip, so chip
+    // 0's slice reports all of it.
     function pillAndTabs(win) {
         var tabs = findByName(win.page, "searchTabsRow")
         verify(tabs, "the tab row was not found")
-        var pills = findAllByName(win.page, "searchTabPill")
-        compare(pills.length, 1, "the highlight is not one pill: found " + pills.length)
-        return { tabs: tabs, pill: pills[0] }
+        var slices = findAllByName(tabs.children[0], "searchTabPillSlice")
+        compare(slices.length, 1, "a chip does not hold one slice of the pill: found " + slices.length)
+        var chip0 = tabs.children[0], slice = slices[0]
+        var pill = {
+            get x()      { return chip0.x + slice.x - 2 },
+            get y()      { return chip0.y + slice.y - 2 },
+            get width()  { return slice.width },
+            get height() { return slice.height }
+        }
+        return { tabs: tabs, pill: pill }
     }
 
-    // A chip's box in the pill's coordinates, so the two are comparable.
+    // A chip's box in the row's coordinates, as the pill's is.
     function chipBoxIn(pill, chip) {
-        var p = chip.mapToItem(pill.parent, 0, 0)
-        return { x: p.x, y: p.y, w: chip.width, h: chip.height }
+        return { x: chip.x, y: chip.y, w: chip.width, h: chip.height }
     }
 
     function pillSays(pill) {
@@ -1679,9 +1688,7 @@ TestCase {
         return item.mapToItem(win.contentItem, item.width / 2, item.height / 2)
     }
 
-    // The hover tint loses to the highlight. The pill is behind the row, so
-    // a tint drawn over the marked chip would muddy the highlight under the
-    // pointer.
+    // The chip the pill marks takes no hover: it is already chosen.
     function test_the_marked_chip_takes_no_hover_tint() {
         var win = showPage()
         typeInto(win.page, query)
@@ -1697,20 +1704,20 @@ TestCase {
         // A chip the pill is nowhere near takes the tint, so the tint works.
         var f = centreOf(win, far)
         mouseMove(win.contentItem, f.x, f.y)
-        tryVerify(function () { return sameColor(far.color, Theme.hoverFill) }, settleMs,
+        var lit = Qt.tint(Theme.surfaceHigh, Theme.hoverFill)
+        tryVerify(function () { return sameColor(far.color, lit) }, settleMs,
                   "a chip under the pointer does not light up, got " + far.color)
 
         // The chip the pill is on refuses it.
         var m = centreOf(win, marked)
         mouseMove(win.contentItem, m.x, m.y)
-        tryVerify(function () { return marked.color.a === 0 }, settleMs,
-                  "the marked chip painted its hover tint over the highlight, got "
-                  + marked.color)
+        tryVerify(function () { return sameColor(marked.color, Theme.surfaceHigh) }, settleMs,
+                  "the marked chip took a hover tint, got " + marked.color)
         // The pill is still exactly on it.
         var c = chipBoxIn(pill, marked)
         verify(Math.abs(pill.x - c.x) < 0.01 && Math.abs(pill.width - c.w) < 0.01,
                "the pill is not on the chip under the pointer: " + pillSays(pill))
-        tryVerify(function () { return far.color.a === 0 }, settleMs,
+        tryVerify(function () { return sameColor(far.color, Theme.surfaceHigh) }, settleMs,
                   "the chip the pointer left kept its tint, got " + far.color)
     }
 
