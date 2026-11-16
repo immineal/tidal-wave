@@ -12,6 +12,7 @@
 #include <QMediaDevices>
 #include <QMediaPlayer>
 #include <QMetaEnum>
+#include <QPointer>
 #include <QProcess>
 #include <QSettings>
 #include <QSignalSpy>
@@ -21,6 +22,7 @@
 #include <QTest>
 #include <QtEndian>
 #include <memory>
+#include <utility>
 
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
@@ -112,6 +114,16 @@ QByteArray inTidalsLayout(const QByteArray &boxes)
 class SegmentServer : public QTcpServer {
 public:
     QVector<QByteArray> segments;
+    // The last segment waits for release() while this is set.
+    bool holdLast = false;
+    QList<std::pair<QPointer<QTcpSocket>, int>> held;
+
+    void release()
+    {
+        holdLast = false;
+        for (const auto &[sock, n] : std::exchange(held, {}))
+            if (sock) send(sock, n);
+    }
 
     SegmentServer()
     {
@@ -132,7 +144,14 @@ private:
         const QList<QByteArray> request = sock->readLine().split(' ');
         bool ok = false;
         const int n = request.value(1).mid(1).toInt(&ok);
-        if (!ok || n < 0 || n >= segments.size()) {
+        if (!ok) { send(sock, -1); return; }
+        if (holdLast && n == segments.size() - 1) { held.append({ sock, n }); return; }
+        send(sock, n);
+    }
+
+    void send(QTcpSocket *sock, int n)
+    {
+        if (n < 0 || n >= segments.size()) {
             sock->write("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");
         } else {
             sock->write("HTTP/1.0 200 OK\r\nContent-Type: audio/mp4\r\nContent-Length: "
@@ -367,7 +386,12 @@ private slots:
         QVERIFY(m_desk->isConnected());
     }
 
-    void init() { QSettings().clear(); }
+    void init()
+    {
+        QSettings().clear();
+        m_server.holdLast = false;
+        m_server.held.clear();
+    }
 
     // With no seek before it.
     void aPauseIsNoLoad()
@@ -477,19 +501,25 @@ private slots:
     void theEndOfATrackAfterASeekIsNoLoad_data()
     {
         QTest::addColumn<int>("rows");
-        QTest::newRow("the last track of the queue") << 1;
-        QTest::newRow("a track with one after it")   << 2;
+        QTest::addColumn<bool>("streamFirst");
+        QTest::newRow("the last track of the queue") << 1 << false;
+        QTest::newRow("a track with one after it")   << 2 << false;
+        QTest::newRow("the last track, streamed first") << 1 << true;
+        QTest::newRow("one with one after it, streamed first") << 2 << true;
     }
 
     void theEndOfATrackAfterASeekIsNoLoad()
     {
         QFETCH(int, rows);
+        QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
         Launch l;
-        QVERIFY(sounding(l, rows));
+        QVERIFY(sounding(l, rows, streamFirst));
 
         l.seek(kProgDurationMs - 1000);
         QTRY_VERIFY2_WITH_TIMEOUT(l.heard.ended, "the track never reached its end", 10000);
+        // The seek's own buffering was no load; only the next start counts.
+        l.heard.bufferingNotShown = 0;
         if (rows == 1) {
             SETTLED(l, StoppedState);
             return;
@@ -510,12 +540,20 @@ private slots:
         SETTLED(l, PausedState);
     }
 
+    void aStartAfterAStopBuffersAsALoad_data()
+    {
+        QTest::addColumn<bool>("streamFirst");
+        QTest::newRow("as it comes")     << false;
+        QTest::newRow("streamed first") << true;
+    }
+
     // Next on the last track stops the backend, and play starts it over.
     void aStartAfterAStopBuffersAsALoad()
     {
+        QFETCH(bool, streamFirst);
         if (const char *why = obstacle()) QSKIP(why);
         Launch l;
-        QVERIFY(sounding(l));
+        QVERIFY(sounding(l, 1, streamFirst));
 
         l.seek(kSeekTo);
         QTRY_VERIFY2_WITH_TIMEOUT(l.mp()->position() >= kSeekTo + 300,
@@ -524,6 +562,9 @@ private slots:
         l.p().next();
         QCOMPARE(l.mp()->playbackState(), QMediaPlayer::StoppedState);
 
+        // A seek that moved the backend from the stream to the file buffered
+        // as no load. Only the start counts here.
+        l.heard.bufferingNotShown = 0;
         l.press();
         QVERIFY2(QTest::qWaitFor([&l] {
             return l.plays() && l.mp()->position() >= 300 && !l.p().loading();
@@ -573,12 +614,22 @@ private:
         return nullptr;
     }
 
-    // Starts the first of a queue's rows and waits until it sounds.
-    bool sounding(Launch &l, int rows = 1)
+    // Starts the first of a queue's rows and waits until it sounds. With
+    // streamFirst the file lands only once the stream plays, and a seek then
+    // moves the backend over to the file.
+    bool sounding(Launch &l, int rows = 1, bool streamFirst = false)
     {
         if (!l.audioUp()) return false;
+        m_server.holdLast = streamFirst;
+        QSignalSpy landed(&l.p(), &Player::audioFileReady);
         l.p().playTracks(rowsOf(rows), 0);
         if (!l.client.answer(1, m_track)) return false;
+        if (streamFirst) {
+            if (!QTest::qWaitFor([&l] { return l.plays(); }, 10000) || !landed.isEmpty())
+                return false;
+            m_server.release();
+            if (!QTest::qWaitFor([&landed] { return !landed.isEmpty(); }, 10000)) return false;
+        }
         if (!QTest::qWaitFor([&l] {
                 return l.plays() && l.mp()->position() >= 300 && !l.p().loading();
             }, 10000))
