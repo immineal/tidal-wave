@@ -158,17 +158,20 @@ Item {
             height: 48
         }
 
+        // The hover layer. The cover is left as it is; only the play control
+        // is laid over it, so nothing dims or grows under the pointer.
         Rectangle {
             id: scrim
             objectName: "cardScrim"
             anchors.fill: parent
             radius: parent.radius
-            // Dims the art so the play button reads; a wash over cover art
-            // cannot follow the ground, so it is the same in every theme.
-            color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
+            color: "transparent"
 
-            Rectangle {
+            // A square card's play control is a strip along the cover's foot
+            // with the word on it. A disc has no straight foot, so there it is
+            // a round button in the middle. A wash over art is the same in
+            // every theme; the strip turns accent under the pointer.
+            Item {
                 id: playButton
                 objectName: "cardPlayButton"
                 visible: hov.hovered || root.keyboardOn
@@ -180,32 +183,58 @@ Item {
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTranslate("PlayerBar", "Play")
                 Accessible.onPressAction: root.playClicked()
-                border.width: activeFocus ? 2 : 0
-                border.color: Theme.textPrimary
-                width: 44
-                height: 44
-                radius: width / 2
-                // A square card has a corner to tuck the button into. On a
-                // disc that corner is off the art, so the button is centred.
+                width:  root.roundArt ? 44 : parent.width
+                height: root.roundArt ? 44 : 36
                 anchors.centerIn: root.roundArt ? parent : undefined
                 anchors.bottom:   root.roundArt ? undefined : parent.bottom
-                anchors.right:    root.roundArt ? undefined : parent.right
-                anchors.margins:  root.roundArt ? 0 : Theme.space3
-                color: Theme.accent
+                anchors.left:     root.roundArt ? undefined : parent.left
+                // Clipped, so the fill keeps the cover's rounded foot: the
+                // rectangle inside runs a radius past the top and is cut there.
+                clip: !root.roundArt
 
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "play"
-                    color: Theme.accentInk
-                    width: 18
-                    height: 18
-                    // The triangle's centre of area sits left of its box's
-                    // centre, so the mark is nudged to look centred.
-                    anchors.horizontalCenterOffset: 1
+                readonly property color fill: playHov.hovered ? Theme.accent : Theme.artScrimStrong
+                readonly property color ink:  playHov.hovered ? Theme.accentInk : Theme.artInk
+                Rectangle {
+                    objectName: "cardPlayFill"
+                    width: parent.width
+                    height: root.roundArt ? parent.height : parent.height + imgRect.radius
+                    y: root.roundArt ? 0 : -imgRect.radius
+                    radius: root.roundArt ? width / 2 : imgRect.radius
+                    color: playButton.fill
+                    Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionFast) } }
+                }
+                // The ring sits inside the strip, so the clip cannot cut it.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: root.roundArt ? 0 : Theme.spaceHalf
+                    visible: playButton.activeFocus
+                    color: "transparent"
+                    radius: root.roundArt ? width / 2 : Theme.radiusMedium
+                    border.width: 2
+                    border.color: Theme.artInk
                 }
 
-                scale: playHov.hovered ? 1.05 : 1
-                Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
+                Row {
+                    anchors.centerIn: parent
+                    spacing: Theme.space2
+                    VectorIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "play"
+                        color: playButton.ink
+                        width: root.roundArt ? 18 : 14
+                        height: width
+                    }
+                    Text {
+                        objectName: "cardPlayLabel"
+                        visible: !root.roundArt
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: playButton.Accessible.name
+                        color: playButton.ink
+                        font.pixelSize: Theme.fontMeta
+                        font.bold: true
+                    }
+                }
+
                 HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
                 TapHandler   { onTapped: root.playClicked() }
                 ToolTip.visible: playHov.hovered

@@ -996,7 +996,10 @@ TestCase {
         settle(holder)
     }
 
-    function test_album_card_keeps_its_corner_play_button() {
+    // A square card's hover is a Play strip along the foot of the cover,
+    // with its word on it: not a round button in the corner, and nothing
+    // grows under the pointer.
+    function test_album_card_shows_a_play_strip_and_nothing_grows() {
         var holder = createTemporaryObject(holderC, testCase, { width: 400, height: 320 })
         var card = createTemporaryObject(mediaCardC, holder, {
             x: 40, y: 40, cardSize: 160, mediaType: "album",
@@ -1014,9 +1017,18 @@ TestCase {
         var play = findByName(card, "cardPlayButton")
         verify(play.visible, "the play button did not appear on hover")
         var p = play.mapToItem(art, 0, 0)
-        verify(p.x + play.width > art.width * 0.6 && p.y + play.height > art.height * 0.6,
-               "the play button left the bottom right corner (" + p.x.toFixed(1)
-               + "," + p.y.toFixed(1) + ")")
+        compare(p.x, 0, "the play strip does not start at the cover's left edge")
+        compare(play.width, art.width, "the play strip does not span the cover")
+        compare(p.y + play.height, art.height, "the play strip does not sit on the cover's foot")
+        verify(play.height < art.height / 3, "the play strip covers too much of the cover")
+        verify(findByName(play, "cardPlayLabel"), "the play strip does not say Play")
+
+        mouseMove(holder, 40 + p.x + play.width / 2, 40 + p.y + play.height / 2)
+        settle(holder)
+        wait(Theme.motionMedium)
+        compare(play.scale, 1, "the play button grows under the pointer")
+        compare(art.scale, 1, "the cover grows under the pointer")
+        compare(card.scale, 1, "the card grows under the pointer")
 
         mouseMove(holder, -20, -20)
         settle(holder)
