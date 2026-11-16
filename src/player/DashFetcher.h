@@ -40,11 +40,18 @@ public:
 
     // Expands a DASH manifest into the URLs to fetch: [0] is the initialization
     // segment, the rest are the media segments in play order. Empty when the
-    // manifest carries no SegmentTemplate this can expand.
-    static QStringList parseSegmentUrls(const QString &mpdXml);
+    // manifest carries no SegmentTemplate this can expand. lengthMs, if given,
+    // gets the play time: the presentation duration, else the timeline's sum
+    // (segments carry encoder padding, so their sum runs a little long).
+    static QStringList parseSegmentUrls(const QString &mpdXml, qint64 *lengthMs = nullptr);
+
+    // The front of a join up to the end of its moov, with the movie, each
+    // track and each media header stating lengthMs. Empty when head holds no
+    // whole moov. Every box keeps its size, so it overlays the file's bytes.
+    static QByteArray headWithLength(const QByteArray &head, qint64 lengthMs);
 
     DashFetcher(TidalClient *client, const QString &mpdXml)
-        : m_client(client), m_urls(parseSegmentUrls(mpdXml))
+        : m_client(client), m_urls(parseSegmentUrls(mpdXml, &m_lengthMs))
     {
         m_parts.resize(m_urls.size());
         if (m_urls.isEmpty()) return;
@@ -83,6 +90,8 @@ public:
     qint64 bytesReady() const { return m_bytesReady; }
     // Segments on disk, counting the initialization segment.
     int segmentsReady() const { return m_writeCursor; }
+    // How long the track plays, from the manifest; 0 when it does not say.
+    qint64 lengthMs() const { return m_lengthMs; }
 
     // Optional, set before start(). Called from the event loop, and the
     // receiver may delete this fetcher from inside it.
@@ -277,6 +286,8 @@ private:
     }
 
     TidalClient *m_client;
+    // Declared ahead of m_urls, which fills it in the constructor's init list.
+    qint64       m_lengthMs = 0;
     QStringList  m_urls;             // [0] is the initialization segment
     QVector<QByteArray> m_parts;     // arrive out of order, written in order
     QVector<QPointer<QNetworkReply>> m_inFlight;
@@ -303,14 +314,16 @@ private:
     static constexpr int kMaxSegments = 20000;
 };
 
-inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
+inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml, qint64 *lengthMs)
 {
+    if (lengthMs) *lengthMs = 0;
     QString initTpl, mediaTpl, repId, bandwidth;
     long long timescale   = 1;
     long long segDuration = 0;   // SegmentTemplate@duration, when there is no timeline
     qint64    totalMs     = 0;   // MPD@mediaPresentationDuration
     int  startNumber  = 1;
     int  segmentCount = 0;
+    double timelineTicks = 0;   // sum of the timeline's durations
     bool haveTemplate = false;
     bool haveTimeline = false;
 
@@ -346,6 +359,7 @@ inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
                 if (r > kMaxSegments || segmentCount > kMaxSegments - 1 - r) return {};
                 haveTimeline = true;
                 segmentCount += 1 + r;
+                timelineTicks += double(at.value(QLatin1String("d")).toLongLong()) * (1 + r);
             }
         } else if (haveTemplate && xml.isEndElement()
                    && xml.name() == QLatin1String("SegmentTemplate")) {
@@ -378,5 +392,91 @@ inline QStringList DashFetcher::parseSegmentUrls(const QString &mpdXml)
         if (!ok || u.isEmpty()) return {};
         urls << u;
     }
+    if (lengthMs) {
+        *lengthMs = totalMs > 0 ? totalMs
+                  : (haveTimeline && timelineTicks > 0)
+                  ? qint64(timelineTicks * 1000.0 / double(timescale) + 0.5) : 0;
+    }
     return urls;
+}
+
+namespace dashdetail {
+inline quint64 readBE(const char *p, int n) {
+    quint64 v = 0;
+    for (int i = 0; i < n; ++i) v = (v << 8) | quint8(p[i]);
+    return v;
+}
+inline void writeBE(char *p, int n, quint64 v) {
+    for (int i = n - 1; i >= 0; --i) { p[i] = char(v & 0xff); v >>= 8; }
+}
+// Raises the duration field at off (n bytes) to ms in the given timescale.
+inline void raiseDuration(char *p, int n, quint64 scale, qint64 ms) {
+    if (scale == 0) return;
+    quint64 want = quint64(ms) * scale / 1000;
+    if (n == 4) want = qMin<quint64>(want, 0xfffffffeu);
+    const quint64 have = readBE(p, n);
+    // All ones is "unknown".
+    if (have < want || have == (n == 4 ? 0xffffffffu : ~quint64(0))) writeBE(p, n, want);
+}
+// Walks the boxes in [from, to) of out; false when one runs past the end.
+inline bool statLength(QByteArray &out, qint64 from, qint64 to, qint64 ms, quint64 &movieScale) {
+    char *d = out.data();
+    for (qint64 pos = from; pos < to; ) {
+        if (to - pos < 8) return false;
+        quint64 size = readBE(d + pos, 4);
+        qint64 bodyAt = pos + 8;
+        if (size == 1) {
+            if (to - pos < 16) return false;
+            size = readBE(d + pos + 8, 8);
+            bodyAt = pos + 16;
+        }
+        if (size < quint64(bodyAt - pos) || size > quint64(to - pos)) return false;
+        const qint64 end = pos + qint64(size);
+        const QByteArray type(d + pos + 4, 4);
+        char *b = d + bodyAt;
+        const qint64 len = end - bodyAt;
+        if (type == "trak" || type == "mdia") {
+            if (!statLength(out, bodyAt, end, ms, movieScale)) return false;
+            d = out.data();
+        } else if (type == "mvhd" || type == "mdhd") {
+            // version, flags, created, modified, timescale, duration
+            const bool v1 = len > 0 && b[0] == 1;
+            const int t = v1 ? 8 : 4;
+            if (len < 4 + 2 * t + 4 + t) return false;
+            const quint64 scale = readBE(b + 4 + 2 * t, 4);
+            if (type == "mvhd") movieScale = scale;
+            raiseDuration(b + 4 + 2 * t + 4, t, scale, ms);
+        } else if (type == "tkhd") {
+            // version, flags, created, modified, track id, reserved, duration
+            const bool v1 = len > 0 && b[0] == 1;
+            const int t = v1 ? 8 : 4;
+            if (len < 4 + 2 * t + 8 + t) return false;
+            raiseDuration(b + 4 + 2 * t + 8, t, movieScale, ms);
+        }
+        pos = end;
+    }
+    return true;
+}
+} // namespace dashdetail
+
+inline QByteArray DashFetcher::headWithLength(const QByteArray &head, qint64 lengthMs) {
+    if (lengthMs <= 0) return {};
+    for (qint64 pos = 0; pos + 8 <= head.size(); ) {
+        quint64 size = dashdetail::readBE(head.constData() + pos, 4);
+        qint64 bodyAt = pos + 8;
+        if (size == 1 && pos + 16 <= head.size()) {
+            size = dashdetail::readBE(head.constData() + pos + 8, 8);
+            bodyAt = pos + 16;
+        }
+        if (size < quint64(bodyAt - pos) || size > quint64(head.size() - pos)) return {};
+        const qint64 end = pos + qint64(size);
+        if (head.mid(pos + 4, 4) == "moov") {
+            QByteArray out = head.left(end);
+            quint64 movieScale = 0;
+            if (!dashdetail::statLength(out, bodyAt, end, lengthMs, movieScale)) return {};
+            return out;
+        }
+        pos = end;
+    }
+    return {};
 }

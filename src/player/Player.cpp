@@ -15,6 +15,7 @@
 #include "api/TidalBridge.h"
 #include "cast/CastSession.h"
 #include "player/DashFetcher.h"
+#include "player/GrowingFileServer.h"
 #include "ui/Prefs.h"
 #include "player/SpectrumAnalyzer.h"
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
@@ -22,6 +23,7 @@
 #endif
 #include <algorithm>
 #include <numeric>
+#include <utility>
 #include <QRandomGenerator>
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 #include <QAudioSink>
@@ -80,13 +82,19 @@ void Player::initAudio() {
             this, &Player::onErrorOccurred);
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
         if (m_rebinding) return;   // a swap's transient positions are not seeks
+        // Nor those of a source swap, which start from 0 before its seek.
+        if (m_swapping) return;
+        // A stream cut short reports the stated length as it ends.
+        if (streamGrowing() && pos >= m_streamLengthMs) return;
+        if (m_streamServed) m_streamPos = pos;
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // A queue that ended is at its start for all who ask position(). The
         // backend's reports from before the end can still arrive after it.
         if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
 #endif
         // Only while it plays: a paused track may never be played on.
-        if (m_player->duration() > 0 && pos >= kPreloadAfterMs
+        // duration(): a growing stream has no length of its own.
+        if (duration() > 0 && pos >= kPreloadAfterMs
             && m_player->playbackState() == QMediaPlayer::PlayingState)
             preloadNext();
         emit positionChanged(pos);
@@ -113,6 +121,8 @@ Player::~Player() {
     // The debounced save may still be pending, and position() needs the player.
     savePlaybackState();
     cancelPreload();
+    // Before the join goes: the server reads its file.
+    if (m_stream) m_stream->stop();
     delete m_dash;
     m_dash = nullptr;
     // remove() as well as delete: autoRemove is off on these, so deleting the
@@ -288,7 +298,7 @@ void Player::restoreAudioState(const AudioState &state) {
     if (!m_player) return;
     // A swap can drop the backend back to the start of the track. Seek back,
     // and never re-set the source: that would re-fetch the stream.
-    if (state.position > 0 && m_player->position() != state.position && m_player->isSeekable())
+    if (state.position > 0 && m_player->position() != state.position && backendSeekable())
         setPlayerPosition(state.position);
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
     if (state.playing && !playing)      startBackend();
@@ -350,6 +360,10 @@ qint64 Player::position() const {
 }
 qint64 Player::duration() const {
     if (casting()) return m_castDuration;
+    // Should the served header fail to state it, the backend knows one
+    // segment's length.
+    if (m_streamServed)
+        return m_streamLengthMs > 0 ? m_streamLengthMs : qint64(m_currentTrack.duration) * 1000;
     // Until the backend has the file, the track's own length stands, and
     // never the length of the track before.
     const qint64 loaded = (m_player && !m_player->source().isEmpty()) ? m_player->duration() : 0;
@@ -586,6 +600,7 @@ void Player::jumpToQueue(int index) {
 
 void Player::clearQueue() {
     cancelPreload();
+    dropStream();
     if (m_player) m_player->stop();
     m_queue.clear();
     setManualCount(0);
@@ -606,6 +621,7 @@ void Player::removeFromQueue(int index) {
         setIndex(m_index - 1);
     } else if (index == m_index) {
         if (m_queue.isEmpty()) {
+            dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
             m_currentTrack = Track{};
@@ -700,7 +716,8 @@ void Player::playPause() {
     if (!m_player) return;
     // Nothing is loaded behind the current track for play() to start.
     if (m_loadOwed) { loadAndPlay(m_index, false, m_owedTravel); return; }
-    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+    // A source swap is a load the flag does not show.
+    if ((m_loading || m_swapping) && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // A load is under way, and the press decides what it ends in.
         m_loadPlays = !m_loadPlays;
         // Until the file is handed to the backend the hold is kept here.
@@ -744,6 +761,13 @@ void Player::startOver(bool heldPaused) {
         return;
     }
     m_pendingSeek = 0;
+    if (m_streamServed) {
+        // The stream cannot go back; the file it was served from can.
+        swapSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()), 0, !heldPaused);
+        emit positionChanged(0);
+        emit seeked();
+        return;
+    }
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
     // Qt 6.5 does not start a track over once it stopped at its end, so the
     // file it has is opened again.
@@ -799,10 +823,21 @@ void Player::seek(qint64 ms) {
     // A target at or past the end is the end of the track, and the queue
     // moves on as it does when a track has played out. The backend of Qt 6.5
     // and later would stay there and report no end. A paused player waits.
-    const qint64 length = m_player->duration();
+    const qint64 length = m_streamServed ? duration() : m_player->duration();
     if (length > 0 && ms >= length) {
         m_pendingSeek = 0;
         trackEnded(!playing());
+        return;
+    }
+    if (m_streamServed) {
+        // The stream cannot seek. The finished file can, so the backend gets
+        // that; until the join has landed the seek waits for it.
+        if (ms > 0) setStopped(false);
+        if (m_streamWhole)
+            swapSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()), qMax<qint64>(0, ms), playing());
+        else
+            holdSeekForJoin(qMax<qint64>(0, ms), playing());
+        emit seeked();
         return;
     }
     setPlayerPosition(ms);
@@ -1165,6 +1200,10 @@ void Player::loadAndPlay(int index, bool heldPaused, Travel travel, bool wait) {
 
 void Player::dropCurrentLoad() {
     if (m_loadTimer) m_loadTimer->stop();
+    if (m_seekWait) m_seekWait->stop();
+    m_swapping = false;
+    // First: the server reads the file that goes below.
+    dropStream();
     if (m_player) {
         m_player->stop();
         m_player->setSource(QUrl());
@@ -1301,6 +1340,8 @@ bool Player::adoptPreload(quint64 serial) {
         if (m_preloadLookingUp) return false;
         // Under way: the load waits for it rather than fetch a second copy.
         m_preloadAdoptedBy = serial;
+        // A join plays from its front, like the load's own.
+        if (m_preloadDash) takeOverPreloadJoin();
         return true;
     }
     if (!m_preloadTempFile) return false;
@@ -1320,6 +1361,167 @@ void Player::playFile(QTemporaryFile *file, const QString &quality) {
     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
     beginPlayback();
     emit audioFileReady(m_currentTrack.id, false);
+}
+
+// ─── Progressive start ─────────────────────────────
+// The backend gets the server's URL once the initialization segment and one
+// media segment are on disk. The stream has no length and cannot seek, so
+// duration comes from the manifest and a seek goes to the finished file.
+
+void Player::followJoin(quint64 serial, DashFetcher *fetcher) {
+    fetcher->setProgress([this, serial, fetcher](qint64 bytes, int segments) {
+        if (serial != m_loadSerial || m_dash != fetcher) return;
+        joinProgress(fetcher, bytes, segments);
+    });
+}
+
+void Player::joinProgress(DashFetcher *fetcher, qint64 bytes, int segments) {
+    if (m_streamServed) { m_stream->setBytesReady(bytes); return; }
+    // Two segments are the least that plays. A held position needs bytes
+    // from further in, so that load waits for the whole file as before.
+    if (segments < 2 || casting() || m_pendingSeek > 0 || !m_loading || !m_player
+        || !m_player->source().isEmpty())
+        return;
+    serveJoin(fetcher, m_loadPlays);
+}
+
+bool Player::serveJoin(DashFetcher *fetcher, bool plays) {
+    if (!m_stream) m_stream = new GrowingFileServer(this);
+    const QString url = m_stream->serve(fetcher->tempFilePath(), QStringLiteral("audio/mp4"),
+                                        fetcher->bytesReady());
+    // No loopback socket: the whole file plays once it has landed.
+    if (url.isEmpty()) return false;
+    // Without a stated length the backend holds its position at the end of
+    // the first segment, and the bar would stand still while it plays.
+    QFile head(fetcher->tempFilePath());
+    if (head.open(QIODevice::ReadOnly))
+        m_stream->setHead(DashFetcher::headWithLength(
+            head.read(qMin<qint64>(fetcher->bytesReady(), kStreamHeadMax)), fetcher->lengthMs()));
+    m_streamServed   = true;
+    m_streamWhole    = false;
+    m_streamPos      = 0;
+    m_streamLengthMs = fetcher->lengthMs();
+    m_loadPlays      = plays;
+    m_restorePaused  = !plays;
+    m_player->setSource(QUrl(url));
+    beginPlayback();
+    emit durationChanged(duration());
+    return true;
+}
+
+void Player::joinLanded(QTemporaryFile *file, const QString &errorDetail) {
+    if (m_seekWait) m_seekWait->stop();
+    if (!file) {
+        if (!errorDetail.isEmpty()) qWarning() << "Audio download failed:" << errorDetail;
+        // Played as far as it got: play tries again from there.
+        if (m_streamServed) {
+            m_pendingSeek = qMax(m_pendingSeek, m_streamPos);
+            m_loadPlays   = false;
+            dropStream();
+        }
+        failLoad(errorDetail.isEmpty()
+            ? tr("Could not download the audio for this track. No data came back.")
+            : tr("Could not download the audio for this track."));
+        return;
+    }
+    m_mpdTempFile = file;
+    // Casting may have started while the segments were in flight.
+    if (casting()) { setLoading(false); emit castTrackChanged(); return; }
+    if (m_streamServed && m_streamPos == 0
+        && m_player->playbackState() != QMediaPlayer::PlayingState) {
+        // Landed before the stream sounded: the file plays, as it did before.
+        dropStream();
+        m_restorePaused = !m_loadPlays;
+    }
+    if (m_streamServed) {
+        // The backend reads on to the end; the file is there for a seek.
+        m_streamWhole = true;
+        m_stream->setBytesReady(file->size());
+        m_stream->setComplete();
+        emit audioFileReady(m_currentTrack.id, false);
+        return;
+    }
+    m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+    beginPlayback();
+    emit audioFileReady(m_currentTrack.id, false);
+}
+
+void Player::takeOverPreloadJoin() {
+    DashFetcher *fetcher = std::exchange(m_preloadDash, nullptr);
+    if (!fetcher) return;
+    const QString quality = m_preloadQuality;
+    // Not deleted here: m_preloadDash is already null.
+    cancelPreload();
+    m_dash = fetcher;
+    m_streamedQuality = quality;
+    emit currentTrackChanged();
+    followJoin(m_loadSerial, fetcher);
+    if (fetcher->segmentsReady() >= 2)
+        joinProgress(fetcher, fetcher->bytesReady(), fetcher->segmentsReady());
+}
+
+void Player::dropStream() {
+    const bool served = m_streamServed;
+    m_streamServed = false;
+    m_streamWhole  = false;
+    if (served && m_player) {
+        // Before the server goes: a socket closed under the backend reads as
+        // the end of the track.
+        m_player->stop();
+        m_player->setSource(QUrl());
+    }
+    if (m_stream) m_stream->stop();
+}
+
+void Player::holdSeekForJoin(qint64 ms, bool plays) {
+    if (!m_dash) return;
+    if (ms <= 0) {
+        // The front is on disk: the stream starts again from it.
+        dropStream();
+        m_swapping = true;
+        m_swapFrom = QUrl();
+        if (!serveJoin(m_dash, plays)) m_swapping = false;
+        return;
+    }
+    // Until the join lands the bytes may not be there, and the stream could
+    // not seek to them if they were. It is a load again until then.
+    m_loadPlays     = plays;
+    m_restorePaused = !plays;
+    dropStream();
+    m_pendingSeek   = ms;
+    setLoading(true);
+    tellPlaying();
+    if (!m_seekWait) {
+        m_seekWait = new QTimer(this);
+        m_seekWait->setSingleShot(true);
+        connect(m_seekWait, &QTimer::timeout, this, [this] {
+            if (!m_dash || !m_loading || !m_player || !m_player->source().isEmpty()) return;
+            qWarning() << "Player: a seek waited" << m_seekWaitMs << "ms for its join and gave up";
+            dropCurrentLoad();
+            failLoad(tr("This track did not download far enough in time to play from there."));
+        });
+    }
+    m_seekWait->start(m_seekWaitMs);
+}
+
+void Player::swapSource(const QUrl &url, qint64 at, bool plays) {
+    // Stream state first: the old source's reports find it gone.
+    const bool served = m_streamServed;
+    m_streamServed = false;
+    m_streamWhole  = false;
+    m_swapping      = true;
+    m_loadPlays     = plays;
+    m_restorePaused = !plays;
+    m_pendingSeek   = at;
+    m_swapFrom      = m_player->source();
+    m_player->setSource(url);
+    // After the backend let go of the stream, so its end is never read.
+    if (served && m_stream) m_stream->stop();
+    beginPlayback();
+}
+
+bool Player::backendSeekable() const {
+    return m_player && !m_streamServed && m_player->isSeekable();
 }
 
 void Player::preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file) {
@@ -1484,6 +1686,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                     return;
                 }
                 m_dash = fetcher;
+                followJoin(serial, fetcher);
                 fetcher->start([this, fetcher, loadingTrackId, serial](QTemporaryFile *file, const QString &dashErr) {
                     // Dispose this callback's fetcher, whatever the member holds.
                     if (m_dash == fetcher) m_dash = nullptr;
@@ -1492,19 +1695,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                         if (file) { file->remove(); delete file; }
                         return;
                     }
-                    if (!file) {
-                        if (!dashErr.isEmpty()) qWarning() << "Audio download failed:" << dashErr;
-                        failLoad(dashErr.isEmpty()
-                            ? tr("Could not download the audio for this track. No data came back.")
-                            : tr("Could not download the audio for this track."));
-                        return;
-                    }
-                    m_mpdTempFile = file;
-                    // Casting may have started while the segments were in flight.
-                    if (casting()) { setLoading(false); emit castTrackChanged(); return; }
-                    m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
-                    beginPlayback();
-                    emit audioFileReady(m_currentTrack.id, false);
+                    joinLanded(file, dashErr);
                 });
             }
         });
@@ -1520,6 +1711,8 @@ void Player::failLoad(const QString &msg) {
 void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
     const QMediaPlayer::PlaybackState state =
         m_player ? m_player->playbackState() : QMediaPlayer::StoppedState;
+    // Qt reports the stop of a swap's old source from inside setSource().
+    if (m_swapping && m_player && m_player->source() == m_swapFrom) return;
     // Qt from 6.6.2 on answers a seek in a running track with a loaded status.
     // Qt 6.4 reports one late at a start as well, so only a seek's own counts.
     if (status != QMediaPlayer::BufferingMedia)
@@ -1527,11 +1720,12 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
                       && state != QMediaPlayer::StoppedState;
     switch (status) {
     case QMediaPlayer::LoadingMedia:
+        if (m_swapping) break;
         setLoading(true); break;
     case QMediaPlayer::BufferingMedia:
         // Qt reports this on the pause or the start that follows a seek, and
         // before 6.11.2 nothing after it. A paused track waits for no buffer.
-        if (m_seekedLoaded || state == QMediaPlayer::PausedState) break;
+        if (m_swapping || m_seekedLoaded || state == QMediaPlayer::PausedState) break;
         setLoading(true); break;
     case QMediaPlayer::BufferedMedia:
     case QMediaPlayer::LoadedMedia:
@@ -1546,8 +1740,22 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             // The buffering that follows is this seek's, and no new load.
             m_seekedLoaded = true;
         }
+        if (m_swapping) {
+            m_swapping = false;
+            m_seekedLoaded = true;
+            emit positionChanged(position());
+        }
         break;
     case QMediaPlayer::EndOfMedia:
+        // The stream a swap left can still report its end.
+        if (m_swapping) break;
+        if (streamGrowing()) {
+            // It ran dry before the join landed: it goes on from there once
+            // the file is whole, and the queue stays where it is.
+            qInfo() << "Player: the stream ran out at" << m_streamPos << "ms before its join landed";
+            holdSeekForJoin(qMax<qint64>(1, m_streamPos), true);
+            break;
+        }
         setLoading(false);
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
@@ -1558,6 +1766,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         trackEnded();
         break;
     case QMediaPlayer::InvalidMedia:
+        m_swapping = false;
         failLoad(tr("This track could not be played. The audio format may not be supported."));
         break;
     default: break;
@@ -1587,7 +1796,7 @@ void Player::stop() {
     }
 #endif
     if (!m_player) return;
-    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+    if ((m_loading || m_swapping) && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // The load under way comes up paused.
         m_loadPlays = false;
         if (m_player->source().isEmpty()) m_restorePaused = true;
@@ -1608,6 +1817,12 @@ void Player::setStopped(bool s) {
 
 void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
     qWarning() << "Player error:" << msg;
+    // The stream broke off before its join landed. The file will be whole,
+    // so the track goes on from there rather than fail.
+    if (streamGrowing()) {
+        holdSeekForJoin(qMax<qint64>(1, m_streamPos), m_playingTold);
+        return;
+    }
     // The sentence for invalid media, which the backend reports as well.
     const QString said =
         tr("This track could not be played. The audio format may not be supported.");
@@ -1690,6 +1905,9 @@ void Player::preloadGaveUp(qlonglong trackId) {
 }
 
 void Player::preloadNext() {
+    // The current track's own join is still under way; a second would
+    // halve what each of them gets.
+    if (m_dash) return;
     int next = followingIndex();
     // Repeat-one: the playing row's bytes are already on disk.
     if (next < 0 || next == m_index) return;
@@ -1801,11 +2019,21 @@ void Player::requestPreload(quint64 gen, int next, qlonglong trackId, bool twinS
                 return;
             }
             m_preloadDash = fetcher;
-            fetcher->start([this, fetcher, gen, trackId](QTemporaryFile *file, const QString &) {
-                if (m_preloadDash == fetcher) m_preloadDash = nullptr;
+            fetcher->start([this, fetcher, gen, trackId](QTemporaryFile *file, const QString &err) {
                 disposeDash(fetcher, this);
+                // A load took the join over: it is the current track's now.
+                if (m_dash == fetcher) {
+                    m_dash = nullptr;
+                    joinLanded(file, err);
+                    return;
+                }
+                if (m_preloadDash == fetcher) m_preloadDash = nullptr;
                 preloadLanded(gen, trackId, file);
             });
+            // A load waits on this preload already.
+            if (m_preloadAdoptedBy && m_preloadAdoptedBy == m_loadSerial && m_loading
+                && m_currentTrack.id == trackId)
+                takeOverPreloadJoin();
         }
     });
 }
@@ -1855,6 +2083,8 @@ void Player::beginCast(CastSession *session) {
     // Muted as well as paused: a stream fetch that resolves after this point
     // must not play locally alongside the cast.
     if (m_player) m_player->pause();
+    // A stream mid-join is let go; the join itself runs on as a load does.
+    if (streamGrowing()) dropStream();
     if (m_audioOut) m_audioOut->setMuted(true);
     // A load that waited on the preload goes to the cast device instead.
     const bool waited = m_preloadAdoptedBy != 0;
@@ -2164,6 +2394,7 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         m_queue.removeAt(m_index);
 
         if (m_queue.isEmpty()) {
+            dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
             m_currentTrack  = Track{};

@@ -2,8 +2,8 @@
 // DashFetcher joins DASH segments into one fragmented MP4 in play order and
 // flushes each contiguous write. QMediaPlayer will not follow a local file
 // that grows, so GrowingFileServer serves it over an open loopback response.
-// Nothing here makes a sound: no QAudioOutput is constructed. Player does not
-// use GrowingFileServer yet, and the last assertions pin what it must handle.
+// Nothing here makes a sound: no QAudioOutput is constructed. The last
+// assertions pin what Player copes with; tst_stream_start covers Player.
 
 #include <QTest>
 #include <QAudioBuffer>
@@ -163,6 +163,7 @@ struct Played {
     qint64 firstSampleMs = -1;   // from the clock the caller started
     qint64 endOfMediaMs  = -1;
     qint64 joinDoneMs    = -1;
+    QVector<qint64> segmentAtMs;  // [n]: when n segments were on disk
     qint64 frames        = 0;
     double peak          = 0.0;
     double toneHz        = 0.0;
@@ -344,19 +345,20 @@ private slots:
                                            "it still waited for the whole file")
                                 .arg(progressive.firstSampleMs).arg(progressive.joinDoneMs)));
 
-        // And by a margin: two of nine segments in, against all nine. The slack
-        // is in the numerator, where a loaded machine adds its milliseconds.
-        QVERIFY2(progressive.firstSampleMs * 2 < progressive.joinDoneMs,
-                 qPrintable(QStringLiteral("first sample at %1 ms of a join that took "
-                                           "%2 ms: not the saving this is for")
-                                .arg(progressive.firstSampleMs).arg(progressive.joinDoneMs)));
+        // And by a margin: before five of nine segments were on disk. Counted in
+        // segments, as a stall of the whole process delays those as well.
+        const qint64 fifth = progressive.segmentAtMs.value(5, -1);
+        QVERIFY2(fifth > 0 && progressive.firstSampleMs < fifth,
+                 qPrintable(QStringLiteral("first sample at %1 ms, the fifth of nine segments "
+                                           "at %2 ms: not the saving this is for")
+                                .arg(progressive.firstSampleMs).arg(fifth)));
         QVERIFY(progressive.firstSampleMs < whole.firstSampleMs);
     }
 
     // ── 3. what the caller will have to cope with ──────────────────────────
 
-    // Both are why Player does not use this path yet. They are asserted so that
-    // a later Qt changing its behaviour shows up here.
+    // Hence Player states the manifest's length in the header it serves and
+    // never seeks the stream. Asserted so that a later Qt changing them shows.
     void aGrowingStreamMisreportsItsDurationAndItsSeekability()
     {
         if (!Tap::measuresSamples)
@@ -577,7 +579,10 @@ private:
 
         GrowingFileServer server;
         bool started = false;
+        out.segmentAtMs.fill(-1, kProgSegmentCount + 1);
         fetcher.setProgress([&](qint64 bytes, int segs) {
+            for (int n = 1; n <= segs && n < out.segmentAtMs.size(); ++n)
+                if (out.segmentAtMs[n] < 0) out.segmentAtMs[n] = clock.elapsed();
             if (!started && segs >= 2) {
                 // The initialization segment plus one media segment: the least
                 // that is a playable fragmented MP4 on its own.
