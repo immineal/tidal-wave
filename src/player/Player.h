@@ -279,11 +279,44 @@ private slots:
     void onErrorOccurred(QMediaPlayer::Error error, const QString &msg);
 
 private:
+    // Connects a backend's signals; only the one in m_player is listened to.
+    void wirePlayer(QMediaPlayer *mp);
+    void onPositionChanged(qint64 pos);
+
+    // ── Gapless track changes ───────────────────────────────────────────
+    // m_other is the second backend: idle, armed with the next track's file,
+    // or retiring, playing out the track that was just left.
+    enum class Other { Idle, Armed, Retiring };
+    void armOther();
+    // Armed, loaded, and still for the row that comes next.
+    bool otherFits() const;
+    void disarmOther();
+    void finishRetire();
+    // Both; dropOutput also deletes its output, for a device change.
+    void releaseOther(bool dropOutput = false);
+    void otherStatusChanged(QMediaPlayer::MediaStatus status);
+    void   notePosition(qint64 pos);
+    // Where the current track is now, from the reports and the clock.
+    qint64 playedNow(qint64 reported) const;
+    static constexpr int kOffsetsKept   = 32;
+    static constexpr int kOffsetsNeeded = 4;
+    // Starts a timer for the moment the next track is to start.
+    void planHandover(qint64 pos);
+    // ended: the current track has run out already.
+    void fireHandover(bool ended);
+    void handOver(qint64 oldLeftMs);
+    // How long before the end a gapless change starts the next backend: what
+    // the FFmpeg backend takes to sound, measured by tst_gapless.
+    static constexpr qint64 kStartLeadMs  = 15;
+    // How long ahead of that moment the timer is set.
+    static constexpr qint64 kPlanAheadMs  = 1500;
+    static constexpr int    kRetireSlackMs = 2000;
+
     // ── Loudness ────────────────────────────────────────────────────────
     double gainFor(const StreamManifest &info, int row) const;
     // The row plays as part of its album, in the album's order.
     bool   albumInOrder(int row) const;
-    // Sets the output from the volume and the track's gain.
+    // Sets both outputs from the volume and the gains.
     void   applyLevel();
 
     struct Entry {
@@ -626,6 +659,29 @@ private:
     // What the manifests said, without the manifest itself.
     StreamManifest       m_streamInfo;
     StreamManifest       m_preloadInfo;
-    // The loudness factor of the output.
+
+    // The second backend; see armOther(). Its objects live under the holder,
+    // so that findChild() on the Player finds the one that plays.
+    QObject             *m_otherHolder = nullptr;
+    QMediaPlayer        *m_other       = nullptr;
+    QAudioOutput        *m_otherOut    = nullptr;
+#if TIDALWAVE_HAS_BUFFER_OUTPUT
+    QAudioBufferOutput  *m_otherTap    = nullptr;
+#endif
+    Other                m_otherRole   = Other::Idle;
+    qlonglong            m_armedId     = 0;
+    QString              m_armedFile;
+    // The file and the served stream the retiring track still reads.
+    QTemporaryFile      *m_otherFile   = nullptr;
+    bool                 m_otherServes = false;
+    // Loudness factors of the two outputs.
     double               m_gain        = 1.0;
+    double               m_otherGain   = 1.0;
+    QTimer              *m_handoverTimer = nullptr;
+    QTimer              *m_retireTimer   = nullptr;
+    // Clock minus reported position, one per report; see notePosition().
+    QElapsedTimer        m_wall;
+    QList<qint64>        m_offsets;
+    // The backend that took over reports buffering, which is no load.
+    bool                 m_handoffSettling = false;
 };
