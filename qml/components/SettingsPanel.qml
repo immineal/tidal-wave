@@ -123,6 +123,8 @@ Popup {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     padding: 0
+    // Dims the app behind, as the queue panel does. Fusion's own is faint.
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     // The sheet the cards sit on, which has to be a step below them or a raised
     // card is invisible.

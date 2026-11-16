@@ -891,6 +891,8 @@ Item {
             anchors.centerIn: Overlay.overlay
             width: 340
             modal: true
+            // Dims the app behind, as the queue panel does. Fusion's own is faint.
+            Overlay.modal: Rectangle { color: Theme.scrim }
             focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
             padding: 0

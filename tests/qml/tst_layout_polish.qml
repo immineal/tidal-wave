@@ -489,6 +489,91 @@ TestCase {
         compare(host.bar.color.a, 1, "the revealed bar lets the page show through")
     }
 
+    // ── 6. every modal dims the app behind it ────────────────────────────
+
+    function scrimsIn(host) {
+        var out = []
+        function walk(it) {
+            if (!it) return
+            if (it.visible && it.color !== undefined && it.width >= host.width - 1
+                    && it.height >= host.height - 1 && Qt.colorEqual(it.color, Theme.scrim))
+                out.push(it)
+            for (var i = 0; i < it.children.length; ++i) walk(it.children[i])
+        }
+        walk(host.contentItem)
+        return out
+    }
+
+    Component {
+        id: settingsHost
+        Window {
+            property alias sidebar: sb
+            SideBar { id: sb; hostWidth: parent.width; width: 220; height: parent.height }
+        }
+    }
+
+    function test_settings_dims_the_app() {
+        var host = showHost(settingsHost, 1100, 800)
+        host.sidebar.openSettings()
+        settle(host)
+        verify(host.sidebar.settingsPanel.visible, "settings did not open")
+        verify(scrimsIn(host).length > 0, "Settings opened without a scrim")
+        host.sidebar.settingsPanel.close()
+    }
+
+    Component { id: newPlaylistC; NewPlaylistDialog { } }
+
+    function test_new_playlist_dims_the_app() {
+        var host = showHost(plainHost, 1100, 800)
+        var dlg = createTemporaryObject(newPlaylistC, host.pane)
+        dlg.openEmpty()
+        settle(host)
+        verify(dlg.visible, "the dialog did not open")
+        verify(scrimsIn(host).length > 0, "New playlist opened without a scrim")
+        dlg.close()
+    }
+
+    Component { id: playlistPageC; PlaylistPage { anchors.fill: parent } }
+
+    function test_edit_playlist_dims_the_app() {
+        var host = showHost(plainHost, 1100, 800)
+        var page = createTemporaryObject(playlistPageC, host.pane)
+        page.playlistUuid = "uuid-0"
+        page.playlistTitle = "Eine Liste"
+        page.playlistEditable = true
+        settle(host)
+        page.editPopup.open()
+        settle(host)
+        verify(page.editPopup.visible, "the edit dialog did not open")
+        verify(scrimsIn(host).length > 0, "Edit playlist opened without a scrim")
+        page.editPopup.close()
+    }
+
+    Component { id: trackRowC; TrackRow { width: 700; title: "Titel"; artists: "Ein Interpret" } }
+
+    function test_add_to_playlist_dims_the_app() {
+        bridge.setUserPlaylistsForTest([{ uuid: "u1", title: "Liste", numberOfTracks: 3, coverUrl: "" }])
+        var host = showHost(plainHost, 1100, 800)
+        var row = createTemporaryObject(trackRowC, host.pane, { trackData: track("Titel") })
+        settle(host)
+        row.openPicker()
+        settle(host)
+        verify(row.playlistPicker && row.playlistPicker.visible, "the picker did not open")
+        verify(scrimsIn(host).length > 0, "Add to playlist opened without a scrim")
+        row.playlistPicker.close()
+    }
+
+    Component { id: confirmC; ConfirmDialog { heading: "Sicher?"; confirmLabel: "Ja" } }
+
+    function test_a_confirmation_dims_the_app() {
+        var host = showHost(plainHost, 1100, 800)
+        var dlg = createTemporaryObject(confirmC, host.pane)
+        dlg.ask()
+        settle(host)
+        verify(scrimsIn(host).length > 0, "a confirmation opened without a scrim")
+        dlg.close()
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
