@@ -341,6 +341,7 @@ private slots:
         QTest::newRow("11 offline")        << 503 << QByteArray(R"({"error":11,"message":"m"})") << int(ScrobbleReply::Retry);
         QTest::newRow("16 unavailable")    << 200 << QByteArray(R"({"error":16,"message":"m"})") << int(ScrobbleReply::Retry);
         QTest::newRow("29 rate limit")     << 429 << QByteArray(R"({"error":29,"message":"m"})") << int(ScrobbleReply::Retry);
+        QTest::newRow("8 operation failed")<< 200 << QByteArray(R"({"error":8,"message":"m"})") << int(ScrobbleReply::Retry);
         QTest::newRow("6 bad parameters")  << 400 << QByteArray(R"({"error":6,"message":"m"})") << int(ScrobbleReply::Rejected);
         QTest::newRow("14 not allowed yet")<< 403 << QByteArray(R"({"error":14,"message":"m"})") << int(ScrobbleReply::Pending);
         QTest::newRow("15 token expired")  << 403 << QByteArray(R"({"error":15,"message":"m"})") << int(ScrobbleReply::AuthFailed);

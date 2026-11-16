@@ -112,6 +112,7 @@ ScrobbleReply LastFm::classify(int status, const QByteArray &body) {
             r.kind = ScrobbleReply::Retry;
             r.slowDown = true;
             break;
+        case 8:   // operation failed: the docs say to try again
         case 11:  // service offline
         case 16:  // temporarily unavailable
         // The app's key or signature, not the listen: dropping would empty the queue.
