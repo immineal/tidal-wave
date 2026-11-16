@@ -486,7 +486,9 @@ TestCase {
         "album", "artist", "playlist", "mix", "pin", "pin-filled", "grip",
         "speaker", "cast", "queue", "volume-high", "volume-mute",
         // The rest of what a context menu asks for.
-        "next", "plus", "waves", "copy", "folder"
+        "next", "plus", "waves", "copy", "folder",
+        // Collection's Surprise me.
+        "dice"
     ]
 
     function markCases() {
