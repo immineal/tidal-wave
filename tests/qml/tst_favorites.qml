@@ -392,7 +392,8 @@ TestCase {
                   "the refusal never went away on its own")
     }
 
-    function test_an_accepted_like_puts_nothing_on_the_screen() {
+    // A like Tidal has confirmed says so, with Undo; see tst_undo.
+    function test_an_accepted_like_is_said_with_undo() {
         player.setCurrentTrackForTest(makeTrack())
         var bar = makeBar()
         var btn = named(bar, "playerLikeButton")
@@ -402,9 +403,10 @@ TestCase {
 
         tryVerify(function () { return bar.isLiked }, 2000,
                   "an accepted like never filled the heart")
-        wait(300)
-        verify(!tip.visible, "a successful like put a toast on the screen: "
-               + Toasts.text)
+        tryVerify(function () { return tip.visible }, 2000, "a confirmed like said nothing")
+        compare(Toasts.text, "Added to your liked tracks")
+        verify(toastHost.actionButton.visible, "a confirmed like offered no Undo")
+        Edits.clearHistory()
     }
 
     // ── TrackRow: Like / Unlike in the row menu ──────────────────────────

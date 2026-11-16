@@ -932,6 +932,7 @@ Popup {
                         { ids: ["queue"],                           d: qsTr("Toggle queue") },
                         { ids: ["back", "escape"],                  d: qsTr("Go back") },
                         { ids: ["settings"],                        d: qsTr("Settings") },
+                        { ids: ["undo"],                            d: qsTr("Undo the last change", "shortcut, takes back a like, a removal or a cleared queue") },
                         { ids: ["newPlaylist"],                     d: qsTr("New playlist") },
                         { ids: ["quit"],                            d: qsTr("Quit") }
                     ]

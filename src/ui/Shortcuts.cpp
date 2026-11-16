@@ -38,7 +38,8 @@ constexpr Binding kBindings[] = {
     { "back",        "Alt+Left"    },
     // "Esc" is how QKeySequence spells this key in portable form.
     { "escape",      "Esc"         },
-    // The app.
+    // The app. Ctrl+Z is QKeySequence::Undo here; on macOS, Command+Z.
+    { "undo",        "Ctrl+Z"      },
     { "newPlaylist", "Ctrl+N"      },
     { "quit",        "Ctrl+Q"      },
 };

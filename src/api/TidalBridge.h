@@ -161,6 +161,14 @@ public:
     // function(ok). Undoes a removal: the track goes back in at `index`.
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb);
+    // ── read-backs that confirm a write (read-only) ──────────────────────
+    // function(ok, present): whether Tidal lists the id among the user's
+    // favourites of `kind` ("track", "album", "artist", "mix") right now.
+    Q_INVOKABLE void readFavoriteState(const QString &kind, const QString &id, QJSValue cb);
+    // function(ok, ids): the playlist's track ids in order, as Tidal has them.
+    Q_INVOKABLE void readPlaylistTrackIds(const QString &uuid, QJSValue cb);
+    // Reloads one kind of favourites from Tidal, for a write it did not confirm.
+    Q_INVOKABLE void reloadFavoriteKind(const QString &kind);
     // function(ok, stale, index). Removals of one playlist go out one at a
     // time, and `itemIndex` is the row as the page showed it when asked:
     // `index` is the row to take out once earlier removals have landed, -1

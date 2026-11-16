@@ -174,7 +174,7 @@ qt_add_library(tidalwave_qml STATIC
     ${HEADERS}
 )
 
-set_source_files_properties(qml/Theme.qml qml/Toasts.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Toasts.qml qml/Edits.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(tidalwave_qml
     URI TidalWave
@@ -189,6 +189,7 @@ qt_add_qml_module(tidalwave_qml
     QML_FILES
         qml/Theme.qml
         qml/Toasts.qml
+        qml/Edits.qml
         qml/Main.qml
         qml/components/PlayerBar.qml
         qml/components/SideBar.qml

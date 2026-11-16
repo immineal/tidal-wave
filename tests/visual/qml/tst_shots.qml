@@ -963,7 +963,7 @@ TestCase {
         verify(win)
         win.width = 820; win.height = 420
         settle(win.contentItem, 300)
-        win.hoverRow.confirmAddedToPlaylist(true, "Late Night Drive")
+        win.hoverRow.addToPlaylist("uuid-0", "Late Night Drive")
         settle(win.contentItem, 400)
         shot(win.contentItem, "toast_added_" + row.theme)
         win.destroy()
@@ -983,6 +983,7 @@ TestCase {
         shot(pw.contentItem, "toast_removed_" + row.theme)
         pw.destroy()
         Toasts.dismiss()
+        Edits.clearHistory()
     }
 
     // The pointer on a short sidebar row, then on one whose name is cut off.

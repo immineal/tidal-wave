@@ -51,6 +51,15 @@ Rectangle {
 
     onPlaylistUuidChanged: if (playlistUuid.length > 0) loadPlaylist()
 
+    // An undo, or a change Tidal did not confirm, moved rows this page did
+    // not move itself: the rows are read again.
+    Connections {
+        target: Edits
+        function onPlaylistChanged(uuid) {
+            if (uuid === root.playlistUuid && root.playlistUuid.length > 0) root.reloadTracks()
+        }
+    }
+
     // ── the one number on this page with no live source ──────────────────
     // The length arrives once with the header, so it is refreshed from the
     // bridge's cache when this playlist's contents change. Not on
@@ -114,20 +123,6 @@ Rectangle {
         Toasts.show(root.staleRemovalText)
         loadPlaylistHeader(root.playlistUuid)
         reloadTracks()
-    }
-
-    // A removal that landed says so, and Undo puts the track back at its row.
-    // The page reloads once the count changes; see onPlaylistStatsRefreshed.
-    function offerUndoRemoval(uuid, title, trackId, index) {
-        Toasts.undoable(qsTr("Removed from “%1”",
-                             "confirmation after removing a track from a playlist").arg(title),
-                        function () {
-            bridge.restoreTrackToPlaylist(uuid, trackId, index, function (ok) {
-                if (ok !== true)
-                    Toasts.show(qsTr("Could not put the track back",
-                                     "shown when undoing a removal from a playlist failed"))
-            })
-        })
     }
 
     function loadPlaylist() {
@@ -287,14 +282,15 @@ Rectangle {
                 var row = playlistTrackRow
                 var trackId = Number(modelData.id)
                 var named = root.playlistTitle
-                bridge.removeTrackFromPlaylist(requested, itemIndex, function(ok, stale, index) {
+                var had = root.tracks.filter(function (t) { return Number(t.id) === trackId }).length
+                // Edits confirms it with Tidal before it says so and offers Undo.
+                Edits.removeFromPlaylist(requested, named, trackId, itemIndex, had,
+                                         function(ok, stale, index) {
                     if (requested !== root.playlistUuid) return
                     if (stale === true) { Qt.callLater(root.reloadAfterStaleRemoval); return }
                     // Before the list is touched, which rebuilds the rows. An
                     // earlier splice may have destroyed this one already.
                     if (row) row.confirmRemovedFromPlaylist(ok === true)
-                    if (ok === true && trackId > 0)
-                        root.offerUndoRemoval(requested, named, trackId, index)
                     if (ok === true && index >= 0 && index < root.tracks.length) {
                         // The row the server took out, not itemIndex when an
                         // earlier removal landed in between.

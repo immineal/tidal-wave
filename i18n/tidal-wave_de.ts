@@ -610,6 +610,84 @@
     </message>
 </context>
 <context>
+    <name>Edits</name>
+    <message>
+        <source>Still undoing the last change</source>
+        <comment>shown when Undo is asked again before the last one finished</comment>
+        <translation>Die letzte Änderung wird noch rückgängig gemacht</translation>
+    </message>
+    <message>
+        <source>Nothing to undo</source>
+        <comment>shown when Ctrl+Z finds no change to take back</comment>
+        <translation>Nichts rückgängig zu machen</translation>
+    </message>
+    <message>
+        <source>Tidal did not confirm the change. Reloaded from Tidal.</source>
+        <comment>a write was accepted but a re-read did not show it</comment>
+        <translation>Tidal hat die Änderung nicht bestätigt. Neu von Tidal geladen.</translation>
+    </message>
+    <message>
+        <source>Could not undo the change</source>
+        <comment>shown when an undo was refused</comment>
+        <translation>Die Änderung konnte nicht rückgängig gemacht werden</translation>
+    </message>
+    <message>
+        <source>Back in your liked tracks</source>
+        <comment>after undoing an unlike</comment>
+        <translation>Wieder in deinen Lieblingstiteln</translation>
+    </message>
+    <message>
+        <source>Added to your liked tracks</source>
+        <comment>confirmation after liking a track</comment>
+        <translation>Zu deinen Lieblingstiteln hinzugefügt</translation>
+    </message>
+    <message>
+        <source>Album back in your collection</source>
+        <comment>after undoing an album&apos;s removal</comment>
+        <translation>Album wieder in deiner Sammlung</translation>
+    </message>
+    <message>
+        <source>Album saved to your collection</source>
+        <comment>confirmation after saving an album</comment>
+        <translation>Album in deiner Sammlung gespeichert</translation>
+    </message>
+    <message>
+        <source>You follow this artist again</source>
+        <comment>after undoing an unfollow</comment>
+        <translation>Du folgst diesem Künstler wieder</translation>
+    </message>
+    <message>
+        <source>You now follow this artist</source>
+        <comment>confirmation after following an artist</comment>
+        <translation>Du folgst jetzt diesem Künstler</translation>
+    </message>
+    <message>
+        <source>Mix back in your collection</source>
+        <comment>after undoing a mix&apos;s removal</comment>
+        <translation>Mix wieder in deiner Sammlung</translation>
+    </message>
+    <message>
+        <source>Mix saved to your collection</source>
+        <comment>confirmation after saving a mix</comment>
+        <translation>Mix in deiner Sammlung gespeichert</translation>
+    </message>
+    <message>
+        <source>Already in “%1”</source>
+        <comment>the track is in the playlist already; nothing was added</comment>
+        <translation>Schon in „%1“</translation>
+    </message>
+    <message>
+        <source>Taken out of “%1” again</source>
+        <comment>after undoing an add to a playlist</comment>
+        <translation>Wieder aus „%1“ entfernt</translation>
+    </message>
+    <message>
+        <source>Put back in “%1”</source>
+        <comment>after undoing a removal from a playlist</comment>
+        <translation>Wieder in „%1“</translation>
+    </message>
+</context>
+<context>
     <name>Feedback</name>
     <message>
         <source>Problem with Tidal Wave %1</source>
@@ -1411,6 +1489,11 @@
         <translation>Warteschlange geleert</translation>
     </message>
     <message>
+        <source>Queue put back</source>
+        <comment>after undoing a cleared queue</comment>
+        <translation>Warteschlange wiederhergestellt</translation>
+    </message>
+    <message>
         <source>Up next</source>
         <translation>Als Nächstes</translation>
     </message>
@@ -1701,6 +1784,11 @@
     <message>
         <source>The issue form opens with your version, your system and both Qt versions already in it. The email opens addressed to %1. Neither is sent until you send it.</source>
         <translation>Das Issue-Formular enthält schon deine Version, dein System und beide Qt-Versionen. Die E-Mail ist an %1 adressiert. Abgeschickt wird beides erst, wenn du es selbst sendest.</translation>
+    </message>
+    <message>
+        <source>Undo the last change</source>
+        <comment>shortcut, takes back a like, a removal or a cleared queue</comment>
+        <translation>Letzte Änderung rückgängig machen</translation>
     </message>
     <message>
         <source>Experimental</source>

@@ -55,8 +55,9 @@ Item {
         for (var i = 0; i < q.length; i++) saved.push(q[i])
         if (saved.length === 0) return
         player.clearManual()
-        Toasts.undoable(qsTr("Queue cleared", "confirmation after emptying the play queue"),
-                        function () { player.playNext(saved) })
+        Edits.recordLocal(qsTr("Queue cleared", "confirmation after emptying the play queue"),
+                          function () { player.playNext(saved) },
+                          qsTr("Queue put back", "after undoing a cleared queue"))
     }
 
     // ── the model ────────────────────────────────────────────────────────

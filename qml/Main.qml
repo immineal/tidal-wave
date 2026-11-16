@@ -575,6 +575,8 @@ ApplicationWindow {
         Shortcut { sequence: Shortcuts.sequence("findAlt"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.focusSearch() }
         Shortcut { sequence: Shortcuts.sequence("newPlaylist"); context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.popupHasKeyboard; onActivated: sideBar.openNewPlaylist() }
         // Signed in or not: quitting needs no account.
+        // A text field keeps Ctrl+Z for its own text.
+        Shortcut { sequence: Shortcuts.sequence("undo"); context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: Edits.undoLast() }
         Shortcut { sequence: Shortcuts.sequence("quit"); context: Qt.ApplicationShortcut; onActivated: app.quit() }
         Shortcut { sequence: Shortcuts.sequence("fullScreen"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
         Shortcut { sequence: Shortcuts.sequence("queue"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }

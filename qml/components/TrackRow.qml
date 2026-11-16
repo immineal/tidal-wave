@@ -607,9 +607,7 @@ Item {
                 const title = (playlist && playlist.title) ? playlist.title : ""
                 // A playlist made from here gets the song straight away.
                 if (uuid.length > 0 && root.trackId > 0) {
-                    bridge.addTracksToPlaylist(uuid, root.trackId, function (ok) {
-                        root.confirmAddedToPlaylist(ok === true, title)
-                    })
+                    root.addToPlaylist(uuid, title)
                 }
                 if (pickerLoader.item) pickerLoader.item.close()
             }
@@ -630,13 +628,13 @@ Item {
                              : qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
-    // The same for the picker, for an existing playlist and for one made on
-    // the spot. Reports what the server said, not what was asked for.
-    function confirmAddedToPlaylist(ok, title) {
-        root.confirm(ok ? qsTr("Added to “%1”",
-                               "confirmation after adding a track to a playlist").arg(title)
-                        : qsTr("Could not add the track to “%1”",
-                               "shown when adding a track to a playlist failed").arg(title))
+    // The picker's add, to an existing playlist or one made on the spot.
+    // Edits says what happened once Tidal shows it; this keeps the words.
+    function addToPlaylist(uuid, title, trackId) {
+        var id = trackId !== undefined ? trackId : root.trackId
+        Edits.addToPlaylist(uuid, title, id, function (ok, message) {
+            root.lastConfirmation = message
+        })
     }
 
     // The removal side, and the refusal only: on success the row leaving the
@@ -1046,11 +1044,8 @@ Item {
                         width: plPickerList.width
                         height: 44
                         function choose() {
-                            var intoTitle = model.title
-                            bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
-                                                       function (ok) {
-                                root.confirmAddedToPlaylist(ok === true, intoTitle)
-                            })
+                            root.addToPlaylist(model.uuid, model.title,
+                                               trackPicker.pendingTrackId)
                             trackPicker.close()
                         }
                         // One tab stop for the list, the current row; the

@@ -533,6 +533,7 @@ public:
     Q_INVOKABLE void addTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addTrack"), trackId);
         answerFavorite(cb, [this, trackId] {
+            noteServerWrite(QStringLiteral("track:%1").arg(trackId), m_favoriteTracks.value(trackId));
             m_favoriteTracks[trackId] = true;
             emit favoriteTracksChanged();
         });
@@ -540,6 +541,7 @@ public:
     Q_INVOKABLE void removeTrackFavorite(qlonglong trackId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeTrack"), trackId);
         answerFavorite(cb, [this, trackId] {
+            noteServerWrite(QStringLiteral("track:%1").arg(trackId), m_favoriteTracks.value(trackId));
             m_favoriteTracks[trackId] = false;
             dropById(m_favoriteTrackList, trackId);
             emit favoriteTracksChanged();
@@ -559,6 +561,7 @@ public:
     Q_INVOKABLE void addAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addAlbum"), albumId);
         answerFavorite(cb, [this, albumId] {
+            noteServerWrite(QStringLiteral("album:%1").arg(albumId), m_favoriteAlbums.value(albumId));
             m_favoriteAlbums[albumId] = true;
             emit favoriteAlbumsChanged();
         });
@@ -566,6 +569,7 @@ public:
     Q_INVOKABLE void removeAlbumFavorite(qlonglong albumId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeAlbum"), albumId);
         answerFavorite(cb, [this, albumId] {
+            noteServerWrite(QStringLiteral("album:%1").arg(albumId), m_favoriteAlbums.value(albumId));
             m_favoriteAlbums[albumId] = false;
             dropById(m_favoriteAlbumList, albumId);
             emit favoriteAlbumsChanged();
@@ -576,6 +580,7 @@ public:
     Q_INVOKABLE void addArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addArtist"), artistId);
         answerFavorite(cb, [this, artistId] {
+            noteServerWrite(QStringLiteral("artist:%1").arg(artistId), m_favoriteArtists.value(artistId));
             m_favoriteArtists[artistId] = true;
             emit favoriteArtistsChanged();
         });
@@ -583,6 +588,7 @@ public:
     Q_INVOKABLE void removeArtistFavorite(qlonglong artistId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeArtist"), artistId);
         answerFavorite(cb, [this, artistId] {
+            noteServerWrite(QStringLiteral("artist:%1").arg(artistId), m_favoriteArtists.value(artistId));
             m_favoriteArtists[artistId] = false;
             dropById(m_favoriteArtistList, artistId);
             emit favoriteArtistsChanged();
@@ -598,6 +604,7 @@ public:
     Q_INVOKABLE void addMixFavorite(const QString &mixId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("addMix"), mixId);
         if (m_favoriteOk) {
+            noteServerWrite(QStringLiteral("mix:") + mixId, m_favoriteMixes.value(mixId));
             m_favoriteMixes[mixId] = true;
             emit favoriteMixesChanged();
         }
@@ -606,6 +613,7 @@ public:
     Q_INVOKABLE void removeMixFavorite(const QString &mixId, QJSValue cb) {
         noteFavoriteCall(QStringLiteral("removeMix"), mixId);
         if (m_favoriteOk) {
+            noteServerWrite(QStringLiteral("mix:") + mixId, m_favoriteMixes.value(mixId));
             m_favoriteMixes[mixId] = false;
             emit favoriteMixesChanged();
         }
@@ -636,6 +644,12 @@ public:
         m_lastAddedPlaylist = uuid;
         m_lastAddedTrackId  = trackId;
         m_addToPlaylistCalls++;
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            // onDupes=SKIP, as the real call asks.
+            if (!rows.contains(QVariant(double(trackId)))) rows.append(double(trackId));
+        }
         resolveOk(cb, m_addToPlaylistOk);
         // After the callback and only on a success, in the real bridge's order.
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
@@ -644,15 +658,72 @@ public:
     Q_INVOKABLE void restoreTrackToPlaylist(const QString &uuid, qlonglong trackId, int index,
                                             QJSValue cb) {
         m_lastRestored = QStringLiteral("%1 %2 %3").arg(uuid).arg(trackId).arg(index);
+        if (m_addToPlaylistOk) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            rows.insert(qBound(0, index, int(rows.size())), double(trackId));
+        }
         resolveOk(cb, m_addToPlaylistOk);
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
     }
     Q_INVOKABLE QString lastRestoredForTest() const { return m_lastRestored; }
+
+    // ── read-backs: what Tidal lists after a write ───────────────────────
+    // The server side is the favourite maps above and, per playlist, the ids
+    // setServerPlaylistForTest() seeds (an unseeded one starts empty). After
+    // each write the next `lag` reads still show the state before it; -1
+    // means a write never shows.
+    Q_INVOKABLE void readFavoriteState(const QString &kind, const QString &id, QJSValue cb) {
+        ++m_readBacks;
+        if (!cb.isCallable()) return;
+        if (m_readBackFails) { cb.call({ QJSValue(false), QJSValue(false) }); return; }
+        const QString key = kind + QLatin1Char(':') + id;
+        bool shown = kind == QLatin1String("album")  ? m_favoriteAlbums.value(id.toLongLong())
+                   : kind == QLatin1String("artist") ? m_favoriteArtists.value(id.toLongLong())
+                   : kind == QLatin1String("mix")    ? m_favoriteMixes.value(id)
+                                                     : m_favoriteTracks.value(id.toLongLong());
+        if (m_favBefore.contains(key) && lagging()) shown = m_favBefore.value(key);
+        cb.call({ QJSValue(true), QJSValue(shown) });
+    }
+    Q_INVOKABLE void readPlaylistTrackIds(const QString &uuid, QJSValue cb) {
+        ++m_readBacks;
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        if (m_readBackFails || !e) { cb.call({ QJSValue(false), emptyArray() }); return; }
+        QVariantList rows = m_serverPlaylists.value(uuid);
+        if (m_playlistBefore.contains(uuid) && lagging()) rows = m_playlistBefore.value(uuid);
+        cb.call({ QJSValue(true), e->toScriptValue(rows) });
+    }
+    Q_INVOKABLE void reloadFavoriteKind(const QString &kind) { m_favoriteReloads.append(kind); }
+
+    Q_INVOKABLE void setReadBackLagForTest(int reads) { m_readLag = reads; m_lagLeft = 0; }
+    Q_INVOKABLE void setReadBackFailsForTest(bool on) { m_readBackFails = on; }
+    Q_INVOKABLE int  readBacksForTest() const { return m_readBacks; }
+    Q_INVOKABLE QStringList favoriteReloadsForTest() const { return m_favoriteReloads; }
+    Q_INVOKABLE void setServerPlaylistForTest(const QString &uuid, const QVariantList &ids) {
+        QVariantList rows;
+        for (const QVariant &v : ids) rows.append(v.toDouble());
+        m_serverPlaylists.insert(uuid, rows);
+        m_playlistBefore.remove(uuid);
+    }
+    Q_INVOKABLE QVariantList serverPlaylistForTest(const QString &uuid) const {
+        return m_serverPlaylists.value(uuid);
+    }
+    Q_INVOKABLE void resetReadBacksForTest() {
+        m_readLag = 0; m_lagLeft = 0; m_readBackFails = false; m_readBacks = 0;
+        m_favBefore.clear(); m_playlistBefore.clear(); m_serverPlaylists.clear();
+        m_favoriteReloads.clear();
+    }
     // The answer is settable, so a removal the server refuses can be tested.
     Q_INVOKABLE void removeTrackFromPlaylist(const QString &uuid, int itemIndex, QJSValue cb) {
         m_lastRemovedPlaylist = uuid;
         m_lastRemovedIndex    = itemIndex;
         m_removeFromPlaylistCalls++;
+        if (m_removeFromPlaylistOk && m_serverPlaylists.contains(uuid)) {
+            QVariantList &rows = m_serverPlaylists[uuid];
+            noteServerPlaylistWrite(uuid);
+            if (itemIndex >= 0 && itemIndex < rows.size()) rows.removeAt(itemIndex);
+        }
         // function(ok, stale, index), as the real bridge answers.
         if (cb.isCallable())
             cb.call({ QJSValue(m_removeFromPlaylistOk), QJSValue(false),
@@ -1176,6 +1247,7 @@ public:
         m_deferFavorites = false;
         m_pendingFavorites.clear();
         resetFavoriteCallsForTest();
+        resetReadBacksForTest();
         m_lastClipboardText.clear();
         m_lastPlaylistPlayed.clear();
         resetSearchForTest();
@@ -1291,6 +1363,21 @@ private:
     void deliverFavorite(QJSValue &cb, const std::function<void()> &accepted) {
         if (m_favoriteOk && accepted) accepted();
         resolveOk(cb, m_favoriteOk);
+    }
+
+    // A write landed on the "server": reads lag behind it as set.
+    void noteServerWrite(const QString &key, bool was) {
+        m_favBefore.insert(key, was);
+        m_lagLeft = m_readLag;
+    }
+    void noteServerPlaylistWrite(const QString &uuid) {
+        m_playlistBefore.insert(uuid, m_serverPlaylists.value(uuid));
+        m_lagLeft = m_readLag;
+    }
+    bool lagging() {
+        if (m_readLag < 0) return true;
+        if (m_lagLeft > 0) { --m_lagLeft; return true; }
+        return false;
     }
 
     void noteFavoriteCall(const QString &verb, qlonglong id) {
@@ -1574,6 +1661,14 @@ private:
     qlonglong m_lastAddedTrackId   = 0;
     int       m_addToPlaylistCalls = 0;
     QString   m_lastRestored;
+    int       m_readLag = 0;
+    int       m_lagLeft = 0;
+    bool      m_readBackFails = false;
+    int       m_readBacks = 0;
+    QHash<QString, bool>         m_favBefore;
+    QHash<QString, QVariantList> m_serverPlaylists;
+    QHash<QString, QVariantList> m_playlistBefore;
+    QStringList                  m_favoriteReloads;
     bool      m_addToPlaylistOk    = true;
     int     m_userPlaylistFetches = 0;
     int     m_lastUserPlaylistLimit  = -1;
