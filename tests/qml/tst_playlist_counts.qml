@@ -366,9 +366,9 @@ TestCase {
                 "a refused removal said nothing, so it reads as a click that missed")
     }
 
-    // An accepted removal says nothing: the row leaving the list is the
-    // confirmation. Driven on a standalone row, because on the page a
-    // successful removal destroys the delegate that raised it.
+    // The row says nothing of an accepted removal: the page does, with Undo.
+    // Driven on a standalone row, because on the page a successful removal
+    // destroys the delegate that raised it.
     function test_an_accepted_removal_is_not_announced_and_a_refused_one_is() {
         var host = showPane(1200)
         var row = createTemporaryObject(trackRowC, host.pane,
@@ -403,6 +403,27 @@ TestCase {
         compare(page.tracks.length, 0, "an accepted removal left the song on the page")
         compare(bridge.playlistHeaderReadsForTest(), 1,
                 "an accepted removal did not repair the cached counts")
+    }
+
+    // The page, not the row, says it landed, and offers the track back at
+    // the row it was taken from.
+    function test_an_accepted_removal_offers_undo_at_the_same_row() {
+        Toasts.dismiss()
+        bridge.setPlaylistTracksForTest([makeTrack()])
+        var host = showPane(1200)
+        var page = showPlaylistPage(host)
+        var row = firstTrackRow(host)
+        verify(row, "the playlist page built no track row")
+
+        row.removeFromPlaylistRequested(0)
+        settle(host.contentItem)
+
+        verify(Toasts.shown, "an accepted removal said nothing")
+        verify(Toasts.text.indexOf("Tape") >= 0, "the toast did not name the playlist: " + Toasts.text)
+        verify(Toasts.actionLabel.length > 0, "an accepted removal offered no Undo")
+        Toasts.runAction()
+        compare(bridge.lastRestoredForTest(), "p-tape 9001 0",
+                "Undo did not put the track back where it was")
     }
 
     // ── getting out of the two popups ────────────────────────────────────

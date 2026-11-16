@@ -30,10 +30,6 @@ struct Exemption {
 };
 
 const Exemption kExempt[] = {
-    {"components/PlayerBar.qml", "qualityBadgeText",
-     "the quality badges are being unified apart from this pass"},
-    {"pages/NowPlayingPage.qml", "qualityBadgeText",
-     "the quality badges are being unified apart from this pass"},
     {"components/AppMark.qml", "markCorner",
      "the app icon's corner is part of the drawn mark, at its 64-unit size"},
     {"components/VectorIcon.qml", "_fat.indexOf",
@@ -128,6 +124,23 @@ class TestDesignTokens : public QObject {
                 }
                 if (!exempt) hits.append({rel, i + 1, lines.at(i).trimmed()});
             }
+        }
+        return hits;
+    }
+
+    // Every line under qml/, strings and all, with no exemptions.
+    QList<Hit> scanAll(const std::function<bool(const QString &line)> &match) const {
+        QList<Hit> hits;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            for (int i = 0; i < lines.size(); ++i)
+                if (match(lines.at(i)))
+                    hits.append({QDir(qmlDir()).relativeFilePath(path), i + 1, lines.at(i).trimmed()});
         }
         return hits;
     }
@@ -260,6 +273,21 @@ private slots:
                      .constData());
     }
 
+    // The quality badge is one component, so the bar and Now Playing cannot
+    // drift apart in size, type or colour again.
+    void qualityBadgeIsOneComponent() {
+        const auto all = scanAll([](const QString &line) {
+            return line.contains(QLatin1String("objectName: \"qualityBadge\""));
+        });
+        QList<Hit> hits;
+        for (const Hit &h : all)
+            if (h.file != QLatin1String("components/QualityBadge.qml")) hits.append(h);
+        QVERIFY2(!all.isEmpty(), "no quality badge was found under qml/");
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("draw a quality badge of their own instead of QualityBadge"))
+                     .constData());
+    }
+
     // Lengths are formatted in Theme.clock() and Theme.lengthText() only.
     void lengthsHaveOneFormatter() {
         const auto hits = scan([](const QString &code) {
@@ -267,6 +295,31 @@ private slots:
         });
         QVERIFY2(hits.isEmpty(),
                  report(hits, QStringLiteral("format a length that Theme.clock() or Theme.lengthText() should"))
+                     .constData());
+    }
+
+    // No text in capitals and no spaced letters: every label is set in
+    // sentence case at the font's own spacing, overlines included.
+    void noCapitalsAndNoLetterSpacing() {
+        static const QRegularExpression caps(QStringLiteral("\\bcapitalization\\s*:"));
+        static const QRegularExpression spaced(QStringLiteral(
+            "\\bletterSpacing\\s*:\\s*(?!0(\\.0+)?\\s*($|[;}]))"));
+        QList<Hit> hits;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString code = codeOf(lines.at(i));
+                if (caps.match(code).hasMatch() || spaced.match(code).hasMatch())
+                    hits.append({QDir(qmlDir()).relativeFilePath(path), i + 1, lines.at(i).trimmed()});
+            }
+        }
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("set text in capitals or space its letters"))
                      .constData());
     }
 

@@ -102,3 +102,11 @@ set_tests_properties(${CORE_TEST_TARGETS} tst_qml PROPERTIES
 # runner. The core binaries finish in under a minute each, so five means a hang.
 set_tests_properties(${CORE_TEST_TARGETS} PROPERTIES TIMEOUT 300)
 set_tests_properties(tst_qml PROPERTIES TIMEOUT 2700)
+
+# The colour switch's rainbow is a committed picture; this fails when it no
+# longer matches tools/make-rainbow.py. Skipped where there is no Python.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME rainbow_picture
+             COMMAND Python3::Interpreter -I "${CMAKE_SOURCE_DIR}/tools/make-rainbow.py" --check)
+endif()

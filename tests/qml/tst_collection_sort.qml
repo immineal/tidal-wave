@@ -108,4 +108,46 @@ TestCase {
         verify(others.indexOf(pill.hint) < 0,
                "Default on the " + data.tag + " tab reads like another tab's: " + pill.hint)
     }
+
+    // The sort options next to the tab strip: one accent pill per row is
+    // enough, so the chosen order is plain text with a line under it, and
+    // choosing one moves nothing beside it.
+    function sortOptions(page) {
+        var out = []
+        function walk(it) {
+            if (!it) return
+            if (it.objectName === "collectionSortDefault" || it.objectName === "collectionSortPill")
+                out.push(it)
+            for (var i = 0; i < it.children.length; i++) walk(it.children[i])
+        }
+        walk(page)
+        out.sort(function (a, b) { return a.x - b.x })
+        return out
+    }
+
+    function test_the_sort_options_are_plain_text_with_an_underline() {
+        var page = makeCollection(1)
+        var opts = sortOptions(page)
+        compare(opts.length, 3, "there are not three sort options")
+        var widths = opts.map(function (o) { return o.width })
+        var xs = opts.map(function (o) { return o.x })
+        for (var m = 0; m < 3; m++) {
+            page.sortMode = m
+            frame(page)
+            for (var i = 0; i < 3; i++) {
+                var o = opts[i]
+                compare(o.color.a, 0, "sort option " + i + " is drawn on a fill")
+                var line = findChild(o, "collectionSortUnderline")
+                verify(line, "sort option " + i + " has no underline")
+                compare(line.visible, i === m,
+                        "the underline is on the wrong option with mode " + m)
+                // Bold marks the chosen one, as on the tabs beside it.
+                compare(findChild(o, "collectionSortLabel").font.bold, i === m,
+                        "option " + i + " is bold or plain the wrong way with mode " + m)
+                compare(o.width, widths[i], "choosing an order resized option " + i)
+                compare(o.x, xs[i], "choosing an order moved option " + i)
+            }
+        }
+        page.sortMode = 0
+    }
 }

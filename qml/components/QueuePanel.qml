@@ -45,6 +45,22 @@ Item {
     // its own bounds. 16 is the smallest size that stays inside the slack of
     // the layout guard in tests/qml/tst_layout_player.qml.
     readonly property int iconSize: 16
+    readonly property int gripSize: 24
+    readonly property int gripGlyph: 20
+
+    // Empties what the user lined up, and offers it back: the rows are
+    // copied first, and Undo puts them in front again in the same order.
+    function clearQueue() {
+        // Copied out: a list read off a property re-reads it on access, and
+        // would be empty by the time Undo runs.
+        var q = player.queueManual, saved = []
+        for (var i = 0; i < q.length; i++) saved.push(q[i])
+        if (saved.length === 0) return
+        player.clearManual()
+        Edits.recordLocal(qsTr("Queue cleared", "confirmation after emptying the play queue"),
+                          function () { player.playNext(saved) },
+                          qsTr("Queue put back", "after undoing a cleared queue"))
+    }
 
     // ── the model ────────────────────────────────────────────────────────
     // One list and two boundaries, all gated on `visible` so a closed panel
@@ -398,11 +414,11 @@ Item {
                         implicitWidth: Math.max(32, clearText.implicitWidth + 12)
                         implicitHeight: 32
                         activeFocusOnTab: true
-                        Keys.onReturnPressed: player.clearManual()
-                        Keys.onSpacePressed:  player.clearManual()
+                        Keys.onReturnPressed: root.clearQueue()
+                        Keys.onSpacePressed:  root.clearQueue()
                         Accessible.role: Accessible.Button
                         Accessible.name: qsTr("Clear queue", "button, empties the play queue")
-                        Accessible.onPressAction: player.clearManual()
+                        Accessible.onPressAction: root.clearQueue()
                         Rectangle {
                             anchors.fill: parent
                             radius: Theme.radiusMedium
@@ -421,7 +437,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: player.clearManual()
+                            onClicked: root.clearQueue()
                         }
                     }
                     // The way out besides Escape and a click beside the panel.
@@ -477,6 +493,20 @@ Item {
                     cacheBuffer: 240
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    // No drag to scroll: a press on a row's title or artist
+                    // would otherwise hand the drag to the list. The wheel and
+                    // the scroll bar scroll; the grip moves rows.
+                    interactive: false
+                    keyNavigationEnabled: true
+                    WheelHandler {
+                        target: null
+                        onWheel: (event) => {
+                            var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y
+                            var top = list.originY
+                            var end = top + Math.max(0, list.contentHeight - list.height)
+                            list.contentY = Math.max(top, Math.min(end, list.contentY - dy))
+                        }
+                    }
 
                     delegate: QueueEntry {
                         required property int index
@@ -533,10 +563,10 @@ Item {
                     Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
 
                     anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.top:    root.currentAbove ? parent.top : undefined
-                    anchors.bottom: root.currentAbove ? undefined : parent.bottom
-                    anchors.topMargin: Theme.space3
-                    anchors.bottomMargin: Theme.space3
+                    // A y, not a top and a bottom anchor swapped by binding:
+                    // for a moment both held, and the pill kept the stretched
+                    // height over the rows, taking their clicks.
+                    y: root.currentAbove ? Theme.space3 : parent.height - height - Theme.space3
 
                     width: jumpRow.implicitWidth + 24
                     height: 28
@@ -707,7 +737,7 @@ Item {
             visible: !entry.isHeader
             radius: Theme.radiusMedium
             color: entry.isCurrent ? Theme.accentSoft
-                 : (entry.dragging || qHov.hovered) ? Theme.hoverFill
+                 : (entry.dragging || qHov.hovered || rowMenu.visible) ? Theme.hoverFill
                  : "transparent"
             border.width: (entry.activeFocus || entry.dragging) ? 2 : 0
             border.color: Theme.accent
@@ -725,7 +755,19 @@ Item {
                 enabled: !entry.isHeader
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: entry.actionable ? Qt.PointingHandCursor : Qt.ArrowCursor
+                // A drag on a row is not a scroll: the grip moves rows and the
+                // wheel scrolls. A press that travelled is not a click either.
+                preventStealing: true
+                property point pressAt
+                property bool travelled: false
+                onPressed: function (mouse) { pressAt = Qt.point(mouse.x, mouse.y); travelled = false }
+                onPositionChanged: function (mouse) {
+                    if (Math.abs(mouse.x - pressAt.x) > Qt.styleHints.startDragDistance
+                            || Math.abs(mouse.y - pressAt.y) > Qt.styleHints.startDragDistance)
+                        travelled = true
+                }
                 onClicked: function (mouse) {
+                    if (travelled) return
                     if (mouse.button === Qt.RightButton) {
                         if (entry.isManual) rowMenu.popup()
                         return
@@ -743,23 +785,25 @@ Item {
                 // The grip's column is reserved on every track row, so the
                 // artwork keeps one straight edge across section boundaries.
                 Item {
-                    Layout.preferredWidth: 16
+                    Layout.preferredWidth: root.gripSize
                     Layout.fillHeight: true
 
+                    // Full strength at rest: a faint grip read as decoration.
                     VectorIcon {
+                        objectName: "queueDragGrip"
                         anchors.centerIn: parent
                         visible: entry.draggable
                         name: "grip"
-                        width: root.iconSize; height: root.iconSize
-                        color: entry.dragging ? Theme.accentText : Theme.textDim
-                        opacity: qHov.hovered || entry.dragging ? 1 : 0.45
+                        width: root.gripGlyph; height: root.gripGlyph
+                        color: entry.dragging ? Theme.accentText
+                             : qHov.hovered ? Theme.textPrimary : Theme.textSec
                     }
 
                     MouseArea {
                         objectName: "queueDragArea"
                         anchors.fill: parent
-                        // A deliberate bleed, so a 16px-wide grip is not a
-                        // 16px-wide target. 4 is what the layout guard in
+                        // A deliberate bleed, so the grip's target is wider
+                        // than its column. 4 is what the layout guard in
                         // tests/qml/tst_layout_player.qml allows for overhang.
                         anchors.margins: -Theme.space1
                         visible: entry.draggable
@@ -797,23 +841,13 @@ Item {
                     }
                 }
 
-                Rectangle {
+                // 36px box, doubled for a 2x screen.
+                CoverArt {
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
-                    radius: Theme.radiusSmall
-                    color: Theme.surfaceHigh
-                    clip: true
-                    Image {
-                        objectName: "queueRowCover"
-                        anchors.fill: parent
-                        source: entry.coverText ? "image://tidal/" + entry.coverText : ""
-                        // 36px box, doubled for a 2x screen. Both dimensions;
-                        // see TrackRow's cover for why one is a trap.
-                        sourceSize: Qt.size(72, 72)
-                        fillMode: Image.PreserveAspectCrop
-                        smooth: true
-                        mipmap: true
-                    }
+                    imageName: "queueRowCover"
+                    source: entry.coverText || ""
+                    decodeSize: Qt.size(72, 72)
                 }
 
                 ColumnLayout {
@@ -901,6 +935,7 @@ Item {
                 }
                 implicitWidth: Theme.menuWidth(this)
                 overlap: 0
+                padding: Theme.menuPadding
                 background: Rectangle { color: Theme.surfaceHigh; border.color: Theme.border; radius: Theme.radiusLarge }
                 ContextMenu.Entry {
                     text: qsTr("Remove from queue")

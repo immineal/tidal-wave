@@ -100,6 +100,12 @@ QtObject {
     // scales with the icon.
     readonly property real iconStroke: 1.8
 
+    // ── scroll bars ──────────────────────────────────────────────────────
+    // The shortest a handle gets, however long the list.
+    readonly property int scrollHandleMin: 40
+    // One line of a wheel notch; the system says how many lines a notch is.
+    readonly property int wheelLine: 20
+
     // ── tool tips ────────────────────────────────────────────────────────
     readonly property int tooltipDelay: 500
 
@@ -111,6 +117,9 @@ QtObject {
     readonly property int menuMaxWidth: 420
     // Air left between a menu at full width and the window edge.
     readonly property int menuWindowMargin: 12
+    // The gap between a menu's edge and its entries, so an entry's rounded
+    // highlight sits inside the menu's rounder corners.
+    readonly property int menuPadding: space1
 
     function menuWidth(menu) {
         if (!menu) return menuMinWidth

@@ -5,6 +5,7 @@
 #include <QList>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 #include <optional>
 #include "scrobble/Listen.h"
 #include "scrobble/ScrobbleService.h"
@@ -31,6 +32,13 @@ class ScrobbleSink : public QObject {
     Q_PROPERTY(QString lastError   READ lastError   NOTIFY statusChanged)
     // The status line: what waits, and the last error.
     Q_PROPERTY(QString statusText  READ statusText  NOTIFY statusChanged)
+    // Listens kept for an account that is not connected now.
+    Q_PROPERTY(int     keptCount   READ keptCount   NOTIFY statusChanged)
+    // Signed in through the browser rather than with a pasted token.
+    Q_PROPERTY(bool    browserSignIn   READ browserSignIn   CONSTANT)
+    // The browser is open at the page that allows access; finish or cancel.
+    Q_PROPERTY(bool    awaitingBrowser READ awaitingBrowser NOTIFY signInChanged)
+    Q_PROPERTY(QString signInPage      READ signInPage      NOTIFY signInChanged)
 
 public:
     struct Paths {
@@ -60,11 +68,24 @@ public:
     bool    authFailed()  const { return m_authFailed; }
     QString lastError()   const { return m_lastError; }
     QString statusText()  const;
+    int     keptCount()   const { return connected() ? 0 : int(m_queue.size()); }
+    bool    browserSignIn()   const { return m_service->hasBrowserSignIn(); }
+    bool    awaitingBrowser() const { return !m_requestToken.isEmpty(); }
+    QString signInPage()      const { return m_signInPage.toString(); }
 
     // Checks the secret with the service and keeps it if it is accepted.
     Q_INVOKABLE void signIn(const QString &secret);
-    // Forgets the secret and the listens that wait for it.
+    // Forgets the secret. The listens that wait stay for the same account to
+    // connect again; another account's sign-in drops them.
     Q_INVOKABLE void disconnectAccount();
+    // Drops the kept listens, so no account will send them.
+    Q_INVOKABLE void discardKept();
+
+    // The browser sign-in: a request token and openPage(), then, once the
+    // user has allowed it there, the session. Cancel drops the token.
+    Q_INVOKABLE void startBrowserSignIn();
+    Q_INVOKABLE void finishBrowserSignIn();
+    Q_INVOKABLE void cancelBrowserSignIn();
 
     // From PlayTracker. Both do nothing while off or without an account.
     void add(const Listen &listen);
@@ -80,6 +101,9 @@ signals:
     void checkingChanged();
     void queueChanged();
     void statusChanged();
+    void signInChanged();
+    // Asks for the page to be opened in the browser.
+    void openPage(const QUrl &url);
 
 private:
     void load();
@@ -87,11 +111,21 @@ private:
     bool saveSecret();
     void setError(const QString &text, bool stays = false);
     void setAuthFailed(bool failed);
+    void setChecking(bool on);
+    // A secret the service took: kept, and sending starts.
+    void accept(const QString &secret, const QString &user);
+    // Forgets the secret and any sign-in under way; the queue stays.
+    void dropAccount();
+    // The service turned the secret down while sending.
+    void refused();
+    void endBrowserStep();
     // Sends what is due, or sets the timer for when it is.
     void pump();
     void holdFor(qint64 ms);
     void sendBatch();
-    void batchDone(int count, int generation, const ScrobbleReply &reply);
+    void batchDone(const QList<Listen> &batch, int generation, const ScrobbleReply &reply);
+    // Takes these out of the queue wherever they are; false if none was there.
+    bool removeSent(const QList<Listen> &sent);
     QString retryText(const ScrobbleReply &reply) const;
 
     ScrobbleService *m_service;
@@ -106,7 +140,11 @@ private:
     // does not take it back.
     bool    m_errorStays = false;
     QList<Listen> m_queue;
+    // The account the queue belongs to, kept with it across a disconnect.
+    QString m_queueUser;
     std::optional<Listen> m_pendingNow;
+    QString m_requestToken;
+    QUrl    m_signInPage;
 
     QTimer *m_timer = nullptr;
     bool    m_busy = false;

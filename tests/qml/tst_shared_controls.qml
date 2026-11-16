@@ -102,6 +102,40 @@ TestCase {
         compare(a.chipHeight, b.chipHeight, "the two strips' chips differ in height")
     }
 
+    Component {
+        id: stripHost
+        Window {
+            width: 600; height: 80
+            property alias strip: ts
+            TabStrip { id: ts; x: 10; y: 10; width: 580; animate: false
+                       model: ["Tracks (12)", "Albums (8)", "Artists (3)", "Mixes (4)"] }
+        }
+    }
+
+    // The chosen tab is bold, like the chosen sort word, and each chip is
+    // sized off its bold label, so choosing one moves nothing.
+    function test_the_chosen_tab_is_bold_and_moves_nothing() {
+        var win = createTemporaryObject(stripHost, testCase)
+        win.visible = true
+        frame(win.contentItem)
+        var ts = win.strip
+        var labels = [], chips = []
+        ;(function walk(it) {
+            if (it.objectName === "tabTabLabel") labels.push(it)
+            for (var k = 0; k < it.children.length; ++k) walk(it.children[k])
+        })(ts)
+        compare(labels.length, 4)
+        for (var i = 0; i < 4; ++i) chips.push(labels[i].parent)
+        var xs = chips.map(function (c) { return c.mapToItem(ts, 0, 0).x })
+        ts.currentIndex = 1
+        frame(win.contentItem)
+        verify(labels[1].font.bold, "the chosen tab is not bold")
+        verify(!labels[0].font.bold && !labels[2].font.bold, "a tab not chosen is bold")
+        for (i = 0; i < 4; ++i)
+            verify(Math.abs(chips[i].mapToItem(ts, 0, 0).x - xs[i]) <= 0.5,
+                   "tab " + i + " moved when another was chosen")
+    }
+
     function test_the_search_fields_are_one_height() {
         var win = showApp()
         var finder = findByType(win.contentItem, "LibraryFinder")

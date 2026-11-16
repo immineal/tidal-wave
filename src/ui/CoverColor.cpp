@@ -151,6 +151,30 @@ QColor dominant(const QImage &image) {
     return fromLinear(anyR / anyN, anyG / anyN, anyB / anyN);
 }
 
+QColor calmYellow(const QColor &c) {
+    if (!c.isValid()) return c;
+    const QColor rgb = c.toRgb();
+    // Linear sRGB to OKLab (Ottosson 2020) and back.
+    const double r = toLinear(rgb.redF()), g = toLinear(rgb.greenF()), b = toLinear(rgb.blueF());
+    const double l = std::cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const double m = std::cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const double s = std::cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const double L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    double A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    double B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    double hue = std::atan2(B, A) * 180.0 / M_PI;
+    if (hue < 0) hue += 360.0;
+    if (hue < 70.0 || hue > 125.0) return rgb;
+    A *= 0.7;
+    B *= 0.7;
+    const double l2 = std::pow(L + 0.3963377774 * A + 0.2158037573 * B, 3.0);
+    const double m2 = std::pow(L - 0.1055613458 * A - 0.0638541728 * B, 3.0);
+    const double s2 = std::pow(L - 0.0894841775 * A - 1.2914855480 * B, 3.0);
+    return fromLinear( 4.0767416621 * l2 - 3.3077115913 * m2 + 0.2309699292 * s2,
+                      -1.2684380046 * l2 + 2.6097574011 * m2 - 0.3413193965 * s2,
+                      -0.0041960863 * l2 - 0.7034186147 * m2 + 1.7076127010 * s2);
+}
+
 QColor clampToBand(const QColor &c, const QColor &bg, const QColor &limit) {
     if (!c.isValid()) return {};
     if (!bg.isValid() || !limit.isValid()) return c;
@@ -177,8 +201,14 @@ QColor clampToBand(const QColor &c, const QColor &bg, const QColor &limit) {
     return greyInBand(yLo, yHi);
 }
 
+QColor bandTint(const QColor &c, const QColor &bg, const QColor &limit) {
+    const bool dark = bg.isValid() && limit.isValid()
+                   && std::max(relativeLuminance(bg), relativeLuminance(limit)) < 0.18;
+    return clampToBand(dark ? calmYellow(c) : c, bg, limit);
+}
+
 QColor tint(const QImage &image, const QColor &bg, const QColor &limit) {
-    return clampToBand(dominant(image), bg, limit);
+    return bandTint(dominant(image), bg, limit);
 }
 
 } // namespace coverart
@@ -285,7 +315,7 @@ void CoverTint::refresh() {
     if (m_active && !m_coverId.isEmpty()) {
         const QColor raw = CoverColorStore::instance()->lookup(m_coverId);
         if (raw.isValid())
-            next = coverart::clampToBand(raw, m_bg, m_limit);
+            next = coverart::bandTint(raw, m_bg, m_limit);
     }
     if (next == m_color) return;
     m_color = next;

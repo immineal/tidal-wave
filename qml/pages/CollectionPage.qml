@@ -77,15 +77,15 @@ Rectangle {
         qsTr("Default: most recently played or added first")
     ][activeTab] || ""
 
-    // Grid metrics for the four grids below, all derived from the grid's width
-    // alone. cellWidth is floored, so the columns never cross the viewport, and
-    // the remainder is split between the two edge insets.
+    // Grid metrics for the four grids, from the grid's width alone. A cell
+    // holds half a gutter each side of its card, so the cells start half a
+    // gutter left of the inset and the first card lines up with the title.
     readonly property int gridTargetCell: 184
     readonly property int gridMinCell: 150   // below this a cover plus two lines stops reading
     readonly property int gridGutter: Theme.space6     // breathing room in a cell, split either side of the card
     readonly property int gridEdge: Theme.space6       // the pane inset, matching the header above
 
-    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge) }
+    function gridSpace(w)   { return Math.max(0, w - 2 * gridEdge + gridGutter) }
     function gridColumns(w) {
         var avail = gridSpace(w)
         var n = Math.max(1, Math.round(avail / gridTargetCell))
@@ -97,9 +97,7 @@ Rectangle {
     function gridCell(w) {
         return Math.max(1, Math.floor(gridSpace(w) / gridColumns(w)))
     }
-    function gridLeft(w) {
-        return gridEdge + Math.floor((gridSpace(w) - gridColumns(w) * gridCell(w)) / 2)
-    }
+    function gridLeft(w) { return gridEdge - gridGutter / 2 }
     // Chosen so that width - leftMargin - rightMargin is exactly columns *
     // cellWidth, the figure GridView divides by cellWidth to count its columns.
     function gridRight(w) {
@@ -191,6 +189,7 @@ Rectangle {
         // these spacers have to declare it or they collapse to nothing.
         Item { Layout.preferredHeight: Theme.space6 }
         Text {
+            objectName: "collectionTitle"
             Layout.leftMargin: Theme.space6
             text: qsTr("Collection")
             color: Theme.textPrimary
@@ -222,6 +221,8 @@ Rectangle {
                 onActivated: (index) => { root.activeTab = index }
             }
 
+            // Plain words with a line under the chosen one: the tab strip
+            // beside it already carries the row's one accent pill.
             Row {
                 visible: root.activeTab < 4
                 Layout.alignment: Qt.AlignVCenter
@@ -234,10 +235,11 @@ Rectangle {
                         id: sortPill
                         objectName: index === 0 ? "collectionSortDefault" : "collectionSortPill"
                         readonly property string hint: index === 0 ? root.defaultOrderHint : ""
-                        height: 30; width: sortLbl.implicitWidth + 16; radius: Theme.radiusFull
-                        color: root.sortMode === index ? Theme.accent : Theme.surfaceHigh
-                        // One of three, so it reads as a radio button. The ring
-                        // is outside the pill, apart from the chosen fill.
+                        readonly property bool chosen: root.sortMode === index
+                        // Sized for the bold label, so choosing one moves nothing.
+                        height: 30; width: sortBoldWidth.implicitWidth + Theme.space4; radius: Theme.radiusMedium
+                        color: sortHov.hovered && !chosen ? Theme.hoverFill : "transparent"
+                        // One of three, so it reads as a radio button.
                         activeFocusOnTab: true
                         Keys.onReturnPressed: root.sortMode = index
                         Keys.onSpacePressed:  root.sortMode = index
@@ -250,17 +252,36 @@ Rectangle {
                         Accessible.onToggleAction: root.sortMode = index
                         Rectangle {
                             anchors.fill: parent
-                            anchors.margins: -Theme.space1
-                            radius: Theme.radiusFull
+                            radius: Theme.radiusMedium
                             color: "transparent"
                             border.width: sortPill.activeFocus ? 2 : 0
                             border.color: Theme.accent
                         }
                         Text {
                             id: sortLbl; anchors.centerIn: parent
+                            objectName: "collectionSortLabel"
                             text: modelData
-                            color: root.sortMode === index ? Theme.accentInk : Theme.textSec
+                            color: sortPill.chosen ? Theme.textPrimary : Theme.textSec
                             font.pixelSize: Theme.fontMeta
+                            font.bold: sortPill.chosen
+                        }
+                        Text {
+                            id: sortBoldWidth
+                            visible: false
+                            text: modelData
+                            font.pixelSize: Theme.fontMeta
+                            font.bold: true
+                        }
+                        Rectangle {
+                            objectName: "collectionSortUnderline"
+                            visible: sortPill.chosen
+                            anchors.horizontalCenter: sortLbl.horizontalCenter
+                            anchors.top: sortLbl.bottom
+                            anchors.topMargin: Theme.spaceHalf
+                            width: sortLbl.implicitWidth
+                            height: 2
+                            radius: height / 2
+                            color: Theme.accent
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -318,7 +339,7 @@ Rectangle {
             }
         }
 
-        Item { Layout.preferredHeight: Theme.space4 }
+        Item { id: viewsTop; Layout.preferredHeight: Theme.space4 }
 
         // Tracks Tab: virtualized ListView
         ListView {
@@ -358,8 +379,11 @@ Rectangle {
             }
 
             ScrollBar.vertical: ScrollBar {
+                objectName: "collectionTracksScrollBar"
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -432,6 +456,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -489,6 +515,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -555,6 +583,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -636,6 +666,8 @@ Rectangle {
             ScrollBar.vertical: ScrollBar {
                 active: true
                 policy: ScrollBar.AsNeeded
+                // A long list keeps a handle the pointer can find and grab.
+                minimumSize: availableHeight > 0 ? Math.min(1, Theme.scrollHandleMin / availableHeight) : 0
             }
         }
 
@@ -782,5 +814,6 @@ Rectangle {
 
     NewPlaylistDialog { id: newPlaylistDialog }
 
-    LoadingOverlay { loading: root.loading || root.tabWaiting }
+    // Below the tabs, chips and sort, which stay in reach while it loads.
+    Skeleton { loading: root.loading || root.tabWaiting; kind: root.activeTab === 0 ? "rows" : "grid"; topInset: viewsTop.y }
 }

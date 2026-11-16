@@ -463,6 +463,11 @@
         <translation>Die Markierung „Gefällt mir“ konnte nicht entfernt werden</translation>
     </message>
     <message>
+        <source>Removed from your liked tracks</source>
+        <comment>confirmation after unliking a track</comment>
+        <translation>Aus deinen Lieblingstiteln entfernt</translation>
+    </message>
+    <message>
         <source>Could not like the track</source>
         <comment>shown when adding a track to favourites failed</comment>
         <translation>Titel konnte nicht mit „Gefällt mir“ markiert werden</translation>
@@ -471,6 +476,11 @@
         <source>Could not remove the album from your collection</source>
         <comment>shown when removing an album from the library failed</comment>
         <translation>Album konnte nicht aus der Sammlung entfernt werden</translation>
+    </message>
+    <message>
+        <source>Album removed from your collection</source>
+        <comment>confirmation after removing an album from the library</comment>
+        <translation>Album aus deiner Sammlung entfernt</translation>
     </message>
     <message>
         <source>Could not save the album</source>
@@ -483,9 +493,19 @@
         <translation>Künstler konnte nicht entfolgt werden</translation>
     </message>
     <message>
+        <source>You no longer follow this artist</source>
+        <comment>confirmation after unfollowing an artist</comment>
+        <translation>Du folgst diesem Künstler nicht mehr</translation>
+    </message>
+    <message>
         <source>Could not remove the mix from your collection</source>
         <comment>shown when removing a mix from the library failed</comment>
         <translation>Mix konnte nicht aus der Sammlung entfernt werden</translation>
+    </message>
+    <message>
+        <source>Mix removed from your collection</source>
+        <comment>confirmation after removing a mix from the library</comment>
+        <translation>Mix aus deiner Sammlung entfernt</translation>
     </message>
     <message>
         <source>Could not save the mix</source>
@@ -590,6 +610,84 @@
     </message>
 </context>
 <context>
+    <name>Edits</name>
+    <message>
+        <source>Still undoing the last change</source>
+        <comment>shown when Undo is asked again before the last one finished</comment>
+        <translation>Die letzte Änderung wird noch rückgängig gemacht</translation>
+    </message>
+    <message>
+        <source>Nothing to undo</source>
+        <comment>shown when Ctrl+Z finds no change to take back</comment>
+        <translation>Nichts rückgängig zu machen</translation>
+    </message>
+    <message>
+        <source>Tidal did not confirm the change. Reloaded from Tidal.</source>
+        <comment>a write was accepted but a re-read did not show it</comment>
+        <translation>Tidal hat die Änderung nicht bestätigt. Neu von Tidal geladen.</translation>
+    </message>
+    <message>
+        <source>Could not undo the change</source>
+        <comment>shown when an undo was refused</comment>
+        <translation>Die Änderung konnte nicht rückgängig gemacht werden</translation>
+    </message>
+    <message>
+        <source>Back in your liked tracks</source>
+        <comment>after undoing an unlike</comment>
+        <translation>Wieder in deinen Lieblingstiteln</translation>
+    </message>
+    <message>
+        <source>Added to your liked tracks</source>
+        <comment>confirmation after liking a track</comment>
+        <translation>Zu deinen Lieblingstiteln hinzugefügt</translation>
+    </message>
+    <message>
+        <source>Album back in your collection</source>
+        <comment>after undoing an album&apos;s removal</comment>
+        <translation>Album wieder in deiner Sammlung</translation>
+    </message>
+    <message>
+        <source>Album saved to your collection</source>
+        <comment>confirmation after saving an album</comment>
+        <translation>Album in deiner Sammlung gespeichert</translation>
+    </message>
+    <message>
+        <source>You follow this artist again</source>
+        <comment>after undoing an unfollow</comment>
+        <translation>Du folgst diesem Künstler wieder</translation>
+    </message>
+    <message>
+        <source>You now follow this artist</source>
+        <comment>confirmation after following an artist</comment>
+        <translation>Du folgst jetzt diesem Künstler</translation>
+    </message>
+    <message>
+        <source>Mix back in your collection</source>
+        <comment>after undoing a mix&apos;s removal</comment>
+        <translation>Mix wieder in deiner Sammlung</translation>
+    </message>
+    <message>
+        <source>Mix saved to your collection</source>
+        <comment>confirmation after saving a mix</comment>
+        <translation>Mix in deiner Sammlung gespeichert</translation>
+    </message>
+    <message>
+        <source>Already in “%1”</source>
+        <comment>the track is in the playlist already; nothing was added</comment>
+        <translation>Schon in „%1“</translation>
+    </message>
+    <message>
+        <source>Taken out of “%1” again</source>
+        <comment>after undoing an add to a playlist</comment>
+        <translation>Wieder aus „%1“ entfernt</translation>
+    </message>
+    <message>
+        <source>Put back in “%1”</source>
+        <comment>after undoing a removal from a playlist</comment>
+        <translation>Wieder in „%1“</translation>
+    </message>
+</context>
+<context>
     <name>Feedback</name>
     <message>
         <source>Problem with Tidal Wave %1</source>
@@ -650,16 +748,31 @@
         <translation>Künstler</translation>
     </message>
     <message>
-        <source>Your mixes</source>
-        <translation>Deine Mixe</translation>
+        <source>Now playing</source>
+        <comment>Home, over the track that plays</comment>
+        <translation>Läuft gerade</translation>
+    </message>
+    <message>
+        <source>Continue listening</source>
+        <comment>Home, over the paused track</comment>
+        <translation>Weiterhören</translation>
+    </message>
+    <message>
+        <source>Recently played</source>
+        <comment>Home, the row of things played here lately</comment>
+        <translation>Zuletzt gehört</translation>
+    </message>
+    <message>
+        <source>My mixes</source>
+        <translation>Meine Mixe</translation>
     </message>
     <message>
         <source>Saved albums</source>
         <translation>Gespeicherte Alben</translation>
     </message>
     <message>
-        <source>Your playlists</source>
-        <translation>Deine Playlists</translation>
+        <source>My playlists</source>
+        <translation>Meine Playlists</translation>
     </message>
     <message>
         <source>Favourite artists</source>
@@ -680,6 +793,16 @@
 </context>
 <context>
     <name>HorizontalSection</name>
+    <message>
+        <source>Scroll back</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Zurückblättern</translation>
+    </message>
+    <message>
+        <source>Scroll forward</source>
+        <comment>arrow on a row of cards</comment>
+        <translation>Weiterblättern</translation>
+    </message>
     <message>
         <source>Show all</source>
         <translation>Alle anzeigen</translation>
@@ -1261,6 +1384,16 @@
         <translation>Diese Playlist wurde anderswo geändert, deshalb wurde nichts entfernt. Sie wurde neu geladen.</translation>
     </message>
     <message>
+        <source>Removed from “%1”</source>
+        <comment>confirmation after removing a track from a playlist</comment>
+        <translation>Aus „%1“ entfernt</translation>
+    </message>
+    <message>
+        <source>Could not put the track back</source>
+        <comment>shown when undoing a removal from a playlist failed</comment>
+        <translation>Der Titel konnte nicht zurückgelegt werden</translation>
+    </message>
+    <message>
         <source>Playlist</source>
         <translation>Playlist</translation>
     </message>
@@ -1361,6 +1494,16 @@
         <translation>Jetzt läuft</translation>
     </message>
     <message>
+        <source>Queue cleared</source>
+        <comment>confirmation after emptying the play queue</comment>
+        <translation>Warteschlange geleert</translation>
+    </message>
+    <message>
+        <source>Queue put back</source>
+        <comment>after undoing a cleared queue</comment>
+        <translation>Warteschlange wiederhergestellt</translation>
+    </message>
+    <message>
         <source>Up next</source>
         <translation>Als Nächstes</translation>
     </message>
@@ -1438,6 +1581,20 @@
             <numerusform>%Ln Wiedergaben warten auf den Versand.</numerusform>
         </translation>
     </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until you connect again.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet, bis du dich wieder verbindest.</numerusform>
+            <numerusform>%Ln Wiedergaben warten, bis du dich wieder verbindest.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until %1 connects again.</source>
+        <translation>
+            <numerusform>%Ln Wiedergabe wartet, bis %1 wieder verbunden ist.</numerusform>
+            <numerusform>%Ln Wiedergaben warten, bis %1 wieder verbunden ist.</numerusform>
+        </translation>
+    </message>
     <message>
         <source>%1 could not be reached. Try again in a moment.</source>
         <translation>%1 ist nicht erreichbar. Versuch es gleich noch einmal.</translation>
@@ -1465,6 +1622,26 @@
     <message>
         <source>%1 turned down the listen of &quot;%2&quot;.</source>
         <translation>%1 hat die Wiedergabe von „%2“ abgelehnt.</translation>
+    </message>
+    <message>
+        <source>Waiting for %1…</source>
+        <translation>Warte auf %1…</translation>
+    </message>
+    <message>
+        <source>%1 turned down the sign-in. Try again later.</source>
+        <translation>%1 hat die Anmeldung abgelehnt. Versuch es später noch einmal.</translation>
+    </message>
+    <message>
+        <source>Access to %1 has not been allowed yet. Allow it on the page in your browser, then try again.</source>
+        <translation>Der Zugriff auf %1 wurde noch nicht erlaubt. Erlaube ihn auf der Seite in deinem Browser und versuch es dann noch einmal.</translation>
+    </message>
+    <message>
+        <source>This sign-in has run out. Connect with %1 again.</source>
+        <translation>Diese Anmeldung ist abgelaufen. Verbinde dich noch einmal mit %1.</translation>
+    </message>
+    <message>
+        <source>%1 ended the connection, so nothing is sent. Connect again to go on.</source>
+        <translation>%1 hat die Verbindung beendet, deshalb wird nichts gesendet. Verbinde dich noch einmal, um weiterzumachen.</translation>
     </message>
 </context>
 <context>
@@ -1536,6 +1713,14 @@
     <message>
         <source>Tidal could not answer this search.</source>
         <translation>Tidal konnte diese Suche nicht beantworten.</translation>
+    </message>
+    <message>
+        <source>Tidal could not load more results.</source>
+        <translation>Tidal konnte keine weiteren Ergebnisse laden.</translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached, so no more results could be loaded.</source>
+        <translation>Tidal ist nicht erreichbar, daher konnten keine weiteren Ergebnisse geladen werden.</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -1697,6 +1882,53 @@
         <translation>Deinen Token findest du in deinen ListenBrainz-Einstellungen</translation>
     </message>
     <message>
+        <source>Send what you play to Last.fm</source>
+        <translation>Gehörtes an Last.fm senden</translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, first artist, album, length and the time you played it go to last.fm.</source>
+        <translation>Ein Titel zählt, sobald du die Hälfte davon oder 4 Minuten gehört hast. Name, erster Künstler, Album und Länge des Titels und wann du ihn gehört hast, gehen an last.fm.</translation>
+    </message>
+    <message>
+        <source>Connected to Last.fm</source>
+        <translation>Mit Last.fm verbunden</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the Last.fm session</comment>
+        <translation>Trennen</translation>
+    </message>
+    <message>
+        <source>Connect with Last.fm</source>
+        <translation>Mit Last.fm verbinden</translation>
+    </message>
+    <message>
+        <source>Your browser opens Last.fm, where you allow Tidal Wave to scrobble for you.</source>
+        <translation>Dein Browser öffnet Last.fm, wo du Tidal Wave das Scrobbeln für dich erlaubst.</translation>
+    </message>
+    <message>
+        <source>Allow access on the Last.fm page in your browser, then come back here.</source>
+        <translation>Erlaube den Zugriff auf der Last.fm-Seite in deinem Browser und komm dann hierher zurück.</translation>
+    </message>
+    <message>
+        <source>I&apos;ve allowed access</source>
+        <translation>Ich habe zugestimmt</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <comment>button that stops connecting Last.fm</comment>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Open the Last.fm page again</source>
+        <translation>Last.fm-Seite noch einmal öffnen</translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <comment>link that deletes the listens kept for an account</comment>
+        <translation>Verwerfen</translation>
+    </message>
+    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>
@@ -1743,6 +1975,11 @@
         <translation>Das Issue-Formular enthält schon deine Version, dein System und beide Qt-Versionen. Die E-Mail ist an %1 adressiert. Abgeschickt wird beides erst, wenn du es selbst sendest.</translation>
     </message>
     <message>
+        <source>Undo the last change</source>
+        <comment>shortcut, takes back a like, a removal or a cleared queue</comment>
+        <translation>Letzte Änderung rückgängig machen</translation>
+    </message>
+    <message>
         <source>Experimental</source>
         <translation>Experimentell</translation>
     </message>
@@ -1755,8 +1992,12 @@
         <translation>Tidal Wave enthält keine Analyse- und keine Telemetriefunktionen.</translation>
     </message>
     <message>
-        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet; disconnecting deletes both.</source>
-        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben; beim Trennen wird beides gelöscht.</translation>
+        <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account or &quot;Discard&quot; deletes them.</source>
+        <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben. Beim Trennen und beim Abmelden von Tidal wird der Token gelöscht; die Wiedergaben bleiben, bis dasselbe Konto wieder verbunden wird, und werden gelöscht, wenn du ein anderes Konto verbindest oder sie verwirfst.</translation>
+    </message>
+    <message>
+        <source>Last.fm, likewise only once you switch it on and connect: &quot;Connect with Last.fm&quot; opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, the first credited artist, album, length and track number, the app&apos;s own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.</source>
+        <translation>Last.fm ebenfalls nur, wenn du es einschaltest und ein Konto verbindest: „Mit Last.fm verbinden“ öffnet last.fm in deinem Browser, und ws.audioscrobbler.com wird nach einem Anmeldetoken und, sobald du den Zugriff erlaubt hast, nach einer Sitzung gefragt. Danach erhält es den Titel, den du startest, und sobald er zählt, ein Scrobble mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, ersten Künstler, Album, Länge und Titelnummer des Titels, den eigenen Last.fm-Schlüssel der App und deinen Sitzungsschlüssel; außerdem sieht die Seite deine IP-Adresse. ISRC und Tidal-Link gehen nicht an Last.fm. Der Sitzungsschlüssel und dein Last.fm-Benutzername werden hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Scrobbles. Beim Trennen und beim Abmelden von Tidal wird der Schlüssel gelöscht, und die Scrobbles bleiben wie bei ListenBrainz erhalten.</translation>
     </message>
     <message>
         <source>Log out?</source>
@@ -1778,7 +2019,7 @@
     </message>
     <message>
         <source>Let the colour in</source>
-        <translation>Grautöne einfärben</translation>
+        <translation>Mehr Farbe wagen</translation>
     </message>
     <message>
         <source>Bars follow the music</source>
@@ -1824,6 +2065,10 @@
     <message>
         <source>Saves power on OLED screens.</source>
         <translation>Spart Strom auf OLED-Bildschirmen.</translation>
+    </message>
+    <message>
+        <source>For the dark themes. Saves power on OLED screens.</source>
+        <translation>Für die dunklen Designs. Spart Strom auf OLED-Bildschirmen.</translation>
     </message>
     <message>
         <source>The system default is currently %1.</source>
@@ -2087,8 +2332,8 @@
         <translation>Noch nichts gespeichert</translation>
     </message>
     <message>
-        <source>Your account</source>
-        <translation>Dein Konto</translation>
+        <source>My account</source>
+        <translation>Mein Konto</translation>
     </message>
     <message>
         <source>Settings (%1)</source>
@@ -2118,6 +2363,14 @@
     </message>
 </context>
 <context>
+    <name>Toasts</name>
+    <message>
+        <source>Undo</source>
+        <comment>button on a confirmation, takes back what was just done</comment>
+        <translation>Rückgängig</translation>
+    </message>
+</context>
+<context>
     <name>TrackRow</name>
     <message>
         <source>More options</source>
@@ -2131,14 +2384,6 @@
     <message>
         <source>Unknown artist</source>
         <translation>Unbekannter Künstler</translation>
-    </message>
-    <message>
-        <source>%1%</source>
-        <translation>%1 %</translation>
-    </message>
-    <message>
-        <source>Popularity</source>
-        <translation>Beliebtheit</translation>
     </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>

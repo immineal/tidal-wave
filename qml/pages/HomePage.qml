@@ -29,6 +29,55 @@ Rectangle {
         onTriggered: root.greeting = root.greetingFor(new Date().getHours())
     }
 
+    // ── what the user was listening to ───────────────────────────────────
+    // Under the greeting, the user's own music: the track in the player, and
+    // the albums, playlists, mixes and artists played here most recently.
+    // Tidal keeps no play history the app can read, so these are local.
+    readonly property var nowTrack: player.currentTrack
+    readonly property bool hasTrack: !!nowTrack && nowTrack.id > 0
+
+    readonly property var recentlyPlayed: {
+        var all = library.entries, out = []
+        for (var i = 0; i < all.length; i++)
+            if (all[i].lastPlayed > 0) out.push(all[i])
+        out.sort(function (a, b) { return b.lastPlayed - a.lastPlayed })
+        return out.slice(0, root.rowLimit).map(function (e) {
+            return { id: e.id, title: e.title, coverUrl: e.imageUrl || "", kind: e.kind,
+                     subtitle: e.kind === "artist" ? qsTr("Artist") : (e.subtitle || ""),
+                     // An artist's subtitle is a translated label; see MediaCard.
+                     pinSubtitle: e.kind === "artist" ? "" : undefined,
+                     imageUrl: e.imageUrl || "", type: e.type || "", mixType: e.mixType || "" }
+        })
+    }
+
+    // The row's items are library entries, so they open the way the
+    // sidebar opens them.
+    function openEntry(item) {
+        switch (item.kind) {
+        case "album":    navigateTo("album",  { albumId: parseInt(item.id) }); break
+        case "artist":   navigateTo("artist", { artistId: parseInt(item.id) }); break
+        case "playlist": navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title,
+                                                  coverUrl: item.coverUrl, playlistType: item.type }); break
+        case "mix":      navigateTo("mix", { mixId: item.id, title: item.title, subtitle: item.subtitle,
+                                             coverUrl: item.coverUrl, mixType: item.mixType }); break
+        }
+    }
+
+    function playEntry(item) {
+        function play(kind, tracks, err) {
+            if (err || tracks.length === 0) return
+            if (kind === "playlist") bridge.markPlaylistPlayed(item.id)
+            player.setPlaybackSource(kind, "" + item.id, item.title || "")
+            player.playTracks(tracks, 0)
+        }
+        switch (item.kind) {
+        case "album":    bridge.fetchAlbumTracks(parseInt(item.id), function (t, e) { play("album", t, e) }); break
+        case "playlist": bridge.fetchPlaylistTracks(item.id, function (t, e) { play("playlist", t, e) }); break
+        case "mix":      bridge.fetchMixTracks(item.id, function (t, e) { play("mix", t, e) }); break
+        default:         openEntry(item)
+        }
+    }
+
     function appWindow() { return Window.window }
 
 
@@ -153,11 +202,117 @@ Rectangle {
             Item { Layout.preferredHeight: Theme.space6 }
 
             Text {
+                objectName: "homeTitle"
                 Layout.leftMargin: Theme.space6
                 text: root.greeting
                 color: Theme.textPrimary
                 font.pixelSize: Theme.fontDisplay
                 font.bold: true
+            }
+
+            // Under it, the track in the player, to pick up where it was left.
+            Item { Layout.preferredHeight: Theme.space6; visible: root.hasTrack }
+
+            Rectangle {
+                id: continueCard
+                objectName: "homeContinue"
+                visible: root.hasTrack
+                Layout.fillWidth: true
+                Layout.leftMargin: Theme.space6
+                Layout.rightMargin: Theme.space6
+                Layout.preferredHeight: 104
+                radius: Theme.radiusLarge
+                color: continueHov.hovered ? Theme.surfaceHigh : Theme.surface
+                border.color: continueCard.activeFocus ? Theme.accent : Theme.border
+                border.width: continueCard.activeFocus ? 2 : 1
+                activeFocusOnTab: visible
+                Keys.onReturnPressed: navigateTo("nowplaying", {})
+                Keys.onSpacePressed:  player.playPause()
+                Accessible.role: Accessible.Button
+                Accessible.name: continueTitle.text + ", " + continueArtist.text
+                Accessible.onPressAction: navigateTo("nowplaying", {})
+
+                HoverHandler { id: continueHov; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: navigateTo("nowplaying", {}) }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.space4
+                    spacing: Theme.space4
+
+                    CoverArt {
+                        Layout.preferredWidth: 72
+                        Layout.preferredHeight: 72
+                        source: root.hasTrack ? (root.nowTrack.coverUrl || "") : ""
+                        decodeSize: Qt.size(144, 144)
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            objectName: "homeContinueOverline"
+                            text: player.playing ? qsTr("Now playing", "Home, over the track that plays")
+                                                 : qsTr("Continue listening", "Home, over the paused track")
+                            color: Theme.textSec
+                            font.pixelSize: Theme.fontMicro
+                            font.bold: true
+                        }
+                        Text {
+                            id: continueTitle
+                            Layout.fillWidth: true
+                            text: root.hasTrack ? root.nowTrack.title || "" : ""
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontSection
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            id: continueArtist
+                            Layout.fillWidth: true
+                            text: root.hasTrack ? root.nowTrack.artists || "" : ""
+                            color: Theme.textSec
+                            font.pixelSize: Theme.fontBody
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: player.sourceName.length > 0 && player.sourceType !== "search"
+                            text: qsTranslate("NowPlayingPage", "Playing from: %1").arg(player.sourceName)
+                            color: Theme.textDim
+                            font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight
+                        }
+                    }
+                    // The one filled disc on the page: the thing to press.
+                    Rectangle {
+                        id: resumeButton
+                        objectName: "homeResume"
+                        Layout.preferredWidth: 48
+                        Layout.preferredHeight: 48
+                        radius: width / 2
+                        color: resumeHov.hovered ? Qt.lighter(Theme.accent, 1.18) : Theme.accent
+                        border.width: activeFocus ? 2 : 0
+                        border.color: Theme.textPrimary
+                        activeFocusOnTab: true
+                        Keys.onReturnPressed: player.playPause()
+                        Keys.onSpacePressed:  player.playPause()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: player.playing ? qsTranslate("PlayerBar", "Pause")
+                                                        : qsTranslate("PlayerBar", "Play")
+                        Accessible.onPressAction: player.playPause()
+                        VectorIcon {
+                            anchors.centerIn: parent
+                            name: player.playing ? "pause" : "play"
+                            color: Theme.accentInk
+                            width: 20; height: 20
+                        }
+                        HoverHandler { id: resumeHov; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: player.playPause() }
+                        ToolTip.visible: resumeHov.hovered
+                        ToolTip.text: Accessible.name
+                        ToolTip.delay: Theme.tooltipDelay
+                    }
+                }
             }
 
             Item { Layout.preferredHeight: Theme.space6 }
@@ -169,10 +324,23 @@ Rectangle {
                 spacing: Theme.space8
 
                 HorizontalSection {
+                    objectName: "homeRecentlyPlayed"
+                    Layout.fillWidth: true
+                    visible: root.recentlyPlayed.length > 0
+                    title: qsTr("Recently played", "Home, the row of things played here lately")
+                    items: root.recentlyPlayed
+                    // Each card takes its own kind; this names the row alone.
+                    mediaType: "recent"
+                    showViewAll: false
+                    onItemClicked: (idx, item) => root.openEntry(item)
+                    onItemPlayClicked: (idx, item) => root.playEntry(item)
+                }
+
+                HorizontalSection {
                     Layout.fillWidth: true
                     // Over nothing it reads as an account without mixes.
                     visible: mixes.length > 0
-                    title: qsTr("Your mixes")
+                    title: qsTr("My mixes")
                     items: root.mixes
                     mediaType: "mix"
                     onItemClicked: (idx, item) => navigateTo("mix", {
@@ -203,7 +371,7 @@ Rectangle {
                     Layout.rightMargin: Theme.space6
                     spacing: Theme.space2
                     Text {
-                        text: qsTr("Your mixes")
+                        text: qsTr("My mixes")
                         color: Theme.textPrimary
                         font.pixelSize: Theme.fontSection
                         font.bold: true
@@ -250,7 +418,7 @@ Rectangle {
                 HorizontalSection {
                     Layout.fillWidth: true
                     visible: playlists.length > 0
-                    title: qsTr("Your playlists")
+                    title: qsTr("My playlists")
                     items: root.playlists
                     mediaType: "playlist"
                     onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
@@ -284,5 +452,5 @@ Rectangle {
         Window.window.navigate(page, params)
     }
 
-    LoadingOverlay { loading: root.loading }
+    Skeleton { loading: root.loading; kind: "cards" }
 }

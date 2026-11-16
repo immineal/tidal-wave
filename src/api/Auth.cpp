@@ -276,7 +276,9 @@ void Auth::fetchSession() {
         m_api->setCountryCode(m_countryCode);
 
         m_api->get(QStringLiteral("users/%1").arg(m_userId), {},
-            [this](QJsonObject u, QString) {
+            [this, userId = m_userId](QJsonObject u, QString) {
+                // Signed out or ended meanwhile: saving would write the file again.
+                if (m_accessToken.isEmpty() || m_userId != userId) return;
                 const QString name = displayNameFrom(u);
                 if (!name.isEmpty() && name != m_username) {
                     m_username = name;
