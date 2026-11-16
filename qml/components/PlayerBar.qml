@@ -103,16 +103,31 @@ Rectangle {
     }
     Component.onCompleted: updateLikedState()
 
+    // The side groups' widths. Both 280 where the bar has room, so the
+    // transport sits in the middle. Below that the right group keeps its own
+    // width and the title gets the rest, down to 200; nothing depends on
+    // whether a track is loaded.
+    readonly property real sideRoom: barRow.width - centreCol.implicitWidth
+    readonly property bool sidesEven: sideRoom >= 2 * 280
+    readonly property real rightWidth:
+        sidesEven ? Math.max(rightGroup.implicitWidth, 280) : rightGroup.implicitWidth
+    readonly property real leftWidth:
+        sidesEven ? 280 : Math.max(200, Math.min(280, sideRoom - rightGroup.implicitWidth))
+
     RowLayout {
+        id: barRow
         anchors.fill: parent
         anchors.leftMargin: Theme.space4
         anchors.rightMargin: Theme.space4
         spacing: 0
 
         // ── Track info (left) ──────────────────────────
+        // The two side groups hold one width with or without a track, so
+        // the transport and the seek bar never move when playback starts.
         RowLayout {
             id: leftGroup
-            Layout.preferredWidth: 280
+            Layout.fillWidth: false
+            Layout.preferredWidth: root.leftWidth
             Layout.minimumWidth: 200
             spacing: Theme.space3
 
@@ -132,14 +147,42 @@ Rectangle {
             }
 
             ColumnLayout {
-                Layout.fillWidth: true; spacing: Theme.space1; clip: true
+                Layout.fillWidth: true; spacing: Theme.space1
 
-                Text {
-                    objectName: "playerBarTitle"
+                // The title as wide as its words, and the heart right after
+                // it, overhanging the line so the column keeps its height.
+                Item {
+                    id: titleLine
                     Layout.fillWidth: true
-                    text: hasTrack ? track.title : qsTr("No track playing")
-                    color: Theme.textPrimary; font.pixelSize: Theme.fontBody; font.bold: true; elide: Text.ElideRight
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
+                    implicitHeight: titleText.implicitHeight
+
+                    Text {
+                        id: titleText
+                        objectName: "playerBarTitle"
+                        width: Math.min(implicitWidth, titleLine.width - likeBtn.width)
+                        text: hasTrack ? track.title : qsTr("No track playing")
+                        color: Theme.textPrimary; font.pixelSize: Theme.fontBody; font.bold: true; elide: Text.ElideRight
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showNowPlaying() }
+                    }
+
+                    // Like is the only thing in this group that acts on the
+                    // track. The Now Playing arrow opens a view, so it sits
+                    // with the queue button.
+                    IconButton {
+                        id: likeBtn
+                        objectName: "playerLikeButton"
+                        anchors.left: titleText.right
+                        anchors.verticalCenter: titleText.verticalCenter
+                        visible: root.hasTrack
+                        icon: root.isLiked ? "heart-filled" : "heart"
+                        size: 16
+                        active: root.isLiked
+                        label: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
+                        // Anchored on the bar, not on this button: IconButton binds the
+                        // shared tool tip, so anchored here its delay, visibility and
+                        // text would apply to the refusal.
+                        onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
+                    }
                 }
                 // One hover target and one tab stop per artist. What is not a
                 // name keeps the left group's own job of opening Now Playing.
@@ -169,31 +212,23 @@ Rectangle {
                         fallbackArtistId: 0
                     }
                 }
-                QualityBadge {
-                    visible: hasTrack && quality.length > 0
-                    Layout.maximumWidth: parent.width
+                // The badge's line is held with or without a badge, so the
+                // two lines above do not jump when a track starts.
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: barBadge.implicitHeight
+                    QualityBadge {
+                        id: barBadge
+                        visible: hasTrack && quality.length > 0
+                        width: Math.min(implicitWidth, parent.width)
+                    }
                 }
-            }
-
-            // Like is the only thing in this group that acts on the track. The
-            // Now Playing arrow opens a view, so it sits with the queue button.
-            IconButton {
-                id: likeBtn
-                objectName: "playerLikeButton"
-                visible: root.hasTrack
-                icon: root.isLiked ? "heart-filled" : "heart"
-                size: 16
-                active: root.isLiked
-                label: root.isLiked ? qsTr("Unlike track") : qsTr("Like track")
-                // Anchored on the bar, not on this button: IconButton binds the
-                // shared tool tip, so anchored here its delay, visibility and
-                // text would apply to the refusal.
-                onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked, root)
             }
         }
 
         // ── Central controls ───────────────────────────
         ColumnLayout {
+            id: centreCol
             Layout.fillWidth: true; spacing: Theme.space1
             // Never squeeze the transport: its buttons and gaps cannot shrink,
             // and without this the row layout hands the column less and the
@@ -280,8 +315,10 @@ Rectangle {
         // ── Right controls ─────────────────────────────
         RowLayout {
             id: rightGroup
-            // Bound to the group's own implicit width, so the row layout cannot
-            // squeeze it and clip the queue button off a narrow window.
+            // rightWidth, never below its own implicit width, or a narrow
+            // window would clip the queue button.
+            Layout.fillWidth: false
+            Layout.preferredWidth: root.rightWidth
             Layout.minimumWidth: implicitWidth
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             // The 8px gaps are a margin on each control, not one `spacing: 8`.
@@ -354,7 +391,9 @@ Rectangle {
             IconButton {
                 id: nowPlayingBtn
                 objectName: "playerBarNowPlayingButton"
-                visible: root.hasTrack
+                // Laid out with no track too, so nothing beside it moves.
+                opacity: root.hasTrack ? 1 : 0
+                enabled: root.hasTrack
                 Layout.leftMargin: Theme.space2
                 icon: "chevron-up"
                 size: 18

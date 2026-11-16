@@ -127,6 +127,88 @@ TestCase {
         bridge.setLyricsForTest("Erste Zeile\nZweite Zeile\nDritte Zeile", false)
     }
 
+    // ── 1. the player bar holds still when the first track starts ────────
+
+    function barShape(bar) {
+        function x(name) {
+            var it = findByName(bar, name)
+            verify(it, name + " was not found")
+            return it.mapToItem(bar, 0, 0).x
+        }
+        var seek = findByName(bar, "playerBarSeekBar")
+        verify(seek, "playerBarSeekBar was not found")
+        var title = findByName(bar, "playerBarTitle")
+        verify(title, "playerBarTitle was not found")
+        return {
+            play:    x("playerBarPlayButton"),
+            shuffle: x("playerBarShuffle"),
+            repeat:  x("playerBarRepeat"),
+            seekX:   seek.mapToItem(bar, 0, 0).x,
+            seekW:   seek.width,
+            titleX:  title.mapToItem(bar, 0, 0).x,
+            titleY:  title.mapToItem(bar, 0, 0).y,
+            volume:  bar.volumeStack.mapToItem(bar, 0, 0).x,
+            output:  x("playerBarOutputButton"),
+            queue:   x("playerBarQueueButton"),
+            leftW:   bar.trackInfoGroup.width
+        }
+    }
+
+    function test_the_bar_does_not_move_when_a_track_starts_data() {
+        return [ { tag: "640", w: 640 }, { tag: "960", w: 960 }, { tag: "1280", w: 1280 } ]
+    }
+
+    function test_the_bar_does_not_move_when_a_track_starts(row) {
+        player.setCurrentTrackForTest({})
+        player.setAudioQualityForTest("")
+        player.setAudioFormatForTest("")
+        player.setDurationForTest(0)
+        player.setPositionForTest(0)
+        var host = showHost(playerBarHost, row.w, 200)
+        var bar = host.bar
+        verify(!bar.hasTrack, "the bar started with a track")
+        var idle = barShape(bar)
+
+        player.setCurrentTrackForTest(track("A Song Whose Title Takes Its Time (Remastered Edition)"))
+        player.setAudioQualityForTest("HI_RES_LOSSLESS")
+        player.setAudioFormatForTest("24-bit / 96 kHz FLAC")
+        player.setDurationForTest(215000)
+        player.setPositionForTest(42000)
+        frame(host)
+        var playing = barShape(bar)
+
+        for (var k in idle)
+            verify(Math.abs(idle[k] - playing[k]) <= 0.5,
+                   row.tag + ": " + k + " moved from " + idle[k].toFixed(1) + " to "
+                   + playing[k].toFixed(1) + " when the track started")
+    }
+
+    // The heart follows the title, short or long, and never leaves the group.
+    function test_the_heart_sits_beside_the_title_data() {
+        return [ { tag: "short title, 1280", w: 1280, title: "Kurz" },
+                 { tag: "long title, 1280",  w: 1280, title: "A Song Whose Title Takes Its Time (Remastered Edition)" },
+                 { tag: "long title, 640",   w: 640,  title: "A Song Whose Title Takes Its Time (Remastered Edition)" } ]
+    }
+
+    function test_the_heart_sits_beside_the_title(row) {
+        player.setCurrentTrackForTest(track(row.title))
+        var host = showHost(playerBarHost, row.w, 200)
+        var bar = host.bar
+        var title = findByName(bar, "playerBarTitle")
+        var heart = findByName(bar, "playerLikeButton")
+        verify(title && heart && heart.visible, "the title or the heart is missing")
+        var inkEnd = title.mapToItem(bar, Math.min(title.width, title.contentWidth), 0).x
+        var heartInk = findByName(heart, "iconButtonGlyph").mapToItem(bar, 0, 0).x
+        verify(heartInk - inkEnd >= 0 && heartInk - inkEnd <= Theme.space4,
+               row.tag + ": the heart's glyph starts " + (heartInk - inkEnd).toFixed(1)
+               + "px after the end of the title")
+        var group = bar.trackInfoGroup
+        var heartEnd = heart.mapToItem(group, heart.width, 0).x
+        verify(heartEnd <= group.width + 0.5,
+               row.tag + ": the heart ends at " + heartEnd.toFixed(1)
+               + " in a " + group.width.toFixed(1) + "px group")
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
