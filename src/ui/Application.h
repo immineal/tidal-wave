@@ -237,6 +237,7 @@ private:
     TrackNotifier *m_notifier = nullptr;
     Scrobbler   *m_scrobbler = nullptr;
     ScrobbleSink *m_listenBrainz = nullptr;
+    ScrobbleSink *m_lastFm = nullptr;
     QQmlApplicationEngine *m_engine = nullptr;
     QElapsedTimer m_sinceFavoritesCheck;
     SignalWatcher *m_signals = nullptr;

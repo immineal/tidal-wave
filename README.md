@@ -341,6 +341,18 @@ named.
     listen also the time you played it (`src/scrobble/ListenBrainz.cpp`). Every request
     carries your ListenBrainz token and the same `User-Agent` as the update check, so
     ListenBrainz sees your IP address. No Tidal token or id other than that link is sent.
+*   **Last.fm, only once you switch it on in Settings -> Scrobbling and connect.** The
+    switch is off by default and separate from the ListenBrainz one; both can be on.
+    Connecting follows Last.fm's desktop sign-in: `auth.getToken`, then your browser opens
+    `https://www.last.fm/api/auth/` with the app's key and that token, and once you have
+    allowed access there, `auth.getSession` fetches your session key and user name. After
+    that `track.updateNowPlaying` and `track.scrobble`, at most 50 per call, go to
+    `https://ws.audioscrobbler.com/2.0/` under the same rule as for ListenBrainz. They
+    carry the artists, title, album, length and track number and, for a scrobble, the time
+    you played it; no ISRC and no Tidal link (`src/scrobble/LastFm.cpp`). Every request
+    carries the app's Last.fm API key, which is in the source, a signature made with the
+    app's shared secret, also in the source, your session key and the same `User-Agent` as
+    the update check, so Last.fm sees your IP address.
 *   **Nothing, for timing plain lyrics.** "Sync plain lyrics automatically" (on by
     default) analyses the track's audio file, which the player has downloaded to play it
     anyway, on a low-priority thread of the app (`src/lyricsync/AutoSync.cpp`). It makes
@@ -369,17 +381,20 @@ named.
     ListenBrainz user token and user name once you connect, written the same way: plain
     JSON, readable and writable by your user only (`ScrobbleSink::saveSecret`).
     Disconnecting deletes it, and so does logging out of Tidal.
+    **`scrobbling-lastfm.json`** beside it holds your Last.fm session key and user name in
+    the same way.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
     language, sidebar width, audio output device, software rendering flag and the
     three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last
     download folder (`src/player/Downloader.cpp`), your pinned items and recently played
     list keyed by Tidal user id (`src/ui/PinStore.cpp`, `src/player/Player.cpp`), the
-    update check's state (`src/ui/UpdateCheck.cpp`), and the scrobbling switch
+    update check's state (`src/ui/UpdateCheck.cpp`), and the two scrobbling switches
     (`src/scrobble/ScrobbleSink.cpp`).
 *   **`~/.local/share/TidalWave/Tidal Wave/`** (`QStandardPaths::AppDataLocation`) holds
     `library/albumtracks-<userId>.json`, a cache of your library's album track listings so
     that searching your collection does not re-fetch it (`src/api/LibraryIndex.cpp`), and
-    `scrobble-queue-listenbrainz.json`, the listens not yet accepted by ListenBrainz, so a
+    `scrobble-queue-listenbrainz.json` and `scrobble-queue-lastfm.json`, the listens not
+    yet accepted by each service, so a
     quit or an outage loses none, with the user name they belong to. It holds at most
     10000 and is removed once it is empty. Disconnecting keeps it, so the same account
     connecting again sends them; connecting another account deletes it

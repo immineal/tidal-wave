@@ -1480,6 +1480,26 @@
         <source>%1 turned down the listen of &quot;%2&quot;.</source>
         <translation>%1 hat die Wiedergabe von „%2“ abgelehnt.</translation>
     </message>
+    <message>
+        <source>Waiting for %1…</source>
+        <translation>Warte auf %1…</translation>
+    </message>
+    <message>
+        <source>%1 turned down the sign-in. Try again later.</source>
+        <translation>%1 hat die Anmeldung abgelehnt. Versuch es später noch einmal.</translation>
+    </message>
+    <message>
+        <source>Access to %1 has not been allowed yet. Allow it on the page in your browser, then try again.</source>
+        <translation>Der Zugriff auf %1 wurde noch nicht erlaubt. Erlaube ihn auf der Seite in deinem Browser und versuch es dann noch einmal.</translation>
+    </message>
+    <message>
+        <source>This sign-in has run out. Connect with %1 again.</source>
+        <translation>Diese Anmeldung ist abgelaufen. Verbinde dich noch einmal mit %1.</translation>
+    </message>
+    <message>
+        <source>%1 ended the connection, so nothing is sent. Connect again to go on.</source>
+        <translation>%1 hat die Verbindung beendet, deshalb wird nichts gesendet. Verbinde dich noch einmal, um weiterzumachen.</translation>
+    </message>
 </context>
 <context>
     <name>SearchBar</name>
@@ -1711,6 +1731,48 @@
         <translation>Deinen Token findest du in deinen ListenBrainz-Einstellungen</translation>
     </message>
     <message>
+        <source>Send what you play to Last.fm</source>
+        <translation>Gehörtes an Last.fm senden</translation>
+    </message>
+    <message>
+        <source>A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to last.fm.</source>
+        <translation>Ein Titel zählt, sobald du die Hälfte davon oder 4 Minuten gehört hast. Name, Künstler, Album und Länge des Titels und wann du ihn gehört hast, gehen an last.fm.</translation>
+    </message>
+    <message>
+        <source>Connected to Last.fm</source>
+        <translation>Mit Last.fm verbunden</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <comment>button that forgets the Last.fm session</comment>
+        <translation>Trennen</translation>
+    </message>
+    <message>
+        <source>Connect with Last.fm</source>
+        <translation>Mit Last.fm verbinden</translation>
+    </message>
+    <message>
+        <source>Your browser opens Last.fm, where you allow Tidal Wave to scrobble for you.</source>
+        <translation>Dein Browser öffnet Last.fm, wo du Tidal Wave das Scrobbeln für dich erlaubst.</translation>
+    </message>
+    <message>
+        <source>Allow access on the Last.fm page in your browser, then come back here.</source>
+        <translation>Erlaube den Zugriff auf der Last.fm-Seite in deinem Browser und komm dann hierher zurück.</translation>
+    </message>
+    <message>
+        <source>I&apos;ve allowed access</source>
+        <translation>Zugriff ist erlaubt</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <comment>button that stops connecting Last.fm</comment>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Open the Last.fm page again</source>
+        <translation>Last.fm-Seite noch einmal öffnen</translation>
+    </message>
+    <message>
         <source>Performance</source>
         <translation>Leistung</translation>
     </message>
@@ -1771,6 +1833,10 @@
     <message>
         <source>Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app&apos;s name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account deletes them.</source>
         <translation>Scrobbling geschieht nur, wenn du es einschaltest und ein Konto verbindest: api.listenbrainz.org erhält den Titel, den du startest, und sobald er zählt, die Wiedergabe mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge, Titelnummer, ISRC und Tidal-Link des Titels, den Namen und die Version der App sowie deinen ListenBrainz-Benutzertoken; außerdem sieht die Seite deine IP-Adresse. Der Token wird hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Wiedergaben. Beim Trennen und beim Abmelden von Tidal wird der Token gelöscht; die Wiedergaben bleiben, bis dasselbe Konto wieder verbunden wird, und werden gelöscht, wenn du ein anderes Konto verbindest.</translation>
+    </message>
+    <message>
+        <source>Last.fm, likewise only once you switch it on and connect: &quot;Connect with Last.fm&quot; opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, artists, album, length and track number, the app&apos;s own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.</source>
+        <translation>Last.fm ebenfalls nur, wenn du es einschaltest und ein Konto verbindest: „Mit Last.fm verbinden“ öffnet last.fm in deinem Browser, und ws.audioscrobbler.com wird nach einem Anmeldetoken und, sobald du den Zugriff erlaubt hast, nach einer Sitzung gefragt. Danach erhält es den Titel, den du startest, und sobald er zählt, ein Scrobble mit dem Zeitpunkt, zu dem du ihn gehört hast. Beides enthält Name, Künstler, Album, Länge und Titelnummer des Titels, den eigenen Last.fm-Schlüssel der App und deinen Sitzungsschlüssel; außerdem sieht die Seite deine IP-Adresse. ISRC und Tidal-Link gehen nicht an Last.fm. Der Sitzungsschlüssel und dein Last.fm-Benutzername werden hier als unverschlüsseltes JSON gespeichert, das nur du lesen kannst, zusammen mit den noch nicht gesendeten Scrobbles. Beim Trennen und beim Abmelden von Tidal wird der Schlüssel gelöscht, und die Scrobbles bleiben wie bei ListenBrainz erhalten.</translation>
     </message>
     <message>
         <source>Log out?</source>

@@ -19,6 +19,7 @@ Popup {
     property var check:        (typeof updateCheck !== "undefined") ? updateCheck : null
     property var downloads:    (typeof downloader  !== "undefined") ? downloader  : null
     property var scrobble:     (typeof listenBrainz !== "undefined") ? listenBrainz : null
+    property var lastfm:       (typeof lastFm !== "undefined") ? lastFm : null
 
     // The effective language, when there is something to ask. Both lists below
     // come back from C++ with translated labels, so they have to be rebuilt
@@ -719,8 +720,8 @@ Popup {
 
 
             // ── scrobbling ───────────────────────────────────────────────
-            // ListenBrainz, off by default. A token is checked with the
-            // service before it is kept; src/scrobble does the sending.
+            // ListenBrainz and Last.fm, each off by default and with its own
+            // account and queue; src/scrobble does the sending.
             Section {
                 id: scrobbling
                 heading: qsTr("Scrobbling")
@@ -878,6 +879,136 @@ Popup {
                     visible: scrobbling.on && text.length > 0
                     text: scrobbling.sink ? scrobbling.sink.statusText : ""
                     color: scrobbling.refused ? Theme.redText : Theme.textDim
+                    font.pixelSize: Theme.fontMeta
+                    wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+
+                // Signed in through the browser: Connect opens Last.fm's page,
+                // and "I've allowed access" fetches the session once it is.
+                QtObject {
+                    id: lastfmBlock
+                    readonly property var sink: root.lastfm
+                    readonly property bool on: sink ? sink.enabled === true : false
+                    readonly property bool linked: sink ? sink.connected === true : false
+                    readonly property bool waiting: sink ? sink.awaitingBrowser === true : false
+                    readonly property bool busy: sink ? sink.checking === true : false
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.space3
+                    spacing: Theme.space3
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            text: qsTr("Send what you play to Last.fm")
+                            color: Theme.textPrimary; font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                        Text {
+                            objectName: "settingsLastfmNote"
+                            text: qsTr("A track counts once you have played half of it, or 4 minutes. Its title, artists, album, length and the time you played it go to last.fm.")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                            wrapMode: Text.Wrap; Layout.fillWidth: true
+                        }
+                    }
+                    Toggle {
+                        objectName: "settingsLastfmToggle"
+                        label: qsTr("Send what you play to Last.fm")
+                        Layout.alignment: Qt.AlignVCenter
+                        checked: lastfmBlock.on
+                        onToggled: if (lastfmBlock.sink) lastfmBlock.sink.enabled = !lastfmBlock.on
+                    }
+                }
+
+                RowLayout {
+                    objectName: "settingsLastfmAccount"
+                    visible: lastfmBlock.on && lastfmBlock.linked
+                    Layout.fillWidth: true
+                    spacing: Theme.space3
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.spaceHalf
+                        Text {
+                            objectName: "settingsLastfmUser"
+                            text: lastfmBlock.sink ? lastfmBlock.sink.userName : ""
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontBody; font.bold: true
+                            elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                        Text {
+                            text: qsTr("Connected to Last.fm")
+                            color: Theme.textDim; font.pixelSize: Theme.fontMeta
+                            elide: Text.ElideRight; Layout.fillWidth: true
+                        }
+                    }
+                    PillButton {
+                        compact: true; accent: false
+                        objectName: "settingsLastfmDisconnect"
+                        text: qsTr("Disconnect", "button that forgets the Last.fm session")
+                        Layout.alignment: Qt.AlignVCenter
+                        onClicked: if (root.lastfm) root.lastfm.disconnectAccount()
+                    }
+                }
+
+                // Not connected: the first step, which opens the browser.
+                ColumnLayout {
+                    visible: lastfmBlock.on && !lastfmBlock.linked && !lastfmBlock.waiting
+                    Layout.fillWidth: true
+                    spacing: Theme.space2
+                    PillButton {
+                        compact: true; accent: false
+                        objectName: "settingsLastfmConnect"
+                        text: qsTr("Connect with Last.fm")
+                        muted: lastfmBlock.busy
+                        onClicked: if (root.lastfm && !lastfmBlock.busy) root.lastfm.startBrowserSignIn()
+                    }
+                    Text {
+                        text: qsTr("Your browser opens Last.fm, where you allow Tidal Wave to scrobble for you.")
+                        color: Theme.textDim; font.pixelSize: Theme.fontMicro
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                }
+
+                // The browser step: back here once access is allowed.
+                ColumnLayout {
+                    visible: lastfmBlock.on && !lastfmBlock.linked && lastfmBlock.waiting
+                    Layout.fillWidth: true
+                    spacing: Theme.space2
+                    Text {
+                        text: qsTr("Allow access on the Last.fm page in your browser, then come back here.")
+                        color: Theme.textSec; font.pixelSize: Theme.fontMeta
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        spacing: Theme.space2
+                        PillButton {
+                            compact: true; accent: false
+                            objectName: "settingsLastfmFinish"
+                            text: qsTr("I've allowed access")
+                            muted: lastfmBlock.busy
+                            onClicked: if (root.lastfm && !lastfmBlock.busy) root.lastfm.finishBrowserSignIn()
+                        }
+                        PillButton {
+                            compact: true; accent: false
+                            objectName: "settingsLastfmCancel"
+                            text: qsTr("Cancel", "button that stops connecting Last.fm")
+                            onClicked: if (root.lastfm) root.lastfm.cancelBrowserSignIn()
+                        }
+                    }
+                    LinkLine {
+                        objectName: "settingsLastfmPageLink"
+                        text: qsTr("Open the Last.fm page again")
+                        onActivated: if (lastfmBlock.sink) app.openUrl(lastfmBlock.sink.signInPage)
+                    }
+                }
+
+                Text {
+                    objectName: "settingsLastfmStatus"
+                    visible: lastfmBlock.on && text.length > 0
+                    text: lastfmBlock.sink ? lastfmBlock.sink.statusText : ""
+                    color: lastfmBlock.sink && lastfmBlock.sink.authFailed === true ? Theme.redText : Theme.textDim
                     font.pixelSize: Theme.fontMeta
                     wrapMode: Text.Wrap; Layout.fillWidth: true
                 }
@@ -1201,6 +1332,10 @@ Popup {
                 PrivacyLine {
                     visible: privacyDetails.expanded
                     text: qsTr("Scrobbling, only once you switch it on and connect: api.listenbrainz.org gets the track you start playing and, once it counts, a listen with the time you played it. Both carry the title, artists, album, length, track number, ISRC and Tidal link, the app's name and version, and your ListenBrainz user token, and the site sees your IP address. The token is kept here as plain JSON readable only by you, with the listens not sent yet. Disconnecting, or logging out of Tidal, deletes the token; the listens stay until the same account connects again, and connecting another account deletes them.")
+                }
+                PrivacyLine {
+                    visible: privacyDetails.expanded
+                    text: qsTr("Last.fm, likewise only once you switch it on and connect: \"Connect with Last.fm\" opens last.fm in your browser, and ws.audioscrobbler.com is asked for a sign-in token and, once you have allowed it, for a session. After that it gets the track you start playing and, once it counts, a scrobble with the time you played it. Both carry the title, artists, album, length and track number, the app's own Last.fm key and your session key, and the site sees your IP address; the ISRC and the Tidal link do not go to Last.fm. The session key and your Last.fm user name are kept here as plain JSON readable only by you, with the scrobbles not sent yet, and disconnecting or logging out of Tidal deletes the key and keeps the scrobbles as for ListenBrainz.")
                 }
                 PrivacyLine {
                     visible: privacyDetails.expanded

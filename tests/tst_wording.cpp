@@ -62,6 +62,7 @@ const QStringList kNames = {
     QStringLiteral("NetEase Cloud Music"), QStringLiteral("China"),
     QStringLiteral("Home / Search / Collection"), QStringLiteral("Experimental"),
     QStringLiteral("Feedback"), QStringLiteral("Hi-Res"), QStringLiteral("Qt"),
+    QStringLiteral("Last.fm"),
 };
 
 } // namespace

@@ -11,6 +11,7 @@
 #include "ui/TrackNotifier.h"
 #include "ui/TrayMenu.h"
 #include "ui/UpdateCheck.h"
+#include "scrobble/LastFm.h"
 #include "scrobble/ListenBrainz.h"
 #include "scrobble/ScrobbleSink.h"
 #include "scrobble/Scrobbler.h"
@@ -800,8 +801,12 @@ int Application::run(int argc, char **argv) {
     // Local play and casting alike; each service keeps its own queue.
     auto *listenBrainz = new ListenBrainz;
     m_listenBrainz = new ScrobbleSink(listenBrainz, ScrobbleSink::defaultPaths(listenBrainz->key()), this);
+    auto *lastFm = new LastFm;
+    m_lastFm = new ScrobbleSink(lastFm, ScrobbleSink::defaultPaths(lastFm->key()), this);
+    connect(m_lastFm, &ScrobbleSink::openPage, this, [this](const QUrl &url) { openUrl(url.toString()); });
     m_scrobbler = new Scrobbler(this);
     m_scrobbler->addSink(m_listenBrainz);
+    m_scrobbler->addSink(m_lastFm);
     m_scrobbler->attach(m_player);
     // This launch's own options wait like a second launch's; the window
     // shows itself.
@@ -833,7 +838,7 @@ int Application::run(int argc, char **argv) {
     // A session that ended takes playback, the queue and the account's
     // lists with it, so the next account to sign in inherits nothing.
     connect(m_auth, &Auth::loggedOut, this, [this]() {
-        endAccountSession(m_client, m_player, m_pins, m_library, true, {m_listenBrainz});
+        endAccountSession(m_client, m_player, m_pins, m_library, true, {m_listenBrainz, m_lastFm});
     });
     connect(m_auth, &Auth::sessionExpired, this, [this]() {
         endAccountSession(m_client, m_player, m_pins, m_library, false);
@@ -905,6 +910,7 @@ int Application::run(int argc, char **argv) {
     // an unqualified name in QML finds before the context property.
     ctx->setContextProperty(QStringLiteral("updateCheck"), m_update);
     ctx->setContextProperty(QStringLiteral("listenBrainz"), m_listenBrainz);
+    ctx->setContextProperty(QStringLiteral("lastFm"), m_lastFm);
 
     // loadFromModule() arrived in Qt 6.5. The URL is the same component; its
     // prefix has to match RESOURCE_PREFIX in CMakeLists.txt, and a wrong one

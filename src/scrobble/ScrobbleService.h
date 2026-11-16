@@ -4,6 +4,7 @@
 #include <QList>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 #include <functional>
 #include "scrobble/Listen.h"
 
@@ -14,8 +15,11 @@ struct ScrobbleReply {
         Retry,       // offline, 5xx, 429: the same request later
         AuthFailed,  // the secret is no longer accepted: stop sending
         Rejected,    // the request itself is refused: never send it again
+        Pending,     // a browser sign-in the user has not allowed yet
     };
     Kind kind = Ok;
+    // A Retry because the service asked for fewer requests.
+    bool slowDown = false;
     // Seconds the service asks to wait before the next request, from its
     // rate-limit headers. 0 when it said nothing.
     int waitSec = 0;
@@ -32,6 +36,8 @@ class ScrobbleService : public QObject {
 public:
     using Done = std::function<void(const ScrobbleReply &)>;
     using Verified = std::function<void(const ScrobbleReply &, const QString &userName)>;
+    using Begun    = std::function<void(const ScrobbleReply &, const QString &token, const QUrl &page)>;
+    using Finished = std::function<void(const ScrobbleReply &, const QString &secret, const QString &userName)>;
 
     using QObject::QObject;
 
@@ -44,6 +50,17 @@ public:
 
     // Asks the service whose secret this is.
     virtual void verify(const QString &secret, Verified done) = 0;
+
+    // A service whose secret comes from a sign-in in the browser (Last.fm):
+    // beginSignIn gets a request token and the page that allows it, and
+    // finishSignIn trades the allowed token for the secret.
+    virtual bool hasBrowserSignIn() const { return false; }
+    virtual void beginSignIn(Begun done) {
+        ScrobbleReply r; r.kind = ScrobbleReply::Rejected; done(r, {}, {});
+    }
+    virtual void finishSignIn(const QString &token, Finished done) {
+        Q_UNUSED(token); ScrobbleReply r; r.kind = ScrobbleReply::Rejected; done(r, {}, {});
+    }
     // Optional for the service and never retried.
     virtual void nowPlaying(const QString &secret, const Listen &listen, Done done) = 0;
     // Listens in the order they were played, at most maxBatch().

@@ -78,6 +78,7 @@ set(SOURCES
     src/api/FavoritesCache.cpp
     src/scrobble/PlayTracker.cpp
     src/scrobble/ListenBrainz.cpp
+    src/scrobble/LastFm.cpp
     src/scrobble/ScrobbleSink.cpp
     src/scrobble/Scrobbler.cpp
 )
@@ -119,6 +120,7 @@ set(HEADERS
     src/scrobble/PlayTracker.h
     src/scrobble/ScrobbleService.h
     src/scrobble/ListenBrainz.h
+    src/scrobble/LastFm.h
     src/scrobble/ScrobbleSink.h
     src/scrobble/Scrobbler.h
 )
