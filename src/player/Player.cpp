@@ -1888,6 +1888,11 @@ void Player::onCastDuration(double sec) {
     if (casting()) emit durationChanged(m_castDuration);
 }
 
+void Player::onCastFinished() {
+    if (!casting()) return;
+    trackEnded();
+}
+
 void Player::onCastPlaying(bool playing) {
     if (m_castPlaying == playing) return;
     m_castPlaying = playing;

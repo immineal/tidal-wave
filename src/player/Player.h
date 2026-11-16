@@ -147,6 +147,9 @@ public:
     void onCastPosition(double sec);
     void onCastDuration(double sec);
     void onCastPlaying(bool playing);
+    // The device played its track out: the queue goes on as it does when a
+    // track runs out here, so repeat-one starts it over and nothing waits.
+    void onCastFinished();
 
     // ── Playing ─────────────────────────────────────────────────────────
     // Tracks are QVariantMaps from TidalBridge.
