@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QSet>
 #include <QSignalSpy>
 #include <QTcpServer>
@@ -84,6 +85,12 @@ public:
         return out;
     }
 
+    void releaseProfiles()
+    {
+        for (const QPointer<QTcpSocket> &sock : std::exchange(heldProfiles, {}))
+            if (sock) answer(sock, 200, R"({"userId":7,"countryCode":"DE","firstName":"Robin"})");
+    }
+
     // Answers the token requests that Hold kept waiting.
     void release()
     {
@@ -95,6 +102,10 @@ public:
     bool        refuseAll = false;      // 401 for a good token as well
     QByteArray  refusal = kExpired;
     TokenAnswer tokenAnswer = Issue;
+    // The profile answer waits for releaseProfiles(), or comes this late,
+    // as on a loaded machine.
+    bool        holdProfile = false;
+    int         profileDelayMs = 50;
     int         tokenRequests = 0;
     int         refused = 0;            // 401 answers given by the API
     QList<Seen> api;
@@ -122,7 +133,14 @@ private:
         }
         api << seen;
         if (!refuseAll && goodTokens.contains(seen.bearer)) {
-            answer(sock, 200, R"({"userId":7,"countryCode":"DE","firstName":"Robin"})");
+            const QByteArray body = R"({"userId":7,"countryCode":"DE","firstName":"Robin"})";
+            const bool profile = seen.path.startsWith(QLatin1String("/api/users/"));
+            if (profile && holdProfile)
+                heldProfiles << sock;
+            else if (profile && profileDelayMs > 0)
+                QTimer::singleShot(profileDelayMs, sock, [sock, body] { answer(sock, 200, body); });
+            else
+                answer(sock, 200, body);
         } else {
             ++refused;
             answer(sock, 401, refusal);
@@ -149,6 +167,7 @@ private:
     }
 
     QList<QTcpSocket *> held;
+    QList<QPointer<QTcpSocket>> heldProfiles;
     int m_issued = 0;
 };
 
@@ -283,13 +302,16 @@ class TestSession : public QObject {
     }
 
     // Signs in from a saved session and waits until the start-up requests
-    // (sessions, users/7) are answered.
+    // (sessions, users/7) are answered and the name they bring is saved.
     void signIn(Rig &rig, qint64 expiresInSecs = 3600)
     {
         saveSession(expiresInSecs);
         rig.auth.loadCredentials();
         QCOMPARE(rig.auth.state(), Auth::State::LoggedIn);
         QTRY_COMPARE_WITH_TIMEOUT(rig.tidal.seenFor(QStringLiteral("/api/users/7")).size(), 1, 5000);
+        // The server has seen the request; its answer lands and is saved later.
+        if (!rig.tidal.holdProfile)
+            QTRY_COMPARE_WITH_TIMEOUT(rig.auth.username(), QStringLiteral("Robin"), 5000);
         QTest::qWait(20);
         rig.tidal.api.clear();
     }
@@ -732,6 +754,43 @@ private slots:
         QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
         QVERIFY(rig.auth.accessToken().isEmpty());
         QVERIFY(!QFile::exists(credsPath()));
+    }
+
+    void aProfileThatComesAfterTheSessionIsNotSaved_data()
+    {
+        QTest::addColumn<bool>("signOut");
+        QTest::newRow("signed out")                 << true;
+        QTest::newRow("refused at a refresh") << false;
+    }
+
+    // The profile asked for at the start lands after the session ended, and
+    // no session file comes back.
+    void aProfileThatComesAfterTheSessionIsNotSaved()
+    {
+        QFETCH(bool, signOut);
+        Rig rig;
+        rig.tidal.holdProfile = true;
+        signIn(rig);
+        if (QTest::currentTestFailed()) return;
+        QVERIFY(QFile::exists(credsPath()));
+
+        if (signOut) {
+            rig.auth.logout();
+        } else {
+            rig.tidal.goodTokens.clear();
+            rig.tidal.tokenAnswer = FakeTidal::Refuse;
+            QSignalSpy expired(&rig.auth, &Auth::sessionExpired);
+            rig.send(QStringLiteral("get"), [](QString) {});
+            QTRY_COMPARE_WITH_TIMEOUT(expired.count(), 1, 5000);
+        }
+        QCOMPARE(rig.auth.state(), Auth::State::LoggedOut);
+        QVERIFY(!QFile::exists(credsPath()));
+
+        rig.tidal.releaseProfiles();
+        QTest::qWait(200);
+        QVERIFY2(!QFile::exists(credsPath()), qPrintable(QString::fromUtf8(
+            QJsonDocument(savedCreds()).toJson(QJsonDocument::Compact))));
+        QVERIFY(rig.auth.username().isEmpty());
     }
 
     // Busy or down is no refusal of the refresh token, whatever the body
