@@ -368,7 +368,7 @@ named.
 *   **`~/.config/tidal-wave/scrobbling-listenbrainz.json`**, next to it, holds your
     ListenBrainz user token and user name once you connect, written the same way: plain
     JSON, readable and writable by your user only (`ScrobbleSink::saveSecret`).
-    Disconnecting deletes it.
+    Disconnecting deletes it, and so does logging out of Tidal.
 *   **`~/.config/TidalWave/Tidal Wave.conf`** is the `QSettings` file. It holds the theme,
     language, sidebar width, audio output device, software rendering flag and the
     three lyrics switches (`src/ui/Prefs.cpp`), the preferred stream quality (`src/api/TidalBridge.cpp`), the last

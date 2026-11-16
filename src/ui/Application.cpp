@@ -293,7 +293,8 @@ bool Application::claimSingleInstanceSocket(QLocalServer *server, const QString 
 }
 
 void Application::endAccountSession(TidalClient *client, Player *player, PinStore *pins,
-                                    LibraryIndex *library, bool forget) {
+                                    LibraryIndex *library, bool forget,
+                                    const QList<ScrobbleSink *> &scrobbling) {
     if (library) library->cancelIndexing();
     if (player) {
         player->clearQueue();
@@ -304,6 +305,9 @@ void Application::endAccountSession(TidalClient *client, Player *player, PinStor
     if (client) client->setUserId(0);
     if (pins) pins->setUserId(0);
     if (library) library->setUserId(0);
+    // Like Disconnect in Settings: unsent listens wait for the same account.
+    if (forget)
+        for (ScrobbleSink *s : scrobbling) if (s) s->disconnectAccount();
 }
 
 QString Application::tempLockPath(const QString &dir) {
@@ -829,7 +833,7 @@ int Application::run(int argc, char **argv) {
     // A session that ended takes playback, the queue and the account's
     // lists with it, so the next account to sign in inherits nothing.
     connect(m_auth, &Auth::loggedOut, this, [this]() {
-        endAccountSession(m_client, m_player, m_pins, m_library, true);
+        endAccountSession(m_client, m_player, m_pins, m_library, true, {m_listenBrainz});
     });
     connect(m_auth, &Auth::sessionExpired, this, [this]() {
         endAccountSession(m_client, m_player, m_pins, m_library, false);

@@ -80,9 +80,11 @@ public:
     // What a session that ended leaves behind: no playback, no queue, no
     // account in the client (the bridge's favourites go with it), the pins
     // and the library. `forget`, an explicit log out, also writes the emptied
-    // queue under the account. Public and static for tst_sign_out.
+    // queue under the account and disconnects `scrobbling`. Public and static
+    // for tst_sign_out.
     static void endAccountSession(TidalClient *client, Player *player, PinStore *pins,
-                                  LibraryIndex *library, bool forget);
+                                  LibraryIndex *library, bool forget,
+                                  const QList<ScrobbleSink *> &scrobbling = {});
 
     // Deletes the audio and artwork temp files earlier runs left in `dir`:
     // this user's, named as this app names them. The caller holds the temp
