@@ -79,6 +79,7 @@ Item {
     }
 
     function openSettings() { settingsPopup.open() }
+    function openNewPlaylist() { newPlaylistDialog.openEmpty() }
 
     // ── the rows the library list shows ──────────────────────────────────
 
@@ -576,6 +577,9 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: newPlaylistDialog.openEmpty()
                 Keys.onSpacePressed:  newPlaylistDialog.openEmpty()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("New playlist")
+                Accessible.onPressAction: newPlaylistDialog.openEmpty()
 
                 Rectangle {
                     anchors.fill: parent
@@ -749,6 +753,9 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.openSettings()
                 Keys.onSpacePressed:  root.openSettings()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("SettingsPanel", "Settings")
+                Accessible.onPressAction: root.openSettings()
 
                 Rectangle {
                     anchors.fill: parent
@@ -1020,9 +1027,32 @@ Item {
         // The row being dragged travels over its neighbours, not under them.
         z: dragging ? 2 : 0
 
-        activeFocusOnTab: true
+        // The library is one tab stop, the current row; the ListView walks it
+        // with the arrows. Eight rows of Tab never got out of the sidebar.
+        activeFocusOnTab: activeFocus || (ListView.view
+                          ? (ListView.isCurrentItem || ListView.view.currentIndex < 0) : true)
+        onActiveFocusChanged: if (activeFocus && ListView.view)
+                                  ListView.view.positionViewAtIndex(index, ListView.Contain)
         Keys.onReturnPressed: root.open(kind, itemId, modelData)
         Keys.onSpacePressed:  root.open(kind, itemId, modelData)
+        Keys.onPressed: (event) => {
+            var view = ListView.view
+            if (event.key === Qt.Key_Menu
+                    || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                var p = rowItem.mapToItem(root, root.rowInset + 16, rowItem.height)
+                root.showPinMenu(p.x, p.y, rowItem.modelData)
+                event.accepted = true
+            } else if (view && event.modifiers === Qt.NoModifier
+                       && (event.key === Qt.Key_Home || event.key === Qt.Key_End)) {
+                view.currentIndex = event.key === Qt.Key_Home ? 0 : view.count - 1
+                if (view.currentItem) view.currentItem.forceActiveFocus(Qt.TabFocusReason)
+                event.accepted = true
+            }
+        }
+        Accessible.role: Accessible.ListItem
+        Accessible.name: rowItem.title
+        Accessible.description: rowItem.modelData.subtitle || ""
+        Accessible.onPressAction: root.open(rowItem.kind, rowItem.itemId, rowItem.modelData)
 
         Rectangle {
             objectName: "pinnedBlockBreak"
@@ -1270,6 +1300,10 @@ Item {
         activeFocusOnTab: true
         Keys.onReturnPressed: activated()
         Keys.onSpacePressed:  activated()
+        Accessible.role: Accessible.PageTab
+        Accessible.name: navItem.label
+        Accessible.selected: navItem.current
+        Accessible.onPressAction: navItem.activated()
 
         Rectangle {
             anchors.fill: parent

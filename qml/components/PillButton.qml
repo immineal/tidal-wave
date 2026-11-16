@@ -24,6 +24,9 @@ Item {
     implicitWidth: Math.max(minWidth, content.implicitWidth + 2 * hPadding)
     implicitHeight: 40
     activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: root.text
+    Accessible.onPressAction: root.clicked()
 
     Rectangle {
         anchors.fill: parent

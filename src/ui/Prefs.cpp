@@ -23,6 +23,7 @@ constexpr auto kExternalLyrics = "lyrics/externalSources";
 constexpr auto kLyricsLrclib = "lyrics/lrclib";
 constexpr auto kLyricsOtherSites = "lyrics/otherSites";
 constexpr auto kLyricsAutoSync = "lyrics/autoSync";
+constexpr auto kReducedMotion = "ui/reducedMotion";
 
 // A choice made with the old switch holds for both new ones; written back
 // at once so it is not applied again over a later change.
@@ -57,6 +58,7 @@ Prefs::Prefs(QObject *parent)
     , m_lyricsLrclib(migrateLyricsSwitch(m_settings).value(kLyricsLrclib, true).toBool())
     , m_lyricsOtherSites(m_settings.value(kLyricsOtherSites, false).toBool())
     , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
+    , m_reducedMotion(m_settings.value(kReducedMotion, QStringLiteral("system")).toString())
 {
     // A stored width from another build or a corrupted file is clamped.
     m_sidebarWidth = std::clamp(m_sidebarWidth, minSidebarWidth, maxSidebarWidth);
@@ -180,6 +182,14 @@ void Prefs::setLyricsAutoSync(bool v) {
     m_lyricsAutoSync = v;
     m_settings.setValue(kLyricsAutoSync, v);
     emit lyricsAutoSyncChanged();
+}
+
+void Prefs::setReducedMotion(const QString &v) {
+    if (v != QLatin1String("system") && v != QLatin1String("on") && v != QLatin1String("off")) return;
+    if (v == m_reducedMotion) return;
+    m_reducedMotion = v;
+    m_settings.setValue(kReducedMotion, v);
+    emit reducedMotionChanged();
 }
 
 QString Prefs::appVersion() const {

@@ -75,9 +75,32 @@ Item {
     signal clicked()
     signal playClicked()
 
-    activeFocusOnTab: true
+    // The keyboard is on the card or on its play button.
+    readonly property bool keyboardOn: root.activeFocus || playButton.activeFocus
+
+    // A host list sets this so its cards are one tab stop between them
+    // (the current card); the arrows are the list's.
+    property bool tabStop: true
+    activeFocusOnTab: tabStop || activeFocus
     Keys.onReturnPressed: root.clicked()
     Keys.onSpacePressed:  root.clicked()
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_Menu
+                || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+            root.openMenu(16, root.cardSize)
+            event.accepted = true
+        }
+    }
+    function openMenu(x, y) {
+        cardMenu.showPin(x, y, root.pinKind, root.itemId,
+                         root.title, root.pinSubtitle, root.coverUrl)
+    }
+    Accessible.role: Accessible.Button
+    Accessible.name: root.subtitle.length > 0
+                     ? qsTr("%1, %2", "card for a screen reader: title, subtitle")
+                           .arg(root.title).arg(root.subtitle)
+                     : root.title
+    Accessible.onPressAction: root.clicked()
 
     Rectangle {
         id: imgRect
@@ -142,13 +165,23 @@ Item {
             radius: parent.radius
             // Dims the art so the play button reads; a wash over cover art
             // cannot follow the ground, so it is the same in every theme.
-            color: hov.hovered ? Theme.artScrim : "transparent"
+            color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
             Behavior on color { ColorAnimation { duration: Theme.dur(150) } }
 
             Rectangle {
                 id: playButton
                 objectName: "cardPlayButton"
-                visible: hov.hovered
+                visible: hov.hovered || root.keyboardOn
+                // Next after its card in the tab order, and only while the
+                // keyboard is on that card: the list stays one stop.
+                activeFocusOnTab: root.tabStop || activeFocus
+                Keys.onReturnPressed: root.playClicked()
+                Keys.onSpacePressed:  root.playClicked()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("PlayerBar", "Play")
+                Accessible.onPressAction: root.playClicked()
+                border.width: activeFocus ? 2 : 0
+                border.color: Theme.textPrimary
                 width: 44
                 height: 44
                 radius: 22
@@ -230,8 +263,7 @@ Item {
         acceptedButtons: Qt.RightButton
         onClicked: function (mouse) {
             var p = mapToItem(root, mouse.x, mouse.y)
-            cardMenu.showPin(p.x, p.y, root.pinKind, root.itemId,
-                             root.title, root.pinSubtitle, root.coverUrl)
+            root.openMenu(p.x, p.y)
         }
     }
 

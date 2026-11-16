@@ -96,6 +96,9 @@ Popup {
         implicitWidth:  Math.max(84, btnLabel.implicitWidth + 28)
         implicitHeight: 34
         activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: btn.label
+        Accessible.onPressAction: btn.activated()
 
         Rectangle {
             anchors.fill: parent

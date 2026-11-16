@@ -194,6 +194,14 @@
     </message>
 </context>
 <context>
+    <name>BackButton</name>
+    <message>
+        <source>Back</source>
+        <comment>button, returns to the previous page</comment>
+        <translation>Zurück</translation>
+    </message>
+</context>
+<context>
     <name>CastManager</name>
     <message>
         <source>Could not hand this track to the cast device. The local media server is not running.</source>
@@ -684,6 +692,11 @@
         <source>View all</source>
         <translation>Alle anzeigen</translation>
     </message>
+    <message>
+        <source>View all: %1</source>
+        <comment>link to the full list of a section</comment>
+        <translation>Alle anzeigen: %1</translation>
+    </message>
 </context>
 <context>
     <name>I18n</name>
@@ -770,6 +783,14 @@
     </message>
 </context>
 <context>
+    <name>MediaCard</name>
+    <message>
+        <source>%1, %2</source>
+        <comment>card for a screen reader: title, subtitle</comment>
+        <translation>%1, %2</translation>
+    </message>
+</context>
+<context>
     <name>MixPage</name>
     <message>
         <source>This mix could not be loaded</source>
@@ -848,6 +869,11 @@
         <source>Create</source>
         <comment>verb, the button that creates the playlist</comment>
         <translation>Erstellen</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <comment>button, closes the dialog</comment>
+        <translation>Schließen</translation>
     </message>
 </context>
 <context>
@@ -998,6 +1024,20 @@
         <source>%1m</source>
         <comment>compact duration in minutes</comment>
         <translation>%1 Min.</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>Herunterladen</translation>
+    </message>
+    <message>
+        <source>Custom length</source>
+        <comment>sleep timer slider, in minutes</comment>
+        <translation>Eigene Dauer</translation>
+    </message>
+    <message>
+        <source>%1 minutes</source>
+        <comment>sleep timer option, for a screen reader</comment>
+        <translation>%1 Minuten</translation>
     </message>
 </context>
 <context>
@@ -1154,6 +1194,51 @@
         <source>Searching for devices…</source>
         <translation>Geräte werden gesucht…</translation>
     </message>
+    <message>
+        <source>Shuffle</source>
+        <translation>Zufallswiedergabe</translation>
+    </message>
+    <message>
+        <source>Previous track</source>
+        <translation>Vorheriger Titel</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>Abspielen</translation>
+    </message>
+    <message>
+        <source>Next track</source>
+        <translation>Nächster Titel</translation>
+    </message>
+    <message>
+        <source>Repeat: one track</source>
+        <translation>Wiederholen: ein Titel</translation>
+    </message>
+    <message>
+        <source>Repeat: all</source>
+        <translation>Wiederholen: alle</translation>
+    </message>
+    <message>
+        <source>Repeat: off</source>
+        <translation>Wiederholen: aus</translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation>Ton einschalten</translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation>Stummschalten</translation>
+    </message>
+    <message>
+        <source>Queue</source>
+        <comment>noun, opens the play queue</comment>
+        <translation>Warteschlange</translation>
+    </message>
 </context>
 <context>
     <name>PlaylistPage</name>
@@ -1302,6 +1387,16 @@
         <source>Remove from queue</source>
         <translation>Aus der Warteschlange entfernen</translation>
     </message>
+    <message>
+        <source>Clear queue</source>
+        <comment>button, empties the play queue</comment>
+        <translation>Warteschlange leeren</translation>
+    </message>
+    <message>
+        <source>Close queue</source>
+        <comment>button, hides the play queue</comment>
+        <translation>Warteschlange schließen</translation>
+    </message>
 </context>
 <context>
     <name>RadioPage</name>
@@ -1331,6 +1426,11 @@
     <message>
         <source>Search…</source>
         <translation>Suchen…</translation>
+    </message>
+    <message>
+        <source>Clear search</source>
+        <comment>button, empties the search field</comment>
+        <translation>Suche leeren</translation>
     </message>
 </context>
 <context>
@@ -1429,6 +1529,23 @@
     <message>
         <source>Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.</source>
         <translation>Die Suche braucht Tidal, und Tidal ist gerade nicht erreichbar. Prüfe die Verbindung; der Hinweis oben sagt, wann sie wieder da ist.</translation>
+    </message>
+    <message>
+        <source>Remove “%1” from recent searches</source>
+        <translation>„%1“ aus den letzten Suchen entfernen</translation>
+    </message>
+</context>
+<context>
+    <name>SeekBar</name>
+    <message>
+        <source>Position in track</source>
+        <comment>slider, seeks in the playing track</comment>
+        <translation>Position im Titel</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <comment>elapsed of total time</comment>
+        <translation>%1 von %2</translation>
     </message>
 </context>
 <context>
@@ -1760,6 +1877,38 @@
         <source>Each download asks for a file name and format, starting in this folder.</source>
         <translation>Jeder Download fragt nach Dateiname und Format und beginnt in diesem Ordner.</translation>
     </message>
+    <message>
+        <source>Find</source>
+        <comment>shortcut, puts the keyboard in the search field</comment>
+        <translation>Suchen</translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation>Neue Playlist</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Beenden</translation>
+    </message>
+    <message>
+        <source>Reduce motion</source>
+        <translation>Bewegung reduzieren</translation>
+    </message>
+    <message>
+        <source>As the system says</source>
+        <comment>reduce motion: follow the desktop setting</comment>
+        <translation>Wie im System eingestellt</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <comment>reduce motion: always animate less</comment>
+        <translation>Ein</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>reduce motion: always animate</comment>
+        <translation>Aus</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>
@@ -1941,6 +2090,16 @@
         <comment>opens the file manager at a downloaded track</comment>
         <translation>Im Ordner anzeigen</translation>
     </message>
+    <message>
+        <source>%1, %2</source>
+        <comment>track row for a screen reader: title, artists</comment>
+        <translation>%1, %2</translation>
+    </message>
+    <message>
+        <source>%1, %2</source>
+        <comment>track row for a screen reader: album, length</comment>
+        <translation>%1, %2</translation>
+    </message>
 </context>
 <context>
     <name>TrayMenu</name>
@@ -2003,6 +2162,13 @@
     <message>
         <source>Skip this version</source>
         <translation>Diese Version überspringen</translation>
+    </message>
+</context>
+<context>
+    <name>VolumeSlider</name>
+    <message>
+        <source>Volume</source>
+        <translation>Lautstärke</translation>
     </message>
 </context>
 </TS>

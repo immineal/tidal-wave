@@ -13,6 +13,38 @@ Item {
     property bool _dragging: false
     property real _dragValue: 0
 
+    // The keyboard and a screen reader move it by the window's seek step.
+    // The value interface reads value/from/to/stepSize, in seconds.
+    property real stepMs: 10000
+    readonly property real value: position / 1000
+    readonly property real from: 0
+    readonly property real to: duration / 1000
+    readonly property real stepSize: stepMs / 1000
+
+    function seekBy(ms) {
+        if (duration > 0) seeked(Math.max(0, Math.min(duration, position + ms)))
+    }
+
+    activeFocusOnTab: true
+    Keys.onPressed: (event) => {
+        switch (event.key) {
+        case Qt.Key_Right: case Qt.Key_Up:       seekBy(stepMs); break
+        case Qt.Key_Left:  case Qt.Key_Down:     seekBy(-stepMs); break
+        case Qt.Key_PageUp:                      seekBy(6 * stepMs); break
+        case Qt.Key_PageDown:                    seekBy(-6 * stepMs); break
+        case Qt.Key_Home: if (duration > 0) seeked(0); break
+        case Qt.Key_End:  if (duration > 0) seeked(duration); break
+        default: return
+        }
+        event.accepted = true
+    }
+    Accessible.role: Accessible.Slider
+    Accessible.name: qsTr("Position in track", "slider, seeks in the playing track")
+    Accessible.description: qsTr("%1 of %2", "elapsed of total time")
+                                .arg(msToStr(position)).arg(msToStr(duration))
+    Accessible.onIncreaseAction: seekBy(stepMs)
+    Accessible.onDecreaseAction: seekBy(-stepMs)
+
     // Timestamps. Anchored, not in a Row whose middle child derives its width
     // from the Row: the positioning pass runs a frame behind a resize and puts
     // the duration label outside the bar for that frame.
@@ -48,7 +80,7 @@ Item {
                        : 0
                 height: parent.height
                 radius: parent.radius
-                color: hov.hovered || _dragging ? Theme.accent : Theme.textSec
+                color: hov.hovered || _dragging || root.activeFocus ? Theme.accent : Theme.textSec
                 Behavior on color { ColorAnimation { duration: Theme.dur(120) } }
             }
 
@@ -56,8 +88,8 @@ Item {
             Rectangle {
                 x: filled.width - width/2
                 anchors.verticalCenter: parent.verticalCenter
-                width:  hov.hovered || _dragging ? 12 : 0
-                height: hov.hovered || _dragging ? 12 : 0
+                width:  hov.hovered || _dragging || root.activeFocus ? 12 : 0
+                height: hov.hovered || _dragging || root.activeFocus ? 12 : 0
                 radius: 6
                 color: Theme.textPrimary
                 Behavior on width  { NumberAnimation { duration: Theme.dur(100) } }
@@ -66,6 +98,15 @@ Item {
         }
 
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
+
+        // The focus ring, round the bar rather than the timestamps.
+        Rectangle {
+            anchors.fill: parent
+            radius: height / 2
+            color: "transparent"
+            border.width: root.activeFocus ? 2 : 0
+            border.color: Theme.accent
+        }
 
         MouseArea {
             anchors.fill: parent

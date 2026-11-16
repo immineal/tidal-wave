@@ -69,6 +69,9 @@ Item {
                 activeFocusOnTab: root.showViewAll
                 Keys.onReturnPressed: root.viewAllClicked()
                 Keys.onSpacePressed:  root.viewAllClicked()
+                Accessible.role: Accessible.Link
+                Accessible.name: qsTr("View all: %1", "link to the full list of a section").arg(root.title)
+                Accessible.onPressAction: root.viewAllClicked()
 
                 readonly property color ink: viewAll.activeFocus ? Theme.accentText : Theme.textSec
 
@@ -122,6 +125,9 @@ Item {
                 footer: Item { width: root.edgeInset; height: 1 }
                 model: root.items
                 interactive: false  // let parent page handle wheel; users drag the scrollbar
+                // Not tied to `interactive`: the row is one tab stop and
+                // Left/Right walk its cards.
+                keyNavigationEnabled: true
 
                 ScrollBar.horizontal: ScrollBar {
                     id: hbar
@@ -143,6 +149,10 @@ Item {
                     // everything else by id.
                     itemId:    "" + (modelData.uuid || modelData.id || "")
                     cardSize:  root.cardSize
+                    tabStop: ListView.isCurrentItem || hlist.currentIndex < 0
+                    // A card the keyboard reaches is scrolled into view; the
+                    // row does not follow its current item by itself here.
+                    onKeyboardOnChanged: if (keyboardOn) hlist.positionViewAtIndex(index, ListView.Contain)
                     onClicked:      root.itemClicked(index, modelData)
                     onPlayClicked:  root.itemPlayClicked(index, modelData)
                 }

@@ -262,6 +262,9 @@ private slots:
         const QStringList ids = shortcuts.ids();
         for (const QString &id : ids) {
             const QString seq = shortcuts.sequence(id);
+            // Quit is what the system means by Ctrl+Q, so it may have it.
+            if (id == QLatin1String("quit") && seq == QLatin1String("Ctrl+Q"))
+                continue;
             QVERIFY2(!reserved.contains(seq),
                      qPrintable(QStringLiteral(
                          "%1 is bound to %2, which the system takes before the app sees it")
@@ -270,6 +273,37 @@ private slots:
 
         // The queue toggle in particular.
         QCOMPARE(shortcuts.sequence(QStringLiteral("queue")), QStringLiteral("Ctrl+J"));
+    }
+
+    // The keys a desktop app is expected to answer, and no bare arrow or
+    // paging key: those belong to the focused list, slider or menu.
+    void theBindingsFollowDesktopConvention() {
+        const Shortcuts shortcuts;
+        const QList<QPair<const char *, const char *>> expected = {
+            { "quit",        "Ctrl+Q" },
+            { "find",        "Ctrl+F" },
+            { "findAlt",     "Ctrl+L" },
+            { "newPlaylist", "Ctrl+N" },
+            { "seekForward", "Shift+Right" },
+            { "seekBack",    "Shift+Left" },
+            { "volumeUp",    "Ctrl+Up" },
+            { "volumeDown",  "Ctrl+Down" },
+        };
+        for (const auto &e : expected)
+            QCOMPARE(shortcuts.sequence(QString::fromLatin1(e.first)),
+                     QString::fromLatin1(e.second));
+        QVERIFY(!shortcuts.sequence(QStringLiteral("nowPlaying")).isEmpty());
+
+        const QStringList navigationKeys = {
+            QStringLiteral("Up"), QStringLiteral("Down"), QStringLiteral("Left"),
+            QStringLiteral("Right"), QStringLiteral("Home"), QStringLiteral("End"),
+            QStringLiteral("PgUp"), QStringLiteral("PgDown"), QStringLiteral("Return"),
+            QStringLiteral("Enter"), QStringLiteral("Menu"), QStringLiteral("Tab"),
+        };
+        for (const QString &id : shortcuts.ids())
+            QVERIFY2(!navigationKeys.contains(shortcuts.sequence(id)),
+                     qPrintable(QStringLiteral("%1 takes the bare key %2 from the focused control")
+                                    .arg(id, shortcuts.sequence(id))));
     }
 
     // Main.qml binds every shortcut from the table and binds nothing else.

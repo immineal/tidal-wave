@@ -2248,6 +2248,7 @@ class StubPrefs : public QObject {
     Q_PROPERTY(bool lyricsLrclib READ lyricsLrclib WRITE setLyricsLrclib NOTIFY lyricsLrclibChanged)
     Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    Q_PROPERTY(QString reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
 public:
     explicit StubPrefs(QObject *parent = nullptr) : QObject(parent) {}
 
@@ -2278,6 +2279,7 @@ public:
     bool    lyricsLrclib() const      { return m_lyricsLrclib; }
     bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
     bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
+    QString reducedMotion() const     { return m_reducedMotion; }
 
     void setTheme(const QString &v) {
         if (v.isEmpty() || v == m_theme) return;
@@ -2350,6 +2352,11 @@ public:
         m_lyricsAutoSync = v;
         emit lyricsAutoSyncChanged();
     }
+    void setReducedMotion(const QString &v) {
+        if (v == m_reducedMotion) return;
+        m_reducedMotion = v;
+        emit reducedMotionChanged();
+    }
 
     Q_INVOKABLE int minSidebar() const   { return kMinSidebar; }
     Q_INVOKABLE int maxSidebar() const   { return kMaxSidebar; }
@@ -2378,8 +2385,10 @@ signals:
     void lyricsLrclibChanged();
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
+    void reducedMotionChanged();
 
 private:
+    QString m_reducedMotion = QStringLiteral("system");
     QString m_theme    = QStringLiteral("sea");
     // Off, unlike the real Prefs, so a QML test that says nothing about it
     // measures the palette as written in the table.

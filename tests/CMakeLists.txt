@@ -58,6 +58,7 @@ endif()
 qt_add_executable(tst_qml
     tst_qml.cpp
     TestStubs.h
+    A11yProbe.h
 )
 
 target_link_libraries(tst_qml PRIVATE

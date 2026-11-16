@@ -231,15 +231,82 @@ Item {
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
 
-    activeFocusOnTab: true
+    // A list is one tab stop and the arrows walk it. In a ListView that is
+    // the current row; rows laid out by a Repeater share a rowGroup
+    // (an object with an int `current`) and say their rowIndex.
+    property QtObject rowGroup: null
+    property int      rowIndex: -1
+    // activeFocus keeps the row a stop until it lets go: Qt refuses to clear
+    // the flag on the focused item and would leave two stops behind.
+    activeFocusOnTab: activeFocus || (ListView.view ? (ListView.isCurrentItem || ListView.view.currentIndex < 0)
+                                      : rowGroup ? rowGroup.current === rowIndex : true)
+    onActiveFocusChanged: {
+        if (!activeFocus) return
+        if (rowGroup) rowGroup.current = rowIndex
+        else if (ListView.view)
+            ListView.view.positionViewAtIndex(ListView.view.currentIndex, ListView.Contain)
+    }
+    // Space stays play/pause for the window (Main.qml reads this).
+    readonly property bool leavesSpaceToPlayer: true
     Keys.onReturnPressed: root.activate()
-    Keys.onSpacePressed:  root.activate()
+    Keys.onEnterPressed:  root.activate()
+
+    function moveToRow(target) {
+        var view = ListView.view
+        if (view) {
+            var i = Math.max(0, Math.min(view.count - 1, target))
+            view.currentIndex = i
+            if (view.currentItem) view.currentItem.forceActiveFocus(Qt.TabFocusReason)
+            return true
+        }
+        if (!rowGroup || !parent) return false
+        var rows = parent.children
+        for (var k = 0; k < rows.length; ++k) {
+            var r = rows[k]
+            if (r !== root && r.rowGroup === rowGroup && r.rowIndex === target && r.visible) {
+                rowGroup.current = target
+                r.forceActiveFocus(Qt.TabFocusReason)
+                return true
+            }
+        }
+        return false
+    }
+    function lastGroupIndex() {
+        var last = rowIndex
+        var rows = parent ? parent.children : []
+        for (var k = 0; k < rows.length; ++k)
+            if (rows[k].rowGroup === rowGroup && rows[k].visible) last = Math.max(last, rows[k].rowIndex)
+        return last
+    }
+
+    // Read as one line of a list: what the eye takes from the title and the
+    // names. Press is what a click does.
+    Accessible.role: Accessible.ListItem
+    Accessible.name: qsTr("%1, %2", "track row for a screen reader: title, artists")
+                         .arg(root.titleText).arg(root.artistsText)
+    Accessible.description: root.albumText.length > 0
+                            ? qsTr("%1, %2", "track row for a screen reader: album, length")
+                                  .arg(root.albumText).arg(root.durationText)
+                            : root.durationText
+    Accessible.onPressAction: root.activate()
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             root.menuRequested(width / 2, height / 2)
-            root.openMenu()
+            root.openMenu(true)
             event.accepted = true
+            return
         }
+        if (event.modifiers !== Qt.NoModifier) return
+        var view = ListView.view
+        // A ListView walks Up and Down itself; Home and End it does not.
+        if (event.key === Qt.Key_Home && (view || rowGroup))
+            event.accepted = root.moveToRow(0)
+        else if (event.key === Qt.Key_End && (view || rowGroup))
+            event.accepted = root.moveToRow(view ? view.count - 1 : root.lastGroupIndex())
+        else if (!view && rowGroup && event.key === Qt.Key_Down)
+            event.accepted = root.moveToRow(rowIndex + 1)
+        else if (!view && rowGroup && event.key === Qt.Key_Up)
+            event.accepted = root.moveToRow(rowIndex - 1)
     }
 
     Rectangle {
@@ -346,6 +413,7 @@ Item {
                 // name takes the left click and a right click reaches the menu.
                 ArtistLinks {
                     Layout.fillWidth: true
+                    tabStops: false
                     namePrefix: "trackRow"
                     fontPixelSize: 12
                     artistList: root.artistList
@@ -469,7 +537,7 @@ Item {
             // Context menu button, same reserved slot as the download button
             Item {
                 id: menuButton
-                readonly property bool shown: hov.hovered
+                readonly property bool shown: hov.hovered || root.activeFocus
                 opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
                 Layout.fillHeight: true
@@ -500,11 +568,13 @@ Item {
     // per row for two things almost no row is asked for.
     readonly property alias rowMenu: menuLoader.item
 
-    function openMenu() {
+    // From the keyboard the menu opens on the row; from the mouse, at the pointer.
+    function openMenu(fromKeyboard) {
         // Asked again: the file may have been moved or deleted since.
         if (root.trackId > 0) root.savedFile = downloader.savedPath(root.trackId)
         menuLoader.active = true
-        menuLoader.item.popup()
+        if (fromKeyboard) menuLoader.item.popup(root, 16, root.height)
+        else menuLoader.item.popup()
     }
 
     function openPicker() {
@@ -866,11 +936,14 @@ Item {
                     Item {
                         id: pickerClose
                         objectName: "pickerCloseButton"
-                        anchors.right: parent.right; anchors.rightMargin: 12
+                        anchors.right: parent.right; anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 26
-                        height: 26
+                        width: 32
+                        height: 32
                         activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTranslate("NewPlaylistDialog", "Close", "button, closes the dialog")
+                        Accessible.onPressAction: trackPicker.close()
                         Keys.onReturnPressed: trackPicker.close()
                         Keys.onEnterPressed:  trackPicker.close()
                         Keys.onSpacePressed:  trackPicker.close()
@@ -900,15 +973,25 @@ Item {
                 // First in the popup: the list underneath scrolls, and a
                 // row at the bottom of a scrolling list is rarely seen.
                 Item {
+                    id: pickerNewRow
                     objectName: "pickerNewPlaylistRow"
                     width: parent.width
                     height: 44
+                    activeFocusOnTab: true
+                    Keys.onReturnPressed: root.openNewPlaylist()
+                    Keys.onEnterPressed:  root.openNewPlaylist()
+                    Keys.onSpacePressed:  root.openNewPlaylist()
+                    Accessible.role: Accessible.Button
+                    Accessible.name: pickerNewLabel.text
+                    Accessible.onPressAction: root.openNewPlaylist()
 
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: 4
                         radius: Theme.radiusRow
                         color: newPlHov.hovered ? Theme.surfaceHov : "transparent"
+                        border.width: pickerNewRow.activeFocus ? 2 : 0
+                        border.color: Theme.accent
 
                         HoverHandler { id: newPlHov; cursorShape: Qt.PointingHandCursor }
                         TapHandler  { onTapped: root.openNewPlaylist() }
@@ -940,6 +1023,7 @@ Item {
                                 }
                             }
                             Text {
+                                id: pickerNewLabel
                                 objectName: "pickerNewPlaylistLabel"
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: qsTr("New playlist…")
@@ -963,24 +1047,35 @@ Item {
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: Item {
+                        id: pickRow
                         width: plPickerList.width
                         height: 44
+                        function choose() {
+                            var intoTitle = model.title
+                            bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
+                                                       function (ok) {
+                                root.confirmAddedToPlaylist(ok === true, intoTitle)
+                            })
+                            trackPicker.close()
+                        }
+                        // One tab stop for the list, the current row; the
+                        // ListView walks it with Up and Down.
+                        activeFocusOnTab: activeFocus || ListView.isCurrentItem || plPickerList.currentIndex < 0
+                        Keys.onReturnPressed: choose()
+                        Keys.onEnterPressed:  choose()
+                        Keys.onSpacePressed:  choose()
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: model.title
+                        Accessible.onPressAction: choose()
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: 4
                             radius: Theme.radiusRow
                             color: plHov2.hovered ? Theme.surfaceHov : "transparent"
+                            border.width: pickRow.activeFocus ? 2 : 0
+                            border.color: Theme.accent
                             HoverHandler { id: plHov2 }
-                            TapHandler {
-                                onTapped: {
-                                    var intoTitle = model.title
-                                    bridge.addTracksToPlaylist(model.uuid, trackPicker.pendingTrackId,
-                                                               function (ok) {
-                                        root.confirmAddedToPlaylist(ok === true, intoTitle)
-                                    })
-                                    trackPicker.close()
-                                }
-                            }
+                            TapHandler { onTapped: pickRow.choose() }
                             Row {
                                 anchors.left: parent.left; anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter

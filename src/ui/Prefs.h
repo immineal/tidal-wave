@@ -54,6 +54,9 @@ class Prefs : public QObject {
     Q_PROPERTY(bool lyricsOtherSites READ lyricsOtherSites WRITE setLyricsOtherSites NOTIFY lyricsOtherSitesChanged)
     // Time plain lyrics against the track's audio, on this machine. On by default.
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
+    // "system", "on" or "off": whether to follow the desktop's reduce-motion
+    // setting or override it. See ReducedMotion::resolve().
+    Q_PROPERTY(QString reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
 
 public:
     explicit Prefs(QObject *parent = nullptr);
@@ -82,6 +85,7 @@ public:
     bool    lyricsLrclib() const      { return m_lyricsLrclib; }
     bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
     bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
+    QString reducedMotion() const     { return m_reducedMotion; }
 
     void setTheme(const QString &v);
     void setOledBlack(bool v);
@@ -98,6 +102,7 @@ public:
     void setLyricsLrclib(bool v);
     void setLyricsOtherSites(bool v);
     void setLyricsAutoSync(bool v);
+    void setReducedMotion(const QString &v);
 
     // So QML lays out against the same numbers as the C++ side.
     Q_INVOKABLE int minSidebar() const   { return minSidebarWidth; }
@@ -123,6 +128,7 @@ signals:
     void lyricsLrclibChanged();
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
+    void reducedMotionChanged();
 
 private:
     QSettings m_settings;
@@ -141,4 +147,5 @@ private:
     bool      m_lyricsLrclib;
     bool      m_lyricsOtherSites;
     bool      m_lyricsAutoSync;
+    QString   m_reducedMotion;
 };

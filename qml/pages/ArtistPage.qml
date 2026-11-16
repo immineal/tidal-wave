@@ -272,10 +272,18 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Text {
+                    objectName: "artistShowAllTracks"
                     visible: root.topTracks.length > 5
                     text: root.showAllTracks ? qsTr("Show less") : qsTr("Show all")
-                    color: showAllHov.hovered ? Theme.textPrimary : Theme.textSec
+                    color: showAllHov.hovered || activeFocus ? Theme.textPrimary : Theme.textSec
                     font.pixelSize: 13
+                    font.underline: activeFocus
+                    activeFocusOnTab: visible
+                    Keys.onReturnPressed: root.showAllTracks = !root.showAllTracks
+                    Keys.onSpacePressed:  root.showAllTracks = !root.showAllTracks
+                    Accessible.role: Accessible.Button
+                    Accessible.name: text
+                    Accessible.onPressAction: root.showAllTracks = !root.showAllTracks
                     HoverHandler { id: showAllHov }
                     TapHandler { onTapped: root.showAllTracks = !root.showAllTracks }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; acceptedButtons: Qt.NoButton }
@@ -284,9 +292,14 @@ Rectangle {
 
             Item { height: 8; visible: root.topTracks.length > 0 }
 
+            // The top tracks are one tab stop; see TrackRow.rowGroup.
+            QtObject { id: topTrackGroup; property int current: 0 }
             Repeater {
                 model: root.showAllTracks ? root.topTracks : root.topTracks.slice(0, 5)
+                onModelChanged: topTrackGroup.current = 0
                 TrackRow {
+                    rowGroup: topTrackGroup
+                    rowIndex: index
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16

@@ -133,8 +133,8 @@ Popup {
             Item {
                 id: dialogClose
                 objectName: "newPlaylistClose"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
                 // Disabled while a create is in flight, like Cancel and Escape.
                 // `enabled: false` stops the handlers and takes the item out of
@@ -146,6 +146,9 @@ Popup {
                 Keys.onReturnPressed: root.close()
                 Keys.onEnterPressed:  root.close()
                 Keys.onSpacePressed:  root.close()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Close", "button, closes the dialog")
+                Accessible.onPressAction: root.close()
 
                 Rectangle {
                     anchors.fill: parent

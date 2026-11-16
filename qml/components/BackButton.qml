@@ -28,6 +28,9 @@ Rectangle {
     activeFocusOnTab: true
     Keys.onReturnPressed: root.Window.window.goBack()
     Keys.onSpacePressed:  root.Window.window.goBack()
+    Accessible.role: Accessible.Button
+    Accessible.name: qsTr("Back", "button, returns to the previous page")
+    Accessible.onPressAction: root.Window.window.goBack()
 
     Behavior on color       { ColorAnimation { duration: Theme.dur(100) } }
     Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }

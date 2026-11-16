@@ -5,6 +5,7 @@
 #include "ui/I18n.h"
 #include "ui/PinStore.h"
 #include "ui/Prefs.h"
+#include "ui/ReducedMotion.h"
 #include "ui/ThemePalette.h"
 #include "ui/RemoteControl.h"
 #include "ui/TrackNotifier.h"
@@ -208,34 +209,6 @@ static QIcon loadAppIcon() {
     // The embedded pixmap is the fallback when the theme lookup fails.
     return QIcon::fromTheme(iconName,
                             QIcon(appIconResourcePath(QStringLiteral("icon.png"))));
-}
-
-// Whether the desktop asks for less animation. Qt has no hint for this up to
-// 6.12, so the KDE and GTK settings are read from their INI files. Windows and
-// macOS are not read; the environment override works everywhere.
-static bool detectReducedMotion() {
-    const QByteArray forced = qgetenv("TIDALWAVE_REDUCED_MOTION");
-    if (!forced.isEmpty())
-        return forced != "0" && forced.compare("false", Qt::CaseInsensitive) != 0;
-
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
-    const QString cfg =
-        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-    if (!cfg.isEmpty()) {
-        // KDE: the animation speed slider at its slowest writes a factor of 0.
-        QSettings kde(cfg + QStringLiteral("/kdeglobals"), QSettings::IniFormat);
-        const QVariant factor = kde.value(QStringLiteral("KDE/AnimationDurationFactor"));
-        if (factor.isValid() && factor.toDouble() <= 0.0)
-            return true;
-
-        // GNOME and anything else GTK: "Reduce animation".
-        QSettings gtk(cfg + QStringLiteral("/gtk-3.0/settings.ini"), QSettings::IniFormat);
-        const QVariant anim = gtk.value(QStringLiteral("Settings/gtk-enable-animations"));
-        if (anim.isValid() && !anim.toBool())
-            return true;
-    }
-#endif
-    return false;
 }
 
 #if defined(Q_OS_UNIX)
@@ -657,8 +630,15 @@ int Application::run(int argc, char **argv) {
         QSurfaceFormat::setDefaultFormat(format);
     }
 
-    // Read once at startup.
-    m_reducedMotion = detectReducedMotion();
+    // The desktop is read once at startup; the Settings choice applies live.
+    const bool systemReduced = ReducedMotion::systemPrefers();
+    m_reducedMotion = ReducedMotion::resolve(m_prefs->reducedMotion(), systemReduced);
+    connect(m_prefs, &Prefs::reducedMotionChanged, this, [this, systemReduced] {
+        const bool on = ReducedMotion::resolve(m_prefs->reducedMotion(), systemReduced);
+        if (on == m_reducedMotion) return;
+        m_reducedMotion = on;
+        emit reducedMotionChanged();
+    });
 
     // Always off: whether a close quits depends on a tray that may not exist
     // yet, so reallyQuit() and lastWindowClosed answer it per close.

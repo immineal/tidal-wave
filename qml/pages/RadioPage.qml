@@ -58,17 +58,36 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 16
 
-            // Same drawn arrow as BackButton.
-            VectorIcon {
-                name: "chevron-left"
-                color: Theme.textSec
+            // Same drawn arrow as BackButton, in a 32px target.
+            Item {
+                id: radioBack
+                objectName: "radioBack"
                 // In a RowLayout, so the size has to be asked for: a plain
                 // width/height is overwritten by the layout.
-                Layout.preferredWidth: 18
-                Layout.preferredHeight: 18
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
-                strokeWidth: 2
-                MouseArea { anchors.fill: parent; anchors.margins: -6; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
+                activeFocusOnTab: true
+                Keys.onReturnPressed: Window.window.goBack()
+                Keys.onSpacePressed:  Window.window.goBack()
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTranslate("BackButton", "Back", "button, returns to the previous page")
+                Accessible.onPressAction: Window.window.goBack()
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.radiusButton
+                    color: "transparent"
+                    border.width: radioBack.activeFocus ? 2 : 0
+                    border.color: Theme.accent
+                }
+                VectorIcon {
+                    anchors.centerIn: parent
+                    width: 18; height: 18
+                    name: "chevron-left"
+                    color: Theme.textSec
+                    strokeWidth: 2
+                }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
             }
 
             ColumnLayout {

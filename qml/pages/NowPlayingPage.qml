@@ -1234,9 +1234,17 @@ Rectangle {
                             // mix or liked songs it started from.
                             Text {
                                 id: sourceLink
+                                objectName: "nowPlayingSourceLink"
                                 visible: hasTrack && player.sourceName.length > 0
+                                activeFocusOnTab: visible
+                                Keys.onReturnPressed: goToSource()
+                                Keys.onSpacePressed:  goToSource()
+                                Accessible.role: Accessible.Link
+                                Accessible.name: text
+                                Accessible.onPressAction: goToSource()
+                                font.underline: activeFocus
                                 text: qsTr("Playing from: %1").arg(player.sourceName)
-                                color: sourceLinkHov.hovered ? Theme.textPrimary : Theme.textDim
+                                color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: 12
                                 font.letterSpacing: 0.5
                                 elide: Text.ElideRight
@@ -1319,7 +1327,11 @@ Rectangle {
                         // Download button, shown while a track is playing.
                         Item {
                             id: npDownloadBtn
+                            objectName: "nowPlayingDownloadButton"
                             visible: root.hasTrack
+                            Accessible.role: Accessible.Button
+                            Accessible.name: qsTr("Download")
+                            Accessible.onPressAction: if (root.hasTrack && root.dlState !== "busy") downloader.downloadTrack(root.track)
                             Layout.preferredWidth: 44
                             Layout.preferredHeight: 44
                             activeFocusOnTab: root.dlState !== "busy"
@@ -1374,6 +1386,8 @@ Rectangle {
                             icon: root.isLiked ? "heart-filled" : "heart"
                             size: 24
                             active: root.isLiked
+                            label: root.isLiked ? qsTranslate("PlayerBar", "Unlike track")
+                                                : qsTranslate("PlayerBar", "Like track")
                             // On the row: CtrlBtn has its own hover tool tip,
                             // and two uses of the shared one fight.
                             onClicked: root.favoriteAction.toggleTrack(root.track.id, root.isLiked,
@@ -1535,6 +1549,21 @@ Rectangle {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: sleepTimerPopup.open()
                             }
+
+                            activeFocusOnTab: true
+                            Keys.onReturnPressed: sleepTimerPopup.openFromKeyboard()
+                            Keys.onSpacePressed:  sleepTimerPopup.openFromKeyboard()
+                            Accessible.role: Accessible.Button
+                            Accessible.name: sleepLabel.text
+                            Accessible.onPressAction: sleepTimerPopup.open()
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -3
+                                radius: height / 2
+                                color: "transparent"
+                                border.width: sleepTimerBtn.activeFocus ? 2 : 0
+                                border.color: Theme.accent
+                            }
                         }
                     }
 
@@ -1582,6 +1611,20 @@ Rectangle {
                         modal: true
                         focus: true
                         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                        // From the keyboard the first choice takes focus, and
+                        // closing hands it back to the pill.
+                        property bool fromKeyboard: false
+                        function openFromKeyboard() { fromKeyboard = true; open() }
+                        onOpened: {
+                            if (!fromKeyboard) return
+                            var first = root.sleepTimerActive ? sleepCancel : firstSleepOption
+                            first.forceActiveFocus(Qt.TabFocusReason)
+                        }
+                        onClosed: {
+                            if (fromKeyboard) sleepTimerBtn.forceActiveFocus(Qt.TabFocusReason)
+                            fromKeyboard = false
+                        }
                     
                         background: Rectangle {
                             color: Theme.surfaceHigh
@@ -1623,7 +1666,7 @@ Rectangle {
                                     columnSpacing: 8
                                     rowSpacing: 8
                                 
-                                    SleepOptionBtn { minutes: 5 }
+                                    SleepOptionBtn { id: firstSleepOption; minutes: 5 }
                                     SleepOptionBtn { minutes: 15 }
                                     SleepOptionBtn { minutes: 30 }
                                     SleepOptionBtn { minutes: 45 }
@@ -1632,12 +1675,24 @@ Rectangle {
                                 }
 
                                 Rectangle {
+                                    id: sleepEndOfTrack
+                                    objectName: "nowPlayingSleepEndOfTrack"
                                     Layout.fillWidth: true
                                     height: 32
                                     radius: Theme.radiusButton
                                     color: maEndOfTrack.containsMouse ? Theme.surfaceHov : Theme.surface
-                                    border.color: Theme.border
-                                    border.width: 1
+                                    border.color: activeFocus ? Theme.accent : Theme.border
+                                    border.width: activeFocus ? 2 : 1
+                                    function activate() {
+                                        root.startSleepTimer(0, true)
+                                        sleepTimerPopup.close()
+                                    }
+                                    activeFocusOnTab: true
+                                    Keys.onReturnPressed: activate()
+                                    Keys.onSpacePressed:  activate()
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: endOfTrackText.text
+                                    Accessible.onPressAction: activate()
                                 
                                     RowLayout {
                                         anchors.centerIn: parent
@@ -1649,6 +1704,7 @@ Rectangle {
                                             height: 12
                                         }
                                         Text {
+                                            id: endOfTrackText
                                             text: qsTr("Stop at End of Track")
                                             color: Theme.textPrimary
                                             font.pixelSize: 12
@@ -1661,10 +1717,7 @@ Rectangle {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
                                         hoverEnabled: true
-                                        onClicked: {
-                                            root.startSleepTimer(0, true)
-                                            sleepTimerPopup.close()
-                                        }
+                                        onClicked: sleepEndOfTrack.activate()
                                     }
                                 }
 
@@ -1680,6 +1733,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     spacing: 4
                                     Text {
+                                        id: customLabel
                                         text: qsTr("Custom: %1 min").arg(customSlider.value)
                                         color: Theme.textSec
                                         font.pixelSize: 12
@@ -1687,9 +1741,41 @@ Rectangle {
                                 
                                     Item {
                                         id: customSlider
+                                        objectName: "nowPlayingSleepSlider"
                                         property int value: 20
+                                        // Read by the accessible value interface,
+                                        // which also steps it on increase/decrease.
+                                        readonly property int from: 1
+                                        readonly property int to: 120
+                                        readonly property int stepSize: 1
+                                        function stepBy(d) { value = Math.max(from, Math.min(to, value + d)) }
                                         Layout.fillWidth: true
                                         height: 20
+                                        activeFocusOnTab: true
+                                        Keys.onPressed: (event) => {
+                                            switch (event.key) {
+                                            case Qt.Key_Right: case Qt.Key_Up:   customSlider.stepBy(1); break
+                                            case Qt.Key_Left:  case Qt.Key_Down: customSlider.stepBy(-1); break
+                                            case Qt.Key_PageUp:   customSlider.stepBy(10); break
+                                            case Qt.Key_PageDown: customSlider.stepBy(-10); break
+                                            case Qt.Key_Home: customSlider.value = customSlider.from; break
+                                            case Qt.Key_End:  customSlider.value = customSlider.to; break
+                                            default: return
+                                            }
+                                            event.accepted = true
+                                        }
+                                        Accessible.role: Accessible.Slider
+                                        Accessible.name: qsTr("Custom length", "sleep timer slider, in minutes")
+                                        Accessible.description: customLabel.text
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            anchors.margins: -3
+                                            radius: Theme.radiusButton
+                                            color: "transparent"
+                                            border.width: customSlider.activeFocus ? 2 : 0
+                                            border.color: Theme.accent
+                                        }
                                     
                                         Rectangle {
                                             id: customTrack
@@ -1784,14 +1870,27 @@ Rectangle {
                                 }
                             
                                 Rectangle {
+                                    id: sleepCancel
+                                    objectName: "nowPlayingSleepCancel"
                                     Layout.fillWidth: true
                                     height: 32
                                     radius: Theme.radiusButton
                                     color: Theme.redSoft
-                                    border.color: Theme.red
-                                    border.width: 1
+                                    border.color: activeFocus ? Theme.accent : Theme.red
+                                    border.width: activeFocus ? 2 : 1
+                                    function activate() {
+                                        root.cancelSleepTimer()
+                                        sleepTimerPopup.close()
+                                    }
+                                    activeFocusOnTab: true
+                                    Keys.onReturnPressed: activate()
+                                    Keys.onSpacePressed:  activate()
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: cancelText.text
+                                    Accessible.onPressAction: activate()
                                 
                                     Text {
+                                        id: cancelText
                                         anchors.centerIn: parent
                                         text: qsTr("Cancel Sleep Timer")
                                         color: Theme.redText
@@ -1802,10 +1901,7 @@ Rectangle {
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.cancelSleepTimer()
-                                            sleepTimerPopup.close()
-                                        }
+                                        onClicked: sleepCancel.activate()
                                     }
                                 }
                             }
@@ -1819,10 +1915,25 @@ Rectangle {
 
                             // Robust Options Toggle (Custom Row Switch)
                             RowLayout {
+                                id: fadeRow
+                                objectName: "nowPlayingSleepFade"
                                 Layout.fillWidth: true
                                 spacing: 12
+                                function toggle() {
+                                    if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
+                                }
+                                activeFocusOnTab: true
+                                Keys.onReturnPressed: toggle()
+                                Keys.onSpacePressed:  toggle()
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: fadeText.text
+                                Accessible.checkable: true
+                                Accessible.checked: root.sleepFadeOut
+                                Accessible.onToggleAction: toggle()
+                                Accessible.onPressAction: toggle()
                             
                                 Text {
+                                    id: fadeText
                                     text: qsTr("Fade out audio")
                                     color: Theme.textSec
                                     font.pixelSize: 12
@@ -1834,8 +1945,8 @@ Rectangle {
                                     height: 18
                                     radius: Theme.radiusChip
                                     color: root.sleepFadeOut ? Theme.accent : Theme.surface
-                                    border.color: Theme.border
-                                    border.width: 1
+                                    border.color: fadeRow.activeFocus ? Theme.textPrimary : Theme.border
+                                    border.width: fadeRow.activeFocus ? 2 : 1
                                 
                                     Rectangle {
                                         x: root.sleepFadeOut ? 17 : 1
@@ -1855,9 +1966,7 @@ Rectangle {
                                 // Exclusive on press, as in SettingsPanel's buttons.
                                 TapHandler {
                                     gesturePolicy: TapHandler.ReleaseWithinBounds
-                                    onTapped: {
-                                        if (Window.window) Window.window.sleepFadeOut = !Window.window.sleepFadeOut
-                                    }
+                                    onTapped: fadeRow.toggle()
                                 }
                             }
                         }
@@ -1883,7 +1992,9 @@ Rectangle {
                             objectName: "nowPlayingTransportRow"
                             anchors.fill: parent
                             spacing: root.transportSpacing
-                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; onClicked: player.setShuffle(!player.shuffle) }
+                            CtrlBtn { objectName: "nowPlayingShuffle"; icon: "shuffle"; size: 24; active: player.shuffle; checkable: true
+                                      label: qsTranslate("PlayerBar", "Shuffle")
+                                      onClicked: player.setShuffle(!player.shuffle) }
                             // The cluster's counterweight, which keeps play in
                             // the middle. Invisible, not zero-width: a RowLayout
                             // keeps the spacing of a zero-width child.
@@ -1893,7 +2004,9 @@ Rectangle {
                                 Layout.preferredWidth: root.volumeClusterWidth
                             }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28; onClicked: player.previous() }
+                            CtrlBtn { objectName: "nowPlayingPrevious"; icon: "previous"; size: 28
+                                      label: qsTranslate("PlayerBar", "Previous track")
+                                      onClicked: player.previous() }
                             Rectangle {
                                 id: npPlayPause
                                 objectName: "nowPlayingPlayButton"
@@ -1903,6 +2016,10 @@ Rectangle {
                                 activeFocusOnTab: true
                                 Keys.onReturnPressed: player.playPause()
                                 Keys.onSpacePressed:  player.playPause()
+                                Accessible.role: Accessible.Button
+                                Accessible.name: player.playing ? qsTranslate("PlayerBar", "Pause")
+                                                                : qsTranslate("PlayerBar", "Play")
+                                Accessible.onPressAction: player.playPause()
                                 VectorIcon {
                                     anchors.centerIn: parent
                                     name: player.playing ? "pause" : "play"
@@ -1916,9 +2033,15 @@ Rectangle {
                                 TapHandler   { onTapped: player.playPause() }
                                 PlayerBar.LoadErrorTip { }
                             }
-                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28; onClicked: player.next() }
+                            CtrlBtn { objectName: "nowPlayingNext"; icon: "next"; size: 28
+                                      label: qsTranslate("PlayerBar", "Next track")
+                                      onClicked: player.next() }
                             Item { Layout.fillWidth: true }
-                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0; onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
+                            CtrlBtn { objectName: "nowPlayingRepeat"; icon: player.repeatMode === 2 ? "repeat-one" : "repeat"; size: 24; active: player.repeatMode > 0
+                                      label: player.repeatMode === 2 ? qsTranslate("PlayerBar", "Repeat: one track")
+                                           : player.repeatMode === 1 ? qsTranslate("PlayerBar", "Repeat: all")
+                                                                     : qsTranslate("PlayerBar", "Repeat: off")
+                                      onClicked: player.setRepeatMode((player.repeatMode + 1) % 3) }
 
                             // The volume, where the row can hold it. Invisible,
                             // not folded: a Layout drops an invisible child and
@@ -2031,7 +2154,21 @@ Rectangle {
         width: chipLabel.implicitWidth + 16
         height: 26; radius: Theme.radiusChip
         color: chip.on ? Theme.accent : Theme.artScrimStrong
-        border.color: chip.on ? "transparent" : Theme.artBorder
+        // The focus ring is the text colour, not the accent: an "on" chip is
+        // already filled with the accent.
+        border.width: chip.activeFocus ? 2 : 1
+        border.color: chip.activeFocus ? Theme.textPrimary
+                    : chip.on ? "transparent" : Theme.artBorder
+
+        activeFocusOnTab: true
+        Keys.onReturnPressed: chip.toggled()
+        Keys.onSpacePressed:  chip.toggled()
+        Accessible.role: Accessible.Button
+        Accessible.name: chip.label
+        Accessible.checkable: true
+        Accessible.checked: chip.on
+        Accessible.onPressAction: chip.toggled()
+        Accessible.onToggleAction: chip.toggled()
 
         Text {
             id: chipLabel
@@ -2078,6 +2215,9 @@ Rectangle {
         activeFocusOnTab: true
         Keys.onReturnPressed: cb.activated()
         Keys.onSpacePressed:  cb.activated()
+        Accessible.role: Accessible.Button
+        Accessible.name: cb.tip
+        Accessible.onPressAction: cb.activated()
 
         Behavior on color        { ColorAnimation { duration: Theme.dur(100) } }
         Behavior on border.color { ColorAnimation { duration: Theme.dur(100) } }
@@ -2111,8 +2251,18 @@ Rectangle {
         height: 28
         radius: Theme.radiusButton
         color: ma.containsMouse ? Theme.surfaceHov : Theme.surface
-        border.color: Theme.border
-        border.width: 1
+        border.color: activeFocus ? Theme.accent : Theme.border
+        border.width: activeFocus ? 2 : 1
+        function activate() {
+            root.startSleepTimer(optBtn.minutes, false)
+            sleepTimerPopup.close()
+        }
+        activeFocusOnTab: true
+        Keys.onReturnPressed: activate()
+        Keys.onSpacePressed:  activate()
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("%1 minutes", "sleep timer option, for a screen reader").arg(optBtn.minutes)
+        Accessible.onPressAction: activate()
         
         Text {
             anchors.centerIn: parent
@@ -2145,7 +2295,8 @@ Rectangle {
         // with no dead strip between them. The flyout stands back while the
         // output picker's menu is open, as in the player bar.
         readonly property bool wantFlyout:
-            !outPicker.menuVisible && (muteHov.hovered || pctHov.hovered)
+            !outPicker.menuVisible
+            && (muteHov.hovered || pctHov.hovered || muteBtn.activeFocus)
 
         // A Popup is not an Item, so a tree walk cannot find it. Tests reach it
         // through here, which also tells the live one from the offstage copy.
@@ -2177,6 +2328,14 @@ Rectangle {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: player.setMuted(!player.muted)
                 Keys.onSpacePressed:  player.setMuted(!player.muted)
+                Accessible.role: Accessible.Button
+                Accessible.name: player.muted ? qsTranslate("PlayerBar", "Unmute")
+                                              : qsTranslate("PlayerBar", "Mute")
+                Accessible.onPressAction: player.setMuted(!player.muted)
+                Accessible.description: volPctText.text
+                // As on the bar's speaker: focus shows the flyout, arrows move it.
+                Keys.onUpPressed:   volFlyout.slider.stepBy(volFlyout.slider.stepSize)
+                Keys.onDownPressed: volFlyout.slider.stepBy(-volFlyout.slider.stepSize)
                 Rectangle {
                     anchors.fill: parent; anchors.margins: -4; radius: Theme.radiusButton; color: "transparent"
                     border.width: muteBtn.activeFocus ? 2 : 0
@@ -2196,6 +2355,7 @@ Rectangle {
             }
 
             Text {
+                id: volPctText
                 objectName: vol.visible ? "nowPlayingVolumePercent"
                                         : "nowPlayingVolumePercentOffstage"
                 // Fixed, so a label running from "0%" to "100%" cannot move the
@@ -2241,11 +2401,20 @@ Rectangle {
     component CtrlBtn : Item {
         id: ctrlBtn
         property string icon; property int size: 24; property bool active: false
+        // The screen reader's name for it, and whether `active` is a state.
+        property string label
+        property bool checkable: false
         signal clicked()
         width: size+20; height: size+20
         activeFocusOnTab: true
         Keys.onReturnPressed: clicked()
         Keys.onSpacePressed:  clicked()
+        Accessible.role: Accessible.Button
+        Accessible.name: ctrlBtn.label
+        Accessible.checkable: ctrlBtn.checkable
+        Accessible.checked: ctrlBtn.active
+        Accessible.onPressAction: ctrlBtn.clicked()
+        Accessible.onToggleAction: ctrlBtn.clicked()
         Rectangle {
             anchors.fill: parent
             radius: width / 2
