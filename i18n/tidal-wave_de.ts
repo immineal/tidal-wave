@@ -1755,6 +1755,10 @@
         <translation>Spielt jeden Titel etwa so laut wie die anderen, nach Tidals eigener Messung. Ein Album, das in seiner Reihenfolge läuft, behält sein eigenes Verhältnis.</translation>
     </message>
     <message>
+        <source>Autoplay similar tracks when the queue ends</source>
+        <translation>Ähnliche Titel abspielen, wenn die Warteschlange endet</translation>
+    </message>
+    <message>
         <source>Crossfade between tracks</source>
         <translation>Zwischen Titeln überblenden</translation>
     </message>

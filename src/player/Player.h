@@ -323,6 +323,13 @@ private:
     // Sets both outputs from the volume, the gains and the fades.
     void   applyLevel();
 
+    // ── Autoplay ────────────────────────────────────────────────────────
+    bool autoplayOn() const;
+    void maybeAutoplay();
+    // resume: the queue has run out and goes on once the rows have come.
+    void requestAutoplay(bool resume);
+    void appendAutoplay(qlonglong seed, const QList<Track> &tracks);
+
     struct Entry {
         QVariantMap track;
         // The user put this row here. Shuffle and playTracks() leave it alone,
@@ -693,4 +700,8 @@ private:
     int                  m_fadeMs        = 0;
     // The backend that took over reports buffering, which is no load.
     bool                 m_handoffSettling = false;
+
+    // The track whose radio was asked for, once per track.
+    qlonglong            m_autoplayFor     = 0;
+    bool                 m_autoplayResume  = false;
 };

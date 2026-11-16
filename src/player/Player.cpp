@@ -154,6 +154,7 @@ void Player::onPositionChanged(qint64 pos) {
     // duration(): a growing stream has no length of its own.
     if (duration() > 0 && pos >= kPreloadAfterMs
         && m_player->playbackState() == QMediaPlayer::PlayingState) {
+        maybeAutoplay();
         preloadNext();
         planHandover(pos);
     }
@@ -511,6 +512,7 @@ void Player::playTracks(const QVariantList &tracks, int startIndex) {
         emit sourceChanged();
     }
     m_pendingSource = false;
+    m_autoplayFor   = 0;
 
     // The manual queue is the user's own list and survives a new context.
     // Rows behind the cursor have played and go with the old one.
@@ -811,7 +813,13 @@ void Player::next(bool heldPaused) {
 void Player::stepForward(bool heldPaused, bool wait) {
     if (!m_player) return;
     const int n = nextIndex();
-    if (n < 0) { m_player->stop(); setStopped(true); return; }
+    if (n < 0) {
+        m_player->stop();
+        setStopped(true);
+        // Autoplay goes on once the radio for this track has come.
+        if (!heldPaused && autoplayOn()) requestAutoplay(true);
+        return;
+    }
     // A queue of one row under repeat goes round to the same row.
     if (n == m_index) { startOver(heldPaused); return; }
     stepTo(n);
@@ -1368,6 +1376,8 @@ void Player::startLoad(int index, bool wait) {
     QTemporaryFile *same = nullptr;
     const QString sameQuality = m_streamedQuality;
     const StreamManifest sameInfo = m_streamInfo;
+    // Autoplay waits for no queue the user has moved on from.
+    m_autoplayResume = false;
     if (!casting() && m_mpdTempFile && rowId == m_currentTrack.id && !m_loadOwed
         && !m_player->source().isEmpty()) {
         same = m_mpdTempFile;
@@ -1893,7 +1903,12 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
         // track over once it was stopped at its end. The last track of a queue
         // is left there, where position() answers with the start.
-        if (followingIndex() < 0) { setStopped(true); emit positionChanged(0); break; }
+        if (followingIndex() < 0) {
+            setStopped(true);
+            emit positionChanged(0);
+            if (autoplayOn()) requestAutoplay(true);
+            break;
+        }
 #endif
         trackEnded();
         break;
@@ -3184,4 +3199,58 @@ void Player::fadeStep() {
         m_fade = 1.0;
     }
     applyLevel();
+}
+
+// ─── Autoplay ──────────────────────────────────────
+// Where the queue would end, the radio of its last track goes on after it,
+// fetched while that track plays so the change to it is gapless too.
+
+bool Player::autoplayOn() const {
+    return m_prefs && m_prefs->autoplay() && m_repeatMode == 0 && !casting();
+}
+
+void Player::maybeAutoplay() {
+    if (!autoplayOn() || m_index < 0 || nextIndex() >= 0) return;
+    requestAutoplay(false);
+}
+
+void Player::requestAutoplay(bool resume) {
+    if (m_index < 0 || m_index >= m_queue.count()) return;
+    const qlonglong seed = m_currentTrack.id;
+    if (seed <= 0) return;
+    if (resume) m_autoplayResume = true;
+    if (m_autoplayFor == seed) return;   // asked once per track
+    m_autoplayFor = seed;
+    QPointer<Player> self(this);
+    m_client->fetchTrackRadio(seed, [self, seed](QList<Track> tracks, QString err) {
+        if (!self) return;
+        if (!err.isEmpty()) qWarning() << "Player: no autoplay, the radio failed:" << err;
+        self->appendAutoplay(seed, tracks);
+    });
+}
+
+void Player::appendAutoplay(qlonglong seed, const QList<Track> &tracks) {
+    const bool resume = std::exchange(m_autoplayResume, false);
+    // The queue moved on, or no longer ends here.
+    if (m_currentTrack.id != seed || nextIndex() >= 0) return;
+    QSet<qlonglong> have;
+    int natural = -1;
+    for (const Entry &e : std::as_const(m_queue)) {
+        have.insert(e.track.value(QStringLiteral("id")).toLongLong());
+        natural = qMax(natural, e.natural);
+    }
+    int added = 0;
+    for (const Track &t : tracks) {
+        if (t.id <= 0 || have.contains(t.id)) continue;
+        have.insert(t.id);
+        QVariantMap row = TidalBridge::trackToMap(t);
+        row[QStringLiteral("autoplay")] = true;
+        m_queue.append(Entry{ row, false, ++natural });
+        ++added;
+    }
+    if (added == 0) return;
+    emit queueChanged();
+    schedulePersist();
+    // The queue had already run out: it goes on now.
+    if (resume && m_stopped) stepForward(false, false);
 }

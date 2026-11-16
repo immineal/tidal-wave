@@ -56,6 +56,8 @@ class Prefs : public QObject {
     Q_PROPERTY(bool lyricsAutoSync READ lyricsAutoSync WRITE setLyricsAutoSync NOTIFY lyricsAutoSyncChanged)
     // Tidal's ReplayGain applied to each track. On by default.
     Q_PROPERTY(bool normalizeLoudness READ normalizeLoudness WRITE setNormalizeLoudness NOTIFY normalizeLoudnessChanged)
+    // The track radio of the last track goes on where the queue ends. On by default.
+    Q_PROPERTY(bool autoplay READ autoplay WRITE setAutoplay NOTIFY autoplayChanged)
     // Crossfade at a track change, off by default, over crossfadeSeconds.
     Q_PROPERTY(bool crossfade READ crossfade WRITE setCrossfade NOTIFY crossfadeChanged)
     Q_PROPERTY(int crossfadeSeconds READ crossfadeSeconds WRITE setCrossfadeSeconds NOTIFY crossfadeSecondsChanged)
@@ -92,6 +94,7 @@ public:
     bool    lyricsOtherSites() const  { return m_lyricsOtherSites; }
     bool    lyricsAutoSync() const    { return m_lyricsAutoSync; }
     bool    normalizeLoudness() const { return m_normalizeLoudness; }
+    bool    autoplay() const          { return m_autoplay; }
     bool    crossfade() const         { return m_crossfade; }
     int     crossfadeSeconds() const  { return m_crossfadeSeconds; }
     bool    crossfadeAvailable() const { return QT_VERSION >= QT_VERSION_CHECK(6, 5, 0); }
@@ -112,6 +115,7 @@ public:
     void setLyricsOtherSites(bool v);
     void setLyricsAutoSync(bool v);
     void setNormalizeLoudness(bool v);
+    void setAutoplay(bool v);
     void setCrossfade(bool v);
     void setCrossfadeSeconds(int v);
 
@@ -140,6 +144,7 @@ signals:
     void lyricsOtherSitesChanged();
     void lyricsAutoSyncChanged();
     void normalizeLoudnessChanged();
+    void autoplayChanged();
     void crossfadeChanged();
     void crossfadeSecondsChanged();
 
@@ -161,6 +166,7 @@ private:
     bool      m_lyricsOtherSites;
     bool      m_lyricsAutoSync;
     bool      m_normalizeLoudness;
+    bool      m_autoplay;
     bool      m_crossfade;
     int       m_crossfadeSeconds;
 };

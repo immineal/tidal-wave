@@ -70,6 +70,8 @@ public:
         if (m.codec.isEmpty()) m.codec = QStringLiteral("LOSSLESS");
         cb(m, {});
     }
+    // No autoplay request leaves the test.
+    void fetchTrackRadio(qint64, TracksCallback cb) override { cb({}, {}); }
 };
 
 QVariantMap row(qlonglong id, int ms, qlonglong albumId = 7) {

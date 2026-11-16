@@ -1187,6 +1187,7 @@ TestCase {
     function test_playback_switches_data() {
         return [
             { tag: "loudness", key: "normalizeLoudness", toggle: "settingsNormalizeToggle", fresh: true },
+            { tag: "autoplay", key: "autoplay", toggle: "settingsAutoplayToggle", fresh: true },
             { tag: "crossfade", key: "crossfade", toggle: "settingsCrossfadeToggle", fresh: false },
         ]
     }

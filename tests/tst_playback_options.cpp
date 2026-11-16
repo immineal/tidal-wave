@@ -1,6 +1,6 @@
-// Loudness normalisation and the format badge's text. The tracks are silent
-// WAV files handed out as Tidal's lossy tier hands out a whole file; the
-// Player is muted throughout.
+// Loudness normalisation, the format badge's text and autoplay at the end of
+// the queue. The tracks are silent WAV files handed out as Tidal's lossy tier
+// hands out a whole file; the Player is muted throughout.
 
 #include <QTest>
 #include <QAudio>
@@ -45,6 +45,9 @@ public:
     using TidalClient::TidalClient;
     QString file;
     StreamManifest base;
+    QList<Track> radio;
+    int radioAsked = 0;
+    qint64 radioSeed = 0;
     void fetchStreamManifest(qint64, StreamCb cb) override {
         StreamManifest m = base;
         m.type     = StreamManifest::BTS;
@@ -52,6 +55,11 @@ public:
         m.mimeType = QStringLiteral("audio/wav");
         if (m.codec.isEmpty()) m.codec = QStringLiteral("HIGH");
         cb(m, {});
+    }
+    void fetchTrackRadio(qint64 trackId, TracksCallback cb) override {
+        ++radioAsked;
+        radioSeed = trackId;
+        cb(radio, {});
     }
 };
 
@@ -63,6 +71,17 @@ QVariantMap row(qlonglong id, qlonglong albumId = 7, int seconds = 1) {
     t[QStringLiteral("albumId")]    = albumId;
     t[QStringLiteral("albumTitle")] = QStringLiteral("Album");
     t[QStringLiteral("duration")]   = seconds;
+    return t;
+}
+
+Track radioTrack(qlonglong id) {
+    Track t;
+    t.id = id;
+    t.title = QStringLiteral("R%1").arg(id);
+    t.duration = 1;
+    Artist a; a.name = QStringLiteral("Artist"); a.id = 3;
+    t.artists.append(a);
+    t.streamable = true;
     return t;
 }
 
@@ -220,7 +239,71 @@ private slots:
         QCOMPARE(r.player.audioFormat(), QStringLiteral("24-bit / 96 kHz FLAC"));
     }
 
+    // ── autoplay ────────────────────────────────────────────────────────────
+
+    // The last track ran out before its radio was asked for: the radio is
+    // asked then, its tracks join the queue, and the first of them plays.
+    void theQueueGoesOnWithTheRadioOfItsLastTrack() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.client.radio = { radioTrack(1), radioTrack(21), radioTrack(22) };
+        QVERIFY(r.up());
+        r.player.playTracks({ row(1) }, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(r.client.radioAsked, 1, 10000);
+        QCOMPARE(r.client.radioSeed, qint64(1));
+        // The seed itself is in the queue already and is not added again.
+        QTRY_COMPARE_WITH_TIMEOUT(r.player.queueCount(), 3, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(r.player.currentTrackMap().value(QStringLiteral("id")).toLongLong(),
+                                  qlonglong(21), 10000);
+        QVERIFY(r.player.currentTrackMap().value(QStringLiteral("autoplay")).toBool());
+        QVERIFY(!r.player.stopped());
+    }
+
+    // A track long enough asks for the radio while it plays, so the queue
+    // never runs out.
+    void theRadioIsFetchedWhileTheLastTrackPlays() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Rig r(m_dir.filePath(QStringLiteral("long.wav")));
+        r.client.radio = { radioTrack(31) };
+        QVERIFY(r.up());
+        r.player.playTracks({ row(1, 7, 7) }, 0);
+        QTRY_COMPARE_WITH_TIMEOUT(r.client.radioAsked, 1, 12000);
+        QCOMPARE(r.player.queueCount(), 2);
+        QCOMPARE(r.player.currentTrackMap().value(QStringLiteral("id")).toLongLong(), qlonglong(1));
+    }
+
+    void withAutoplayOffTheQueueStops() {
+        if (const char *why = obstacle()) QSKIP(why);
+        Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.prefs.setAutoplay(false);
+        r.client.radio = { radioTrack(21) };
+        QVERIFY(r.up());
+        r.player.playTracks({ row(1) }, 0);
+        QTRY_VERIFY_WITH_TIMEOUT(r.player.stopped(), 10000);
+        QTest::qWait(300);
+        QCOMPARE(r.client.radioAsked, 0);
+        QCOMPARE(r.player.queueCount(), 1);
+    }
+
+    // Repeat goes round the queue, so autoplay has no end to follow.
+    void repeatTakesPrecedence() {
+        Rig r(m_dir.filePath(QStringLiteral("short.wav")));
+        r.player.setRepeatMode(1);
+        r.client.radio = { radioTrack(21) };
+        QVERIFY(r.up());
+        r.player.playTracks({ row(1) }, 0);
+        QTest::qWait(1800);
+        QCOMPARE(r.client.radioAsked, 0);
+    }
+
 private:
+    static const char *obstacle() {
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+        if (QMediaDevices::audioOutputs().isEmpty())
+            return "Qt 6.4 needs an audio device to play a track at its own pace";
+#endif
+        return nullptr;
+    }
     QTemporaryDir m_dir;
 };
 

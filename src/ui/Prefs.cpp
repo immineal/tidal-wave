@@ -24,6 +24,7 @@ constexpr auto kLyricsLrclib = "lyrics/lrclib";
 constexpr auto kLyricsOtherSites = "lyrics/otherSites";
 constexpr auto kLyricsAutoSync = "lyrics/autoSync";
 constexpr auto kNormalizeLoudness = "playback/normalizeLoudness";
+constexpr auto kAutoplay = "playback/autoplay";
 constexpr auto kCrossfade = "playback/crossfade";
 constexpr auto kCrossfadeSeconds = "playback/crossfadeSeconds";
 
@@ -62,6 +63,7 @@ Prefs::Prefs(QObject *parent)
     , m_lyricsAutoSync(m_settings.value(kLyricsAutoSync, true).toBool())
     // On by default, as in Tidal's and Spotify's own apps.
     , m_normalizeLoudness(m_settings.value(kNormalizeLoudness, true).toBool())
+    , m_autoplay(m_settings.value(kAutoplay, true).toBool())
     , m_crossfade(m_settings.value(kCrossfade, false).toBool())
     , m_crossfadeSeconds(m_settings.value(kCrossfadeSeconds, 5).toInt())
 {
@@ -195,6 +197,13 @@ void Prefs::setNormalizeLoudness(bool v) {
     m_normalizeLoudness = v;
     m_settings.setValue(kNormalizeLoudness, v);
     emit normalizeLoudnessChanged();
+}
+
+void Prefs::setAutoplay(bool v) {
+    if (v == m_autoplay) return;
+    m_autoplay = v;
+    m_settings.setValue(kAutoplay, v);
+    emit autoplayChanged();
 }
 
 void Prefs::setCrossfade(bool v) {

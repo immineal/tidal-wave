@@ -554,6 +554,22 @@ Popup {
                     spacing: 12
                     visible: prefs.crossfadeAvailable
                     Text {
+                        text: qsTr("Autoplay similar tracks when the queue ends")
+                        color: Theme.textPrimary; font.pixelSize: 14
+                        wrapMode: Text.Wrap; Layout.fillWidth: true
+                    }
+                    Toggle {
+                        objectName: "settingsAutoplayToggle"
+                        checked: prefs.autoplay
+                        onToggled: prefs.autoplay = !prefs.autoplay
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 12
+                    Text {
                         text: qsTr("Crossfade between tracks")
                         color: Theme.textPrimary; font.pixelSize: 14
                         wrapMode: Text.Wrap; Layout.fillWidth: true
