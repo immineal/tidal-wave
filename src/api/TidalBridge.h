@@ -3,14 +3,18 @@
 #pragma once
 #include <QObject>
 #include <QJSValue>
+#include <memory>
 #include <QQmlEngine>
 #include <QList>
 #include <QSet>
 #include <QVariantMap>
 #include <QStringList>
+#include <QTimer>
 #include "TidalClient.h"
 
 class LyricsFinder;
+namespace FavoritesCache { struct Lists; }
+using FavoritesCacheLists = FavoritesCache::Lists;
 namespace lyricsync { class AutoSync; }
 
 // Sorts by max(local last-played time, Playlist::addedAt), descending.
@@ -42,6 +46,15 @@ class TidalBridge : public QObject {
     Q_PROPERTY(bool albumsLoading    READ albumsLoading    NOTIFY favoriteAlbumsChanged)
     Q_PROPERTY(bool artistsLoading   READ artistsLoading   NOTIFY favoriteArtistsChanged)
     Q_PROPERTY(bool playlistsLoading READ playlistsLoading NOTIFY favoritePlaylistsChanged)
+    // A request got no answer at all, and none has since. Cleared by the
+    // next answer, which a probe on a growing interval asks for meanwhile.
+    Q_PROPERTY(bool offline READ offline NOTIFY offlineChanged)
+    // Of "tracks", "albums", "artists" and "playlists", those whose sign-in
+    // load failed with nothing on hand, not even the copy on disk. Such a list
+    // is unknown, not empty.
+    Q_PROPERTY(QStringList unloadedKinds READ unloadedKinds NOTIFY unloadedKindsChanged)
+    // Some list on hand is the copy on disk, not what Tidal says now.
+    Q_PROPERTY(bool libraryFromCache READ libraryFromCache NOTIFY unloadedKindsChanged)
 public:
     explicit TidalBridge(TidalClient *client, QObject *parent = nullptr);
 
@@ -61,6 +74,20 @@ public:
     bool albumsLoading()    const { return m_albumsLoading; }
     bool artistsLoading()   const { return m_artistsLoading; }
     bool playlistsLoading() const { return m_playlistsLoading; }
+    bool offline() const { return m_offline; }
+    QStringList unloadedKinds() const { return m_unloadedKinds; }
+    bool libraryFromCache() const { return !m_cachedKinds.isEmpty(); }
+
+    // Asks Tidal now, and restarts the probe interval from its shortest.
+    Q_INVOKABLE void retryConnection();
+
+    // The probe's intervals: the first, and the ceiling it doubles up to.
+    static constexpr int kProbeFirstMs = 5000;
+    static constexpr int kProbeMaxMs   = 60000;
+    int nextProbeMsForTest() const { return m_probeTimer.isActive() ? m_probeMs : -1; }
+
+    // Where the lists are kept on disk; see FavoritesCache.
+    QString cachePath() const;
 
     // Tidal tells a client nothing about changes made on another device. This
     // asks one small request per list and reloads the lists that moved.
@@ -216,6 +243,12 @@ signals:
     // caches and signals are already up to date.
     void favoritesChangedElsewhere();
 
+    void offlineChanged();
+    void unloadedKindsChanged();
+    // Tidal answered again after being out of reach. The lists that failed
+    // are already loading again.
+    void connectionRestored();
+
 private:
     void call(QJSValue &cb, const QJSValueList &args);
     // Re-reads one playlist's header and merges what a contents change moves
@@ -245,6 +278,13 @@ private:
     void applyLikedTrackIds();
     void reportPagedLikes();
     void loadNextUserPlaylistsPage(int offset);
+    // One list of the sign-in load is in. `whole` false with nothing listed is
+    // a failure, filled from the disk copy where it has one.
+    void favoriteKindLanded(const QString &kind, bool whole, bool failed, bool haveRows);
+    void saveFavoritesCache() const;
+    const FavoritesCacheLists &diskCopy();
+    void setReachable(bool reachable);
+    void probe();
 
 public:
     // Public and static: the player makes a queue row out of a track, and a
@@ -305,6 +345,16 @@ private:
     QList<Album>    m_favoriteAlbums;
     QList<Artist>   m_favoriteArtists;
     QList<Playlist> m_favoritePlaylists;
+    // ── reaching Tidal, and the copy on disk ────────────────────────────
+    bool        m_offline = false;
+    QTimer      m_probeTimer;
+    int         m_probeMs = kProbeFirstMs;
+    QStringList m_unloadedKinds;
+    QStringList m_cachedKinds;      // the lists that came from the disk copy
+    bool        m_favLoadWhole = true;
+    // Read once per sign-in load, on the first list that needs it.
+    std::shared_ptr<FavoritesCacheLists> m_diskCopy;
+
     // Ids only: all it answers is whether a mix is saved.
     QSet<QString>   m_favoriteMixIds;
     // Bumped each time loadFavoriteMixIds() starts, so a reply from a previous

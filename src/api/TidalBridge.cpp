@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include "TidalBridge.h"
+#include "FavoritesCache.h"
 #include "PageEverything.h"
 #include "RecordVersions.h"
 #include "LyricsFinder.h"
@@ -23,6 +24,10 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
     QSettings settings;
     QString saved = settings.value(QStringLiteral("audio/preferredQuality"), QStringLiteral("LOSSLESS")).toString();
     setPreferredQuality(saved);
+
+    m_probeTimer.setSingleShot(true);
+    connect(&m_probeTimer, &QTimer::timeout, this, &TidalBridge::probe);
+    connect(m_client, &TidalClient::reachableChanged, this, &TidalBridge::setReachable);
 
     connect(m_client, &TidalClient::userIdChanged, this, [this](qint64 uid) {
         // The recents are keyed by account, so the list changes with it.
@@ -52,6 +57,10 @@ TidalBridge::TidalBridge(TidalClient *client, QObject *parent)
             m_favoritesLoading = false;
             m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
             m_favoriteMixIds.clear();
+            m_unloadedKinds.clear();
+            m_cachedKinds.clear();
+            m_diskCopy.reset();
+            emit unloadedKindsChanged();
             emit favoriteTracksChanged();
             emit favoriteAlbumsChanged();
             emit favoriteArtistsChanged();
@@ -973,6 +982,14 @@ void TidalBridge::loadFavoriteTrackIds() {
     m_likedTrackIds.clear();
     m_tracksFellBack = false;
 
+    m_favLoadWhole = true;
+    m_diskCopy.reset();
+    if (!m_unloadedKinds.isEmpty() || !m_cachedKinds.isEmpty()) {
+        m_unloadedKinds.clear();
+        m_cachedKinds.clear();
+        emit unloadedKindsChanged();
+    }
+
     emit favoriteTracksChanged();
     refreshLikedTrackIds();
     loadFavoriteTracks();
@@ -1051,6 +1068,7 @@ void TidalBridge::reloadInto(TidalClient::FavoriteKind kind, const FavoritesHead
             if (!same) {
                 apply(next, fellBack);
                 emit favoritesChangedElsewhere();
+                saveFavoritesCache();
             }
         }
         // Held back while the reload ran, so one change redraws once.
@@ -1161,15 +1179,18 @@ void TidalBridge::loadFavoriteTracks() {
         [this](int offset, int limit, TidalClient::TracksCallback cb) {
             m_client->fetchFavoriteTracksByIndex(std::move(cb), limit, offset, true); },
         [](const Track &t) { return QString::number(t.id); },
-        [this, gen](const QList<Track> &all, bool, bool fellBack) {
+        [this, gen](const QList<Track> &all, bool whole, bool fellBack) {
             if (gen != m_favTracksLoadGen) return;
             m_favoritesLoading = false;
             --m_favLoadsPending;
-            mergeLoaded(m_favoriteTracks, all);
-            for (const Track &t : all) m_favoriteTrackIds.insert(t.id);
+            const bool failed = !whole && all.isEmpty();
+            const QList<Track> rows = failed ? diskCopy().tracks : all;
+            mergeLoaded(m_favoriteTracks, rows);
+            for (const Track &t : rows) m_favoriteTrackIds.insert(t.id);
             m_tracksFellBack = fellBack;
             emit favoriteTracksChanged();
             reportPagedLikes();
+            favoriteKindLanded(QStringLiteral("tracks"), whole, failed, !rows.isEmpty());
         },
         TidalClient::kFavoritesPageMax, 100, std::numeric_limits<int>::max(),
         "liked songs", false);
@@ -1182,12 +1203,15 @@ void TidalBridge::loadFavoriteAlbums() {
         m_client->fetchFavoriteAlbums(std::move(cb), limit, offset); };
     pageFavorites<Album>(page, page,
         [](const Album &a) { return QString::number(a.id); },
-        [this, gen](const QList<Album> &all, bool, bool) {
+        [this, gen](const QList<Album> &all, bool whole, bool) {
             if (gen != m_favTracksLoadGen) return;
             --m_favLoadsPending;
             m_albumsLoading = false;
-            mergeLoaded(m_favoriteAlbums, all);
+            const bool failed = !whole && all.isEmpty();
+            const QList<Album> rows = failed ? diskCopy().albums : all;
+            mergeLoaded(m_favoriteAlbums, rows);
             emit favoriteAlbumsChanged();
+            favoriteKindLanded(QStringLiteral("albums"), whole, failed, !rows.isEmpty());
         },
         TidalClient::kFavoritesPageMax, 100, std::numeric_limits<int>::max(),
         "saved albums", true);
@@ -1200,12 +1224,15 @@ void TidalBridge::loadFavoriteArtists() {
         m_client->fetchFavoriteArtists(std::move(cb), limit, offset); };
     pageFavorites<Artist>(page, page,
         [](const Artist &a) { return QString::number(a.id); },
-        [this, gen](const QList<Artist> &all, bool, bool) {
+        [this, gen](const QList<Artist> &all, bool whole, bool) {
             if (gen != m_favTracksLoadGen) return;
             --m_favLoadsPending;
             m_artistsLoading = false;
-            mergeLoaded(m_favoriteArtists, all);
+            const bool failed = !whole && all.isEmpty();
+            const QList<Artist> rows = failed ? diskCopy().artists : all;
+            mergeLoaded(m_favoriteArtists, rows);
             emit favoriteArtistsChanged();
+            favoriteKindLanded(QStringLiteral("artists"), whole, failed, !rows.isEmpty());
         },
         TidalClient::kFavoritesPageMax, 100, std::numeric_limits<int>::max(),
         "followed artists", true);
@@ -1257,7 +1284,12 @@ void TidalBridge::loadNextUserPlaylistsPage(int offset) {
         if (!err.isEmpty() || playlists.isEmpty()) {
             --m_favLoadsPending;
             m_playlistsLoading = false;
+            const bool whole = err.isEmpty();
+            const bool failed = !whole && m_favoritePlaylists.isEmpty();
+            if (failed) m_favoritePlaylists = diskCopy().playlists;
             emit favoritePlaylistsChanged();
+            favoriteKindLanded(QStringLiteral("playlists"), whole, failed,
+                               !m_favoritePlaylists.isEmpty());
             return;
         }
         m_favoritePlaylists.append(playlists);
@@ -1266,6 +1298,91 @@ void TidalBridge::loadNextUserPlaylistsPage(int offset) {
         }
         loadNextUserPlaylistsPage(offset + playlists.size());
     }, 50, offset);
+}
+
+// ── the copy on disk, and reaching Tidal ────────────────────────────────────
+
+QString TidalBridge::cachePath() const {
+    return FavoritesCache::path(QStringLiteral("favorites"), m_client->userId());
+}
+
+const FavoritesCacheLists &TidalBridge::diskCopy() {
+    if (!m_diskCopy)
+        m_diskCopy = std::make_shared<FavoritesCacheLists>(
+            FavoritesCache::load(cachePath(), m_client->userId()));
+    return *m_diskCopy;
+}
+
+void TidalBridge::favoriteKindLanded(const QString &kind, bool whole, bool failed,
+                                     bool haveRows) {
+    m_favLoadWhole = m_favLoadWhole && whole;
+    if (failed) {
+        (haveRows ? m_cachedKinds : m_unloadedKinds).append(kind);
+        emit unloadedKindsChanged();
+    }
+    if (m_favLoadsPending == 0) {
+        m_diskCopy.reset();
+        saveFavoritesCache();
+    }
+}
+
+// Only a sign-in load that came in whole replaces the copy on disk.
+void TidalBridge::saveFavoritesCache() const {
+    const qint64 uid = m_client->userId();
+    if (uid <= 0 || m_favLoadsPending > 0 || !m_favLoadWhole) return;
+    if (!m_unloadedKinds.isEmpty() || !m_cachedKinds.isEmpty()) return;
+    FavoritesCacheLists lists;
+    lists.tracks    = m_favoriteTracks;
+    lists.albums    = m_favoriteAlbums;
+    lists.artists   = m_favoriteArtists;
+    lists.playlists = m_favoritePlaylists;
+    FavoritesCache::save(cachePath(), uid, lists);
+}
+
+void TidalBridge::setReachable(bool reachable) {
+    if (m_offline == !reachable) return;
+    m_offline = !reachable;
+    emit offlineChanged();
+    if (m_offline) {
+        m_probeMs = kProbeFirstMs;
+        m_probeTimer.start(m_probeMs);
+        return;
+    }
+    m_probeTimer.stop();
+    m_probeMs = kProbeFirstMs;
+    // A load still out was sent while Tidal was away and may yet fail.
+    const bool incomplete = m_favLoadsPending > 0 || !m_favLoadWhole
+                         || !m_unloadedKinds.isEmpty() || !m_cachedKinds.isEmpty();
+    if (m_client->userId() > 0 && incomplete) {
+        loadFavoriteTrackIds();
+        loadFavoriteMixIds();
+    }
+    emit connectionRestored();
+}
+
+// The smallest request there is; its answer, or its silence, reaches
+// setReachable() through TidalApi.
+void TidalBridge::probe() {
+    if (!m_offline) return;
+    if (m_client->userId() > 0)
+        m_client->fetchFavoritesHead(TidalClient::FavoriteKind::Tracks,
+                                     [](FavoritesHead, QString) {});
+    if (!m_offline) return;   // answered at once
+    m_probeMs = std::min(m_probeMs * 2, kProbeMaxMs);
+    m_probeTimer.start(m_probeMs);
+}
+
+void TidalBridge::retryConnection() {
+    if (m_offline) {
+        m_probeMs = kProbeFirstMs / 2;   // doubled by probe() to the first interval
+        probe();
+        return;
+    }
+    // Tidal answers but a list failed anyway, a 5xx say: ask for it again.
+    if (m_client->userId() > 0 && (!m_unloadedKinds.isEmpty() || !m_cachedKinds.isEmpty())) {
+        loadFavoriteTrackIds();
+        loadFavoriteMixIds();
+    }
 }
 
 void TidalBridge::markPlaylistPlayed(const QString &uuid) {

@@ -42,6 +42,8 @@ Rectangle {
     // favourites, the same source Collection reads.
     Connections {
         target: bridge
+        // Back online: what failed loads again.
+        function onOfflineChanged() { if (!bridge.offline) root.reloadFailed() }
         function onFavoriteAlbumsChanged()    { refreshDebounce.restart() }
         function onFavoriteArtistsChanged()   { refreshDebounce.restart() }
         function onFavoritePlaylistsChanged() { refreshDebounce.restart() }
@@ -87,6 +89,11 @@ Rectangle {
     function refreshPlaylists() {
         if (!bridge.playlistsLoading)
             playlists = firstOf(bridge.getUserPlaylists(), playlistItem)
+    }
+
+    function reloadFailed() {
+        if (root.mixesFailed) root.loadMixes()
+        root.refreshRows()
     }
 
     function loadMixes() {
@@ -206,7 +213,8 @@ Rectangle {
                         Text {
                             objectName: "homeMixesFailedText"
                             Layout.fillWidth: true
-                            text: qsTr("Your mixes could not be loaded.")
+                            text: bridge.offline ? qsTr("Your mixes could not be loaded: Tidal cannot be reached.")
+                                                 : qsTr("Your mixes could not be loaded.")
                             color: Theme.textSec
                             font.pixelSize: 13
                             wrapMode: Text.WordWrap

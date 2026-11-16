@@ -30,19 +30,27 @@ Rectangle {
     // not an account without mixes.
     property bool mixesLoading: false
     property bool mixesLoaded: false
+    property bool mixesFailed: false
 
-    // How many rows the open tab shows.
+    // How many rows the open tab shows, and whether its list could be read at
+    // all. A list that failed to load is not an empty library.
     readonly property int tabCount: [filteredTracks.length, filteredAlbums.length,
                                      filteredArtists.length, filteredPlaylists.length,
                                      filteredMixes.length][activeTab] || 0
-    // Which empty state the open tab shows, if any: "" for none, "filter" when
-    // the field matches nothing, "empty" for a library that has none of the kind.
+    readonly property var kindNames: ["tracks", "albums", "artists", "playlists", "mixes"]
+    readonly property bool tabUnavailable: activeTab === 4
+        ? (mixesFailed && mixes.length === 0)
+        : bridge.unloadedKinds.indexOf(kindNames[activeTab]) !== -1
+    // Which empty state the open tab shows, if any: "" for none, "failed" when
+    // the list did not load, "filter" when the field matches nothing, "empty"
+    // for a library that has none of the kind.
     readonly property string emptyKind: {
         if (tabCount > 0 || tabWaiting) return ""
-        if (activeTab === 4 ? !mixesLoaded : loading) return ""
+        if (activeTab === 4 ? !mixesLoaded && !mixesFailed : loading) return ""
         if (activeTab === 1 && bridge.albumsLoading) return ""
         if (activeTab === 2 && bridge.artistsLoading) return ""
         if (activeTab === 3 && bridge.playlistsLoading) return ""
+        if (tabUnavailable) return "failed"
         if (searchPattern.length > 0) return "filter"
         return "empty"
     }
@@ -140,6 +148,7 @@ Rectangle {
 
     Connections {
         target: bridge
+        function onOfflineChanged() { if (!bridge.offline && root.mixesFailed) root.loadMixes() }
         function onFavoriteTracksChanged() { root.updateFilteredContent() }
         function onFavoriteAlbumsChanged() { root.updateFilteredContent() }
         function onFavoriteArtistsChanged() { root.updateFilteredContent() }
@@ -163,7 +172,8 @@ Rectangle {
         mixesLoading = true
         bridge.fetchHomeMixes(function(mixList, err) {
             mixesLoading = false
-            if (err.length > 0) return
+            if (err.length > 0) { mixesFailed = true; return }
+            mixesFailed = false
             mixesLoaded = true
             var items = []
             for (var i = 0; i < mixList.length; i++) {
@@ -816,6 +826,49 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     text: qsTr("Try other words, or clear the search to see everything.")
                     color: Theme.textSec; font.pixelSize: 13
+                }
+            }
+        }
+
+        // The list never arrived: offline, or Tidal did not answer. The
+        // connection notice above the page offers the retry.
+        Item {
+            objectName: "collectionUnavailable"
+            visible: root.emptyKind === "failed"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: 12
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: ["heart", "album", "artist", "playlist", "mix"][root.activeTab] || "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                Text {
+                    objectName: "collectionUnavailableText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
+                                               : qsTr("Your library could not be loaded")
+                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Tidal could not be reached. It loads again by itself once the connection is back.")
+                    color: Theme.textSec; font.pixelSize: 13
+                }
+                PillButton {
+                    objectName: "collectionUnavailableRetry"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 4
+                    text: qsTr("Try again")
+                    accent: false
+                    onClicked: {
+                        if (root.activeTab === 4) root.loadMixes()
+                        else bridge.retryConnection()
+                    }
                 }
             }
         }

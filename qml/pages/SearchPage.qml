@@ -33,6 +33,9 @@ Rectangle {
     // query until a reply for that query has landed: see `replied`.
     property string repliedFor: ""
     property string errorText:  ""
+    // Whether that failure came with Tidal out of reach. Taken when the reply
+    // lands: the bridge marks itself offline before it answers.
+    property bool   errorOffline: false
 
     readonly property bool replied: query.length >= 2 && repliedFor === query
 
@@ -559,14 +562,20 @@ Rectangle {
                 Item {
                     objectName: "searchErrorStrip"
                     Layout.fillWidth: true
-                    height: 80
+                    // A Layout reads the preferred height; the offline copy wraps.
+                    Layout.preferredHeight: Math.max(80, errorLabel.implicitHeight + 32)
                     visible: root.replied && root.errorText.length > 0
+                    // Offline, Qt's own sentence names a host and a socket
+                    // error; the page says what it means instead.
                     Text {
+                        id: errorLabel
                         objectName: "searchErrorLabel"
                         anchors.centerIn: parent
                         width: parent.width - 48
-                        text: qsTr("Search failed: %1").arg(root.errorText)
-                        color: Theme.red
+                        text: root.errorOffline
+                              ? qsTr("Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.")
+                              : qsTr("Search failed: %1").arg(root.errorText)
+                        color: root.errorOffline ? Theme.textSec : Theme.red
                         font.pixelSize: 15
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
@@ -1064,6 +1073,7 @@ Rectangle {
             root.repliedFor = q
             if (err.length > 0) {
                 root.errorText = err
+                root.errorOffline = bridge.offline === true
                 // The arrays still hold the last successful query's hits, which
                 // this query cannot claim.
                 root._resetResults()
@@ -1143,6 +1153,7 @@ Rectangle {
                 // query, so they stay; what stops is the asking, which would
                 // otherwise retry on every pixel of scroll.
                 root.errorText = err
+                root.errorOffline = bridge.offline === true
                 root._setMore(kind, false)
                 return
             }
@@ -1219,7 +1230,7 @@ Rectangle {
         sectionOrder = [kTracks, kAlbums, kArtists, kPlaylists, kMixes]
         _searchGen++; loading = false; loadingMore = false
         // Back below the threshold: there is no query to have an answer about.
-        repliedFor = ""; errorText = ""
+        repliedFor = ""; errorText = ""; errorOffline = false
     }
 
     function navigateTo(page, params) {

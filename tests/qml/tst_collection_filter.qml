@@ -1,7 +1,7 @@
 // CollectionPage's field, its tabs and its empty states. A filter that matches
 // nothing says so, and does not claim the library is empty. The Mixes tab
-// filters too. A tab switch keeps each tab's rows and scroll. The bridge stub
-// is from tests/TestStubs.h.
+// filters too. A tab switch keeps each tab's rows and scroll. A list that
+// never loaded says that, with a retry. The bridge stub is from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Controls
@@ -142,5 +142,27 @@ TestCase {
         compare(list.count, 300)
     }
 
+    function test_a_list_that_never_loaded_is_not_called_empty() {
+        bridge.setUnloadedKindsForTest(["tracks", "albums", "artists", "playlists"])
+        var page = makeCollection(0)
+        verify(!anyVisibleText(page, "No saved tracks"), "an unloaded library was called empty")
+        compare(shownText(page, "collectionUnavailableText"), "Your library could not be loaded")
+        var retry = findChild(page, "collectionUnavailableRetry")
+        verify(retry && retry.visible, "no retry")
+        mouseClick(retry)
+        compare(bridge.retryConnectionCallsForTest(), 1, "the retry asked nothing")
+    }
 
+    function test_mixes_that_failed_say_so_and_load_again_once_online() {
+        bridge.setHomeMixesForTest([], "Host api.tidal.com not found")
+        var page = makeCollection(4)
+        verify(!anyVisibleText(page, "No mixes"), "failed mixes were called none")
+        compare(shownText(page, "collectionUnavailableText"), "Mixes could not be loaded")
+        bridge.setHomeMixesForTest([{ id: "m1", title: "Morgenmix", subtitle: "", coverUrl: "", mixType: "" }])
+        bridge.setOfflineForTest(true)
+        bridge.setOfflineForTest(false)
+        frame(page)
+        compare(page.mixes.length, 1, "the mixes did not load again once Tidal answered")
+        compare(shownText(page, "collectionUnavailableText"), "")
+    }
 }

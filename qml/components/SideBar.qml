@@ -709,16 +709,19 @@ Item {
                 }
 
                 Text {
+                    objectName: "sidebarEmptyText"
                     anchors.centerIn: parent
                     width: parent.width - 32
                     // There is no room to say any of this in a 68px rail, and
                     // an empty rail is self-explanatory. A library still loading
-                    // is not an empty one.
+                    // is not an empty one, and nor is one that failed to load.
                     visible: root.rows.length === 0 && root.showsWide && !library.loading
                     opacity: root.wideOpacity
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: root.searching ? qsTr("No matches") : qsTr("Nothing saved yet")
+                    text: root.searching ? qsTr("No matches")
+                        : library.loadFailed ? qsTr("Your library could not be loaded")
+                        : qsTr("Nothing saved yet")
                     color: Theme.textDim
                     font.pixelSize: 12
                 }

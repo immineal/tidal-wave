@@ -596,9 +596,22 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
 
+                // Above the page, not laid over it: the page gives up the height.
+                OfflineNotice {
+                    id: offlineNotice
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: implicitHeight
+                    source: auth.state === 2 ? bridge : null
+                }
+
                 Item {
                     id: mainContainer
-                    anchors.fill: parent
+                    anchors.top: offlineNotice.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
                     visible: auth.state === 2
 
                     Loader {

@@ -138,7 +138,16 @@ int TidalApi::rateLimitedFor(const QUrl &url) const {
     return int(qMax<qint64>(1, (it->until.remainingTime() + 999) / 1000));
 }
 
+void TidalApi::noteReachable(bool reachable) {
+    if (m_reachable == reachable) return;
+    m_reachable = reachable;
+    emit reachableChanged(reachable);
+}
+
 void TidalApi::noteAnswer(const QUrl &url, const Answer &a, const QByteArray &retryAfter) {
+    // No status at all: DNS, refused, reset or the idle timeout. Any status,
+    // an error one included, means Tidal is there.
+    noteReachable(a.status > 0 || !a.failed);
     const QString key = rateLimitKey(url);
     if (a.status != 429) {
         if (a.status > 0) m_rateLimits.remove(key);

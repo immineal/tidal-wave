@@ -70,6 +70,7 @@ set(SOURCES
     src/ui/Shortcuts.cpp
     src/ui/SignalWatcher.cpp
     src/api/LibraryIndex.cpp
+    src/api/FavoritesCache.cpp
 )
 
 set(HEADERS
@@ -98,6 +99,7 @@ set(HEADERS
     src/ui/Shortcuts.h
     src/ui/SignalWatcher.h
     src/api/LibraryIndex.h
+    src/api/FavoritesCache.h
     src/api/PageEverything.h
 )
 
@@ -198,6 +200,7 @@ qt_add_qml_module(tidalwave_qml
         qml/components/SeekBar.qml
         qml/components/QueuePanel.qml
         qml/components/UpdatePrompt.qml
+        qml/components/OfflineNotice.qml
         qml/components/VectorIcon.qml
         qml/components/AppMark.qml
         qml/components/ArtistLinks.qml

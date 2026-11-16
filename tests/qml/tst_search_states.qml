@@ -1,5 +1,6 @@
-// SearchPage: each filter chip starts at its top. The bridge stub is from
-// tests/TestStubs.h.
+// SearchPage: each filter chip starts at its top, and a search that failed
+// because Tidal cannot be reached says that in words, not with Qt's socket
+// error. The bridge stub is from tests/TestStubs.h.
 
 import QtQuick
 import QtQuick.Window
@@ -90,4 +91,15 @@ TestCase {
         compare(flick.contentY, 0, "the Albums chip opened at the Tracks chip's scroll")
     }
 
+    function test_an_offline_search_says_so_in_words() {
+        var win = showPage()
+        bridge.setOfflineForTest(true)
+        bridge.setSearchErrorForTest("Host api.tidal.com not found")
+        search(win, "erfunden")
+        var label = findChild(win.page, "searchErrorLabel")
+        verify(label && label.visible, "the failure was not shown")
+        verify(label.text.indexOf("Host") === -1, "the raw Qt error is on screen: " + label.text)
+        verify(label.text.indexOf("cannot be reached") !== -1, "it did not say why: " + label.text)
+        verify(!Qt.colorEqual(label.color, Theme.red), "being offline is shown as an alarm")
+    }
 }

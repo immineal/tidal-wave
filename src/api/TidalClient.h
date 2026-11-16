@@ -310,6 +310,8 @@ public:
 signals:
     void error(const QString &msg);
     void userIdChanged(qint64 uid);
+    // TidalApi's: whether the last request got any answer at all.
+    void reachableChanged(bool reachable);
 
 private:
     // Pages through `endpoint` until totalNumberOfItems is reached and

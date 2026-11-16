@@ -759,6 +759,10 @@ int Application::run(int argc, char **argv) {
     connect(m_bridge, &TidalBridge::favoriteRemoved,     m_library, &LibraryIndex::removeEntry);
     connect(m_bridge, &TidalBridge::playlistCreated,     m_library, &LibraryIndex::addPlaylist);
     connect(m_bridge, &TidalBridge::favoritesChangedElsewhere, m_library, &LibraryIndex::refresh);
+    // Back online: a sidebar that failed, or shows the disk copy, loads again.
+    connect(m_bridge, &TidalBridge::connectionRestored, m_library, [this]() {
+        if (m_library->needsRefresh()) m_library->refresh();
+    });
     // Not through addPlaylist: that stamps addedAt and would lift a renamed
     // playlist to the top of the sidebar.
     connect(m_bridge, &TidalBridge::playlistUpdated,     m_library, &LibraryIndex::updatePlaylist);

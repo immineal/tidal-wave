@@ -28,6 +28,9 @@ class LibraryIndex : public QObject {
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool indexing READ indexing NOTIFY indexingChanged)
+    // The last refresh got nothing for a list and had no copy of it on disk,
+    // so an empty sidebar is not an empty library.
+    Q_PROPERTY(bool loadFailed READ loadFailed NOTIFY loadFailedChanged)
 public:
     explicit LibraryIndex(TidalClient *client, PinStore *pins, QObject *parent = nullptr);
     ~LibraryIndex() override;
@@ -43,6 +46,9 @@ public:
     QVariantList entries() const;
     bool loading() const;
     bool indexing() const;
+    bool loadFailed() const { return m_loadFailed; }
+    // The last refresh failed somewhere, or showed the disk copy for a list.
+    bool needsRefresh() const { return m_failedParts != 0 || m_partialRun; }
 
     void setUserId(qint64 uid);
     qint64 userId() const { return m_userId; }
@@ -101,6 +107,7 @@ signals:
     void entriesChanged();
     void loadingChanged();
     void indexingChanged();
+    void loadFailedChanged();
 
 protected:
     using TracksCb    = std::function<void(QList<Tidal::Track>,    QString)>;
@@ -193,6 +200,10 @@ private:
     void loadTrackCache();
     void saveTrackCache() const;
     QString trackCachePath() const;
+    // The five lists as last loaded whole; see FavoritesCache.
+    void saveLibraryCache() const;
+    void fillFromLibraryCache();
+    void setLoadFailed(bool v);
 
     static Entry entryFor(const Tidal::Playlist &p);
     static Entry entryFor(const Tidal::Album &a);
@@ -239,4 +250,9 @@ private:
     bool m_loadWhole = true;
     // A row changed here during a run, whose lists may be older than that.
     bool m_refreshAgain = false;
+    // The run in flight: lists that got nothing (a bit per part, see
+    // LibraryIndex.cpp), and whether any part came in short.
+    int  m_failedParts = 0;
+    bool m_partialRun  = false;
+    bool m_loadFailed  = false;
 };
