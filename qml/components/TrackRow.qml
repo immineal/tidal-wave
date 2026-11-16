@@ -377,23 +377,14 @@ Item {
                 }
             }
 
-            Rectangle {
+            // Decoded at twice the 36px box, not the 320px the URL serves.
+            // Safe on a crop only because this art is square.
+            CoverArt {
                 visible: showCover
-                width: 36; height: 36; radius: Theme.radiusSmall
-                color: Theme.surfaceHigh
-                clip: true
-                Image {
-                    objectName: "trackRowCover"
-                    anchors.fill: parent
-                    source: root.coverText.length > 0 ? "image://tidal/" + root.coverText : ""
-                    // Decoded at twice the 36px box, not the 320px the URL
-                    // serves. Both dimensions: width alone reaches the provider
-                    // as 72x0. Safe on a crop only because this art is square.
-                    sourceSize: Qt.size(72, 72)
-                    fillMode: Image.PreserveAspectCrop
-                    smooth: true
-                    mipmap: true
-                }
+                width: 36; height: 36
+                imageName: "trackRowCover"
+                source: root.coverText
+                decodeSize: Qt.size(72, 72)
             }
 
             // Title + artists
@@ -1081,15 +1072,12 @@ Item {
                                 anchors.left: parent.left; anchors.leftMargin: Theme.space3
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: Theme.space3
-                                Rectangle {
-                                    width: 28; height: 28; radius: Theme.radiusSmall; color: Theme.surface; clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: model.coverUrl ? "image://tidal/" + model.coverUrl : ""
-                                        // 28px box, doubled; see the row cover above.
-                                        sourceSize: Qt.size(56, 56)
-                                        fillMode: Image.PreserveAspectCrop; smooth: true
-                                    }
+                                // 28px box, doubled; see the row cover above.
+                                CoverArt {
+                                    width: 28; height: 28; color: Theme.surface
+                                    source: model.coverUrl || ""
+                                    glyph: "playlist"
+                                    decodeSize: Qt.size(56, 56)
                                 }
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter

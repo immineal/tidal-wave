@@ -116,15 +116,10 @@ Rectangle {
             Layout.minimumWidth: 200
             spacing: Theme.space3
 
-            Rectangle {
+            CoverArt {
                 objectName: "playerBarCover"
-                width: 56; height: 56; radius: Theme.radiusSmall
-                color: Theme.surfaceHigh; clip: true
-                Image {
-                    anchors.fill: parent
-                    source: hasTrack ? "image://tidal/" + track.coverUrl : ""
-                    fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                }
+                width: 56; height: 56
+                source: hasTrack ? (track.coverUrl || "") : ""
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                     onClicked: root.showNowPlaying()

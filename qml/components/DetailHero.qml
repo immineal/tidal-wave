@@ -14,13 +14,28 @@ Rectangle {
     property string titleObjectName: "heroTitle"
     property int    titleLines: 0
 
-    // The artwork tile. `artCovers` is a 2x2 collage for when there is no
-    // cover of its own; `artIcon` is drawn while there is neither.
+    // The artwork tile. `artCovers` are the tracks' covers, for when there is
+    // no cover of its own: four distinct ones make a 2x2 mosaic, fewer make
+    // the first one whole. `artIcon` is drawn while there is neither.
     property bool   showArt: true
     property string artSource: ""
     property var    artCovers: []
     property string artIcon: ""
     readonly property int artSize: 200
+
+    readonly property var distinctCovers: {
+        var seen = {}, out = []
+        for (var i = 0; i < hero.artCovers.length && out.length < 4; i++) {
+            var c = hero.artCovers[i]
+            if (!c || seen[c]) continue
+            seen[c] = true
+            out.push(c)
+        }
+        return out
+    }
+    readonly property bool   showsMosaic: artSource.length === 0 && distinctCovers.length >= 4
+    readonly property string shownCover: artSource.length > 0 ? artSource
+                                       : distinctCovers.length > 0 && !showsMosaic ? distinctCovers[0] : ""
 
     // A photo behind the whole hero, as on an artist or an album.
     property string backdropSource: ""
@@ -82,8 +97,8 @@ Rectangle {
                 id: cover
                 objectName: "heroCover"
                 anchors.fill: parent
-                visible: hero.artSource.length > 0
-                source: hero.artSource.length > 0 ? "image://tidal/" + hero.artSource : ""
+                visible: hero.shownCover.length > 0
+                source: hero.shownCover.length > 0 ? "image://tidal/" + hero.shownCover : ""
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 mipmap: true
@@ -94,9 +109,9 @@ Rectangle {
                 id: collage
                 anchors.fill: parent
                 columns: 2
-                visible: hero.artSource.length === 0 && hero.artCovers.length >= 4
+                visible: hero.showsMosaic
                 Repeater {
-                    model: collage.visible ? hero.artCovers.slice(0, 4) : []
+                    model: collage.visible ? hero.distinctCovers : []
                     Image {
                         width: hero.artSize / 2
                         height: hero.artSize / 2

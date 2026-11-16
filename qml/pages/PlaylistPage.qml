@@ -165,8 +165,8 @@ Rectangle {
             kind: qsTr("Playlist")
             title: root.playlistTitle
             artSource: root.coverUrl
-            // Without a cover of its own, the first four tracks' covers.
-            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            // Without a cover of its own, the tracks' covers; see DetailHero.
+            artCovers: root.tracks.map(function (t) { return t ? t.coverUrl || "" : "" })
             artIcon: "playlist"
             onPinRequested: (x, y) => {
                 var p = hero.mapToItem(root, x, y)

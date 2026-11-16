@@ -756,19 +756,14 @@ Rectangle {
                     // Album art. A square of its own size centred in the slot:
                     // the slot stops being square when a panel opens, and
                     // stretched artwork would show in the crossfade.
-                    Rectangle {
+                    CoverArt {
                         objectName: "nowPlayingArt"
                         anchors.centerIn: parent
                         width:  root.coverSize
                         height: root.coverSize
-                        radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
                         opacity: 1 - root.panelness
                         visible: opacity > 0.01
-                        Image {
-                            anchors.fill: parent
-                            source: hasTrack ? "image://tidal/" + track.coverUrl : ""
-                            fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                        }
+                        source: hasTrack ? (track.coverUrl || "") : ""
                     }
 
                     // Lyrics panel. This one does take the whole slot, which is
@@ -2120,13 +2115,9 @@ Rectangle {
                                 Layout.bottomMargin: Theme.space1
                                 spacing: Theme.space3
                                 property var upTrack: modelData
-                                Rectangle {
-                                    width: 44; height: 44; radius: Theme.radiusSmall; color: Theme.surfaceHigh; clip: true
-                                    Image {
-                                        anchors.fill: parent
-                                        source: upTrack && upTrack.coverUrl80 ? "image://tidal/" + upTrack.coverUrl80 : ""
-                                        fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true
-                                    }
+                                CoverArt {
+                                    width: 44; height: 44
+                                    source: upTrack && upTrack.coverUrl80 ? upTrack.coverUrl80 : ""
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true; spacing: Theme.space1
