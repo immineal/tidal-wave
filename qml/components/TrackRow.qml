@@ -343,9 +343,11 @@ Item {
             anchors { fill: parent; leftMargin: Theme.space3; rightMargin: Theme.space8 }
             spacing: Theme.space3
 
-            // Track number / now playing indicator
+            // Track number / now playing indicator. Wide enough for four
+            // digits, so a long collection's numbers stay in their gutter.
+            TextMetrics { id: numberRoom; font.pixelSize: Theme.fontMeta; text: "0000" }
             Item {
-                width: 24
+                Layout.preferredWidth: Math.max(24, Math.ceil(numberRoom.advanceWidth))
                 Layout.alignment: Qt.AlignVCenter
                 Text {
                     objectName: "trackRowNumber"
@@ -427,7 +429,9 @@ Item {
             Text {
                 objectName: "trackAlbumColumn"
                 visible: showAlbum && root.width >= root.albumBreakpoint
-                Layout.preferredWidth: 160
+                // A share of a wide row, so a long album name is not cut
+                // short beside an empty title column.
+                Layout.preferredWidth: Math.round(Math.max(160, Math.min(320, root.width * 0.28)))
                 text: root.albumText
                 color: Theme.textSec
                 font.pixelSize: Theme.fontMeta

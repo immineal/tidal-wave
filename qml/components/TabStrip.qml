@@ -82,7 +82,9 @@ Flow {
             readonly property bool current: strip.currentIndex === index
 
             height: strip.chipHeight
-            width: label.implicitWidth + Theme.space6
+            // Sized off the bold label, so choosing a chip never moves the
+            // ones after it.
+            width: boldWidth.implicitWidth + Theme.space6
             radius: Theme.radiusFull
             // Every chip rests on the same surface. The current one takes no
             // hover: the pill already marks it.
@@ -137,6 +139,14 @@ Flow {
                 // place blend at the glyphs' antialiased edge.
                 visible: !chip.labelFullyInked
                 font.pixelSize: Theme.fontBody
+                font.bold: chip.current
+            }
+            Text {
+                id: boldWidth
+                visible: false
+                text: label.text
+                font.pixelSize: label.font.pixelSize
+                font.bold: true
             }
 
             // The label again in the accent's ink, clipped to the pill. The

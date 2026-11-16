@@ -100,6 +100,10 @@ QtObject {
     // scales with the icon.
     readonly property real iconStroke: 1.8
 
+    // ── scroll bars ──────────────────────────────────────────────────────
+    // The shortest a handle gets, however long the list.
+    readonly property int scrollHandleMin: 40
+
     // ── tool tips ────────────────────────────────────────────────────────
     readonly property int tooltipDelay: 500
 

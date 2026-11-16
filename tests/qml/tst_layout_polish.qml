@@ -574,6 +574,122 @@ TestCase {
         dlg.close()
     }
 
+    // ── 7. Collection ────────────────────────────────────────────────────
+
+    Component { id: collectionC; CollectionPage { anchors.fill: parent } }
+
+    function test_collection_grids_line_up_with_the_title_data() {
+        var rows = []
+        var w = [640, 740, 900, 1060, 1280]
+        var tabs = [ { t: 1, grid: "collectionAlbumsGrid" },
+                     { t: 3, grid: "collectionPlaylistsGrid" } ]
+        for (var i = 0; i < w.length; ++i)
+            for (var k = 0; k < tabs.length; ++k)
+                rows.push({ tag: tabs[k].grid + " " + w[i], w: w[i], tab: tabs[k].t, grid: tabs[k].grid })
+        return rows
+    }
+
+    function test_collection_grids_line_up_with_the_title(row) {
+        var host = showHost(plainHost, row.w, 700)
+        var page = createTemporaryObject(collectionC, host.pane)
+        page.activeTab = row.tab
+        page.filteredAlbums = albums(9)
+        page.filteredPlaylists = albums(9)
+        settle(host)
+        var title = findByName(page, "collectionTitle")
+        var search = findByName(page, "collectionSearch")
+        var grid = findByName(page, row.grid)
+        var first = findByName(grid.itemAtIndex(0), "cardArt")
+        verify(title && search && first, "a part of the page was not found")
+        var left = title.mapToItem(page, 0, 0).x
+        compare(search.mapToItem(page, 0, 0).x, left, "the search field is off the title")
+        var art = first.mapToItem(page, 0, 0).x
+        verify(Math.abs(art - left) <= 0.5,
+               row.tag + ": the first card starts at " + art.toFixed(1) + ", the title at " + left)
+    }
+
+    function test_the_active_tab_does_not_push_its_neighbours() {
+        var host = showHost(plainHost, 1060, 700)
+        var page = createTemporaryObject(collectionC, host.pane)
+        page.activeTab = 0
+        settle(host)
+        var labels = collectByName(page, "collectionTabLabel", [])
+        verify(labels.length === 5, "the five tab labels were not found")
+        // The chips, not the labels: a label is centred in its chip, and the
+        // bold one is wider than the regular one.
+        var xs = labels.map(function (l) { return l.parent.mapToItem(page, 0, 0).x })
+        page.activeTab = 2
+        settle(host)
+        // The chosen tab is bold, and the bold costs its neighbours nothing.
+        verify(labels[2].font.bold && !labels[1].font.bold, "the chosen tab is not the bold one")
+        for (var i = 0; i < labels.length; ++i)
+            verify(Math.abs(labels[i].parent.mapToItem(page, 0, 0).x - xs[i]) <= 0.5,
+                   "tab " + i + " moved when tab 2 was chosen")
+    }
+
+    function test_the_chosen_sort_chip_is_bold_and_moves_nothing() {
+        var host = showHost(plainHost, 1060, 700)
+        var page = createTemporaryObject(collectionC, host.pane)
+        page.activeTab = 1
+        page.sortMode = 0
+        settle(host)
+        var chips = [findByName(page, "collectionSortDefault")]
+            .concat(collectByName(page, "collectionSortPill", []))
+        verify(chips.length === 3 && chips[0], "the three sort chips were not found")
+        var xs = chips.map(function (c) { return c.mapToItem(page, 0, 0).x })
+        page.sortMode = 1
+        settle(host)
+        function label(c) {
+            for (var k = 0; k < c.children.length; ++k)
+                if (c.children[k].text !== undefined && c.children[k].visible) return c.children[k]
+            return null
+        }
+        verify(label(chips[1]).font.bold && !label(chips[0]).font.bold,
+               "the chosen sort chip is not the bold one")
+        for (var i = 0; i < chips.length; ++i)
+            verify(Math.abs(chips[i].mapToItem(page, 0, 0).x - xs[i]) <= 0.5,
+                   "sort chip " + i + " moved when A to Z was chosen")
+    }
+
+    Component {
+        id: oneRowC
+        TrackRow { title: "Kurz"; artists: "Ein Interpret"; albumTitle: "The Beatles (Remastered 2009 Edition)" }
+    }
+
+    function test_the_album_column_takes_its_share_of_a_wide_row() {
+        var host = showHost(plainHost, 1100, 200)
+        var r = createTemporaryObject(oneRowC, host.pane, { width: 1000, trackData: track("Kurz") })
+        settle(host)
+        var album = findByName(r, "trackAlbumColumn")
+        verify(album.visible, "the album column is hidden at 1000")
+        verify(!album.truncated, "a short album title elides at " + album.width
+               + "px in a 1000px row")
+    }
+
+    function test_a_four_digit_track_number_fits() {
+        var host = showHost(plainHost, 1100, 200)
+        var r = createTemporaryObject(oneRowC, host.pane, { width: 900, trackNum: 4388 })
+        settle(host)
+        var num = findByName(r, "trackRowNumber")
+        verify(num.implicitWidth <= num.parent.width + 0.5,
+               "the number needs " + num.implicitWidth.toFixed(1) + " in a "
+               + num.parent.width + "px slot")
+    }
+
+    function test_a_long_list_keeps_a_grabbable_scroll_handle() {
+        var host = showHost(plainHost, 900, 700)
+        var page = createTemporaryObject(collectionC, host.pane)
+        page.activeTab = 0
+        page.filteredTracks = tracks(5000)
+        settle(host)
+        var bar = findByName(page, "collectionTracksScrollBar")
+        verify(bar, "the tracks list has no named scroll bar")
+        bar.active = true
+        settle(host)
+        verify(bar.contentItem.height >= Theme.scrollHandleMin - 0.5,
+               "the handle is " + bar.contentItem.height.toFixed(1) + "px for 5000 rows")
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
