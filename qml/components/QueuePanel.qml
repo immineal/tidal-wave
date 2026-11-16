@@ -146,7 +146,13 @@ Item {
         var back = _lastInside.nextItemInFocusChain(false) === f
         var target = edgeStop(back ? false : true)
         _lastInside = null
-        if (target && holds(target)) target.forceActiveFocus(Qt.TabFocusReason)
+        if (!target || !holds(target)) return
+        target.forceActiveFocus(Qt.TabFocusReason)
+        // Qt 6.4 finishes the Tab's own move after this handler and so undoes
+        // the line above; once the key is through, the move is made again.
+        Qt.callLater(function () {
+            if (open && target.visible && !holds(keyboardItem)) target.forceActiveFocus(Qt.TabFocusReason)
+        })
     }
     onOpenChanged: if (!open) _lastInside = null
 

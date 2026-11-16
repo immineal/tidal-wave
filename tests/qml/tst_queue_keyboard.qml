@@ -82,13 +82,17 @@ TestCase {
         verify(a11y.name(close).length > 0)
 
         // Tab goes round inside the panel, never out to the page behind it.
+        // Checked once the key is through: Qt 6.4 lets the panel put focus
+        // back only after its own move is done.
         for (var i = 0; i < 12; ++i) {
             keyClick(Qt.Key_Tab)
+            wait(0)
             verify(inside(win.activeFocusItem, panel),
                    "Tab " + (i + 1) + " left the open queue for " + win.activeFocusItem)
         }
         for (var j = 0; j < 12; ++j) {
             keyClick(Qt.Key_Backtab)
+            wait(0)
             verify(inside(win.activeFocusItem, panel), "Shift+Tab left the open queue")
         }
 
