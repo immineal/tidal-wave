@@ -79,7 +79,8 @@ TestCase {
         mouseMove(host.contentItem, p.x, p.y)
     }
 
-    // Pointed at, the shared tip comes up with this text, on the one delay.
+    // Pointed at, the shared tip comes up with this text, on the one delay,
+    // dressed in the app's own look.
     function tipShows(host, item, want, what) {
         verify(item, what + " not found")
         hover(host, item)
@@ -88,7 +89,55 @@ TestCase {
             var tip = item.ToolTip.toolTip
             return tip && tip.visible && tip.text === want
         }, 3000, what + " shows no tool tip saying \"" + want + "\"")
+        looksThemed(item.ToolTip.toolTip, what)
         mouseMove(host.contentItem, 1, 1)
+    }
+
+    // The look of SideBar's sidebarTip, which every tip in the app shares.
+    function looksThemed(tip, what) {
+        verify(tip, what + ": no tip")
+        var bg = tip.background, label = tip.contentItem
+        verify(bg && label, what + ": the tip has no background or no label")
+        compare(String(bg.color), String(Theme.surfaceHigh), what + ": the tip's ground is the style's")
+        compare(String(bg.border.color), String(Theme.border), what + ": the tip's border")
+        compare(bg.radius, Theme.radiusMedium, what + ": the tip's corners")
+        compare(String(label.color), String(Theme.textPrimary), what + ": the tip's text colour")
+        compare(label.font.pixelSize, Theme.fontMeta, what + ": the tip's text size")
+        compare(tip.leftPadding, Theme.space2, what + ": the tip's padding")
+        compare(tip.topPadding, Theme.space2, what + ": the tip's padding")
+    }
+
+    Component {
+        id: ownTipC
+        Item {
+            width: 80; height: 30
+            property alias tip: own
+            ToolTip { id: own; text: "Eigener Hinweis" }
+        }
+    }
+
+    // A tip declared on its own, as SideBar's is, is the style's as well.
+    function test_a_tip_of_its_own_is_themed() {
+        var host = show()
+        var item = place(host, ownTipC)
+        item.tip.open()
+        tryVerify(function () { return item.tip.opened }, 2000, "the tip did not open")
+        looksThemed(item.tip, "a ToolTip { }")
+        item.tip.close()
+    }
+
+    // The colours are bindings: a theme picked while the app runs reaches
+    // the one shared tip, which outlives every control that showed it.
+    function test_the_shared_tip_follows_the_theme() {
+        var host = show()
+        var card = place(host, cardC)
+        var tip = card.ToolTip.toolTip
+        var before = prefs.theme
+        var start = String(tip.background.color)
+        prefs.theme = ThemePalette.isDark ? "sky" : "pine"
+        verify(String(tip.background.color) !== start, "the tip kept the old theme's ground")
+        compare(String(tip.background.color), String(Theme.surfaceHigh))
+        prefs.theme = before
     }
 
     function test_player_bar_icon_buttons_data() {

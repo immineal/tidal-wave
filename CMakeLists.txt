@@ -250,11 +250,37 @@ qt_add_qml_module(tidalwave_qml
         assets/icon.svg
 )
 
+# ── The Controls style: the stock one with the app's own ToolTip ─────────────
+# Attached ToolTip.* tips are made from the style's ToolTip type, so the look
+# is set here once. The stock style the app pinned before is the fallback.
+if(Qt6_VERSION VERSION_LESS 6.5)
+    set(TIDALWAVE_FALLBACK_STYLE Basic)
+else()
+    set(TIDALWAVE_FALLBACK_STYLE Fusion)
+endif()
+qt_add_library(tidalwave_style STATIC)
+qt_add_qml_module(tidalwave_style
+    URI TidalWave.Style
+    # Controls imports the style, and the style its fallback, at Controls'
+    # own major version: 1.0 would ask for a Fusion 1.0 that does not exist.
+    VERSION 6.0
+    RESOURCE_PREFIX "/qt/qml"
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave/Style
+    IMPORTS QtQuick.Controls.${TIDALWAVE_FALLBACK_STYLE}/auto
+    QML_FILES
+        qml/style/ToolTip.qml
+)
+target_link_libraries(tidalwave_style PRIVATE Qt6::Quick Qt6::QuickControls2)
+# The plugin, not the backing library: its init object registers the module.
+target_link_libraries(tidalwave_qml PUBLIC tidalwave_styleplugin)
+target_compile_definitions(tidalwave_qml PUBLIC
+    TIDALWAVE_FALLBACK_STYLE="${TIDALWAVE_FALLBACK_STYLE}")
+
 # Qt 6.4's qmlcachegen emits AOT code that reads a property off a null
 # QQuickItem in QueuePanel's delegate and crashes. --only-bytecode skips the
 # AOT step and keeps the bytecode cache.
 if(Qt6_VERSION VERSION_LESS 6.5)
-    set_target_properties(tidalwave_qml PROPERTIES
+    set_target_properties(tidalwave_qml tidalwave_style PROPERTIES
         QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
 endif()
 
