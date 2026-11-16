@@ -131,9 +131,31 @@ Item {
             Behavior on opacity { NumberAnimation { duration: Theme.dur(Theme.motionMedium) } }
         }
 
+        VectorIcon {
+            visible: root.coverUrl.length === 0 || img.status === Image.Error
+            anchors.centerIn: parent
+            name: root.placeholderGlyph
+            color: Theme.textDim
+            width: 48
+            height: 48
+        }
+
+        // The hover dim, over the whole cover and in its shape: a loaded cover
+        // is drawn square (the clip is the box, not the rounding), so it is
+        // square then. A wash over art is the same in every theme.
+        Rectangle {
+            id: scrim
+            objectName: "cardScrim"
+            anchors.fill: parent
+            radius: !root.roundArt && img.status === Image.Ready ? 0 : parent.radius
+            color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
+            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
+        }
+
         // Qt clips to an item's bounding box, never to its rounded outline, so
         // this ring paints the four corners of a round tile out in the ground
         // colour. A band of (sqrt(2)-1)/2 = 0.2072 of the side covers them.
+        // Over the dim, so the dim ends where the disc does.
         Rectangle {
             id: artCorners
             objectName: "cardArtCorners"
@@ -149,69 +171,49 @@ Item {
             antialiasing: true
         }
 
-        VectorIcon {
-            visible: root.coverUrl.length === 0 || img.status === Image.Error
+        // A plain play glyph in the middle of the cover: it plays, the rest
+        // of the cover opens the page.
+        Item {
+            id: playButton
+            objectName: "cardPlayButton"
+            visible: hov.hovered || root.keyboardOn
+            // Next after its card in the tab order, and only while the
+            // keyboard is on that card: the list stays one stop.
+            activeFocusOnTab: root.tabStop || activeFocus
+            Keys.onReturnPressed: root.playClicked()
+            Keys.onSpacePressed:  root.playClicked()
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTranslate("PlayerBar", "Play")
+            Accessible.onPressAction: root.playClicked()
+            width: 56
+            height: 56
             anchors.centerIn: parent
-            name: root.placeholderGlyph
-            color: Theme.textDim
-            width: 48
-            height: 48
-        }
 
-        Rectangle {
-            id: scrim
-            objectName: "cardScrim"
-            anchors.fill: parent
-            radius: parent.radius
-            // Dims the art so the play button reads; a wash over cover art
-            // cannot follow the ground, so it is the same in every theme.
-            color: hov.hovered || root.keyboardOn ? Theme.artScrim : "transparent"
-            Behavior on color { ColorAnimation { duration: Theme.dur(Theme.motionMedium) } }
-
-            Rectangle {
-                id: playButton
-                objectName: "cardPlayButton"
-                visible: hov.hovered || root.keyboardOn
-                // Next after its card in the tab order, and only while the
-                // keyboard is on that card: the list stays one stop.
-                activeFocusOnTab: root.tabStop || activeFocus
-                Keys.onReturnPressed: root.playClicked()
-                Keys.onSpacePressed:  root.playClicked()
-                Accessible.role: Accessible.Button
-                Accessible.name: qsTranslate("PlayerBar", "Play")
-                Accessible.onPressAction: root.playClicked()
-                border.width: activeFocus ? 2 : 0
-                border.color: Theme.textPrimary
-                width: 44
-                height: 44
-                radius: width / 2
-                // A square card has a corner to tuck the button into. On a
-                // disc that corner is off the art, so the button is centred.
-                anchors.centerIn: root.roundArt ? parent : undefined
-                anchors.bottom:   root.roundArt ? undefined : parent.bottom
-                anchors.right:    root.roundArt ? undefined : parent.right
-                anchors.margins:  root.roundArt ? 0 : Theme.space3
-                color: Theme.accent
-
-                VectorIcon {
-                    anchors.centerIn: parent
-                    name: "play"
-                    color: Theme.accentInk
-                    width: 18
-                    height: 18
-                    // The triangle's centre of area sits left of its box's
-                    // centre, so the mark is nudged to look centred.
-                    anchors.horizontalCenterOffset: 1
-                }
-
-                scale: playHov.hovered ? 1.05 : 1
-                Behavior on scale { NumberAnimation { duration: Theme.dur(Theme.motionFast) } }
-                HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
-                TapHandler   { onTapped: root.playClicked() }
-                ToolTip.visible: playHov.hovered
-                ToolTip.text: Accessible.name
-                ToolTip.delay: Theme.tooltipDelay
+            VectorIcon {
+                anchors.centerIn: parent
+                // The triangle's centre of area sits left of its box's
+                // centre, so the mark is nudged to look centred.
+                anchors.horizontalCenterOffset: 2
+                name: "play"
+                color: Theme.artInk
+                width: 36
+                height: 36
             }
+            // Only for the keyboard: a ring, never a fill.
+            Rectangle {
+                anchors.fill: parent
+                visible: playButton.activeFocus
+                color: "transparent"
+                radius: width / 2
+                border.width: 2
+                border.color: Theme.artInk
+            }
+
+            HoverHandler { id: playHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler   { onTapped: root.playClicked() }
+            ToolTip.visible: playHov.hovered
+            ToolTip.text: Accessible.name
+            ToolTip.delay: Theme.tooltipDelay
         }
 
         // Over everything, and on the tile's own radius, so it traces the
@@ -228,7 +230,15 @@ Item {
         }
 
         HoverHandler { id: hov; cursorShape: Qt.PointingHandCursor }
-        TapHandler   { onTapped: root.clicked() }
+        // Both tap handlers see a tap on the glyph; that one only plays.
+        TapHandler {
+            onTapped: function (eventPoint) {
+                if (playButton.visible && playButton.contains(
+                        playButton.mapFromItem(playButton.parent, eventPoint.position)))
+                    return
+                root.clicked()
+            }
+        }
     }
 
     Text {
@@ -274,9 +284,6 @@ Item {
         id: cardMenu
         objectName: "cardPinMenu"
         trackSource: root.canQueue ? root.fetchTracks : null
-        // The tile has room above it on every page that shows one, and the
-        // confirmation belongs next to the thing it is about.
-        confirmAnchor: root
         removeLabel: root.removeLabel
         onRemoveRequested: root.removeRequested()
     }

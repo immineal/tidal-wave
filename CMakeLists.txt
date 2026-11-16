@@ -184,7 +184,7 @@ qt_add_library(tidalwave_qml STATIC
     ${HEADERS}
 )
 
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Toasts.qml qml/Edits.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(tidalwave_qml
     URI TidalWave
@@ -198,6 +198,8 @@ qt_add_qml_module(tidalwave_qml
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/TidalWave
     QML_FILES
         qml/Theme.qml
+        qml/Toasts.qml
+        qml/Edits.qml
         qml/Main.qml
         qml/components/PlayerBar.qml
         qml/components/SideBar.qml
@@ -212,7 +214,8 @@ qt_add_qml_module(tidalwave_qml
         qml/components/PillButton.qml
         qml/components/NavIcon.qml
         qml/components/HorizontalSection.qml
-        qml/components/LoadingOverlay.qml
+        qml/components/Skeleton.qml
+        qml/components/BusyLine.qml
         qml/components/ContextMenu.qml
         qml/components/SearchBar.qml
         qml/components/VolumeSlider.qml
@@ -230,6 +233,8 @@ qt_add_qml_module(tidalwave_qml
         qml/components/TabStrip.qml
         qml/components/DetailHero.qml
         qml/components/DetailBar.qml
+        qml/components/CoverArt.qml
+        qml/components/ToastHost.qml
         qml/pages/LoginPage.qml
         qml/pages/HomePage.qml
         qml/pages/SearchPage.qml

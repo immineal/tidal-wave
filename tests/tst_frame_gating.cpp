@@ -135,10 +135,10 @@ private slots:
         // content intact, reached through kModuleRoot so a wrong prefix fails
         // here too.
         QFile real(QString::fromLatin1(kModuleRoot)
-                   + QStringLiteral("/qml/components/LoadingOverlay.qml"));
+                   + QStringLiteral("/qml/components/Skeleton.qml"));
         QVERIFY(real.open(QIODevice::ReadOnly));
         const QString stripped = codeOnly(QString::fromUtf8(real.readAll()));
-        QVERIFY2(stripped.contains(QStringLiteral("RotationAnimator")),
+        QVERIFY2(stripped.contains(QStringLiteral("SequentialAnimation")),
                  "stripping comments removed the code as well");
         QVERIFY2(stripped.contains(QStringLiteral("loops:")),
                  "stripping comments removed the code as well");
@@ -188,7 +188,7 @@ private slots:
 
     // ── and the same contract, driven ────────────────────────────────────
 
-    void the_spinner_keeps_turning_on_an_unfocused_window() {
+    void the_skeleton_keeps_pulsing_on_an_unfocused_window() {
         QQmlApplicationEngine engine;
         installTestStubs(&engine, this);
 
@@ -198,16 +198,16 @@ private slots:
             import TidalWave
             Window {
                 width: 400; height: 300; visible: true
-                LoadingOverlay { objectName: "overlay"; loading: true }
+                Skeleton { objectName: "overlay"; loading: true }
             }
         )"));
         QVERIFY(win);
 
-        QObject *rot = win->findChild<QObject *>(QStringLiteral("loadingSpinnerRotation"));
-        QVERIFY2(rot, "the overlay has no named rotation to check - the fixture is "
-                      "driving something other than the shipping spinner");
+        QObject *rot = win->findChild<QObject *>(QStringLiteral("skeletonPulse"));
+        QVERIFY2(rot, "the skeleton has no named pulse to check - the fixture is "
+                      "driving something other than the shipping skeleton");
         QVERIFY2(rot->property("running").toBool(),
-                 "the spinner is not turning on a focused window, so this case "
+                 "the skeleton is not pulsing on a focused window, so this case "
                  "cannot say anything about an unfocused one");
 
         if (!deactivate(win.get()))
@@ -215,8 +215,8 @@ private slots:
                   "'still drawing while unfocused' cannot be driven here");
 
         QVERIFY2(rot->property("running").toBool(),
-                 "the busy spinner stopped when the window lost focus. An "
-                 "unfocused window is routinely fully visible, and a spinner "
+                 "the loading skeleton stopped when the window lost focus. An "
+                 "unfocused window is routinely fully visible, and a busy mark "
                  "that stops on one reads as an application that has hung.");
     }
 

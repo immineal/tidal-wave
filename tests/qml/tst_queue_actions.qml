@@ -25,6 +25,8 @@ TestCase {
     Component { id: trackRowC;  TrackRow  { } }
     Component { id: mediaCardC; MediaCard { } }
     Component { id: albumC;     AlbumPage { anchors.fill: parent } }
+    // Where the confirmations are drawn, as in Main.qml.
+    ToastHost { id: toastHost; anchors.fill: parent; z: 10 }
 
     // ── fixtures ─────────────────────────────────────────────────────────
 
@@ -137,9 +139,10 @@ TestCase {
         player.setCurrentTrackForTest({})
         player.resetQueueCallsForTest()
         pins.setItemsForTest([])
-        // The confirmation is one shared tool tip, so a leftover from the last
+        // The confirmation is the one toast, so a leftover from the last
         // test would pass for the next one's confirmation.
-        testCase.ToolTip.toolTip.close()
+        Toasts.dismiss()
+        Toasts.plainMs = 600
     }
 
     // ── both actions are offered, everywhere ─────────────────────────────
@@ -350,15 +353,15 @@ TestCase {
     // never blocks, and times out on its own.
     function test_queueing_confirms_and_the_confirmation_goes_away() {
         var page = makeAlbumPage(4)
-        var tip = testCase.ToolTip.toolTip
-        verify(tip, "there is no shared tool tip to confirm with")
+        var tip = toastHost.card
 
         page.pinMenu.addToQueueItem.triggered()
 
         tryVerify(function () { return tip.visible }, 2000, "queueing gave no confirmation")
-        compare(tip.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 4))
-        verify(!tip.activeFocus, "the confirmation took focus")
-        verify(!tip.modal, "the confirmation blocked the window")
+        compare(Toasts.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 4))
+        verify(!toastHost.actionButton.visible, "queueing offered an action")
+        verify(!tip.activeFocus && !toastHost.actionButton.activeFocus,
+               "the confirmation took focus")
 
         tryVerify(function () { return !tip.visible }, 5000,
                   "the confirmation never went away on its own")
@@ -368,22 +371,22 @@ TestCase {
     // depend on which menu the action was taken from.
     function test_a_row_confirms_too() {
         var row = makeRow(makeTracks(1)[0])
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
         row.openMenu()
         row.rowMenu.addToQueueItem.triggered()
         row.rowMenu.close()
 
         tryVerify(function () { return tip.visible }, 2000, "a row queued without a word")
-        compare(tip.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
+        compare(Toasts.text, qsTr("%Ln track(s) added to queue", "queue confirmation", 1))
     }
 
     function test_the_confirmation_names_the_action() {
         var page = makeAlbumPage(2)
-        var tip = testCase.ToolTip.toolTip
+        var tip = toastHost.card
 
         page.pinMenu.playNextItem.triggered()
         tryVerify(function () { return tip.visible }, 2000, "Play next gave no confirmation")
-        compare(tip.text, qsTr("%Ln track(s) added to play next", "queue confirmation", 2))
+        compare(Toasts.text, qsTr("%Ln track(s) added to play next", "queue confirmation", 2))
         tryVerify(function () { return !tip.visible }, 5000, "the confirmation never went away")
     }
 }

@@ -298,6 +298,31 @@ private slots:
                      .constData());
     }
 
+    // No text in capitals and no spaced letters: every label is set in
+    // sentence case at the font's own spacing, overlines included.
+    void noCapitalsAndNoLetterSpacing() {
+        static const QRegularExpression caps(QStringLiteral("\\bcapitalization\\s*:"));
+        static const QRegularExpression spaced(QStringLiteral(
+            "\\bletterSpacing\\s*:\\s*(?!0(\\.0+)?\\s*($|[;}]))"));
+        QList<Hit> hits;
+        QDirIterator it(qmlDir(), {QStringLiteral("*.qml")},
+                        QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) continue;
+            const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+            for (int i = 0; i < lines.size(); ++i) {
+                const QString code = codeOf(lines.at(i));
+                if (caps.match(code).hasMatch() || spaced.match(code).hasMatch())
+                    hits.append({QDir(qmlDir()).relativeFilePath(path), i + 1, lines.at(i).trimmed()});
+            }
+        }
+        QVERIFY2(hits.isEmpty(),
+                 report(hits, QStringLiteral("set text in capitals or space its letters"))
+                     .constData());
+    }
+
     // The checks above must see a literal when there is one.
     void theCheckerSeesLiterals() {
         QVERIFY(hasLiteral(QStringLiteral("13"), false, false));

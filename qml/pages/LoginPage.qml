@@ -37,7 +37,6 @@ Rectangle {
                 color: Theme.textPrimary
                 font.pixelSize: Theme.fontDisplay
                 font.bold: true
-                font.letterSpacing: 3
             }
 
             Text {
@@ -94,34 +93,9 @@ Rectangle {
                         font.pixelSize: Theme.fontBody
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.space2
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: width / 2
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 0 && auth.hasSavedCredentials
-                                    PauseAnimation { duration: Theme.dur(index * Theme.motionMedium) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(Theme.motionSlow) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(Theme.motionSlow)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 0 && auth.hasSavedCredentials
                     }
                 }
 
@@ -235,14 +209,18 @@ Rectangle {
 
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
-                        width: 200
-                        height: 64
+                        // Sized off the code, so the border keeps clear of it
+                        // however wide the code and the font set it.
+                        Layout.preferredWidth: Math.max(200, Math.ceil(codeText.contentWidth) + 2 * Theme.space6)
+                        Layout.preferredHeight: Math.max(64, Math.ceil(codeText.contentHeight) + 2 * Theme.space3)
                         radius: Theme.radiusLarge
                         color: Theme.surfaceHigh
                         border.color: Theme.accent
                         border.width: 1
                         // Selectable, so the code can be copied into the browser.
                         TextEdit {
+                            id: codeText
+                            objectName: "loginDeviceCode"
                             anchors.centerIn: parent
                             text: auth.userCode || "…"
                             readOnly: true
@@ -252,38 +230,12 @@ Rectangle {
                             color: Theme.textPrimary
                             font.pixelSize: Theme.fontDisplay
                             font.bold: true
-                            font.letterSpacing: 6
                         }
                     }
 
-                    Row {
+                    BusyLine {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.space2
-                        Repeater {
-                            model: 3
-                            Rectangle {
-                                objectName: "loginPulseDot"
-                                required property int index
-                                width: 6
-                                height: 6
-                                radius: width / 2
-                                color: Theme.accent
-                                opacity: 0.3
-                                // Reduced motion runs the sequence once and
-                                // parks the dot at full opacity. Infinite loops
-                                // at zero duration would spin.
-                                SequentialAnimation on opacity {
-                                    loops: Theme.reduceMotion ? 1 : Animation.Infinite
-                                    running: auth.state === 1
-                                    PauseAnimation { duration: Theme.dur(index * Theme.motionMedium) }
-                                    NumberAnimation { to: 1; duration: Theme.dur(Theme.motionSlow) }
-                                    NumberAnimation {
-                                        to: Theme.reduceMotion ? 1 : 0.3
-                                        duration: Theme.dur(Theme.motionSlow)
-                                    }
-                                }
-                            }
-                        }
+                        running: auth.state === 1
                     }
 
                     Text {

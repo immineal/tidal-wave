@@ -105,6 +105,57 @@ TestCase {
         return page
     }
 
+    // ── the loading shapes are the page's own ───────────────────────────
+    // No scrim and spinner over a blank page: grey blocks where the hero,
+    // rows and cards will land, and the controls above them stay in reach.
+
+    Component { id: albumC;  AlbumPage  { anchors.fill: parent } }
+    Component { id: searchC; SearchPage { anchors.fill: parent } }
+
+    function test_a_detail_page_loads_as_its_hero_and_rows() {
+        var host = createTemporaryObject(pageHost, testCase)
+        host.visible = true
+        var page = createTemporaryObject(albumC, host.pane, { albumId: 42 })
+        page.loading = true
+        settle(page)
+        var skel = findByName(page, "loadingSkeleton")
+        verify(skel && skel.visible, "a loading album shows no loading shapes")
+        compare(skel.kind, "detail")
+        var art = findByName(skel, "skeletonArt")
+        verify(art && art.visible, "the shapes have no cover block")
+        compare(art.width, 200, "the cover block is not the hero cover's size")
+        var rows = 0
+        function walk(it) {
+            if (it.objectName === "skeletonRow" && it.visible) rows++
+            for (var i = 0; i < it.children.length; ++i) walk(it.children[i])
+        }
+        walk(skel)
+        verify(rows >= 3, "the shapes have " + rows + " track rows")
+        page.loading = false
+        settle(page)
+        verify(!skel.visible, "the shapes stayed after the album loaded")
+    }
+
+    function test_collection_keeps_its_tabs_while_a_tab_loads() {
+        bridge.setKindLoadingForTest("albums", true)
+        var page = makeCollection(1)
+        var skel = findByName(page, "loadingSkeleton")
+        verify(skel && skel.visible, "a loading tab shows no loading shapes")
+        compare(skel.kind, "grid")
+        verify(skel.topInset > 0, "the shapes cover the tabs and chips")
+    }
+
+    function test_search_keeps_its_field_while_results_load() {
+        var holder = createTemporaryObject(holderC, testCase, { width: 1280, height: 760 })
+        var page = createTemporaryObject(searchC, holder)
+        page.loading = true
+        settle(page)
+        var skel = findByName(page, "loadingSkeleton")
+        verify(skel && skel.visible, "a loading search shows no loading shapes")
+        var bar = findByName(page, "searchPageBar")
+        verify(skel.topInset >= bar.y + bar.height, "the shapes cover the search field")
+    }
+
     // ── Collection: no empty state for a list still on its way ───────────
 
     // Mixes are fetched by the page itself, and nothing guarded their empty
@@ -114,7 +165,7 @@ TestCase {
         var page = makeCollection(4)
         verify(!says(page, "No mixes"),
                "Collection said \"No mixes\" while the mixes were still loading")
-        var spinner = findByName(page, "loadingSpinner")
+        var spinner = findByName(page, "loadingSkeleton")
         verify(spinner && spinner.visible,
                "the page showed no loading state while the mixes loaded")
 

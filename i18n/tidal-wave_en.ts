@@ -389,6 +389,26 @@
 </context>
 <context>
     <name>ContextMenu</name>
+    <message>
+        <source>Mix removed from your collection</source>
+        <comment>confirmation after removing a mix from the library</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You no longer follow this artist</source>
+        <comment>confirmation after unfollowing an artist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album removed from your collection</source>
+        <comment>confirmation after removing an album from the library</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed from your liked tracks</source>
+        <comment>confirmation after unliking a track</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message numerus="yes">
         <source>%Ln track(s) added to play next</source>
         <comment>queue confirmation</comment>
@@ -560,6 +580,21 @@
     </message>
     <message>
         <source>Good evening</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recently played</source>
+        <comment>Home, the row of things played here lately</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Continue listening</source>
+        <comment>Home, over the paused track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Now playing</source>
+        <comment>Home, over the track that plays</comment>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
@@ -1067,6 +1102,16 @@
 <context>
     <name>PlaylistPage</name>
     <message>
+        <source>Could not put the track back</source>
+        <comment>shown when undoing a removal from a playlist failed</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed from “%1”</source>
+        <comment>confirmation after removing a track from a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This playlist could not be loaded</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1149,6 +1194,16 @@
 </context>
 <context>
     <name>QueuePanel</name>
+    <message>
+        <source>Queue put back</source>
+        <comment>after undoing a cleared queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Queue cleared</source>
+        <comment>confirmation after emptying the play queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Queue</source>
         <comment>noun, the play queue</comment>
@@ -1357,6 +1412,11 @@
 </context>
 <context>
     <name>SettingsPanel</name>
+    <message>
+        <source>Undo the last change</source>
+        <comment>shortcut, takes back a like, a removal or a cleared queue</comment>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Settings</source>
         <translation type="unfinished"></translation>
@@ -1877,6 +1937,92 @@
     </message>
     <message>
         <source>Skip this version</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Edits</name>
+    <message>
+        <source>Still undoing the last change</source>
+        <comment>shown when Undo is asked again before the last one finished</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing to undo</source>
+        <comment>shown when Ctrl+Z finds no change to take back</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal did not confirm the change. Reloaded from Tidal.</source>
+        <comment>a write was accepted but a re-read did not show it</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Could not undo the change</source>
+        <comment>shown when an undo was refused</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back in your liked tracks</source>
+        <comment>after undoing an unlike</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added to your liked tracks</source>
+        <comment>confirmation after liking a track</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album back in your collection</source>
+        <comment>after undoing an album&apos;s removal</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Album saved to your collection</source>
+        <comment>confirmation after saving an album</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You follow this artist again</source>
+        <comment>after undoing an unfollow</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You now follow this artist</source>
+        <comment>confirmation after following an artist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mix back in your collection</source>
+        <comment>after undoing a mix&apos;s removal</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mix saved to your collection</source>
+        <comment>confirmation after saving a mix</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Already in “%1”</source>
+        <comment>the track is in the playlist already; nothing was added</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Taken out of “%1” again</source>
+        <comment>after undoing an add to a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Put back in “%1”</source>
+        <comment>after undoing a removal from a playlist</comment>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>Toasts</name>
+    <message>
+        <source>Undo</source>
+        <comment>button on a confirmation, takes back what was just done</comment>
         <translation type="unfinished"></translation>
     </message>
 </context>

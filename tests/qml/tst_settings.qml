@@ -803,100 +803,47 @@ TestCase {
         var h = openPanel(1280, 1200)
         var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
         verify(toggle && toggle.checked, "a stored on came back off")
-        var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible,
-               "the switch is on and its track is not a rainbow")
         h.panel.close()
 
         prefs.tintedGreys = false
         var h2 = openPanel(1280, 1200)
         var toggle2 = findByName(h2.panel.contentItem, "settingsTintedToggle")
         verify(toggle2 && !toggle2.checked, "a stored off came back on")
-        var rainbow2 = findByName(toggle2, "toggleRainbow")
-        verify(rainbow2 && !rainbow2.visible,
-               "the switch is off and still painted as a rainbow")
         h2.panel.close()
     }
 
-    // The track is a rainbow, and it holds still: the gradient is static,
-    // and an animation on it fails this.
-    function test_the_rainbow_is_static_and_has_no_frame_around_it() {
-        app.setReducedMotionForTest(false)
-        prefs.tintedGreys = true
-
-        var h = openPanel(1280, 1200)
-        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
-        verify(toggle && toggle.checked)
-        var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible)
-
-        // Seven stops round the wheel, the first and the last on the same hue so
-        // the strip joins up, which leaves six distinct colours.
-        verify(rainbow.gradient, "the rainbow track carries no gradient")
-        compare(rainbow.gradient.stops.length, 7, "the rainbow has the wrong number of stops")
-        var distinct = {}
-        for (var k = 0; k < 7; k++)
-            distinct[String(rainbow.gradient.stops[k].color)] = true
-        compare(Object.keys(distinct).length, 6,
-                "the rainbow is " + Object.keys(distinct).length + " colours")
-
-        // Still. Sampled over a span long enough to catch a slow animation.
-        var before = []
-        for (var b = 0; b < 7; b++) before.push(String(rainbow.gradient.stops[b].color))
-        wait(400)
-        for (var c = 0; c < 7; c++)
-            compare(String(rainbow.gradient.stops[c].color), before[c],
-                    "stop " + c + " moved: the rainbow is animating again")
-
-        // No solid ring around it: the gradient is the control. Focus is the
-        // one exception.
-        var track = rainbow.parent
-        verify(!toggle.activeFocus, "this half of the case assumes the toggle is not focused")
-        compare(track.border.width, 0,
-                "the rainbow switch has a " + track.border.width + "px frame around it")
-
-        clickItem(h.panel, toggle)
-        verify(!rainbow.visible, "the switch is off and still a rainbow")
-        // Off, it is an ordinary toggle again and gets its ordinary border back.
-        compare(track.border.width, 1,
-                "switched off, the toggle lost the border every other toggle has")
-
-        // No other switch in the panel is painted as a rainbow.
-        prefs.theme = "sea"
-        var black = findByName(h.panel.contentItem, "settingsOledToggle")
-        verify(black && black.visible)
-        var strayRainbow = findByName(black, "toggleRainbow")
-        verify(strayRainbow && !strayRainbow.visible,
-               "the pure-black switch is painted as a rainbow")
-
-        h.panel.close()
+    // Every fill a toggle paints, and whether any of it is a gradient.
+    function toggleFills(item, out) {
+        if (!item) return out
+        if (item.color !== undefined && item.border !== undefined)
+            out.push({ color: String(item.color), border: item.border.width,
+                       gradient: !!item.gradient && item.visible })
+        for (var i = 0; i < item.children.length; i++) toggleFills(item.children[i], out)
+        return out
     }
 
-    // The rainbow is identical under reduced motion: the reduced-motion path
-    // must not take the colour away.
-    function test_reduced_motion_keeps_the_rainbow_exactly_as_it_is() {
+    // The colour switch is the standard switch: on, it paints exactly what
+    // the pure-black switch paints on, and no gradient anywhere.
+    function test_the_colour_switch_is_drawn_like_every_other_switch() {
+        prefs.theme = "sea"
         prefs.tintedGreys = true
-
-        app.setReducedMotionForTest(false)
-        var normal = openPanel(1280, 1200)
-        var t1 = findByName(normal.panel.contentItem, "settingsTintedToggle")
-        var r1 = findByName(t1, "toggleRainbow")
-        verify(r1 && r1.visible)
-        var stops = []
-        for (var i = 0; i < 7; i++) stops.push(String(r1.gradient.stops[i].color))
-        normal.panel.close()
-
-        app.setReducedMotionForTest(true)
+        prefs.oledBlack = true
         var h = openPanel(1280, 1200)
-        var toggle = findByName(h.panel.contentItem, "settingsTintedToggle")
-        verify(toggle && toggle.checked)
-        var rainbow = findByName(toggle, "toggleRainbow")
-        verify(rainbow && rainbow.visible,
-               "reduced motion removed the rainbow instead of leaving it alone")
-        for (var j = 0; j < 7; j++)
-            compare(String(rainbow.gradient.stops[j].color), stops[j],
-                    "stop " + j + " differs under reduced motion")
+        var tinted = findByName(h.panel.contentItem, "settingsTintedToggle")
+        var black  = findByName(h.panel.contentItem, "settingsOledToggle")
+        verify(tinted && tinted.checked && black && black.checked)
+        verify(!tinted.activeFocus && !black.activeFocus)
 
+        var a = toggleFills(tinted, [])
+        var b = toggleFills(black, [])
+        for (var i = 0; i < a.length; i++)
+            verify(!a[i].gradient, "the colour switch still paints a gradient")
+        compare(a.length, b.length, "the two switches are built differently")
+        for (var j = 0; j < a.length; j++) {
+            compare(a[j].color, b[j].color, "fill " + j + " differs from the standard switch")
+            compare(a[j].border, b[j].border, "border " + j + " differs from the standard switch")
+        }
+        prefs.oledBlack = false
         h.panel.close()
     }
 
