@@ -339,7 +339,9 @@ TestCase {
         }
     }
 
-    function test_the_arrows_page_by_whole_cards() {
+    // One half-transparent arrow over each overflowing edge, centred on the
+    // covers. A click moves the row by exactly one card and its gap.
+    function test_an_arrow_moves_the_row_by_one_card() {
         var host = showHost(sectionHost, 900, 500)
         var sec = host.section
         sec.items = albums(14)
@@ -348,20 +350,64 @@ TestCase {
         var back = findByName(sec, "sectionScrollBack")
         var fwd = findByName(sec, "sectionScrollForward")
         verify(back && fwd, "the row has no arrows")
-        verify(!back.enabled && fwd.enabled, "at the start only forward should work")
-        var step = sec.visibleCards * (sec.cardSize + sec.listSpacing)
+        verify(!back.visible && fwd.visible, "at the start only the right arrow should show")
+        verify(fwd.backed, "the arrow has no see-through disc behind it")
+
+        // Over the row's right edge, on the middle of the covers.
+        var art = findByName(list.itemAtIndex(0), "cardArt")
+        var artMid = art.mapToItem(sec, 0, art.height / 2).y
+        var f = fwd.mapToItem(sec, 0, 0)
+        verify(Math.abs(f.y + fwd.height / 2 - artMid) <= 1,
+               "the arrow's centre is at " + (f.y + fwd.height / 2) + ", the covers' at " + artMid)
+        verify(f.x + fwd.width <= sec.width + 0.5 && f.x + fwd.width >= sec.width - sec.edgeInset - 0.5,
+               "the right arrow ends at " + (f.x + fwd.width) + " in a " + sec.width + "px row")
+        verify(f.y >= list.mapToItem(sec, 0, 0).y, "the arrow sits above the row")
+
+        var step = sec.cardSize + sec.listSpacing
         var rest = list.contentX
         mouseClick(fwd)
         tryVerify(function () { return Math.abs(list.contentX - rest - step) < 0.5 }, 2000,
-                  "forward moved the row by " + (list.contentX - rest) + ", not " + step)
-        verify(back.enabled, "back stayed off after a page forward")
+                  "the right arrow moved the row by " + (list.contentX - rest) + ", not " + step)
+        verify(back.visible, "the left arrow did not appear once scrolled")
+        var b = back.mapToItem(sec, 0, 0)
+        verify(b.x >= -0.5 && b.x <= sec.edgeInset + 0.5,
+               "the left arrow starts at " + b.x)
         mouseClick(back)
         tryVerify(function () { return Math.abs(list.contentX - rest) < 0.5 }, 2000,
-                  "back did not return to the start")
-        // Without overflow there is nothing to page.
+                  "the left arrow did not move the row back by one card")
+
+        // By keyboard, with a tool tip naming it.
+        verify(fwd.activeFocusOnTab, "the right arrow cannot be reached with Tab")
+        compare(fwd.label, "Scroll forward")
+        fwd.forceActiveFocus()
+        keyClick(Qt.Key_Space)
+        tryVerify(function () { return Math.abs(list.contentX - rest - step) < 0.5 }, 2000,
+                  "Space on the right arrow moved the row by " + (list.contentX - rest))
+
+        // At the end the right arrow goes.
+        sec.scrollTo(sec.maxX)
+        settle(host)
+        verify(!fwd.visible && back.visible, "at the end only the left arrow should show")
+        // A row that fits has neither.
         sec.items = albums(2)
         settle(host)
         verify(!back.visible && !fwd.visible, "the arrows show on a row that fits")
+    }
+
+    // Reduced motion: an arrow moves the row at once.
+    function test_an_arrow_jumps_under_reduced_motion() {
+        var host = showHost(sectionHost, 900, 500)
+        var sec = host.section
+        sec.items = albums(14)
+        settle(host)
+        var list = findByName(sec, "sectionList")
+        var fwd = findByName(sec, "sectionScrollForward")
+        var rest = list.contentX
+        app.setReducedMotionForTest(true)
+        mouseClick(fwd)
+        var moved = list.contentX - rest
+        app.setReducedMotionForTest(false)
+        compare(moved, sec.cardSize + sec.listSpacing, "the row did not jump by one card")
     }
 
     function test_a_row_drags_sideways() {

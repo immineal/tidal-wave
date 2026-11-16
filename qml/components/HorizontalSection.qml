@@ -23,10 +23,6 @@ Item {
     readonly property real rowSpace: Math.max(0, width - edgeInset)
     // Only for callers that want to know whether the row overflows at all.
     readonly property bool overflows: items.length * (cardSize + listSpacing) > rowSpace
-    // The whole cards between the two insets: what an arrow pages by.
-    readonly property int  visibleCards:
-        Math.max(1, Math.floor((width - 2 * edgeInset + listSpacing) / (cardSize + listSpacing)))
-
     // The row's travel, from the first card to the last page.
     readonly property real minX: hlist.originX
     readonly property real maxX: Math.max(minX, hlist.originX + hlist.contentWidth - hlist.width)
@@ -35,14 +31,18 @@ Item {
         rowMove.stop()
         hlist.contentX = Math.max(minX, Math.min(maxX, x))
     }
-    // One page of whole cards, animated, landing on a card's edge.
-    function page(dir) {
-        var step = visibleCards * (cardSize + listSpacing)
-        var from = hlist.contentX - minX
-        var to = dir > 0 ? (Math.floor(from / step + 0.01) + 1) * step
-                         : (Math.ceil(from / step - 0.01) - 1) * step
-        rowMove.to = Math.max(minX, Math.min(maxX, minX + to))
-        rowMove.restart()
+    // One card and its gap, animated, landing on a card's edge. From where
+    // a running move is headed, so quick clicks add up.
+    function step(dir) {
+        var unit = cardSize + listSpacing
+        var from = (rowMove.running ? rowMove.to : hlist.contentX) - minX
+        var to = dir > 0 ? (Math.floor(from / unit + 0.01) + 1) * unit
+                         : (Math.ceil(from / unit - 0.01) - 1) * unit
+        to = Math.max(minX, Math.min(maxX, minX + to))
+        rowMove.stop()
+        if (Theme.reduceMotion) { hlist.contentX = to; return }
+        rowMove.to = to
+        rowMove.start()
     }
 
     signal itemClicked(int index, var item)
@@ -77,36 +77,6 @@ Item {
                 }
             }
             Item { Layout.fillWidth: true }
-
-            // Paging arrows, only on a row with more than fits. Held in a box
-            // of the label's height so the header keeps its own.
-            Item {
-                visible: root.overflows
-                implicitWidth: arrows.implicitWidth
-                implicitHeight: viewAll.implicitHeight
-                Layout.rightMargin: root.showViewAll ? Theme.space3 : 0
-                Row {
-                    id: arrows
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.space1
-                    IconButton {
-                        objectName: "sectionScrollBack"
-                        icon: "chevron-left"; size: 16
-                        label: qsTr("Scroll back", "arrow on a row of cards")
-                        enabled: hlist.contentX > root.minX + 0.5
-                        opacity: enabled ? 1 : 0.35
-                        onClicked: root.page(-1)
-                    }
-                    IconButton {
-                        objectName: "sectionScrollForward"
-                        icon: "chevron-right"; size: 16
-                        label: qsTr("Scroll forward", "arrow on a row of cards")
-                        enabled: hlist.contentX < root.maxX - 0.5
-                        opacity: enabled ? 1 : 0.35
-                        onClicked: root.page(1)
-                    }
-                }
-            }
 
             // The arrow is drawn beside the label, out of the icon set. It is
             // the only thing marking this grey line as a control.
@@ -224,6 +194,35 @@ Item {
                     onClicked:      root.itemClicked(index, modelData)
                     onPlayClicked:  root.itemPlayClicked(index, modelData)
                 }
+            }
+
+            // An arrow over each edge the row overflows, on the middle of the
+            // covers. See-through, so the cut card still reads as more.
+            IconButton {
+                id: backArrow
+                objectName: "sectionScrollBack"
+                x: Theme.space2
+                y: hlist.y + (root.cardSize - height) / 2
+                visible: hlist.contentX > root.minX + 0.5
+                backed: true
+                icon: "chevron-left"; size: 20; pad: Theme.space4
+                iconColor: Theme.textPrimary
+                label: qsTr("Scroll back", "arrow on a row of cards")
+                onClicked: root.step(-1)
+                onVisibleChanged: if (!visible && activeFocus) fwdArrow.forceActiveFocus()
+            }
+            IconButton {
+                id: fwdArrow
+                objectName: "sectionScrollForward"
+                x: parent.width - width - Theme.space2
+                y: hlist.y + (root.cardSize - height) / 2
+                visible: hlist.contentX < root.maxX - 0.5
+                backed: true
+                icon: "chevron-right"; size: 20; pad: Theme.space4
+                iconColor: Theme.textPrimary
+                label: qsTr("Scroll forward", "arrow on a row of cards")
+                onClicked: root.step(1)
+                onVisibleChanged: if (!visible && activeFocus) backArrow.forceActiveFocus()
             }
 
             NumberAnimation {

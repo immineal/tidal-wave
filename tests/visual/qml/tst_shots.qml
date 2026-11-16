@@ -839,6 +839,10 @@ TestCase {
         win.second.items = S.playlists(4)
         settle(win.contentItem, 500)
         shot(win.contentItem, "cardrows_" + row.theme)
+        // One card along, so both edge arrows show.
+        win.first.scrollTo(win.first.minX + win.first.cardSize + win.first.listSpacing)
+        settle(win.contentItem, 300)
+        shot(win.contentItem, "cardrows_scrolled_" + row.theme)
         win.destroy()
     }
 
