@@ -229,13 +229,16 @@ TestCase {
         return ""
     }
 
+    // The line a failed search shows; the raw reason goes to the log only.
+    readonly property string failPhrase: "could not answer this search"
+
     // Everything the page can say about the outcome of a search: the lines
     // above plus the one a failure prints. Returns the offending line, or an
     // empty string.
     function outcomeClaim(item) {
         var claim = emptyClaim(item)
         if (claim !== "") return claim
-        var failed = visibleTextsSaying(item, "Search failed")
+        var failed = visibleTextsSaying(item, failPhrase)
         return failed.length > 0 ? failed[0].text : ""
     }
 
@@ -427,9 +430,11 @@ TestCase {
                   settleMs, "the page never dispatched a search")
         tryVerify(function () { return !win.page.loading }, settleMs,
                   "the page is still loading after the reply")
-        verify(saysSomethingContaining(win.page, "Host tidal.example is unreachable"),
+        verify(saysSomethingContaining(win.page, failPhrase),
                "a failed search surfaced nothing at all - the page is showing: "
                + visibleCopy(win.page))
+        verify(!saysSomethingContaining(win.page, "Host tidal.example"),
+               "Qt's raw reason is on screen: " + visibleCopy(win.page))
         verify(!saysSomethingContaining(win.page, "No results"),
                "a failed search was reported as an empty one: "
                + visibleCopy(win.page))
@@ -452,7 +457,7 @@ TestCase {
         verify(!saysSomethingContaining(win.page, "Erfundenes Lied 1"),
                "the previous query's results stayed on screen under a query "
                + "whose search failed: " + visibleCopy(win.page))
-        verify(saysSomethingContaining(win.page, "Connection closed"),
+        verify(saysSomethingContaining(win.page, failPhrase),
                "the failure was never surfaced: " + visibleCopy(win.page))
     }
 
@@ -460,7 +465,7 @@ TestCase {
         var win = showPage()
         bridge.setSearchErrorForTest("Connection closed")
         typeInto(win.page, query)
-        tryVerify(function () { return saysSomethingContaining(win.page, "Connection closed") },
+        tryVerify(function () { return saysSomethingContaining(win.page, failPhrase) },
                   settleMs, "the failure was never surfaced")
 
         bridge.setSearchResultsForTest(fakeTracks(2), [], [], [])   // clears the error
@@ -470,7 +475,7 @@ TestCase {
                              "a retry of a query whose search had failed")
         tryVerify(function () { return saysSomethingContaining(win.page, "Erfundenes Lied 1") },
                   settleMs, "the retry never produced results")
-        verify(!saysSomethingContaining(win.page, "Connection closed"),
+        verify(!saysSomethingContaining(win.page, failPhrase),
                "the old failure is still on screen: " + visibleCopy(win.page))
     }
 
@@ -951,7 +956,7 @@ TestCase {
 
         bridge.setSearchErrorForTest("Connection closed")
         scrollToBottom(win.page)
-        tryVerify(function () { return saysSomethingContaining(win.page, "Connection closed") },
+        tryVerify(function () { return saysSomethingContaining(win.page, failPhrase) },
                   settleMs, "a failed page said nothing: " + visibleCopy(win.page))
         compare(win.page.tracks.length, 20,
                 "a failed page threw away the rows that had already arrived")

@@ -1508,8 +1508,8 @@
         <translation>Keine Playlists für „%1“</translation>
     </message>
     <message>
-        <source>Search failed: %1</source>
-        <translation>Suche fehlgeschlagen: %1</translation>
+        <source>Tidal could not answer this search.</source>
+        <translation>Tidal konnte diese Suche nicht beantworten.</translation>
     </message>
     <message>
         <source>Artist</source>
@@ -1553,6 +1553,10 @@
     <message>
         <source>Remove “%1” from recent searches</source>
         <translation>„%1“ aus den letzten Suchen entfernen</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
     </message>
 </context>
 <context>

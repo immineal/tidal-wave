@@ -567,28 +567,40 @@ Rectangle {
                 width: parent.width
                 spacing: 0
 
-                // A failed search says so in one line of Theme.red text, as
-                // LoginPage does for a failed sign-in.
+                // A failed search says what it means, as Home's mixes row does;
+                // Qt's own sentence (host, socket, HTTP reason) goes to the log.
                 Item {
                     objectName: "searchErrorStrip"
                     Layout.fillWidth: true
                     // A Layout reads the preferred height; the offline copy wraps.
-                    Layout.preferredHeight: Math.max(80, errorLabel.implicitHeight + 32)
+                    Layout.preferredHeight: Math.max(80, errorColumn.implicitHeight + 32)
                     visible: root.replied && root.errorText.length > 0
-                    // Offline, Qt's own sentence names a host and a socket
-                    // error; the page says what it means instead.
-                    Text {
-                        id: errorLabel
-                        objectName: "searchErrorLabel"
+                    Column {
+                        id: errorColumn
                         anchors.centerIn: parent
                         width: parent.width - 48
-                        text: root.errorOffline
-                              ? qsTr("Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.")
-                              : qsTr("Search failed: %1").arg(root.errorText)
-                        color: root.errorOffline ? Theme.textSec : Theme.redText
-                        font.pixelSize: 15
-                        wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
+                        spacing: 12
+                        Text {
+                            id: errorLabel
+                            objectName: "searchErrorLabel"
+                            width: parent.width
+                            text: root.errorOffline
+                                  ? qsTr("Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.")
+                                  : qsTr("Tidal could not answer this search.")
+                            color: Theme.textSec
+                            font.pixelSize: 15
+                            wrapMode: Text.WordWrap
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        PillButton {
+                            objectName: "searchRetry"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: !root.errorOffline
+                            text: qsTr("Try again")
+                            accent: false
+                            height: 32
+                            onClicked: root.doSearch(root.repliedFor)
+                        }
                     }
                 }
 
@@ -1086,6 +1098,7 @@ Rectangle {
             // Recording the replied query is what lets the two strips speak.
             root.repliedFor = q
             if (err.length > 0) {
+                console.warn("Search failed:", err)
                 root.errorText = err
                 root.errorOffline = bridge.offline === true
                 // The arrays still hold the last successful query's hits, which
@@ -1166,6 +1179,7 @@ Rectangle {
                 // The rows already on screen are still a true answer to this
                 // query, so they stay; what stops is the asking, which would
                 // otherwise retry on every pixel of scroll.
+                console.warn("Search failed:", err)
                 root.errorText = err
                 root.errorOffline = bridge.offline === true
                 root._setMore(kind, false)

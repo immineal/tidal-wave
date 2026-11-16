@@ -102,4 +102,24 @@ TestCase {
         verify(label.text.indexOf("cannot be reached") !== -1, "it did not say why: " + label.text)
         verify(!Qt.colorEqual(label.color, Theme.redText), "being offline is shown as an alarm")
     }
+
+    // Online, a failure the server gave hides its raw reason too, and the
+    // page can ask again without retyping the query.
+    function test_a_failed_search_can_be_tried_again() {
+        var win = showPage()
+        bridge.setSearchErrorForTest("Error transferring https://api.tidal.com/v1/search - server replied: Service Unavailable")
+        search(win, "erfunden")
+        var label = findChild(win.page, "searchErrorLabel")
+        verify(label && label.visible, "the failure was not shown")
+        verify(label.text.indexOf("server replied") === -1, "the raw Qt error is on screen: " + label.text)
+        var retry = findChild(win.page, "searchRetry")
+        verify(retry && retry.visible, "there is no Try again")
+        var asked = bridge.searchCountForTest()
+        bridge.setSearchResultsForTest(fakeTracks(3), [], [], [])
+        mouseClick(retry)
+        tryVerify(function () { return bridge.searchCountForTest() > asked }, settleMs, "Try again asked nothing")
+        compare(bridge.lastSearchQueryForTest(), "erfunden")
+        tryVerify(function () { return !label.visible }, settleMs, "the failure stayed after a good answer")
+        compare(win.page.errorText, "")
+    }
 }

@@ -1284,7 +1284,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Search failed: %1</source>
+        <source>Tidal could not answer this search.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1320,6 +1320,10 @@
     </message>
     <message>
         <source>End of results</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try again</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
