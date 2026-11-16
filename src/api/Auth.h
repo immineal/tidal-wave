@@ -84,6 +84,7 @@ private:
     void answerRefused(bool renewed);
     // The way a refresh goes that the login host refuses.
     void endSession();
+    void forgetUsername();
 
     TidalApi  *m_api;
     QTimer    *m_pollTimer;
