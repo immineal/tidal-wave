@@ -209,6 +209,61 @@ TestCase {
                + " in a " + group.width.toFixed(1) + "px group")
     }
 
+    // ── 2. shuffle and repeat answer a click under the pointer ───────────
+
+    function test_an_active_toggle_keeps_its_accent_under_the_pointer_data() {
+        return [ { tag: "shuffle", name: "playerBarShuffle" },
+                 { tag: "repeat",  name: "playerBarRepeat" } ]
+    }
+
+    function test_an_active_toggle_keeps_its_accent_under_the_pointer(row) {
+        player.setCurrentTrackForTest(track("Titel"))
+        player.setShuffle(true)
+        player.setRepeatMode(1)
+        var host = showHost(playerBarHost, 960, 200)
+        var btn = findByName(host.bar, row.name)
+        verify(btn && btn.active, row.tag + " is not on")
+        mouseMove(btn, btn.width / 2, btn.height / 2)
+        tryVerify(function () { return btn.hovered }, 1000, "the pointer never reached " + row.tag)
+        settle(host)
+        var glyph = findByName(btn, "iconButtonGlyph")
+        var disc = findByName(btn, "iconButtonDisc")
+        verify(Qt.colorEqual(glyph.color, Theme.accentText),
+               row.tag + ": the glyph left the accent under the pointer: " + glyph.color)
+        verify(Qt.colorEqual(disc.color, Theme.hoverFill),
+               row.tag + ": the hover did not tint the disc: " + disc.color)
+        player.setShuffle(false)
+        player.setRepeatMode(0)
+    }
+
+    Component {
+        id: glyphPair
+        Window {
+            color: "white"
+            property alias plain: a
+            property alias one: b
+            Rectangle {
+                id: pad; anchors.fill: parent; color: "white"
+                VectorIcon { id: a; x: 4;  y: 4; width: 18; height: 18; name: "repeat";     color: "black" }
+                VectorIcon { id: b; x: 34; y: 4; width: 18; height: 18; name: "repeat-one"; color: "black" }
+            }
+        }
+    }
+
+    // At the bar's 18px the mark that says "one" has to be more than a speck.
+    function test_the_repeat_one_mark_reads_at_the_bar_size() {
+        var host = showHost(glyphPair, 60, 30)
+        settle(host)
+        var a = grabImage(host.plain)
+        var b = grabImage(host.one)
+        var differ = 0
+        for (var y = 0; y < 18; ++y)
+            for (var x = 0; x < 18; ++x)
+                if (Math.abs(a.pixel(x, y).r - b.pixel(x, y).r) > 0.5) differ++
+        verify(differ >= 20,
+               "repeat-one differs from repeat in only " + differ + " pixels at 18px")
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
