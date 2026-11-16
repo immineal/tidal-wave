@@ -7,6 +7,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+#include <cstring>
+
 namespace {
 
 // How much may sit in one socket's write queue before the pump stops filling
@@ -54,6 +56,7 @@ QString GrowingFileServer::serve(const QString &path, const QString &mime, qint6
     m_mime = mime;
     m_bytesReady = qMax<qint64>(0, bytesReady);
     m_complete = false;
+    m_head.clear();
     m_target = "/" + mintToken();
 
     m_file.setFileName(m_path);
@@ -113,6 +116,7 @@ void GrowingFileServer::stop()
     m_target.clear();
     m_bytesReady = 0;
     m_complete = false;
+    m_head.clear();
 }
 
 bool GrowingFileServer::isListening() const
@@ -208,8 +212,12 @@ void GrowingFileServer::pump()
 
         while (c.sent < m_bytesReady && sock->bytesToWrite() < kSocketHighWater) {
             if (!m_file.seek(c.sent)) break;
-            const QByteArray data = m_file.read(qMin(kReadChunk, m_bytesReady - c.sent));
+            QByteArray data = m_file.read(qMin(kReadChunk, m_bytesReady - c.sent));
             if (data.isEmpty()) break;          // the writer has not flushed yet
+            if (c.sent < m_head.size()) {
+                const qint64 n = qMin<qint64>(data.size(), m_head.size() - c.sent);
+                std::memcpy(data.data(), m_head.constData() + c.sent, size_t(n));
+            }
             sock->write(QByteArray::number(data.size(), 16) + "\r\n");
             sock->write(data);
             sock->write("\r\n");

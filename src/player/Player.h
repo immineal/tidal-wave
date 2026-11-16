@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <QHash>
 #include <QTemporaryFile>
+#include <QElapsedTimer>
 #include <functional>
 #include <memory>
 #include "api/TidalClient.h"
@@ -20,6 +21,7 @@
 class QNetworkReply;
 class QMediaDevices;
 class DashFetcher;
+class GrowingFileServer;
 class QTimer;
 class CastSession;
 class Prefs;
@@ -147,6 +149,9 @@ public:
     void onCastPosition(double sec);
     void onCastDuration(double sec);
     void onCastPlaying(bool playing);
+    // The device played its track out: the queue goes on as it does when a
+    // track runs out here, so repeat-one starts it over and nothing waits.
+    void onCastFinished();
 
     // ── Playing ─────────────────────────────────────────────────────────
     // Tracks are QVariantMaps from TidalBridge.
@@ -168,6 +173,9 @@ public:
     // How long a step waits for the next one before its track is fetched,
     // so a burst of steps fetches only where it ends. 0 fetches at once.
     void setLoadDelay(int ms) { m_loadDelayMs = ms; }
+    // How long a seek past what a growing stream has waits for the rest of
+    // the track before it gives up.
+    void setSeekWait(int ms) { m_seekWaitMs = ms; }
     Q_INVOKABLE void seek      (qint64 ms);
     Q_INVOKABLE void setVolume (double v);
     Q_INVOKABLE void setMuted  (bool m);
@@ -218,6 +226,8 @@ public:
     // Public so the tests can round-trip them.
     void savePlaybackState();
     void restorePlaybackState();
+    // Waits until the queue's rows are written out.
+    void flushPlaybackState();
 
 signals:
     void playingChanged     (bool playing);
@@ -295,6 +305,30 @@ private:
     void preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file);
     // The current track's file is on disk: hands it to the backend.
     void playFile(QTemporaryFile *file, const QString &quality);
+
+    // ── Progressive start ───────────────────────────────────────────────
+    // A lossless track plays from the front of its join, served over
+    // loopback by GrowingFileServer, while the rest of it arrives.
+    // Reports from `fetcher`, the current track's join, reach the stream.
+    void followJoin(quint64 serial, DashFetcher *fetcher);
+    void joinProgress(DashFetcher *fetcher, qint64 bytes, int segments);
+    // The current track's join ended: its file, or null and why.
+    void joinLanded(QTemporaryFile *file, const QString &errorDetail);
+    // A load takes over the join a preload of the same track has under way.
+    void takeOverPreloadJoin();
+    // Hands the backend the server's URL for the current join.
+    bool serveJoin(DashFetcher *fetcher, bool plays);
+    // Stops the backend reading from the server and the server itself.
+    void dropStream();
+    // A seek on a stream that still grows: it waits for the whole file.
+    void holdSeekForJoin(qint64 ms, bool plays);
+    // Gives the backend a new source in place of the one it plays, at `at`,
+    // as a seek rather than a load.
+    void swapSource(const QUrl &url, qint64 at, bool plays);
+    // The backend reads a stream whose front is all it has; a seek there
+    // would ask the server for bytes by a range it does not serve.
+    bool streamGrowing() const { return m_streamServed && !m_streamWhole; }
+    bool backendSeekable() const;
     void stepForward(bool heldPaused, bool wait);
     void setStopped(bool s);
     // The output's linear factor for a level on the volume slider.
@@ -389,7 +423,6 @@ private:
 
     // Debounces the writes.
     void schedulePersist();
-    QByteArray serializeQueue() const;
     QString    settingsPrefix() const;
 
     TidalClient         *m_client;
@@ -488,6 +521,16 @@ private:
     QTimer              *m_persistTimer  = nullptr;
     // Set while restorePlaybackState() runs, so it does not save what it read.
     bool                 m_suspendPersist = false;
+    // Writes the rows off the GUI thread; see Player.cpp.
+    struct QueueStore;
+    std::shared_ptr<QueueStore> m_queueStore;
+    // The rows changed since they were last handed to the store.
+    bool                 m_rowsDirty      = true;
+    // Numbers each write of the rows; the cursor names the one it goes with.
+    quint64              m_rowsGeneration = 0;
+    // Since the position was last saved, for a save now and then in play.
+    QElapsedTimer        m_positionSaved;
+    static constexpr qint64 kPositionSaveMs = 30000;
     // The load under way comes up paused: pause was pressed while it loads.
     bool                 m_restorePaused  = false;
     // A load is under way and ends in playback. Lowered with the loading flag.
@@ -520,11 +563,29 @@ private:
     QNetworkReply       *m_activeDownload = nullptr;
     // Joining the current track's DASH segments (lossless); see DashFetcher.h.
     DashFetcher         *m_dash           = nullptr;
+    // The loopback server for the current join, and whether the backend's
+    // source is its URL. m_streamWhole: the join has landed in m_mpdTempFile.
+    GrowingFileServer   *m_stream         = nullptr;
+    bool                 m_streamServed   = false;
+    bool                 m_streamWhole    = false;
+    // The play time the manifest gives, stated in the header served.
+    qint64               m_streamLengthMs = 0;
+    // Where the stream had got to, for one that runs dry before its end.
+    qint64               m_streamPos      = 0;
+    // A source swap is under way: what it reports is a seek's, not a load's.
+    bool                 m_swapping       = false;
+    // The source a swap leaves, whose last reports it ignores.
+    QUrl                 m_swapFrom;
+    // See setSeekWait().
+    int                  m_seekWaitMs     = 30000;
+    QTimer              *m_seekWait       = nullptr;
 
     // How far into a track the preload of the next one starts. A whole track
     // is downloaded before it can play, so the preload gets the rest of the
     // current one; a track skipped inside this window costs no preload.
     static constexpr qint64 kPreloadAfterMs = 5000;
+    // Where a stream's moov must end for its length to be stated.
+    static constexpr qint64 kStreamHeadMax = 1024 * 1024;
 
     // Preload state for the next queued track
     int                  m_preloadIndex    = -1;

@@ -10,11 +10,20 @@
 #include <QDir>
 #include <QMediaDevices>
 #include <QAudio>
+#include <QFileInfo>
+#include <QMutex>
+#include <QSaveFile>
+#include <QScopeGuard>
 #include <QScopedValueRollback>
 #include <QSet>
+#include <QStandardPaths>
+#include <QThreadPool>
+#include <QWaitCondition>
+#include <optional>
 #include "api/TidalBridge.h"
 #include "cast/CastSession.h"
 #include "player/DashFetcher.h"
+#include "player/GrowingFileServer.h"
 #include "ui/Prefs.h"
 #include "player/SpectrumAnalyzer.h"
 #if TIDALWAVE_HAS_BUFFER_OUTPUT
@@ -22,6 +31,7 @@
 #endif
 #include <algorithm>
 #include <numeric>
+#include <utility>
 #include <QRandomGenerator>
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 #include <QAudioSink>
@@ -53,6 +63,10 @@ Player::Player(TidalClient *client, QObject *parent)
 
     setSpectrumAnalyzer(SpectrumAnalyzer::instance());
 
+    // Any change to the rows; a plain advance moves only the cursor.
+    connect(this, &Player::queueChanged, this, [this] { m_rowsDirty = true; });
+    m_positionSaved.start();
+
     // Defer audio device init until after the event loop starts to avoid
     // a PipeWire pw_thread_loop_lock deadlock under -O3 optimisation.
     QTimer::singleShot(0, this, &Player::initAudio);
@@ -80,13 +94,25 @@ void Player::initAudio() {
             this, &Player::onErrorOccurred);
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
         if (m_rebinding) return;   // a swap's transient positions are not seeks
+        // Nor those of a source swap, which start from 0 before its seek.
+        if (m_swapping) return;
+        // A stream cut short reports the stated length as it ends.
+        if (streamGrowing() && pos >= m_streamLengthMs) return;
+        if (m_streamServed) m_streamPos = pos;
+        // Now and then in play, for a session that ends without a pause.
+        if (m_positionSaved.elapsed() > kPositionSaveMs
+            && m_player->playbackState() == QMediaPlayer::PlayingState) {
+            m_positionSaved.start();
+            schedulePersist();
+        }
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // A queue that ended is at its start for all who ask position(). The
         // backend's reports from before the end can still arrive after it.
         if (m_player->mediaStatus() == QMediaPlayer::EndOfMedia && followingIndex() < 0) return;
 #endif
         // Only while it plays: a paused track may never be played on.
-        if (m_player->duration() > 0 && pos >= kPreloadAfterMs
+        // duration(): a growing stream has no length of its own.
+        if (duration() > 0 && pos >= kPreloadAfterMs
             && m_player->playbackState() == QMediaPlayer::PlayingState)
             preloadNext();
         emit positionChanged(pos);
@@ -112,7 +138,10 @@ void Player::initAudio() {
 Player::~Player() {
     // The debounced save may still be pending, and position() needs the player.
     savePlaybackState();
+    flushPlaybackState();
     cancelPreload();
+    // Before the join goes: the server reads its file.
+    if (m_stream) m_stream->stop();
     delete m_dash;
     m_dash = nullptr;
     // remove() as well as delete: autoRemove is off on these, so deleting the
@@ -288,7 +317,7 @@ void Player::restoreAudioState(const AudioState &state) {
     if (!m_player) return;
     // A swap can drop the backend back to the start of the track. Seek back,
     // and never re-set the source: that would re-fetch the stream.
-    if (state.position > 0 && m_player->position() != state.position && m_player->isSeekable())
+    if (state.position > 0 && m_player->position() != state.position && backendSeekable())
         setPlayerPosition(state.position);
     const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
     if (state.playing && !playing)      startBackend();
@@ -350,6 +379,10 @@ qint64 Player::position() const {
 }
 qint64 Player::duration() const {
     if (casting()) return m_castDuration;
+    // Should the served header fail to state it, the backend knows one
+    // segment's length.
+    if (m_streamServed)
+        return m_streamLengthMs > 0 ? m_streamLengthMs : qint64(m_currentTrack.duration) * 1000;
     // Until the backend has the file, the track's own length stands, and
     // never the length of the track before.
     const qint64 loaded = (m_player && !m_player->source().isEmpty()) ? m_player->duration() : 0;
@@ -586,6 +619,7 @@ void Player::jumpToQueue(int index) {
 
 void Player::clearQueue() {
     cancelPreload();
+    dropStream();
     if (m_player) m_player->stop();
     m_queue.clear();
     setManualCount(0);
@@ -606,6 +640,7 @@ void Player::removeFromQueue(int index) {
         setIndex(m_index - 1);
     } else if (index == m_index) {
         if (m_queue.isEmpty()) {
+            dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
             m_currentTrack = Track{};
@@ -700,7 +735,8 @@ void Player::playPause() {
     if (!m_player) return;
     // Nothing is loaded behind the current track for play() to start.
     if (m_loadOwed) { loadAndPlay(m_index, false, m_owedTravel); return; }
-    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+    // A source swap is a load the flag does not show.
+    if ((m_loading || m_swapping) && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // A load is under way, and the press decides what it ends in.
         m_loadPlays = !m_loadPlays;
         // Until the file is handed to the backend the hold is kept here.
@@ -744,6 +780,13 @@ void Player::startOver(bool heldPaused) {
         return;
     }
     m_pendingSeek = 0;
+    if (m_streamServed) {
+        // The stream cannot go back; the file it was served from can.
+        swapSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()), 0, !heldPaused);
+        emit positionChanged(0);
+        emit seeked();
+        return;
+    }
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
     // Qt 6.5 does not start a track over once it stopped at its end, so the
     // file it has is opened again.
@@ -799,10 +842,21 @@ void Player::seek(qint64 ms) {
     // A target at or past the end is the end of the track, and the queue
     // moves on as it does when a track has played out. The backend of Qt 6.5
     // and later would stay there and report no end. A paused player waits.
-    const qint64 length = m_player->duration();
+    const qint64 length = m_streamServed ? duration() : m_player->duration();
     if (length > 0 && ms >= length) {
         m_pendingSeek = 0;
         trackEnded(!playing());
+        return;
+    }
+    if (m_streamServed) {
+        // The stream cannot seek. The finished file can, so the backend gets
+        // that; until the join has landed the seek waits for it.
+        if (ms > 0) setStopped(false);
+        if (m_streamWhole)
+            swapSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()), qMax<qint64>(0, ms), playing());
+        else
+            holdSeekForJoin(qMax<qint64>(0, ms), playing());
+        emit seeked();
         return;
     }
     setPlayerPosition(ms);
@@ -1165,6 +1219,10 @@ void Player::loadAndPlay(int index, bool heldPaused, Travel travel, bool wait) {
 
 void Player::dropCurrentLoad() {
     if (m_loadTimer) m_loadTimer->stop();
+    if (m_seekWait) m_seekWait->stop();
+    m_swapping = false;
+    // First: the server reads the file that goes below.
+    dropStream();
     if (m_player) {
         m_player->stop();
         m_player->setSource(QUrl());
@@ -1301,6 +1359,8 @@ bool Player::adoptPreload(quint64 serial) {
         if (m_preloadLookingUp) return false;
         // Under way: the load waits for it rather than fetch a second copy.
         m_preloadAdoptedBy = serial;
+        // A join plays from its front, like the load's own.
+        if (m_preloadDash) takeOverPreloadJoin();
         return true;
     }
     if (!m_preloadTempFile) return false;
@@ -1320,6 +1380,167 @@ void Player::playFile(QTemporaryFile *file, const QString &quality) {
     m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
     beginPlayback();
     emit audioFileReady(m_currentTrack.id, false);
+}
+
+// ─── Progressive start ─────────────────────────────
+// The backend gets the server's URL once the initialization segment and one
+// media segment are on disk. The stream has no length and cannot seek, so
+// duration comes from the manifest and a seek goes to the finished file.
+
+void Player::followJoin(quint64 serial, DashFetcher *fetcher) {
+    fetcher->setProgress([this, serial, fetcher](qint64 bytes, int segments) {
+        if (serial != m_loadSerial || m_dash != fetcher) return;
+        joinProgress(fetcher, bytes, segments);
+    });
+}
+
+void Player::joinProgress(DashFetcher *fetcher, qint64 bytes, int segments) {
+    if (m_streamServed) { m_stream->setBytesReady(bytes); return; }
+    // Two segments are the least that plays. A held position needs bytes
+    // from further in, so that load waits for the whole file as before.
+    if (segments < 2 || casting() || m_pendingSeek > 0 || !m_loading || !m_player
+        || !m_player->source().isEmpty())
+        return;
+    serveJoin(fetcher, m_loadPlays);
+}
+
+bool Player::serveJoin(DashFetcher *fetcher, bool plays) {
+    if (!m_stream) m_stream = new GrowingFileServer(this);
+    const QString url = m_stream->serve(fetcher->tempFilePath(), QStringLiteral("audio/mp4"),
+                                        fetcher->bytesReady());
+    // No loopback socket: the whole file plays once it has landed.
+    if (url.isEmpty()) return false;
+    // Without a stated length the backend holds its position at the end of
+    // the first segment, and the bar would stand still while it plays.
+    QFile head(fetcher->tempFilePath());
+    if (head.open(QIODevice::ReadOnly))
+        m_stream->setHead(DashFetcher::headWithLength(
+            head.read(qMin<qint64>(fetcher->bytesReady(), kStreamHeadMax)), fetcher->lengthMs()));
+    m_streamServed   = true;
+    m_streamWhole    = false;
+    m_streamPos      = 0;
+    m_streamLengthMs = fetcher->lengthMs();
+    m_loadPlays      = plays;
+    m_restorePaused  = !plays;
+    m_player->setSource(QUrl(url));
+    beginPlayback();
+    emit durationChanged(duration());
+    return true;
+}
+
+void Player::joinLanded(QTemporaryFile *file, const QString &errorDetail) {
+    if (m_seekWait) m_seekWait->stop();
+    if (!file) {
+        if (!errorDetail.isEmpty()) qWarning() << "Audio download failed:" << errorDetail;
+        // Played as far as it got: play tries again from there.
+        if (m_streamServed) {
+            m_pendingSeek = qMax(m_pendingSeek, m_streamPos);
+            m_loadPlays   = false;
+            dropStream();
+        }
+        failLoad(errorDetail.isEmpty()
+            ? tr("Could not download the audio for this track. No data came back.")
+            : tr("Could not download the audio for this track."));
+        return;
+    }
+    m_mpdTempFile = file;
+    // Casting may have started while the segments were in flight.
+    if (casting()) { setLoading(false); emit castTrackChanged(); return; }
+    if (m_streamServed && m_streamPos == 0
+        && m_player->playbackState() != QMediaPlayer::PlayingState) {
+        // Landed before the stream sounded: the file plays, as it did before.
+        dropStream();
+        m_restorePaused = !m_loadPlays;
+    }
+    if (m_streamServed) {
+        // The backend reads on to the end; the file is there for a seek.
+        m_streamWhole = true;
+        m_stream->setBytesReady(file->size());
+        m_stream->setComplete();
+        emit audioFileReady(m_currentTrack.id, false);
+        return;
+    }
+    m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
+    beginPlayback();
+    emit audioFileReady(m_currentTrack.id, false);
+}
+
+void Player::takeOverPreloadJoin() {
+    DashFetcher *fetcher = std::exchange(m_preloadDash, nullptr);
+    if (!fetcher) return;
+    const QString quality = m_preloadQuality;
+    // Not deleted here: m_preloadDash is already null.
+    cancelPreload();
+    m_dash = fetcher;
+    m_streamedQuality = quality;
+    emit currentTrackChanged();
+    followJoin(m_loadSerial, fetcher);
+    if (fetcher->segmentsReady() >= 2)
+        joinProgress(fetcher, fetcher->bytesReady(), fetcher->segmentsReady());
+}
+
+void Player::dropStream() {
+    const bool served = m_streamServed;
+    m_streamServed = false;
+    m_streamWhole  = false;
+    if (served && m_player) {
+        // Before the server goes: a socket closed under the backend reads as
+        // the end of the track.
+        m_player->stop();
+        m_player->setSource(QUrl());
+    }
+    if (m_stream) m_stream->stop();
+}
+
+void Player::holdSeekForJoin(qint64 ms, bool plays) {
+    if (!m_dash) return;
+    if (ms <= 0) {
+        // The front is on disk: the stream starts again from it.
+        dropStream();
+        m_swapping = true;
+        m_swapFrom = QUrl();
+        if (!serveJoin(m_dash, plays)) m_swapping = false;
+        return;
+    }
+    // Until the join lands the bytes may not be there, and the stream could
+    // not seek to them if they were. It is a load again until then.
+    m_loadPlays     = plays;
+    m_restorePaused = !plays;
+    dropStream();
+    m_pendingSeek   = ms;
+    setLoading(true);
+    tellPlaying();
+    if (!m_seekWait) {
+        m_seekWait = new QTimer(this);
+        m_seekWait->setSingleShot(true);
+        connect(m_seekWait, &QTimer::timeout, this, [this] {
+            if (!m_dash || !m_loading || !m_player || !m_player->source().isEmpty()) return;
+            qWarning() << "Player: a seek waited" << m_seekWaitMs << "ms for its join and gave up";
+            dropCurrentLoad();
+            failLoad(tr("This track did not download far enough in time to play from there."));
+        });
+    }
+    m_seekWait->start(m_seekWaitMs);
+}
+
+void Player::swapSource(const QUrl &url, qint64 at, bool plays) {
+    // Stream state first: the old source's reports find it gone.
+    const bool served = m_streamServed;
+    m_streamServed = false;
+    m_streamWhole  = false;
+    m_swapping      = true;
+    m_loadPlays     = plays;
+    m_restorePaused = !plays;
+    m_pendingSeek   = at;
+    m_swapFrom      = m_player->source();
+    m_player->setSource(url);
+    // After the backend let go of the stream, so its end is never read.
+    if (served && m_stream) m_stream->stop();
+    beginPlayback();
+}
+
+bool Player::backendSeekable() const {
+    return m_player && !m_streamServed && m_player->isSeekable();
 }
 
 void Player::preloadLanded(quint64 gen, qlonglong trackId, QTemporaryFile *file) {
@@ -1484,6 +1705,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                     return;
                 }
                 m_dash = fetcher;
+                followJoin(serial, fetcher);
                 fetcher->start([this, fetcher, loadingTrackId, serial](QTemporaryFile *file, const QString &dashErr) {
                     // Dispose this callback's fetcher, whatever the member holds.
                     if (m_dash == fetcher) m_dash = nullptr;
@@ -1492,19 +1714,7 @@ void Player::requestStream(quint64 serial, bool twinSought) {
                         if (file) { file->remove(); delete file; }
                         return;
                     }
-                    if (!file) {
-                        if (!dashErr.isEmpty()) qWarning() << "Audio download failed:" << dashErr;
-                        failLoad(dashErr.isEmpty()
-                            ? tr("Could not download the audio for this track. No data came back.")
-                            : tr("Could not download the audio for this track."));
-                        return;
-                    }
-                    m_mpdTempFile = file;
-                    // Casting may have started while the segments were in flight.
-                    if (casting()) { setLoading(false); emit castTrackChanged(); return; }
-                    m_player->setSource(QUrl::fromLocalFile(m_mpdTempFile->fileName()));
-                    beginPlayback();
-                    emit audioFileReady(m_currentTrack.id, false);
+                    joinLanded(file, dashErr);
                 });
             }
         });
@@ -1520,6 +1730,8 @@ void Player::failLoad(const QString &msg) {
 void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
     const QMediaPlayer::PlaybackState state =
         m_player ? m_player->playbackState() : QMediaPlayer::StoppedState;
+    // Qt reports the stop of a swap's old source from inside setSource().
+    if (m_swapping && m_player && m_player->source() == m_swapFrom) return;
     // Qt from 6.6.2 on answers a seek in a running track with a loaded status.
     // Qt 6.4 reports one late at a start as well, so only a seek's own counts.
     if (status != QMediaPlayer::BufferingMedia)
@@ -1527,11 +1739,12 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
                       && state != QMediaPlayer::StoppedState;
     switch (status) {
     case QMediaPlayer::LoadingMedia:
+        if (m_swapping) break;
         setLoading(true); break;
     case QMediaPlayer::BufferingMedia:
         // Qt reports this on the pause or the start that follows a seek, and
         // before 6.11.2 nothing after it. A paused track waits for no buffer.
-        if (m_seekedLoaded || state == QMediaPlayer::PausedState) break;
+        if (m_swapping || m_seekedLoaded || state == QMediaPlayer::PausedState) break;
         setLoading(true); break;
     case QMediaPlayer::BufferedMedia:
     case QMediaPlayer::LoadedMedia:
@@ -1546,8 +1759,22 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
             // The buffering that follows is this seek's, and no new load.
             m_seekedLoaded = true;
         }
+        if (m_swapping) {
+            m_swapping = false;
+            m_seekedLoaded = true;
+            emit positionChanged(position());
+        }
         break;
     case QMediaPlayer::EndOfMedia:
+        // The stream a swap left can still report its end.
+        if (m_swapping) break;
+        if (streamGrowing()) {
+            // It ran dry before the join landed: it goes on from there once
+            // the file is whole, and the queue stays where it is.
+            qInfo() << "Player: the stream ran out at" << m_streamPos << "ms before its join landed";
+            holdSeekForJoin(qMax<qint64>(1, m_streamPos), true);
+            break;
+        }
         setLoading(false);
 #if QT_VERSION < QT_VERSION_CHECK(6, 6, 0)
         // Qt 6.4 takes a stop here for a new end, and Qt 6.5 will not start a
@@ -1558,6 +1785,7 @@ void Player::onMediaStatusChanged(QMediaPlayer::MediaStatus status) {
         trackEnded();
         break;
     case QMediaPlayer::InvalidMedia:
+        m_swapping = false;
         failLoad(tr("This track could not be played. The audio format may not be supported."));
         break;
     default: break;
@@ -1587,7 +1815,7 @@ void Player::stop() {
     }
 #endif
     if (!m_player) return;
-    if (m_loading && m_player->playbackState() == QMediaPlayer::StoppedState) {
+    if ((m_loading || m_swapping) && m_player->playbackState() == QMediaPlayer::StoppedState) {
         // The load under way comes up paused.
         m_loadPlays = false;
         if (m_player->source().isEmpty()) m_restorePaused = true;
@@ -1608,6 +1836,12 @@ void Player::setStopped(bool s) {
 
 void Player::onErrorOccurred(QMediaPlayer::Error, const QString &msg) {
     qWarning() << "Player error:" << msg;
+    // The stream broke off before its join landed. The file will be whole,
+    // so the track goes on from there rather than fail.
+    if (streamGrowing()) {
+        holdSeekForJoin(qMax<qint64>(1, m_streamPos), m_playingTold);
+        return;
+    }
     // The sentence for invalid media, which the backend reports as well.
     const QString said =
         tr("This track could not be played. The audio format may not be supported.");
@@ -1690,6 +1924,9 @@ void Player::preloadGaveUp(qlonglong trackId) {
 }
 
 void Player::preloadNext() {
+    // The current track's own join is still under way; a second would
+    // halve what each of them gets.
+    if (m_dash) return;
     int next = followingIndex();
     // Repeat-one: the playing row's bytes are already on disk.
     if (next < 0 || next == m_index) return;
@@ -1801,11 +2038,21 @@ void Player::requestPreload(quint64 gen, int next, qlonglong trackId, bool twinS
                 return;
             }
             m_preloadDash = fetcher;
-            fetcher->start([this, fetcher, gen, trackId](QTemporaryFile *file, const QString &) {
-                if (m_preloadDash == fetcher) m_preloadDash = nullptr;
+            fetcher->start([this, fetcher, gen, trackId](QTemporaryFile *file, const QString &err) {
                 disposeDash(fetcher, this);
+                // A load took the join over: it is the current track's now.
+                if (m_dash == fetcher) {
+                    m_dash = nullptr;
+                    joinLanded(file, err);
+                    return;
+                }
+                if (m_preloadDash == fetcher) m_preloadDash = nullptr;
                 preloadLanded(gen, trackId, file);
             });
+            // A load waits on this preload already.
+            if (m_preloadAdoptedBy && m_preloadAdoptedBy == m_loadSerial && m_loading
+                && m_currentTrack.id == trackId)
+                takeOverPreloadJoin();
         }
     });
 }
@@ -1847,33 +2094,44 @@ QString Player::qualityLabel(const QString &code) const {
 }
 
 void Player::beginCast(CastSession *session) {
+    // Taken first, as below the backend lets go of the track: the device
+    // starts from where it is here, not from 0:00.
+    const qint64 here   = position();
+    const qint64 length = duration();
     m_castSession = session;
     // Muted as well as paused: a stream fetch that resolves after this point
     // must not play locally alongside the cast.
     if (m_player) m_player->pause();
+    // A stream mid-join is let go; the join itself runs on as a load does.
+    if (streamGrowing()) dropStream();
     if (m_audioOut) m_audioOut->setMuted(true);
     // A load that waited on the preload goes to the cast device instead.
     const bool waited = m_preloadAdoptedBy != 0;
     cancelPreload();
     if (waited && m_loading) { setLoading(false); emit castTrackChanged(); }
-    m_castPosition = 0;
-    m_castDuration = duration();   // seed from current until the device reports
+    m_castPosition = here;
+    m_castDuration = length;   // seed from current until the device reports
     m_castPlaying  = true;
     tellPlaying();
 }
 
 void Player::endCast() {
     if (!m_castSession) return;
+    const qint64 leftAt = m_castPosition;
+    const bool   played = m_castPlaying;
     m_castSession = nullptr;
     m_castPosition = 0;
     m_castPlaying  = false;
     // Restore the user's local mute preference (beginCast force-muted the output).
     if (m_audioOut) m_audioOut->setMuted(m_pendingMuted);
-    // Resume playback locally from the top of the current track.
-    if (m_index >= 0 && m_index < m_queue.count())
-        loadAndPlay(m_index);
-    else
+    // Here it goes on where the device left it, paused if it was paused there.
+    if (m_index >= 0 && m_index < m_queue.count()) {
+        m_pendingSeek = qMax<qint64>(0, leftAt);
+        loadAndPlay(m_index, !played);
+        emit positionChanged(position());
+    } else {
         tellPlaying();
+    }
 }
 
 void Player::onCastPosition(double sec) {
@@ -1888,6 +2146,11 @@ void Player::onCastDuration(double sec) {
     if (casting()) emit durationChanged(m_castDuration);
 }
 
+void Player::onCastFinished() {
+    if (!casting()) return;
+    trackEnded();
+}
+
 void Player::onCastPlaying(bool playing) {
     if (m_castPlaying == playing) return;
     m_castPlaying = playing;
@@ -1895,6 +2158,8 @@ void Player::onCastPlaying(bool playing) {
 }
 
 void Player::handleUserIdChanged(qint64 uid) {
+    // Another account has no file of these rows yet.
+    m_rowsDirty = true;
     m_recentlyPlayed.clear();
     if (uid > 0) {
         QSettings settings;
@@ -1911,19 +2176,259 @@ void Player::handleUserIdChanged(qint64 uid) {
 }
 
 // ─── Session persistence ───────────────────────────
-// Writes are debounced into one timer and the queue goes out as a single
-// value. Only a window around the cursor is stored, plus the manual queue up
-// to its own limit.
+// The knobs and the cursor (index, manual run, position) go to QSettings,
+// which is cheap, on every debounced save. The rows go to a file of their
+// own, only when they changed, written by QueueStore on a worker thread.
 
 namespace {
-constexpr int kPersistBehind = 50;
-constexpr int kPersistAhead  = 450;
-constexpr int kPersistManual = 200;
-// Refuses a blob that claims more rows than this build could ever have
-// written, so a corrupt or foreign value cannot make the launch allocate.
-constexpr int kPersistMaxRows = kPersistBehind + kPersistAhead + kPersistManual + 1;
-constexpr quint32 kPersistFormat = 1;
+// The queue a build before 0.5.0 kept in QSettings, a window of rows.
+constexpr int kLegacyMaxRows = 50 + 450 + 200 + 1;
+constexpr quint32 kLegacyFormat = 1;
+
+// The rows file. A corrupt or foreign file cannot make the launch allocate
+// past these.
+constexpr quint32 kRowsMagic    = 0x54575131;   // "TWQ1"
+constexpr quint32 kRowsFormat   = 1;
+constexpr qint32  kRowsMax      = 1000000;
+constexpr qint32  kStringsMax   = 4000000;
+constexpr int     kValueDepthMax = 8;
+
+// Every string, map key or value, is written once into a table and then
+// named by its number: a queue repeats its artists, albums and keys a lot.
+enum Tag : quint8 { TNull, TString, TInt, TLongLong, TBool, TDouble, TMap, TList, TOther };
+
+struct RowWriter {
+    QHash<QString, quint32> index;
+    QStringList             strings;
+    QDataStream            *out;
+
+    quint32 intern(const QString &s) {
+        const auto it = index.constFind(s);
+        if (it != index.cend()) return *it;
+        const quint32 n = quint32(strings.size());
+        index.insert(s, n);
+        strings.append(s);
+        return n;
+    }
+
+    void value(const QVariant &v) {
+        switch (v.metaType().id()) {
+        case QMetaType::UnknownType: *out << quint8(TNull); break;
+        case QMetaType::QString:     *out << quint8(TString) << intern(v.toString()); break;
+        case QMetaType::Int:         *out << quint8(TInt) << qint32(v.toInt()); break;
+        case QMetaType::LongLong:    *out << quint8(TLongLong) << qint64(v.toLongLong()); break;
+        case QMetaType::Bool:        *out << quint8(TBool) << quint8(v.toBool()); break;
+        case QMetaType::Double:      *out << quint8(TDouble) << v.toDouble(); break;
+        case QMetaType::QVariantMap: map(v.toMap()); break;
+        case QMetaType::QVariantList: {
+            const QVariantList l = v.toList();
+            *out << quint8(TList) << qint32(l.size());
+            for (const QVariant &e : l) value(e);
+            break;
+        }
+        default: *out << quint8(TOther) << v; break;
+        }
+    }
+
+    void map(const QVariantMap &m) {
+        *out << quint8(TMap) << qint32(m.size());
+        for (auto it = m.cbegin(); it != m.cend(); ++it) {
+            *out << intern(it.key());
+            value(it.value());
+        }
+    }
+};
+
+struct RowReader {
+    QStringList  strings;
+    QDataStream *in;
+
+    bool string(QString *s) {
+        quint32 n = 0;
+        *in >> n;
+        if (n >= quint32(strings.size())) return false;
+        *s = strings.at(int(n));
+        return true;
+    }
+
+    bool value(QVariant *v, int depth) {
+        if (depth > kValueDepthMax) return false;
+        quint8 tag = 0;
+        *in >> tag;
+        switch (tag) {
+        case TNull: *v = QVariant(); return true;
+        case TString: { QString s; if (!string(&s)) return false; *v = s; return true; }
+        case TInt:      { qint32 i = 0; *in >> i; *v = int(i); return true; }
+        case TLongLong: { qint64 i = 0; *in >> i; *v = qlonglong(i); return true; }
+        case TBool:     { quint8 b = 0; *in >> b; *v = bool(b); return true; }
+        case TDouble:   { double d = 0; *in >> d; *v = d; return true; }
+        case TMap:      { QVariantMap m; if (!map(&m, depth)) return false; *v = m; return true; }
+        case TList: {
+            qint32 n = 0;
+            *in >> n;
+            if (n < 0 || n > kStringsMax) return false;
+            QVariantList l;
+            l.reserve(n);
+            for (qint32 i = 0; i < n; ++i) {
+                QVariant e;
+                if (!value(&e, depth + 1)) return false;
+                l.append(e);
+            }
+            *v = l;
+            return true;
+        }
+        case TOther: *in >> *v; return in->status() == QDataStream::Ok;
+        default: return false;
+        }
+    }
+
+    // After its tag.
+    bool map(QVariantMap *m, int depth) {
+        qint32 n = 0;
+        *in >> n;
+        if (n < 0 || n > kStringsMax) return false;
+        for (qint32 i = 0; i < n; ++i) {
+            QString key;
+            QVariant v;
+            if (!string(&key) || !value(&v, depth + 1)) return false;
+            m->insert(key, v);
+        }
+        return in->status() == QDataStream::Ok;
+    }
+};
+
+// Where the rows go: beside the settings when they are a file the caller
+// chose (the tests), else in the app's data directory.
+QString rowsFilePath(qint64 uid) {
+    QSettings s;
+    const QString dir = s.format() == QSettings::NativeFormat
+        ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        : QFileInfo(s.fileName()).absolutePath();
+    return dir + QStringLiteral("/queue-%1.dat").arg(uid);
 }
+} // namespace
+
+// At most one write in flight; a snapshot that arrives meanwhile replaces
+// any other that waits, so the latest state wins.
+struct Player::QueueStore {
+    struct Snapshot {
+        QString      path;
+        QList<Entry> rows;
+        quint64      generation = 0;
+    };
+
+    QMutex                  mutex;
+    QWaitCondition          idle;
+    bool                    busy = false;
+    std::optional<Snapshot> waiting;
+
+    static QByteArray encode(const Snapshot &s) {
+        QByteArray body;
+        RowWriter w;
+        {
+            QDataStream out(&body, QIODevice::WriteOnly);
+            out.setVersion(QDataStream::Qt_6_0);
+            w.out = &out;
+            out << qint32(s.rows.size());
+            for (const Entry &e : s.rows) {
+                out << quint8(e.manual) << qint32(e.natural);
+                w.map(e.track);
+            }
+        }
+        QByteArray file;
+        QDataStream out(&file, QIODevice::WriteOnly);
+        out.setVersion(QDataStream::Qt_6_0);
+        out << kRowsMagic << kRowsFormat << quint64(s.generation) << qint32(w.strings.size());
+        for (const QString &str : std::as_const(w.strings)) out << str;
+        file.append(body);
+        return file;
+    }
+
+    static void write(const Snapshot &s) {
+        QDir().mkpath(QFileInfo(s.path).absolutePath());
+        QSaveFile f(s.path);
+        if (!f.open(QIODevice::WriteOnly)) {
+            qWarning() << "Player: could not save the queue to" << s.path << f.errorString();
+            return;
+        }
+        f.write(encode(s));
+        if (!f.commit())
+            qWarning() << "Player: could not save the queue to" << s.path << f.errorString();
+    }
+
+    static void submit(const std::shared_ptr<QueueStore> &store, Snapshot s) {
+        {
+            QMutexLocker lock(&store->mutex);
+            store->waiting = std::move(s);
+            if (store->busy) return;
+            store->busy = true;
+        }
+        QThreadPool::globalInstance()->start([store] {
+            for (;;) {
+                Snapshot next;
+                {
+                    QMutexLocker lock(&store->mutex);
+                    if (!store->waiting) {
+                        store->busy = false;
+                        store->idle.wakeAll();
+                        return;
+                    }
+                    next = std::move(*store->waiting);
+                    store->waiting.reset();
+                }
+                write(next);
+            }
+        });
+    }
+
+    // Waits for what is in flight and what waits behind it.
+    void flush() {
+        QMutexLocker lock(&mutex);
+        while (busy) idle.wait(&mutex);
+    }
+
+    // Rows, or false when the file is missing or not one of these.
+    static bool read(const QString &path, QList<Entry> *rows, quint64 *generation) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) return false;
+        const QByteArray raw = f.readAll();
+        QDataStream in(raw);
+        in.setVersion(QDataStream::Qt_6_0);
+        quint32 magic = 0, format = 0;
+        quint64 gen = 0;
+        qint32  nStrings = 0;
+        in >> magic >> format >> gen >> nStrings;
+        if (magic != kRowsMagic || format != kRowsFormat || nStrings < 0 || nStrings > kStringsMax)
+            return false;
+        RowReader r;
+        r.in = &in;
+        r.strings.reserve(nStrings);
+        for (qint32 i = 0; i < nStrings; ++i) {
+            QString s;
+            in >> s;
+            r.strings.append(s);
+        }
+        qint32 count = 0;
+        in >> count;
+        if (in.status() != QDataStream::Ok || count < 0 || count > kRowsMax) return false;
+        QList<Entry> out;
+        out.reserve(count);
+        for (qint32 i = 0; i < count; ++i) {
+            quint8 manual = 0, mapTag = 0;
+            qint32 natural = -1;
+            in >> manual >> natural >> mapTag;
+            Entry e;
+            if (mapTag != TMap || !r.map(&e.track, 0)) return false;
+            e.manual  = manual != 0;
+            e.natural = natural;
+            out.append(std::move(e));
+        }
+        if (in.status() != QDataStream::Ok) return false;
+        *rows = std::move(out);
+        *generation = gen;
+        return true;
+    }
+};
 
 QString Player::settingsPrefix() const {
     const qint64 uid = m_client ? m_client->userId() : 0;
@@ -1945,36 +2450,6 @@ void Player::schedulePersist() {
     m_persistTimer->start();
 }
 
-QByteArray Player::serializeQueue() const {
-    QList<int> rows;
-    const int cur = m_index;
-    const int head = qMax(cur, 0);
-    for (int i = qMax(0, head - kPersistBehind); i < head; ++i) rows.append(i);
-
-    int savedIndex = -1;
-    if (cur >= 0 && cur < m_queue.count()) {
-        savedIndex = rows.count();
-        rows.append(cur);
-    }
-    const int manualKept = qMin(m_manualCount, kPersistManual);
-    for (int i = 0; i < manualKept; ++i) rows.append(cur + 1 + i);
-
-    const int ctxFirst = cur + 1 + m_manualCount;
-    for (int i = qMax(0, ctxFirst); i < qMin(m_queue.count(), qMax(0, ctxFirst) + kPersistAhead); ++i)
-        rows.append(i);
-
-    QByteArray raw;
-    QDataStream out(&raw, QIODevice::WriteOnly);
-    out.setVersion(QDataStream::Qt_6_0);
-    out << kPersistFormat << qint32(rows.count());
-    for (int i : rows) {
-        const Entry &e = m_queue.at(i);
-        out << e.track << e.manual << qint32(e.natural);
-    }
-    out << qint32(savedIndex) << qint32(manualKept) << qint64(position());
-    return qCompress(raw, 6);
-}
-
 void Player::savePlaybackState() {
     const QString p = settingsPrefix();
     if (p.isEmpty()) return;
@@ -1988,16 +2463,65 @@ void Player::savePlaybackState() {
     s.setValue(p + QStringLiteral("sourceType"), m_sourceType);
     s.setValue(p + QStringLiteral("sourceId"),   m_sourceId);
     s.setValue(p + QStringLiteral("sourceName"), m_sourceName);
-    s.setValue(p + QStringLiteral("queue"),      serializeQueue());
+
+    if (m_rowsDirty || !m_queueStore) {
+        if (!m_queueStore) m_queueStore = std::make_shared<QueueStore>();
+        // A copy of the list shares its rows, so this costs no time here.
+        QueueStore::submit(m_queueStore, QueueStore::Snapshot{
+            rowsFilePath(m_client->userId()), m_queue, ++m_rowsGeneration });
+        m_rowsDirty = false;
+        s.remove(p + QStringLiteral("queue"));   // the window an older build kept
+    }
+    const qlonglong currentId = (m_index >= 0 && m_index < m_queue.count())
+        ? m_queue.at(m_index).track.value(QStringLiteral("id")).toLongLong() : 0;
+    s.setValue(p + QStringLiteral("queueIndex"),      m_index);
+    s.setValue(p + QStringLiteral("queueManual"),     m_manualCount);
+    s.setValue(p + QStringLiteral("queueTrack"),      currentId);
+    s.setValue(p + QStringLiteral("queueGeneration"), m_rowsGeneration);
+    s.setValue(p + QStringLiteral("position"),        position());
+    m_positionSaved.start();
+}
+
+void Player::flushPlaybackState() {
+    if (m_queueStore) m_queueStore->flush();
+}
+
+// The queue as an older build saved it: a window of rows in one value.
+static bool readLegacyQueue(const QByteArray &stored, QList<QVariantMap> *tracks,
+                            QList<std::pair<bool, int>> *flags, qint32 *savedIndex,
+                            qint32 *savedManual, qint64 *savedPos) {
+    // qUncompress warns on empty input, which is what a fresh install has.
+    if (stored.size() < 5) return false;
+    const QByteArray raw = qUncompress(stored);
+    if (raw.isEmpty()) return false;
+    QDataStream in(raw);
+    in.setVersion(QDataStream::Qt_6_0);
+    quint32 format = 0;
+    qint32  count  = 0;
+    in >> format >> count;
+    if (format != kLegacyFormat || count < 0 || count > kLegacyMaxRows) return false;
+    for (int i = 0; i < count; ++i) {
+        QVariantMap track;
+        bool   manual  = false;
+        qint32 natural = -1;
+        in >> track >> manual >> natural;
+        tracks->append(track);
+        flags->append({ manual, natural });
+    }
+    in >> *savedIndex >> *savedManual >> *savedPos;
+    return in.status() == QDataStream::Ok;
 }
 
 void Player::restorePlaybackState() {
     const QString p = settingsPrefix();
     if (p.isEmpty()) return;
+    // A write of this account's rows may still be on its way to the file.
+    flushPlaybackState();
     QSettings s;
 
     // Nothing read back here is worth writing straight out again.
     m_suspendPersist = true;
+    const auto done = qScopeGuard([this] { m_suspendPersist = false; });
 
     if (s.contains(p + QStringLiteral("volumeLevel")))
         setVolume(s.value(p + QStringLiteral("volumeLevel")).toDouble());
@@ -2019,35 +2543,48 @@ void Player::restorePlaybackState() {
     m_sourceName = s.value(p + QStringLiteral("sourceName")).toString();
     emit sourceChanged();
 
-    const QByteArray stored = s.value(p + QStringLiteral("queue")).toByteArray();
-    // qUncompress warns on empty input, which is what a fresh install has.
-    if (stored.size() < 5) { m_suspendPersist = false; return; }
-    const QByteArray raw = qUncompress(stored);
-    if (raw.isEmpty()) { m_suspendPersist = false; return; }
-
-    QDataStream in(const_cast<QByteArray *>(&raw), QIODevice::ReadOnly);
-    in.setVersion(QDataStream::Qt_6_0);
-    quint32 format = 0;
-    qint32  count  = 0;
-    in >> format >> count;
-    if (format != kPersistFormat || count < 0 || count > kPersistMaxRows) {
-        m_suspendPersist = false;
-        return;
-    }
-
     QList<Entry> rows;
-    rows.reserve(count);
-    for (int i = 0; i < count; ++i) {
-        Entry  e;
-        qint32 natural = -1;
-        in >> e.track >> e.manual >> natural;
-        e.natural = natural;
-        rows.append(e);
-    }
     qint32 savedIndex = -1, savedManual = 0;
     qint64 savedPos   = 0;
-    in >> savedIndex >> savedManual >> savedPos;
-    if (in.status() != QDataStream::Ok) { m_suspendPersist = false; return; }
+    quint64 generation = 0;
+    bool fromFile = false;
+    const QString legacyKey = p + QStringLiteral("queue");
+    if (s.contains(legacyKey)) {
+        // Not yet saved by this build, so the file, if any, is not this one's.
+        QList<QVariantMap> tracks;
+        QList<std::pair<bool, int>> flags;
+        if (!readLegacyQueue(s.value(legacyKey).toByteArray(), &tracks, &flags,
+                             &savedIndex, &savedManual, &savedPos))
+            return;
+        for (int i = 0; i < tracks.count(); ++i)
+            rows.append(Entry{ tracks.at(i), flags.at(i).first, flags.at(i).second });
+    } else {
+        // No cursor is a fresh install, whatever file lies about.
+        if (!s.contains(p + QStringLiteral("queueIndex"))) return;
+        if (!QueueStore::read(rowsFilePath(m_client->userId()), &rows, &generation)) return;
+        fromFile    = true;
+        savedIndex  = s.value(p + QStringLiteral("queueIndex"), -1).toInt();
+        savedManual = s.value(p + QStringLiteral("queueManual"), 0).toInt();
+        savedPos    = s.value(p + QStringLiteral("position"), 0).toLongLong();
+        // A crash between the cursor and its rows: the track it named is
+        // looked up, and failing that the cursor stays where it was.
+        const qlonglong savedTrack = s.value(p + QStringLiteral("queueTrack"), 0).toLongLong();
+        const auto idAt = [&rows](int i) {
+            return rows.at(i).track.value(QStringLiteral("id")).toLongLong();
+        };
+        if (savedTrack > 0 && (savedIndex < 0 || savedIndex >= rows.count()
+                               || idAt(savedIndex) != savedTrack)) {
+            int found = -1;
+            for (int d = 0; d < rows.count() && found < 0; ++d) {
+                for (int i : { savedIndex - d, savedIndex + d })
+                    if (i >= 0 && i < rows.count() && idAt(i) == savedTrack) { found = i; break; }
+            }
+            if (found >= 0) savedIndex = found;
+            else            savedPos   = 0;
+        }
+        if (savedIndex >= rows.count()) savedIndex = int(rows.count()) - 1;
+        savedManual = qBound(0, savedManual, qMax(0, int(rows.count()) - savedIndex - 1));
+    }
 
     // Each row's section, worked out before anything is dropped.
     enum Section { Behind, Current, Manual, Context };
@@ -2061,10 +2598,12 @@ void Player::restorePlaybackState() {
     }
 
     // A row with no track id can never name a stream: drop it.
+    bool dropped = false;
     for (int i = rows.count() - 1; i >= 0; --i) {
         if (rows.at(i).track.value(QStringLiteral("id")).toLongLong() > 0) continue;
         rows.removeAt(i);
         section.removeAt(i);
+        dropped = true;
     }
 
     int newIndex = section.indexOf(int(Current));
@@ -2083,6 +2622,10 @@ void Player::restorePlaybackState() {
     setManualCount(newManual);
     setIndex(newIndex);
     emit queueChanged();
+    // The file holds these rows already; anything else is written anew.
+    m_rowsDirty       = !fromFile || dropped;
+    m_rowsGeneration  = generation;
+    if (!m_queueStore) m_queueStore = std::make_shared<QueueStore>();
 
     if (m_index >= 0 && m_index < m_queue.count()) {
         // Nothing is fetched until play: a launch nobody listens to costs
@@ -2091,8 +2634,6 @@ void Player::restorePlaybackState() {
         // Only the track it was actually left on gets its position back.
         m_pendingSeek = sameTrack ? qMax<qint64>(0, savedPos) : 0;
     }
-
-    m_suspendPersist = false;
 }
 
 void Player::beginPlayback() {
@@ -2150,6 +2691,7 @@ void Player::passOverTrack(StreamManifest::Reason reason) {
         m_queue.removeAt(m_index);
 
         if (m_queue.isEmpty()) {
+            dropStream();
             if (m_player) m_player->stop();
             setIndex(-1);
             m_currentTrack  = Track{};

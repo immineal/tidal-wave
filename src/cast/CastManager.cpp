@@ -31,7 +31,7 @@ CastManager::CastManager(TidalClient *client, Player *player, QObject *parent)
     connect(m_session, &CastSession::playingChanged, this,
             [this](bool p) { if (m_player) m_player->onCastPlaying(p); });
     connect(m_session, &CastSession::mediaFinished, this,
-            [this]() { if (m_player) m_player->next(); });
+            [this]() { if (m_player) m_player->onCastFinished(); });
 
     // When prep yields a servable file, serve it and LOAD it on the device.
     connect(m_prep, &CastMediaPrep::ready, this, [this](const QString &path, const QString &mime) {

@@ -1048,6 +1048,10 @@
         <translation>Die Lossless-Streamdaten für diesen Titel konnten nicht gelesen werden.</translation>
     </message>
     <message>
+        <source>This track did not download far enough in time to play from there.</source>
+        <translation>Dieser Titel wurde nicht rechtzeitig weit genug heruntergeladen, um ab dort zu spielen.</translation>
+    </message>
+    <message>
         <source>No audio device was found. Check the sound settings of your system.</source>
         <translation>Es wurde kein Audiogerät gefunden. Die Toneinstellungen des Systems prüfen.</translation>
     </message>

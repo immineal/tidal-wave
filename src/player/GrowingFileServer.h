@@ -15,9 +15,9 @@
 class QTcpServer;
 class QTcpSocket;
 
-// While the response is open QMediaPlayer reports one segment's duration and
-// claims to be seekable. The caller takes the duration from track metadata and
-// holds seeks back until the join is complete.
+// While the response is open QMediaPlayer claims to be seekable, and without
+// a length in the header it reports one segment's and holds the position there.
+// The caller holds seeks back until the join is complete; see setHead().
 class GrowingFileServer : public QObject {
     Q_OBJECT
 public:
@@ -28,6 +28,10 @@ public:
     // returns the URL for QMediaPlayer, or empty when the loopback socket could
     // not be opened. Calling it again invalidates the previous URL.
     QString serve(const QString &path, const QString &mime, qint64 bytesReady);
+
+    // Bytes served in place of the file's first head.size() bytes, for a
+    // header the client should read differently. Cleared by serve().
+    void setHead(const QByteArray &head) { m_head = head; }
 
     // The writer flushed more. Bytes already sent are never re-sent, and a value
     // that does not move anything on is harmless.
@@ -65,6 +69,7 @@ private:
     QString     m_mime;
     QByteArray  m_target;          // "/<token>", what a request line must name
     QFile       m_file;            // read handle on the growing file
+    QByteArray  m_head;            // see setHead()
     qint64      m_bytesReady = 0;
     bool        m_complete   = false;
     bool        m_pumping    = false;

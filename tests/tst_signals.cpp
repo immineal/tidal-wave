@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QDirIterator>
+#include <QFileInfo>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QHostAddress>
@@ -279,8 +280,10 @@ private slots:
                                 .arg(m_mediaPath)));
 
         const QString prefix = QStringLiteral("user_%1/playback/").arg(kUser);
-        QVERIFY2(!savedValue(prefix + QStringLiteral("queue")).toByteArray().isEmpty(),
+        QVERIFY2(savedValue(prefix + QStringLiteral("queueIndex")).isValid(),
                  "the queue was not saved, so ~Player never ran");
+        // The rows go to a file of their own, written out before exit.
+        QVERIFY2(rowsFileSize() > 0, "the queue's rows were not written before exit");
         QVERIFY(qAbs(savedValue(prefix + QStringLiteral("volumeLevel")).toDouble() - kVolume) < 0.001);
         QCOMPARE(savedValue(prefix + QStringLiteral("repeat")).toInt(), kRepeatMode);
         QCOMPARE(savedValue(prefix + QStringLiteral("sourceName")).toString(),
@@ -445,6 +448,14 @@ private:
                     QStringLiteral("TidalWaveTest"), QStringLiteral("tst_signals"));
         s.sync();
         return s.value(key);
+    }
+
+    // The size of the rows file the child left beside its settings, or -1.
+    qint64 rowsFileSize() const
+    {
+        QDirIterator it(m_cfgDir->path(), { QStringLiteral("queue-%1.dat").arg(kUser) },
+                        QDir::Files, QDirIterator::Subdirectories);
+        return it.hasNext() ? QFileInfo(it.next()).size() : -1;
     }
 
     // Read as bytes rather than through QSettings, so the pre-condition check
