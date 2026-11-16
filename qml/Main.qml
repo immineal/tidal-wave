@@ -497,6 +497,21 @@ ApplicationWindow {
         return true
     }
 
+    // A tab stop answers Space itself (a button presses, a switch flips),
+    // unless it says it leaves Space to play/pause, as a track row does.
+    function focusTakesSpace(f) {
+        return !!f && f.activeFocusOnTab === true && f.leavesSpaceToPlayer !== true
+    }
+
+    // Find: the search page with the keyboard in its field. Already there,
+    // only the field takes focus, so the query on screen stays.
+    function focusSearch() {
+        if (root.currentPage !== "search") { root.navigate("search"); return }
+        searchLoader.forceActiveFocus()
+        if (searchLoader.item && typeof searchLoader.item.takeFocus === "function")
+            searchLoader.item.takeFocus()
+    }
+
     // A press outside the text field that has the keyboard hands it back to
     // the window, so Space pauses again. A SearchBar's icon and padding count
     // as its field.
@@ -534,7 +549,8 @@ ApplicationWindow {
         // Shortcut goes there first: tst_shortcuts.cpp fails on a literal.
 
         // Playback Shortcuts
-        Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.playPause() }
+        // Space presses a control the keyboard is on, as everywhere else.
+        Shortcut { sequence: Shortcuts.sequence("playPause");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem) && !root.focusTakesSpace(root.activeFocusItem); onActivated: player.playPause() }
         Shortcut { sequence: Shortcuts.sequence("next"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.next() }
         Shortcut { sequence: Shortcuts.sequence("previous");  context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: player.previous() }
         Shortcut { sequence: Shortcuts.sequence("seekForward");      context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.isTypingContext(root.activeFocusItem); onActivated: player.seek(Math.min(player.duration, player.position + 10000)) }
@@ -561,6 +577,11 @@ ApplicationWindow {
                 }
             }
         }
+        Shortcut { sequence: Shortcuts.sequence("find"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.focusSearch() }
+        Shortcut { sequence: Shortcuts.sequence("findAlt"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.focusSearch() }
+        Shortcut { sequence: Shortcuts.sequence("newPlaylist"); context: Qt.ApplicationShortcut; enabled: auth.state === 2 && !root.popupHasKeyboard; onActivated: sideBar.openNewPlaylist() }
+        // Signed in or not: quitting needs no account.
+        Shortcut { sequence: Shortcuts.sequence("quit"); context: Qt.ApplicationShortcut; onActivated: app.quit() }
         Shortcut { sequence: Shortcuts.sequence("fullScreen"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.toggleFullScreen() }
         Shortcut { sequence: Shortcuts.sequence("queue"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: root.queueOpen = !root.queueOpen }
         Shortcut { sequence: Shortcuts.sequence("settings"); context: Qt.ApplicationShortcut; enabled: auth.state === 2; onActivated: sideBar.openSettings() }

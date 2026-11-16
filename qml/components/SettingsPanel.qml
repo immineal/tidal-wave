@@ -745,10 +745,13 @@ Popup {
                         { ids: ["repeat"],                          d: qsTr("Cycle repeat mode") },
                         { ids: ["home", "search", "collection"],    d: qsTr("Home / Search / Collection") },
                         { ids: ["nowPlaying"],                      d: qsTr("Now Playing") },
+                        { ids: ["find", "findAlt"],                 d: qsTr("Find", "shortcut, puts the keyboard in the search field") },
                         { ids: ["fullScreen"],                      d: qsTr("Fullscreen Now Playing") },
                         { ids: ["queue"],                           d: qsTr("Toggle queue") },
                         { ids: ["back", "escape"],                  d: qsTr("Go back") },
-                        { ids: ["settings"],                        d: qsTr("Settings") }
+                        { ids: ["settings"],                        d: qsTr("Settings") },
+                        { ids: ["newPlaylist"],                     d: qsTr("New playlist") },
+                        { ids: ["quit"],                            d: qsTr("Quit") }
                     ]
                     delegate: RowLayout {
                         required property var modelData

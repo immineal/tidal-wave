@@ -1862,6 +1862,19 @@
         <source>Go back</source>
         <translation>Zurück</translation>
     </message>
+    <message>
+        <source>Find</source>
+        <comment>shortcut, puts the keyboard in the search field</comment>
+        <translation>Suchen</translation>
+    </message>
+    <message>
+        <source>New playlist</source>
+        <translation>Neue Playlist</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Beenden</translation>
+    </message>
 </context>
 <context>
     <name>SideBar</name>

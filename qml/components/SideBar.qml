@@ -79,6 +79,7 @@ Item {
     }
 
     function openSettings() { settingsPopup.open() }
+    function openNewPlaylist() { newPlaylistDialog.openEmpty() }
 
     // ── the rows the library list shows ──────────────────────────────────
 
