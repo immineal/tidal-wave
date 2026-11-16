@@ -204,7 +204,9 @@ struct Heard {
                 QMetaEnum::fromType<QMediaPlayer::MediaStatus>().valueToKey(s)));
             if (s == QMediaPlayer::EndOfMedia) ended = true;
             if (s == QMediaPlayer::BufferingMedia && !p->loading()) ++bufferingNotShown;
-            if (s == QMediaPlayer::LoadedMedia && countFromLoaded) {
+            // Qt 6.5 goes from LoadingMedia straight to BufferedMedia when
+            // play() came first; either says the backend has the track.
+            if (countFromLoaded && (s == QMediaPlayer::LoadedMedia || s == QMediaPlayer::BufferedMedia)) {
                 countFromLoaded = false;
                 rises = 0;
             }
