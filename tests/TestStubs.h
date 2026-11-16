@@ -165,15 +165,44 @@ public:
     // Home / mixes
     // Held for flushHomeMixesForTest() while setDeferHomeMixesForTest(true).
     Q_INVOKABLE void fetchHomeMixes(QJSValue cb) {
+        ++m_homeMixesFetches;
         if (m_deferHomeMixes) { m_pendingHomeMixes.append(cb); return; }
-        resolve(cb, emptyArray());
+        answerHomeMixes(cb);
     }
     Q_INVOKABLE void setDeferHomeMixesForTest(bool on) { m_deferHomeMixes = on; }
     Q_INVOKABLE void flushHomeMixesForTest() {
         m_deferHomeMixes = false;
         const auto held = std::exchange(m_pendingHomeMixes, {});
-        for (QJSValue cb : held) resolve(cb, emptyArray());
+        for (QJSValue cb : held) answerHomeMixes(cb);
     }
+    // What fetchHomeMixes answers: these mixes, or nothing beside `err`.
+    Q_INVOKABLE void setHomeMixesForTest(const QVariantList &mixes, const QString &err = {}) {
+        m_homeMixes = mixes;
+        m_homeMixesError = err;
+    }
+    Q_INVOKABLE int homeMixesFetchesForTest() const { return m_homeMixesFetches; }
+
+    // ── reaching Tidal ──────────────────────────────────────────────────
+    // Mirrors TidalBridge::offline, unloadedKinds and retryConnection().
+    Q_PROPERTY(bool offline MEMBER m_offline NOTIFY offlineChanged)
+    Q_PROPERTY(QStringList unloadedKinds MEMBER m_unloadedKinds NOTIFY unloadedKindsChanged)
+    Q_PROPERTY(bool libraryFromCache MEMBER m_libraryFromCache NOTIFY unloadedKindsChanged)
+    Q_INVOKABLE void setOfflineForTest(bool on) {
+        if (m_offline == on) return;
+        m_offline = on;
+        emit offlineChanged();
+    }
+    Q_INVOKABLE void setUnloadedKindsForTest(const QStringList &kinds) {
+        if (m_unloadedKinds == kinds) return;
+        m_unloadedKinds = kinds;
+        emit unloadedKindsChanged();
+    }
+    Q_INVOKABLE void setLibraryFromCacheForTest(bool on) {
+        m_libraryFromCache = on;
+        emit unloadedKindsChanged();
+    }
+    Q_INVOKABLE void retryConnection() { ++m_retryCalls; }
+    Q_INVOKABLE int  retryConnectionCallsForTest() const { return m_retryCalls; }
     Q_INVOKABLE void fetchMixTracks(const QString &mixId, QJSValue cb) {
         Q_UNUSED(mixId); resolve(cb, emptyArray());
     }
@@ -804,12 +833,34 @@ public:
 
     // Local filters over the already-loaded favourites, used by CollectionPage's
     // search field and HomePage's refresh. All four answer from lists a test can
-    // fill. The query is ignored: every caller under test passes "".
-    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const { Q_UNUSED(query); return m_favoriteTrackList; }
-    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const { Q_UNUSED(query); return m_favoriteAlbumList; }
-    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const { Q_UNUSED(query); return m_favoriteArtistList; }
+    // fill, matched on the fields the real bridge matches.
+    Q_INVOKABLE QVariantList searchFavoriteTracks(const QString &query) const {
+        return matching(m_favoriteTrackList, query, {"title", "artists", "albumTitle"});
+    }
+    Q_INVOKABLE QVariantList searchFavoriteAlbums(const QString &query) const {
+        return matching(m_favoriteAlbumList, query, {"title", "artists"});
+    }
+    Q_INVOKABLE QVariantList searchFavoriteArtists(const QString &query) const {
+        return matching(m_favoriteArtistList, query, {"name"});
+    }
     // The same list getUserPlaylists() answers from, as in the real bridge.
-    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const { Q_UNUSED(query); return m_userPlaylists; }
+    Q_INVOKABLE QVariantList searchFavoritePlaylists(const QString &query) const {
+        return matching(m_userPlaylists, query, {"title"});
+    }
+    static QVariantList matching(const QVariantList &rows, const QString &query,
+                                 const QStringList &fields) {
+        if (query.isEmpty()) return rows;
+        QVariantList out;
+        for (const QVariant &v : rows) {
+            const QVariantMap m = v.toMap();
+            for (const QString &f : fields)
+                if (m.value(f).toString().contains(query, Qt::CaseInsensitive)) {
+                    out.append(v);
+                    break;
+                }
+        }
+        return out;
+    }
 
     // ── what the next createPlaylist() answers ──────────────────────────
     // Nothing set: the server makes it and hands back a uuid. An error string:
@@ -1131,6 +1182,12 @@ public:
         m_favoritesLoading = m_albumsLoading = m_artistsLoading = m_playlistsLoading = false;
         m_deferHomeMixes = false;
         m_pendingHomeMixes.clear();
+        m_homeMixes.clear();
+        m_homeMixesError.clear();
+        setOfflineForTest(false);
+        setUnloadedKindsForTest({});
+        setLibraryFromCacheForTest(false);
+        m_retryCalls = 0;
     }
 
     // The favourites cache the three searches above read. Setting it emits the
@@ -1172,8 +1229,26 @@ signals:
     // favoritePlaylistsChanged also fires on sign-in paging and on every play.
     void playlistStatsRefreshed(const QString &uuid);
     void playlistDeleted(const QString &uuid);
+    void offlineChanged();
+    void unloadedKindsChanged();
 
 private:
+    void answerHomeMixes(QJSValue &cb) {
+        if (!cb.isCallable()) return;
+        QJSEngine *e = jsEngine();
+        QJSValueList args;
+        args << (e && m_homeMixesError.isEmpty() ? e->toScriptValue(m_homeMixes) : emptyArray())
+             << QJSValue(m_homeMixesError);
+        cb.call(args);
+    }
+
+    QVariantList m_homeMixes;
+    QString      m_homeMixesError;
+    int          m_homeMixesFetches = 0;
+    bool         m_offline = false;
+    QStringList  m_unloadedKinds;
+    bool         m_libraryFromCache = false;
+    int          m_retryCalls = 0;
     QString m_preferredQuality = QStringLiteral("LOSSLESS");
     QVariantList m_userPlaylists;
     // What `playlists/<uuid>` answers after a contents change, per playlist, and
@@ -2371,8 +2446,15 @@ class StubLibrary : public QObject {
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(bool indexing READ indexing NOTIFY indexingChanged)
+    Q_PROPERTY(bool loadFailed MEMBER m_loadFailed NOTIFY loadFailedChanged)
 public:
     explicit StubLibrary(QObject *parent = nullptr) : QObject(parent) {}
+
+    Q_INVOKABLE void setLoadFailedForTest(bool on) {
+        if (m_loadFailed == on) return;
+        m_loadFailed = on;
+        emit loadFailedChanged();
+    }
 
     QVariantList entries() const { return m_entries; }
     bool loading() const  { return m_loading; }
@@ -2531,11 +2613,13 @@ public:
     }
 
 signals:
+    void loadFailedChanged();
     void entriesChanged();
     void loadingChanged();
     void indexingChanged();
 
 private:
+    bool m_loadFailed = false;
     QVariantList m_entries;
     QVariantList m_tracks;
     bool         m_loading  = false;

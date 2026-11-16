@@ -18,7 +18,9 @@
 #include <utility>
 
 TidalClient::TidalClient(TidalApi *api, QObject *parent)
-    : QObject(parent), m_api(api) {}
+    : QObject(parent), m_api(api) {
+    if (m_api) connect(m_api, &TidalApi::reachableChanged, this, &TidalClient::reachableChanged);
+}
 
 QString TidalClient::qualityString(AudioQuality q) {
     switch (q) {

@@ -61,6 +61,8 @@ TestCase {
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i]
             if (!c || typeof c.width !== "number") continue
+            // A page kept for back is hidden; the one on screen is meant.
+            if (c.objectName === "detailView" && !c.visible) continue
             if (typeName(c) === wanted) return c
             var found = findByType(c, wanted)
             if (found) return found

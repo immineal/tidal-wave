@@ -15,11 +15,45 @@ Rectangle {
     property var filteredArtists:   []
     property var filteredPlaylists: []
     property var mixes: []
+    // The mixes the field lets through. Tidal has no search over them, so the
+    // page filters its own list.
+    readonly property var filteredMixes: {
+        var q = searchPattern.toLowerCase()
+        if (q.length === 0) return mixes
+        return mixes.filter(function (m) {
+            return (m.title || "").toLowerCase().indexOf(q) !== -1
+                || (m.subtitle || "").toLowerCase().indexOf(q) !== -1
+        })
+    }
     property bool loading: bridge.favoritesLoading
     // The page asks for the mixes itself; an empty list before an answer is
     // not an account without mixes.
     property bool mixesLoading: false
     property bool mixesLoaded: false
+    property bool mixesFailed: false
+
+    // How many rows the open tab shows, and whether its list could be read at
+    // all. A list that failed to load is not an empty library.
+    readonly property int tabCount: [filteredTracks.length, filteredAlbums.length,
+                                     filteredArtists.length, filteredPlaylists.length,
+                                     filteredMixes.length][activeTab] || 0
+    readonly property var kindNames: ["tracks", "albums", "artists", "playlists", "mixes"]
+    readonly property bool tabUnavailable: activeTab === 4
+        ? (mixesFailed && mixes.length === 0)
+        : bridge.unloadedKinds.indexOf(kindNames[activeTab]) !== -1
+    // Which empty state the open tab shows, if any: "" for none, "failed" when
+    // the list did not load, "filter" when the field matches nothing, "empty"
+    // for a library that has none of the kind.
+    readonly property string emptyKind: {
+        if (tabCount > 0 || tabWaiting) return ""
+        if (activeTab === 4 ? !mixesLoaded && !mixesFailed : loading) return ""
+        if (activeTab === 1 && bridge.albumsLoading) return ""
+        if (activeTab === 2 && bridge.artistsLoading) return ""
+        if (activeTab === 3 && bridge.playlistsLoading) return ""
+        if (tabUnavailable) return "failed"
+        if (searchPattern.length > 0) return "filter"
+        return "empty"
+    }
 
     // The open tab's list is still on its way and none of it is here yet.
     readonly property bool tabWaiting: {
@@ -114,6 +148,7 @@ Rectangle {
 
     Connections {
         target: bridge
+        function onOfflineChanged() { if (!bridge.offline && root.mixesFailed) root.loadMixes() }
         function onFavoriteTracksChanged() { root.updateFilteredContent() }
         function onFavoriteAlbumsChanged() { root.updateFilteredContent() }
         function onFavoriteArtistsChanged() { root.updateFilteredContent() }
@@ -137,7 +172,8 @@ Rectangle {
         mixesLoading = true
         bridge.fetchHomeMixes(function(mixList, err) {
             mixesLoading = false
-            if (err.length > 0) return
+            if (err.length > 0) { mixesFailed = true; return }
+            mixesFailed = false
             mixesLoaded = true
             var items = []
             for (var i = 0; i < mixList.length; i++) {
@@ -280,7 +316,7 @@ Rectangle {
                         Text {
                             id: tl; objectName: "collectionTabLabel"; anchors.centerIn: parent
                             text: {
-                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.mixes.length]
+                                var counts = [root.filteredTracks.length, root.filteredAlbums.length, root.filteredArtists.length, root.filteredPlaylists.length, root.filteredMixes.length]
                                 // Tab name followed by how many items it holds
                                 return qsTr("%1 (%2)").arg(modelData)
                                                       .arg(counts[index].toLocaleString(Qt.locale(), 'f', 0))
@@ -384,7 +420,8 @@ Rectangle {
                 objectName: "collectionSearch"
                 // A whole phrase per tab: German cannot take "Search saved " + a noun
                 placeholder: [qsTr("Search saved tracks…"), qsTr("Search saved albums…"),
-                              qsTr("Search saved artists…"), qsTr("Search saved playlists…")
+                              qsTr("Search saved artists…"), qsTr("Search saved playlists…"),
+                              qsTr("Search mixes…")
                              ][root.activeTab] || qsTr("Search saved items…")
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
@@ -415,13 +452,15 @@ Rectangle {
         // Tracks Tab: virtualized ListView
         ListView {
             id: tracksList
+            objectName: "collectionTracksList"
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: root.activeTab === 0
             opacity: root.contentIn
             clip: true
             property var sortedTracks: root.sortItems(root.filteredTracks, root.sortMode)
-            model: root.activeTab === 0 ? sortedTracks : []
+            // Bound on every tab, so a tab switch keeps the rows and the scroll.
+            model: sortedTracks
             boundsBehavior: Flickable.StopAtBounds
 
             // The fields are passed as they came off the API. TrackRow takes
@@ -463,7 +502,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedAlbums: root.sortItems(root.filteredAlbums, root.sortMode)
-            model: root.activeTab === 1 ? sortedAlbums : []
+            model: sortedAlbums
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -529,7 +568,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedArtists: root.sortItems(root.filteredArtists, root.sortMode)
-            model: root.activeTab === 2 ? sortedArtists : []
+            model: sortedArtists
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -584,7 +623,7 @@ Rectangle {
             opacity: root.contentIn
             clip: true
             property var sortedPlaylists: root.sortItems(root.filteredPlaylists, root.sortMode)
-            model: root.activeTab === 3 ? sortedPlaylists : []
+            model: sortedPlaylists
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -638,8 +677,7 @@ Rectangle {
 
         // Empty state for playlists
         Item {
-            visible: root.activeTab === 3 && root.filteredPlaylists.length === 0 && !root.loading
-                     && !bridge.playlistsLoading
+            visible: root.activeTab === 3 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -665,12 +703,13 @@ Rectangle {
         // Tab 4: Mixes (GridView)
         GridView {
             id: mixesGrid
+            objectName: "collectionMixesGrid"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.activeTab === 4 && root.mixes.length > 0
+            visible: root.activeTab === 4 && root.filteredMixes.length > 0
             opacity: root.contentIn
             clip: true
-            model: root.activeTab === 4 ? root.mixes : []
+            model: root.filteredMixes
             readonly property int columns: root.gridColumns(width)
             cellWidth: root.gridCell(width)
             cellHeight: cellWidth + 48
@@ -715,8 +754,7 @@ Rectangle {
 
         // Empty state for mixes
         Item {
-            visible: root.activeTab === 4 && root.mixes.length === 0 && root.mixesLoaded
-                     && !root.loading
+            visible: root.activeTab === 4 && root.emptyKind === "empty"
             opacity: root.contentIn
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -731,7 +769,7 @@ Rectangle {
 
         // Empty state for tracks
         Item {
-            visible: root.activeTab === 0 && root.filteredTracks.length === 0 && !root.loading
+            visible: root.activeTab === 0 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -745,8 +783,7 @@ Rectangle {
 
         // Empty state for albums
         Item {
-            visible: root.activeTab === 1 && root.filteredAlbums.length === 0 && !root.loading
-                     && !bridge.albumsLoading
+            visible: root.activeTab === 1 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {
@@ -758,10 +795,83 @@ Rectangle {
             }
         }
 
+        // The field matches nothing on this tab. Not the empty library's
+        // copy: the library may hold plenty.
+        Item {
+            objectName: "collectionNoMatches"
+            visible: root.emptyKind === "filter"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: 12
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: "search"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                Text {
+                    objectName: "collectionNoMatchesText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Nothing matches \"%1\"").arg(root.searchPattern)
+                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Try other words, or clear the search to see everything.")
+                    color: Theme.textSec; font.pixelSize: 13
+                }
+            }
+        }
+
+        // The list never arrived: offline, or Tidal did not answer. The
+        // connection notice above the page offers the retry.
+        Item {
+            objectName: "collectionUnavailable"
+            visible: root.emptyKind === "failed"
+            opacity: root.contentIn
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 48, 420)
+                spacing: 12
+                VectorIcon { Layout.alignment: Qt.AlignHCenter; name: ["heart", "album", "artist", "playlist", "mix"][root.activeTab] || "heart"; Layout.preferredWidth: 40; Layout.preferredHeight: 40; color: Theme.textDim; strokeWidth: 1.5 }
+                Text {
+                    objectName: "collectionUnavailableText"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: root.activeTab === 4 ? qsTr("Mixes could not be loaded")
+                                               : qsTr("Your library could not be loaded")
+                    color: Theme.textPrimary; font.pixelSize: 18; font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Tidal could not be reached. It loads again by itself once the connection is back.")
+                    color: Theme.textSec; font.pixelSize: 13
+                }
+                PillButton {
+                    objectName: "collectionUnavailableRetry"
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 4
+                    text: qsTr("Try again")
+                    accent: false
+                    onClicked: {
+                        if (root.activeTab === 4) root.loadMixes()
+                        else bridge.retryConnection()
+                    }
+                }
+            }
+        }
+
         // Empty state for artists
         Item {
-            visible: root.activeTab === 2 && root.filteredArtists.length === 0 && !root.loading
-                     && !bridge.artistsLoading
+            visible: root.activeTab === 2 && root.emptyKind === "empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
             ColumnLayout {

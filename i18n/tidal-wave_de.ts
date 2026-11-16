@@ -413,6 +413,34 @@
         <source>Follow artists to see them here</source>
         <translation>Künstlern folgen, damit sie hier erscheinen</translation>
     </message>
+    <message>
+        <source>Search mixes…</source>
+        <translation>Mixe suchen…</translation>
+    </message>
+    <message>
+        <source>Nothing matches &quot;%1&quot;</source>
+        <translation>Nichts passt zu „%1“</translation>
+    </message>
+    <message>
+        <source>Try other words, or clear the search to see everything.</source>
+        <translation>Versuch es mit anderen Wörtern, oder leere die Suche, um alles zu sehen.</translation>
+    </message>
+    <message>
+        <source>Mixes could not be loaded</source>
+        <translation>Mixe konnten nicht geladen werden</translation>
+    </message>
+    <message>
+        <source>Your library could not be loaded</source>
+        <translation>Deine Mediathek konnte nicht geladen werden</translation>
+    </message>
+    <message>
+        <source>Tidal could not be reached. It loads again by itself once the connection is back.</source>
+        <translation>Tidal war nicht erreichbar. Sobald die Verbindung wieder da ist, wird von selbst neu geladen.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
+    </message>
 </context>
 <context>
     <name>ConfirmDialog</name>
@@ -642,6 +670,18 @@
     <message>
         <source>Favorite Artists</source>
         <translation>Lieblingskünstler</translation>
+    </message>
+    <message>
+        <source>Your mixes could not be loaded: Tidal cannot be reached.</source>
+        <translation>Deine Mixe konnten nicht geladen werden: Tidal ist nicht erreichbar.</translation>
+    </message>
+    <message>
+        <source>Your mixes could not be loaded.</source>
+        <translation>Deine Mixe konnten nicht geladen werden.</translation>
+    </message>
+    <message>
+        <source>Try again</source>
+        <translation>Erneut versuchen</translation>
     </message>
 </context>
 <context>
@@ -964,6 +1004,21 @@
         <source>%1m</source>
         <comment>compact duration in minutes</comment>
         <translation>%1 Min.</translation>
+    </message>
+</context>
+<context>
+    <name>OfflineNotice</name>
+    <message>
+        <source>Tidal cannot be reached. Your library is shown as last saved on this computer.</source>
+        <translation>Tidal ist nicht erreichbar. Deine Mediathek wird so gezeigt, wie sie zuletzt auf diesem Rechner gespeichert wurde.</translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached. Trying again by itself.</source>
+        <translation>Tidal ist nicht erreichbar. Es wird von selbst erneut versucht.</translation>
+    </message>
+    <message>
+        <source>Try now</source>
+        <translation>Jetzt versuchen</translation>
     </message>
 </context>
 <context>
@@ -1373,6 +1428,10 @@
         <source>End of results</source>
         <translation>Ende der Ergebnisse</translation>
     </message>
+    <message>
+        <source>Search needs Tidal, which cannot be reached right now. Check the connection; the notice above says when it is back.</source>
+        <translation>Die Suche braucht Tidal, und Tidal ist gerade nicht erreichbar. Prüfe die Verbindung; der Hinweis oben sagt, wann sie wieder da ist.</translation>
+    </message>
 </context>
 <context>
     <name>SettingsPanel</name>
@@ -1722,6 +1781,10 @@
     <message>
         <source>Settings (%1)</source>
         <translation>Einstellungen (%1)</translation>
+    </message>
+    <message>
+        <source>Your library could not be loaded</source>
+        <translation>Deine Mediathek konnte nicht geladen werden</translation>
     </message>
 </context>
 <context>

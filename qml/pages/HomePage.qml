@@ -13,6 +13,9 @@ Rectangle {
     property var playlists: []
     property var artists: []
     property bool loading: false
+    // The mixes did not load. Its row says so and offers the retry; the other
+    // rows hide while empty and refill from the bridge's lists.
+    property bool mixesFailed: false
     property string greeting: greetingFor(new Date().getHours())
 
     function greetingFor(h) {
@@ -39,6 +42,8 @@ Rectangle {
     // favourites, the same source Collection reads.
     Connections {
         target: bridge
+        // Back online: what failed loads again.
+        function onOfflineChanged() { if (!bridge.offline) root.reloadFailed() }
         function onFavoriteAlbumsChanged()    { refreshDebounce.restart() }
         function onFavoriteArtistsChanged()   { refreshDebounce.restart() }
         function onFavoritePlaylistsChanged() { refreshDebounce.restart() }
@@ -86,12 +91,16 @@ Rectangle {
             playlists = firstOf(bridge.getUserPlaylists(), playlistItem)
     }
 
-    // The first fill of albums and artists goes to the network: the cache
-    // refreshRows() reads is still being paged in when this page mounts.
-    function loadContent() {
+    function reloadFailed() {
+        if (root.mixesFailed) root.loadMixes()
+        root.refreshRows()
+    }
+
+    function loadMixes() {
         loading = true
         bridge.fetchHomeMixes(function(mixList, err) {
             loading = false
+            root.mixesFailed = err.length > 0
             if (err.length > 0) return
             var items = []
             for (var i = 0; i < Math.min(mixList.length, root.rowLimit); i++) {
@@ -104,6 +113,13 @@ Rectangle {
             }
             mixes = items
         })
+    }
+
+    // The first fill of albums and artists goes to the network: the cache
+    // refreshRows() reads is still being paged in when this page mounts. A
+    // failed fetch leaves its row hidden until the bridge's lists arrive.
+    function loadContent() {
+        loadMixes()
 
         bridge.fetchFavoriteAlbums(function(albums, err) {
             if (err.length > 0) return
@@ -146,87 +162,118 @@ Rectangle {
 
             Item { Layout.preferredHeight: 24 }
 
-            HorizontalSection {
+            // The rows, with the gap as spacing: a Layout skips a hidden row
+            // and its gap together, so no two gaps ever meet.
+            ColumnLayout {
                 Layout.fillWidth: true
-                title: qsTr("My Mixes")
-                items: root.mixes
-                mediaType: "mix"
-                onItemClicked: (idx, item) => navigateTo("mix", {
-                    mixId: item.id, title: item.title,
-                    subtitle: item.subtitle, coverUrl: item.coverUrl,
-                    mixType: item.mixType || ""
-                })
-                // Declaring the source is what records the play: the player bar
-                // listens to player.sourceChanged. After the guard, so a failed
-                // or empty fetch records nothing.
-                onItemPlayClicked: (idx, item) => {
-                    bridge.fetchMixTracks(item.id, function(tracks, err) {
-                        if (err || tracks.length === 0) return
-                        player.setPlaybackSource("mix", "" + item.id, item.title || "")
-                        player.playTracks(tracks, 0)
+                spacing: 32
+
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    // Over nothing it reads as an account without mixes.
+                    visible: mixes.length > 0
+                    title: qsTr("My Mixes")
+                    items: root.mixes
+                    mediaType: "mix"
+                    onItemClicked: (idx, item) => navigateTo("mix", {
+                        mixId: item.id, title: item.title,
+                        subtitle: item.subtitle, coverUrl: item.coverUrl,
+                        mixType: item.mixType || ""
                     })
+                    // Declaring the source is what records the play: the player bar
+                    // listens to player.sourceChanged. After the guard, so a failed
+                    // or empty fetch records nothing.
+                    onItemPlayClicked: (idx, item) => {
+                        bridge.fetchMixTracks(item.id, function(tracks, err) {
+                            if (err || tracks.length === 0) return
+                            player.setPlaybackSource("mix", "" + item.id, item.title || "")
+                            player.playTracks(tracks, 0)
+                        })
+                    }
+                    onViewAllClicked: navigateTo("collection", { activeTab: 4 })
                 }
-                onViewAllClicked: navigateTo("collection", { activeTab: 4 })
-            }
 
-            Item {
-                Layout.preferredHeight: 32
-                visible: recentAlbums.length > 0
-            }
-
-            HorizontalSection {
-                Layout.fillWidth: true
-                visible: recentAlbums.length > 0
-                title: qsTr("Saved Albums")
-                items: root.recentAlbums
-                mediaType: "album"
-                onItemClicked: (idx, item) => navigateTo("album", { albumId: item.id })
-                onItemPlayClicked: (idx, item) => {
-                    bridge.fetchAlbumTracks(item.id, function(tracks, err) {
-                        if (err || tracks.length === 0) return
-                        player.setPlaybackSource("album", "" + item.id, item.title || "")
-                        player.playTracks(tracks, 0)
-                    })
+                // The mixes row when its fetch failed: the heading, one line and
+                // a retry, in place of cards that are not there.
+                ColumnLayout {
+                    objectName: "homeMixesFailed"
+                    visible: root.mixesFailed && mixes.length === 0
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    Layout.rightMargin: 24
+                    spacing: 8
+                    Text {
+                        text: qsTr("My Mixes")
+                        color: Theme.textPrimary
+                        font.pixelSize: 20
+                        font.bold: true
+                    }
+                    RowLayout {
+                        spacing: 12
+                        Text {
+                            objectName: "homeMixesFailedText"
+                            Layout.fillWidth: true
+                            text: bridge.offline ? qsTr("Your mixes could not be loaded: Tidal cannot be reached.")
+                                                 : qsTr("Your mixes could not be loaded.")
+                            color: Theme.textSec
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
+                        PillButton {
+                            objectName: "homeMixesRetry"
+                            text: qsTr("Try again")
+                            accent: false
+                            Layout.preferredWidth: implicitWidth
+                            Layout.preferredHeight: 32
+                            onClicked: root.loadMixes()
+                        }
+                    }
                 }
-                onViewAllClicked: navigateTo("collection", { activeTab: 1 })
-            }
 
-            Item {
-                Layout.preferredHeight: 32
-                visible: playlists.length > 0
-            }
-
-            HorizontalSection {
-                Layout.fillWidth: true
-                visible: playlists.length > 0
-                title: qsTr("Your Playlists")
-                items: root.playlists
-                mediaType: "playlist"
-                onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
-                onItemPlayClicked: (idx, item) => {
-                    bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
-                        if (err || tracks.length === 0) return
-                        bridge.markPlaylistPlayed(item.id)
-                        player.setPlaybackSource("playlist", "" + item.id, item.title || "")
-                        player.playTracks(tracks, 0)
-                    })
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    visible: recentAlbums.length > 0
+                    title: qsTr("Saved Albums")
+                    items: root.recentAlbums
+                    mediaType: "album"
+                    onItemClicked: (idx, item) => navigateTo("album", { albumId: item.id })
+                    onItemPlayClicked: (idx, item) => {
+                        bridge.fetchAlbumTracks(item.id, function(tracks, err) {
+                            if (err || tracks.length === 0) return
+                            player.setPlaybackSource("album", "" + item.id, item.title || "")
+                            player.playTracks(tracks, 0)
+                        })
+                    }
+                    onViewAllClicked: navigateTo("collection", { activeTab: 1 })
                 }
-                onViewAllClicked: navigateTo("collection", { activeTab: 3 })
-            }
 
-            Item {
-                Layout.preferredHeight: 32
-                visible: artists.length > 0
-            }
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    visible: playlists.length > 0
+                    title: qsTr("Your Playlists")
+                    items: root.playlists
+                    mediaType: "playlist"
+                    onItemClicked: (idx, item) => navigateTo("playlist", { playlistUuid: item.id, playlistTitle: item.title, coverUrl: item.coverUrl, playlistType: item.playlistType || "" })
+                    onItemPlayClicked: (idx, item) => {
+                        bridge.fetchPlaylistTracks(item.id, function(tracks, err) {
+                            if (err || tracks.length === 0) return
+                            bridge.markPlaylistPlayed(item.id)
+                            player.setPlaybackSource("playlist", "" + item.id, item.title || "")
+                            player.playTracks(tracks, 0)
+                        })
+                    }
+                    onViewAllClicked: navigateTo("collection", { activeTab: 3 })
+                }
 
-            HorizontalSection {
-                Layout.fillWidth: true
-                visible: artists.length > 0
-                title: qsTr("Favorite Artists")
-                items: root.artists
-                mediaType: "artist"
-                onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })
-                onViewAllClicked: navigateTo("collection", { activeTab: 2 })
+                HorizontalSection {
+                    Layout.fillWidth: true
+                    visible: artists.length > 0
+                    title: qsTr("Favorite Artists")
+                    items: root.artists
+                    mediaType: "artist"
+                    onItemClicked: (idx, item) => navigateTo("artist", { artistId: item.id })
+                    onViewAllClicked: navigateTo("collection", { activeTab: 2 })
+                }
             }
 
             Item { Layout.preferredHeight: 32 }

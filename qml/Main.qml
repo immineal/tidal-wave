@@ -266,8 +266,56 @@ ApplicationWindow {
         if (page === "search") return searchLoader
         if (page === "collection") return collectionLoader
         if (page === "nowplaying") return nowPlayingLoader
-        if (["album", "artist", "playlist", "mix", "radio"].indexOf(page) !== -1) return detailLoader
         return null
+    }
+
+    // ─── Pages kept for back ───────────────────────────────────────────────
+    // Each visit to a detail page gets its own Loader. The history entry it is
+    // left for keeps it, so back shows it as it was, scrolled and loaded.
+    readonly property var detailSources: ({
+        album: "pages/AlbumPage.qml", artist: "pages/ArtistPage.qml",
+        playlist: "pages/PlaylistPage.qml", mix: "pages/MixPage.qml",
+        radio: "pages/RadioPage.qml"
+    })
+
+    // How many of the newest history entries keep their page. Older entries
+    // keep only their params, and back to one builds and fetches it anew.
+    readonly property int maxKeptPages: 5
+
+    // The detail page on screen, or null while another kind of page is.
+    property Item detailView: null
+    property var _detailViews: []
+
+    function _createDetailView(page, params) {
+        var v = detailViewComponent.createObject(detailHost, {
+            pageName: page, navParams: params, source: root.detailSources[page] })
+        root._detailViews = root._detailViews.concat([v])
+        return v
+    }
+
+    // Lets go of every view that is neither on screen nor held by one of the
+    // newest maxKeptPages history entries.
+    function _pruneDetailViews() {
+        var keep = root.detailView ? [root.detailView] : []
+        var held = 0
+        for (var i = root.navHistory.length - 1; i >= 0; --i) {
+            var e = root.navHistory[i]
+            if (!e.view) continue
+            if (held < root.maxKeptPages && keep.indexOf(e.view) === -1) {
+                keep.push(e.view)
+                ++held
+            } else if (keep.indexOf(e.view) === -1) {
+                e.view = null
+            }
+        }
+        var left = []
+        for (var j = 0; j < root._detailViews.length; ++j) {
+            var v = root._detailViews[j]
+            if (!v) continue
+            if (keep.indexOf(v) !== -1) left.push(v)
+            else v.destroy()
+        }
+        root._detailViews = left
     }
 
     // Pages a user can be inside of, where one consistent back action (button,
@@ -281,13 +329,17 @@ ApplicationWindow {
     readonly property var topLevelPages: ["home", "search", "collection"]
 
     // `fromHistory` is goBack()'s alone: it stops a back step from recording
-    // the page it is leaving.
+    // the page it is leaving. goBack() leaves the entry's kept page in
+    // _returnView for it.
+    property Item _returnView: null
     function navigate(page, params, fromHistory) {
         // Fullscreen belongs to Now Playing. A link out of it brings the window
         // back first, so no other page is left without chrome and sidebar.
         if (page !== "nowplaying" && root.fullScreen) root.leaveFullScreen()
 
         var p = params || {}
+        var reuse = fromHistory ? root._returnView : null
+        root._returnView = null
         if (!fromHistory) {
             if (root.topLevelPages.indexOf(page) !== -1) {
                 // A sidebar destination is the bottom of history, so arriving
@@ -297,40 +349,34 @@ ApplicationWindow {
                 // Navigating onto the page that back would return to is a back
                 // step, so unwind. The top entry only: a match further down is
                 // a page the user has since walked away from.
+                reuse = root.navHistory[root.navHistory.length - 1].view || null
                 root.navHistory = root.navHistory.slice(0, -1)
-            } else if (currentPage !== ""
-                       && (page !== currentPage
-                           || !root._sameNavParams(_currentNavParams, p))) {
+            } else if (page !== currentPage
+                       || !root._sameNavParams(_currentNavParams, p)) {
                 // A different page, or the same page type with different
-                // params. Same page and params is a reload (below), which
-                // blanks currentPage for a turn, hence the `!== ""`.
-                root._pushHistory(currentPage, _currentNavParams)
+                // params. Same page and params is a reload (below).
+                root._pushHistory(currentPage, _currentNavParams,
+                                  root.detailSources[currentPage] ? root.detailView : null)
             }
         }
         _currentNavParams = p
 
-        var targetLoader = getLoader(page)
-        if (targetLoader) {
-            if (currentPage === page
-                && ["home", "search", "collection", "nowplaying"].indexOf(page) === -1) {
-                // Force reload of the same detail page type by toggling state
-                var savedPage = currentPage
-                currentPage = ""
-                currentPage = savedPage
-            }
-            // home/search/collection have a fixed `source`, so their item
-            // always matches the target. detailLoader's item matches only when
-            // it already shows that page type; otherwise pageParams holds them.
-            var loaderAlwaysMatchesTarget = targetLoader !== detailLoader
-            if ((loaderAlwaysMatchesTarget || currentPage === page) && targetLoader.status === Loader.Ready) {
-                applyParams(targetLoader.item, p)
-            } else {
-                root.pageParams = p
-            }
+        if (root.detailSources[page]) {
+            // A kept page is shown as it was. Anything else, a reload of the
+            // page on screen included, gets a new one.
+            root.detailView = reuse ? reuse : root._createDetailView(page, p)
         } else {
-            root.pageParams = p
+            // A page left for this one is kept, if at all, by its history entry.
+            root.detailView = null
+            var targetLoader = getLoader(page)
+            // These have a fixed `source`, so their item always matches.
+            if (targetLoader && targetLoader.status === Loader.Ready)
+                applyParams(targetLoader.item, p)
+            else
+                root.pageParams = p
         }
         currentPage = page
+        root._pruneDetailViews()
         if (page === "search") {
             searchLoader.forceActiveFocus()
             // Then the field inside it: the Loader, the page root and the bar's
@@ -346,9 +392,9 @@ ApplicationWindow {
 
     // A copy and an assignment: push() in place changes nothing the property's
     // change signal can see.
-    function _pushHistory(page, params) {
+    function _pushHistory(page, params, view) {
         var h = root.navHistory.slice()
-        h.push({ page: page, params: params || {} })
+        h.push({ page: page, params: params || {}, view: view || null })
         if (h.length > root.maxNavHistory)
             h.splice(0, h.length - root.maxNavHistory)
         root.navHistory = h
@@ -380,6 +426,7 @@ ApplicationWindow {
         var h = root.navHistory.slice()
         var entry = h.pop()
         root.navHistory = h
+        root._returnView = entry.view || null
         root.navigate(entry.page, entry.params, true)
     }
 
@@ -396,6 +443,7 @@ ApplicationWindow {
         }
         root.navHistory = root.navHistory.filter(function (e) { return !isIt(e) })
         if (isIt({ page: root.currentPage, params: root._currentNavParams })) root.goBack()
+        else root._pruneDetailViews()
     }
 
     Connections {
@@ -407,8 +455,11 @@ ApplicationWindow {
                 // Signing out lands on the login page, where every way out of
                 // fullscreen is gated on being signed in.
                 root.leaveFullScreen()
-                // The history belongs to the session that just ended.
+                // The history belongs to the session that just ended, and so
+                // do the pages it kept.
                 root.navHistory = []
+                root.detailView = null
+                root._pruneDetailViews()
             }
         }
     }
@@ -545,9 +596,22 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 clip: true
 
+                // Above the page, not laid over it: the page gives up the height.
+                OfflineNotice {
+                    id: offlineNotice
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    height: implicitHeight
+                    source: auth.state === 2 ? bridge : null
+                }
+
                 Item {
                     id: mainContainer
-                    anchors.fill: parent
+                    anchors.top: offlineNotice.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
                     visible: auth.state === 2
 
                     Loader {
@@ -601,29 +665,24 @@ ApplicationWindow {
                         }
                     }
 
-                    Loader {
-                        id: detailLoader
+                    // The detail pages, one Loader per visit; see navigate().
+                    Item {
+                        id: detailHost
+                        objectName: "detailHost"
                         anchors.fill: parent
-                        visible: ["home", "search", "collection",
-                                  "nowplaying"].indexOf(root.currentPage) === -1
-                        active: auth.state === 2
-                        source: {
-                            if (!active) return ""
-                            switch (root.currentPage) {
-                                case "album":      return "pages/AlbumPage.qml"
-                                case "artist":     return "pages/ArtistPage.qml"
-                                case "playlist":   return "pages/PlaylistPage.qml"
-                                case "mix":        return "pages/MixPage.qml"
-                                case "radio":      return "pages/RadioPage.qml"
-                                default:           return ""
-                            }
-                        }
-                        onLoaded: {
-                            if (item && root.pageParams) {
-                                var params = root.pageParams
-                                root.pageParams = {}
-                                root.applyParams(item, params)
-                            }
+                    }
+
+                    Component {
+                        id: detailViewComponent
+                        Loader {
+                            id: detailView
+                            objectName: "detailView"
+                            property string pageName: ""
+                            property var navParams: ({})
+                            anchors.fill: parent
+                            visible: root.detailView === detailView
+                                     && root.currentPage === detailView.pageName
+                            onLoaded: root.applyParams(item, navParams)
                         }
                     }
 

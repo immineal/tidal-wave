@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "LibraryIndex.h"
+#include "FavoritesCache.h"
 #include "PageEverything.h"
 
 #include "TidalClient.h"
@@ -34,6 +35,10 @@ constexpr auto kKindTrack    = "track";
 // Version of the on-disk tracklist cache. Bumping it discards every cache
 // written by an older build.
 constexpr int kCacheVersion = 1;
+
+// The parts of one refresh, for m_failedParts.
+enum Part { kPartPlaylists = 1, kPartAlbums = 2, kPartArtists = 4, kPartTracks = 8,
+            kPartMixes = 16 };
 
 // Caps a result list, so a one-letter query does not build a row for every
 // song on every keystroke.
@@ -180,6 +185,9 @@ void LibraryIndex::setUserId(qint64 uid) {
     m_favoriteTracks.clear();
     m_albumTrackCache.clear();
     m_recents.clear();
+    m_failedParts = 0;
+    m_partialRun = false;
+    setLoadFailed(false);
 
     loadRecents();
     loadTrackCache();
@@ -233,7 +241,15 @@ void LibraryIndex::refresh() {
     m_pending = 5;
     m_loadWhole = true;
     m_refreshAgain = false;
+    m_failedParts = 0;
+    m_partialRun = false;
     setLoading(true);
+
+    const auto note = [this](int part, bool whole, bool empty) {
+        if (whole) return;
+        m_partialRun = true;
+        if (empty) m_failedParts |= part;
+    };
 
     // The favourites lists come in one page each. They drop unavailable rows
     // after slicing, so a short page proves nothing and they read on.
@@ -242,8 +258,9 @@ void LibraryIndex::refresh() {
     pageEverything<Playlist>(
         [this](int offset, int limit, PlaylistsCb cb) { fetchPlaylistPage(offset, limit, std::move(cb)); },
         [](const Playlist &p) { return p.uuid; },
-        [this, gen](const QList<Playlist> &all, bool whole) {
+        [this, gen, note](const QList<Playlist> &all, bool whole) {
             if (gen != m_loadGen) return;
+            note(kPartPlaylists, whole, all.isEmpty());
             land(m_playlists, all, whole);
             partFinished(gen);
         },
@@ -253,8 +270,9 @@ void LibraryIndex::refresh() {
         fetchAlbumPage(offset, limit, std::move(cb)); };
     pageFavorites<Album>(albumPage, albumPage,
         [](const Album &a) { return QString::number(a.id); },
-        [this, gen](const QList<Album> &all, bool whole, bool fellBack) {
+        [this, gen, note](const QList<Album> &all, bool whole, bool fellBack) {
             if (gen != m_loadGen) return;
+            note(kPartAlbums, whole, all.isEmpty());
             land(m_albums, all, whole, fellBack);
             partFinished(gen);
         },
@@ -264,8 +282,9 @@ void LibraryIndex::refresh() {
         fetchArtistPage(offset, limit, std::move(cb)); };
     pageFavorites<Artist>(artistPage, artistPage,
         [](const Artist &a) { return QString::number(a.id); },
-        [this, gen](const QList<Artist> &all, bool whole, bool fellBack) {
+        [this, gen, note](const QList<Artist> &all, bool whole, bool fellBack) {
             if (gen != m_loadGen) return;
+            note(kPartArtists, whole, all.isEmpty());
             land(m_artists, all, whole, fellBack);
             partFinished(gen);
         },
@@ -275,15 +294,17 @@ void LibraryIndex::refresh() {
         [this](int offset, int limit, TracksCb cb) { fetchTrackPage(offset, limit, std::move(cb)); },
         [this](int offset, int limit, TracksCb cb) { fetchTrackIndexPage(offset, limit, std::move(cb)); },
         [](const Track &t) { return QString::number(t.id); },
-        [this, gen](const QList<Track> &all, bool whole, bool) {
+        [this, gen, note](const QList<Track> &all, bool whole, bool) {
             if (gen != m_loadGen) return;
+            note(kPartTracks, whole, all.isEmpty());
             land(m_favoriteTracks, all, whole);
             partFinished(gen);
         },
         kBig, trackPageSize, maxPages, "liked songs", false);
 
-    fetchMixList([this, gen](QList<Mix> mixes, QString err) {
+    fetchMixList([this, gen, note](QList<Mix> mixes, QString err) {
         if (gen != m_loadGen) return;
+        note(kPartMixes, err.isEmpty(), mixes.isEmpty());
         if (err.isEmpty()) m_mixes = mixes;
         partFinished(gen);
     });
@@ -311,6 +332,8 @@ void LibraryIndex::partFinished(int gen) {
     if (--m_pending > 0) return;
     // The server's answer may predate a change made here during the run.
     if (m_refreshAgain) { refresh(); return; }
+    if (m_failedParts != 0) fillFromLibraryCache();
+    else if (!m_partialRun) { saveLibraryCache(); setLoadFailed(false); }
     rebuildTrackEntries();
     // Only a fully loaded library can say which songs have left it.
     if (m_loadWhole) pruneSongPlays();
@@ -894,6 +917,43 @@ void LibraryIndex::cancelIndexing() {
     setIndexing(false);
     // Keep what was indexed, so the next launch resumes.
     saveTrackCache();
+}
+
+void LibraryIndex::setLoadFailed(bool v) {
+    if (m_loadFailed == v) return;
+    m_loadFailed = v;
+    emit loadFailedChanged();
+}
+
+void LibraryIndex::saveLibraryCache() const {
+    if (m_userId <= 0) return;
+    FavoritesCache::Lists lists;
+    lists.tracks    = m_favoriteTracks;
+    lists.albums    = m_albums;
+    lists.artists   = m_artists;
+    lists.playlists = m_playlists;
+    lists.mixes     = m_mixes;
+    FavoritesCache::save(FavoritesCache::path(QStringLiteral("sidebar"), m_userId),
+                         m_userId, lists);
+}
+
+// A list that got nothing, offline say, takes the disk copy where there is
+// one. One that already has rows keeps them.
+void LibraryIndex::fillFromLibraryCache() {
+    const FavoritesCache::Lists disk = FavoritesCache::load(
+        FavoritesCache::path(QStringLiteral("sidebar"), m_userId), m_userId);
+    bool missing = false;
+    const auto fill = [&](int part, auto &list, const auto &cached) {
+        if (!(m_failedParts & part) || !list.isEmpty()) return;
+        list = cached;
+        if (list.isEmpty()) missing = true;
+    };
+    fill(kPartPlaylists, m_playlists, disk.playlists);
+    fill(kPartAlbums, m_albums, disk.albums);
+    fill(kPartArtists, m_artists, disk.artists);
+    fill(kPartTracks, m_favoriteTracks, disk.tracks);
+    fill(kPartMixes, m_mixes, disk.mixes);
+    setLoadFailed(missing);
 }
 
 QString LibraryIndex::trackCachePath() const {

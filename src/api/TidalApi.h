@@ -113,6 +113,15 @@ public:
     // Qt's error sentence with the query cut off every URL in it.
     static QString redactedError(const QString &errorString);
 
+    // False from a request that got no answer at all until the next one that
+    // got any. Updated before that request's callback runs.
+    bool reachable() const { return m_reachable; }
+    // Public as a test seam; every request reports here itself.
+    void noteReachable(bool reachable);
+
+signals:
+    void reachableChanged(bool reachable);
+
 protected:
     // Where a request for one of the base URLs above is sent. Virtual as a
     // test seam only: a subclass points the requests at a local server.
@@ -126,6 +135,7 @@ private:
     QString m_accessToken;
     QString m_countryCode;
     TokenRenewer m_renewer;
+    bool m_reachable = true;
 
     // What a finished request said, read off its reply once.
     struct Answer {
