@@ -37,7 +37,6 @@ Rectangle {
                 color: Theme.textPrimary
                 font.pixelSize: Theme.fontDisplay
                 font.bold: true
-                font.letterSpacing: 3
             }
 
             Text {
@@ -253,6 +252,7 @@ Rectangle {
                             font.pixelSize: Theme.fontDisplay
                             font.bold: true
                             font.letterSpacing: 6
+                            font.capitalization: Font.AllUppercase
                         }
                     }
 

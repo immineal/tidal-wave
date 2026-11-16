@@ -684,6 +684,7 @@ Rectangle {
                     text: qsTr("This computer")
                     color: Theme.textDim
                     font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
+                    font.capitalization: Font.AllUppercase
                     Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space1; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {
@@ -708,6 +709,7 @@ Rectangle {
                     text: qsTr("Cast to")
                     color: Theme.textDim
                     font.pixelSize: Theme.fontMicro; font.bold: true; font.letterSpacing: 1
+                    font.capitalization: Font.AllUppercase
                     Layout.leftMargin: Theme.space2; Layout.topMargin: Theme.space2; Layout.bottomMargin: Theme.spaceHalf
                 }
                 Repeater {

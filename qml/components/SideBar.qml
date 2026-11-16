@@ -486,7 +486,6 @@ Item {
                     color: Theme.textPrimary
                     font.pixelSize: Theme.fontBody
                     font.bold: true
-                    font.letterSpacing: 1
                     elide: Text.ElideRight
                 }
             }

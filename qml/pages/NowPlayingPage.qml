@@ -1065,6 +1065,7 @@ Rectangle {
                                             font.pixelSize: creditsPanel.labelSize
                                             font.bold: true
                                             font.letterSpacing: 1
+                                            font.capitalization: Font.AllUppercase
                                             horizontalAlignment: creditsPanel.align
                                             wrapMode: Text.WordWrap
                                         }
@@ -1256,7 +1257,6 @@ Rectangle {
                                       : qsTr("Playing from: %1").arg(player.sourceName)
                                 color: sourceLinkHov.hovered || activeFocus ? Theme.textPrimary : Theme.textDim
                                 font.pixelSize: Theme.fontMeta
-                                font.letterSpacing: 0.5
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
                                 HoverHandler { id: sourceLinkHov; cursorShape: Qt.PointingHandCursor }
@@ -2107,6 +2107,7 @@ Rectangle {
                             font.pixelSize: Theme.fontMicro
                             font.bold: true
                             font.letterSpacing: 1
+                            font.capitalization: Font.AllUppercase
                         }
 
                         Repeater {
