@@ -661,7 +661,9 @@ public:
         if (m_addToPlaylistOk) {
             QVariantList &rows = m_serverPlaylists[uuid];
             noteServerPlaylistWrite(uuid);
-            rows.insert(qBound(0, index, int(rows.size())), double(trackId));
+            // No index: the end, as the real call without toIndex.
+            rows.insert(index < 0 ? int(rows.size()) : qBound(0, index, int(rows.size())),
+                        double(trackId));
         }
         resolveOk(cb, m_addToPlaylistOk);
         if (m_addToPlaylistOk) refreshPlaylistMeta(uuid);
