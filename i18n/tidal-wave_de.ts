@@ -1538,6 +1538,14 @@
         <translation>Tidal konnte diese Suche nicht beantworten.</translation>
     </message>
     <message>
+        <source>Tidal could not load more results.</source>
+        <translation>Tidal konnte keine weiteren Ergebnisse laden.</translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached, so no more results could be loaded.</source>
+        <translation>Tidal ist nicht erreichbar, daher konnten keine weiteren Ergebnisse geladen werden.</translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation>Künstler</translation>
     </message>

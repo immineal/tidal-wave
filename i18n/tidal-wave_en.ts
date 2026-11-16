@@ -1298,6 +1298,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Tidal could not load more results.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tidal cannot be reached, so no more results could be loaded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Artist</source>
         <translation type="unfinished"></translation>
     </message>
