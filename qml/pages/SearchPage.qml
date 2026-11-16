@@ -713,7 +713,10 @@ Rectangle {
                 }
                 Item { width: 1; height: 8 }
 
+                // The tracks are one tab stop; see TrackRow.rowGroup.
+                QtObject { id: trackGroup; property int current: 0 }
                 Repeater {
+                    onModelChanged: trackGroup.current = 0
                     // Nothing is built for a section nobody is looking at: a
                     // type tab other than Tracks would otherwise still carry
                     // every TrackRow of the result set, invisibly.
@@ -723,6 +726,8 @@ Rectangle {
                              : root.tracks.length
                     TrackRow {
                         required property int index
+                        rowGroup: trackGroup
+                        rowIndex: index
                         x: 16
                         width: tracksCol.width - 32
                         trackNum:       index + 1

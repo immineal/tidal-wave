@@ -284,9 +284,14 @@ Rectangle {
 
             Item { height: 8; visible: root.topTracks.length > 0 }
 
+            // The top tracks are one tab stop; see TrackRow.rowGroup.
+            QtObject { id: topTrackGroup; property int current: 0 }
             Repeater {
                 model: root.showAllTracks ? root.topTracks : root.topTracks.slice(0, 5)
+                onModelChanged: topTrackGroup.current = 0
                 TrackRow {
+                    rowGroup: topTrackGroup
+                    rowIndex: index
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16

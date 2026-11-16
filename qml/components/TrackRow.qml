@@ -199,9 +199,53 @@ Item {
     signal menuRequested(real x, real y)
     signal removeFromPlaylistRequested(int itemIndex)
 
-    activeFocusOnTab: true
+    // A list is one tab stop and the arrows walk it. In a ListView that is
+    // the current row; rows laid out by a Repeater share a rowGroup
+    // (an object with an int `current`) and say their rowIndex.
+    property QtObject rowGroup: null
+    property int      rowIndex: -1
+    // activeFocus keeps the row a stop until it lets go: Qt refuses to clear
+    // the flag on the focused item and would leave two stops behind.
+    activeFocusOnTab: activeFocus || (ListView.view ? (ListView.isCurrentItem || ListView.view.currentIndex < 0)
+                                      : rowGroup ? rowGroup.current === rowIndex : true)
+    onActiveFocusChanged: {
+        if (!activeFocus) return
+        if (rowGroup) rowGroup.current = rowIndex
+        else if (ListView.view)
+            ListView.view.positionViewAtIndex(ListView.view.currentIndex, ListView.Contain)
+    }
+    // Space stays play/pause for the window (Main.qml reads this).
+    readonly property bool leavesSpaceToPlayer: true
     Keys.onReturnPressed: root.activate()
-    Keys.onSpacePressed:  root.activate()
+    Keys.onEnterPressed:  root.activate()
+
+    function moveToRow(target) {
+        var view = ListView.view
+        if (view) {
+            var i = Math.max(0, Math.min(view.count - 1, target))
+            view.currentIndex = i
+            if (view.currentItem) view.currentItem.forceActiveFocus(Qt.TabFocusReason)
+            return true
+        }
+        if (!rowGroup || !parent) return false
+        var rows = parent.children
+        for (var k = 0; k < rows.length; ++k) {
+            var r = rows[k]
+            if (r !== root && r.rowGroup === rowGroup && r.rowIndex === target && r.visible) {
+                rowGroup.current = target
+                r.forceActiveFocus(Qt.TabFocusReason)
+                return true
+            }
+        }
+        return false
+    }
+    function lastGroupIndex() {
+        var last = rowIndex
+        var rows = parent ? parent.children : []
+        for (var k = 0; k < rows.length; ++k)
+            if (rows[k].rowGroup === rowGroup && rows[k].visible) last = Math.max(last, rows[k].rowIndex)
+        return last
+    }
 
     // Read as one line of a list: what the eye takes from the title and the
     // names. Press is what a click does.
@@ -216,9 +260,21 @@ Item {
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
             root.menuRequested(width / 2, height / 2)
-            root.openMenu()
+            root.openMenu(true)
             event.accepted = true
+            return
         }
+        if (event.modifiers !== Qt.NoModifier) return
+        var view = ListView.view
+        // A ListView walks Up and Down itself; Home and End it does not.
+        if (event.key === Qt.Key_Home && (view || rowGroup))
+            event.accepted = root.moveToRow(0)
+        else if (event.key === Qt.Key_End && (view || rowGroup))
+            event.accepted = root.moveToRow(view ? view.count - 1 : root.lastGroupIndex())
+        else if (!view && rowGroup && event.key === Qt.Key_Down)
+            event.accepted = root.moveToRow(rowIndex + 1)
+        else if (!view && rowGroup && event.key === Qt.Key_Up)
+            event.accepted = root.moveToRow(rowIndex - 1)
     }
 
     Rectangle {
@@ -325,6 +381,7 @@ Item {
                 // name takes the left click and a right click reaches the menu.
                 ArtistLinks {
                     Layout.fillWidth: true
+                    tabStops: false
                     namePrefix: "trackRow"
                     fontPixelSize: 12
                     artistList: root.artistList
@@ -444,7 +501,7 @@ Item {
             // Context menu button, same reserved slot as the download button
             Item {
                 id: menuButton
-                readonly property bool shown: hov.hovered
+                readonly property bool shown: hov.hovered || root.activeFocus
                 opacity: shown ? 1 : 0
                 Layout.preferredWidth: 24
                 Layout.fillHeight: true
@@ -475,9 +532,11 @@ Item {
     // per row for two things almost no row is asked for.
     readonly property alias rowMenu: menuLoader.item
 
-    function openMenu() {
+    // From the keyboard the menu opens on the row; from the mouse, at the pointer.
+    function openMenu(fromKeyboard) {
         menuLoader.active = true
-        menuLoader.item.popup()
+        if (fromKeyboard) menuLoader.item.popup(root, 16, root.height)
+        else menuLoader.item.popup()
     }
 
     function openPicker() {

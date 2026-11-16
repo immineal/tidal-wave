@@ -334,13 +334,15 @@ TestCase {
         compare(host.playCalls, 1, "it falls through and plays the row, like the gaps do")
     }
 
-    function test_track_row_each_artist_is_its_own_tab_stop() {
+    // In a list the row is the tab stop and the row menu goes to an artist;
+    // a stop per name made Tab crawl through a long list.
+    function test_track_row_artists_are_targets_but_not_tab_stops() {
         var host = makeRow(trackWith(testCase.twoArtists))
         var names = visibleNamed(host.row, "trackRowArtistName")
         compare(names.length, 2, "each artist needs its own target in a track row")
         for (var i = 0; i < names.length; i++)
-            verify(names[i].activeFocusOnTab,
-                   "\"" + names[i].text + "\" is not reachable by tab")
+            verify(!names[i].activeFocusOnTab,
+                   "\"" + names[i].text + "\" is a tab stop inside a track row")
 
         names[1].forceActiveFocus()
         keyClick(Qt.Key_Return)

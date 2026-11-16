@@ -90,9 +90,10 @@ TestCase {
         verify(!player.playing, "a click on the playing track did not pause it")
         mouseClick(row, row.width / 2, row.height / 2)
         verify(player.playing, "a click on the paused track did not resume it")
+        // Enter is the row's key; Space is the window's play/pause shortcut.
         row.forceActiveFocus()
-        keyClick(Qt.Key_Space)
-        verify(!player.playing, "Space on the playing track did not pause it")
+        keyClick(Qt.Key_Return)
+        verify(!player.playing, "Enter on the playing track did not pause it")
         compare(playSpy.count, 0, "the current track was started over")
     }
 
