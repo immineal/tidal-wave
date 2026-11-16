@@ -135,6 +135,7 @@ Rectangle {
                 Layout.fillWidth: true; spacing: Theme.space1; clip: true
 
                 Text {
+                    objectName: "playerBarTitle"
                     Layout.fillWidth: true
                     text: hasTrack ? track.title : qsTr("No track playing")
                     color: Theme.textPrimary; font.pixelSize: Theme.fontBody; font.bold: true; elide: Text.ElideRight
@@ -168,24 +169,9 @@ Rectangle {
                         fallbackArtistId: 0
                     }
                 }
-                Rectangle {
-                    objectName: "qualityBadge"
-                    visible: hasTrack && player.audioQuality.length > 0
-                    height: 18; width: ql.implicitWidth + 8; radius: Theme.radiusSmall
-                    color: {
-                        var q = player.audioQuality
-                        if (q === "HI_RES_LOSSLESS") return Theme.accentWash
-                        if (q === "LOSSLESS") return Theme.greenWash
-                        return Theme.surfaceHigh
-                    }
-                    Text {
-                        id: ql; objectName: "qualityBadgeText"
-                        anchors.centerIn: parent
-                        // The real format where the stream said it, else the tier.
-                        text: player.audioFormat.length > 0
-                              ? player.audioFormat : player.qualityLabel(player.audioQuality)
-                        color: Theme.textPrimary; font.pixelSize: Theme.fontMicro; font.bold: true
-                    }
+                QualityBadge {
+                    visible: hasTrack && quality.length > 0
+                    Layout.maximumWidth: parent.width
                 }
             }
 
@@ -284,6 +270,7 @@ Rectangle {
             }
 
             SeekBar {
+                objectName: "playerBarSeekBar"
                 Layout.fillWidth: true; Layout.leftMargin: Theme.space4; Layout.rightMargin: Theme.space4
                 position: player.position; duration: player.duration
                 onSeeked: (ms) => player.seek(ms)

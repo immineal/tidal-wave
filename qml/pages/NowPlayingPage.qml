@@ -1409,23 +1409,7 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: Theme.space3
 
-                        // Quality badge
-                        Rectangle {
-                            objectName: "qualityBadge"
-                            visible: player.audioQuality.length > 0
-                            height: 24; width: qlbl.implicitWidth + 12; radius: Theme.radiusSmall
-                            color: player.audioQuality === "HI_RES_LOSSLESS" ? Theme.accentWash :
-                                   player.audioQuality === "LOSSLESS" ? Theme.greenWash : Theme.surfaceHigh
-                            Text {
-                                id: qlbl; objectName: "qualityBadgeText"
-                                anchors.centerIn: parent
-                                // The tier and the real format, e.g. "Max · 24-bit / 96 kHz FLAC".
-                                text: player.audioFormat.length > 0
-                                      ? player.qualityLabel(player.audioQuality) + " · " + player.audioFormat
-                                      : player.qualityLabel(player.audioQuality)
-                                color: Theme.textPrimary; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                        }
+                        QualityBadge { withTier: true }
 
                         Item { Layout.fillWidth: true } // Pusher
 
