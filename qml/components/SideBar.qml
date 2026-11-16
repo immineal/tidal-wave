@@ -349,6 +349,18 @@ Item {
         delay: Theme.tooltipDelay
         x: parent.width + Theme.space2
         y: Math.round((parent.height - height) / 2)
+        // Dressed like the app's menus and notices.
+        padding: Theme.space2
+        contentItem: Text {
+            text: sideTip.text
+            color: Theme.textPrimary
+            font.pixelSize: Theme.fontMeta
+        }
+        background: Rectangle {
+            color: Theme.surfaceHigh
+            border.color: Theme.border
+            radius: Theme.radiusMedium
+        }
     }
 
     ContextMenu {

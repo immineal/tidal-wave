@@ -430,6 +430,11 @@ TestCase {
         var top = tip.contentItem.mapToItem(longBox, 0, 0)
         verify(top.y >= -1, "the tip covers the row above: its top is at " + top.y)
         verify(top.x >= longBox.width, "the tip sits over its own row")
+        // Dressed like the app's menus and notices, not the style's pale tip.
+        compare(String(tip.background.color), String(Theme.surfaceHigh), "the tip's ground")
+        compare(String(tip.background.border.color), String(Theme.border), "the tip's border")
+        compare(tip.background.radius, Theme.radiusMedium, "the tip's corners")
+        compare(String(tip.contentItem.color), String(Theme.textPrimary), "the tip's text")
         mouseMove(host.contentItem, host.width - 8, host.height - 8)
     }
 
