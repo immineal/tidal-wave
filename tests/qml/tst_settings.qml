@@ -113,8 +113,41 @@ TestCase {
         property string statusText: ""
         property var signIns: []
         property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
         signal accountChanged()
         function signIn(token) { signIns = signIns.concat([token]) }
+        function discardKept() { discards++; keptCount = 0 }
+        function disconnectAccount() {
+            disconnects++
+            connected = false
+            userName = ""
+            accountChanged()
+        }
+    }
+
+    // ScrobbleSink for Last.fm: the browser sign-in's three steps, counted.
+    QtObject {
+        id: lastfmStub
+        property bool enabled: false
+        property bool connected: false
+        property string userName: ""
+        property bool checking: false
+        property bool authFailed: false
+        property bool awaitingBrowser: false
+        property string signInPage: ""
+        property string statusText: ""
+        property int starts: 0
+        property int finishes: 0
+        property int cancels: 0
+        property int disconnects: 0
+        property int keptCount: 0
+        property int discards: 0
+        signal accountChanged()
+        function discardKept() { discards++; keptCount = 0 }
+        function startBrowserSignIn() { starts++ }
+        function finishBrowserSignIn() { finishes++ }
+        function cancelBrowserSignIn() { cancels++; awaitingBrowser = false }
         function disconnectAccount() {
             disconnects++
             connected = false
@@ -154,6 +187,22 @@ TestCase {
         scrobbleStub.statusText = ""
         scrobbleStub.signIns = []
         scrobbleStub.disconnects = 0
+        scrobbleStub.keptCount = 0
+        scrobbleStub.discards = 0
+        lastfmStub.enabled = false
+        lastfmStub.connected = false
+        lastfmStub.userName = ""
+        lastfmStub.checking = false
+        lastfmStub.authFailed = false
+        lastfmStub.awaitingBrowser = false
+        lastfmStub.signInPage = ""
+        lastfmStub.statusText = ""
+        lastfmStub.starts = 0
+        lastfmStub.finishes = 0
+        lastfmStub.cancels = 0
+        lastfmStub.disconnects = 0
+        lastfmStub.keptCount = 0
+        lastfmStub.discards = 0
     }
 
     function cleanupTestCase() {
@@ -302,6 +351,7 @@ TestCase {
         panel.deviceSource = audioStub
         panel.check        = updateStub
         panel.scrobble     = scrobbleStub
+        panel.lastfm       = lastfmStub
 
         host.sidebar.openSettings()
         settle(host.contentItem)
@@ -1720,6 +1770,155 @@ TestCase {
         h.panel.close()
     }
 
+    // ── Last.fm ──────────────────────────────────────────────────────────
+
+    // Beside ListenBrainz in the same section, off by default and with a
+    // switch of its own.
+    function test_lastfm_sits_beside_listenbrainz_and_starts_off() {
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var lb = findByName(section, "settingsScrobbleToggle")
+        var fm = findByName(section, "settingsLastfmToggle")
+        verify(lb && lb.visible, "the ListenBrainz switch is gone")
+        verify(fm && fm.visible, "there is no Last.fm switch")
+        verify(!fm.checked, "Last.fm is on before it was asked for")
+        verify(!findByName(section, "settingsLastfmConnect").visible,
+               "Connect is offered while Last.fm is off")
+        verify(!findByName(section, "settingsLastfmAccount").visible)
+        verify(findByName(section, "settingsLastfmNote").text.indexOf("last.fm") !== -1,
+               "the switch does not say where the plays go")
+        h.panel.close()
+    }
+
+    function test_the_lastfm_switch_turns_it_on_alone() {
+        scrobbleStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        clickItem(h.panel, findByName(section, "settingsLastfmToggle"))
+        compare(lastfmStub.enabled, true, "the switch did not turn Last.fm on")
+        compare(scrobbleStub.enabled, true, "the Last.fm switch changed ListenBrainz")
+        verify(findByName(section, "settingsLastfmConnect").visible,
+               "on and with no account, Connect with Last.fm is not offered")
+        clickItem(h.panel, findByName(section, "settingsLastfmToggle"))
+        compare(lastfmStub.enabled, false)
+        compare(scrobbleStub.enabled, true)
+        h.panel.close()
+    }
+
+    // Connect opens the browser step; then "I've allowed access" finishes
+    // it, and Cancel goes back.
+    function test_connect_with_lastfm_goes_through_the_browser() {
+        lastfmStub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var connect = findByName(section, "settingsLastfmConnect")
+        compare(connect.text, "Connect with Last.fm")
+        clickItem(h.panel, connect)
+        compare(lastfmStub.starts, 1, "Connect with Last.fm did not start the sign-in")
+
+        lastfmStub.awaitingBrowser = true
+        settle(h.panel.contentItem)
+        verify(!connect.visible, "Connect stays while the browser step waits")
+        var finish = findByName(section, "settingsLastfmFinish")
+        verify(finish && finish.visible, "there is no way to say access was allowed")
+        compare(finish.text, "I've allowed access")
+        clickItem(h.panel, finish)
+        compare(lastfmStub.finishes, 1)
+
+        clickItem(h.panel, findByName(section, "settingsLastfmCancel"))
+        compare(lastfmStub.cancels, 1)
+        settle(h.panel.contentItem)
+        verify(connect.visible, "after Cancel, Connect with Last.fm is not back")
+        h.panel.close()
+    }
+
+    // The page can be opened again if the browser did not come up.
+    function test_the_lastfm_page_link_opens_the_page_again() {
+        lastfmStub.enabled = true
+        lastfmStub.awaitingBrowser = true
+        lastfmStub.signInPage = "https://www.last.fm/api/auth/?api_key=k&token=t"
+        var h = openPanel(1280, 1200)
+        var link = findByName(sectionByKey(h.panel, "scrobbling"), "settingsLastfmPageLink")
+        verify(link && link.visible)
+        compare(urlFromClick(h.panel, link), "https://www.last.fm/api/auth/?api_key=k&token=t")
+        h.panel.close()
+    }
+
+    function test_a_connected_lastfm_account_shows_its_name_and_disconnect() {
+        lastfmStub.enabled = true
+        lastfmStub.connected = true
+        lastfmStub.userName = "listener"
+        lastfmStub.statusText = "Nothing is waiting to be sent."
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        compare(findByName(section, "settingsLastfmUser").text, "listener")
+        verify(!findByName(section, "settingsLastfmConnect").visible)
+        var status = findByName(section, "settingsLastfmStatus")
+        verify(status.visible)
+        compare(status.text, "Nothing is waiting to be sent.")
+        clickItem(h.panel, findByName(section, "settingsLastfmDisconnect"))
+        compare(lastfmStub.disconnects, 1)
+        verify(findByName(section, "settingsLastfmConnect").visible,
+               "after Disconnect, Connect with Last.fm is not offered")
+        h.panel.close()
+    }
+
+    function test_lastfm_controls_are_reachable_and_named_data() {
+        return [
+            { tag: "switch",     name: "settingsLastfmToggle",     role: Accessible.CheckBox, connected: false, waiting: false },
+            { tag: "connect",    name: "settingsLastfmConnect",    role: Accessible.Button,   connected: false, waiting: false },
+            { tag: "finish",     name: "settingsLastfmFinish",     role: Accessible.Button,   connected: false, waiting: true },
+            { tag: "cancel",     name: "settingsLastfmCancel",     role: Accessible.Button,   connected: false, waiting: true },
+            { tag: "page",       name: "settingsLastfmPageLink",   role: Accessible.Link,     connected: false, waiting: true },
+            { tag: "disconnect", name: "settingsLastfmDisconnect", role: Accessible.Button,   connected: true,  waiting: false },
+        ]
+    }
+    function test_lastfm_controls_are_reachable_and_named(data) {
+        lastfmStub.enabled = true
+        lastfmStub.connected = data.connected
+        lastfmStub.userName = data.connected ? "listener" : ""
+        lastfmStub.awaitingBrowser = data.waiting
+        lastfmStub.signInPage = data.waiting ? "https://www.last.fm/api/auth/?api_key=k&token=t" : ""
+        var h = openPanel(minWindowW, minWindowH)
+        var item = findByName(sectionByKey(h.panel, "scrobbling"), data.name)
+        verify(item && item.visible, data.name + " is not shown")
+        verify(item.activeFocusOnTab, data.name + " cannot be reached with the keyboard")
+        verify(a11y.exposed(item), data.name + " is not exposed")
+        compare(a11y.role(item), data.role)
+        verify(a11y.name(item).length > 0, data.name + " has no accessible name")
+        h.panel.close()
+    }
+
+    // Listens kept for an account that is not connected can be discarded,
+    // for either service, from beside the line that counts them.
+    function test_kept_listens_can_be_discarded_data() {
+        return [
+            { tag: "ListenBrainz", stub: "scrobble", link: "settingsScrobbleDiscard" },
+            { tag: "Last.fm",      stub: "lastfm",   link: "settingsLastfmDiscard" },
+        ]
+    }
+    function test_kept_listens_can_be_discarded(data) {
+        var stub = data.stub === "scrobble" ? scrobbleStub : lastfmStub
+        stub.enabled = true
+        var h = openPanel(1280, 1200)
+        var section = sectionByKey(h.panel, "scrobbling")
+        var link = findByName(section, data.link)
+        verify(link, "there is no Discard link")
+        verify(!link.visible, "Discard is offered with nothing kept")
+        stub.keptCount = 2
+        stub.statusText = "2 listens kept until listener connects again."
+        settle(h.panel.contentItem)
+        verify(link.visible, "Discard is not offered for kept listens")
+        compare(link.text, "Discard")
+        verify(link.activeFocusOnTab, "Discard cannot be reached with the keyboard")
+        compare(a11y.role(link), Accessible.Link)
+        clickItem(h.panel, link)
+        compare(stub.discards, 1, "Discard did not empty the kept queue")
+        settle(h.panel.contentItem)
+        verify(!link.visible)
+        h.panel.close()
+    }
+
     // ── the order of the panel ───────────────────────────────────────────
 
     // Top to bottom, by where the sections land. The shortcuts sit above the
@@ -2028,10 +2227,24 @@ TestCase {
         for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
         var mustSay = ["api.listenbrainz.org", "only once you switch it on",
                        "the time you played it", "ListenBrainz user token",
-                       "disconnecting deletes"]
+                       "deletes the token", "logging out of Tidal", "the listens stay until the same account connects again"]
         for (var j = 0; j < mustSay.length; j++)
             verify(all.indexOf(mustSay[j]) !== -1,
                    "the privacy block never says \"" + mustSay[j] + "\" about ListenBrainz")
+        h.panel.close()
+    }
+
+    function test_the_privacy_block_covers_lastfm() {
+        var h = openPanel(1280, 1200)
+        var parts = collectByName(h.panel.contentItem, "settingsPrivacyText", [])
+        var all = ""
+        for (var i = 0; i < parts.length; i++) all += parts[i].text + "\n"
+        var mustSay = ["ws.audioscrobbler.com", "Connect with Last.fm\" opens last.fm in your browser",
+                       "your session key", "do not go to Last.fm",
+                       "disconnecting or logging out of Tidal deletes the key"]
+        for (var j = 0; j < mustSay.length; j++)
+            verify(all.indexOf(mustSay[j]) !== -1,
+                   "the privacy block never says \"" + mustSay[j] + "\" about Last.fm")
         h.panel.close()
     }
 

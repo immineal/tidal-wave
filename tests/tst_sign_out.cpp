@@ -18,6 +18,8 @@
 #include "api/TidalApi.h"
 #include "api/TidalClient.h"
 #include "player/Player.h"
+#include "scrobble/ScrobbleService.h"
+#include "scrobble/ScrobbleSink.h"
 #include "ui/Application.h"
 #include "ui/PinStore.h"
 
@@ -48,6 +50,21 @@ public:
     void fetchStreamManifest(qint64, StreamCb) override {}
 };
 
+// A scrobbling service that answers at once and keeps every listen waiting.
+class NoNetworkService : public ScrobbleService {
+public:
+    QString name() const override { return QStringLiteral("Test"); }
+    QString key()  const override { return QStringLiteral("test"); }
+    int maxBatch() const override { return 10; }
+    void verify(const QString &, Verified done) override { done({}, QStringLiteral("listener")); }
+    void nowPlaying(const QString &, const Listen &, Done done) override { done({}); }
+    void submit(const QString &, const QList<Listen> &, Done done) override {
+        ScrobbleReply r;
+        r.kind = ScrobbleReply::Retry;
+        done(r);
+    }
+};
+
 struct Session {
     TidalApi    api;
     QuietClient client{&api};
@@ -69,9 +86,10 @@ struct Session {
         return QTest::qWaitFor([this] { return player->findChild<QMediaPlayer *>() != nullptr; },
                                10000);
     }
-    void end(bool forget)
+    void end(bool forget, const QList<ScrobbleSink *> &scrobbling = {})
     {
-        Application::endAccountSession(&client, player.get(), &pins, library.get(), forget);
+        Application::endAccountSession(&client, player.get(), &pins, library.get(), forget,
+                                       scrobbling);
     }
     // A sign-in, as Application's loginSucceeded handler makes it.
     void signIn(qint64 uid)
@@ -153,6 +171,34 @@ private slots:
         QTest::qWait(2000);
         s.signIn(kOwner);
         QCOMPARE(s.player->queueCount(), 4);
+    }
+
+    // ── scrobbling ──────────────────────────────────────────────────────
+    // A log out disconnects every scrobbling account. What was not sent
+    // stays for the same account, as Disconnect in Settings leaves it.
+    void aLogOutDisconnectsScrobbling()
+    {
+        QTemporaryDir dir;
+        auto *service = new NoNetworkService;
+        ScrobbleSink sink(service, {dir.filePath(QStringLiteral("secret.json")),
+                                    dir.filePath(QStringLiteral("queue.json"))});
+        sink.setEnabled(true);
+        sink.signIn(QStringLiteral("token"));
+        QVERIFY(sink.connected());
+        Listen l;
+        l.trackId = 1; l.artist = QStringLiteral("A"); l.title = QStringLiteral("T");
+        l.listenedAt = 1'700'000'000;
+        sink.add(l);
+        QCOMPARE(sink.queuedCount(), 1);
+
+        Session s;
+        QVERIFY(s.settle());
+        s.end(false, {&sink});
+        QVERIFY2(sink.connected(), "a session that expired took the scrobbling account");
+        s.end(true, {&sink});
+        QVERIFY(!sink.connected());
+        QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("secret.json"))));
+        QCOMPARE(sink.queuedCount(), 1);
     }
 
     // ── temp files ──────────────────────────────────────────────────────

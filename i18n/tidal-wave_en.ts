@@ -1296,6 +1296,20 @@
             <numerusform>%Ln listens waiting to be sent.</numerusform>
         </translation>
     </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until you connect again.</source>
+        <translation>
+            <numerusform>%Ln listen kept until you connect again.</numerusform>
+            <numerusform>%Ln listens kept until you connect again.</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln listen(s) kept until %1 connects again.</source>
+        <translation>
+            <numerusform>%Ln listen kept until %1 connects again.</numerusform>
+            <numerusform>%Ln listens kept until %1 connects again.</numerusform>
+        </translation>
+    </message>
 </context>
 <context>
     <name>SearchBar</name>

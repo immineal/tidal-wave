@@ -30,6 +30,10 @@ QJsonObject ListenBrainz::listenJson(const Listen &l, bool withTimestamp) {
     // A string in the documented table of fields.
     if (l.trackNumber > 0)   info[QStringLiteral("tracknumber")] = QString::number(l.trackNumber);
     if (!l.isrc.isEmpty())   info[QStringLiteral("isrc")] = l.isrc;
+    // Not in the documented table, but what ListenBrainz's own Spotify
+    // importer sends beside the joined artist_name.
+    if (!l.artistNames.isEmpty())
+        info[QStringLiteral("artist_names")] = QJsonArray::fromStringList(l.artistNames);
     info[QStringLiteral("media_player")]              = kPlayer;
     info[QStringLiteral("media_player_version")]      = QStringLiteral(TIDALWAVE_VERSION);
     info[QStringLiteral("submission_client")]         = kPlayer;
