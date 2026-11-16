@@ -74,6 +74,36 @@ private slots:
         p.endCast();
     }
 
+    // Back from the device, the track goes on where the device left it.
+    void takingItBackGoesOnFromTheCastPosition_data() {
+        QTest::addColumn<bool>("playingThere");
+        QTest::newRow("playing on the device") << true;
+        QTest::newRow("paused on the device")  << false;
+    }
+
+    void takingItBackGoesOnFromTheCastPosition() {
+        QFETCH(bool, playingThere);
+        TidalApi api;
+        CountingClient client{&api};
+        Player p{&client};
+        QTest::qWait(30);
+        p.playTracks(rowsOf(2), 0);
+
+        CastSession device;
+        p.beginCast(&device);
+        p.onCastPosition(42.5);
+        p.onCastPlaying(playingThere);
+        const int askedBefore = client.asked;
+
+        p.endCast();
+        QVERIFY(!p.casting());
+        QCOMPARE(currentId(p), 1);
+        QCOMPARE(p.position(), qint64(42500));
+        QCOMPARE(p.playing(), playingThere);
+        // A paused track is not fetched until play.
+        QCOMPARE(client.asked > askedBefore, playingThere);
+    }
+
     // Under repeat-one a track the device played out starts over there; a
     // press on Next would move on.
     void aTrackThatRanOutOnTheDeviceRepeatsUnderRepeatOne() {

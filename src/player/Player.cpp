@@ -1868,16 +1868,21 @@ void Player::beginCast(CastSession *session) {
 
 void Player::endCast() {
     if (!m_castSession) return;
+    const qint64 leftAt = m_castPosition;
+    const bool   played = m_castPlaying;
     m_castSession = nullptr;
     m_castPosition = 0;
     m_castPlaying  = false;
     // Restore the user's local mute preference (beginCast force-muted the output).
     if (m_audioOut) m_audioOut->setMuted(m_pendingMuted);
-    // Resume playback locally from the top of the current track.
-    if (m_index >= 0 && m_index < m_queue.count())
-        loadAndPlay(m_index);
-    else
+    // Here it goes on where the device left it, paused if it was paused there.
+    if (m_index >= 0 && m_index < m_queue.count()) {
+        m_pendingSeek = qMax<qint64>(0, leftAt);
+        loadAndPlay(m_index, !played);
+        emit positionChanged(position());
+    } else {
         tellPlaying();
+    }
 }
 
 void Player::onCastPosition(double sec) {
