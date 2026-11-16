@@ -16,6 +16,11 @@ ApplicationWindow {
     // put behind it.
     color: Theme.bg
 
+    // Away from the offscreen platform's pointer, which otherwise hovers
+    // whatever sits a few pixels in from the top left of every new window.
+    x: 3000
+    y: 3000
+
     // Where a scene puts its content. Declared rather than using the default
     // property so a scene can also add a Popup, which is not an Item.
     default property alias content: contentHolder.data

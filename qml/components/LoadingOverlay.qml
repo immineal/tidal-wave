@@ -14,7 +14,7 @@ Item {
         id: dial
         objectName: "loadingSpinner"
         anchors.centerIn: parent
-        width: 48; height: 48; radius: 24
+        width: 48; height: 48; radius: width / 2
         color: Theme.surfaceHigh
 
         // Under reduced motion one zero-length turn leaves a still dial; a zero
@@ -24,15 +24,15 @@ Item {
             objectName: "loadingSpinnerRotation"
             target: dial
             from: 0; to: 360
-            duration: Theme.dur(900)
+            duration: Theme.dur(Theme.motionSlow * 2)
             loops: Theme.reduceMotion ? 1 : Animation.Infinite
             running: dial.visible
         }
 
         Rectangle {
-            width: 4; height: 16; radius: 2
+            width: 4; height: 16; radius: width / 2
             anchors.top: parent.top
-            anchors.topMargin: 6
+            anchors.topMargin: Theme.space2
             anchors.horizontalCenter: parent.horizontalCenter
             color: Theme.accent
         }

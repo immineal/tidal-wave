@@ -31,28 +31,28 @@ Item {
     ColumnLayout {
         id: col
         width: parent.width
-        spacing: 12
+        spacing: Theme.space3
 
         // Header
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 24
-            Layout.rightMargin: 24
+            Layout.leftMargin: Theme.space6
+            Layout.rightMargin: Theme.space6
             spacing: 0
 
             ColumnLayout {
-                spacing: 2
+                spacing: Theme.spaceHalf
                 Text {
                     text: root.title
                     color: Theme.textPrimary
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                 }
                 Text {
                     visible: root.subtitle.length > 0
                     text: root.subtitle
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                 }
             }
             Item { Layout.fillWidth: true }
@@ -78,14 +78,14 @@ Item {
                 Row {
                     id: viewAllRow
                     anchors.fill: parent
-                    spacing: 4
+                    spacing: Theme.space1
                     Text {
                         id: viewAllText
                         objectName: "viewAllLabel"
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("Show all")
                         color: viewAll.ink
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontMeta
                         font.underline: viewAll.activeFocus
                     }
                     VectorIcon {
@@ -93,12 +93,11 @@ Item {
                         name: "chevron-right"
                         color: viewAll.ink
                         width: 11; height: 11
-                        strokeWidth: 2
                     }
                 }
                 MouseArea {
                     anchors.fill: parent
-                    anchors.margins: -4
+                    anchors.margins: -Theme.space1
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.viewAllClicked()
                 }

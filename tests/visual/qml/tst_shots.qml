@@ -388,6 +388,49 @@ TestCase {
         }
     }
 
+    // The remaining detail pages and the two pages with a tab strip, so the
+    // shared scaffold and controls are seen everywhere they are used.
+    Component {
+        id: mixC
+        ShotWindow {
+            width: testCase.pageWidth; height: 620; visible: true
+            property alias page: pg
+            MixPage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
+        id: artistC
+        ShotWindow {
+            width: testCase.pageWidth; height: 900; visible: true
+            property alias page: pg
+            ArtistPage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
+        id: radioC
+        ShotWindow {
+            width: testCase.pageWidth; height: 620; visible: true
+            property alias page: pg
+            RadioPage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
+        id: searchC
+        ShotWindow {
+            width: testCase.pageWidth; height: 700; visible: true
+            property alias page: pg
+            SearchPage { id: pg; anchors.fill: parent }
+        }
+    }
+    Component {
+        id: collectionTallC
+        ShotWindow {
+            width: testCase.pageWidth; height: 700; visible: true
+            property alias page: pg
+            CollectionPage { id: pg; anchors.fill: parent }
+        }
+    }
+
     // ── the shots ────────────────────────────────────────────────────────
 
     // The whole app, every theme: a token only fails next to the others it
@@ -650,6 +693,126 @@ TestCase {
         win.page.tracks = S.tracks(8)
         settle(win.contentItem, 500)
         shot(win.page, "playlist_" + row.theme)
+        win.destroy()
+    }
+
+    function test_14_mix_data() { return test_02_sidebar_data() }
+    function test_14_mix(row) {
+        prefs.theme = row.theme
+        bridge.setMixPageForTest({ title: "My Mix 1", subtitle: "Brackwater, Vellum Coast and more",
+                                   coverUrl: "cover/mix0", mixType: "DISCOVERY_MIX" }, S.tracks(8))
+        var win = mixC.createObject(testCase)
+        verify(win)
+        win.page.mixId = "mix-0"
+        settle(win.contentItem, 500)
+        shot(win.page, "mix_" + row.theme)
+        win.destroy()
+    }
+
+    function test_15_artist_data() { return test_02_sidebar_data() }
+    function test_15_artist(row) {
+        prefs.theme = row.theme
+        var albums = S.albums(5)
+        for (var i = 0; i < albums.length; ++i) albums[i].section = (i < 3) ? "a" : "s"
+        bridge.setArtistForTest({ id: 7, name: "Brackwater", coverUrl: "cover/artist0",
+                                  coverUrl750: "cover/artist0",
+                                  bio: "A four-piece from a coastal town, known for long instrumental codas." },
+                                S.tracks(6), albums)
+        bridge.setSimilarArtistsForTest(S.artists(4))
+        var win = artistC.createObject(testCase)
+        verify(win)
+        win.page.artistId = 7
+        settle(win.contentItem, 600)
+        shot(win.page, "artist_" + row.theme)
+        win.destroy()
+        bridge.setSimilarArtistsForTest([])
+    }
+
+    function test_16_radio_data() { return test_02_sidebar_data() }
+    function test_16_radio(row) {
+        prefs.theme = row.theme
+        bridge.setTrackRadioForTest(S.tracks(8))
+        var win = radioC.createObject(testCase)
+        verify(win)
+        win.page.radioTitle = "Pilot Light"
+        win.page.trackId = 100004
+        settle(win.contentItem, 500)
+        shot(win.page, "radio_" + row.theme)
+        win.destroy()
+    }
+
+    function test_17_search_data() { return test_02_sidebar_data() }
+    function test_17_search(row) {
+        prefs.theme = row.theme
+        bridge.setSearchResultsForTest(S.tracks(5), S.albums(4), S.artists(4), S.playlists(3))
+        var win = searchC.createObject(testCase)
+        verify(win)
+        win.page.searchFor("salt lines")
+        settle(win.contentItem, 600)
+        shot(win.page, "search_" + row.theme)
+        win.destroy()
+    }
+
+    function test_18_collectionTracks_data() { return test_02_sidebar_data() }
+    function test_18_collectionTracks(row) {
+        prefs.theme = row.theme
+        var win = collectionTallC.createObject(testCase)
+        verify(win)
+        win.page.activeTab = 0
+        win.page.filteredTracks = S.tracks(6)
+        win.page.filteredAlbums = S.albums(8)
+        win.page.filteredArtists = S.artists(5)
+        win.page.filteredPlaylists = S.playlists(4)
+        settle(win.contentItem, 500)
+        shot(win.page, "collection_tracks_" + row.theme)
+        win.destroy()
+    }
+
+    // A dialog over the page: the Cancel and confirm pair, and the edit form.
+    function test_19_dialogs_data() { return test_02_sidebar_data() }
+    function test_19_dialogs(row) {
+        prefs.theme = row.theme
+        var win = playlistC.createObject(testCase)
+        verify(win)
+        win.page.playlistUuid = "uuid-0"
+        win.page.playlistTitle = "Late Night Drive"
+        win.page.playlistEditable = true
+        win.page.tracks = S.tracks(8)
+        settle(win.contentItem, 400)
+        win.page.editPopup.open()
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "dialog_edit_" + row.theme)
+        win.page.editPopup.close()
+        settle(win.contentItem, 300)
+        win.page.deleteDialog.askFor("uuid-0", "Late Night Drive")
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "dialog_confirm_" + row.theme)
+        win.destroy()
+    }
+
+    // The sleep timer menu, which carries the second toggle.
+    function test_20_sleep_data() { return test_02_sidebar_data() }
+    function test_20_sleep(row) {
+        prefs.theme = row.theme
+        var win = nowPlayingWideC.createObject(testCase)
+        verify(win)
+        settle(win.contentItem, 500)
+        // A Popup is not an Item, so it is found through `data`.
+        function walk(o, depth) {
+            if (!o || depth > 40) return null
+            if (o.objectName === "nowPlayingSleepTimerPopup") return o
+            var kids = o.data || []
+            for (var i = 0; i < kids.length; ++i) {
+                var hit = walk(kids[i], depth + 1)
+                if (hit) return hit
+            }
+            return null
+        }
+        var popup = walk(win.page, 0)
+        verify(popup, "the sleep timer popup was not found")
+        popup.open()
+        settle(win.contentItem, 500)
+        shot(win.contentItem, "sleep_" + row.theme)
         win.destroy()
     }
 }

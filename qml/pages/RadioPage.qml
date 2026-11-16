@@ -49,94 +49,72 @@ Rectangle {
         })
     }
 
-    ColumnLayout {
+    ListView {
+        id: trackList
+        objectName: "radioTracksList"
         anchors.fill: parent
-        anchors.margins: 24
-        spacing: 0
+        clip: true
+        model: root.tracks
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 16
+        // The radio has no artwork of its own, so the hero shows the covers
+        // of the first four tracks in it.
+        header: DetailHero {
+            width: trackList.width
+            kind: qsTr("Radio")
+            title: root.radioTitle || qsTr("Track radio")
+            artCovers: root.tracks.slice(0, 4).map(function (t) { return t ? t.coverUrl || "" : "" })
+            artIcon: "waves"
 
-            // Same drawn arrow as BackButton, in a 32px target.
-            Item {
-                id: radioBack
-                objectName: "radioBack"
-                // In a RowLayout, so the size has to be asked for: a plain
-                // width/height is overwritten by the layout.
-                Layout.preferredWidth: 32
-                Layout.preferredHeight: 32
-                Layout.alignment: Qt.AlignVCenter
-                activeFocusOnTab: true
-                Keys.onReturnPressed: Window.window.goBack()
-                Keys.onSpacePressed:  Window.window.goBack()
-                Accessible.role: Accessible.Button
-                Accessible.name: qsTranslate("BackButton", "Back", "button, returns to the previous page")
-                Accessible.onPressAction: Window.window.goBack()
-                Rectangle {
-                    anchors.fill: parent
-                    radius: Theme.radiusButton
-                    color: "transparent"
-                    border.width: radioBack.activeFocus ? 2 : 0
-                    border.color: Theme.accent
+            actions: [
+                PillButton {
+                    visible: root.tracks.length > 0
+                    text: qsTranslate("AlbumPage", "Play", "verb, button label")
+                    icon: "play"
+                    accent: true
+                    onClicked: root.playFrom(root.tracks, 0)
+                },
+                PillButton {
+                    visible: root.tracks.length > 0
+                    text: qsTranslate("AlbumPage", "Shuffle")
+                    icon: "shuffle"
+                    accent: false
+                    onClicked: {
+                        player.setShuffle(true)
+                        root.playFrom(root.tracks, Math.floor(Math.random() * root.tracks.length))
+                    }
                 }
-                VectorIcon {
-                    anchors.centerIn: parent
-                    width: 18; height: 18
-                    name: "chevron-left"
-                    color: Theme.textSec
-                    strokeWidth: 2
-                }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Window.window.goBack() }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 4
-                Text {
-                    text: qsTr("Radio")
-                    color: Theme.textDim
-                    font.pixelSize: 11
-                    font.bold: true
-                    font.letterSpacing: 1
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: root.radioTitle || qsTr("Track radio")
-                    color: Theme.textPrimary
-                    font.pixelSize: 22
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
-            }
-
-            PillButton {
-                visible: root.tracks.length > 0
-                text: qsTr("Play all")
-                icon: "play"
-                accent: true
-                onClicked: root.playFrom(root.tracks, 0)
-            }
+            ]
         }
 
-        Item { height: 16 }
+        delegate: TrackRow {
+            required property var modelData
+            required property int index
+            width: trackList.width - 32
+            x: 16
+            trackNum:    index + 1
+            title:       modelData.title
+            artists:     modelData.artists
+            albumTitle:  modelData.albumTitle
+            durationStr: modelData.durationStr
+            coverUrl:    modelData.coverUrl80
+            trackData:   modelData
+            onPlayRequested: root.playFrom(root.tracks, index)
+        }
 
-        Rectangle { color: Theme.border; height: 1; Layout.fillWidth: true }
-
-        Item { height: 8 }
-
-        // Where the list would be. A sibling in the same ColumnLayout: a Layout
-        // skips an invisible child, so the one drawn gets all the height.
-        Item {
-            objectName: "radioLoadError"
-            visible: root.loadFailed
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+        // The footer, so with no tracks the message sits directly beneath
+        // the hero and scrolls with it, as on MixPage.
+        footer: Item {
+            width: trackList.width
+            height: root.loadFailed ? 200 : 32
 
             ColumnLayout {
+                objectName: "radioLoadError"
+                visible: root.loadFailed
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 96, 420)
-                spacing: 10
+                spacing: Theme.space3
 
                 VectorIcon {
                     Layout.alignment: Qt.AlignHCenter
@@ -145,7 +123,6 @@ Rectangle {
                     Layout.preferredHeight: 40
                     name: "waves"
                     color: Theme.textDim
-                    strokeWidth: 1.5
                 }
 
                 Text {
@@ -154,7 +131,7 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("No radio for this track")
                     color: Theme.textPrimary
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontSection
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
@@ -167,36 +144,19 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("Tidal would not build a station from it. The track may have been taken down, or it may not be available where you are.")
                     color: Theme.textSec
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontMeta
                     wrapMode: Text.WordWrap
                 }
             }
         }
+    }
 
-        ListView {
-            id: trackList
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            visible: !root.loadFailed
-            clip: true
-            model: root.tracks
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-            delegate: TrackRow {
-                required property var modelData
-                required property int index
-                width: trackList.width
-                trackNum:    index + 1
-                title:       modelData.title
-                artists:     modelData.artists
-                albumTitle:  modelData.albumTitle
-                durationStr: modelData.durationStr
-                coverUrl:    modelData.coverUrl80
-                trackData:   modelData
-                onPlayRequested: root.playFrom(root.tracks, index)
-            }
-        }
+    DetailBar {
+        objectName: "radioStickyHeader"
+        backObjectName: "radioBack"
+        flickable: trackList
+        heroHeight: trackList.headerItem ? trackList.headerItem.height : 280
+        title: root.radioTitle || qsTr("Track radio")
     }
 
     LoadingOverlay { loading: root.loading }

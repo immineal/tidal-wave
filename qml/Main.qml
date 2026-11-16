@@ -71,7 +71,7 @@ ApplicationWindow {
     // A Behavior does not run on a binding's first evaluation, so a window that
     // somehow starts on Now Playing starts with it up rather than sliding it in.
     Behavior on nowPlayingness {
-        NumberAnimation { duration: Theme.dur(190); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: Theme.dur(Theme.motionMedium); easing.type: Easing.OutCubic }
     }
 
     // ─── Fullscreen ────────────────────────────────────
@@ -181,13 +181,7 @@ ApplicationWindow {
     }
 
     function formatSleepTime(seconds) {
-        var h = Math.floor(seconds / 3600)
-        var m = Math.floor((seconds % 3600) / 60)
-        var s = seconds % 60
-        if (h > 0) {
-            return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
-        }
-        return m + ":" + (s < 10 ? "0" : "") + s
+        return Theme.clock(seconds * 1000)
     }
 
     Timer {

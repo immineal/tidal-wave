@@ -48,7 +48,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        anchors.margins: -3
+        anchors.margins: -Theme.space1
         radius: Math.min(width, height) / 2
         color: "transparent"
         border.width: root.activeFocus ? 2 : 0
@@ -74,7 +74,7 @@ Item {
         y: root.upright ? 0 : (root.height - root.trackThickness) / 2
         width:  root.upright ? root.trackThickness : root.width
         height: root.upright ? root.height : root.trackThickness
-        radius: 2
+        radius: root.trackThickness / 2
         color: Theme.border
 
         // Fills up to the handle's centre, so the join shows no gap and no fill

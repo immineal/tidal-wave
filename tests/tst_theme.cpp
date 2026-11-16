@@ -439,9 +439,9 @@ private slots:
         }
     }
 
-    // A hover has to be visible. hoverFill is a wash over sidebar rows, chips
-    // and theme tiles; surfaceHov is the opaque one TrackRow and menus use. A
-    // wash cannot reach 3:1 without reading as a selected row.
+    // A hover has to be visible. hoverFill is the one hover wash in the app;
+    // surfaceHov is Theme.selectedFill, the page you are on. A wash cannot
+    // reach 3:1 without reading as a selected row.
     void hoverIsVisibleButNotASelection_data() { themeRows(); }
     void hoverIsVisibleButNotASelection() {
         QFETCH(QString, name);
@@ -953,16 +953,11 @@ private slots:
     // The scale is a design decision, so drifting off it fails here.
     void radiusScale() {
         const QVariantMap r = theme::radii();
-        QCOMPARE(r.value("chip").toInt(), 999);
-        QCOMPARE(r.value("field").toInt(), 14);
-        QCOMPARE(r.value("row").toInt(), 7);
-        QCOMPARE(r.value("button").toInt(), 8);
-        QCOMPARE(r.value("art").toInt(), 5);
-        QCOMPARE(r.value("card").toInt(), 11);
-        QCOMPARE(r.value("popup").toInt(), 14);
-        QCOMPARE(r.value("badge").toInt(), 4);
-        QCOMPARE(r.value("mark").toInt(), 14);
-        QCOMPARE(r.size(), 9);
+        QCOMPARE(r.value("small").toInt(), 4);
+        QCOMPARE(r.value("medium").toInt(), 8);
+        QCOMPARE(r.value("large").toInt(), 12);
+        QCOMPARE(r.value("full").toInt(), 999);
+        QCOMPARE(r.size(), 4);
     }
 
     // ── the QML-facing object ────────────────────────────────────────────

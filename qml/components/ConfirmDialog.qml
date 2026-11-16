@@ -42,26 +42,26 @@ Popup {
     closePolicy: root.busy
                  ? Popup.NoAutoClose
                  : (Popup.CloseOnEscape | Popup.CloseOnPressOutside)
-    padding: 20
+    padding: Theme.space5
 
     background: Rectangle {
         color: Theme.surfaceHigh
         border.color: Theme.border
-        radius: Theme.radiusPopup
+        radius: Theme.radiusLarge
     }
 
     // Cancel takes the focus: Return on a dialog that just opened keeps things.
     onOpened: cancelButton.forceActiveFocus()
 
     contentItem: ColumnLayout {
-        spacing: 12
+        spacing: Theme.space3
 
         Text {
             objectName: "confirmDialogHeading"
             Layout.fillWidth: true
             text: root.heading
             color: Theme.textPrimary
-            font.pixelSize: 16
+            font.pixelSize: Theme.fontTitle
             font.bold: true
             wrapMode: Text.WordWrap
         }
@@ -77,7 +77,7 @@ Popup {
             Layout.fillWidth: true
             text: root.text
             color: Theme.textSec
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontMeta
             wrapMode: Text.WordWrap
         }
 
@@ -87,14 +87,14 @@ Popup {
             visible: root.errorText.length > 0
             text: root.errorText
             color: Theme.redText
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontMeta
             wrapMode: Text.WordWrap
         }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 2
-            spacing: 10
+            Layout.topMargin: Theme.spaceHalf
+            spacing: Theme.space3
 
             Item { Layout.fillWidth: true }
 
