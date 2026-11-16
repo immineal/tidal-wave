@@ -468,6 +468,27 @@ TestCase {
         verify(!title.truncated, "the title elided although two lines hold it")
     }
 
+    // ── 5. the album's sticky header is opaque ───────────────────────────
+
+    Component {
+        id: barHost
+        Window {
+            id: bw
+            property alias bar: db
+            property alias flick: f
+            Flickable { id: f; anchors.fill: parent; contentHeight: 3000 }
+            DetailBar { id: db; flickable: f; heroHeight: 280; title: "Ein Album" }
+        }
+    }
+
+    function test_the_sticky_header_is_opaque_once_revealed() {
+        var host = showHost(barHost, 800, 600)
+        host.flick.contentY = 1200
+        settle(host)
+        compare(host.bar.reveal, 1, "the bar never revealed")
+        compare(host.bar.color.a, 1, "the revealed bar lets the page show through")
+    }
+
     // ── 12. one quality badge ────────────────────────────────────────────
 
     function test_both_places_use_one_badge_component() {
